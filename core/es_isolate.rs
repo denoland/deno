@@ -52,7 +52,8 @@ pub struct EsIsolate(CoreIsolate);
 pub struct EsIsolateState {
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
-  pub(crate) dyn_import_map: HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
+  pub(crate) dyn_import_map:
+    HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
@@ -74,14 +75,31 @@ impl DerefMut for EsIsolate {
 }
 
 impl EsIsolate {
-  pub fn new(loader: Rc<dyn ModuleLoader>, op_manager: Rc<dyn OpRouter>, startup_data: StartupData, will_snapshot: bool) -> Self {
-    let mut core_isolate = CoreIsolate::new(op_manager, startup_data, will_snapshot);
+  pub fn new(
+    loader: Rc<dyn ModuleLoader>,
+    op_manager: Rc<dyn OpRouter>,
+    startup_data: StartupData,
+    will_snapshot: bool,
+  ) -> Self {
+    let mut core_isolate =
+      CoreIsolate::new(op_manager, startup_data, will_snapshot);
     {
-      core_isolate.set_host_initialize_import_meta_object_callback(bindings::host_initialize_import_meta_object_callback);
-      core_isolate.set_host_import_module_dynamically_callback(bindings::host_import_module_dynamically_callback);
+      core_isolate.set_host_initialize_import_meta_object_callback(
+        bindings::host_initialize_import_meta_object_callback,
+      );
+      core_isolate.set_host_import_module_dynamically_callback(
+        bindings::host_import_module_dynamically_callback,
+      );
     }
 
-    core_isolate.set_slot(Rc::new(RefCell::new(EsIsolateState { modules: Modules::new(), loader, dyn_import_map: HashMap::new(), preparing_dyn_imports: FuturesUnordered::new(), pending_dyn_imports: FuturesUnordered::new(), waker: AtomicWaker::new() })));
+    core_isolate.set_slot(Rc::new(RefCell::new(EsIsolateState {
+      modules: Modules::new(),
+      loader,
+      dyn_import_map: HashMap::new(),
+      preparing_dyn_imports: FuturesUnordered::new(),
+      pending_dyn_imports: FuturesUnordered::new(),
+      waker: AtomicWaker::new(),
+    })));
 
     EsIsolate(core_isolate)
   }
@@ -89,10 +107,18 @@ impl EsIsolate {
   /// Low-level module creation.
   ///
   /// Called during module loading or dynamic import loading.
-  fn mod_new(&mut self, main: bool, name: &str, source: &str) -> Result<ModuleId, ErrBox> {
+  fn mod_new(
+    &mut self,
+    main: bool,
+    name: &str,
+    source: &str,
+  ) -> Result<ModuleId, ErrBox> {
     let state_rc = Self::state(self);
     let core_state_rc = CoreIsolate::state(self);
-    let scope = &mut v8::HandleScope::with_context(&mut *self.0, core_state_rc.borrow().global_context.as_ref().unwrap());
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -115,13 +141,21 @@ impl EsIsolate {
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     for i in 0..module.get_module_requests_length() {
-      let import_specifier = module.get_module_request(i).to_rust_string_lossy(tc_scope);
+      let import_specifier =
+        module.get_module_request(i).to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
-      let module_specifier = state.loader.resolve(&import_specifier, name, false)?;
+      let module_specifier =
+        state.loader.resolve(&import_specifier, name, false)?;
       import_specifiers.push(module_specifier);
     }
 
-    state_rc.borrow_mut().modules.register(id, name, main, v8::Global::<v8::Module>::new(tc_scope, module), import_specifiers);
+    state_rc.borrow_mut().modules.register(
+      id,
+      name,
+      main,
+      v8::Global::<v8::Module>::new(tc_scope, module),
+      import_specifiers,
+    );
 
     Ok(id)
   }
@@ -134,7 +168,10 @@ impl EsIsolate {
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
-    let scope = &mut v8::HandleScope::with_context(&mut *self.0, core_state.global_context.as_ref().unwrap());
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state.global_context.as_ref().unwrap(),
+    );
     let tc_scope = &mut v8::TryCatch::new(scope);
 
     let module = match Self::state(tc_scope).borrow().modules.get_info(id) {
@@ -147,7 +184,8 @@ impl EsIsolate {
       exception_to_err_result(tc_scope, module.get_exception())?
     }
 
-    let result = module.instantiate_module(tc_scope, bindings::module_resolve_callback);
+    let result =
+      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
     match result {
       Some(_) => Ok(()),
       None => {
@@ -167,9 +205,17 @@ impl EsIsolate {
 
     let core_state_rc = CoreIsolate::state(self);
 
-    let scope = &mut v8::HandleScope::with_context(&mut *self.0, core_state_rc.borrow().global_context.as_ref().unwrap());
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    let module = Self::state(scope).borrow().modules.get_info(id).map(|info| v8::Local::new(scope, &info.handle)).expect("ModuleInfo not found");
+    let module = Self::state(scope)
+      .borrow()
+      .modules
+      .get_info(id)
+      .map(|info| v8::Local::new(scope, &info.handle))
+      .expect("ModuleInfo not found");
     let mut status = module.get_status();
 
     if status == v8::ModuleStatus::Instantiated {
@@ -195,8 +241,12 @@ impl EsIsolate {
       status = module.get_status();
 
       if let Some(value) = maybe_value {
-        assert!(status == v8::ModuleStatus::Evaluated || status == v8::ModuleStatus::Errored);
-        let promise = v8::Local::<v8::Promise>::try_from(value).expect("Expected to get promise as module evaluation result");
+        assert!(
+          status == v8::ModuleStatus::Evaluated
+            || status == v8::ModuleStatus::Errored
+        );
+        let promise = v8::Local::<v8::Promise>::try_from(value)
+          .expect("Expected to get promise as module evaluation result");
         let promise_id = promise.get_identity_hash();
         let mut core_state = core_state_rc.borrow_mut();
         core_state.pending_promise_exceptions.remove(&promise_id);
@@ -209,47 +259,77 @@ impl EsIsolate {
       v8::ModuleStatus::Evaluated => Ok(()),
       v8::ModuleStatus::Errored => {
         let exception = module.get_exception();
-        exception_to_err_result(scope, exception).map_err(|err| attach_handle_to_error(scope, err, exception))
+        exception_to_err_result(scope, exception)
+          .map_err(|err| attach_handle_to_error(scope, err, exception))
       }
       other => panic!("Unexpected module status {:?}", other),
     }
   }
 
-  fn dyn_import_error(&mut self, id: ModuleLoadId, err: ErrBox) -> Result<(), ErrBox> {
+  fn dyn_import_error(
+    &mut self,
+    id: ModuleLoadId,
+    err: ErrBox,
+  ) -> Result<(), ErrBox> {
     let state_rc = Self::state(self);
     let core_state_rc = CoreIsolate::state(self);
 
-    let scope = &mut v8::HandleScope::with_context(&mut *self.0, core_state_rc.borrow().global_context.as_ref().unwrap());
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    let resolver_handle = state_rc.borrow_mut().dyn_import_map.remove(&id).expect("Invalid dyn import id");
+    let resolver_handle = state_rc
+      .borrow_mut()
+      .dyn_import_map
+      .remove(&id)
+      .expect("Invalid dyn import id");
     let resolver = resolver_handle.get(scope);
 
-    let exception = err.downcast_ref::<ErrWithV8Handle>().map(|err| err.get_handle(scope)).unwrap_or_else(|| {
-      let message = err.to_string();
-      let message = v8::String::new(scope, &message).unwrap();
-      v8::Exception::type_error(scope, message)
-    });
+    let exception = err
+      .downcast_ref::<ErrWithV8Handle>()
+      .map(|err| err.get_handle(scope))
+      .unwrap_or_else(|| {
+        let message = err.to_string();
+        let message = v8::String::new(scope, &message).unwrap();
+        v8::Exception::type_error(scope, message)
+      });
 
     resolver.reject(scope, exception).unwrap();
     scope.perform_microtask_checkpoint();
     Ok(())
   }
 
-  fn dyn_import_done(&mut self, id: ModuleLoadId, mod_id: ModuleId) -> Result<(), ErrBox> {
+  fn dyn_import_done(
+    &mut self,
+    id: ModuleLoadId,
+    mod_id: ModuleId,
+  ) -> Result<(), ErrBox> {
     let state_rc = Self::state(self);
 
     let core_state_rc = CoreIsolate::state(self);
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let scope = &mut v8::HandleScope::with_context(&mut *self.0, core_state_rc.borrow().global_context.as_ref().unwrap());
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    let resolver_handle = state_rc.borrow_mut().dyn_import_map.remove(&id).expect("Invalid dyn import id");
+    let resolver_handle = state_rc
+      .borrow_mut()
+      .dyn_import_map
+      .remove(&id)
+      .expect("Invalid dyn import id");
     let resolver = resolver_handle.get(scope);
 
     let module = {
       let state = state_rc.borrow();
-      state.modules.get_info(mod_id).map(|info| v8::Local::new(scope, &info.handle)).expect("Dyn import module info not found")
+      state
+        .modules
+        .get_info(mod_id)
+        .map(|info| v8::Local::new(scope, &info.handle))
+        .expect("Dyn import module info not found")
     };
     // Resolution success
     assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
@@ -260,7 +340,10 @@ impl EsIsolate {
     Ok(())
   }
 
-  fn prepare_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn prepare_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), ErrBox>> {
     let state_rc = Self::state(self);
 
     loop {
@@ -346,11 +429,21 @@ impl EsIsolate {
     }
   }
 
-  fn register_during_load(&mut self, info: ModuleSource, load: &mut RecursiveModuleLoad) -> Result<(), ErrBox> {
-    let ModuleSource { code, module_url_specified, module_url_found } = info;
+  fn register_during_load(
+    &mut self,
+    info: ModuleSource,
+    load: &mut RecursiveModuleLoad,
+  ) -> Result<(), ErrBox> {
+    let ModuleSource {
+      code,
+      module_url_specified,
+      module_url_found,
+    } = info;
 
-    let is_main = load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_specifier = ModuleSpecifier::resolve_url(&module_url_found).unwrap();
+    let is_main =
+      load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
+    let referrer_specifier =
+      ModuleSpecifier::resolve_url(&module_url_found).unwrap();
 
     let state_rc = Self::state(self);
     // #A There are 3 cases to handle at this moment:
@@ -366,7 +459,9 @@ impl EsIsolate {
     // If necessary, register an alias.
     if module_url_specified != module_url_found {
       let mut state = state_rc.borrow_mut();
-      state.modules.alias(&module_url_specified, &module_url_found);
+      state
+        .modules
+        .alias(&module_url_specified, &module_url_found);
     }
 
     let maybe_mod_id = {
@@ -377,7 +472,10 @@ impl EsIsolate {
     let module_id = match maybe_mod_id {
       Some(id) => {
         // Module has already been registered.
-        debug!("Already-registered module fetched again: {}", module_url_found);
+        debug!(
+          "Already-registered module fetched again: {}",
+          module_url_found
+        );
         id
       }
       // Module not registered yet, do it now.
@@ -398,7 +496,8 @@ impl EsIsolate {
         state.modules.is_registered(&module_specifier)
       };
       if !is_registered {
-        load.add_import(module_specifier.to_owned(), referrer_specifier.clone());
+        load
+          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
       }
     }
 
@@ -419,7 +518,11 @@ impl EsIsolate {
   ///
   /// User must call `Isolate::mod_evaluate` with returned `ModuleId`
   /// manually after load is finished.
-  pub async fn load_module(&mut self, specifier: &ModuleSpecifier, code: Option<String>) -> Result<ModuleId, ErrBox> {
+  pub async fn load_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    code: Option<String>,
+  ) -> Result<ModuleId, ErrBox> {
     self.shared_init();
     let loader = {
       let state_rc = Self::state(self);
@@ -487,7 +590,9 @@ impl Future for EsIsolate {
     match ready!(es_isolate.0.poll_unpin(cx)) {
       Ok(()) => {
         let state = state_rc.borrow();
-        if state.pending_dyn_imports.is_empty() && state.preparing_dyn_imports.is_empty() {
+        if state.pending_dyn_imports.is_empty()
+          && state.preparing_dyn_imports.is_empty()
+        {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
@@ -500,17 +605,33 @@ impl Future for EsIsolate {
 
 impl EsIsolateState {
   // Called by V8 during `Isolate::mod_instantiate`.
-  pub fn module_resolve_cb(&mut self, specifier: &str, referrer_id: ModuleId) -> ModuleId {
+  pub fn module_resolve_cb(
+    &mut self,
+    specifier: &str,
+    referrer_id: ModuleId,
+  ) -> ModuleId {
     let referrer = self.modules.get_name(referrer_id).unwrap();
-    let specifier = self.loader.resolve(specifier, referrer, false).expect("Module should have been already resolved");
+    let specifier = self
+      .loader
+      .resolve(specifier, referrer, false)
+      .expect("Module should have been already resolved");
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
   // Called by V8 during `Isolate::mod_instantiate`.
-  pub fn dyn_import_cb(&mut self, resolver_handle: v8::Global<v8::PromiseResolver>, specifier: &str, referrer: &str) {
+  pub fn dyn_import_cb(
+    &mut self,
+    resolver_handle: v8::Global<v8::PromiseResolver>,
+    specifier: &str,
+    referrer: &str,
+  ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    let load = RecursiveModuleLoad::dynamic_import(specifier, referrer, self.loader.clone());
+    let load = RecursiveModuleLoad::dynamic_import(
+      specifier,
+      referrer,
+      self.loader.clone(),
+    );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
     let fut = load.prepare().boxed_local();
@@ -539,7 +660,12 @@ pub mod tests {
     }
 
     impl ModuleLoader for ModsLoader {
-      fn resolve(&self, specifier: &str, referrer: &str, _is_main: bool) -> Result<ModuleSpecifier, ErrBox> {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, ErrBox> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
@@ -547,7 +673,12 @@ pub mod tests {
         Ok(s)
       }
 
-      fn load(&self, _module_specifier: &ModuleSpecifier, _maybe_referrer: Option<ModuleSpecifier>, _is_dyn_import: bool) -> Pin<Box<ModuleSourceFuture>> {
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()
       }
     }
@@ -559,14 +690,15 @@ pub mod tests {
 
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
-    let dispatcher = move |_state: &CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| -> Op {
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      assert_eq!(zero_copy.len(), 1);
-      assert_eq!(zero_copy[0].len(), 1);
-      assert_eq!(zero_copy[0][0], 42);
-      let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-      Op::Async(futures::future::ready(buf).boxed())
-    };
+    let dispatcher =
+      move |_state: &CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| -> Op {
+        dispatch_count_.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(zero_copy.len(), 1);
+        assert_eq!(zero_copy[0].len(), 1);
+        assert_eq!(zero_copy[0][0], 42);
+        let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      };
 
     isolate.register_op("test", dispatcher);
 
@@ -602,9 +734,14 @@ pub mod tests {
     {
       let state = state_rc.borrow();
       let imports = state.modules.get_children(mod_a);
-      assert_eq!(imports, Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()]));
+      assert_eq!(
+        imports,
+        Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
+      );
     }
-    let mod_b = isolate.mod_new(false, "file:///b.js", "export function b() { return 'b' }").unwrap();
+    let mod_b = isolate
+      .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
+      .unwrap();
     {
       let state = state_rc.borrow();
       let imports = state.modules.get_children(mod_b).unwrap();
@@ -630,7 +767,12 @@ pub mod tests {
     }
 
     impl ModuleLoader for DynImportErrLoader {
-      fn resolve(&self, specifier: &str, referrer: &str, _is_main: bool) -> Result<ModuleSpecifier, ErrBox> {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, ErrBox> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
@@ -638,7 +780,12 @@ pub mod tests {
         Ok(s)
       }
 
-      fn load(&self, _module_specifier: &ModuleSpecifier, _maybe_referrer: Option<ModuleSpecifier>, _is_dyn_import: bool) -> Pin<Box<ModuleSourceFuture>> {
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
         async { Err(io::Error::from(io::ErrorKind::NotFound).into()) }.boxed()
       }
     }
@@ -676,7 +823,12 @@ pub mod tests {
   }
 
   impl ModuleLoader for DynImportOkLoader {
-    fn resolve(&self, specifier: &str, referrer: &str, _is_main: bool) -> Result<ModuleSpecifier, ErrBox> {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _is_main: bool,
+    ) -> Result<ModuleSpecifier, ErrBox> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
       assert!(c < 4);
       assert_eq!(specifier, "./b.js");
@@ -685,13 +837,28 @@ pub mod tests {
       Ok(s)
     }
 
-    fn load(&self, specifier: &ModuleSpecifier, _maybe_referrer: Option<ModuleSpecifier>, _is_dyn_import: bool) -> Pin<Box<ModuleSourceFuture>> {
+    fn load(
+      &self,
+      specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<ModuleSpecifier>,
+      _is_dyn_import: bool,
+    ) -> Pin<Box<ModuleSourceFuture>> {
       self.load_count.fetch_add(1, Ordering::Relaxed);
-      let info = ModuleSource { module_url_specified: specifier.to_string(), module_url_found: specifier.to_string(), code: "export function b() { return 'b' }".to_owned() };
+      let info = ModuleSource {
+        module_url_specified: specifier.to_string(),
+        module_url_found: specifier.to_string(),
+        code: "export function b() { return 'b' }".to_owned(),
+      };
       async move { Ok(info) }.boxed()
     }
 
-    fn prepare_load(&self, _load_id: ModuleLoadId, _module_specifier: &ModuleSpecifier, _maybe_referrer: Option<String>, _is_dyn_import: bool) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    fn prepare_load(
+      &self,
+      _load_id: ModuleLoadId,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<String>,
+      _is_dyn_import: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
       self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
       async { Ok(()) }.boxed_local()
     }
@@ -772,14 +939,24 @@ pub mod tests {
     struct ModsLoader;
 
     impl ModuleLoader for ModsLoader {
-      fn resolve(&self, specifier: &str, referrer: &str, _is_main: bool) -> Result<ModuleSpecifier, ErrBox> {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, ErrBox> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
-      fn load(&self, _module_specifier: &ModuleSpecifier, _maybe_referrer: Option<ModuleSpecifier>, _is_dyn_import: bool) -> Pin<Box<ModuleSourceFuture>> {
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()
       }
     }
@@ -790,7 +967,10 @@ pub mod tests {
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
-    let module_id = futures::executor::block_on(runtime_isolate.load_module(&specifier, Some(source_code))).unwrap();
+    let module_id = futures::executor::block_on(
+      runtime_isolate.load_module(&specifier, Some(source_code)),
+    )
+    .unwrap();
 
     js_check(runtime_isolate.mod_evaluate(module_id));
 

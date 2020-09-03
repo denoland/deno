@@ -27,19 +27,32 @@ impl Metrics {
     self.bytes_received += bytes_received;
   }
 
-  pub fn op_sync(&mut self, bytes_sent_control: u64, bytes_sent_data: u64, bytes_received: u64) {
+  pub fn op_sync(
+    &mut self,
+    bytes_sent_control: u64,
+    bytes_sent_data: u64,
+    bytes_received: u64,
+  ) {
     self.ops_dispatched_sync += 1;
     self.op_dispatched(bytes_sent_control, bytes_sent_data);
     self.ops_completed_sync += 1;
     self.op_completed(bytes_received);
   }
 
-  pub fn op_dispatched_async(&mut self, bytes_sent_control: u64, bytes_sent_data: u64) {
+  pub fn op_dispatched_async(
+    &mut self,
+    bytes_sent_control: u64,
+    bytes_sent_data: u64,
+  ) {
     self.ops_dispatched_async += 1;
     self.op_dispatched(bytes_sent_control, bytes_sent_data)
   }
 
-  pub fn op_dispatched_async_unref(&mut self, bytes_sent_control: u64, bytes_sent_data: u64) {
+  pub fn op_dispatched_async_unref(
+    &mut self,
+    bytes_sent_control: u64,
+    bytes_sent_data: u64,
+  ) {
     self.ops_dispatched_async_unref += 1;
     self.op_dispatched(bytes_sent_control, bytes_sent_data)
   }

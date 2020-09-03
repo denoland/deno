@@ -24,7 +24,12 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_os_release", s.stateful_json_op_sync(t, op_os_release));
 }
 
-fn op_exec_path(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_exec_path(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let current_exe = env::current_exe().unwrap();
   state.check_read_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
@@ -40,14 +45,24 @@ struct SetEnv {
   value: String,
 }
 
-fn op_set_env(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_set_env(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.check_env()?;
   env::set_var(args.key, args.value);
   Ok(json!({}))
 }
 
-fn op_env(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_env(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
   Ok(json!(v))
@@ -58,7 +73,12 @@ struct GetEnv {
   key: String,
 }
 
-fn op_get_env(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_get_env(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.check_env()?;
   let r = match env::var(args.key) {
@@ -73,7 +93,12 @@ struct DeleteEnv {
   key: String,
 }
 
-fn op_delete_env(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_delete_env(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: DeleteEnv = serde_json::from_value(args)?;
   state.check_env()?;
   env::remove_var(args.key);
@@ -85,12 +110,22 @@ struct Exit {
   code: i32,
 }
 
-fn op_exit(_state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_exit(
+  _state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
 }
 
-fn op_loadavg(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_loadavg(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.loadavg");
   state.check_env()?;
   match sys_info::loadavg() {
@@ -99,14 +134,24 @@ fn op_loadavg(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]
   }
 }
 
-fn op_hostname(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_hostname(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.hostname");
   state.check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(json!(hostname))
 }
 
-fn op_os_release(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_os_release(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.osRelease");
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());

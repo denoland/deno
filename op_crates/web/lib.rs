@@ -5,10 +5,18 @@ use deno_core::CoreIsolate;
 use std::path::PathBuf;
 
 pub fn init(isolate: &mut CoreIsolate) {
-  let files = vec![get_path("00_dom_exception.js"), get_path("01_event.js"), get_path("02_abort_signal.js"), get_path("08_text_encoding.js")];
+  let files = vec![
+    get_path("00_dom_exception.js"),
+    get_path("01_event.js"),
+    get_path("02_abort_signal.js"),
+    get_path("08_text_encoding.js"),
+  ];
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
-    js_check(isolate.execute(&file.to_string_lossy(), &std::fs::read_to_string(&file).unwrap()));
+    js_check(isolate.execute(
+      &file.to_string_lossy(),
+      &std::fs::read_to_string(&file).unwrap(),
+    ));
   }
 }
 
@@ -47,7 +55,10 @@ mod tests {
   fn test_abort_controller() {
     run_in_task(|mut cx| {
       let mut isolate = setup();
-      js_check(isolate.execute("abort_controller_test.js", include_str!("abort_controller_test.js")));
+      js_check(isolate.execute(
+        "abort_controller_test.js",
+        include_str!("abort_controller_test.js"),
+      ));
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -69,7 +80,12 @@ mod tests {
   fn test_event_target() {
     run_in_task(|mut cx| {
       let mut isolate = setup();
-      js_check(isolate.execute("event_target_test.js", include_str!("event_target_test.js")));
+      js_check(
+        isolate.execute(
+          "event_target_test.js",
+          include_str!("event_target_test.js"),
+        ),
+      );
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -80,7 +96,10 @@ mod tests {
   fn test_text_encoding() {
     run_in_task(|mut cx| {
       let mut isolate = setup();
-      js_check(isolate.execute("text_encoding_test.js", include_str!("text_encoding_test.js")));
+      js_check(isolate.execute(
+        "text_encoding_test.js",
+        include_str!("text_encoding_test.js"),
+      ));
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }

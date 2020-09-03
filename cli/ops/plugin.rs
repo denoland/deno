@@ -6,7 +6,6 @@ use crate::state::State;
 use deno_core::plugin_api;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
@@ -31,7 +30,12 @@ struct OpenPluginArgs {
   filename: String,
 }
 
-pub fn op_open_plugin(isolate_state: &mut CoreIsolateState, state: &Rc<State>, args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox> {
+pub fn op_open_plugin(
+  isolate_state: &mut CoreIsolateState,
+  state: &Rc<State>,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
   let filename = PathBuf::from(&args.filename);
@@ -43,10 +47,18 @@ pub fn op_open_plugin(isolate_state: &mut CoreIsolateState, state: &Rc<State>, a
   let plugin_resource = PluginResource::new(&plugin_lib);
 
   let mut resource_table = state.resource_table.borrow_mut();
-  let rid = state.resource_table.borrow_mut().add("plugin", Box::new(plugin_resource));
+  let rid = state
+    .resource_table
+    .borrow_mut()
+    .add("plugin", Box::new(plugin_resource));
   let plugin_resource = resource_table.get::<PluginResource>(rid).unwrap();
 
-  let deno_plugin_init = *unsafe { plugin_resource.lib.symbol::<plugin_api::InitFn>("deno_plugin_init") }.unwrap();
+  let deno_plugin_init = *unsafe {
+    plugin_resource
+      .lib
+      .symbol::<plugin_api::InitFn>("deno_plugin_init")
+  }
+  .unwrap();
   drop(resource_table);
 
   let mut interface = PluginInterface::new(state, &plugin_lib);
@@ -82,17 +94,28 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
   /// keep reference to the plugin `Library` object, so that the plugin doesn't
   /// get unloaded before all its op registrations and the futures created by
   /// them are dropped.
-  fn register_op(&mut self, name: &str, dispatch_op_fn: plugin_api::DispatchOpFn) -> OpId {
+  fn register_op(
+    &mut self,
+    name: &str,
+    dispatch_op_fn: plugin_api::DispatchOpFn,
+  ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self.state.register_op(name, move |state: Rc<State>, mut zero_copy: BufVec| {
-      let mut interface = PluginInterface::new(&state, &plugin_lib);
-      let op = dispatch_op_fn(&mut interface, &mut zero_copy);
-      match op {
-        sync_op @ Op::Sync(..) => sync_op,
-        Op::Async(fut) => Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut)),
-        Op::AsyncUnref(fut) => Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut)),
-      }
-    })
+    self.state.register_op(
+      name,
+      move |state: Rc<State>, mut zero_copy: BufVec| {
+        let mut interface = PluginInterface::new(&state, &plugin_lib);
+        let op = dispatch_op_fn(&mut interface, &mut zero_copy);
+        match op {
+          sync_op @ Op::Sync(..) => sync_op,
+          Op::Async(fut) => {
+            Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut))
+          }
+          Op::AsyncUnref(fut) => {
+            Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
+          }
+        }
+      },
+    )
   }
 }
 
@@ -103,7 +126,10 @@ struct PluginOpAsyncFuture {
 
 impl PluginOpAsyncFuture {
   fn new(plugin_lib: &Rc<Library>, fut: OpAsyncFuture) -> Pin<Box<Self>> {
-    let wrapped_fut = Self { fut: Some(fut), _plugin_lib: plugin_lib.clone() };
+    let wrapped_fut = Self {
+      fut: Some(fut),
+      _plugin_lib: plugin_lib.clone(),
+    };
     Box::pin(wrapped_fut)
   }
 }

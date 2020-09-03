@@ -24,7 +24,69 @@ impl fmt::Display for IgnoredCompilerOptions {
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: [&str; 61] = ["allowSyntheticDefaultImports", "allowUmdGlobalAccess", "assumeChangesOnlyAffectDirectDependencies", "baseUrl", "build", "composite", "declaration", "declarationDir", "declarationMap", "diagnostics", "downlevelIteration", "emitBOM", "emitDeclarationOnly", "esModuleInterop", "extendedDiagnostics", "forceConsistentCasingInFileNames", "generateCpuProfile", "help", "importHelpers", "incremental", "inlineSourceMap", "inlineSources", "init", "listEmittedFiles", "listFiles", "mapRoot", "maxNodeModuleJsDepth", "module", "moduleResolution", "newLine", "noEmit", "noEmitHelpers", "noEmitOnError", "noLib", "noResolve", "out", "outDir", "outFile", "paths", "preserveConstEnums", "preserveSymlinks", "preserveWatchOutput", "pretty", "reactNamespace", "resolveJsonModule", "rootDir", "rootDirs", "showConfig", "skipDefaultLibCheck", "skipLibCheck", "sourceMap", "sourceRoot", "stripInternal", "target", "traceResolution", "tsBuildInfoFile", "types", "typeRoots", "useDefineForClassFields", "version", "watch"];
+const IGNORED_COMPILER_OPTIONS: [&str; 61] = [
+  "allowSyntheticDefaultImports",
+  "allowUmdGlobalAccess",
+  "assumeChangesOnlyAffectDirectDependencies",
+  "baseUrl",
+  "build",
+  "composite",
+  "declaration",
+  "declarationDir",
+  "declarationMap",
+  "diagnostics",
+  "downlevelIteration",
+  "emitBOM",
+  "emitDeclarationOnly",
+  "esModuleInterop",
+  "extendedDiagnostics",
+  "forceConsistentCasingInFileNames",
+  "generateCpuProfile",
+  "help",
+  "importHelpers",
+  "incremental",
+  "inlineSourceMap",
+  "inlineSources",
+  "init",
+  "listEmittedFiles",
+  "listFiles",
+  "mapRoot",
+  "maxNodeModuleJsDepth",
+  "module",
+  "moduleResolution",
+  "newLine",
+  "noEmit",
+  "noEmitHelpers",
+  "noEmitOnError",
+  "noLib",
+  "noResolve",
+  "out",
+  "outDir",
+  "outFile",
+  "paths",
+  "preserveConstEnums",
+  "preserveSymlinks",
+  "preserveWatchOutput",
+  "pretty",
+  "reactNamespace",
+  "resolveJsonModule",
+  "rootDir",
+  "rootDirs",
+  "showConfig",
+  "skipDefaultLibCheck",
+  "skipLibCheck",
+  "sourceMap",
+  "sourceRoot",
+  "stripInternal",
+  "target",
+  "traceResolution",
+  "tsBuildInfoFile",
+  "types",
+  "typeRoots",
+  "useDefineForClassFields",
+  "version",
+  "watch",
+];
 
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
@@ -50,7 +112,8 @@ fn jsonc_to_serde(j: JsonValue) -> Value {
     JsonValue::Boolean(bool) => Value::Bool(bool),
     JsonValue::Null => Value::Null,
     JsonValue::Number(num) => {
-      let number = serde_json::Number::from_str(&num).expect("could not parse number");
+      let number =
+        serde_json::Number::from_str(&num).expect("could not parse number");
       Value::Number(number)
     }
     JsonValue::Object(obj) => {
@@ -84,7 +147,9 @@ pub fn parse_raw_config(config_text: &str) -> Result<Value, ErrBox> {
 
 /// Take a string of JSONC, parse it and return a serde `Value` of the text.
 /// The result also contains any options that were ignored.
-pub fn parse_config(config_text: &str) -> Result<(Value, Option<IgnoredCompilerOptions>), ErrBox> {
+pub fn parse_config(
+  config_text: &str,
+) -> Result<(Value, Option<IgnoredCompilerOptions>), ErrBox> {
   assert!(!config_text.is_empty());
   let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
   let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
@@ -101,7 +166,11 @@ pub fn parse_config(config_text: &str) -> Result<(Value, Option<IgnoredCompilerO
     }
   }
   let options_value = serde_json::to_value(compiler_options)?;
-  let ignored_options = if !items.is_empty() { Some(IgnoredCompilerOptions(items)) } else { None };
+  let ignored_options = if !items.is_empty() {
+    Some(IgnoredCompilerOptions(items))
+  } else {
+    None
+  };
 
   Ok((options_value, ignored_options))
 }
@@ -141,12 +210,16 @@ mod tests {
         "strict": true
       }
     }"#;
-    let (options_value, ignored) = parse_config(config_text).expect("error parsing");
+    let (options_value, ignored) =
+      parse_config(config_text).expect("error parsing");
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
     assert!(options.contains_key("strict"));
     assert_eq!(options.len(), 1);
-    assert_eq!(ignored, Some(IgnoredCompilerOptions(vec!["build".to_string()])),);
+    assert_eq!(
+      ignored,
+      Some(IgnoredCompilerOptions(vec!["build".to_string()])),
+    );
   }
 
   #[test]
@@ -156,6 +229,8 @@ mod tests {
         // comments are allowed
     }"#;
     let errbox = parse_raw_config(invalid_config_text).unwrap_err();
-    assert!(errbox.to_string().starts_with("Unterminated object on line 1"));
+    assert!(errbox
+      .to_string()
+      .starts_with("Unterminated object on line 1"));
   }
 }

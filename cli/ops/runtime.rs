@@ -20,7 +20,12 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_metrics", s.stateful_json_op_sync(t, op_metrics));
 }
 
-fn op_start(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_start(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let gs = &state.global_state;
 
   Ok(json!({
@@ -41,7 +46,12 @@ fn op_start(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) 
   }))
 }
 
-fn op_main_module(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_main_module(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let main = &state.main_module.to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
@@ -51,7 +61,12 @@ fn op_main_module(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopy
   Ok(json!(&main))
 }
 
-fn op_metrics(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_metrics(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let m = &state.metrics.borrow();
 
   Ok(json!({
@@ -82,7 +97,10 @@ fn ppid() -> Value {
     use winapi::shared::minwindef::DWORD;
     use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
     use winapi::um::processthreadsapi::GetCurrentProcessId;
-    use winapi::um::tlhelp32::{CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS};
+    use winapi::um::tlhelp32::{
+      CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
+      TH32CS_SNAPPROCESS,
+    };
     unsafe {
       // Take a snapshot of system processes, one of which is ours
       // and contains our parent's pid

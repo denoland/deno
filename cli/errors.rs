@@ -69,7 +69,9 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
   }
 }
 
-fn get_module_resolution_error_class(_: &ModuleResolutionError) -> &'static str {
+fn get_module_resolution_error_class(
+  _: &ModuleResolutionError,
+) -> &'static str {
   "URIError"
 }
 
@@ -106,13 +108,36 @@ fn get_regex_error_class(error: &regex::Error) -> &'static str {
 }
 
 fn get_request_error_class(error: &reqwest::Error) -> &'static str {
-  error.source().and_then(|inner_err| (inner_err.downcast_ref::<io::Error>().map(get_io_error_class)).or_else(|| inner_err.downcast_ref::<serde_json::error::Error>().map(get_serde_json_error_class)).or_else(|| inner_err.downcast_ref::<url::ParseError>().map(get_url_parse_error_class))).unwrap_or("Http")
+  error
+    .source()
+    .and_then(|inner_err| {
+      (inner_err
+        .downcast_ref::<io::Error>()
+        .map(get_io_error_class))
+      .or_else(|| {
+        inner_err
+          .downcast_ref::<serde_json::error::Error>()
+          .map(get_serde_json_error_class)
+      })
+      .or_else(|| {
+        inner_err
+          .downcast_ref::<url::ParseError>()
+          .map(get_url_parse_error_class)
+      })
+    })
+    .unwrap_or("Http")
 }
 
-fn get_serde_json_error_class(error: &serde_json::error::Error) -> &'static str {
+fn get_serde_json_error_class(
+  error: &serde_json::error::Error,
+) -> &'static str {
   use serde_json::error::*;
   match error.classify() {
-    Category::Io => error.source().and_then(|e| e.downcast_ref::<io::Error>()).map(get_io_error_class).unwrap(),
+    Category::Io => error
+      .source()
+      .and_then(|e| e.downcast_ref::<io::Error>())
+      .map(get_io_error_class)
+      .unwrap(),
     Category::Syntax => "SyntaxError",
     Category::Data => "InvalidData",
     Category::Eof => "UnexpectedEof",
@@ -149,21 +174,52 @@ pub fn get_error_class(e: &ErrBox) -> &'static str {
     Simple { class, .. } => Some(*class),
     _ => None,
   }
-  .or_else(|| e.downcast_ref::<dlopen::Error>().map(get_dlopen_error_class))
-  .or_else(|| e.downcast_ref::<env::VarError>().map(get_env_var_error_class))
-  .or_else(|| e.downcast_ref::<ImportMapError>().map(get_import_map_error_class))
+  .or_else(|| {
+    e.downcast_ref::<dlopen::Error>()
+      .map(get_dlopen_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<env::VarError>()
+      .map(get_env_var_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<ImportMapError>()
+      .map(get_import_map_error_class)
+  })
   .or_else(|| e.downcast_ref::<io::Error>().map(get_io_error_class))
-  .or_else(|| e.downcast_ref::<ModuleResolutionError>().map(get_module_resolution_error_class))
-  .or_else(|| e.downcast_ref::<notify::Error>().map(get_notify_error_class))
-  .or_else(|| e.downcast_ref::<ReadlineError>().map(get_readline_error_class))
-  .or_else(|| e.downcast_ref::<reqwest::Error>().map(get_request_error_class))
+  .or_else(|| {
+    e.downcast_ref::<ModuleResolutionError>()
+      .map(get_module_resolution_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<notify::Error>()
+      .map(get_notify_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<ReadlineError>()
+      .map(get_readline_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<reqwest::Error>()
+      .map(get_request_error_class)
+  })
   .or_else(|| e.downcast_ref::<regex::Error>().map(get_regex_error_class))
-  .or_else(|| e.downcast_ref::<serde_json::error::Error>().map(get_serde_json_error_class))
-  .or_else(|| e.downcast_ref::<SwcDiagnosticBuffer>().map(get_swc_diagnostic_class))
-  .or_else(|| e.downcast_ref::<url::ParseError>().map(get_url_parse_error_class))
+  .or_else(|| {
+    e.downcast_ref::<serde_json::error::Error>()
+      .map(get_serde_json_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<SwcDiagnosticBuffer>()
+      .map(get_swc_diagnostic_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<url::ParseError>()
+      .map(get_url_parse_error_class)
+  })
   .or_else(|| {
     #[cfg(unix)]
-    let maybe_get_nix_error_class = || e.downcast_ref::<nix::Error>().map(get_nix_error_class);
+    let maybe_get_nix_error_class =
+      || e.downcast_ref::<nix::Error>().map(get_nix_error_class);
     #[cfg(not(unix))]
     let maybe_get_nix_error_class = || Option::<&'static str>::None;
     (maybe_get_nix_error_class)()

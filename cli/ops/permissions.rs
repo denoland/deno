@@ -11,9 +11,18 @@ use std::rc::Rc;
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   let t = (); // Temp.
 
-  i.register_op("op_query_permission", s.stateful_json_op_sync(t, op_query_permission));
-  i.register_op("op_revoke_permission", s.stateful_json_op_sync(t, op_revoke_permission));
-  i.register_op("op_request_permission", s.stateful_json_op_sync(t, op_request_permission));
+  i.register_op(
+    "op_query_permission",
+    s.stateful_json_op_sync(t, op_query_permission),
+  );
+  i.register_op(
+    "op_revoke_permission",
+    s.stateful_json_op_sync(t, op_revoke_permission),
+  );
+  i.register_op(
+    "op_request_permission",
+    s.stateful_json_op_sync(t, op_request_permission),
+  );
 }
 
 #[derive(Deserialize)]
@@ -23,7 +32,12 @@ struct PermissionArgs {
   path: Option<String>,
 }
 
-pub fn op_query_permission(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+pub fn op_query_permission(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.permissions.borrow();
   let path = args.path.as_deref();
@@ -35,12 +49,22 @@ pub fn op_query_permission(state: &State, _: (), args: Value, _zero_copy: &mut [
     "run" => permissions.query_run(),
     "plugin" => permissions.query_plugin(),
     "hrtime" => permissions.query_hrtime(),
-    n => return Err(ErrBox::new("ReferenceError", format!("No such permission name: {}", n))),
+    n => {
+      return Err(ErrBox::new(
+        "ReferenceError",
+        format!("No such permission name: {}", n),
+      ))
+    }
   };
   Ok(json!({ "state": perm.to_string() }))
 }
 
-pub fn op_revoke_permission(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+pub fn op_revoke_permission(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut permissions = state.permissions.borrow_mut();
   let path = args.path.as_deref();
@@ -52,12 +76,22 @@ pub fn op_revoke_permission(state: &State, _: (), args: Value, _zero_copy: &mut 
     "run" => permissions.revoke_run(),
     "plugin" => permissions.revoke_plugin(),
     "hrtime" => permissions.revoke_hrtime(),
-    n => return Err(ErrBox::new("ReferenceError", format!("No such permission name: {}", n))),
+    n => {
+      return Err(ErrBox::new(
+        "ReferenceError",
+        format!("No such permission name: {}", n),
+      ))
+    }
   };
   Ok(json!({ "state": perm.to_string() }))
 }
 
-pub fn op_request_permission(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+pub fn op_request_permission(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = &mut state.permissions.borrow_mut();
   let path = args.path.as_deref();
@@ -69,7 +103,12 @@ pub fn op_request_permission(state: &State, _: (), args: Value, _zero_copy: &mut
     "run" => permissions.request_run(),
     "plugin" => permissions.request_plugin(),
     "hrtime" => permissions.request_hrtime(),
-    n => return Err(ErrBox::new("ReferenceError", format!("No such permission name: {}", n))),
+    n => {
+      return Err(ErrBox::new(
+        "ReferenceError",
+        format!("No such permission name: {}", n),
+      ))
+    }
   };
   Ok(json!({ "state": perm.to_string() }))
 }

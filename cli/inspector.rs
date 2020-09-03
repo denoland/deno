@@ -71,9 +71,16 @@ impl InspectorServer {
   }
 
   fn new(host: SocketAddr) -> Self {
-    let (register_inspector_tx, register_inspector_rx) = mpsc::unbounded::<InspectorInfo>();
-    let thread_handle = thread::spawn(move || crate::tokio_util::run_basic(server(host, register_inspector_rx)));
-    Self { host, register_inspector_tx, _thread_handle: thread_handle }
+    let (register_inspector_tx, register_inspector_rx) =
+      mpsc::unbounded::<InspectorInfo>();
+    let thread_handle = thread::spawn(move || {
+      crate::tokio_util::run_basic(server(host, register_inspector_rx))
+    });
+    Self {
+      host,
+      register_inspector_tx,
+      _thread_handle: thread_handle,
+    }
   }
 }
 
@@ -110,11 +117,22 @@ impl InspectorInfo {
   }
 
   fn get_title(&self) -> String {
-    format!("[{}] deno{}", process::id(), self.thread_name.as_ref().map(|n| format!(" - {}", n)).unwrap_or_default())
+    format!(
+      "[{}] deno{}",
+      process::id(),
+      self
+        .thread_name
+        .as_ref()
+        .map(|n| format!(" - {}", n))
+        .unwrap_or_default()
+    )
   }
 }
 
-async fn server(host: SocketAddr, register_inspector_rx: UnboundedReceiver<InspectorInfo>) {
+async fn server(
+  host: SocketAddr,
+  register_inspector_rx: UnboundedReceiver<InspectorInfo>,
+) {
   // TODO: `inspector_map` in an Rc<RefCell<T>> instead. This is currently not
   // possible because warp requires all filters to implement Send, which should
   // not be necessary because we are using a single-threaded runtime.
@@ -124,7 +142,10 @@ async fn server(host: SocketAddr, register_inspector_rx: UnboundedReceiver<Inspe
   let inspector_map_ = inspector_map.clone();
   let mut register_inspector_handler = register_inspector_rx
     .map(|info| {
-      eprintln!("Debugger listening on {}", info.get_websocket_debugger_url());
+      eprintln!(
+        "Debugger listening on {}",
+        info.get_websocket_debugger_url()
+      );
       let mut g = inspector_map_.lock().unwrap();
       if g.insert(info.uuid, info).is_some() {
         panic!("Inspector UUID already in map");
@@ -141,23 +162,28 @@ async fn server(host: SocketAddr, register_inspector_rx: UnboundedReceiver<Inspe
   .fuse();
 
   let inspector_map_ = inspector_map.clone();
-  let websocket_route = warp::path("ws").and(warp::path::param()).and(warp::ws()).and_then(move |uuid: String, ws: warp::ws::Ws| {
-    future::ready(
-      Uuid::parse_str(&uuid)
-        .ok()
-        .and_then(|uuid| {
-          let g = inspector_map_.lock().unwrap();
-          g.get(&uuid).map(|info| info.new_websocket_tx.clone()).map(|new_websocket_tx| {
-            ws.on_upgrade(move |websocket| async move {
-              let (proxy, pump) = create_websocket_proxy(websocket);
-              let _ = new_websocket_tx.unbounded_send(proxy);
-              pump.await;
-            })
+  let websocket_route = warp::path("ws")
+    .and(warp::path::param())
+    .and(warp::ws())
+    .and_then(move |uuid: String, ws: warp::ws::Ws| {
+      future::ready(
+        Uuid::parse_str(&uuid)
+          .ok()
+          .and_then(|uuid| {
+            let g = inspector_map_.lock().unwrap();
+            g.get(&uuid).map(|info| info.new_websocket_tx.clone()).map(
+              |new_websocket_tx| {
+                ws.on_upgrade(move |websocket| async move {
+                  let (proxy, pump) = create_websocket_proxy(websocket);
+                  let _ = new_websocket_tx.unbounded_send(proxy);
+                  pump.await;
+                })
+              },
+            )
           })
-        })
-        .ok_or_else(warp::reject::not_found),
-    )
-  });
+          .ok_or_else(warp::reject::not_found),
+      )
+    });
 
   let json_version_route = warp::path!("json" / "version").map(|| {
     warp::reply::json(&json!({
@@ -170,11 +196,15 @@ async fn server(host: SocketAddr, register_inspector_rx: UnboundedReceiver<Inspe
   let inspector_map_ = inspector_map.clone();
   let json_list_route = warp::path("json").map(move || {
     let g = inspector_map_.lock().unwrap();
-    let json_values = g.values().map(|info| info.get_json_metadata()).collect::<Vec<_>>();
+    let json_values = g
+      .values()
+      .map(|info| info.get_json_metadata())
+      .collect::<Vec<_>>();
     warp::reply::json(&json!(json_values))
   });
 
-  let server_routes = websocket_route.or(json_version_route).or(json_list_route);
+  let server_routes =
+    websocket_route.or(json_version_route).or(json_list_route);
   let mut server_handler = warp::serve(server_routes)
     .try_bind_ephemeral(host)
     .map(|(_, fut)| fut)
@@ -192,7 +222,8 @@ async fn server(host: SocketAddr, register_inspector_rx: UnboundedReceiver<Inspe
 }
 
 type WebSocketProxySender = UnboundedSender<ws::Message>;
-type WebSocketProxyReceiver = UnboundedReceiver<Result<ws::Message, warp::Error>>;
+type WebSocketProxyReceiver =
+  UnboundedReceiver<Result<ws::Message, warp::Error>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving websocket messages.
@@ -219,14 +250,19 @@ impl WebSocketProxy {
 /// A tuple is returned, where the first element is a duplex channel that can
 /// be used to send/receive messages on the websocket, and the second element
 /// is a future that does the forwarding.
-fn create_websocket_proxy(websocket: ws::WebSocket) -> (WebSocketProxy, impl Future<Output = ()> + Send) {
+fn create_websocket_proxy(
+  websocket: ws::WebSocket,
+) -> (WebSocketProxy, impl Future<Output = ()> + Send) {
   // The 'outbound' channel carries messages sent to the websocket.
   let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
   // The 'inbound' channel carries messages received from the websocket.
   let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
-  let proxy = WebSocketProxy { tx: outbound_tx, rx: inbound_rx };
+  let proxy = WebSocketProxy {
+    tx: outbound_tx,
+    rx: inbound_rx,
+  };
 
   // The pump future takes care of forwarding messages between the websocket
   // and channels. It resolves to () when either side disconnects, ignoring any
@@ -234,9 +270,13 @@ fn create_websocket_proxy(websocket: ws::WebSocket) -> (WebSocketProxy, impl Fut
   let pump = async move {
     let (websocket_tx, websocket_rx) = websocket.split();
 
-    let outbound_pump = outbound_rx.map(Ok).forward(websocket_tx).map_err(|_| ());
+    let outbound_pump =
+      outbound_rx.map(Ok).forward(websocket_tx).map_err(|_| ());
 
-    let inbound_pump = websocket_rx.map(|msg| inbound_tx.unbounded_send(msg)).map_err(|_| ()).try_collect::<()>();
+    let inbound_pump = websocket_rx
+      .map(|msg| inbound_tx.unbounded_send(msg))
+      .map_err(|_| ())
+      .try_collect::<()>();
 
     let _ = future::try_join(outbound_pump, inbound_pump).await;
   };
@@ -328,31 +368,55 @@ impl Future for DenoInspector {
 impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(isolate: &mut deno_core::CoreIsolate, host: SocketAddr) -> Box<Self> {
+  pub fn new(
+    isolate: &mut deno_core::CoreIsolate,
+    host: SocketAddr,
+  ) -> Box<Self> {
     let core_state_rc = deno_core::CoreIsolate::state(isolate);
     let core_state = core_state_rc.borrow();
 
     let scope = &mut v8::HandleScope::new(&mut **isolate);
 
-    let (new_websocket_tx, new_websocket_rx) = mpsc::unbounded::<WebSocketProxy>();
+    let (new_websocket_tx, new_websocket_rx) =
+      mpsc::unbounded::<WebSocketProxy>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
-    let info = InspectorInfo { host, uuid: Uuid::new_v4(), thread_name: thread::current().name().map(|n| n.to_owned()), new_websocket_tx, canary_rx };
+    let info = InspectorInfo {
+      host,
+      uuid: Uuid::new_v4(),
+      thread_name: thread::current().name().map(|n| n.to_owned()),
+      new_websocket_tx,
+      canary_rx,
+    };
 
     // Create DenoInspector instance.
     let mut self_ = new_box_with(|self_ptr| {
-      let v8_inspector_client = v8::inspector::V8InspectorClientBase::new::<Self>();
-      let v8_inspector = v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
+      let v8_inspector_client =
+        v8::inspector::V8InspectorClientBase::new::<Self>();
+      let v8_inspector =
+        v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
 
       let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new();
       let waker = InspectorWaker::new(scope.thread_safe_handle());
 
-      Self { v8_inspector_client, v8_inspector, sessions, flags, waker, _canary_tx: canary_tx, debugger_url: info.get_websocket_debugger_url() }
+      Self {
+        v8_inspector_client,
+        v8_inspector,
+        sessions,
+        flags,
+        waker,
+        _canary_tx: canary_tx,
+        debugger_url: info.get_websocket_debugger_url(),
+      }
     });
 
     // Tell the inspector about the global context.
-    let context = core_state.global_context.as_ref().map(|context| v8::Local::new(scope, context)).unwrap();
+    let context = core_state
+      .global_context
+      .as_ref()
+      .map(|context| v8::Local::new(scope, context))
+      .unwrap();
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
@@ -366,7 +430,10 @@ impl DenoInspector {
     self_
   }
 
-  fn poll_sessions(&self, mut invoker_cx: Option<&mut Context>) -> Result<Poll<()>, BorrowMutError> {
+  fn poll_sessions(
+    &self,
+    mut invoker_cx: Option<&mut Context>,
+  ) -> Result<Poll<()>, BorrowMutError> {
     // The futures this function uses do not have re-entrant poll() functions.
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
     // when an interrupt request is honored while the inspector future is polled
@@ -390,7 +457,8 @@ impl DenoInspector {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = &mut sessions.handshake {
           let poll_result = session.poll_unpin(cx);
-          let handshake_done = replace(&mut self.flags.borrow_mut().session_handshake_done, false);
+          let handshake_done =
+            replace(&mut self.flags.borrow_mut().session_handshake_done, false);
           match poll_result {
             Poll::Pending if handshake_done => {
               let session = sessions.handshake.take().unwrap();
@@ -421,7 +489,9 @@ impl DenoInspector {
         };
       }
 
-      let should_block = sessions.handshake.is_some() || self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
+      let should_block = sessions.handshake.is_some()
+        || self.flags.borrow().on_pause
+        || self.flags.borrow().waiting_for_session;
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
@@ -458,8 +528,8 @@ impl DenoInspector {
       });
       match new_state {
         PollState::Idle => break Ok(Poll::Pending), // Yield to task.
-        PollState::Polling => {}                    // Poll the session handler again.
-        PollState::Parked => thread::park(),        // Park the thread.
+        PollState::Polling => {} // Poll the session handler again.
+        PollState::Parked => thread::park(), // Park the thread.
         _ => unreachable!(),
       };
     }
@@ -496,22 +566,35 @@ impl InspectorFlags {
 }
 
 struct InspectorSessions {
-  new_incoming: Pin<Box<dyn Stream<Item = Box<DenoInspectorSession>> + 'static>>,
+  new_incoming:
+    Pin<Box<dyn Stream<Item = Box<DenoInspectorSession>> + 'static>>,
   handshake: Option<Box<DenoInspectorSession>>,
   established: FuturesUnordered<Box<DenoInspectorSession>>,
 }
 
 impl InspectorSessions {
-  fn new(inspector_ptr: *mut DenoInspector, new_websocket_rx: UnboundedReceiver<WebSocketProxy>) -> RefCell<Self> {
-    let new_incoming = new_websocket_rx.map(move |websocket| DenoInspectorSession::new(inspector_ptr, websocket)).boxed_local();
-    let self_ = Self { new_incoming, ..Default::default() };
+  fn new(
+    inspector_ptr: *mut DenoInspector,
+    new_websocket_rx: UnboundedReceiver<WebSocketProxy>,
+  ) -> RefCell<Self> {
+    let new_incoming = new_websocket_rx
+      .map(move |websocket| DenoInspectorSession::new(inspector_ptr, websocket))
+      .boxed_local();
+    let self_ = Self {
+      new_incoming,
+      ..Default::default()
+    };
     RefCell::new(self_)
   }
 }
 
 impl Default for InspectorSessions {
   fn default() -> Self {
-    Self { new_incoming: stream::empty().boxed_local(), handshake: None, established: FuturesUnordered::new() }
+    Self {
+      new_incoming: stream::empty().boxed_local(),
+      handshake: None,
+      established: FuturesUnordered::new(),
+    }
   }
 }
 
@@ -529,7 +612,13 @@ struct InspectorWaker(Mutex<InspectorWakerInner>);
 
 impl InspectorWaker {
   fn new(isolate_handle: v8::IsolateHandle) -> Arc<Self> {
-    let inner = InspectorWakerInner { poll_state: PollState::Idle, task_waker: None, parked_thread: None, inspector_ptr: None, isolate_handle };
+    let inner = InspectorWakerInner {
+      poll_state: PollState::Idle,
+      task_waker: None,
+      parked_thread: None,
+      inspector_ptr: None,
+      isolate_handle,
+    };
     Arc::new(Self(Mutex::new(inner)))
   }
 
@@ -553,10 +642,17 @@ impl task::ArcWake for InspectorWaker {
           }
           // Request an interrupt from the isolate if it's running and there's
           // not unhandled interrupt request in flight.
-          if let Some(arg) = w.inspector_ptr.take().map(|ptr| ptr.as_ptr() as *mut c_void) {
+          if let Some(arg) = w
+            .inspector_ptr
+            .take()
+            .map(|ptr| ptr.as_ptr() as *mut c_void)
+          {
             w.isolate_handle.request_interrupt(handle_interrupt, arg);
           }
-          extern "C" fn handle_interrupt(_isolate: &mut v8::Isolate, arg: *mut c_void) {
+          extern "C" fn handle_interrupt(
+            _isolate: &mut v8::Isolate,
+            arg: *mut c_void,
+          ) {
             let inspector = unsafe { &*(arg as *mut DenoInspector) };
             let _ = inspector.poll_sessions(None);
           }
@@ -597,7 +693,10 @@ impl DerefMut for DenoInspectorSession {
 impl DenoInspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(inspector_ptr: *mut DenoInspector, websocket: WebSocketProxy) -> Box<Self> {
+  pub fn new(
+    inspector_ptr: *mut DenoInspector,
+    websocket: WebSocketProxy,
+  ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let v8_session = unsafe { &mut *inspector_ptr }.connect(
@@ -609,15 +708,24 @@ impl DenoInspectorSession {
       );
 
       let (websocket_tx, websocket_rx) = websocket.split();
-      let websocket_rx_handler = Self::receive_from_websocket(self_ptr, websocket_rx);
+      let websocket_rx_handler =
+        Self::receive_from_websocket(self_ptr, websocket_rx);
 
-      Self { v8_channel, v8_session, websocket_tx, websocket_rx_handler }
+      Self {
+        v8_channel,
+        v8_session,
+        websocket_tx,
+        websocket_rx_handler,
+      }
     })
   }
 
   /// Returns a future that receives messages from the websocket and dispatches
   /// them to the V8 session.
-  fn receive_from_websocket(self_ptr: *mut Self, websocket_rx: WebSocketProxyReceiver) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
+  fn receive_from_websocket(
+    self_ptr: *mut Self,
+    websocket_rx: WebSocketProxyReceiver,
+  ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
     async move {
       eprintln!("Debugger session started.");
 
@@ -660,11 +768,18 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
     &mut self.v8_channel
   }
 
-  fn send_response(&mut self, _call_id: i32, message: v8::UniquePtr<v8::inspector::StringBuffer>) {
+  fn send_response(
+    &mut self,
+    _call_id: i32,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
     self.send_to_websocket(message);
   }
 
-  fn send_notification(&mut self, message: v8::UniquePtr<v8::inspector::StringBuffer>) {
+  fn send_notification(
+    &mut self,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
     self.send_to_websocket(message);
   }
 

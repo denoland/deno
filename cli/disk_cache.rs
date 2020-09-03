@@ -15,7 +15,10 @@ pub struct DiskCache {
   pub location: PathBuf,
 }
 
-fn with_io_context<T: AsRef<str>>(e: &std::io::Error, context: T) -> std::io::Error {
+fn with_io_context<T: AsRef<str>>(
+  e: &std::io::Error,
+  context: T,
+) -> std::io::Error {
   std::io::Error::new(e.kind(), format!("{} (for '{}')", e, context.as_ref()))
 }
 
@@ -23,7 +26,9 @@ impl DiskCache {
   /// `location` must be an absolute path.
   pub fn new(location: &Path) -> Self {
     assert!(location.is_absolute());
-    Self { location: location.to_owned() }
+    Self {
+      location: location.to_owned(),
+    }
   }
 
   /// Ensures the location of the cache.
@@ -61,7 +66,9 @@ impl DiskCache {
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
-          if let Some(Component::Prefix(prefix_component)) = path_components.next() {
+          if let Some(Component::Prefix(prefix_component)) =
+            path_components.next()
+          {
             // Windows doesn't support ":" in filenames, so we need to extract disk prefix
             // Example: file:///C:/deno/js/unit_test_runner.ts
             // it should produce: file\c\deno\js\unit_test_runner.ts
@@ -70,7 +77,8 @@ impl DiskCache {
                 let disk = (disk_byte as char).to_string();
                 out.push(disk);
               }
-              Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => {
+              Prefix::UNC(server, share)
+              | Prefix::VerbatimUNC(server, share) => {
                 out.push("UNC");
                 let host = Host::parse(server.to_str().unwrap()).unwrap();
                 let host = host.to_string().replace(":", "_");
@@ -91,14 +99,21 @@ impl DiskCache {
         out = out.join(remaining_components);
       }
       scheme => {
-        unimplemented!("Don't know how to create cache name for scheme: {}", scheme);
+        unimplemented!(
+          "Don't know how to create cache name for scheme: {}",
+          scheme
+        );
       }
     };
 
     out
   }
 
-  pub fn get_cache_filename_with_extension(&self, url: &Url, extension: &str) -> PathBuf {
+  pub fn get_cache_filename_with_extension(
+    &self,
+    url: &Url,
+    extension: &str,
+  ) -> PathBuf {
     let base = self.get_cache_filename(url);
 
     match base.extension() {
@@ -122,7 +137,8 @@ impl DiskCache {
       Some(ref parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
-    deno_fs::write_file(&path, data, 0o666).map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
+    deno_fs::write_file(&path, data, 0o666)
+      .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
   }
 
   pub fn remove(&self, filename: &Path) -> std::io::Result<()> {
@@ -142,7 +158,9 @@ mod tests {
     let mut cache_path = cache_location.path().to_owned();
     cache_path.push("foo");
     let cache = DiskCache::new(&cache_path);
-    cache.ensure_dir_exists(&cache.location).expect("Testing expect:");
+    cache
+      .ensure_dir_exists(&cache.location)
+      .expect("Testing expect:");
     assert!(cache_path.is_dir());
   }
 
@@ -154,13 +172,19 @@ mod tests {
     cache_location.push("foo");
     assert_eq!(cache_location.is_dir(), false);
     let cache = DiskCache::new(&cache_location);
-    cache.ensure_dir_exists(&cache.location).expect("Testing expect:");
+    cache
+      .ensure_dir_exists(&cache.location)
+      .expect("Testing expect:");
     assert_eq!(cache_location.is_dir(), true);
   }
 
   #[test]
   fn test_get_cache_filename() {
-    let cache_location = if cfg!(target_os = "windows") { PathBuf::from(r"C:\deno_dir\") } else { PathBuf::from("/deno_dir/") };
+    let cache_location = if cfg!(target_os = "windows") {
+      PathBuf::from(r"C:\deno_dir\")
+    } else {
+      PathBuf::from("/deno_dir/")
+    };
 
     let cache = DiskCache::new(&cache_location);
 
@@ -169,36 +193,67 @@ mod tests {
     if cfg!(target_os = "windows") {
       test_cases.push(("file:///D:/a/1/s/format.ts", "file/D/a/1/s/format.ts"));
       // IPv4 localhost
-      test_cases.push(("file://127.0.0.1/d$/a/1/s/format.ts", "file/UNC/127.0.0.1/d$/a/1/s/format.ts"));
+      test_cases.push((
+        "file://127.0.0.1/d$/a/1/s/format.ts",
+        "file/UNC/127.0.0.1/d$/a/1/s/format.ts",
+      ));
       // IPv6 localhost
-      test_cases.push(("file://[0:0:0:0:0:0:0:1]/d$/a/1/s/format.ts", "file/UNC/[__1]/d$/a/1/s/format.ts"));
+      test_cases.push((
+        "file://[0:0:0:0:0:0:0:1]/d$/a/1/s/format.ts",
+        "file/UNC/[__1]/d$/a/1/s/format.ts",
+      ));
       // shared folder
-      test_cases.push(("file://comp/t-share/a/1/s/format.ts", "file/UNC/comp/t-share/a/1/s/format.ts"));
+      test_cases.push((
+        "file://comp/t-share/a/1/s/format.ts",
+        "file/UNC/comp/t-share/a/1/s/format.ts",
+      ));
     } else {
-      test_cases.push(("file:///std/http/file_server.ts", "file/std/http/file_server.ts"));
+      test_cases.push((
+        "file:///std/http/file_server.ts",
+        "file/std/http/file_server.ts",
+      ));
     }
 
     for test_case in &test_cases {
-      let cache_filename = cache.get_cache_filename(&Url::parse(test_case.0).unwrap());
+      let cache_filename =
+        cache.get_cache_filename(&Url::parse(test_case.0).unwrap());
       assert_eq!(cache_filename, PathBuf::from(test_case.1));
     }
   }
 
   #[test]
   fn test_get_cache_filename_with_extension() {
-    let p = if cfg!(target_os = "windows") { "C:\\foo" } else { "/foo" };
+    let p = if cfg!(target_os = "windows") {
+      "C:\\foo"
+    } else {
+      "/foo"
+    };
     let cache = DiskCache::new(&PathBuf::from(p));
 
     let mut test_cases = vec![("http://deno.land/std/http/file_server.ts", "js", "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js"), ("http://deno.land/std/http/file_server.ts", "js.map", "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js.map")];
 
     if cfg!(target_os = "windows") {
-      test_cases.push(("file:///D:/std/http/file_server", "js", "file/D/std/http/file_server.js"));
+      test_cases.push((
+        "file:///D:/std/http/file_server",
+        "js",
+        "file/D/std/http/file_server.js",
+      ));
     } else {
-      test_cases.push(("file:///std/http/file_server", "js", "file/std/http/file_server.js"));
+      test_cases.push((
+        "file:///std/http/file_server",
+        "js",
+        "file/std/http/file_server.js",
+      ));
     }
 
     for test_case in &test_cases {
-      assert_eq!(cache.get_cache_filename_with_extension(&Url::parse(test_case.0).unwrap(), test_case.1), PathBuf::from(test_case.2))
+      assert_eq!(
+        cache.get_cache_filename_with_extension(
+          &Url::parse(test_case.0).unwrap(),
+          test_case.1
+        ),
+        PathBuf::from(test_case.2)
+      )
     }
   }
 }

@@ -59,7 +59,12 @@ struct ChildResource {
   child: tokio::process::Child,
 }
 
-fn op_run(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_run(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
@@ -108,7 +113,12 @@ fn op_run(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> 
 
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
-      let rid = state.resource_table.borrow_mut().add("childStdin", Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(child_stdin))));
+      let rid = state.resource_table.borrow_mut().add(
+        "childStdin",
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(
+          child_stdin,
+        ))),
+      );
       Some(rid)
     }
     None => None,
@@ -116,7 +126,12 @@ fn op_run(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> 
 
   let stdout_rid = match child.stdout.take() {
     Some(child_stdout) => {
-      let rid = state.resource_table.borrow_mut().add("childStdout", Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(child_stdout))));
+      let rid = state.resource_table.borrow_mut().add(
+        "childStdout",
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(
+          child_stdout,
+        ))),
+      );
       Some(rid)
     }
     None => None,
@@ -124,14 +139,22 @@ fn op_run(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> 
 
   let stderr_rid = match child.stderr.take() {
     Some(child_stderr) => {
-      let rid = state.resource_table.borrow_mut().add("childStderr", Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(child_stderr))));
+      let rid = state.resource_table.borrow_mut().add(
+        "childStderr",
+        Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(
+          child_stderr,
+        ))),
+      );
       Some(rid)
     }
     None => None,
   };
 
   let child_resource = ChildResource { child };
-  let child_rid = state.resource_table.borrow_mut().add("child", Box::new(child_resource));
+  let child_rid = state
+    .resource_table
+    .borrow_mut()
+    .add("child", Box::new(child_resource));
 
   Ok(json!({
     "rid": child_rid,
@@ -148,7 +171,12 @@ struct RunStatusArgs {
   rid: i32,
 }
 
-async fn op_run_status(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_run_status(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
@@ -156,7 +184,9 @@ async fn op_run_status(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec)
 
   let run_status = poll_fn(|cx| {
     let mut resource_table = state.resource_table.borrow_mut();
-    let child_resource = resource_table.get_mut::<ChildResource>(rid).ok_or_else(ErrBox::bad_resource_id)?;
+    let child_resource = resource_table
+      .get_mut::<ChildResource>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
     let child = &mut child_resource.child;
     child.poll_unpin(cx).map_err(ErrBox::from)
   })
@@ -169,7 +199,9 @@ async fn op_run_status(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec)
   #[cfg(not(unix))]
   let signal = None;
 
-  code.or(signal).expect("Should have either an exit code or a signal.");
+  code
+    .or(signal)
+    .expect("Should have either an exit code or a signal.");
   let got_signal = signal.is_some();
 
   Ok(json!({
@@ -185,7 +217,12 @@ struct KillArgs {
   signo: i32,
 }
 
-fn op_kill(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_kill(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.kill");
   state.check_run()?;
 

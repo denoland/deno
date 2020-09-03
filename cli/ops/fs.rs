@@ -31,73 +31,160 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_seek_sync", s.stateful_json_op_sync(t, op_seek_sync));
   i.register_op("op_seek_async", s.stateful_json_op_async(t, op_seek_async));
 
-  i.register_op("op_fdatasync_sync", s.stateful_json_op_sync(t, op_fdatasync_sync));
-  i.register_op("op_fdatasync_async", s.stateful_json_op_async(t, op_fdatasync_async));
+  i.register_op(
+    "op_fdatasync_sync",
+    s.stateful_json_op_sync(t, op_fdatasync_sync),
+  );
+  i.register_op(
+    "op_fdatasync_async",
+    s.stateful_json_op_async(t, op_fdatasync_async),
+  );
 
   i.register_op("op_fsync_sync", s.stateful_json_op_sync(t, op_fsync_sync));
-  i.register_op("op_fsync_async", s.stateful_json_op_async(t, op_fsync_async));
+  i.register_op(
+    "op_fsync_async",
+    s.stateful_json_op_async(t, op_fsync_async),
+  );
 
   i.register_op("op_fstat_sync", s.stateful_json_op_sync(t, op_fstat_sync));
-  i.register_op("op_fstat_async", s.stateful_json_op_async(t, op_fstat_async));
+  i.register_op(
+    "op_fstat_async",
+    s.stateful_json_op_async(t, op_fstat_async),
+  );
 
   i.register_op("op_umask", s.stateful_json_op_sync(t, op_umask));
   i.register_op("op_chdir", s.stateful_json_op_sync(t, op_chdir));
 
   i.register_op("op_mkdir_sync", s.stateful_json_op_sync(t, op_mkdir_sync));
-  i.register_op("op_mkdir_async", s.stateful_json_op_async(t, op_mkdir_async));
+  i.register_op(
+    "op_mkdir_async",
+    s.stateful_json_op_async(t, op_mkdir_async),
+  );
 
   i.register_op("op_chmod_sync", s.stateful_json_op_sync(t, op_chmod_sync));
-  i.register_op("op_chmod_async", s.stateful_json_op_async(t, op_chmod_async));
+  i.register_op(
+    "op_chmod_async",
+    s.stateful_json_op_async(t, op_chmod_async),
+  );
 
   i.register_op("op_chown_sync", s.stateful_json_op_sync(t, op_chown_sync));
-  i.register_op("op_chown_async", s.stateful_json_op_async(t, op_chown_async));
+  i.register_op(
+    "op_chown_async",
+    s.stateful_json_op_async(t, op_chown_async),
+  );
 
   i.register_op("op_remove_sync", s.stateful_json_op_sync(t, op_remove_sync));
-  i.register_op("op_remove_async", s.stateful_json_op_async(t, op_remove_async));
+  i.register_op(
+    "op_remove_async",
+    s.stateful_json_op_async(t, op_remove_async),
+  );
 
-  i.register_op("op_copy_file_sync", s.stateful_json_op_sync(t, op_copy_file_sync));
-  i.register_op("op_copy_file_async", s.stateful_json_op_async(t, op_copy_file_async));
+  i.register_op(
+    "op_copy_file_sync",
+    s.stateful_json_op_sync(t, op_copy_file_sync),
+  );
+  i.register_op(
+    "op_copy_file_async",
+    s.stateful_json_op_async(t, op_copy_file_async),
+  );
 
   i.register_op("op_stat_sync", s.stateful_json_op_sync(t, op_stat_sync));
   i.register_op("op_stat_async", s.stateful_json_op_async(t, op_stat_async));
 
-  i.register_op("op_realpath_sync", s.stateful_json_op_sync(t, op_realpath_sync));
-  i.register_op("op_realpath_async", s.stateful_json_op_async(t, op_realpath_async));
+  i.register_op(
+    "op_realpath_sync",
+    s.stateful_json_op_sync(t, op_realpath_sync),
+  );
+  i.register_op(
+    "op_realpath_async",
+    s.stateful_json_op_async(t, op_realpath_async),
+  );
 
-  i.register_op("op_read_dir_sync", s.stateful_json_op_sync(t, op_read_dir_sync));
-  i.register_op("op_read_dir_async", s.stateful_json_op_async(t, op_read_dir_async));
+  i.register_op(
+    "op_read_dir_sync",
+    s.stateful_json_op_sync(t, op_read_dir_sync),
+  );
+  i.register_op(
+    "op_read_dir_async",
+    s.stateful_json_op_async(t, op_read_dir_async),
+  );
 
   i.register_op("op_rename_sync", s.stateful_json_op_sync(t, op_rename_sync));
-  i.register_op("op_rename_async", s.stateful_json_op_async(t, op_rename_async));
+  i.register_op(
+    "op_rename_async",
+    s.stateful_json_op_async(t, op_rename_async),
+  );
 
   i.register_op("op_link_sync", s.stateful_json_op_sync(t, op_link_sync));
   i.register_op("op_link_async", s.stateful_json_op_async(t, op_link_async));
 
-  i.register_op("op_symlink_sync", s.stateful_json_op_sync(t, op_symlink_sync));
-  i.register_op("op_symlink_async", s.stateful_json_op_async(t, op_symlink_async));
+  i.register_op(
+    "op_symlink_sync",
+    s.stateful_json_op_sync(t, op_symlink_sync),
+  );
+  i.register_op(
+    "op_symlink_async",
+    s.stateful_json_op_async(t, op_symlink_async),
+  );
 
-  i.register_op("op_read_link_sync", s.stateful_json_op_sync(t, op_read_link_sync));
-  i.register_op("op_read_link_async", s.stateful_json_op_async(t, op_read_link_async));
+  i.register_op(
+    "op_read_link_sync",
+    s.stateful_json_op_sync(t, op_read_link_sync),
+  );
+  i.register_op(
+    "op_read_link_async",
+    s.stateful_json_op_async(t, op_read_link_async),
+  );
 
-  i.register_op("op_ftruncate_sync", s.stateful_json_op_sync(t, op_ftruncate_sync));
-  i.register_op("op_ftruncate_async", s.stateful_json_op_async(t, op_ftruncate_async));
+  i.register_op(
+    "op_ftruncate_sync",
+    s.stateful_json_op_sync(t, op_ftruncate_sync),
+  );
+  i.register_op(
+    "op_ftruncate_async",
+    s.stateful_json_op_async(t, op_ftruncate_async),
+  );
 
-  i.register_op("op_truncate_sync", s.stateful_json_op_sync(t, op_truncate_sync));
-  i.register_op("op_truncate_async", s.stateful_json_op_async(t, op_truncate_async));
+  i.register_op(
+    "op_truncate_sync",
+    s.stateful_json_op_sync(t, op_truncate_sync),
+  );
+  i.register_op(
+    "op_truncate_async",
+    s.stateful_json_op_async(t, op_truncate_async),
+  );
 
-  i.register_op("op_make_temp_dir_sync", s.stateful_json_op_sync(t, op_make_temp_dir_sync));
-  i.register_op("op_make_temp_dir_async", s.stateful_json_op_async(t, op_make_temp_dir_async));
+  i.register_op(
+    "op_make_temp_dir_sync",
+    s.stateful_json_op_sync(t, op_make_temp_dir_sync),
+  );
+  i.register_op(
+    "op_make_temp_dir_async",
+    s.stateful_json_op_async(t, op_make_temp_dir_async),
+  );
 
-  i.register_op("op_make_temp_file_sync", s.stateful_json_op_sync(t, op_make_temp_file_sync));
-  i.register_op("op_make_temp_file_async", s.stateful_json_op_async(t, op_make_temp_file_async));
+  i.register_op(
+    "op_make_temp_file_sync",
+    s.stateful_json_op_sync(t, op_make_temp_file_sync),
+  );
+  i.register_op(
+    "op_make_temp_file_async",
+    s.stateful_json_op_async(t, op_make_temp_file_async),
+  );
 
   i.register_op("op_cwd", s.stateful_json_op_sync(t, op_cwd));
 
   i.register_op("op_futime_sync", s.stateful_json_op_sync(t, op_futime_sync));
-  i.register_op("op_futime_async", s.stateful_json_op_async(t, op_futime_async));
+  i.register_op(
+    "op_futime_async",
+    s.stateful_json_op_async(t, op_futime_async),
+  );
 
   i.register_op("op_utime_sync", s.stateful_json_op_sync(t, op_utime_sync));
-  i.register_op("op_utime_async", s.stateful_json_op_async(t, op_utime_async));
+  i.register_op(
+    "op_utime_async",
+    s.stateful_json_op_async(t, op_utime_async),
+  );
 }
 
 fn into_string(s: std::ffi::OsString) -> Result<String, ErrBox> {
@@ -127,7 +214,10 @@ struct OpenOptions {
   create_new: bool,
 }
 
-fn open_helper(state: &State, args: Value) -> Result<(PathBuf, std::fs::OpenOptions), ErrBox> {
+fn open_helper(
+  state: &State,
+  args: Value,
+) -> Result<(PathBuf, std::fs::OpenOptions), ErrBox> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
@@ -154,23 +244,53 @@ fn open_helper(state: &State, args: Value) -> Result<(PathBuf, std::fs::OpenOpti
     state.check_write(&path)?;
   }
 
-  open_options.read(options.read).create(options.create).write(options.write).truncate(options.truncate).append(options.append).create_new(options.create_new);
+  open_options
+    .read(options.read)
+    .create(options.create)
+    .write(options.write)
+    .truncate(options.truncate)
+    .append(options.append)
+    .create_new(options.create_new);
 
   Ok((path, open_options))
 }
 
-fn op_open_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_open_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let (path, open_options) = open_helper(state, args)?;
   let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
-  let rid = state.resource_table.borrow_mut().add("fsFile", Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((tokio_file, FileMetadata::default()))))));
+  let rid = state.resource_table.borrow_mut().add(
+    "fsFile",
+    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+      tokio_file,
+      FileMetadata::default(),
+    ))))),
+  );
   Ok(json!(rid))
 }
 
-async fn op_open_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_open_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let (path, open_options) = open_helper(&state, args)?;
-  let tokio_file = tokio::fs::OpenOptions::from(open_options).open(path).await?;
-  let rid = state.resource_table.borrow_mut().add("fsFile", Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((tokio_file, FileMetadata::default()))))));
+  let tokio_file = tokio::fs::OpenOptions::from(open_options)
+    .open(path)
+    .await?;
+  let rid = state.resource_table.borrow_mut().add(
+    "fsFile",
+    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+      tokio_file,
+      FileMetadata::default(),
+    ))))),
+  );
   Ok(json!(rid))
 }
 
@@ -200,22 +320,36 @@ fn seek_helper(args: Value) -> Result<(u32, SeekFrom), ErrBox> {
   Ok((rid, seek_from))
 }
 
-fn op_seek_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_seek_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let (rid, seek_from) = seek_helper(args)?;
   let pos = std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.seek(seek_from).map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot seek on this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot seek on this type of resource".to_string(),
+    )),
   })?;
   Ok(json!(pos))
 }
 
-async fn op_seek_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_seek_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let (rid, seek_from) = seek_helper(args)?;
   // TODO(ry) This is a fake async op. We need to use poll_fn,
   // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
   let pos = std_file_resource(&state, rid, |r| match r {
     Ok(std_file) => std_file.seek(seek_from).map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot seek on this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot seek on this type of resource".to_string(),
+    )),
   })?;
   Ok(json!(pos))
 }
@@ -226,24 +360,38 @@ struct FdatasyncArgs {
   rid: i32,
 }
 
-fn op_fdatasync_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_fdatasync_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.fdatasync");
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot sync this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
   })?;
   Ok(json!({}))
 }
 
-async fn op_fdatasync_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_fdatasync_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.fdatasync");
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(&state, rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot sync this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
   })?;
   Ok(json!({}))
 }
@@ -254,24 +402,38 @@ struct FsyncArgs {
   rid: i32,
 }
 
-fn op_fsync_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_fsync_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.fsync");
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot sync this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
   })?;
   Ok(json!({}))
 }
 
-async fn op_fsync_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_fsync_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.fsync");
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(&state, rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot sync this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
   })?;
   Ok(json!({}))
 }
@@ -282,24 +444,38 @@ struct FstatArgs {
   rid: i32,
 }
 
-fn op_fstat_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_fstat_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.fstat");
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let metadata = std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot stat this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot stat this type of resource".to_string(),
+    )),
   })?;
   Ok(get_stat_json(metadata).unwrap())
 }
 
-async fn op_fstat_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_fstat_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.fstat");
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let metadata = std_file_resource(&state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot stat this type of resource".to_string())),
+    Err(_) => Err(ErrBox::type_error(
+      "cannot stat this type of resource".to_string(),
+    )),
   })?;
   Ok(get_stat_json(metadata).unwrap())
 }
@@ -309,7 +485,12 @@ struct UmaskArgs {
   mask: Option<u32>,
 }
 
-fn op_umask(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_umask(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.umask");
   let args: UmaskArgs = serde_json::from_value(args)?;
   // TODO implement umask for Windows
@@ -343,7 +524,12 @@ struct ChdirArgs {
   directory: String,
 }
 
-fn op_chdir(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_chdir(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
   state.check_read(&d)?;
@@ -359,7 +545,12 @@ struct MkdirArgs {
   mode: Option<u32>,
 }
 
-fn op_mkdir_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_mkdir_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
@@ -376,7 +567,12 @@ fn op_mkdir_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBu
   Ok(json!({}))
 }
 
-async fn op_mkdir_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_mkdir_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
@@ -404,7 +600,12 @@ struct ChmodArgs {
   mode: u32,
 }
 
-fn op_chmod_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_chmod_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
@@ -427,7 +628,12 @@ fn op_chmod_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBu
   }
 }
 
-async fn op_chmod_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_chmod_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
@@ -461,11 +667,21 @@ struct ChownArgs {
   gid: Option<u32>,
 }
 
-fn op_chown_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_chown_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   state.check_write(&path)?;
-  debug!("op_chown_sync {} {:?} {:?}", path.display(), args.uid, args.gid,);
+  debug!(
+    "op_chown_sync {} {:?} {:?}",
+    path.display(),
+    args.uid,
+    args.gid,
+  );
   #[cfg(unix)]
   {
     use nix::unistd::{chown, Gid, Uid};
@@ -481,12 +697,22 @@ fn op_chown_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBu
   }
 }
 
-async fn op_chown_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_chown_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   state.check_write(&path)?;
   tokio::task::spawn_blocking(move || {
-    debug!("op_chown_async {} {:?} {:?}", path.display(), args.uid, args.gid,);
+    debug!(
+      "op_chown_async {} {:?} {:?}",
+      path.display(),
+      args.uid,
+      args.gid,
+    );
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
@@ -510,7 +736,12 @@ struct RemoveArgs {
   recursive: bool,
 }
 
-fn op_remove_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_remove_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: RemoveArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
@@ -549,7 +780,12 @@ fn op_remove_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyB
   Ok(json!({}))
 }
 
-async fn op_remove_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_remove_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: RemoveArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
@@ -599,7 +835,12 @@ struct CopyFileArgs {
   to: String,
 }
 
-fn op_copy_file_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_copy_file_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
@@ -620,7 +861,12 @@ fn op_copy_file_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCo
   Ok(json!({}))
 }
 
-async fn op_copy_file_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_copy_file_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
@@ -648,8 +894,13 @@ async fn op_copy_file_async(state: Rc<State>, _: (), args: Value, _zero_copy: Bu
 fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
   match maybe_time {
     Ok(time) => {
-      let msec = time.duration_since(UNIX_EPOCH).map(|t| t.as_secs_f64() * 1000f64).unwrap_or_else(|err| err.duration().as_secs_f64() * -1000f64);
-      serde_json::Number::from_f64(msec).map(serde_json::Value::Number).unwrap_or(serde_json::Value::Null)
+      let msec = time
+        .duration_since(UNIX_EPOCH)
+        .map(|t| t.as_secs_f64() * 1000f64)
+        .unwrap_or_else(|err| err.duration().as_secs_f64() * -1000f64);
+      serde_json::Number::from_f64(msec)
+        .map(serde_json::Value::Number)
+        .unwrap_or(serde_json::Value::Null)
     }
     Err(_) => serde_json::Value::Null,
   }
@@ -705,17 +956,31 @@ struct StatArgs {
   lstat: bool,
 }
 
-fn op_stat_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_stat_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
   state.check_read(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
-  let metadata = if lstat { std::fs::symlink_metadata(&path)? } else { std::fs::metadata(&path)? };
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path)?
+  } else {
+    std::fs::metadata(&path)?
+  };
   get_stat_json(metadata)
 }
 
-async fn op_stat_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_stat_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
@@ -724,7 +989,11 @@ async fn op_stat_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec)
 
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
-    let metadata = if lstat { std::fs::symlink_metadata(&path)? } else { std::fs::metadata(&path)? };
+    let metadata = if lstat {
+      std::fs::symlink_metadata(&path)?
+    } else {
+      std::fs::metadata(&path)?
+    };
     get_stat_json(metadata)
   })
   .await
@@ -737,7 +1006,12 @@ struct RealpathArgs {
   path: String,
 }
 
-fn op_realpath_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_realpath_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
@@ -750,14 +1024,20 @@ fn op_realpath_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCop
   // corresponds to the realpath on Unix and
   // CreateFile and GetFinalPathNameByHandle on Windows
   let realpath = std::fs::canonicalize(&path)?;
-  let mut realpath_str = into_string(realpath.into_os_string())?.replace("\\", "/");
+  let mut realpath_str =
+    into_string(realpath.into_os_string())?.replace("\\", "/");
   if cfg!(windows) {
     realpath_str = realpath_str.trim_start_matches("//?/").to_string();
   }
   Ok(json!(realpath_str))
 }
 
-async fn op_realpath_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_realpath_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
@@ -771,7 +1051,8 @@ async fn op_realpath_async(state: Rc<State>, _: (), args: Value, _zero_copy: Buf
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = std::fs::canonicalize(&path)?;
-    let mut realpath_str = into_string(realpath.into_os_string())?.replace("\\", "/");
+    let mut realpath_str =
+      into_string(realpath.into_os_string())?.replace("\\", "/");
     if cfg!(windows) {
       realpath_str = realpath_str.trim_start_matches("//?/").to_string();
     }
@@ -787,7 +1068,12 @@ struct ReadDirArgs {
   path: String,
 }
 
-fn op_read_dir_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_read_dir_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
@@ -815,7 +1101,12 @@ fn op_read_dir_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCop
   Ok(json!({ "entries": entries }))
 }
 
-async fn op_read_dir_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_read_dir_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
@@ -854,7 +1145,12 @@ struct RenameArgs {
   newpath: String,
 }
 
-fn op_rename_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_rename_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -867,7 +1163,12 @@ fn op_rename_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyB
   Ok(json!({}))
 }
 
-async fn op_rename_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_rename_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -877,7 +1178,11 @@ async fn op_rename_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVe
   state.check_write(&newpath)?;
 
   tokio::task::spawn_blocking(move || {
-    debug!("op_rename_async {} {}", oldpath.display(), newpath.display());
+    debug!(
+      "op_rename_async {} {}",
+      oldpath.display(),
+      newpath.display()
+    );
     std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
@@ -892,7 +1197,12 @@ struct LinkArgs {
   newpath: String,
 }
 
-fn op_link_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_link_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -906,7 +1216,12 @@ fn op_link_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf
   Ok(json!({}))
 }
 
-async fn op_link_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_link_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -940,7 +1255,12 @@ struct SymlinkOptions {
   _type: String,
 }
 
-fn op_symlink_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_symlink_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -948,7 +1268,11 @@ fn op_symlink_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopy
 
   state.check_write(&newpath)?;
 
-  debug!("op_symlink_sync {} {}", oldpath.display(), newpath.display());
+  debug!(
+    "op_symlink_sync {} {}",
+    oldpath.display(),
+    newpath.display()
+  );
   #[cfg(unix)]
   {
     use std::os::unix::fs::symlink;
@@ -983,7 +1307,12 @@ fn op_symlink_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopy
   }
 }
 
-async fn op_symlink_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_symlink_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1036,7 +1365,12 @@ struct ReadLinkArgs {
   path: String,
 }
 
-fn op_read_link_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_read_link_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
@@ -1048,7 +1382,12 @@ fn op_read_link_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCo
   Ok(json!(targetstr))
 }
 
-async fn op_read_link_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_read_link_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
@@ -1071,7 +1410,12 @@ struct FtruncateArgs {
   len: i32,
 }
 
-fn op_ftruncate_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_ftruncate_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1083,7 +1427,12 @@ fn op_ftruncate_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCo
   Ok(json!({}))
 }
 
-async fn op_ftruncate_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_ftruncate_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1102,7 +1451,12 @@ struct TruncateArgs {
   len: u64,
 }
 
-fn op_truncate_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_truncate_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
@@ -1115,7 +1469,12 @@ fn op_truncate_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCop
   Ok(json!({}))
 }
 
-async fn op_truncate_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_truncate_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
@@ -1132,7 +1491,12 @@ async fn op_truncate_async(state: Rc<State>, _: (), args: Value, _zero_copy: Buf
   .unwrap()
 }
 
-fn make_temp(dir: Option<&Path>, prefix: Option<&str>, suffix: Option<&str>, is_dir: bool) -> std::io::Result<PathBuf> {
+fn make_temp(
+  dir: Option<&Path>,
+  prefix: Option<&str>,
+  suffix: Option<&str>,
+  is_dir: bool,
+) -> std::io::Result<PathBuf> {
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
   let mut buf: PathBuf = match dir {
@@ -1180,7 +1544,12 @@ struct MakeTempArgs {
   suffix: Option<String>,
 }
 
-fn op_make_temp_dir_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_make_temp_dir_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
@@ -1204,7 +1573,12 @@ fn op_make_temp_dir_sync(state: &State, _: (), args: Value, _zero_copy: &mut [Ze
   Ok(json!(path_str))
 }
 
-async fn op_make_temp_dir_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_make_temp_dir_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
@@ -1232,7 +1606,12 @@ async fn op_make_temp_dir_async(state: Rc<State>, _: (), args: Value, _zero_copy
   .unwrap()
 }
 
-fn op_make_temp_file_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_make_temp_file_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
@@ -1256,7 +1635,12 @@ fn op_make_temp_file_sync(state: &State, _: (), args: Value, _zero_copy: &mut [Z
   Ok(json!(path_str))
 }
 
-async fn op_make_temp_file_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_make_temp_file_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
@@ -1292,7 +1676,12 @@ struct FutimeArgs {
   mtime: (i64, u32),
 }
 
-fn op_futime_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_futime_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.futimeSync");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1300,14 +1689,24 @@ fn op_futime_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyB
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
   std_file_resource(state, rid, |r| match r {
-    Ok(std_file) => filetime::set_file_handle_times(std_file, Some(atime), Some(mtime)).map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot futime on this type of resource".to_string())),
+    Ok(std_file) => {
+      filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
+        .map_err(ErrBox::from)
+    }
+    Err(_) => Err(ErrBox::type_error(
+      "cannot futime on this type of resource".to_string(),
+    )),
   })?;
 
   Ok(json!({}))
 }
 
-async fn op_futime_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_futime_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1315,8 +1714,13 @@ async fn op_futime_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVe
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
   std_file_resource(&state, rid, |r| match r {
-    Ok(std_file) => filetime::set_file_handle_times(std_file, Some(atime), Some(mtime)).map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error("cannot futime on this type of resource".to_string())),
+    Ok(std_file) => {
+      filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
+        .map_err(ErrBox::from)
+    }
+    Err(_) => Err(ErrBox::type_error(
+      "cannot futime on this type of resource".to_string(),
+    )),
   })?;
 
   Ok(json!({}))
@@ -1330,7 +1734,12 @@ struct UtimeArgs {
   mtime: (i64, u32),
 }
 
-fn op_utime_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_utime_sync(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1343,7 +1752,12 @@ fn op_utime_sync(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBu
   Ok(json!({}))
 }
 
-async fn op_utime_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
+async fn op_utime_async(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1361,7 +1775,12 @@ async fn op_utime_async(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec
   .unwrap()
 }
 
-fn op_cwd(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_cwd(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let path = current_dir()?;
   state.check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;

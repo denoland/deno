@@ -7,12 +7,29 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub fn write_file<T: AsRef<[u8]>>(filename: &Path, data: T, mode: u32) -> std::io::Result<()> {
+pub fn write_file<T: AsRef<[u8]>>(
+  filename: &Path,
+  data: T,
+  mode: u32,
+) -> std::io::Result<()> {
   write_file_2(filename, data, true, mode, true, false)
 }
 
-pub fn write_file_2<T: AsRef<[u8]>>(filename: &Path, data: T, update_mode: bool, mode: u32, is_create: bool, is_append: bool) -> std::io::Result<()> {
-  let mut file = OpenOptions::new().read(false).write(true).append(is_append).truncate(!is_append).create(is_create).open(filename)?;
+pub fn write_file_2<T: AsRef<[u8]>>(
+  filename: &Path,
+  data: T,
+  update_mode: bool,
+  mode: u32,
+  is_create: bool,
+  is_append: bool,
+) -> std::io::Result<()> {
+  let mut file = OpenOptions::new()
+    .read(false)
+    .write(true)
+    .append(is_append)
+    .truncate(!is_append)
+    .create(is_create)
+    .open(filename)?;
 
   if update_mode {
     #[cfg(unix)]
@@ -66,10 +83,16 @@ mod tests {
   fn test_normalize_path() {
     assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
     assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
-    assert_eq!(normalize_path(Path::new("a/./b/../c")), PathBuf::from("a/c"));
+    assert_eq!(
+      normalize_path(Path::new("a/./b/../c")),
+      PathBuf::from("a/c")
+    );
 
     if cfg!(windows) {
-      assert_eq!(normalize_path(Path::new("C:\\a\\.\\b\\..\\c")), PathBuf::from("C:\\a\\c"));
+      assert_eq!(
+        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
+        PathBuf::from("C:\\a\\c")
+      );
     }
   }
 
@@ -88,5 +111,10 @@ where
 {
   assert!(root.is_dir());
 
-  WalkDir::new(root).into_iter().filter_map(|e| e.ok()).map(|e| e.path().to_owned()).filter(|p| if p.is_dir() { false } else { filter(&p) }).collect()
+  WalkDir::new(root)
+    .into_iter()
+    .filter_map(|e| e.ok())
+    .map(|e| e.path().to_owned())
+    .filter(|p| if p.is_dir() { false } else { filter(&p) })
+    .collect()
 }

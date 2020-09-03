@@ -17,13 +17,18 @@ impl FromStr for BarePort {
         Err(e) => Err(ParsePortError(e.to_string())),
       }
     } else {
-      Err(ParsePortError("Bare Port doesn't start with ':'".to_string()))
+      Err(ParsePortError(
+        "Bare Port doesn't start with ':'".to_string(),
+      ))
     }
   }
 }
 
 pub fn validator(host_and_port: String) -> Result<(), String> {
-  if Url::parse(&format!("deno://{}", host_and_port)).is_ok() || host_and_port.parse::<IpAddr>().is_ok() || host_and_port.parse::<BarePort>().is_ok() {
+  if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
+    || host_and_port.parse::<IpAddr>().is_ok()
+    || host_and_port.parse::<BarePort>().is_ok()
+  {
     Ok(())
   } else {
     Err(format!("Bad host:port pair: {}", host_and_port))
@@ -36,7 +41,9 @@ pub fn validator(host_and_port: String) -> Result<(), String> {
 pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.iter() {
-    if Url::parse(&format!("deno://{}", host_and_port)).is_ok() || host_and_port.parse::<IpAddr>().is_ok() {
+    if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
+      || host_and_port.parse::<IpAddr>().is_ok()
+    {
       out.push(host_and_port.to_owned())
     } else if let Ok(port) = host_and_port.parse::<BarePort>() {
       // we got bare port, let's add default hosts
@@ -44,7 +51,10 @@ pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
         out.push(format!("{}:{}", host, port.0));
       }
     } else {
-      return Err(clap::Error::with_description(&format!("Bad host:port pair: {}", host_and_port), clap::ErrorKind::InvalidValue));
+      return Err(clap::Error::with_description(
+        &format!("Bad host:port pair: {}", host_and_port),
+        clap::ErrorKind::InvalidValue,
+      ));
     }
   }
   Ok(out)
@@ -63,7 +73,8 @@ mod bare_port_tests {
 
   #[test]
   fn bare_port_parse_error1() {
-    let expected = ParsePortError("Bare Port doesn't start with ':'".to_string());
+    let expected =
+      ParsePortError("Bare Port doesn't start with ':'".to_string());
     let actual = "8080".parse::<BarePort>();
     assert_eq!(actual, Err(expected));
   }
@@ -104,8 +115,48 @@ mod tests {
 
   #[test]
   fn parse_net_args_() {
-    let entries = svec!["deno.land", "deno.land:80", "::", "::1", "127.0.0.1", "[::1]", "1.2.3.4:5678", "0.0.0.0:5678", "127.0.0.1:5678", "[::]:5678", "[::1]:5678", "localhost:5678", "[::1]:8080", "[::]:8000", "[::1]:8000", "localhost:8000", "0.0.0.0:4545", "127.0.0.1:4545", "999.0.88.1:80"];
-    let expected = svec!["deno.land", "deno.land:80", "::", "::1", "127.0.0.1", "[::1]", "1.2.3.4:5678", "0.0.0.0:5678", "127.0.0.1:5678", "[::]:5678", "[::1]:5678", "localhost:5678", "[::1]:8080", "[::]:8000", "[::1]:8000", "localhost:8000", "0.0.0.0:4545", "127.0.0.1:4545", "999.0.88.1:80"];
+    let entries = svec![
+      "deno.land",
+      "deno.land:80",
+      "::",
+      "::1",
+      "127.0.0.1",
+      "[::1]",
+      "1.2.3.4:5678",
+      "0.0.0.0:5678",
+      "127.0.0.1:5678",
+      "[::]:5678",
+      "[::1]:5678",
+      "localhost:5678",
+      "[::1]:8080",
+      "[::]:8000",
+      "[::1]:8000",
+      "localhost:8000",
+      "0.0.0.0:4545",
+      "127.0.0.1:4545",
+      "999.0.88.1:80"
+    ];
+    let expected = svec![
+      "deno.land",
+      "deno.land:80",
+      "::",
+      "::1",
+      "127.0.0.1",
+      "[::1]",
+      "1.2.3.4:5678",
+      "0.0.0.0:5678",
+      "127.0.0.1:5678",
+      "[::]:5678",
+      "[::1]:5678",
+      "localhost:5678",
+      "[::1]:8080",
+      "[::]:8000",
+      "[::1]:8000",
+      "localhost:8000",
+      "0.0.0.0:4545",
+      "127.0.0.1:4545",
+      "999.0.88.1:80"
+    ];
     let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);
   }
@@ -120,8 +171,10 @@ mod tests {
 
   #[test]
   fn parse_net_args_ipv6() {
-    let entries = svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
-    let expected = svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
+    let entries =
+      svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
+    let expected =
+      svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
     let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);
   }

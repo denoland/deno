@@ -34,7 +34,10 @@ impl DenoDir {
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
 
-    let deno_dir = Self { root, gen_cache: DiskCache::new(&gen_path) };
+    let deno_dir = Self {
+      root,
+      gen_cache: DiskCache::new(&gen_path),
+    };
     deno_dir.gen_cache.ensure_dir_exists(&gen_path)?;
 
     Ok(deno_dir)
@@ -50,12 +53,17 @@ mod dirs {
     if cfg!(target_os = "macos") {
       home_dir().map(|h| h.join("Library/Caches"))
     } else {
-      std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).or_else(|| home_dir().map(|h| h.join(".cache")))
+      std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().map(|h| h.join(".cache")))
     }
   }
 
   pub fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").and_then(|h| if h.is_empty() { None } else { Some(h) }).or_else(|| unsafe { fallback() }).map(PathBuf::from)
+    std::env::var_os("HOME")
+      .and_then(|h| if h.is_empty() { None } else { Some(h) })
+      .or_else(|| unsafe { fallback() })
+      .map(PathBuf::from)
   }
 
   // This piece of code is taken from the deprecated home_dir() function in Rust's standard library: https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/os.rs#L579
@@ -68,7 +76,13 @@ mod dirs {
     let mut buf = Vec::with_capacity(amt);
     let mut passwd: libc::passwd = std::mem::zeroed();
     let mut result = std::ptr::null_mut();
-    match libc::getpwuid_r(libc::getuid(), &mut passwd, buf.as_mut_ptr(), buf.capacity(), &mut result) {
+    match libc::getpwuid_r(
+      libc::getuid(),
+      &mut passwd,
+      buf.as_mut_ptr(),
+      buf.capacity(),
+      &mut result,
+    ) {
       0 if !result.is_null() => {
         let ptr = passwd.pw_dir as *const _;
         let bytes = std::ffi::CStr::from_ptr(ptr).to_bytes().to_vec();
@@ -94,7 +108,12 @@ mod dirs {
   fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
     unsafe {
       let mut path_ptr: winnt::PWSTR = std::ptr::null_mut();
-      let result = shlobj::SHGetKnownFolderPath(folder_id, 0, std::ptr::null_mut(), &mut path_ptr);
+      let result = shlobj::SHGetKnownFolderPath(
+        folder_id,
+        0,
+        std::ptr::null_mut(),
+        &mut path_ptr,
+      );
       if result == winerror::S_OK {
         let len = winbase::lstrlenW(path_ptr) as usize;
         let path = std::slice::from_raw_parts(path_ptr, len);

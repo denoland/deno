@@ -14,8 +14,14 @@ use std::rc::Rc;
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   let t = (); // Temp.
 
-  i.register_op("op_apply_source_map", s.stateful_json_op_sync(t, op_apply_source_map));
-  i.register_op("op_format_diagnostic", s.stateful_json_op_sync(t, op_format_diagnostic));
+  i.register_op(
+    "op_apply_source_map",
+    s.stateful_json_op_sync(t, op_apply_source_map),
+  );
+  i.register_op(
+    "op_format_diagnostic",
+    s.stateful_json_op_sync(t, op_format_diagnostic),
+  );
 }
 
 #[derive(Deserialize)]
@@ -26,11 +32,23 @@ struct ApplySourceMap {
   column_number: i32,
 }
 
-fn op_apply_source_map(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_apply_source_map(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
-  let (orig_file_name, orig_line_number, orig_column_number) = get_orig_position(args.file_name, args.line_number.into(), args.column_number.into(), &mut mappings_map, &state.global_state.ts_compiler);
+  let (orig_file_name, orig_line_number, orig_column_number) =
+    get_orig_position(
+      args.file_name,
+      args.line_number.into(),
+      args.column_number.into(),
+      &mut mappings_map,
+      &state.global_state.ts_compiler,
+    );
 
   Ok(json!({
     "fileName": orig_file_name,
@@ -39,7 +57,12 @@ fn op_apply_source_map(state: &State, _: (), args: Value, _zero_copy: &mut [Zero
   }))
 }
 
-fn op_format_diagnostic(_state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_format_diagnostic(
+  _state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let diagnostic = serde_json::from_value::<Diagnostic>(args)?;
   Ok(json!(diagnostic.to_string()))
 }

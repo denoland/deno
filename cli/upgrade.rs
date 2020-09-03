@@ -37,14 +37,27 @@ const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
 
 async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
   println!("Checking for latest version");
-  let body = client.get(Url::parse("https://github.com/denoland/deno/releases/latest")?).send().await?.text().await?;
+  let body = client
+    .get(Url::parse(
+      "https://github.com/denoland/deno/releases/latest",
+    )?)
+    .send()
+    .await?
+    .text()
+    .await?;
   let v = find_version(&body)?;
   Ok(semver_parse(&v).unwrap())
 }
 
 /// Asynchronously updates deno executable to greatest version
 /// if greatest version is available.
-pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>, output: Option<PathBuf>, ca_file: Option<String>) -> Result<(), ErrBox> {
+pub async fn upgrade_command(
+  dry_run: bool,
+  force: bool,
+  version: Option<String>,
+  output: Option<PathBuf>,
+  ca_file: Option<String>,
+) -> Result<(), ErrBox> {
   let mut client_builder = Client::builder().redirect(Policy::none());
 
   // If we have been provided a CA Certificate, add it into the HTTP client
@@ -77,7 +90,10 @@ pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>
       let latest_version = get_latest_version(&client).await?;
 
       if !force && current_version >= latest_version {
-        println!("Local deno version {} is the most recent release", &crate::version::DENO);
+        println!(
+          "Local deno version {} is the most recent release",
+          &crate::version::DENO
+        );
         return Ok(());
       } else {
         latest_version
@@ -85,7 +101,12 @@ pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>
     }
   };
 
-  let archive_data = download_package(&compose_url_to_exec(&install_version)?, client, &install_version).await?;
+  let archive_data = download_package(
+    &compose_url_to_exec(&install_version)?,
+    client,
+    &install_version,
+  )
+  .await?;
   let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
@@ -95,7 +116,8 @@ pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>
   if !dry_run {
     match output {
       Some(path) => {
-        fs::rename(&new_exe_path, &path).or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
+        fs::rename(&new_exe_path, &path)
+          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
       }
       None => replace_exe(&new_exe_path, &old_exe_path)?,
     }
@@ -106,18 +128,27 @@ pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>
   Ok(())
 }
 
-fn download_package(url: &Url, client: Client, version: &Version) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ErrBox>>>> {
+fn download_package(
+  url: &Url,
+  client: Client,
+  version: &Version,
+) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ErrBox>>>> {
   println!("downloading {}", url);
   let url = url.clone();
   let version = version.clone();
   let fut = async move {
     match fetch_once(client.clone(), &url, None).await {
       Ok(result) => {
-        println!("Version has been found\nDeno is upgrading to version {}", &version);
+        println!(
+          "Version has been found\nDeno is upgrading to version {}",
+          &version
+        );
         match result {
           FetchOnceResult::Code(source, _) => Ok(source),
           FetchOnceResult::NotModified => unreachable!(),
-          FetchOnceResult::Redirect(_url, _) => download_package(&_url, client, &version).await,
+          FetchOnceResult::Redirect(_url, _) => {
+            download_package(&_url, client, &version).await
+          }
         }
       }
       Err(_) => {
@@ -130,7 +161,10 @@ fn download_package(url: &Url, client: Client, version: &Version) -> Pin<Box<dyn
 }
 
 fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
-  let s = format!("https://github.com/denoland/deno/releases/download/v{}/{}", version, ARCHIVE_NAME);
+  let s = format!(
+    "https://github.com/denoland/deno/releases/download/v{}/{}",
+    version, ARCHIVE_NAME
+  );
   Url::parse(&s).map_err(ErrBox::from)
 }
 
@@ -152,11 +186,18 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
   let exe_path = temp_dir.join("deno").with_extension(exe_ext);
   assert!(!exe_path.exists());
 
-  let archive_ext = Path::new(ARCHIVE_NAME).extension().and_then(|ext| ext.to_str()).unwrap();
+  let archive_ext = Path::new(ARCHIVE_NAME)
+    .extension()
+    .and_then(|ext| ext.to_str())
+    .unwrap();
   let unpack_status = match archive_ext {
     "gz" => {
       let exe_file = fs::File::create(&exe_path)?;
-      let mut cmd = Command::new("gunzip").arg("-c").stdin(Stdio::piped()).stdout(Stdio::from(exe_file)).spawn()?;
+      let mut cmd = Command::new("gunzip")
+        .arg("-c")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(exe_file))
+        .spawn()?;
       cmd.stdin.as_mut().unwrap().write_all(&archive_data)?;
       cmd.wait()?
     }
@@ -189,7 +230,11 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
     "zip" => {
       let archive_path = temp_dir.join("deno.zip");
       fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip").current_dir(&temp_dir).arg(archive_path).spawn()?.wait()?
+      Command::new("unzip")
+        .current_dir(&temp_dir)
+        .arg(archive_path)
+        .spawn()?
+        .wait()?
     }
     ext => panic!("Unsupported archive type: '{}'", ext),
   };
@@ -212,8 +257,14 @@ fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
   Ok(())
 }
 
-fn check_exe(exe_path: &Path, expected_version: &Version) -> Result<(), ErrBox> {
-  let output = Command::new(exe_path).arg("-V").stderr(std::process::Stdio::inherit()).output()?;
+fn check_exe(
+  exe_path: &Path,
+  expected_version: &Version,
+) -> Result<(), ErrBox> {
+  let output = Command::new(exe_path)
+    .arg("-V")
+    .stderr(std::process::Stdio::inherit())
+    .output()?;
   let stdout = String::from_utf8(output.stdout)?;
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));

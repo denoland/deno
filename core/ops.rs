@@ -42,7 +42,8 @@ pub trait OpManager: OpRouter + 'static {
 
   fn register_op_json_sync<F>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
-    F: 'static + Fn(serde_json::Value, BufVec) -> Result<serde_json::Value, ErrBox>,
+    F: 'static
+      + Fn(serde_json::Value, BufVec) -> Result<serde_json::Value, ErrBox>,
   {
     let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
       let value = serde_json::from_slice(&bufs[0]).unwrap();
@@ -66,7 +67,11 @@ pub trait OpManager: OpRouter + 'static {
       let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
       let bufs = bufs[1..].into();
       let fut = op_fn(value, bufs);
-      let fut2 = fut.map(move |result| serialize_result(Some(promise_id), result, move |err| mgr_.get_error_class(err)));
+      let fut2 = fut.map(move |result| {
+        serialize_result(Some(promise_id), result, move |err| {
+          mgr_.get_error_class(err)
+        })
+      });
       Op::Async(Box::pin(fut2))
     };
 
@@ -84,13 +89,20 @@ pub trait OpManager: OpRouter + 'static {
   {
     let bin_op_fn = move |mgr: Rc<Self>, _: BufVec| -> Op {
       let catalog = op_fn(mgr);
-      let index = catalog.borrow().into_iter().map(|(k, v)| (k.as_ref(), v.to_owned())).collect::<HashMap<&str, OpId>>();
+      let index = catalog
+        .borrow()
+        .into_iter()
+        .map(|(k, v)| (k.as_ref(), v.to_owned()))
+        .collect::<HashMap<&str, OpId>>();
       let buf = serde_json::to_vec(&index).unwrap().into();
       Op::Sync(buf)
     };
 
     let op_id = self.register_op("ops", bin_op_fn);
-    assert_eq!(op_id, 0, "the 'meta_catalog' op should be the first one registered");
+    assert_eq!(
+      op_id, 0,
+      "the 'meta_catalog' op should be the first one registered"
+    );
     op_id
   }
 
@@ -153,7 +165,11 @@ impl OpManager for OpRegistry {
   }
 }
 
-fn serialize_result(promise_id: Option<u64>, result: Result<Value, ErrBox>, get_error_class_fn: impl FnOnce(&ErrBox) -> &'static str) -> Buf {
+fn serialize_result(
+  promise_id: Option<u64>,
+  result: Result<Value, ErrBox>,
+  get_error_class_fn: impl FnOnce(&ErrBox) -> &'static str,
+) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => json!({

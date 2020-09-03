@@ -29,12 +29,35 @@ struct CompileArgs {
   options: Option<String>,
 }
 
-async fn op_compile(state: Rc<State>, _: (), args: Value, _data: BufVec) -> Result<Value, ErrBox> {
+async fn op_compile(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _data: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
   let global_state = state.global_state.clone();
   let permissions = state.permissions.borrow().clone();
-  let fut = if args.bundle { runtime_bundle(&global_state, permissions, &args.root_name, &args.sources, &args.options).boxed_local() } else { runtime_compile(&global_state, permissions, &args.root_name, &args.sources, &args.options).boxed_local() };
+  let fut = if args.bundle {
+    runtime_bundle(
+      &global_state,
+      permissions,
+      &args.root_name,
+      &args.sources,
+      &args.options,
+    )
+    .boxed_local()
+  } else {
+    runtime_compile(
+      &global_state,
+      permissions,
+      &args.root_name,
+      &args.sources,
+      &args.options,
+    )
+    .boxed_local()
+  };
   let result = fut.await?;
   Ok(result)
 }
@@ -45,11 +68,18 @@ struct TranspileArgs {
   options: Option<String>,
 }
 
-async fn op_transpile(state: Rc<State>, _: (), args: Value, _data: BufVec) -> Result<Value, ErrBox> {
+async fn op_transpile(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  _data: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   let global_state = state.global_state.clone();
   let permissions = state.permissions.borrow().clone();
-  let result = runtime_transpile(&global_state, permissions, &args.sources, &args.options).await?;
+  let result =
+    runtime_transpile(&global_state, permissions, &args.sources, &args.options)
+      .await?;
   Ok(result)
 }

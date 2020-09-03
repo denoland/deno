@@ -81,7 +81,10 @@ pub struct DiagnosticItem {
   pub end_column: Option<i64>,
 }
 
-fn format_category_and_code(category: &DiagnosticCategory, code: i64) -> String {
+fn format_category_and_code(
+  category: &DiagnosticCategory,
+  code: i64,
+) -> String {
   let category = match category {
     DiagnosticCategory::Error => "ERROR".to_string(),
     DiagnosticCategory::Warning => "WARN".to_string(),
@@ -95,7 +98,11 @@ fn format_category_and_code(category: &DiagnosticCategory, code: i64) -> String 
   format!("{} [{}]", code, category)
 }
 
-fn format_message(message_chain: &Option<DiagnosticMessageChain>, message: &str, level: usize) -> String {
+fn format_message(
+  message_chain: &Option<DiagnosticMessageChain>,
+  message: &str,
+  level: usize,
+) -> String {
   debug!("format_message");
 
   if let Some(message_chain) = message_chain {
@@ -109,7 +116,11 @@ fn format_message(message_chain: &Option<DiagnosticMessageChain>, message: &str,
 }
 
 /// Formats optional source, line and column numbers into a single string.
-fn format_maybe_frame(file_name: Option<&str>, line_number: Option<i64>, column_number: Option<i64>) -> String {
+fn format_maybe_frame(
+  file_name: Option<&str>,
+  line_number: Option<i64>,
+  column_number: Option<i64>,
+) -> String {
   if file_name.is_none() {
     return "".to_string();
   }
@@ -125,7 +136,9 @@ fn format_maybe_frame(file_name: Option<&str>, line_number: Option<i64>, column_
   format!("{}:{}:{}", file_name_c, line_c, column_c)
 }
 
-fn format_maybe_related_information(related_information: &Option<Vec<DiagnosticItem>>) -> String {
+fn format_maybe_related_information(
+  related_information: &Option<Vec<DiagnosticItem>>,
+) -> String {
   if related_information.is_none() {
     return "".to_string();
   }
@@ -142,7 +155,11 @@ fn format_maybe_related_information(related_information: &Option<Vec<DiagnosticI
         rd.start_column,
         rd.end_column,
         // Formatter expects 1-based line and column numbers, but ours are 0-based.
-        &[format_maybe_frame(rd.script_resource_name.as_deref(), rd.line_number.map(|n| n + 1), rd.start_column.map(|n| n + 1))],
+        &[format_maybe_frame(
+          rd.script_resource_name.as_deref(),
+          rd.line_number.map(|n| n + 1),
+          rd.start_column.map(|n| n + 1),
+        )],
         4,
       ));
     }
@@ -158,16 +175,28 @@ impl fmt::Display for DiagnosticItem {
       "{}",
       format_stack(
         matches!(self.category, DiagnosticCategory::Error),
-        &format!("{}: {}", format_category_and_code(&self.category, self.code), format_message(&self.message_chain, &self.message, 0)),
+        &format!(
+          "{}: {}",
+          format_category_and_code(&self.category, self.code),
+          format_message(&self.message_chain, &self.message, 0)
+        ),
         self.source_line.as_deref(),
         self.start_column,
         self.end_column,
         // Formatter expects 1-based line and column numbers, but ours are 0-based.
-        &[format_maybe_frame(self.script_resource_name.as_deref(), self.line_number.map(|n| n + 1), self.start_column.map(|n| n + 1))],
+        &[format_maybe_frame(
+          self.script_resource_name.as_deref(),
+          self.line_number.map(|n| n + 1),
+          self.start_column.map(|n| n + 1)
+        )],
         0
       )
     )?;
-    write!(f, "{}", format_maybe_related_information(&self.related_information),)
+    write!(
+      f,
+      "{}",
+      format_maybe_related_information(&self.related_information),
+    )
   }
 }
 
@@ -257,7 +286,40 @@ mod tests {
   }
 
   fn diagnostic2() -> Diagnostic {
-    Diagnostic { items: vec![DiagnosticItem { message: "Example 1".to_string(), message_chain: None, code: 2322, category: DiagnosticCategory::Error, start_position: Some(267), end_position: Some(273), source_line: Some("  values: o => [".to_string()), line_number: Some(18), script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()), start_column: Some(2), end_column: Some(8), related_information: None }, DiagnosticItem { message: "Example 2".to_string(), message_chain: None, code: 2000, category: DiagnosticCategory::Error, start_position: Some(2), end_position: Some(2), source_line: Some("  values: undefined,".to_string()), line_number: Some(128), script_resource_name: Some("/foo/bar.ts".to_string()), start_column: Some(2), end_column: Some(8), related_information: None }] }
+    Diagnostic {
+      items: vec![
+        DiagnosticItem {
+          message: "Example 1".to_string(),
+          message_chain: None,
+          code: 2322,
+          category: DiagnosticCategory::Error,
+          start_position: Some(267),
+          end_position: Some(273),
+          source_line: Some("  values: o => [".to_string()),
+          line_number: Some(18),
+          script_resource_name: Some(
+            "deno/tests/complex_diagnostics.ts".to_string(),
+          ),
+          start_column: Some(2),
+          end_column: Some(8),
+          related_information: None,
+        },
+        DiagnosticItem {
+          message: "Example 2".to_string(),
+          message_chain: None,
+          code: 2000,
+          category: DiagnosticCategory::Error,
+          start_position: Some(2),
+          end_position: Some(2),
+          source_line: Some("  values: undefined,".to_string()),
+          line_number: Some(128),
+          script_resource_name: Some("/foo/bar.ts".to_string()),
+          start_column: Some(2),
+          end_column: Some(8),
+          related_information: None,
+        },
+      ],
+    }
   }
 
   #[test]
@@ -319,7 +381,8 @@ mod tests {
 
   #[test]
   fn test_format_some_frame() {
-    let actual = format_maybe_frame(Some("file://foo/bar.ts"), Some(1), Some(2));
+    let actual =
+      format_maybe_frame(Some("file://foo/bar.ts"), Some(1), Some(2));
     assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:1:2");
   }
 }

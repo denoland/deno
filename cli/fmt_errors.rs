@@ -11,22 +11,52 @@ use std::ops::Deref;
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
 
 pub fn format_location(filename: &str, line: i64, col: i64) -> String {
-  format!("{}:{}:{}", colors::cyan(filename), colors::yellow(&line.to_string()), colors::yellow(&col.to_string()))
+  format!(
+    "{}:{}:{}",
+    colors::cyan(filename),
+    colors::yellow(&line.to_string()),
+    colors::yellow(&col.to_string())
+  )
 }
 
-pub fn format_stack(is_error: bool, message_line: &str, source_line: Option<&str>, start_column: Option<i64>, end_column: Option<i64>, formatted_frames: &[String], level: usize) -> String {
+pub fn format_stack(
+  is_error: bool,
+  message_line: &str,
+  source_line: Option<&str>,
+  start_column: Option<i64>,
+  end_column: Option<i64>,
+  formatted_frames: &[String],
+  level: usize,
+) -> String {
   let mut s = String::new();
   s.push_str(&format!("{:indent$}{}", "", message_line, indent = level));
-  s.push_str(&format_maybe_source_line(source_line, start_column, end_column, is_error, level));
+  s.push_str(&format_maybe_source_line(
+    source_line,
+    start_column,
+    end_column,
+    is_error,
+    level,
+  ));
   for formatted_frame in formatted_frames {
-    s.push_str(&format!("\n{:indent$}    at {}", "", formatted_frame, indent = level));
+    s.push_str(&format!(
+      "\n{:indent$}    at {}",
+      "",
+      formatted_frame,
+      indent = level
+    ));
   }
   s
 }
 
 /// Take an optional source line and associated information to format it into
 /// a pretty printed version of that line.
-fn format_maybe_source_line(source_line: Option<&str>, start_column: Option<i64>, end_column: Option<i64>, is_error: bool, level: usize) -> String {
+fn format_maybe_source_line(
+  source_line: Option<&str>,
+  start_column: Option<i64>,
+  end_column: Option<i64>,
+  is_error: bool,
+  level: usize,
+) -> String {
   if source_line.is_none() || start_column.is_none() || end_column.is_none() {
     return "".to_string();
   }
@@ -47,7 +77,11 @@ fn format_maybe_source_line(source_line: Option<&str>, start_column: Option<i64>
   // TypeScript uses `~` always, but V8 would utilise `^` always, even when
   // doing ranges, so here, if we only have one marker (very common with V8
   // errors) we will use `^` instead.
-  let underline_char = if (end_column - start_column) <= 1 { '^' } else { '~' };
+  let underline_char = if (end_column - start_column) <= 1 {
+    '^'
+  } else {
+    '~'
+  };
   for _i in 0..start_column {
     if source_line.chars().nth(_i as usize).unwrap() == '\t' {
       s.push('\t');
@@ -58,7 +92,11 @@ fn format_maybe_source_line(source_line: Option<&str>, start_column: Option<i64>
   for _i in 0..(end_column - start_column) {
     s.push(underline_char);
   }
-  let color_underline = if is_error { colors::red(&s).to_string() } else { colors::cyan(&s).to_string() };
+  let color_underline = if is_error {
+    colors::red(&s).to_string()
+  } else {
+    colors::cyan(&s).to_string()
+  };
 
   let indent = format!("{:indent$}", "", indent = level);
 
@@ -70,7 +108,10 @@ fn format_maybe_source_line(source_line: Option<&str>, start_column: Option<i64>
 pub struct JSError(deno_core::JSError);
 
 impl JSError {
-  pub fn create(core_js_error: deno_core::JSError, source_map_getter: &impl SourceMapGetter) -> ErrBox {
+  pub fn create(
+    core_js_error: deno_core::JSError,
+    source_map_getter: &impl SourceMapGetter,
+  ) -> ErrBox {
     let core_js_error = apply_source_map(&core_js_error, source_map_getter);
     let js_error = Self(core_js_error);
     js_error.into()
@@ -90,18 +131,41 @@ impl fmt::Display for JSError {
 
     // The formatted_frames passed from prepareStackTrace() are colored.
     if !colors::use_color() {
-      formatted_frames = formatted_frames.iter().map(|s| colors::strip_ansi_codes(s).to_string()).collect();
+      formatted_frames = formatted_frames
+        .iter()
+        .map(|s| colors::strip_ansi_codes(s).to_string())
+        .collect();
     }
 
     // When the stack frame array is empty, but the source location given by
     // (script_resource_name, line_number, start_column + 1) exists, this is
     // likely a syntax error. For the sake of formatting we treat it like it was
     // given as a single stack frame.
-    if formatted_frames.is_empty() && self.0.script_resource_name.is_some() && self.0.line_number.is_some() && self.0.start_column.is_some() {
-      formatted_frames = vec![format_location(self.0.script_resource_name.as_ref().unwrap(), self.0.line_number.unwrap(), self.0.start_column.unwrap() + 1)]
+    if formatted_frames.is_empty()
+      && self.0.script_resource_name.is_some()
+      && self.0.line_number.is_some()
+      && self.0.start_column.is_some()
+    {
+      formatted_frames = vec![format_location(
+        self.0.script_resource_name.as_ref().unwrap(),
+        self.0.line_number.unwrap(),
+        self.0.start_column.unwrap() + 1,
+      )]
     };
 
-    write!(f, "{}", &format_stack(true, &self.0.message, self.0.source_line.as_deref(), self.0.start_column, self.0.end_column, &formatted_frames, 0))?;
+    write!(
+      f,
+      "{}",
+      &format_stack(
+        true,
+        &self.0.message,
+        self.0.source_line.as_deref(),
+        self.0.start_column,
+        self.0.end_column,
+        &formatted_frames,
+        0
+      )
+    )?;
     Ok(())
   }
 }
@@ -121,7 +185,16 @@ mod tests {
 
   #[test]
   fn test_format_some_source_line() {
-    let actual = format_maybe_source_line(Some("console.log('foo');"), Some(8), Some(11), true, 0);
-    assert_eq!(strip_ansi_codes(&actual), "\nconsole.log(\'foo\');\n        ~~~");
+    let actual = format_maybe_source_line(
+      Some("console.log('foo');"),
+      Some(8),
+      Some(11),
+      true,
+      0,
+    );
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "\nconsole.log(\'foo\');\n        ~~~"
+    );
   }
 }

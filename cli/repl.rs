@@ -12,7 +12,10 @@ pub struct Repl {
 
 impl Repl {
   pub fn new(history_file: PathBuf) -> Self {
-    let mut repl = Self { editor: Editor::<()>::new(), history_file };
+    let mut repl = Self {
+      editor: Editor::<()>::new(),
+      history_file,
+    };
 
     repl.load_history();
     repl
@@ -23,17 +26,23 @@ impl Repl {
     self
       .editor
       .load_history(&self.history_file.to_str().unwrap())
-      .map_err(|e| debug!("Unable to load history file: {:?} {}", self.history_file, e))
+      .map_err(|e| {
+        debug!("Unable to load history file: {:?} {}", self.history_file, e)
+      })
       // ignore this error (e.g. it occurs on first load)
       .unwrap_or(())
   }
 
   fn save_history(&mut self) -> Result<(), ErrBox> {
     fs::create_dir_all(self.history_file.parent().unwrap())?;
-    self.editor.save_history(&self.history_file.to_str().unwrap()).map(|_| debug!("Saved REPL history to: {:?}", self.history_file)).map_err(|e| {
-      eprintln!("Unable to save REPL history: {:?} {}", self.history_file, e);
-      e.into()
-    })
+    self
+      .editor
+      .save_history(&self.history_file.to_str().unwrap())
+      .map(|_| debug!("Saved REPL history to: {:?}", self.history_file))
+      .map_err(|e| {
+        eprintln!("Unable to save REPL history: {:?} {}", self.history_file, e);
+        e.into()
+      })
   }
 
   pub fn readline(&mut self, prompt: &str) -> Result<String, ErrBox> {

@@ -17,13 +17,22 @@ impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
 
 #[derive(Debug)]
 pub enum ErrBox {
-  Simple { class: &'static str, message: Cow<'static, str> },
+  Simple {
+    class: &'static str,
+    message: Cow<'static, str>,
+  },
   Boxed(Box<dyn AnyError>),
 }
 
 impl ErrBox {
-  pub fn new(class: &'static str, message: impl Into<Cow<'static, str>>) -> Self {
-    Self::Simple { class, message: message.into() }
+  pub fn new(
+    class: &'static str,
+    message: impl Into<Cow<'static, str>>,
+  ) -> Self {
+    Self::Simple {
+      class,
+      message: message.into(),
+    }
   }
 
   pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> Self {
@@ -43,7 +52,10 @@ impl ErrBox {
   }
 
   pub fn resource_unavailable() -> Self {
-    Self::new("Busy", "Resource is unavailable because it is in use by a promise")
+    Self::new(
+      "Busy",
+      "Resource is unavailable because it is in use by a promise",
+    )
   }
 
   pub fn type_error(message: impl Into<Cow<'static, str>>) -> Self {
@@ -131,7 +143,11 @@ pub struct JSStackFrame {
   pub promise_index: Option<i64>,
 }
 
-fn get_property<'a>(scope: &mut v8::HandleScope<'a>, object: v8::Local<v8::Object>, key: &str) -> Option<v8::Local<'a, v8::Value>> {
+fn get_property<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  object: v8::Local<v8::Object>,
+  key: &str,
+) -> Option<v8::Local<'a, v8::Value>> {
   let key = v8::String::new(scope, key).unwrap();
   object.get(scope, key.into())
 }
@@ -141,7 +157,10 @@ impl JSError {
     js_error.into()
   }
 
-  pub fn from_v8_exception(scope: &mut v8::HandleScope, exception: v8::Local<v8::Value>) -> Self {
+  pub fn from_v8_exception(
+    scope: &mut v8::HandleScope,
+    exception: v8::Local<v8::Value>,
+  ) -> Self {
     // Create a new HandleScope because we're creating a lot of new local
     // handles below.
     let scope = &mut v8::HandleScope::new(scope);
@@ -150,11 +169,18 @@ impl JSError {
 
     let (message, frames, formatted_frames) = if exception.is_native_error() {
       // The exception is a JS Error object.
-      let exception: v8::Local<v8::Object> = exception.clone().try_into().unwrap();
+      let exception: v8::Local<v8::Object> =
+        exception.clone().try_into().unwrap();
 
       // Get the message by formatting error.name and error.message.
-      let name = get_property(scope, exception, "name").and_then(|m| m.to_string(scope)).map(|s| s.to_rust_string_lossy(scope)).unwrap_or_else(|| "undefined".to_string());
-      let message_prop = get_property(scope, exception, "message").and_then(|m| m.to_string(scope)).map(|s| s.to_rust_string_lossy(scope)).unwrap_or_else(|| "undefined".to_string());
+      let name = get_property(scope, exception, "name")
+        .and_then(|m| m.to_string(scope))
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "undefined".to_string());
+      let message_prop = get_property(scope, exception, "message")
+        .and_then(|m| m.to_string(scope))
+        .map(|s| s.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "undefined".to_string());
       let message = format!("Uncaught {}: {}", name, message_prop);
 
       // Access error.stack to ensure that prepareStackTrace() has been called.
@@ -163,48 +189,130 @@ impl JSError {
 
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
-      let frames_v8: Option<v8::Local<v8::Array>> = frames_v8.and_then(|a| a.try_into().ok());
+      let frames_v8: Option<v8::Local<v8::Array>> =
+        frames_v8.and_then(|a| a.try_into().ok());
 
       // Read an array of pre-formatted frames from error.__formattedFrames.
-      let formatted_frames_v8 = get_property(scope, exception, "__formattedFrames");
-      let formatted_frames_v8: Option<v8::Local<v8::Array>> = formatted_frames_v8.and_then(|a| a.try_into().ok());
+      let formatted_frames_v8 =
+        get_property(scope, exception, "__formattedFrames");
+      let formatted_frames_v8: Option<v8::Local<v8::Array>> =
+        formatted_frames_v8.and_then(|a| a.try_into().ok());
 
       // Convert them into Vec<JSStack> and Vec<String> respectively.
       let mut frames: Vec<JSStackFrame> = vec![];
       let mut formatted_frames: Vec<String> = vec![];
-      if let (Some(frames_v8), Some(formatted_frames_v8)) = (frames_v8, formatted_frames_v8) {
+      if let (Some(frames_v8), Some(formatted_frames_v8)) =
+        (frames_v8, formatted_frames_v8)
+      {
         for i in 0..frames_v8.length() {
-          let call_site: v8::Local<v8::Object> = frames_v8.get_index(scope, i).unwrap().try_into().unwrap();
-          let type_name: Option<v8::Local<v8::String>> = get_property(scope, call_site, "typeName").unwrap().try_into().ok();
+          let call_site: v8::Local<v8::Object> =
+            frames_v8.get_index(scope, i).unwrap().try_into().unwrap();
+          let type_name: Option<v8::Local<v8::String>> =
+            get_property(scope, call_site, "typeName")
+              .unwrap()
+              .try_into()
+              .ok();
           let type_name = type_name.map(|s| s.to_rust_string_lossy(scope));
-          let function_name: Option<v8::Local<v8::String>> = get_property(scope, call_site, "functionName").unwrap().try_into().ok();
-          let function_name = function_name.map(|s| s.to_rust_string_lossy(scope));
-          let method_name: Option<v8::Local<v8::String>> = get_property(scope, call_site, "methodName").unwrap().try_into().ok();
+          let function_name: Option<v8::Local<v8::String>> =
+            get_property(scope, call_site, "functionName")
+              .unwrap()
+              .try_into()
+              .ok();
+          let function_name =
+            function_name.map(|s| s.to_rust_string_lossy(scope));
+          let method_name: Option<v8::Local<v8::String>> =
+            get_property(scope, call_site, "methodName")
+              .unwrap()
+              .try_into()
+              .ok();
           let method_name = method_name.map(|s| s.to_rust_string_lossy(scope));
-          let file_name: Option<v8::Local<v8::String>> = get_property(scope, call_site, "fileName").unwrap().try_into().ok();
+          let file_name: Option<v8::Local<v8::String>> =
+            get_property(scope, call_site, "fileName")
+              .unwrap()
+              .try_into()
+              .ok();
           let file_name = file_name.map(|s| s.to_rust_string_lossy(scope));
-          let line_number: Option<v8::Local<v8::Integer>> = get_property(scope, call_site, "lineNumber").unwrap().try_into().ok();
+          let line_number: Option<v8::Local<v8::Integer>> =
+            get_property(scope, call_site, "lineNumber")
+              .unwrap()
+              .try_into()
+              .ok();
           let line_number = line_number.map(|n| n.value());
-          let column_number: Option<v8::Local<v8::Integer>> = get_property(scope, call_site, "columnNumber").unwrap().try_into().ok();
+          let column_number: Option<v8::Local<v8::Integer>> =
+            get_property(scope, call_site, "columnNumber")
+              .unwrap()
+              .try_into()
+              .ok();
           let column_number = column_number.map(|n| n.value());
-          let eval_origin: Option<v8::Local<v8::String>> = get_property(scope, call_site, "evalOrigin").unwrap().try_into().ok();
+          let eval_origin: Option<v8::Local<v8::String>> =
+            get_property(scope, call_site, "evalOrigin")
+              .unwrap()
+              .try_into()
+              .ok();
           let eval_origin = eval_origin.map(|s| s.to_rust_string_lossy(scope));
-          let is_top_level: Option<v8::Local<v8::Boolean>> = get_property(scope, call_site, "isTopLevel").unwrap().try_into().ok();
+          let is_top_level: Option<v8::Local<v8::Boolean>> =
+            get_property(scope, call_site, "isTopLevel")
+              .unwrap()
+              .try_into()
+              .ok();
           let is_top_level = is_top_level.map(|b| b.is_true());
-          let is_eval: v8::Local<v8::Boolean> = get_property(scope, call_site, "isEval").unwrap().try_into().unwrap();
+          let is_eval: v8::Local<v8::Boolean> =
+            get_property(scope, call_site, "isEval")
+              .unwrap()
+              .try_into()
+              .unwrap();
           let is_eval = is_eval.is_true();
-          let is_native: v8::Local<v8::Boolean> = get_property(scope, call_site, "isNative").unwrap().try_into().unwrap();
+          let is_native: v8::Local<v8::Boolean> =
+            get_property(scope, call_site, "isNative")
+              .unwrap()
+              .try_into()
+              .unwrap();
           let is_native = is_native.is_true();
-          let is_constructor: v8::Local<v8::Boolean> = get_property(scope, call_site, "isConstructor").unwrap().try_into().unwrap();
+          let is_constructor: v8::Local<v8::Boolean> =
+            get_property(scope, call_site, "isConstructor")
+              .unwrap()
+              .try_into()
+              .unwrap();
           let is_constructor = is_constructor.is_true();
-          let is_async: v8::Local<v8::Boolean> = get_property(scope, call_site, "isAsync").unwrap().try_into().unwrap();
+          let is_async: v8::Local<v8::Boolean> =
+            get_property(scope, call_site, "isAsync")
+              .unwrap()
+              .try_into()
+              .unwrap();
           let is_async = is_async.is_true();
-          let is_promise_all: v8::Local<v8::Boolean> = get_property(scope, call_site, "isPromiseAll").unwrap().try_into().unwrap();
+          let is_promise_all: v8::Local<v8::Boolean> =
+            get_property(scope, call_site, "isPromiseAll")
+              .unwrap()
+              .try_into()
+              .unwrap();
           let is_promise_all = is_promise_all.is_true();
-          let promise_index: Option<v8::Local<v8::Integer>> = get_property(scope, call_site, "columnNumber").unwrap().try_into().ok();
+          let promise_index: Option<v8::Local<v8::Integer>> =
+            get_property(scope, call_site, "columnNumber")
+              .unwrap()
+              .try_into()
+              .ok();
           let promise_index = promise_index.map(|n| n.value());
-          frames.push(JSStackFrame { type_name, function_name, method_name, file_name, line_number, column_number, eval_origin, is_top_level, is_eval, is_native, is_constructor, is_async, is_promise_all, promise_index });
-          let formatted_frame: v8::Local<v8::String> = formatted_frames_v8.get_index(scope, i).unwrap().try_into().unwrap();
+          frames.push(JSStackFrame {
+            type_name,
+            function_name,
+            method_name,
+            file_name,
+            line_number,
+            column_number,
+            eval_origin,
+            is_top_level,
+            is_eval,
+            is_native,
+            is_constructor,
+            is_async,
+            is_promise_all,
+            promise_index,
+          });
+          let formatted_frame: v8::Local<v8::String> = formatted_frames_v8
+            .get_index(scope, i)
+            .unwrap()
+            .try_into()
+            .unwrap();
           let formatted_frame = formatted_frame.to_rust_string_lossy(scope);
           formatted_frames.push(formatted_frame)
         }
@@ -217,13 +325,31 @@ impl JSError {
       (msg.get(scope).to_rust_string_lossy(scope), vec![], vec![])
     };
 
-    Self { message, script_resource_name: msg.get_script_resource_name(scope).and_then(|v| v8::Local::<v8::String>::try_from(v).ok()).map(|v| v.to_rust_string_lossy(scope)), source_line: msg.get_source_line(scope).map(|v| v.to_rust_string_lossy(scope)), line_number: msg.get_line_number(scope).and_then(|v| v.try_into().ok()), start_column: msg.get_start_column().try_into().ok(), end_column: msg.get_end_column().try_into().ok(), frames, formatted_frames }
+    Self {
+      message,
+      script_resource_name: msg
+        .get_script_resource_name(scope)
+        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+        .map(|v| v.to_rust_string_lossy(scope)),
+      source_line: msg
+        .get_source_line(scope)
+        .map(|v| v.to_rust_string_lossy(scope)),
+      line_number: msg.get_line_number(scope).and_then(|v| v.try_into().ok()),
+      start_column: msg.get_start_column().try_into().ok(),
+      end_column: msg.get_end_column().try_into().ok(),
+      frames,
+      formatted_frames,
+    }
   }
 }
 
 impl Error for JSError {}
 
-fn format_source_loc(file_name: &str, line_number: i64, column_number: i64) -> String {
+fn format_source_loc(
+  file_name: &str,
+  line_number: i64,
+  column_number: i64,
+) -> String {
   let line_number = line_number;
   let column_number = column_number;
   format!("{}:{}:{}", file_name, line_number, column_number)
@@ -235,7 +361,11 @@ impl fmt::Display for JSError {
       if self.line_number.is_some() && self.start_column.is_some() {
         assert!(self.line_number.is_some());
         assert!(self.start_column.is_some());
-        let source_loc = format_source_loc(script_resource_name, self.line_number.unwrap(), self.start_column.unwrap());
+        let source_loc = format_source_loc(
+          script_resource_name,
+          self.line_number.unwrap(),
+          self.start_column.unwrap(),
+        );
         write!(f, "{}", source_loc)?;
       }
       if self.source_line.is_some() {
@@ -265,7 +395,11 @@ impl fmt::Display for JSError {
   }
 }
 
-pub(crate) fn attach_handle_to_error(scope: &mut v8::Isolate, err: ErrBox, handle: v8::Local<v8::Value>) -> ErrBox {
+pub(crate) fn attach_handle_to_error(
+  scope: &mut v8::Isolate,
+  err: ErrBox,
+  handle: v8::Local<v8::Value>,
+) -> ErrBox {
   // TODO(bartomieju): this is a special case...
   ErrWithV8Handle::new(scope, err, handle).into()
 }
@@ -278,12 +412,19 @@ pub struct ErrWithV8Handle {
 }
 
 impl ErrWithV8Handle {
-  pub fn new(scope: &mut v8::Isolate, err: ErrBox, handle: v8::Local<v8::Value>) -> Self {
+  pub fn new(
+    scope: &mut v8::Isolate,
+    err: ErrBox,
+    handle: v8::Local<v8::Value>,
+  ) -> Self {
     let handle = v8::Global::new(scope, handle);
     Self { err, handle }
   }
 
-  pub fn get_handle<'s>(&self, scope: &mut v8::HandleScope<'s>) -> v8::Local<'s, v8::Value> {
+  pub fn get_handle<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> v8::Local<'s, v8::Value> {
     v8::Local::new(scope, &self.handle)
   }
 }

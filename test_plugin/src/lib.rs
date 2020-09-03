@@ -10,7 +10,10 @@ pub fn deno_plugin_init(interface: &mut dyn Interface) {
   interface.register_op("testAsync", op_test_async);
 }
 
-fn op_test_sync(_interface: &mut dyn Interface, zero_copy: &mut [ZeroCopyBuf]) -> Op {
+fn op_test_sync(
+  _interface: &mut dyn Interface,
+  zero_copy: &mut [ZeroCopyBuf],
+) -> Op {
   if !zero_copy.is_empty() {
     println!("Hello from plugin.");
   }
@@ -24,7 +27,10 @@ fn op_test_sync(_interface: &mut dyn Interface, zero_copy: &mut [ZeroCopyBuf]) -
   Op::Sync(result_box)
 }
 
-fn op_test_async(_interface: &mut dyn Interface, zero_copy: &mut [ZeroCopyBuf]) -> Op {
+fn op_test_async(
+  _interface: &mut dyn Interface,
+  zero_copy: &mut [ZeroCopyBuf],
+) -> Op {
   if !zero_copy.is_empty() {
     println!("Hello from plugin.");
   }

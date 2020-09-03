@@ -8,7 +8,6 @@ use crate::errors::get_error_class;
 use crate::state::State;
 use deno_core::Buf;
 use deno_core::BufVec;
-use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
@@ -52,18 +51,48 @@ pub struct ErrorRecord {
 
 impl Into<Buf> for ErrorRecord {
   fn into(self) -> Buf {
-    let Self { promise_id, arg, error_len, error_class, error_message, .. } = self;
+    let Self {
+      promise_id,
+      arg,
+      error_len,
+      error_class,
+      error_message,
+      ..
+    } = self;
     let header_i32 = [promise_id, arg, error_len];
-    let header_u8 = unsafe { slice::from_raw_parts(&header_i32 as *const _ as *const u8, size_of_val(&header_i32)) };
-    let padded_len = (header_u8.len() + error_class.len() + error_message.len() + 3usize) & !3usize;
-    header_u8.iter().cloned().chain(error_class.iter().cloned()).chain(error_message.into_iter()).chain(repeat(b' ')).take(padded_len).collect()
+    let header_u8 = unsafe {
+      slice::from_raw_parts(
+        &header_i32 as *const _ as *const u8,
+        size_of_val(&header_i32),
+      )
+    };
+    let padded_len =
+      (header_u8.len() + error_class.len() + error_message.len() + 3usize)
+        & !3usize;
+    header_u8
+      .iter()
+      .cloned()
+      .chain(error_class.iter().cloned())
+      .chain(error_message.into_iter())
+      .chain(repeat(b' '))
+      .take(padded_len)
+      .collect()
   }
 }
 
 #[test]
 fn test_error_record() {
-  let expected = vec![1, 0, 0, 0, 255, 255, 255, 255, 11, 0, 0, 0, 66, 97, 100, 82, 101, 115, 111, 117, 114, 99, 101, 69, 114, 114, 111, 114];
-  let err_record = ErrorRecord { promise_id: 1, arg: -1, error_len: 11, error_class: b"BadResource", error_message: b"Error".to_vec() };
+  let expected = vec![
+    1, 0, 0, 0, 255, 255, 255, 255, 11, 0, 0, 0, 66, 97, 100, 82, 101, 115,
+    111, 117, 114, 99, 101, 69, 114, 114, 111, 114,
+  ];
+  let err_record = ErrorRecord {
+    promise_id: 1,
+    arg: -1,
+    error_len: 11,
+    error_class: b"BadResource",
+    error_message: b"Error".to_vec(),
+  };
   let buf: Buf = err_record.into();
   assert_eq!(buf, expected.into_boxed_slice());
 }
@@ -82,13 +111,24 @@ pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
   }
   let ptr = s.as_ptr();
   let ints = unsafe { std::slice::from_raw_parts(ptr, 3) };
-  Some(Record { promise_id: ints[0], arg: ints[1], result: ints[2] })
+  Some(Record {
+    promise_id: ints[0],
+    arg: ints[1],
+    result: ints[2],
+  })
 }
 
 #[test]
 fn test_parse_min_record() {
   let buf = vec![1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0];
-  assert_eq!(parse_min_record(&buf), Some(Record { promise_id: 1, arg: 3, result: 4 }));
+  assert_eq!(
+    parse_min_record(&buf),
+    Some(Record {
+      promise_id: 1,
+      arg: 3,
+      result: 4
+    })
+  );
 
   let buf = vec![];
   assert_eq!(parse_min_record(&buf), None);
@@ -101,20 +141,26 @@ pub fn minimal_op<D>(d: D) -> impl Fn(Rc<State>, BufVec) -> Op
 where
   D: Fn(Rc<State>, bool, i32, BufVec) -> MinimalOp,
 {
-  move |zero_copy: BufVec| {
+  move |state: Rc<State>, zero_copy: BufVec| {
     assert!(!zero_copy.is_empty(), "Expected record at position 0");
     let mut record = match parse_min_record(&zero_copy[0]) {
       Some(r) => r,
       None => {
         let error = ErrBox::type_error("Unparsable control buffer");
         let error_class = get_error_class(&error);
-        let error_record = ErrorRecord { promise_id: 0, arg: -1, error_len: error_class.len() as i32, error_class: error_class.as_bytes(), error_message: error.to_string().as_bytes().to_owned() };
+        let error_record = ErrorRecord {
+          promise_id: 0,
+          arg: -1,
+          error_len: error_class.len() as i32,
+          error_class: error_class.as_bytes(),
+          error_message: error.to_string().as_bytes().to_owned(),
+        };
         return Op::Sync(error_record.into());
       }
     };
     let is_sync = record.promise_id == 0;
     let rid = record.arg;
-    let min_op = d(isolate_state, is_sync, rid, &mut zero_copy[1..]);
+    let min_op = d(state, is_sync, rid, zero_copy);
 
     match min_op {
       MinimalOp::Sync(sync_result) => Op::Sync(match sync_result {
@@ -124,7 +170,13 @@ where
         }
         Err(err) => {
           let error_class = get_error_class(&err);
-          let error_record = ErrorRecord { promise_id: record.promise_id, arg: -1, error_len: error_class.len() as i32, error_class: error_class.as_bytes(), error_message: err.to_string().as_bytes().to_owned() };
+          let error_record = ErrorRecord {
+            promise_id: record.promise_id,
+            arg: -1,
+            error_len: error_class.len() as i32,
+            error_class: error_class.as_bytes(),
+            error_message: err.to_string().as_bytes().to_owned(),
+          };
           error_record.into()
         }
       }),
@@ -137,7 +189,13 @@ where
             }
             Err(err) => {
               let error_class = get_error_class(&err);
-              let error_record = ErrorRecord { promise_id: record.promise_id, arg: -1, error_len: error_class.len() as i32, error_class: error_class.as_bytes(), error_message: err.to_string().as_bytes().to_owned() };
+              let error_record = ErrorRecord {
+                promise_id: record.promise_id,
+                arg: -1,
+                error_len: error_class.len() as i32,
+                error_class: error_class.as_bytes(),
+                error_message: err.to_string().as_bytes().to_owned(),
+              };
               error_record.into()
             }
           }

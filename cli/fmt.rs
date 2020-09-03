@@ -29,7 +29,11 @@ const BOM_CHAR: char = '\u{FEFF}';
 ///
 /// First argument and ignore supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub async fn format(args: Vec<String>, check: bool, exclude: Vec<String>) -> Result<(), ErrBox> {
+pub async fn format(
+  args: Vec<String>,
+  check: bool,
+  exclude: Vec<String>,
+) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
@@ -49,7 +53,10 @@ pub async fn format(args: Vec<String>, check: bool, exclude: Vec<String>) -> Res
   }
 }
 
-async fn check_source_files(config: dprint::configuration::Configuration, paths: Vec<PathBuf>) -> Result<(), ErrBox> {
+async fn check_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
 
@@ -69,11 +76,18 @@ async fn check_source_files(config: dprint::configuration::Configuration, paths:
             match diff(&file_text, &formatted_text) {
               Ok(diff) => {
                 println!();
-                println!("{} {}:", colors::bold("from"), file_path.display().to_string());
+                println!(
+                  "{} {}:",
+                  colors::bold("from"),
+                  file_path.display().to_string()
+                );
                 println!("{}", diff);
               }
               Err(e) => {
-                eprintln!("Error generating diff: {}", file_path.to_string_lossy());
+                eprintln!(
+                  "Error generating diff: {}",
+                  file_path.to_string_lossy()
+                );
                 eprintln!("   {}", e);
               }
             }
@@ -90,15 +104,23 @@ async fn check_source_files(config: dprint::configuration::Configuration, paths:
   })
   .await?;
 
-  let not_formatted_files_count = not_formatted_files_count.load(Ordering::SeqCst);
+  let not_formatted_files_count =
+    not_formatted_files_count.load(Ordering::SeqCst);
   if not_formatted_files_count == 0 {
     Ok(())
   } else {
-    Err(ErrBox::error(format!("Found {} not formatted {}", not_formatted_files_count, files_str(not_formatted_files_count),)))
+    Err(ErrBox::error(format!(
+      "Found {} not formatted {}",
+      not_formatted_files_count,
+      files_str(not_formatted_files_count),
+    )))
   }
 }
 
-async fn format_source_files(config: dprint::configuration::Configuration, paths: Vec<PathBuf>) -> Result<(), ErrBox> {
+async fn format_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
   let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
@@ -111,7 +133,13 @@ async fn format_source_files(config: dprint::configuration::Configuration, paths
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
-            write_file_contents(&file_path, FileContents { had_bom: file_contents.had_bom, text: formatted_text })?;
+            write_file_contents(
+              &file_path,
+              FileContents {
+                had_bom: file_contents.had_bom,
+                text: formatted_text,
+              },
+            )?;
             formatted_files_count.fetch_add(1, Ordering::SeqCst);
             let _g = output_lock.lock().unwrap();
             println!("{}", file_path.to_string_lossy());
@@ -129,7 +157,11 @@ async fn format_source_files(config: dprint::configuration::Configuration, paths
   .await?;
 
   let formatted_files_count = formatted_files_count.load(Ordering::SeqCst);
-  debug!("Formatted {} {}", formatted_files_count, files_str(formatted_files_count),);
+  debug!(
+    "Formatted {} {}",
+    formatted_files_count,
+    files_str(formatted_files_count),
+  );
   Ok(())
 }
 
@@ -170,7 +202,10 @@ fn files_str(len: usize) -> &'static str {
 }
 
 fn is_supported(path: &Path) -> bool {
-  let lowercase_ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
+  let lowercase_ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase());
   if let Some(ext) = lowercase_ext {
     ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
   } else {
@@ -178,11 +213,14 @@ fn is_supported(path: &Path) -> bool {
   }
 }
 
-pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, std::io::Error> {
+pub fn collect_files(
+  files: Vec<String>,
+) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
-    target_files.extend(files_in_subtree(std::env::current_dir()?, is_supported));
+    target_files
+      .extend(files_in_subtree(std::env::current_dir()?, is_supported));
   } else {
     for arg in files {
       let p = PathBuf::from(arg);
@@ -222,7 +260,10 @@ fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
   Ok(FileContents { text, had_bom })
 }
 
-fn write_file_contents(file_path: &PathBuf, file_contents: FileContents) -> Result<(), ErrBox> {
+fn write_file_contents(
+  file_path: &PathBuf,
+  file_contents: FileContents,
+) -> Result<(), ErrBox> {
   let file_text = if file_contents.had_bom {
     // add back the BOM
     format!("{}{}", BOM_CHAR, file_contents.text)
@@ -233,7 +274,10 @@ fn write_file_contents(file_path: &PathBuf, file_contents: FileContents) -> Resu
   Ok(fs::write(file_path, file_text)?)
 }
 
-pub async fn run_parallelized<F>(file_paths: Vec<PathBuf>, f: F) -> Result<(), ErrBox>
+pub async fn run_parallelized<F>(
+  file_paths: Vec<PathBuf>,
+  f: F,
+) -> Result<(), ErrBox>
 where
   F: FnOnce(PathBuf) -> Result<(), ErrBox> + Send + 'static + Clone,
 {
@@ -245,13 +289,27 @@ where
   let join_results = futures::future::join_all(handles).await;
 
   // find the tasks that panicked and let the user know which files
-  let panic_file_paths = join_results.iter().enumerate().filter_map(|(i, join_result)| join_result.as_ref().err().map(|_| file_paths[i].to_string_lossy())).collect::<Vec<_>>();
+  let panic_file_paths = join_results
+    .iter()
+    .enumerate()
+    .filter_map(|(i, join_result)| {
+      join_result
+        .as_ref()
+        .err()
+        .map(|_| file_paths[i].to_string_lossy())
+    })
+    .collect::<Vec<_>>();
   if !panic_file_paths.is_empty() {
     panic!("Panic formatting: {}", panic_file_paths.join(", "))
   }
 
   // check for any errors and if so return the first one
-  let mut errors = join_results.into_iter().filter_map(|join_result| join_result.ok().map(|handle_result| handle_result.err()).flatten());
+  let mut errors = join_results.into_iter().filter_map(|join_result| {
+    join_result
+      .ok()
+      .map(|handle_result| handle_result.err())
+      .flatten()
+  });
 
   if let Some(e) = errors.next() {
     Err(e)

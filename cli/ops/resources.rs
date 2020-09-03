@@ -14,19 +14,33 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_close", s.stateful_json_op_sync(t, op_close));
 }
 
-fn op_resources(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_resources(
+  state: &State,
+  _: (),
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let resource_table = state.resource_table.borrow();
   let serialized_resources = resource_table.entries();
   Ok(json!(serialized_resources))
 }
 
 /// op_close removes a resource from the resource table.
-fn op_close(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_close(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]
   struct CloseArgs {
     rid: i32,
   }
   let args: CloseArgs = serde_json::from_value(args)?;
-  state.resource_table.borrow_mut().close(args.rid as u32).ok_or_else(ErrBox::bad_resource_id)?;
+  state
+    .resource_table
+    .borrow_mut()
+    .close(args.rid as u32)
+    .ok_or_else(ErrBox::bad_resource_id)?;
   Ok(json!({}))
 }

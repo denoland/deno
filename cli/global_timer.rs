@@ -30,7 +30,10 @@ impl GlobalTimer {
     }
   }
 
-  pub fn new_timeout(&mut self, deadline: Instant) -> impl Future<Output = Result<(), ()>> {
+  pub fn new_timeout(
+    &mut self,
+    deadline: Instant,
+  ) -> impl Future<Output = Result<(), ()>> {
     if self.tx.is_some() {
       self.cancel();
     }
@@ -40,7 +43,8 @@ impl GlobalTimer {
     self.tx = Some(tx);
 
     let delay = tokio::time::delay_until(deadline.into());
-    let rx = rx.map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
+    let rx = rx
+      .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 
     futures::future::select(delay, rx).then(|_| futures::future::ok(()))
   }

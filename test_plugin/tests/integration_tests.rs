@@ -14,13 +14,21 @@ const BUILD_VARIANT: &str = "release";
 #[test]
 fn basic() {
   let mut build_plugin_base = Command::new("cargo");
-  let mut build_plugin = build_plugin_base.arg("build").arg("-p").arg("test_plugin");
+  let mut build_plugin =
+    build_plugin_base.arg("build").arg("-p").arg("test_plugin");
   if BUILD_VARIANT == "release" {
     build_plugin = build_plugin.arg("--release");
   }
   let build_plugin_output = build_plugin.output().unwrap();
   assert!(build_plugin_output.status.success());
-  let output = deno_cmd().arg("run").arg("--allow-plugin").arg("--unstable").arg("tests/test.js").arg(BUILD_VARIANT).output().unwrap();
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-plugin")
+    .arg("--unstable")
+    .arg("tests/test.js")
+    .arg(BUILD_VARIANT)
+    .output()
+    .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {

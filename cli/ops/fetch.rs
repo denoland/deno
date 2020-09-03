@@ -21,7 +21,10 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   let t = (); // Temp.
 
   i.register_op("op_fetch", s.stateful_json_op_async(t, op_fetch));
-  i.register_op("op_create_http_client", s.stateful_json_op_sync(t, op_create_http_client));
+  i.register_op(
+    "op_create_http_client",
+    s.stateful_json_op_sync(t, op_create_http_client),
+  );
 }
 
 #[derive(Deserialize)]
@@ -33,13 +36,20 @@ struct FetchArgs {
   client_rid: Option<u32>,
 }
 
-async fn op_fetch(state: Rc<State>, _: (), args: Value, data: BufVec) -> Result<Value, ErrBox> {
+async fn op_fetch(
+  state: Rc<State>,
+  _: (),
+  args: Value,
+  data: BufVec,
+) -> Result<Value, ErrBox> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
   let client = if let Some(rid) = args.client_rid {
     let resource_table_ = state.resource_table.borrow();
-    let r = resource_table_.get::<HttpClientResource>(rid).ok_or_else(ErrBox::bad_resource_id)?;
+    let r = resource_table_
+      .get::<HttpClientResource>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
     r.client.clone()
   } else {
     let client_ref = state.http_client.borrow_mut();
@@ -56,7 +66,10 @@ async fn op_fetch(state: Rc<State>, _: (), args: Value, data: BufVec) -> Result<
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(ErrBox::type_error(format!("scheme '{}' not supported", scheme)));
+    return Err(ErrBox::type_error(format!(
+      "scheme '{}' not supported",
+      scheme
+    )));
   }
 
   state.check_net_url(&url_)?;
@@ -86,7 +99,12 @@ async fn op_fetch(state: Rc<State>, _: (), args: Value, data: BufVec) -> Result<
   }
 
   let body = HttpBody::from(res);
-  let rid = state.resource_table.borrow_mut().add("httpBody", Box::new(StreamResourceHolder::new(StreamResource::HttpBody(Box::new(body)))));
+  let rid = state.resource_table.borrow_mut().add(
+    "httpBody",
+    Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
+      Box::new(body),
+    ))),
+  );
 
   let json_res = json!({
     "bodyRid": rid,
@@ -115,7 +133,12 @@ struct CreateHttpClientOptions {
   ca_file: Option<String>,
 }
 
-fn op_create_http_client(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
+fn op_create_http_client(
+  state: &State,
+  _: (),
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
@@ -124,6 +147,9 @@ fn op_create_http_client(state: &State, _: (), args: Value, _zero_copy: &mut [Ze
 
   let client = create_http_client(args.ca_file.as_deref()).unwrap();
 
-  let rid = state.resource_table.borrow_mut().add("httpClient", Box::new(HttpClientResource::new(client)));
+  let rid = state
+    .resource_table
+    .borrow_mut()
+    .add("httpClient", Box::new(HttpClientResource::new(client)));
   Ok(json!(rid))
 }
