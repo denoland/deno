@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![allow(unused_imports)]
 
 #[macro_use]
 extern crate downcast_rs;

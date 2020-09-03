@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::OpRouter;
 use crate::CoreIsolate;
 use crate::CoreIsolateState;
 use crate::EsIsolate;
@@ -10,14 +9,12 @@ use crate::ZeroCopyBuf;
 
 use futures::future::FutureExt;
 use rusty_v8 as v8;
-use smallvec::SmallVec;
 use url::Url;
 use v8::MapFnTo;
 
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::option::Option;
-use std::rc::Rc;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =

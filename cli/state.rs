@@ -18,7 +18,6 @@ use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
-use deno_core::OpId;
 use deno_core::OpManager;
 use deno_core::OpRouter;
 use deno_core::ResourceTable;
@@ -74,8 +73,6 @@ impl State {
   where
     D: Fn(&State, (), Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>,
   {
-    let state = self.clone();
-
     let f = move |state: Rc<Self>, mut bufs: BufVec| {
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
@@ -109,8 +106,6 @@ impl State {
     D: FnOnce(Rc<Self>, (), Value, BufVec) -> F + Clone,
     F: Future<Output = Result<Value, ErrBox>> + 'static,
   {
-    let state = self.clone();
-
     let f = move |state: Rc<Self>, bufs: BufVec| {
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
@@ -176,8 +171,6 @@ impl State {
   where
     D: Fn(Rc<Self>, BufVec) -> Op,
   {
-    let state = self.clone();
-
     move |state: Rc<Self>, zero_copy: BufVec| -> Op {
       let bytes_sent_control =
         zero_copy.get(0).map(|s| s.len()).unwrap_or(0) as u64;
@@ -259,7 +252,6 @@ impl State {
   where
     D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
   {
-    let state = self.clone();
     move |state: Rc<Self>,
           args: Value,
           zero_copy: BufVec|
@@ -273,7 +265,6 @@ impl State {
   where
     D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
   {
-    let state = self.clone();
     move |state: Rc<Self>,
           args: Value,
           zero_copy: BufVec|
@@ -571,7 +562,7 @@ impl OpRouter for State {
 }
 
 impl OpManager for State {
-  fn register_op<F>(&self, name: &str, op_fn: F) -> deno_core::OpId
+  fn register_op<F>(&self, _name: &str, _op_fn: F) -> deno_core::OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {

@@ -6,10 +6,8 @@ use crate::state::State;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
-use std::cell::RefCell;
 use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -76,7 +74,7 @@ async fn accept_tcp(
   let (tcp_stream, _socket_addr) = accept_fut.await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
-  let mut resource_table = state.resource_table.borrow_mut();
+  let _resource_table = state.resource_table.borrow_mut();
   let rid = state.resource_table.borrow_mut().add(
     "tcpStream",
     Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
@@ -204,7 +202,7 @@ async fn op_datagram_send(
       state.check_net(&args.hostname, args.port)?;
       let addr = resolve_addr(&args.hostname, args.port)?;
       poll_fn(move |cx| {
-        let mut resource_table = state.resource_table.borrow_mut();
+        let _resource_table = state.resource_table.borrow_mut();
         let mut resource_table = state.resource_table.borrow_mut();
         let resource = resource_table
           .get_mut::<UdpSocketResource>(rid as u32)
@@ -264,7 +262,7 @@ async fn op_connect(
       let tcp_stream = TcpStream::connect(&addr).await?;
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
-      let mut resource_table = state.resource_table.borrow_mut();
+      let _resource_table = state.resource_table.borrow_mut();
       let rid = state.resource_table.borrow_mut().add(
         "tcpStream",
         Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(

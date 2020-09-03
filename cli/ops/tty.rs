@@ -4,7 +4,6 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use nix::sys::termios;

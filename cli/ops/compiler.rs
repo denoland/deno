@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{JsonOp, Value};
+
+use crate::ops::dispatch_json::JsonOp;
+use crate::ops::dispatch_json::Value;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::OpManager;
-use deno_core::OpRouter;
-use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -38,7 +38,7 @@ pub fn compiler_op<D>(
 where
   D: Fn(Arc<Mutex<Option<String>>>, Value, BufVec) -> Result<JsonOp, ErrBox>,
 {
-  move |state: Rc<State>,
+  move |_state: Rc<State>,
         args: Value,
         zero_copy: BufVec|
         -> Result<JsonOp, ErrBox> {

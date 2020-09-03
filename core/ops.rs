@@ -1,16 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::core_isolate::CoreIsolateState;
-use crate::v8;
+
 use crate::BufVec;
 use crate::ErrBox;
-use crate::GetErrorClassFn;
-use crate::ZeroCopyBuf;
 use futures::Future;
 use futures::FutureExt;
 use serde_json::json;
 use serde_json::Value;
 use std::borrow;
-use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;

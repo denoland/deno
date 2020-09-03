@@ -3,7 +3,6 @@ use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::env;

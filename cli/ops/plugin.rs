@@ -11,7 +11,6 @@ use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
 use deno_core::OpManager;
-use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
 use std::path::PathBuf;
@@ -45,7 +44,7 @@ pub fn op_open_plugin(
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
 
-  let mut resource_table = state.resource_table.borrow_mut();
+  let resource_table = state.resource_table.borrow_mut();
   let rid = state
     .resource_table
     .borrow_mut()

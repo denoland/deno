@@ -6,11 +6,9 @@ use crate::state::State;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::process::Command;
 

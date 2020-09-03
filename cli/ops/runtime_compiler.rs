@@ -8,8 +8,6 @@ use crate::tsc::runtime_transpile;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 

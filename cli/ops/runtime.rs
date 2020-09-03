@@ -7,7 +7,6 @@ use crate::DenoSubcommand;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use std::env;
 use std::rc::Rc;

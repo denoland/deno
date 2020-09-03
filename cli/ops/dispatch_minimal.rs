@@ -10,7 +10,6 @@ use deno_core::Buf;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
-use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::iter::repeat;
