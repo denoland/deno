@@ -31,10 +31,7 @@ use std::pin::Pin;
 /// Decorate error with location of import that caused the error.
 fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
   if let Some(location) = maybe_location {
-    let location_str = format!(
-      "\nImported from \"{}:{}\"",
-      location.filename, location.line
-    );
+    let location_str = format!("\nImported from \"{}:{}\"", location.filename, location.line);
     let err_str = e.to_string();
     ErrBox::error(format!("{}{}", err_str, location_str))
   } else {
@@ -43,17 +40,11 @@ fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
 }
 
 /// Disallow http:// imports from modules loaded over https://
-fn validate_no_downgrade(
-  module_specifier: &ModuleSpecifier,
-  maybe_referrer: Option<&ModuleSpecifier>,
-  maybe_location: Option<&Location>,
-) -> Result<(), ErrBox> {
+fn validate_no_downgrade(module_specifier: &ModuleSpecifier, maybe_referrer: Option<&ModuleSpecifier>, maybe_location: Option<&Location>) -> Result<(), ErrBox> {
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
-        let e = ErrBox::new("PermissionDenied",
-          "Modules loaded over https:// are not allowed to import modules over http://"
-        );
+        let e = ErrBox::new("PermissionDenied", "Modules loaded over https:// are not allowed to import modules over http://");
         return Err(err_with_location(e, maybe_location));
       };
     };
@@ -63,11 +54,7 @@ fn validate_no_downgrade(
 }
 
 /// Verify that remote file doesn't try to statically import local file.
-fn validate_no_file_from_remote(
-  module_specifier: &ModuleSpecifier,
-  maybe_referrer: Option<&ModuleSpecifier>,
-  maybe_location: Option<&Location>,
-) -> Result<(), ErrBox> {
+fn validate_no_file_from_remote(module_specifier: &ModuleSpecifier, maybe_referrer: Option<&ModuleSpecifier>, maybe_location: Option<&Location>) -> Result<(), ErrBox> {
   if let Some(referrer) = maybe_referrer.as_ref() {
     let referrer_url = referrer.as_url();
     match referrer_url.scheme() {
@@ -94,48 +81,18 @@ fn validate_no_file_from_remote(
 
 // TODO(bartlomieju): handle imports/references in ambient contexts/TS modules
 // https://github.com/denoland/deno/issues/6133
-fn resolve_imports_and_references(
-  referrer: ModuleSpecifier,
-  maybe_import_map: Option<&ImportMap>,
-  import_descs: Vec<ImportDesc>,
-  ref_descs: Vec<TsReferenceDesc>,
-) -> Result<(Vec<ImportDescriptor>, Vec<ReferenceDescriptor>), ErrBox> {
+fn resolve_imports_and_references(referrer: ModuleSpecifier, maybe_import_map: Option<&ImportMap>, import_descs: Vec<ImportDesc>, ref_descs: Vec<TsReferenceDesc>) -> Result<(Vec<ImportDescriptor>, Vec<ReferenceDescriptor>), ErrBox> {
   let mut imports = vec![];
   let mut references = vec![];
 
   for import_desc in import_descs {
-    let maybe_resolved = if let Some(import_map) = maybe_import_map.as_ref() {
-      import_map.resolve(&import_desc.specifier, &referrer.to_string())?
-    } else {
-      None
-    };
+    let maybe_resolved = if let Some(import_map) = maybe_import_map.as_ref() { import_map.resolve(&import_desc.specifier, &referrer.to_string())? } else { None };
 
-    let resolved_specifier = if let Some(resolved) = maybe_resolved {
-      resolved
-    } else {
-      ModuleSpecifier::resolve_import(
-        &import_desc.specifier,
-        &referrer.to_string(),
-      )?
-    };
+    let resolved_specifier = if let Some(resolved) = maybe_resolved { resolved } else { ModuleSpecifier::resolve_import(&import_desc.specifier, &referrer.to_string())? };
 
-    let resolved_type_directive =
-      if let Some(types_specifier) = import_desc.deno_types.as_ref() {
-        Some(ModuleSpecifier::resolve_import(
-          &types_specifier,
-          &referrer.to_string(),
-        )?)
-      } else {
-        None
-      };
+    let resolved_type_directive = if let Some(types_specifier) = import_desc.deno_types.as_ref() { Some(ModuleSpecifier::resolve_import(&types_specifier, &referrer.to_string())?) } else { None };
 
-    let import_descriptor = ImportDescriptor {
-      specifier: import_desc.specifier.to_string(),
-      resolved_specifier,
-      type_directive: import_desc.deno_types.clone(),
-      resolved_type_directive,
-      location: import_desc.location,
-    };
+    let import_descriptor = ImportDescriptor { specifier: import_desc.specifier.to_string(), resolved_specifier, type_directive: import_desc.deno_types.clone(), resolved_type_directive, location: import_desc.location };
 
     imports.push(import_descriptor);
   }
@@ -145,17 +102,9 @@ fn resolve_imports_and_references(
       continue;
     }
 
-    let resolved_specifier = ModuleSpecifier::resolve_import(
-      &ref_desc.specifier,
-      &referrer.to_string(),
-    )?;
+    let resolved_specifier = ModuleSpecifier::resolve_import(&ref_desc.specifier, &referrer.to_string())?;
 
-    let reference_descriptor = ReferenceDescriptor {
-      specifier: ref_desc.specifier.to_string(),
-      resolved_specifier,
-      kind: ref_desc.kind,
-      location: ref_desc.location,
-    };
+    let reference_descriptor = ReferenceDescriptor { specifier: ref_desc.specifier.to_string(), resolved_specifier, kind: ref_desc.kind, location: ref_desc.location };
 
     references.push(reference_descriptor);
   }
@@ -163,20 +112,14 @@ fn resolve_imports_and_references(
   Ok((imports, references))
 }
 
-fn serialize_module_specifier<S>(
-  spec: &ModuleSpecifier,
-  s: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_module_specifier<S>(spec: &ModuleSpecifier, s: S) -> Result<S::Ok, S::Error>
 where
   S: Serializer,
 {
   s.serialize_str(&spec.to_string())
 }
 
-fn serialize_option_module_specifier<S>(
-  maybe_spec: &Option<ModuleSpecifier>,
-  s: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_option_module_specifier<S>(maybe_spec: &Option<ModuleSpecifier>, s: S) -> Result<S::Ok, S::Error>
 where
   S: Serializer,
 {
@@ -187,12 +130,7 @@ where
   }
 }
 
-const SUPPORTED_MEDIA_TYPES: [MediaType; 4] = [
-  MediaType::JavaScript,
-  MediaType::TypeScript,
-  MediaType::JSX,
-  MediaType::TSX,
-];
+const SUPPORTED_MEDIA_TYPES: [MediaType; 4] = [MediaType::JavaScript, MediaType::TypeScript, MediaType::JSX, MediaType::TSX];
 
 pub type ModuleGraph = HashMap<String, ModuleGraphFile>;
 
@@ -240,8 +178,7 @@ pub struct ModuleGraphFile {
   pub source_code: String,
 }
 
-type SourceFileFuture =
-  Pin<Box<dyn Future<Output = Result<(ModuleSpecifier, SourceFile), ErrBox>>>>;
+type SourceFileFuture = Pin<Box<dyn Future<Output = Result<(ModuleSpecifier, SourceFile), ErrBox>>>>;
 
 pub struct ModuleGraphLoader {
   permissions: Permissions,
@@ -255,23 +192,8 @@ pub struct ModuleGraphLoader {
 }
 
 impl ModuleGraphLoader {
-  pub fn new(
-    file_fetcher: SourceFileFetcher,
-    maybe_import_map: Option<ImportMap>,
-    permissions: Permissions,
-    is_dyn_import: bool,
-    analyze_dynamic_imports: bool,
-  ) -> Self {
-    Self {
-      file_fetcher,
-      permissions,
-      maybe_import_map,
-      pending_downloads: FuturesUnordered::new(),
-      has_downloaded: HashSet::new(),
-      graph: ModuleGraph::new(),
-      is_dyn_import,
-      analyze_dynamic_imports,
-    }
+  pub fn new(file_fetcher: SourceFileFetcher, maybe_import_map: Option<ImportMap>, permissions: Permissions, is_dyn_import: bool, analyze_dynamic_imports: bool) -> Self {
+    Self { file_fetcher, permissions, maybe_import_map, pending_downloads: FuturesUnordered::new(), has_downloaded: HashSet::new(), graph: ModuleGraph::new(), is_dyn_import, analyze_dynamic_imports }
   }
 
   /// This method is used to add specified module and all of its
@@ -280,16 +202,11 @@ impl ModuleGraphLoader {
   /// It resolves when all dependent modules have been fetched and analyzed.
   ///
   /// This method can be called multiple times.
-  pub async fn add_to_graph(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Result<(), ErrBox> {
+  pub async fn add_to_graph(&mut self, specifier: &ModuleSpecifier, maybe_referrer: Option<ModuleSpecifier>) -> Result<(), ErrBox> {
     self.download_module(specifier.clone(), maybe_referrer, None)?;
 
     loop {
-      let (specifier, source_file) =
-        self.pending_downloads.next().await.unwrap()?;
+      let (specifier, source_file) = self.pending_downloads.next().await.unwrap()?;
       self.visit_module(&specifier, source_file)?;
       if self.pending_downloads.is_empty() {
         break;
@@ -302,11 +219,7 @@ impl ModuleGraphLoader {
   /// This method is used to create a graph from in-memory files stored in
   /// a hash map. Useful for creating module graph for code received from
   /// the runtime.
-  pub fn build_local_graph(
-    &mut self,
-    _root_name: &str,
-    source_map: &HashMap<String, String>,
-  ) -> Result<(), ErrBox> {
+  pub fn build_local_graph(&mut self, _root_name: &str, source_map: &HashMap<String, String>) -> Result<(), ErrBox> {
     for (spec, source_code) in source_map.iter() {
       self.visit_memory_module(spec.to_string(), source_code.to_string())?;
     }
@@ -319,11 +232,7 @@ impl ModuleGraphLoader {
     self.graph
   }
 
-  fn visit_memory_module(
-    &mut self,
-    specifier: String,
-    source_code: String,
-  ) -> Result<(), ErrBox> {
+  fn visit_memory_module(&mut self, specifier: String, source_code: String) -> Result<(), ErrBox> {
     let mut referenced_files = vec![];
     let mut lib_directives = vec![];
     let mut types_directives = vec![];
@@ -332,25 +241,10 @@ impl ModuleGraphLoader {
     // The resolveModules op only handles fully qualified URLs for referrer.
     // However we will have cases where referrer is "/foo.ts". We add this dummy
     // prefix "memory://" in order to use resolution logic.
-    let module_specifier =
-      if let Ok(spec) = ModuleSpecifier::resolve_url(&specifier) {
-        spec
-      } else {
-        ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))?
-      };
+    let module_specifier = if let Ok(spec) = ModuleSpecifier::resolve_url(&specifier) { spec } else { ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))? };
 
-    let (raw_imports, raw_references) = pre_process_file(
-      &module_specifier.to_string(),
-      map_file_extension(&PathBuf::from(&specifier)),
-      &source_code,
-      self.analyze_dynamic_imports,
-    )?;
-    let (imports, references) = resolve_imports_and_references(
-      module_specifier.clone(),
-      self.maybe_import_map.as_ref(),
-      raw_imports,
-      raw_references,
-    )?;
+    let (raw_imports, raw_references) = pre_process_file(&module_specifier.to_string(), map_file_extension(&PathBuf::from(&specifier)), &source_code, self.analyze_dynamic_imports)?;
+    let (imports, references) = resolve_imports_and_references(module_specifier.clone(), self.maybe_import_map.as_ref(), raw_imports, raw_references)?;
 
     for ref_descriptor in references {
       match ref_descriptor.kind {
@@ -366,50 +260,21 @@ impl ModuleGraphLoader {
       }
     }
 
-    self.graph.insert(
-      module_specifier.to_string(),
-      ModuleGraphFile {
-        specifier: specifier.to_string(),
-        url: specifier.to_string(),
-        redirect: None,
-        version_hash: "".to_string(),
-        media_type: map_file_extension(&PathBuf::from(specifier.clone())),
-        filename: specifier,
-        source_code,
-        imports,
-        referenced_files,
-        lib_directives,
-        types_directives,
-        type_headers: vec![],
-      },
-    );
+    self.graph.insert(module_specifier.to_string(), ModuleGraphFile { specifier: specifier.to_string(), url: specifier.to_string(), redirect: None, version_hash: "".to_string(), media_type: map_file_extension(&PathBuf::from(specifier.clone())), filename: specifier, source_code, imports, referenced_files, lib_directives, types_directives, type_headers: vec![] });
     Ok(())
   }
 
   // TODO(bartlomieju): decorate errors with import location in the source code
   // https://github.com/denoland/deno/issues/5080
-  fn download_module(
-    &mut self,
-    module_specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-    maybe_location: Option<Location>,
-  ) -> Result<(), ErrBox> {
+  fn download_module(&mut self, module_specifier: ModuleSpecifier, maybe_referrer: Option<ModuleSpecifier>, maybe_location: Option<Location>) -> Result<(), ErrBox> {
     if self.has_downloaded.contains(&module_specifier) {
       return Ok(());
     }
 
-    validate_no_downgrade(
-      &module_specifier,
-      maybe_referrer.as_ref(),
-      maybe_location.as_ref(),
-    )?;
+    validate_no_downgrade(&module_specifier, maybe_referrer.as_ref(), maybe_location.as_ref())?;
 
     if !self.is_dyn_import {
-      validate_no_file_from_remote(
-        &module_specifier,
-        maybe_referrer.as_ref(),
-        maybe_location.as_ref(),
-      )?;
+      validate_no_file_from_remote(&module_specifier, maybe_referrer.as_ref(), maybe_location.as_ref())?;
     }
 
     self.has_downloaded.insert(module_specifier.clone());
@@ -419,10 +284,7 @@ impl ModuleGraphLoader {
 
     let load_future = async move {
       let spec_ = spec.clone();
-      let source_file = file_fetcher
-        .fetch_source_file(&spec_, maybe_referrer, perms)
-        .await
-        .map_err(|e| err_with_location(e, maybe_location.as_ref()))?;
+      let source_file = file_fetcher.fetch_source_file(&spec_, maybe_referrer, perms).await.map_err(|e| err_with_location(e, maybe_location.as_ref()))?;
 
       Ok((spec_.clone(), source_file))
     }
@@ -432,11 +294,7 @@ impl ModuleGraphLoader {
     Ok(())
   }
 
-  fn visit_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    source_file: SourceFile,
-  ) -> Result<(), ErrBox> {
+  fn visit_module(&mut self, module_specifier: &ModuleSpecifier, source_file: SourceFile) -> Result<(), ErrBox> {
     let mut imports = vec![];
     let mut referenced_files = vec![];
     let mut lib_directives = vec![];
@@ -451,99 +309,42 @@ impl ModuleGraphLoader {
     // for proper URL point to redirect target.
     if module_specifier.as_url() != &source_file.url {
       // TODO(bartlomieju): refactor, this is a band-aid
-      self.graph.insert(
-        module_specifier.to_string(),
-        ModuleGraphFile {
-          specifier: module_specifier.to_string(),
-          url: module_specifier.to_string(),
-          redirect: Some(source_file.url.to_string()),
-          filename: source_file.filename.to_str().unwrap().to_string(),
-          version_hash: checksum::gen(&[
-            &source_file.source_code.as_bytes(),
-            version::DENO.as_bytes(),
-          ]),
-          media_type: source_file.media_type,
-          source_code: "".to_string(),
-          imports: vec![],
-          referenced_files: vec![],
-          lib_directives: vec![],
-          types_directives: vec![],
-          type_headers: vec![],
-        },
-      );
+      self.graph.insert(module_specifier.to_string(), ModuleGraphFile { specifier: module_specifier.to_string(), url: module_specifier.to_string(), redirect: Some(source_file.url.to_string()), filename: source_file.filename.to_str().unwrap().to_string(), version_hash: checksum::gen(&[&source_file.source_code.as_bytes(), version::DENO.as_bytes()]), media_type: source_file.media_type, source_code: "".to_string(), imports: vec![], referenced_files: vec![], lib_directives: vec![], types_directives: vec![], type_headers: vec![] });
     }
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
-    let version_hash = checksum::gen(&[
-      &source_file.source_code.as_bytes(),
-      version::DENO.as_bytes(),
-    ]);
+    let version_hash = checksum::gen(&[&source_file.source_code.as_bytes(), version::DENO.as_bytes()]);
     let source_code = source_file.source_code.to_string()?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
         let type_header = ReferenceDescriptor {
           specifier: types_specifier.to_string(),
-          resolved_specifier: ModuleSpecifier::resolve_import(
-            &types_specifier,
-            &module_specifier.to_string(),
-          )?,
+          resolved_specifier: ModuleSpecifier::resolve_import(&types_specifier, &module_specifier.to_string())?,
           kind: TsReferenceKind::Types,
           // TODO(bartlomieju): location is not needed in here and constructing
           // location by hand is bad
-          location: Location {
-            filename: module_specifier.to_string(),
-            line: 0,
-            col: 0,
-          },
+          location: Location { filename: module_specifier.to_string(), line: 0, col: 0 },
         };
-        self.download_module(
-          type_header.resolved_specifier.clone(),
-          Some(module_specifier.clone()),
-          None,
-        )?;
+        self.download_module(type_header.resolved_specifier.clone(), Some(module_specifier.clone()), None)?;
         type_headers.push(type_header);
       }
 
-      let (raw_imports, raw_refs) = pre_process_file(
-        &module_specifier.to_string(),
-        source_file.media_type,
-        &source_code,
-        self.analyze_dynamic_imports,
-      )?;
-      let (imports_, references) = resolve_imports_and_references(
-        module_specifier.clone(),
-        self.maybe_import_map.as_ref(),
-        raw_imports,
-        raw_refs,
-      )?;
+      let (raw_imports, raw_refs) = pre_process_file(&module_specifier.to_string(), source_file.media_type, &source_code, self.analyze_dynamic_imports)?;
+      let (imports_, references) = resolve_imports_and_references(module_specifier.clone(), self.maybe_import_map.as_ref(), raw_imports, raw_refs)?;
 
       for import_descriptor in imports_ {
-        self.download_module(
-          import_descriptor.resolved_specifier.clone(),
-          Some(module_specifier.clone()),
-          Some(import_descriptor.location.clone()),
-        )?;
+        self.download_module(import_descriptor.resolved_specifier.clone(), Some(module_specifier.clone()), Some(import_descriptor.location.clone()))?;
 
-        if let Some(type_dir_url) =
-          import_descriptor.resolved_type_directive.as_ref()
-        {
-          self.download_module(
-            type_dir_url.clone(),
-            Some(module_specifier.clone()),
-            Some(import_descriptor.location.clone()),
-          )?;
+        if let Some(type_dir_url) = import_descriptor.resolved_type_directive.as_ref() {
+          self.download_module(type_dir_url.clone(), Some(module_specifier.clone()), Some(import_descriptor.location.clone()))?;
         }
 
         imports.push(import_descriptor);
       }
 
       for ref_descriptor in references {
-        self.download_module(
-          ref_descriptor.resolved_specifier.clone(),
-          Some(module_specifier.clone()),
-          Some(ref_descriptor.location.clone()),
-        )?;
+        self.download_module(ref_descriptor.resolved_specifier.clone(), Some(module_specifier.clone()), Some(ref_descriptor.location.clone()))?;
 
         match ref_descriptor.kind {
           TsReferenceKind::Lib => {
@@ -559,23 +360,7 @@ impl ModuleGraphLoader {
       }
     }
 
-    self.graph.insert(
-      module_specifier.to_string(),
-      ModuleGraphFile {
-        specifier: module_specifier.to_string(),
-        url: module_specifier.to_string(),
-        redirect: None,
-        version_hash,
-        filename: source_file.filename.to_str().unwrap().to_string(),
-        media_type: source_file.media_type,
-        source_code,
-        imports,
-        referenced_files,
-        lib_directives,
-        types_directives,
-        type_headers,
-      },
-    );
+    self.graph.insert(module_specifier.to_string(), ModuleGraphFile { specifier: module_specifier.to_string(), url: module_specifier.to_string(), redirect: None, version_hash, filename: source_file.filename.to_str().unwrap().to_string(), media_type: source_file.media_type, source_code, imports, referenced_files, lib_directives, types_directives, type_headers });
     Ok(())
   }
 }
@@ -585,17 +370,9 @@ mod tests {
   use super::*;
   use crate::global_state::GlobalState;
 
-  async fn build_graph(
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleGraph, ErrBox> {
+  async fn build_graph(module_specifier: &ModuleSpecifier) -> Result<ModuleGraph, ErrBox> {
     let global_state = GlobalState::new(Default::default()).unwrap();
-    let mut graph_loader = ModuleGraphLoader::new(
-      global_state.file_fetcher.clone(),
-      None,
-      Permissions::allow_all(),
-      false,
-      false,
-    );
+    let mut graph_loader = ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all(), false, false);
     graph_loader.add_to_graph(&module_specifier, None).await?;
     Ok(graph_loader.get_graph())
   }
@@ -607,38 +384,19 @@ mod tests {
   async fn source_graph_fetch() {
     let _http_server_guard = test_util::http_server();
 
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(
-      "http://localhost:4545/cli/tests/019_media_types.ts",
-    )
-    .unwrap();
-    let graph = build_graph(&module_specifier)
-      .await
-      .expect("Failed to build graph");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path("http://localhost:4545/cli/tests/019_media_types.ts").unwrap();
+    let graph = build_graph(&module_specifier).await.expect("Failed to build graph");
 
-    let a = graph
-      .get("http://localhost:4545/cli/tests/019_media_types.ts")
-      .unwrap();
+    let a = graph.get("http://localhost:4545/cli/tests/019_media_types.ts").unwrap();
 
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js"
-    ));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts"
-    ));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts"));
     assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts"));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts"
-    ));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts"));
     assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js"));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js"
-    ));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js"
-    ));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts"
-    ));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts"));
 
     assert_eq!(
       serde_json::to_value(&a.imports).unwrap(),
@@ -699,20 +457,13 @@ mod tests {
   async fn source_graph_type_references() {
     let _http_server_guard = test_util::http_server();
 
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(
-      "http://localhost:4545/cli/tests/type_definitions.ts",
-    )
-    .unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path("http://localhost:4545/cli/tests/type_definitions.ts").unwrap();
 
-    let graph = build_graph(&module_specifier)
-      .await
-      .expect("Failed to build graph");
+    let graph = build_graph(&module_specifier).await.expect("Failed to build graph");
 
     eprintln!("json {:#?}", serde_json::to_value(&graph).unwrap());
 
-    let a = graph
-      .get("http://localhost:4545/cli/tests/type_definitions.ts")
-      .unwrap();
+    let a = graph.get("http://localhost:4545/cli/tests/type_definitions.ts").unwrap();
     assert_eq!(
       serde_json::to_value(&a.imports).unwrap(),
       json!([
@@ -736,39 +487,24 @@ mod tests {
         },
       ])
     );
-    assert!(graph
-      .contains_key("http://localhost:4545/cli/tests/type_definitions/foo.js"));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/type_definitions/foo.d.ts"
-    ));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/type_definitions/fizz.js"
-    ));
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/type_definitions/fizz.d.ts"
-    ));
-    assert!(graph
-      .contains_key("http://localhost:4545/cli/tests/type_definitions/qat.ts"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/type_definitions/foo.js"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/type_definitions/foo.d.ts"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/type_definitions/fizz.js"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/type_definitions/fizz.d.ts"));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/type_definitions/qat.ts"));
   }
 
   #[tokio::test]
   async fn source_graph_type_references2() {
     let _http_server_guard = test_util::http_server();
 
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(
-      "http://localhost:4545/cli/tests/type_directives_02.ts",
-    )
-    .unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path("http://localhost:4545/cli/tests/type_directives_02.ts").unwrap();
 
-    let graph = build_graph(&module_specifier)
-      .await
-      .expect("Failed to build graph");
+    let graph = build_graph(&module_specifier).await.expect("Failed to build graph");
 
     eprintln!("{:#?}", serde_json::to_value(&graph).unwrap());
 
-    let a = graph
-      .get("http://localhost:4545/cli/tests/type_directives_02.ts")
-      .unwrap();
+    let a = graph.get("http://localhost:4545/cli/tests/type_directives_02.ts").unwrap();
     assert_eq!(
       serde_json::to_value(&a.imports).unwrap(),
       json!([
@@ -781,13 +517,9 @@ mod tests {
       ])
     );
 
-    assert!(graph.contains_key(
-      "http://localhost:4545/cli/tests/subdir/type_reference.d.ts"
-    ));
+    assert!(graph.contains_key("http://localhost:4545/cli/tests/subdir/type_reference.d.ts"));
 
-    let b = graph
-      .get("http://localhost:4545/cli/tests/subdir/type_reference.js")
-      .unwrap();
+    let b = graph.get("http://localhost:4545/cli/tests/subdir/type_reference.js").unwrap();
     assert_eq!(
       serde_json::to_value(&b.types_directives).unwrap(),
       json!([
@@ -803,18 +535,11 @@ mod tests {
   async fn source_graph_type_references3() {
     let _http_server_guard = test_util::http_server();
 
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(
-      "http://localhost:4545/cli/tests/type_directives_01.ts",
-    )
-    .unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path("http://localhost:4545/cli/tests/type_directives_01.ts").unwrap();
 
-    let graph = build_graph(&module_specifier)
-      .await
-      .expect("Failed to build graph");
+    let graph = build_graph(&module_specifier).await.expect("Failed to build graph");
 
-    let ts = graph
-      .get("http://localhost:4545/cli/tests/type_directives_01.ts")
-      .unwrap();
+    let ts = graph.get("http://localhost:4545/cli/tests/type_directives_01.ts").unwrap();
     assert_eq!(
       serde_json::to_value(&ts.imports).unwrap(),
       json!([
@@ -827,9 +552,7 @@ mod tests {
       ])
     );
 
-    let headers = graph
-      .get("http://127.0.0.1:4545/xTypeScriptTypes.js")
-      .unwrap();
+    let headers = graph.get("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
     assert_eq!(
       serde_json::to_value(&headers.type_headers).unwrap(),
       json!([
@@ -848,14 +571,9 @@ mod tests {
     // ModuleGraphLoader was mistakenly parsing this file as TSX
     // https://github.com/denoland/deno/issues/5867
 
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(
-      "http://localhost:4545/cli/tests/ts_with_generic.ts",
-    )
-    .unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path("http://localhost:4545/cli/tests/ts_with_generic.ts").unwrap();
 
-    build_graph(&module_specifier)
-      .await
-      .expect("Failed to build graph");
+    build_graph(&module_specifier).await.expect("Failed to build graph");
   }
 }
 
@@ -884,76 +602,12 @@ console.log(fizz);
 console.log(qat.qat);  
 "#;
 
-  let (imports, references) =
-    pre_process_file("some/file.ts", MediaType::TypeScript, source, true)
-      .expect("Failed to parse");
+  let (imports, references) = pre_process_file("some/file.ts", MediaType::TypeScript, source, true).expect("Failed to parse");
 
-  assert_eq!(
-    imports,
-    vec![
-      ImportDesc {
-        specifier: "./type_definitions/foo.js".to_string(),
-        deno_types: Some("./type_definitions/foo.d.ts".to_string()),
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 9,
-          col: 0,
-        },
-      },
-      ImportDesc {
-        specifier: "./type_definitions/fizz.js".to_string(),
-        deno_types: Some("./type_definitions/fizz.d.ts".to_string()),
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 11,
-          col: 0,
-        },
-      },
-      ImportDesc {
-        specifier: "./type_definitions/qat.ts".to_string(),
-        deno_types: None,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 15,
-          col: 0,
-        },
-      },
-    ]
-  );
+  assert_eq!(imports, vec![ImportDesc { specifier: "./type_definitions/foo.js".to_string(), deno_types: Some("./type_definitions/foo.d.ts".to_string()), location: Location { filename: "some/file.ts".to_string(), line: 9, col: 0 } }, ImportDesc { specifier: "./type_definitions/fizz.js".to_string(), deno_types: Some("./type_definitions/fizz.d.ts".to_string()), location: Location { filename: "some/file.ts".to_string(), line: 11, col: 0 } }, ImportDesc { specifier: "./type_definitions/qat.ts".to_string(), deno_types: None, location: Location { filename: "some/file.ts".to_string(), line: 15, col: 0 } },]);
 
   // According to TS docs (https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html)
   // directives that are not at the top of the file are ignored, so only
   // 3 references should be captured instead of 4.
-  assert_eq!(
-    references,
-    vec![
-      TsReferenceDesc {
-        specifier: "dom".to_string(),
-        kind: TsReferenceKind::Lib,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 5,
-          col: 0,
-        },
-      },
-      TsReferenceDesc {
-        specifier: "./type_reference.d.ts".to_string(),
-        kind: TsReferenceKind::Types,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 6,
-          col: 0,
-        },
-      },
-      TsReferenceDesc {
-        specifier: "./type_reference/dep.ts".to_string(),
-        kind: TsReferenceKind::Path,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 7,
-          col: 0,
-        },
-      },
-    ]
-  );
+  assert_eq!(references, vec![TsReferenceDesc { specifier: "dom".to_string(), kind: TsReferenceKind::Lib, location: Location { filename: "some/file.ts".to_string(), line: 5, col: 0 } }, TsReferenceDesc { specifier: "./type_reference.d.ts".to_string(), kind: TsReferenceKind::Types, location: Location { filename: "some/file.ts".to_string(), line: 6, col: 0 } }, TsReferenceDesc { specifier: "./type_reference/dep.ts".to_string(), kind: TsReferenceKind::Path, location: Location { filename: "some/file.ts".to_string(), line: 7, col: 0 } },]);
 }

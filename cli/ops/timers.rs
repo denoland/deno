@@ -13,25 +13,14 @@ use std::time::Duration;
 use std::time::Instant;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+  let t = (); // Temp.
 
-  i.register_op(
-    "op_global_timer_stop",
-    s.stateful_json_op_sync(t, op_global_timer_stop),
-  );
-  i.register_op(
-    "op_global_timer",
-    s.stateful_json_op_async(t, op_global_timer),
-  );
+  i.register_op("op_global_timer_stop", s.stateful_json_op_sync(t, op_global_timer_stop));
+  i.register_op("op_global_timer", s.stateful_json_op_async(t, op_global_timer));
   i.register_op("op_now", s.stateful_json_op_sync(t, op_now));
 }
 
-fn op_global_timer_stop(
-  state: &State,
-  _resource_table: &mut ResourceTable,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_global_timer_stop(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   state.global_timer.borrow_mut().cancel();
   Ok(json!({}))
 }
@@ -41,21 +30,12 @@ struct GlobalTimerArgs {
   timeout: u64,
 }
 
-async fn op_global_timer(
-  state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+async fn op_global_timer(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
-  let timer_fut = state
-    .global_timer
-    .borrow_mut()
-    .new_timeout(deadline)
-    .boxed_local();
+  let timer_fut = state.global_timer.borrow_mut().new_timeout(deadline).boxed_local();
   let _ = timer_fut.await;
   Ok(json!({}))
 }
@@ -64,12 +44,7 @@ async fn op_global_timer(
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-fn op_now(
-  state: &State,
-  _resource_table: &mut ResourceTable,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_now(state: &State, _: (), _args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds

@@ -12,11 +12,8 @@ use idna::{domain_to_ascii, domain_to_ascii_strict};
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-  i.register_op(
-    "op_domain_to_ascii",
-    s.stateful_json_op_sync(t, op_domain_to_ascii),
-  );
+  let t = (); // Temp.
+  i.register_op("op_domain_to_ascii", s.stateful_json_op_sync(t, op_domain_to_ascii));
 }
 
 #[derive(Deserialize)]
@@ -26,21 +23,12 @@ struct DomainToAscii {
   be_strict: bool,
 }
 
-fn op_domain_to_ascii(
-  _state: &State,
-  _resource_table: &mut ResourceTable,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_domain_to_ascii(_state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   let args: DomainToAscii = serde_json::from_value(args)?;
-  if args.be_strict {
-    domain_to_ascii_strict(args.domain.as_str())
-  } else {
-    domain_to_ascii(args.domain.as_str())
-  }
-  .map_err(|err| {
-    let message = format!("Invalid IDNA encoded domain name: {:?}", err);
-    ErrBox::new("URIError", message)
-  })
-  .map(|domain| json!(domain))
+  if args.be_strict { domain_to_ascii_strict(args.domain.as_str()) } else { domain_to_ascii(args.domain.as_str()) }
+    .map_err(|err| {
+      let message = format!("Invalid IDNA encoded domain name: {:?}", err);
+      ErrBox::new("URIError", message)
+    })
+    .map(|domain| json!(domain))
 }

@@ -27,18 +27,10 @@ pub fn detect_charset(bytes: &'_ [u8]) -> &'static str {
 /// Supports all encodings supported by the encoding_rs crate, which includes
 /// all encodings specified in the WHATWG Encoding Standard, and only those
 /// encodings (see: https://encoding.spec.whatwg.org/).
-pub fn convert_to_utf8<'a>(
-  bytes: &'a [u8],
-  charset: &'_ str,
-) -> Result<Cow<'a, str>, Error> {
+pub fn convert_to_utf8<'a>(bytes: &'a [u8], charset: &'_ str) -> Result<Cow<'a, str>, Error> {
   match Encoding::for_label(charset.as_bytes()) {
-    Some(encoding) => encoding
-      .decode_without_bom_handling_and_without_replacement(bytes)
-      .ok_or_else(|| ErrorKind::InvalidData.into()),
-    None => Err(Error::new(
-      ErrorKind::InvalidInput,
-      format!("Unsupported charset: {}", charset),
-    )),
+    Some(encoding) => encoding.decode_without_bom_handling_and_without_replacement(bytes).ok_or_else(|| ErrorKind::InvalidData.into()),
+    None => Err(Error::new(ErrorKind::InvalidInput, format!("Unsupported charset: {}", charset))),
   }
 }
 
@@ -48,17 +40,12 @@ mod tests {
 
   fn test_detection(test_data: &[u8], expected_charset: &str) {
     let detected_charset = detect_charset(test_data);
-    assert_eq!(
-      expected_charset.to_lowercase(),
-      detected_charset.to_lowercase()
-    );
+    assert_eq!(expected_charset.to_lowercase(), detected_charset.to_lowercase());
   }
 
   #[test]
   fn test_detection_utf8_no_bom() {
-    let test_data = "Hello UTF-8 it is \u{23F0} for Deno!"
-      .to_owned()
-      .into_bytes();
+    let test_data = "Hello UTF-8 it is \u{23F0} for Deno!".to_owned().into_bytes();
     test_detection(&test_data, "utf-8");
   }
 

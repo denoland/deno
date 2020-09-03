@@ -28,14 +28,8 @@ use url::Url;
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
   let mut headers = HeaderMap::new();
-  headers.insert(
-    USER_AGENT,
-    format!("Deno/{}", version::DENO).parse().unwrap(),
-  );
-  let mut builder = Client::builder()
-    .redirect(Policy::none())
-    .default_headers(headers)
-    .use_rustls_tls();
+  headers.insert(USER_AGENT, format!("Deno/{}", version::DENO).parse().unwrap());
+  let mut builder = Client::builder().redirect(Policy::none()).default_headers(headers).use_rustls_tls();
 
   if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
@@ -44,9 +38,7 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
     builder = builder.add_root_certificate(cert);
   }
 
-  builder
-    .build()
-    .map_err(|_| ErrBox::error("Unable to build http client"))
+  builder.build().map_err(|_| ErrBox::error("Unable to build http client"))
 }
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
@@ -56,22 +48,17 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
     Url::parse(location).expect("provided redirect url should be a valid url")
   } else if location.starts_with("//") {
     // "//" authority path-abempty
-    Url::parse(&format!("{}:{}", base_url.scheme(), location))
-      .expect("provided redirect url should be a valid url")
+    Url::parse(&format!("{}:{}", base_url.scheme(), location)).expect("provided redirect url should be a valid url")
   } else if location.starts_with('/') {
     // path-absolute
-    base_url
-      .join(location)
-      .expect("provided redirect url should be a valid url")
+    base_url.join(location).expect("provided redirect url should be a valid url")
   } else {
     // assuming path-noscheme | path-empty
     let base_url_path_str = base_url.path().to_owned();
     // Pop last part or url (after last slash)
     let segs: Vec<&str> = base_url_path_str.rsplitn(2, '/').collect();
     let new_path = format!("{}/{}", segs.last().unwrap_or(&""), location);
-    base_url
-      .join(&new_path)
-      .expect("provided redirect url should be a valid url")
+    base_url.join(&new_path).expect("provided redirect url should be a valid url")
   }
 }
 
@@ -92,11 +79,7 @@ pub enum FetchOnceResult {
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-pub fn fetch_once(
-  client: Client,
-  url: &Url,
-  cached_etag: Option<String>,
-) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
+pub fn fetch_once(client: Client, url: &Url, cached_etag: Option<String>) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
   let url = url.clone();
 
   let fut = async move {
@@ -116,44 +99,26 @@ pub fn fetch_once(
     let headers = response.headers();
 
     if let Some(warning) = headers.get("X-Deno-Warning") {
-      eprintln!(
-        "{} {}",
-        crate::colors::yellow("Warning"),
-        warning.to_str().unwrap()
-      );
+      eprintln!("{} {}", crate::colors::yellow("Warning"), warning.to_str().unwrap());
     }
 
     for key in headers.keys() {
       let key_str = key.to_string();
       let values = headers.get_all(key);
-      let values_str = values
-        .iter()
-        .map(|e| e.to_str().unwrap().to_string())
-        .collect::<Vec<String>>()
-        .join(",");
+      let values_str = values.iter().map(|e| e.to_str().unwrap().to_string()).collect::<Vec<String>>().join(",");
       headers_.insert(key_str, values_str);
     }
 
     if response.status().is_redirection() {
-      let location_string = response
-        .headers()
-        .get(LOCATION)
-        .expect("url redirection should provide 'location' header")
-        .to_str()
-        .unwrap();
+      let location_string = response.headers().get(LOCATION).expect("url redirection should provide 'location' header").to_str().unwrap();
 
       debug!("Redirecting to {:?}...", &location_string);
       let new_url = resolve_url_from_location(&url, location_string);
       return Ok(FetchOnceResult::Redirect(new_url, headers_));
     }
 
-    if response.status().is_client_error()
-      || response.status().is_server_error()
-    {
-      let err = io::Error::new(
-        io::ErrorKind::Other,
-        format!("Import '{}' failed: {}", &url, response.status()),
-      );
+    if response.status().is_client_error() || response.status().is_server_error() {
+      let err = io::Error::new(io::ErrorKind::Other, format!("Import '{}' failed: {}", &url, response.status()));
       return Err(err.into());
     }
 
@@ -175,28 +140,15 @@ pub struct HttpBody {
 
 impl HttpBody {
   pub fn from(body: Response) -> Self {
-    Self {
-      response: body,
-      chunk: None,
-      pos: 0,
-    }
+    Self { response: body, chunk: None, pos: 0 }
   }
 }
 
 impl AsyncRead for HttpBody {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &mut [u8],
-  ) -> Poll<Result<usize, io::Error>> {
+  fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<Result<usize, io::Error>> {
     let mut inner = self.get_mut();
     if let Some(chunk) = inner.chunk.take() {
-      debug!(
-        "HttpBody Fake Read buf {} chunk {} pos {}",
-        buf.len(),
-        chunk.len(),
-        inner.pos
-      );
+      debug!("HttpBody Fake Read buf {} chunk {} pos {}", buf.len(), chunk.len(), inner.pos);
       let n = min(buf.len(), chunk.len() - inner.pos);
       {
         let rest = &chunk[inner.pos..];
@@ -219,12 +171,7 @@ impl AsyncRead for HttpBody {
     let result = match futures::ready!(chunk_future.poll(cx)) {
       Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
       Ok(Some(chunk)) => {
-        debug!(
-          "HttpBody Real Read buf {} chunk {} pos {}",
-          buf.len(),
-          chunk.len(),
-          inner.pos
-        );
+        debug!("HttpBody Real Read buf {} chunk {} pos {}", buf.len(), chunk.len(), inner.pos);
         let n = min(buf.len(), chunk.len());
         buf[..n].copy_from_slice(&chunk[..n]);
         if buf.len() < chunk.len() {
@@ -247,8 +194,7 @@ mod tests {
   async fn test_fetch_string() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
+    let url = Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -265,18 +211,12 @@ mod tests {
   async fn test_fetch_gzip() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
-    )
-    .unwrap();
+    let url = Url::parse("http://127.0.0.1:4545/cli/tests/053_import_compression/gziped").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
+      assert_eq!(headers.get("content-type").unwrap(), "application/javascript");
       assert_eq!(headers.get("etag"), None);
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {
@@ -293,17 +233,13 @@ mod tests {
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/typescript"
-      );
+      assert_eq!(headers.get("content-type").unwrap(), "application/typescript");
       assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
     } else {
       panic!();
     }
 
-    let res =
-      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
+    let res = fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -311,19 +247,13 @@ mod tests {
   async fn test_fetch_brotli() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
-    )
-    .unwrap();
+    let url = Url::parse("http://127.0.0.1:4545/cli/tests/053_import_compression/brotli").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
+      assert_eq!(headers.get("content-type").unwrap(), "application/javascript");
       assert_eq!(headers.get("etag"), None);
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {
@@ -335,11 +265,9 @@ mod tests {
   async fn test_fetch_once_with_redirect() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
+    let url = Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
-    let target_url =
-      Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
+    let target_url = Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
@@ -391,16 +319,9 @@ mod tests {
   async fn test_fetch_with_cafile_string() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
+    let url = Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
-    .unwrap();
+    let client = create_http_client(Some(test_util::root_path().join("std/http/testdata/tls/RootCA.pem").to_str().unwrap())).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
@@ -416,24 +337,12 @@ mod tests {
   async fn test_fetch_with_cafile_gzip() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "https://localhost:5545/cli/tests/053_import_compression/gziped",
-    )
-    .unwrap();
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
-    .unwrap();
+    let url = Url::parse("https://localhost:5545/cli/tests/053_import_compression/gziped").unwrap();
+    let client = create_http_client(Some(test_util::root_path().join("std/http/testdata/tls/RootCA.pem").to_str().unwrap())).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
+      assert_eq!(headers.get("content-type").unwrap(), "application/javascript");
       assert_eq!(headers.get("etag"), None);
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {
@@ -445,29 +354,19 @@ mod tests {
   async fn test_fetch_with_cafile_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
-    .unwrap();
+    let client = create_http_client(Some(test_util::root_path().join("std/http/testdata/tls/RootCA.pem").to_str().unwrap())).unwrap();
     let result = fetch_once(client.clone(), &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/typescript"
-      );
+      assert_eq!(headers.get("content-type").unwrap(), "application/typescript");
       assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
     }
 
-    let res =
-      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
+    let res = fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -475,25 +374,13 @@ mod tests {
   async fn test_fetch_with_cafile_brotli() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "https://localhost:5545/cli/tests/053_import_compression/brotli",
-    )
-    .unwrap();
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
-    .unwrap();
+    let url = Url::parse("https://localhost:5545/cli/tests/053_import_compression/brotli").unwrap();
+    let client = create_http_client(Some(test_util::root_path().join("std/http/testdata/tls/RootCA.pem").to_str().unwrap())).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
+      assert_eq!(headers.get("content-type").unwrap(), "application/javascript");
       assert_eq!(headers.get("etag"), None);
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {

@@ -4,12 +4,14 @@ use crate::ops::dispatch_json::JsonOp;
 use crate::ops::dispatch_json::Value;
 use crate::state::State;
 use deno_core::plugin_api;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
@@ -29,12 +31,7 @@ struct OpenPluginArgs {
   filename: String,
 }
 
-pub fn op_open_plugin(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+pub fn op_open_plugin(isolate_state: &mut CoreIsolateState, state: &Rc<State>, args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
   let filename = PathBuf::from(&args.filename);
@@ -45,19 +42,14 @@ pub fn op_open_plugin(
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
 
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
-  let rid = resource_table.add("plugin", Box::new(plugin_resource));
+  let mut resource_table = state.resource_table.borrow_mut();
+  let rid = state.resource_table.borrow_mut().add("plugin", Box::new(plugin_resource));
   let plugin_resource = resource_table.get::<PluginResource>(rid).unwrap();
 
-  let deno_plugin_init = *unsafe {
-    plugin_resource
-      .lib
-      .symbol::<plugin_api::InitFn>("deno_plugin_init")
-  }
-  .unwrap();
+  let deno_plugin_init = *unsafe { plugin_resource.lib.symbol::<plugin_api::InitFn>("deno_plugin_init") }.unwrap();
   drop(resource_table);
 
-  let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
+  let mut interface = PluginInterface::new(state, &plugin_lib);
   deno_plugin_init(&mut interface);
 
   Ok(JsonOp::Sync(json!(rid)))
@@ -74,19 +66,13 @@ impl PluginResource {
 }
 
 struct PluginInterface<'a> {
-  isolate_state: &'a mut CoreIsolateState,
+  state: &'a Rc<State>,
   plugin_lib: &'a Rc<Library>,
 }
 
 impl<'a> PluginInterface<'a> {
-  fn new(
-    isolate_state: &'a mut CoreIsolateState,
-    plugin_lib: &'a Rc<Library>,
-  ) -> Self {
-    Self {
-      isolate_state,
-      plugin_lib,
-    }
+  fn new(state: &'a Rc<State>, plugin_lib: &'a Rc<Library>) -> Self {
+    Self { state, plugin_lib }
   }
 }
 
@@ -96,28 +82,17 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
   /// keep reference to the plugin `Library` object, so that the plugin doesn't
   /// get unloaded before all its op registrations and the futures created by
   /// them are dropped.
-  fn register_op(
-    &mut self,
-    name: &str,
-    dispatch_op_fn: plugin_api::DispatchOpFn,
-  ) -> OpId {
+  fn register_op(&mut self, name: &str, dispatch_op_fn: plugin_api::DispatchOpFn) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self.isolate_state.op_registry.register(
-      name,
-      move |isolate_state, zero_copy| {
-        let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
-        let op = dispatch_op_fn(&mut interface, zero_copy);
-        match op {
-          sync_op @ Op::Sync(..) => sync_op,
-          Op::Async(fut) => {
-            Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut))
-          }
-          Op::AsyncUnref(fut) => {
-            Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
-          }
-        }
-      },
-    )
+    self.state.register_op(name, move |state: Rc<State>, mut zero_copy: BufVec| {
+      let mut interface = PluginInterface::new(&state, &plugin_lib);
+      let op = dispatch_op_fn(&mut interface, &mut zero_copy);
+      match op {
+        sync_op @ Op::Sync(..) => sync_op,
+        Op::Async(fut) => Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut)),
+        Op::AsyncUnref(fut) => Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut)),
+      }
+    })
   }
 }
 
@@ -128,10 +103,7 @@ struct PluginOpAsyncFuture {
 
 impl PluginOpAsyncFuture {
   fn new(plugin_lib: &Rc<Library>, fut: OpAsyncFuture) -> Pin<Box<Self>> {
-    let wrapped_fut = Self {
-      fut: Some(fut),
-      _plugin_lib: plugin_lib.clone(),
-    };
+    let wrapped_fut = Self { fut: Some(fut), _plugin_lib: plugin_lib.clone() };
     Box::pin(wrapped_fut)
   }
 }

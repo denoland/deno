@@ -45,9 +45,7 @@ fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2015.proxy.d.ts" => inc!("lib.es2015.proxy.d.ts"),
     "lib.es2015.reflect.d.ts" => inc!("lib.es2015.reflect.d.ts"),
     "lib.es2015.symbol.d.ts" => inc!("lib.es2015.symbol.d.ts"),
-    "lib.es2015.symbol.wellknown.d.ts" => {
-      inc!("lib.es2015.symbol.wellknown.d.ts")
-    }
+    "lib.es2015.symbol.wellknown.d.ts" => inc!("lib.es2015.symbol.wellknown.d.ts"),
     "lib.es2016.array.include.d.ts" => inc!("lib.es2016.array.include.d.ts"),
     "lib.es2017.intl.d.ts" => inc!("lib.es2017.intl.d.ts"),
     "lib.es2017.object.d.ts" => inc!("lib.es2017.object.d.ts"),
@@ -67,26 +65,20 @@ fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2020.intl.d.ts" => inc!("lib.es2020.intl.d.ts"),
     "lib.es2020.promise.d.ts" => inc!("lib.es2020.promise.d.ts"),
     "lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
-    "lib.es2020.symbol.wellknown.d.ts" => {
-      inc!("lib.es2020.symbol.wellknown.d.ts")
-    }
+    "lib.es2020.symbol.wellknown.d.ts" => inc!("lib.es2020.symbol.wellknown.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
     "lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
     "lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
     "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
     "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
-    "lib.webworker.importscripts.d.ts" => {
-      inc!("lib.webworker.importscripts.d.ts")
-    }
+    "lib.webworker.importscripts.d.ts" => inc!("lib.webworker.importscripts.d.ts"),
     _ => None,
   }
 }
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
 /// CoreIsolate.
-pub fn op_fetch_asset<H: std::hash::BuildHasher, M>(
-  custom_assets: HashMap<String, PathBuf, H>,
-) -> impl Fn(Rc<M>, BufVec) -> Op + Sized {
+pub fn op_fetch_asset<H: std::hash::BuildHasher, M>(custom_assets: HashMap<String, PathBuf, H>) -> impl Fn(Rc<M>, BufVec) -> Op + Sized {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
@@ -97,8 +89,7 @@ pub fn op_fetch_asset<H: std::hash::BuildHasher, M>(
     let asset_code = if let Some(source_code) = get_asset(name) {
       source_code.to_string()
     } else if let Some(asset_path) = custom_assets.get(name) {
-      let source_code_vec =
-        std::fs::read(&asset_path).expect("Asset not found");
+      let source_code_vec = std::fs::read(&asset_path).expect("Asset not found");
       let source_code = std::str::from_utf8(&source_code_vec).unwrap();
       source_code.to_string()
     } else {

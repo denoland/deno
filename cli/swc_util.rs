@@ -53,11 +53,7 @@ impl Into<Location> for swc_common::Loc {
       _ => panic!("invalid filename"),
     };
 
-    Location {
-      filename,
-      line: self.line,
-      col: self.col_display,
-    }
+    Location { filename, line: self.line, col: self.col_display }
   }
 }
 
@@ -124,10 +120,7 @@ impl fmt::Display for SwcDiagnosticBuffer {
 }
 
 impl SwcDiagnosticBuffer {
-  pub fn from_swc_error(
-    error_buffer: SwcErrorBuffer,
-    parser: &AstParser,
-  ) -> Self {
+  pub fn from_swc_error(error_buffer: SwcErrorBuffer, parser: &AstParser) -> Self {
     let s = error_buffer.0.read().unwrap().clone();
 
     let diagnostics = s
@@ -141,10 +134,7 @@ impl SwcDiagnosticBuffer {
             FileName::Custom(n) => n,
             _ => unreachable!(),
           };
-          msg = format!(
-            "{} at {}:{}:{}",
-            msg, filename, location.line, location.col_display
-          );
+          msg = format!("{} at {}:{}:{}", msg, filename, location.line, location.col_display);
         }
 
         msg
@@ -186,44 +176,18 @@ impl AstParser {
   pub fn default() -> Self {
     let buffered_error = SwcErrorBuffer::default();
 
-    let handler = Handler::with_emitter_and_flags(
-      Box::new(buffered_error.clone()),
-      HandlerFlags {
-        dont_buffer_diagnostics: true,
-        can_emit_warnings: true,
-        ..Default::default()
-      },
-    );
+    let handler = Handler::with_emitter_and_flags(Box::new(buffered_error.clone()), HandlerFlags { dont_buffer_diagnostics: true, can_emit_warnings: true, ..Default::default() });
 
-    AstParser {
-      buffered_error,
-      source_map: Rc::new(SourceMap::default()),
-      handler,
-      comments: SingleThreadedComments::default(),
-      globals: Globals::new(),
-    }
+    AstParser { buffered_error, source_map: Rc::new(SourceMap::default()), handler, comments: SingleThreadedComments::default(), globals: Globals::new() }
   }
 
-  pub fn parse_module(
-    &self,
-    file_name: &str,
-    media_type: MediaType,
-    source_code: &str,
-  ) -> Result<swc_ecmascript::ast::Module, SwcDiagnosticBuffer> {
-    let swc_source_file = self.source_map.new_source_file(
-      FileName::Custom(file_name.to_string()),
-      source_code.to_string(),
-    );
+  pub fn parse_module(&self, file_name: &str, media_type: MediaType, source_code: &str) -> Result<swc_ecmascript::ast::Module, SwcDiagnosticBuffer> {
+    let swc_source_file = self.source_map.new_source_file(FileName::Custom(file_name.to_string()), source_code.to_string());
 
     let buffered_err = self.buffered_error.clone();
     let syntax = get_syntax_for_media_type(media_type);
 
-    let lexer = Lexer::new(
-      syntax,
-      JscTarget::Es2019,
-      StringInput::from(&*swc_source_file),
-      Some(&self.comments),
-    );
+    let lexer = Lexer::new(syntax, JscTarget::Es2019, StringInput::from(&*swc_source_file), Some(&self.comments));
 
     let mut parser = Parser::new_from(lexer);
 
@@ -238,13 +202,8 @@ impl AstParser {
     self.source_map.lookup_char_pos(span.lo())
   }
 
-  pub fn get_span_comments(
-    &self,
-    span: Span,
-  ) -> Vec<swc_common::comments::Comment> {
-    self
-      .comments
-      .with_leading(span.lo(), |comments| comments.to_vec())
+  pub fn get_span_comments(&self, span: Span) -> Vec<swc_common::comments::Comment> {
+    self.comments.with_leading(span.lo(), |comments| comments.to_vec())
   }
 }
 
@@ -268,22 +227,11 @@ pub struct EmitTranspileOptions {
 
 impl Default for EmitTranspileOptions {
   fn default() -> Self {
-    EmitTranspileOptions {
-      emit_metadata: false,
-      inline_source_map: true,
-      jsx_factory: "React.createElement".into(),
-      jsx_fragment_factory: "React.Fragment".into(),
-      transform_jsx: true,
-    }
+    EmitTranspileOptions { emit_metadata: false, inline_source_map: true, jsx_factory: "React.createElement".into(), jsx_fragment_factory: "React.Fragment".into(), transform_jsx: true }
   }
 }
 
-pub fn transpile(
-  file_name: &str,
-  media_type: MediaType,
-  source_code: &str,
-  options: &EmitTranspileOptions,
-) -> Result<(String, Option<String>), ErrBox> {
+pub fn transpile(file_name: &str, media_type: MediaType, source_code: &str, options: &EmitTranspileOptions) -> Result<(String, Option<String>), ErrBox> {
   let ast_parser = AstParser::default();
   let module = ast_parser.parse_module(file_name, media_type, source_code)?;
   let program = Program::Module(module);
@@ -299,48 +247,23 @@ pub fn transpile(
       ..Default::default()
     },
   );
-  let mut passes = chain!(
-    Optional::new(jsx_pass, options.transform_jsx),
-    decorators::decorators(decorators::Config {
-      legacy: true,
-      emit_metadata: options.emit_metadata,
-    }),
-    typescript::strip(),
-    fixer(Some(&ast_parser.comments)),
-  );
+  let mut passes = chain!(Optional::new(jsx_pass, options.transform_jsx), decorators::decorators(decorators::Config { legacy: true, emit_metadata: options.emit_metadata }), typescript::strip(), fixer(Some(&ast_parser.comments)),);
 
-  let program = swc_common::GLOBALS.set(&Globals::new(), || {
-    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-      program.fold_with(&mut passes)
-    })
-  });
+  let program = swc_common::GLOBALS.set(&Globals::new(), || helpers::HELPERS.set(&helpers::Helpers::new(false), || program.fold_with(&mut passes)));
 
   let mut src_map_buf = vec![];
   let mut buf = vec![];
   {
-    let writer = Box::new(JsWriter::new(
-      ast_parser.source_map.clone(),
-      "\n",
-      &mut buf,
-      Some(&mut src_map_buf),
-    ));
+    let writer = Box::new(JsWriter::new(ast_parser.source_map.clone(), "\n", &mut buf, Some(&mut src_map_buf)));
     let config = swc_ecmascript::codegen::Config { minify: false };
-    let mut emitter = swc_ecmascript::codegen::Emitter {
-      cfg: config,
-      comments: Some(&ast_parser.comments),
-      cm: ast_parser.source_map.clone(),
-      wr: writer,
-    };
+    let mut emitter = swc_ecmascript::codegen::Emitter { cfg: config, comments: Some(&ast_parser.comments), cm: ast_parser.source_map.clone(), wr: writer };
     program.emit_with(&mut emitter)?;
   }
   let mut src = String::from_utf8(buf)?;
   let mut map: Option<String> = None;
   {
     let mut buf = Vec::new();
-    ast_parser
-      .source_map
-      .build_source_map_from(&mut src_map_buf, None)
-      .to_writer(&mut buf)?;
+    ast_parser.source_map.build_source_map_from(&mut src_map_buf, None).to_writer(&mut buf)?;
 
     if options.inline_source_map {
       src.push_str("//# sourceMappingURL=data:application/json;base64,");
@@ -375,18 +298,10 @@ mod tests {
       }
     }
     "#;
-    let result = transpile(
-      "test.ts",
-      MediaType::TypeScript,
-      source,
-      &EmitTranspileOptions::default(),
-    )
-    .unwrap();
+    let result = transpile("test.ts", MediaType::TypeScript, source, &EmitTranspileOptions::default()).unwrap();
     let (code, maybe_map) = result;
     assert!(code.starts_with("var D;\n(function(D) {\n"));
-    assert!(
-      code.contains("\n//# sourceMappingURL=data:application/json;base64,")
-    );
+    assert!(code.contains("\n//# sourceMappingURL=data:application/json;base64,"));
     assert!(maybe_map.is_none());
   }
 
@@ -399,13 +314,7 @@ mod tests {
     }
   }
   "#;
-    let result = transpile(
-      "test.ts",
-      MediaType::TSX,
-      source,
-      &EmitTranspileOptions::default(),
-    )
-    .unwrap();
+    let result = transpile("test.ts", MediaType::TSX, source, &EmitTranspileOptions::default()).unwrap();
     let (code, _maybe_source_map) = result;
     assert!(code.contains("React.createElement(\"div\", null"));
   }
@@ -430,13 +339,7 @@ mod tests {
     }
   }
   "#;
-    let result = transpile(
-      "test.ts",
-      MediaType::TypeScript,
-      source,
-      &EmitTranspileOptions::default(),
-    )
-    .unwrap();
+    let result = transpile("test.ts", MediaType::TypeScript, source, &EmitTranspileOptions::default()).unwrap();
     let (code, _maybe_source_map) = result;
     assert!(code.contains("_applyDecoratedDescriptor("));
   }

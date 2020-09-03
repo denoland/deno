@@ -67,14 +67,8 @@ impl WorkerHandle {
 fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
   let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
   let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
-  let internal_channels = WorkerChannelsInternal {
-    sender: out_tx,
-    receiver: in_rx,
-  };
-  let external_channels = WorkerHandle {
-    sender: in_tx,
-    receiver: Arc::new(AsyncMutex::new(out_rx)),
-  };
+  let internal_channels = WorkerChannelsInternal { sender: out_tx, receiver: in_rx };
+  let external_channels = WorkerHandle { sender: in_tx, receiver: Arc::new(AsyncMutex::new(out_rx)) };
   (internal_channels, external_channels)
 }
 
@@ -101,45 +95,25 @@ pub struct Worker {
 }
 
 impl Worker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: &Rc<State>,
-  ) -> Self {
-    let mut isolate =
-      deno_core::EsIsolate::new(state.clone(), startup_data, false);
+  pub fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
+    let mut isolate = deno_core::EsIsolate::new(state.clone(), state.clone(), startup_data, false);
 
     {
       let global_state = state.global_state.clone();
       let core_state_rc = CoreIsolate::state(&isolate);
       let mut core_state = core_state_rc.borrow_mut();
-      core_state.set_js_error_create_fn(move |core_js_error| {
-        JSError::create(core_js_error, &global_state.ts_compiler)
-      });
+      core_state.set_js_error_create_fn(move |core_js_error| JSError::create(core_js_error, &global_state.ts_compiler));
       core_state.set_get_error_class_fn(&get_error_class);
     }
 
     let inspector = {
       let global_state = &state.global_state;
-      global_state
-        .flags
-        .inspect
-        .or(global_state.flags.inspect_brk)
-        .filter(|_| !state.is_internal)
-        .map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
+      global_state.flags.inspect.or(global_state.flags.inspect_brk).filter(|_| !state.is_internal).map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
     };
 
     let (internal_channels, external_channels) = create_channels();
 
-    Self {
-      name,
-      isolate,
-      inspector,
-      state: state.clone(),
-      waker: AtomicWaker::new(),
-      internal_channels,
-      external_channels,
-    }
+    Self { name, isolate, inspector, state: state.clone(), waker: AtomicWaker::new(), internal_channels, external_channels }
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
@@ -151,27 +125,17 @@ impl Worker {
 
   /// Executes the provided JavaScript source code. The js_filename argument is
   /// provided only for debugging purposes.
-  pub fn execute2(
-    &mut self,
-    js_filename: &str,
-    js_source: &str,
-  ) -> Result<(), ErrBox> {
+  pub fn execute2(&mut self, js_filename: &str, js_source: &str) -> Result<(), ErrBox> {
     self.isolate.execute(js_filename, js_source)
   }
 
   /// Loads and instantiates specified JavaScript module.
-  pub async fn preload_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, ErrBox> {
+  pub async fn preload_module(&mut self, module_specifier: &ModuleSpecifier) -> Result<ModuleId, ErrBox> {
     self.isolate.load_module(module_specifier, None).await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  pub async fn execute_module(&mut self, module_specifier: &ModuleSpecifier) -> Result<(), ErrBox> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
     self.isolate.mod_evaluate(id)
@@ -179,15 +143,8 @@ impl Worker {
 
   /// Loads, instantiates and executes provided source code
   /// as module.
-  pub async fn execute_module_from_code(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    code: String,
-  ) -> Result<(), ErrBox> {
-    let id = self
-      .isolate
-      .load_module(module_specifier, Some(code))
-      .await?;
+  pub async fn execute_module_from_code(&mut self, module_specifier: &ModuleSpecifier, code: String) -> Result<(), ErrBox> {
+    let id = self.isolate.load_module(module_specifier, Some(code)).await?;
     self.wait_for_inspector_session();
     self.isolate.mod_evaluate(id)
   }
@@ -198,15 +155,9 @@ impl Worker {
   }
 
   fn wait_for_inspector_session(&mut self) {
-    let should_break_on_first_statement = self.inspector.is_some() && {
-      self.state.is_main && self.state.global_state.flags.inspect_brk.is_some()
-    };
+    let should_break_on_first_statement = self.inspector.is_some() && { self.state.is_main && self.state.global_state.flags.inspect_brk.is_some() };
     if should_break_on_first_statement {
-      self
-        .inspector
-        .as_mut()
-        .unwrap()
-        .wait_for_session_and_break_on_next_statement()
+      self.inspector.as_mut().unwrap().wait_for_session_and_break_on_next_statement()
     }
   }
 }
@@ -284,27 +235,12 @@ impl MainWorker {
     Self(worker)
   }
 
-  pub fn create(
-    global_state: &Arc<GlobalState>,
-    main_module: ModuleSpecifier,
-  ) -> Result<MainWorker, ErrBox> {
-    let state = State::new(
-      &global_state,
-      None,
-      main_module,
-      global_state.maybe_import_map.clone(),
-      false,
-    )?;
-    let mut worker = MainWorker::new(
-      "main".to_string(),
-      startup_data::deno_isolate_init(),
-      &state,
-    );
+  pub fn create(global_state: &Arc<GlobalState>, main_module: ModuleSpecifier) -> Result<MainWorker, ErrBox> {
+    let state = State::new(&global_state, None, main_module, global_state.maybe_import_map.clone(), false)?;
+    let mut worker = MainWorker::new("main".to_string(), startup_data::deno_isolate_init(), &state);
     {
-      let (stdin, stdout, stderr) = get_stdio();
-      let state_rc = CoreIsolate::state(&worker.isolate);
-      let state = state_rc.borrow();
       let mut t = state.resource_table.borrow_mut();
+      let (stdin, stdout, stderr) = get_stdio();
       if let Some(stream) = stdin {
         t.add("stdin", Box::new(stream));
       }
@@ -344,19 +280,12 @@ mod tests {
 
   #[test]
   fn execute_mod_esm_imports_a() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/esm_imports_a.js");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("cli/tests/esm_imports_a.js");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
-        .unwrap();
+    let state = State::new(&global_state, None, module_specifier.clone(), None, false).unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), StartupData::None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -372,19 +301,12 @@ mod tests {
 
   #[test]
   fn execute_mod_circular() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("tests/circular1.ts");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("tests/circular1.ts");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
-        .unwrap();
+    let state = State::new(&global_state, None, module_specifier.clone(), None, false).unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), StartupData::None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -401,28 +323,12 @@ mod tests {
   #[tokio::test]
   async fn execute_006_url_imports() {
     let _http_server_guard = test_util::http_server();
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/006_url_imports.ts");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let flags = flags::Flags {
-      subcommand: flags::DenoSubcommand::Run {
-        script: module_specifier.to_string(),
-      },
-      reload: true,
-      ..flags::Flags::default()
-    };
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("cli/tests/006_url_imports.ts");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let flags = flags::Flags { subcommand: flags::DenoSubcommand::Run { script: module_specifier.to_string() }, reload: true, ..flags::Flags::default() };
     let global_state = GlobalState::new(flags).unwrap();
-    let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
-        .unwrap();
-    let mut worker = MainWorker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      &state,
-    );
+    let state = State::new(&global_state, None, module_specifier.clone(), None, false).unwrap();
+    let mut worker = MainWorker::new("TEST".to_string(), startup_data::deno_isolate_init(), &state);
     worker.execute("bootstrap.mainRuntime()").unwrap();
     let result = worker.execute_module(&module_specifier).await;
     if let Err(err) = result {
@@ -438,11 +344,7 @@ mod tests {
 
   fn create_test_worker() -> MainWorker {
     let state = State::mock("./hello.js");
-    let mut worker = MainWorker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      &state,
-    );
+    let mut worker = MainWorker::new("TEST".to_string(), startup_data::deno_isolate_init(), &state);
     worker.execute("bootstrap.mainRuntime()").unwrap();
     worker
   }
@@ -451,8 +353,7 @@ mod tests {
   async fn execute_mod_resolve_error() {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_err());
   }
@@ -462,12 +363,8 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/002_hello.ts");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("cli/tests/002_hello.ts");
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_ok());
   }

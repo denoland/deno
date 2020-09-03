@@ -20,11 +20,7 @@ impl Lockfile {
       serde_json::from_str(&s)?
     };
 
-    Ok(Lockfile {
-      write,
-      map,
-      filename,
-    })
+    Ok(Lockfile { write, map, filename })
   }
 
   // Synchronize lock file to disk - noop if --lock-write file is not specified.
@@ -36,11 +32,7 @@ impl Lockfile {
     let map: BTreeMap<_, _> = self.map.iter().collect();
     let j = json!(map);
     let s = serde_json::to_string_pretty(&j).unwrap();
-    let mut f = std::fs::OpenOptions::new()
-      .write(true)
-      .create(true)
-      .truncate(true)
-      .open(&self.filename)?;
+    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(&self.filename)?;
     use std::io::Write;
     f.write_all(s.as_bytes())?;
     debug!("lockfile write {}", self.filename);

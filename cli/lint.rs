@@ -39,11 +39,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint_files(
-  args: Vec<String>,
-  ignore: Vec<String>,
-  json: bool,
-) -> Result<(), ErrBox> {
+pub async fn lint_files(args: Vec<String>, ignore: Vec<String>, json: bool) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return lint_stdin(json);
   }
@@ -58,11 +54,7 @@ pub async fn lint_files(
 
   let has_error = Arc::new(AtomicBool::new(false));
 
-  let reporter_kind = if json {
-    LintReporterKind::Json
-  } else {
-    LintReporterKind::Pretty
-  };
+  let reporter_kind = if json { LintReporterKind::Json } else { LintReporterKind::Pretty };
   let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
   run_parallelized(target_files, {
@@ -113,10 +105,7 @@ pub fn print_rules_list() {
 fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directives(vec!["deno-lint-ignore-file"])
-    .ignore_diagnostic_directives(vec![
-      "deno-lint-ignore",
-      "eslint-disable-next-line",
-    ])
+    .ignore_diagnostic_directives(vec!["deno-lint-ignore", "eslint-disable-next-line"])
     .lint_unused_ignore_directives(true)
     // TODO(bartlomieju): switch to true
     .lint_unknown_rules(false)
@@ -125,9 +114,7 @@ fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
     .build()
 }
 
-fn lint_file(
-  file_path: PathBuf,
-) -> Result<(Vec<LintDiagnostic>, String), ErrBox> {
+fn lint_file(file_path: PathBuf) -> Result<(Vec<LintDiagnostic>, String), ErrBox> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = map_file_extension(&file_path);
@@ -150,21 +137,14 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
     return Err(ErrBox::error("Failed to read from stdin"));
   }
 
-  let reporter_kind = if json {
-    LintReporterKind::Json
-  } else {
-    LintReporterKind::Pretty
-  };
+  let reporter_kind = if json { LintReporterKind::Json } else { LintReporterKind::Pretty };
   let mut reporter = create_reporter(reporter_kind);
   let lint_rules = rules::get_recommended_rules();
   let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
   let mut linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
-  match linter
-    .lint(pseudo_file_name.to_string(), source.clone())
-    .map_err(|e| e.into())
-  {
+  match linter.lint(pseudo_file_name.to_string(), source.clone()).map_err(|e| e.into()) {
     Ok(diagnostics) => {
       for d in diagnostics {
         has_error = true;
@@ -212,19 +192,9 @@ impl LintReporter for PrettyLintReporter {
   fn visit(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>) {
     self.lint_count += 1;
 
-    let pretty_message =
-      format!("({}) {}", colors::gray(&d.code), d.message.clone());
+    let pretty_message = format!("({}) {}", colors::gray(&d.code), d.message.clone());
 
-    let message = format_diagnostic(
-      &pretty_message,
-      &source_lines,
-      d.range.clone(),
-      &fmt_errors::format_location(
-        &d.filename,
-        d.range.start.line as i64,
-        d.range.start.col as i64,
-      ),
-    );
+    let message = format_diagnostic(&pretty_message, &source_lines, d.range.clone(), &fmt_errors::format_location(&d.filename, d.range.start.line as i64, d.range.start.col as i64));
 
     eprintln!("{}\n", message);
   }
@@ -243,30 +213,17 @@ impl LintReporter for PrettyLintReporter {
   }
 }
 
-pub fn format_diagnostic(
-  message_line: &str,
-  source_lines: &[&str],
-  range: deno_lint::diagnostic::Range,
-  formatted_location: &str,
-) -> String {
+pub fn format_diagnostic(message_line: &str, source_lines: &[&str], range: deno_lint::diagnostic::Range, formatted_location: &str) -> String {
   let mut lines = vec![];
 
   for i in range.start.line..=range.end.line {
     lines.push(source_lines[i - 1].to_string());
     if range.start.line == range.end.line {
-      lines.push(format!(
-        "{}{}",
-        " ".repeat(range.start.col),
-        colors::red(&"^".repeat(range.end.col - range.start.col))
-      ));
+      lines.push(format!("{}{}", " ".repeat(range.start.col), colors::red(&"^".repeat(range.end.col - range.start.col))));
     } else {
       let line_len = source_lines[i - 1].len();
       if range.start.line == i {
-        lines.push(format!(
-          "{}{}",
-          " ".repeat(range.start.col),
-          colors::red(&"^".repeat(line_len - range.start.col))
-        ));
+        lines.push(format!("{}{}", " ".repeat(range.start.col), colors::red(&"^".repeat(line_len - range.start.col))));
       } else if range.end.line == i {
         lines.push(format!("{}", colors::red(&"^".repeat(range.end.col))));
       } else if line_len != 0 {
@@ -275,12 +232,7 @@ pub fn format_diagnostic(
     }
   }
 
-  format!(
-    "{}\n{}\n    at {}",
-    message_line,
-    lines.join("\n"),
-    formatted_location
-  )
+  format!("{}\n{}\n    at {}", message_line, lines.join("\n"), formatted_location)
 }
 
 #[derive(Serialize)]
@@ -291,10 +243,7 @@ struct JsonLintReporter {
 
 impl JsonLintReporter {
   fn new() -> JsonLintReporter {
-    JsonLintReporter {
-      diagnostics: Vec::new(),
-      errors: Vec::new(),
-    }
+    JsonLintReporter { diagnostics: Vec::new(), errors: Vec::new() }
   }
 }
 
@@ -304,10 +253,7 @@ impl LintReporter for JsonLintReporter {
   }
 
   fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
-    self.errors.push(LintError {
-      file_path: file_path.to_string(),
-      message: err.to_string(),
-    });
+    self.errors.push(LintError { file_path: file_path.to_string(), message: err.to_string() });
   }
 
   fn close(&mut self) {

@@ -17,13 +17,9 @@ use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
 #[cfg(windows)]
-const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
-  | wincon::ENABLE_ECHO_INPUT
-  | wincon::ENABLE_PROCESSED_INPUT;
+const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT | wincon::ENABLE_ECHO_INPUT | wincon::ENABLE_PROCESSED_INPUT;
 #[cfg(windows)]
-fn get_windows_handle(
-  f: &std::fs::File,
-) -> Result<std::os::windows::io::RawHandle, ErrBox> {
+fn get_windows_handle(f: &std::fs::File) -> Result<std::os::windows::io::RawHandle, ErrBox> {
   use std::os::windows::io::AsRawHandle;
   use winapi::um::handleapi;
 
@@ -37,14 +33,11 @@ fn get_windows_handle(
 }
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+  let t = (); // Temp.
 
   i.register_op("op_set_raw", s.stateful_json_op_sync(t, op_set_raw));
   i.register_op("op_isatty", s.stateful_json_op_sync(t, op_isatty));
-  i.register_op(
-    "op_console_size",
-    s.stateful_json_op_sync(t, op_console_size),
-  );
+  i.register_op("op_console_size", s.stateful_json_op_sync(t, op_console_size));
 }
 
 #[derive(Deserialize)]
@@ -53,12 +46,7 @@ struct SetRawArgs {
   mode: bool,
 }
 
-fn op_set_raw(
-  state: &State,
-  resource_table: &mut ResourceTable,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_set_raw(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.setRaw");
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
@@ -75,6 +63,7 @@ fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
+    let resource_table = state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(ErrBox::bad_resource_id());
@@ -92,16 +81,14 @@ fn op_set_raw(
               // Turn the std_file handle back into a tokio file, put it back
               // in the resource table.
               let tokio_file = tokio::fs::File::from_std(std_file);
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
+              resource_holder.resource = StreamResource::FsFile(Some((tokio_file, metadata)));
               // return the result.
               raw_handle
             }
             Err(tokio_file) => {
               // This function will return an error containing the file if
               // some operation is in-flight.
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
+              resource_holder.resource = StreamResource::FsFile(Some((tokio_file, metadata)));
               return Err(ErrBox::resource_unavailable());
             }
           }
@@ -120,16 +107,10 @@ fn op_set_raw(
       return Err(ErrBox::new("ReferenceError", "null handle"));
     }
     let mut original_mode: DWORD = 0;
-    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
-      == FALSE
-    {
+    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) } == FALSE {
       return Err(ErrBox::last_os_error());
     }
-    let new_mode = if is_raw {
-      original_mode & !RAW_MODE_MASK
-    } else {
-      original_mode | RAW_MODE_MASK
-    };
+    let new_mode = if is_raw { original_mode & !RAW_MODE_MASK } else { original_mode | RAW_MODE_MASK };
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
       return Err(ErrBox::last_os_error());
     }
@@ -146,21 +127,14 @@ fn op_set_raw(
     }
 
     if is_raw {
-      let (raw_fd, maybe_tty_mode) =
-        match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
-          StreamResource::FsFile(Some((f, ref mut metadata))) => {
-            (f.as_raw_fd(), &mut metadata.tty.mode)
-          }
-          StreamResource::FsFile(None) => {
-            return Err(ErrBox::resource_unavailable())
-          }
-          _ => {
-            return Err(ErrBox::not_supported());
-          }
-        };
+      let (raw_fd, maybe_tty_mode) = match &mut resource_holder.unwrap().resource {
+        StreamResource::Stdin(_, ref mut metadata) => (std::io::stdin().as_raw_fd(), &mut metadata.mode),
+        StreamResource::FsFile(Some((f, ref mut metadata))) => (f.as_raw_fd(), &mut metadata.tty.mode),
+        StreamResource::FsFile(None) => return Err(ErrBox::resource_unavailable()),
+        _ => {
+          return Err(ErrBox::not_supported());
+        }
+      };
 
       if maybe_tty_mode.is_some() {
         // Already raw. Skip.
@@ -172,39 +146,27 @@ fn op_set_raw(
       // Save original mode.
       maybe_tty_mode.replace(original_mode);
 
-      raw.input_flags &= !(termios::InputFlags::BRKINT
-        | termios::InputFlags::ICRNL
-        | termios::InputFlags::INPCK
-        | termios::InputFlags::ISTRIP
-        | termios::InputFlags::IXON);
+      raw.input_flags &= !(termios::InputFlags::BRKINT | termios::InputFlags::ICRNL | termios::InputFlags::INPCK | termios::InputFlags::ISTRIP | termios::InputFlags::IXON);
 
       raw.control_flags |= termios::ControlFlags::CS8;
 
-      raw.local_flags &= !(termios::LocalFlags::ECHO
-        | termios::LocalFlags::ICANON
-        | termios::LocalFlags::IEXTEN
-        | termios::LocalFlags::ISIG);
+      raw.local_flags &= !(termios::LocalFlags::ECHO | termios::LocalFlags::ICANON | termios::LocalFlags::IEXTEN | termios::LocalFlags::ISIG);
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
       Ok(json!({}))
     } else {
       // Try restore saved mode.
-      let (raw_fd, maybe_tty_mode) =
-        match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
-          StreamResource::FsFile(Some((f, ref mut metadata))) => {
-            (f.as_raw_fd(), &mut metadata.tty.mode)
-          }
-          StreamResource::FsFile(None) => {
-            return Err(ErrBox::resource_unavailable());
-          }
-          _ => {
-            return Err(ErrBox::bad_resource_id());
-          }
-        };
+      let (raw_fd, maybe_tty_mode) = match &mut resource_holder.unwrap().resource {
+        StreamResource::Stdin(_, ref mut metadata) => (std::io::stdin().as_raw_fd(), &mut metadata.mode),
+        StreamResource::FsFile(Some((f, ref mut metadata))) => (f.as_raw_fd(), &mut metadata.tty.mode),
+        StreamResource::FsFile(None) => {
+          return Err(ErrBox::resource_unavailable());
+        }
+        _ => {
+          return Err(ErrBox::bad_resource_id());
+        }
+      };
 
       if let Some(mode) = maybe_tty_mode.take() {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
@@ -220,38 +182,32 @@ struct IsattyArgs {
   rid: u32,
 }
 
-fn op_isatty(
-  _state: &State,
-  resource_table: &mut ResourceTable,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_isatty(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let isatty: bool =
-    std_file_resource(resource_table, rid as u32, move |r| match r {
-      Ok(std_file) => {
-        #[cfg(windows)]
-        {
-          use winapi::um::consoleapi;
+  let isatty: bool = std_file_resource(state, rid as u32, move |r| match r {
+    Ok(std_file) => {
+      #[cfg(windows)]
+      {
+        use winapi::um::consoleapi;
 
-          let handle = get_windows_handle(&std_file)?;
-          let mut test_mode: DWORD = 0;
-          // If I cannot get mode out of console, it is not a console.
-          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
-        }
-        #[cfg(unix)]
-        {
-          use std::os::unix::io::AsRawFd;
-          let raw_fd = std_file.as_raw_fd();
-          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
-        }
+        let handle = get_windows_handle(&std_file)?;
+        let mut test_mode: DWORD = 0;
+        // If I cannot get mode out of console, it is not a console.
+        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
       }
-      Err(StreamResource::FsFile(_)) => unreachable!(),
-      Err(StreamResource::Stdin(..)) => Ok(atty::is(atty::Stream::Stdin)),
-      _ => Ok(false),
-    })?;
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        let raw_fd = std_file.as_raw_fd();
+        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      }
+    }
+    Err(StreamResource::FsFile(_)) => unreachable!(),
+    Err(StreamResource::Stdin(..)) => Ok(atty::is(atty::Stream::Stdin)),
+    _ => Ok(false),
+  })?;
   Ok(json!(isatty))
 }
 
@@ -266,17 +222,12 @@ struct ConsoleSize {
   rows: u32,
 }
 
-fn op_console_size(
-  state: &State,
-  resource_table: &mut ResourceTable,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_console_size(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.consoleSize");
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let size = std_file_resource(resource_table, rid as u32, move |r| match r {
+  let size = std_file_resource(state, rid as u32, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
       {
@@ -284,21 +235,13 @@ fn op_console_size(
         let handle = std_file.as_raw_handle();
 
         unsafe {
-          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-            std::mem::zeroed();
+          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
 
-          if winapi::um::wincon::GetConsoleScreenBufferInfo(
-            handle,
-            &mut bufinfo,
-          ) == 0
-          {
+          if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0 {
             return Err(ErrBox::last_os_error());
           }
 
-          Ok(ConsoleSize {
-            columns: bufinfo.dwSize.X as u32,
-            rows: bufinfo.dwSize.Y as u32,
-          })
+          Ok(ConsoleSize { columns: bufinfo.dwSize.X as u32, rows: bufinfo.dwSize.Y as u32 })
         }
       }
 
@@ -314,10 +257,7 @@ fn op_console_size(
           }
 
           // TODO (caspervonb) return a tuple instead
-          Ok(ConsoleSize {
-            columns: size.ws_col as u32,
-            rows: size.ws_row as u32,
-          })
+          Ok(ConsoleSize { columns: size.ws_col as u32, rows: size.ws_row as u32 })
         }
       }
     }

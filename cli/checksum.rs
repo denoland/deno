@@ -4,10 +4,6 @@ pub fn gen(v: &[&[u8]]) -> String {
     ctx.update(src);
   }
   let digest = ctx.finish();
-  let out: Vec<String> = digest
-    .as_ref()
-    .iter()
-    .map(|byte| format!("{:02x}", byte))
-    .collect();
+  let out: Vec<String> = digest.as_ref().iter().map(|byte| format!("{:02x}", byte)).collect();
   out.join("")
 }

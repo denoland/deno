@@ -40,8 +40,7 @@ const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const HTTPS_PORT: u16 = 5545;
 
-pub const PERMISSION_VARIANTS: [&str; 5] =
-  ["read", "write", "env", "net", "run"];
+pub const PERMISSION_VARIANTS: [&str; 5] = ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
 lazy_static! {
@@ -132,8 +131,7 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_PORT));
+  let redirect_server_fut = warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_PORT));
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -142,8 +140,7 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let another_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
+  let another_redirect_server_fut = warp::serve(routes).bind(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -152,8 +149,7 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let double_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
+  let double_redirect_server_fut = warp::serve(routes).bind(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -162,8 +158,7 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let inf_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], INF_REDIRECTS_PORT));
+  let inf_redirect_server_fut = warp::serve(routes).bind(([127, 0, 0, 1], INF_REDIRECTS_PORT));
 
   // redirect server that redirect to absolute paths under same host
   // redirects /REDIRECT/file_name to /file_name
@@ -175,54 +170,29 @@ pub async fn run_all_servers() {
       let u = url.parse::<Uri>().unwrap();
       warp::redirect(u)
     })
-    .or(
-      warp::path!("a" / "b" / "c")
-        .and(warp::header::<String>("x-location"))
-        .map(|token: String| {
-          let uri: Uri = token.parse().unwrap();
-          warp::redirect(uri)
-        }),
-    )
-    .or(
-      warp::any()
-        .and(warp::path::peek())
-        .and(warp::fs::dir(root_path()))
-        .map(custom_headers),
-    );
-  let absolute_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
+    .or(warp::path!("a" / "b" / "c").and(warp::header::<String>("x-location")).map(|token: String| {
+      let uri: Uri = token.parse().unwrap();
+      warp::redirect(uri)
+    }))
+    .or(warp::any().and(warp::path::peek()).and(warp::fs::dir(root_path())).map(custom_headers));
+  let absolute_redirect_server_fut = warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
 
-  let echo_server = warp::path("echo_server")
-    .and(warp::post())
-    .and(warp::body::bytes())
-    .and(warp::header::optional::<String>("x-status"))
-    .and(warp::header::optional::<String>("content-type"))
-    .and(warp::header::optional::<String>("user-agent"))
-    .map(
-      |bytes: bytes::Bytes,
-       status: Option<String>,
-       content_type: Option<String>,
-       user_agent: Option<String>|
-       -> Box<dyn Reply> {
-        let mut res = Response::new(Body::from(bytes));
-        if let Some(v) = status {
-          *res.status_mut() = StatusCode::from_bytes(v.as_bytes()).unwrap();
-        }
-        let h = res.headers_mut();
-        if let Some(v) = content_type {
-          h.insert("content-type", HeaderValue::from_str(&v).unwrap());
-        }
-        if let Some(v) = user_agent {
-          h.insert("user-agent", HeaderValue::from_str(&v).unwrap());
-        }
-        Box::new(res)
-      },
-    );
-  let echo_multipart_file = warp::path("echo_multipart_file")
-    .and(warp::post())
-    .and(warp::body::bytes())
-    .map(|bytes: bytes::Bytes| -> Box<dyn Reply> {
-      let start = b"--boundary\t \r\n\
+  let echo_server = warp::path("echo_server").and(warp::post()).and(warp::body::bytes()).and(warp::header::optional::<String>("x-status")).and(warp::header::optional::<String>("content-type")).and(warp::header::optional::<String>("user-agent")).map(|bytes: bytes::Bytes, status: Option<String>, content_type: Option<String>, user_agent: Option<String>| -> Box<dyn Reply> {
+    let mut res = Response::new(Body::from(bytes));
+    if let Some(v) = status {
+      *res.status_mut() = StatusCode::from_bytes(v.as_bytes()).unwrap();
+    }
+    let h = res.headers_mut();
+    if let Some(v) = content_type {
+      h.insert("content-type", HeaderValue::from_str(&v).unwrap());
+    }
+    if let Some(v) = user_agent {
+      h.insert("user-agent", HeaderValue::from_str(&v).unwrap());
+    }
+    Box::new(res)
+  });
+  let echo_multipart_file = warp::path("echo_multipart_file").and(warp::post()).and(warp::body::bytes()).map(|bytes: bytes::Bytes| -> Box<dyn Reply> {
+    let start = b"--boundary\t \r\n\
                     Content-Disposition: form-data; name=\"field_1\"\r\n\
                     \r\n\
                     value_1 \r\n\
@@ -231,20 +201,16 @@ pub async fn run_all_servers() {
                     filename=\"file.bin\"\r\n\
                     Content-Type: application/octet-stream\r\n\
                     \r\n";
-      let end = b"\r\n--boundary--\r\n";
-      let b = [start as &[u8], &bytes, end].concat();
+    let end = b"\r\n--boundary--\r\n";
+    let b = [start as &[u8], &bytes, end].concat();
 
-      let mut res = Response::new(Body::from(b));
-      let h = res.headers_mut();
-      h.insert(
-        "content-type",
-        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
-      );
-      Box::new(res)
-    });
-  let multipart_form_data =
-    warp::path("multipart_form_data.txt").map(|| -> Box<dyn Reply> {
-      let b = "Preamble\r\n\
+    let mut res = Response::new(Body::from(b));
+    let h = res.headers_mut();
+    h.insert("content-type", HeaderValue::from_static("multipart/form-data;boundary=boundary"));
+    Box::new(res)
+  });
+  let multipart_form_data = warp::path("multipart_form_data.txt").map(|| -> Box<dyn Reply> {
+    let b = "Preamble\r\n\
                --boundary\t \r\n\
                Content-Disposition: form-data; name=\"field_1\"\r\n\
                \r\n\
@@ -257,176 +223,96 @@ pub async fn run_all_servers() {
                console.log(\"Hi\")\
                \r\n--boundary--\r\n\
                Epilogue";
-      let mut res = Response::new(Body::from(b));
-      res.headers_mut().insert(
-        "content-type",
-        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
-      );
-      Box::new(res)
-    });
+    let mut res = Response::new(Body::from(b));
+    res.headers_mut().insert("content-type", HeaderValue::from_static("multipart/form-data;boundary=boundary"));
+    Box::new(res)
+  });
 
-  let etag_script = warp::path!("etag_script.ts")
-    .and(warp::header::optional::<String>("if-none-match"))
-    .map(|if_none_match| -> Box<dyn Reply> {
-      if if_none_match == Some("33a64df551425fcc55e".to_string()) {
-        let r =
-          warp::reply::with_status(warp::reply(), StatusCode::NOT_MODIFIED);
-        let r = with_header(r, "Content-type", "application/typescript");
-        let r = with_header(r, "ETag", "33a64df551425fcc55e");
-        Box::new(r)
-      } else {
-        let mut res = Response::new(Body::from("console.log('etag')"));
-        let h = res.headers_mut();
-        h.insert(
-          "Content-type",
-          HeaderValue::from_static("application/typescript"),
-        );
-        h.insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
-        Box::new(res)
-      }
-    });
+  let etag_script = warp::path!("etag_script.ts").and(warp::header::optional::<String>("if-none-match")).map(|if_none_match| -> Box<dyn Reply> {
+    if if_none_match == Some("33a64df551425fcc55e".to_string()) {
+      let r = warp::reply::with_status(warp::reply(), StatusCode::NOT_MODIFIED);
+      let r = with_header(r, "Content-type", "application/typescript");
+      let r = with_header(r, "ETag", "33a64df551425fcc55e");
+      Box::new(r)
+    } else {
+      let mut res = Response::new(Body::from("console.log('etag')"));
+      let h = res.headers_mut();
+      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
+      h.insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
+      Box::new(res)
+    }
+  });
   let xtypescripttypes = warp::path!("xTypeScriptTypes.js")
     .map(|| {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/javascript"),
-      );
-      h.insert(
-        "X-TypeScript-Types",
-        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
+      h.insert("X-TypeScript-Types", HeaderValue::from_static("./xTypeScriptTypes.d.ts"));
       res
     })
     .or(warp::path!("xTypeScriptTypes.d.ts").map(|| {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
-      res.headers_mut().insert(
-        "Content-type",
-        HeaderValue::from_static("application/typescript"),
-      );
+      res.headers_mut().insert("Content-type", HeaderValue::from_static("application/typescript"));
       res
     }))
     .or(warp::path!("type_directives_redirect.js").map(|| {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/javascript"),
-      );
-      h.insert(
-        "X-TypeScript-Types",
-        HeaderValue::from_static(
-          "http://localhost:4547/xTypeScriptTypesRedirect.d.ts",
-        ),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
+      h.insert("X-TypeScript-Types", HeaderValue::from_static("http://localhost:4547/xTypeScriptTypesRedirect.d.ts"));
       res
     }))
     .or(warp::path!("type_headers_deno_types.foo.js").map(|| {
       let mut res = Response::new(Body::from("export function foo(text) { console.log(text); }"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/javascript"),
-      );
-      h.insert(
-        "X-TypeScript-Types",
-        HeaderValue::from_static(
-          "http://localhost:4545/type_headers_deno_types.d.ts",
-        ),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
+      h.insert("X-TypeScript-Types", HeaderValue::from_static("http://localhost:4545/type_headers_deno_types.d.ts"));
       res
     }))
     .or(warp::path!("type_headers_deno_types.d.ts").map(|| {
       let mut res = Response::new(Body::from("export function foo(text: number): void;"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/typescript"),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
       res
     }))
     .or(warp::path!("type_headers_deno_types.foo.d.ts").map(|| {
       let mut res = Response::new(Body::from("export function foo(text: string): void;"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/typescript"),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
       res
     }))
-    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirect.d.ts").map(|| {
-      let mut res = Response::new(Body::from(
-        "import './xTypeScriptTypesRedirected.d.ts';",
-      ));
+    .or(warp::path!("cli" / "tests" / "subdir" / "xTypeScriptTypesRedirect.d.ts").map(|| {
+      let mut res = Response::new(Body::from("import './xTypeScriptTypesRedirected.d.ts';"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/typescript"),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
       res
     }))
-    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirected.d.ts").map(|| {
+    .or(warp::path!("cli" / "tests" / "subdir" / "xTypeScriptTypesRedirected.d.ts").map(|| {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/typescript"),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
       res
     }))
     .or(warp::path!("referenceTypes.js").map(|| {
       let mut res = Response::new(Body::from("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/javascript"),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
       res
     }))
-    .or(warp::path!("cli"/"tests"/"subdir"/"file_with_:_in_name.ts").map(|| {
-      let mut res = Response::new(Body::from(
-        "console.log('Hello from file_with_:_in_name.ts');",
-      ));
+    .or(warp::path!("cli" / "tests" / "subdir" / "file_with_:_in_name.ts").map(|| {
+      let mut res = Response::new(Body::from("console.log('Hello from file_with_:_in_name.ts');"));
       let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("application/typescript"),
-      );
+      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
       res
     }));
 
-  let content_type_handler = warp::any()
-    .and(warp::path::peek())
-    .and(warp::fs::dir(root_path()))
-    .map(custom_headers)
-    .or(etag_script)
-    .or(xtypescripttypes)
-    .or(echo_server)
-    .or(echo_multipart_file)
-    .or(multipart_form_data);
+  let content_type_handler = warp::any().and(warp::path::peek()).and(warp::fs::dir(root_path())).map(custom_headers).or(etag_script).or(xtypescripttypes).or(echo_server).or(echo_multipart_file).or(multipart_form_data);
 
-  let http_fut =
-    warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
+  let http_fut = warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
 
-  let https_fut = warp::serve(content_type_handler.clone())
-    .tls()
-    .cert_path("std/http/testdata/tls/localhost.crt")
-    .key_path("std/http/testdata/tls/localhost.key")
-    .bind(([127, 0, 0, 1], HTTPS_PORT));
+  let https_fut = warp::serve(content_type_handler.clone()).tls().cert_path("std/http/testdata/tls/localhost.crt").key_path("std/http/testdata/tls/localhost.key").bind(([127, 0, 0, 1], HTTPS_PORT));
 
-  let mut server_fut = async {
-    futures::join!(
-      http_fut,
-      https_fut,
-      redirect_server_fut,
-      another_redirect_server_fut,
-      inf_redirect_server_fut,
-      double_redirect_server_fut,
-      absolute_redirect_server_fut,
-    )
-  }
-  .boxed();
+  let mut server_fut = async { futures::join!(http_fut, https_fut, redirect_server_fut, another_redirect_server_fut, inf_redirect_server_fut, double_redirect_server_fut, absolute_redirect_server_fut,) }.boxed();
 
   let mut did_print_ready = false;
   future::poll_fn(move |cx| {
@@ -460,16 +346,8 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
     return Box::new(f);
   }
   if p.contains("cli/tests/encoding/") {
-    let charset = p
-      .split_terminator('/')
-      .last()
-      .unwrap()
-      .trim_end_matches(".ts");
-    let f = with_header(
-      f,
-      "Content-Type",
-      &format!("application/typescript;charset={}", charset)[..],
-    );
+    let charset = p.split_terminator('/').last().unwrap().trim_end_matches(".ts");
+    let f = with_header(f, "Content-Type", &format!("application/typescript;charset={}", charset)[..]);
     return Box::new(f);
   }
 
@@ -525,11 +403,7 @@ impl HttpServerCount {
       assert_eq!(self.count, 1);
 
       println!("test_server starting...");
-      let mut test_server = Command::new(test_server_path())
-        .current_dir(root_path())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to execute test_server");
+      let mut test_server = Command::new(test_server_path()).current_dir(root_path()).stdout(Stdio::piped()).spawn().expect("failed to execute test_server");
       let stdout = test_server.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
       let lines = BufReader::new(stdout).lines();
@@ -556,9 +430,7 @@ impl HttpServerCount {
           test_server.kill().expect("failed to kill test_server");
           let _ = test_server.wait();
         }
-        Ok(Some(status)) => {
-          panic!("test_server exited unexpectedly {}", status)
-        }
+        Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
         Err(e) => panic!("test_server error: {}", e),
       }
     }
@@ -605,13 +477,7 @@ pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
   STRIP_ANSI_RE.replace_all(s, "")
 }
 
-pub fn run(
-  cmd: &[&str],
-  input: Option<&[&str]>,
-  envs: Option<Vec<(String, String)>>,
-  current_dir: Option<&str>,
-  expect_success: bool,
-) {
+pub fn run(cmd: &[&str], input: Option<&[&str]>, envs: Option<Vec<(String, String)>>, current_dir: Option<&str>, expect_success: bool) {
   let mut process_builder = Command::new(cmd[0]);
   process_builder.args(&cmd[1..]).stdin(Stdio::piped());
 
@@ -624,9 +490,7 @@ pub fn run(
   let mut prog = process_builder.spawn().expect("failed to spawn script");
   if let Some(lines) = input {
     let stdin = prog.stdin.as_mut().expect("failed to get stdin");
-    stdin
-      .write_all(lines.join("\n").as_bytes())
-      .expect("failed to write to stdin");
+    stdin.write_all(lines.join("\n").as_bytes()).expect("failed to write to stdin");
   }
   let status = prog.wait().expect("failed to wait on child");
   if expect_success != status.success() {
@@ -634,19 +498,9 @@ pub fn run(
   }
 }
 
-pub fn run_collect(
-  cmd: &[&str],
-  input: Option<&[&str]>,
-  envs: Option<Vec<(String, String)>>,
-  current_dir: Option<&str>,
-  expect_success: bool,
-) -> (String, String) {
+pub fn run_collect(cmd: &[&str], input: Option<&[&str]>, envs: Option<Vec<(String, String)>>, current_dir: Option<&str>, expect_success: bool) -> (String, String) {
   let mut process_builder = Command::new(cmd[0]);
-  process_builder
-    .args(&cmd[1..])
-    .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+  process_builder.args(&cmd[1..]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
   if let Some(dir) = current_dir {
     process_builder.current_dir(dir);
   }
@@ -656,15 +510,9 @@ pub fn run_collect(
   let mut prog = process_builder.spawn().expect("failed to spawn script");
   if let Some(lines) = input {
     let stdin = prog.stdin.as_mut().expect("failed to get stdin");
-    stdin
-      .write_all(lines.join("\n").as_bytes())
-      .expect("failed to write to stdin");
+    stdin.write_all(lines.join("\n").as_bytes()).expect("failed to write to stdin");
   }
-  let Output {
-    stdout,
-    stderr,
-    status,
-  } = prog.wait_with_output().expect("failed to wait on child");
+  let Output { stdout, stderr, status } = prog.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
@@ -675,42 +523,19 @@ pub fn run_collect(
   (stdout, stderr)
 }
 
-pub fn run_and_collect_output(
-  expect_success: bool,
-  args: &str,
-  input: Option<Vec<&str>>,
-  envs: Option<Vec<(String, String)>>,
-  need_http_server: bool,
-) -> (String, String) {
+pub fn run_and_collect_output(expect_success: bool, args: &str, input: Option<Vec<&str>>, envs: Option<Vec<(String, String)>>, need_http_server: bool) -> (String, String) {
   let mut deno_process_builder = deno_cmd();
-  deno_process_builder
-    .args(args.split_whitespace())
-    .current_dir(&tests_path())
-    .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+  deno_process_builder.args(args.split_whitespace()).current_dir(&tests_path()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
   if let Some(envs) = envs {
     deno_process_builder.envs(envs);
   }
-  let _http_guard = if need_http_server {
-    Some(http_server())
-  } else {
-    None
-  };
-  let mut deno = deno_process_builder
-    .spawn()
-    .expect("failed to spawn script");
+  let _http_guard = if need_http_server { Some(http_server()) } else { None };
+  let mut deno = deno_process_builder.spawn().expect("failed to spawn script");
   if let Some(lines) = input {
     let stdin = deno.stdin.as_mut().expect("failed to get stdin");
-    stdin
-      .write_all(lines.join("\n").as_bytes())
-      .expect("failed to write to stdin");
+    stdin.write_all(lines.join("\n").as_bytes()).expect("failed to write to stdin");
   }
-  let Output {
-    stdout,
-    stderr,
-    status,
-  } = deno.wait_with_output().expect("failed to wait on child");
+  let Output { stdout, stderr, status } = deno.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
@@ -736,36 +561,19 @@ pub fn deno_cmd() -> Command {
 
 pub fn run_python_script(script: &str) {
   let deno_dir = new_deno_dir();
-  let output = Command::new("python")
-    .env("DENO_DIR", deno_dir.path())
-    .current_dir(root_path())
-    .arg(script)
-    .arg(format!("--build-dir={}", target_dir().display()))
-    .arg(format!("--executable={}", deno_exe_path().display()))
-    .output()
-    .expect("failed to spawn script");
+  let output = Command::new("python").env("DENO_DIR", deno_dir.path()).current_dir(root_path()).arg(script).arg(format!("--build-dir={}", target_dir().display())).arg(format!("--executable={}", deno_exe_path().display())).output().expect("failed to spawn script");
   if !output.status.success() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
-    panic!(
-      "{} executed with failing error code\n{}{}",
-      script, stdout, stderr
-    );
+    panic!("{} executed with failing error code\n{}{}", script, stdout, stderr);
   }
 }
 
-pub fn run_powershell_script_file(
-  script_file_path: &str,
-  args: Vec<&str>,
-) -> Result<(), i64> {
+pub fn run_powershell_script_file(script_file_path: &str, args: Vec<&str>) -> Result<(), i64> {
   let deno_dir = new_deno_dir();
   let mut command = Command::new("powershell.exe");
 
-  command
-    .env("DENO_DIR", deno_dir.path())
-    .current_dir(root_path())
-    .arg("-file")
-    .arg(script_file_path);
+  command.env("DENO_DIR", deno_dir.path()).current_dir(root_path()).arg("-file").arg(script_file_path);
 
   for arg in args {
     command.arg(arg);
@@ -776,10 +584,7 @@ pub fn run_powershell_script_file(
   let stderr = String::from_utf8(output.stderr).unwrap();
   println!("{}", stdout);
   if !output.status.success() {
-    panic!(
-      "{} executed with failing error code\n{}{}",
-      script_file_path, stdout, stderr
-    );
+    panic!("{} executed with failing error code\n{}{}", script_file_path, stdout, stderr);
   }
 
   Ok(())
@@ -803,11 +608,7 @@ impl CheckOutputIntegrationTest {
     println!("root path {}", root.display());
     println!("deno_exe path {}", deno_exe.display());
 
-    let _http_server_guard = if self.http_server {
-      Some(http_server())
-    } else {
-      None
-    };
+    let _http_server_guard = if self.http_server { Some(http_server()) } else { None };
 
     let (mut reader, writer) = pipe().unwrap();
     let tests_dir = root.join("cli").join("tests");
@@ -844,10 +645,7 @@ impl CheckOutputIntegrationTest {
 
     if self.exit_code != exit_code {
       println!("OUTPUT\n{}\nOUTPUT", actual);
-      panic!(
-        "bad exit code, expected: {:?}, actual: {:?}",
-        self.exit_code, exit_code
-      );
+      panic!("bad exit code, expected: {:?}, actual: {:?}", self.exit_code, exit_code);
     }
 
     let expected = if let Some(s) = self.output_str {
@@ -933,22 +731,14 @@ pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
     master.read_to_string(&mut output_actual).unwrap();
     fork.wait().unwrap();
 
-    let output_expected =
-      std::fs::read_to_string(tests_path.join(output_path)).unwrap();
+    let output_expected = std::fs::read_to_string(tests_path.join(output_path)).unwrap();
     if !wildcard_match(&output_expected, &output_actual) {
       println!("OUTPUT\n{}\nOUTPUT", output_actual);
       println!("EXPECTED\n{}\nEXPECTED", output_expected);
       panic!("pattern match failed");
     }
   } else {
-    deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .args(args.split_whitespace())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+    deno_cmd().current_dir(tests_path).env("NO_COLOR", "1").args(args.split_whitespace()).spawn().unwrap().wait().unwrap();
   }
 }
 
@@ -959,10 +749,8 @@ pub struct WrkOutput {
 
 pub fn parse_wrk_output(output: &str) -> WrkOutput {
   lazy_static! {
-    static ref REQUESTS_RX: Regex =
-      Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
-    static ref LATENCY_RX: Regex =
-      Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
+    static ref REQUESTS_RX: Regex = Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
+    static ref LATENCY_RX: Regex = Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
   }
 
   let mut requests = None;
@@ -971,8 +759,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   for line in output.lines() {
     if requests == None {
       if let Some(cap) = REQUESTS_RX.captures(line) {
-        requests =
-          Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
+        requests = Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
       }
     }
     if latency == None {
@@ -993,10 +780,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
     }
   }
 
-  WrkOutput {
-    requests: requests.unwrap(),
-    latency: latency.unwrap(),
-  }
+  WrkOutput { requests: requests.unwrap(), latency: latency.unwrap() }
 }
 
 pub struct StraceOutput {
@@ -1013,9 +797,7 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   // Filter out non-relevant lines. See the error log at
   // https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
   // This is checked in testdata/strace_summary2.out
-  let mut lines = output
-    .lines()
-    .filter(|line| !line.is_empty() && !line.contains("detached ..."));
+  let mut lines = output.lines().filter(|line| !line.is_empty() && !line.contains("detached ..."));
   let count = lines.clone().count();
 
   if count < 4 {
@@ -1032,34 +814,12 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let syscall_name = syscall_fields.last().unwrap();
 
     if 5 <= len && len <= 6 {
-      summary.insert(
-        syscall_name.to_string(),
-        StraceOutput {
-          percent_time: str::parse::<f64>(syscall_fields[0]).unwrap(),
-          seconds: str::parse::<f64>(syscall_fields[1]).unwrap(),
-          usecs_per_call: Some(str::parse::<u64>(syscall_fields[2]).unwrap()),
-          calls: str::parse::<u64>(syscall_fields[3]).unwrap(),
-          errors: if syscall_fields.len() < 6 {
-            0
-          } else {
-            str::parse::<u64>(syscall_fields[4]).unwrap()
-          },
-        },
-      );
+      summary.insert(syscall_name.to_string(), StraceOutput { percent_time: str::parse::<f64>(syscall_fields[0]).unwrap(), seconds: str::parse::<f64>(syscall_fields[1]).unwrap(), usecs_per_call: Some(str::parse::<u64>(syscall_fields[2]).unwrap()), calls: str::parse::<u64>(syscall_fields[3]).unwrap(), errors: if syscall_fields.len() < 6 { 0 } else { str::parse::<u64>(syscall_fields[4]).unwrap() } });
     }
   }
 
   let total_fields = total_line.split_whitespace().collect::<Vec<_>>();
-  summary.insert(
-    "total".to_string(),
-    StraceOutput {
-      percent_time: str::parse::<f64>(total_fields[0]).unwrap(),
-      seconds: str::parse::<f64>(total_fields[1]).unwrap(),
-      usecs_per_call: None,
-      calls: str::parse::<u64>(total_fields[2]).unwrap(),
-      errors: str::parse::<u64>(total_fields[3]).unwrap(),
-    },
-  );
+  summary.insert("total".to_string(), StraceOutput { percent_time: str::parse::<f64>(total_fields[0]).unwrap(), seconds: str::parse::<f64>(total_fields[1]).unwrap(), usecs_per_call: None, calls: str::parse::<u64>(total_fields[2]).unwrap(), errors: str::parse::<u64>(total_fields[3]).unwrap() });
 
   summary
 }
@@ -1068,10 +828,7 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   // Takes the output from "time -v" as input and extracts the 'maximum
   // resident set size' and returns it in bytes.
   for line in output.lines() {
-    if line
-      .to_lowercase()
-      .contains("maximum resident set size (kbytes)")
-    {
+    if line.to_lowercase().contains("maximum resident set size (kbytes)") {
       let value = line.split(": ").nth(1).unwrap();
       return Some(str::parse::<u64>(value).unwrap() * 1024);
     }
@@ -1159,26 +916,10 @@ mod tests {
       ("foo[WILDCARD]baz[WILDCARD]", "foobarbazqat", true),
       // check with different line endings
       ("foo[WILDCARD]\nbaz[WILDCARD]\n", "foobar\nbazqat\n", true),
-      (
-        "foo[WILDCARD]\nbaz[WILDCARD]\n",
-        "foobar\r\nbazqat\r\n",
-        true,
-      ),
-      (
-        "foo[WILDCARD]\r\nbaz[WILDCARD]\n",
-        "foobar\nbazqat\r\n",
-        true,
-      ),
-      (
-        "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
-        "foobar\nbazqat\n",
-        true,
-      ),
-      (
-        "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
-        "foobar\r\nbazqat\r\n",
-        true,
-      ),
+      ("foo[WILDCARD]\nbaz[WILDCARD]\n", "foobar\r\nbazqat\r\n", true),
+      ("foo[WILDCARD]\r\nbaz[WILDCARD]\n", "foobar\nbazqat\r\n", true),
+      ("foo[WILDCARD]\r\nbaz[WILDCARD]\r\n", "foobar\nbazqat\n", true),
+      ("foo[WILDCARD]\r\nbaz[WILDCARD]\r\n", "foobar\r\nbazqat\r\n", true),
     ];
 
     // Iterate through the fixture lists, testing each one

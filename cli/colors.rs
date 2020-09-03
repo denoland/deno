@@ -54,10 +54,7 @@ pub fn red_bold(s: &str) -> impl fmt::Display {
 
 pub fn green_bold(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec
-    .set_fg(Some(Green))
-    .set_bold(true)
-    .set_intense(true);
+  style_spec.set_fg(Some(Green)).set_bold(true).set_intense(true);
   style(&s, style_spec)
 }
 
@@ -135,10 +132,7 @@ pub fn italic_gray(s: &str) -> impl fmt::Display {
 
 pub fn italic_bold_gray(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec
-    .set_fg(Some(Ansi256(8)))
-    .set_bold(true)
-    .set_italic(true);
+  style_spec.set_fg(Some(Ansi256(8))).set_bold(true).set_italic(true);
   style(&s, style_spec)
 }
 

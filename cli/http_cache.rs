@@ -36,10 +36,7 @@ fn base_url_to_filename(url: &Url) -> PathBuf {
       out.push(host_port);
     }
     scheme => {
-      unimplemented!(
-        "Don't know how to create cache name for scheme: {}",
-        scheme
-      );
+      unimplemented!("Don't know how to create cache name for scheme: {}", scheme);
     }
   };
 
@@ -107,9 +104,7 @@ impl HttpCache {
   /// `location` must be an absolute path.
   pub fn new(location: &Path) -> Self {
     assert!(location.is_absolute());
-    Self {
-      location: location.to_owned(),
-    }
+    Self { location: location.to_owned() }
   }
 
   /// Ensures the location of the cache.
@@ -117,15 +112,7 @@ impl HttpCache {
     if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&path).map_err(|e| {
-      io::Error::new(
-        e.kind(),
-        format!(
-          "Could not create remote modules cache location: {:?}\nCheck the permission of the directory.",
-          path
-        ),
-      )
-    })
+    fs::create_dir_all(&path).map_err(|e| io::Error::new(e.kind(), format!("Could not create remote modules cache location: {:?}\nCheck the permission of the directory.", path)))
   }
 
   pub(crate) fn get_cache_filename(&self, url: &Url) -> PathBuf {
@@ -152,25 +139,15 @@ impl HttpCache {
     Ok(metadata)
   }
 
-  pub fn set(
-    &self,
-    url: &Url,
-    headers_map: HeadersMap,
-    content: &[u8],
-  ) -> Result<(), ErrBox> {
+  pub fn set(&self, url: &Url, headers_map: HeadersMap, content: &[u8]) -> Result<(), ErrBox> {
     let cache_filename = self.location.join(url_to_filename(url));
     // Create parent directory
-    let parent_filename = cache_filename
-      .parent()
-      .expect("Cache filename should have a parent dir");
+    let parent_filename = cache_filename.parent().expect("Cache filename should have a parent dir");
     self.ensure_dir_exists(parent_filename)?;
     // Cache content
     deno_fs::write_file(&cache_filename, content, 0o666)?;
 
-    let metadata = Metadata {
-      url: url.to_string(),
-      headers: headers_map,
-    };
+    let metadata = Metadata { url: url.to_string(), headers: headers_map };
     metadata.write(&cache_filename)
   }
 }
@@ -198,13 +175,7 @@ mod tests {
     // https://github.com/denoland/deno/issues/5688
     let cache = HttpCache::new(&cache_path);
     assert!(!cache.location.exists());
-    cache
-      .set(
-        &Url::parse("http://example.com/foo/bar.js").unwrap(),
-        HeadersMap::new(),
-        b"hello world",
-      )
-      .expect("Failed to add to cache");
+    cache.set(&Url::parse("http://example.com/foo/bar.js").unwrap(), HeadersMap::new(), b"hello world").expect("Failed to add to cache");
     assert!(cache.ensure_dir_exists(&cache.location).is_ok());
     assert!(cache_path.is_dir());
   }
@@ -215,10 +186,7 @@ mod tests {
     let cache = HttpCache::new(dir.path());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
-    headers.insert(
-      "content-type".to_string(),
-      "application/javascript".to_string(),
-    );
+    headers.insert("content-type".to_string(), "application/javascript".to_string());
     headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
@@ -230,10 +198,7 @@ mod tests {
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
     assert_eq!(content, "Hello world");
-    assert_eq!(
-      headers.get("content-type").unwrap(),
-      "application/javascript"
-    );
+    assert_eq!(headers.get("content-type").unwrap(), "application/javascript");
     assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
     assert_eq!(headers.get("foobar"), None);
   }
@@ -242,21 +207,12 @@ mod tests {
   fn test_url_to_filename() {
     let test_cases = [
       ("https://deno.land/x/foo.ts", "https/deno.land/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8"),
-      (
-        "https://deno.land:8080/x/foo.ts",
-        "https/deno.land_PORT8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8",
-      ),
+      ("https://deno.land:8080/x/foo.ts", "https/deno.land_PORT8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8"),
       ("https://deno.land/", "https/deno.land/8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0f1"),
-      (
-        "https://deno.land/?asdf=qwer",
-        "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0",
-      ),
+      ("https://deno.land/?asdf=qwer", "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0"),
       // should be the same as case above, fragment (#qwer) is ignored
       // when hashing
-      (
-        "https://deno.land/?asdf=qwer#qwer",
-        "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0",
-      ),
+      ("https://deno.land/?asdf=qwer#qwer", "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0"),
     ];
 
     for (url, expected) in test_cases.iter() {

@@ -27,43 +27,24 @@ pub struct ZeroCopyBuf {
 unsafe impl Send for ZeroCopyBuf {}
 
 impl ZeroCopyBuf {
-  pub fn new<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    view: v8::Local<v8::ArrayBufferView>,
-  ) -> Self {
+  pub fn new<'s>(scope: &mut v8::HandleScope<'s>, view: v8::Local<v8::ArrayBufferView>) -> Self {
     let backing_store = view.buffer(scope).unwrap().get_backing_store();
     let byte_offset = view.byte_offset();
     let byte_length = view.byte_length();
-    Self {
-      backing_store,
-      byte_offset,
-      byte_length,
-    }
+    Self { backing_store, byte_offset, byte_length }
   }
 }
 
 impl Deref for ZeroCopyBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
-    unsafe {
-      bindings::get_backing_store_slice(
-        &self.backing_store,
-        self.byte_offset,
-        self.byte_length,
-      )
-    }
+    unsafe { bindings::get_backing_store_slice(&self.backing_store, self.byte_offset, self.byte_length) }
   }
 }
 
 impl DerefMut for ZeroCopyBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
-    unsafe {
-      bindings::get_backing_store_slice_mut(
-        &self.backing_store,
-        self.byte_offset,
-        self.byte_length,
-      )
-    }
+    unsafe { bindings::get_backing_store_slice_mut(&self.backing_store, self.byte_offset, self.byte_length) }
   }
 }
 

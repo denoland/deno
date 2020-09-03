@@ -21,16 +21,10 @@ use std::rc::Rc;
 use tokio::sync::mpsc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+  let t = (); // Temp.
 
-  i.register_op(
-    "op_fs_events_open",
-    s.stateful_json_op_sync(t, op_fs_events_open),
-  );
-  i.register_op(
-    "op_fs_events_poll",
-    s.stateful_json_op_async(t, op_fs_events_poll),
-  );
+  i.register_op("op_fs_events_open", s.stateful_json_op_sync(t, op_fs_events_open));
+  i.register_op("op_fs_events_poll", s.stateful_json_op_async(t, op_fs_events_poll));
 }
 
 struct FsEventsResource {
@@ -64,19 +58,11 @@ impl From<NotifyEvent> for FsEvent {
       EventKind::Other => todo!(), // What's this for? Leaving it out for now.
     }
     .to_string();
-    FsEvent {
-      kind,
-      paths: e.paths,
-    }
+    FsEvent { kind, paths: e.paths }
   }
 }
 
-fn op_fs_events_open(
-  state: &State,
-  resource_table: &mut ResourceTable,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_fs_events_open(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]
   struct OpenArgs {
     recursive: bool,
@@ -85,52 +71,37 @@ fn op_fs_events_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
   let sender = std::sync::Mutex::new(sender);
-  let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
-      let mut sender = sender.lock().unwrap();
-      // Ignore result, if send failed it means that watcher was already closed,
-      // but not all messages have been flushed.
-      let _ = sender.try_send(res2);
-    })?;
-  let recursive_mode = if args.recursive {
-    RecursiveMode::Recursive
-  } else {
-    RecursiveMode::NonRecursive
-  };
+  let mut watcher: RecommendedWatcher = Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+    let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
+    let mut sender = sender.lock().unwrap();
+    // Ignore result, if send failed it means that watcher was already closed,
+    // but not all messages have been flushed.
+    let _ = sender.try_send(res2);
+  })?;
+  let recursive_mode = if args.recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
   for path in &args.paths {
     state.check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
-  let rid = resource_table.add("fsEvents", Box::new(resource));
+  let rid = state.resource_table.borrow_mut().add("fsEvents", Box::new(resource));
   Ok(json!(rid))
 }
 
-async fn op_fs_events_poll(
-  _state: Rc<State>,
-  resource_table: Rc<RefCell<ResourceTable>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+async fn op_fs_events_poll(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]
   struct PollArgs {
     rid: u32,
   }
   let PollArgs { rid } = serde_json::from_value(args)?;
   poll_fn(move |cx| {
-    let mut resource_table = resource_table.borrow_mut();
-    let watcher = resource_table
-      .get_mut::<FsEventsResource>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
-    watcher
-      .receiver
-      .poll_recv(cx)
-      .map(|maybe_result| match maybe_result {
-        Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
-        Some(Err(err)) => Err(err),
-        None => Ok(json!({ "done": true })),
-      })
+    let mut resource_table = state.resource_table.borrow_mut();
+    let watcher = resource_table.get_mut::<FsEventsResource>(rid).ok_or_else(ErrBox::bad_resource_id)?;
+    watcher.receiver.poll_recv(cx).map(|maybe_result| match maybe_result {
+      Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
+      Some(Err(err)) => Err(err),
+      None => Ok(json!({ "done": true })),
+    })
   })
   .await
 }

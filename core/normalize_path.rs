@@ -9,13 +9,12 @@ use std::path::PathBuf;
 /// https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85
 pub fn normalize_path(path: &Path) -> PathBuf {
   let mut components = path.components().peekable();
-  let mut ret =
-    if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
-      components.next();
-      PathBuf::from(c.as_os_str())
-    } else {
-      PathBuf::new()
-    };
+  let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+    components.next();
+    PathBuf::from(c.as_os_str())
+  } else {
+    PathBuf::new()
+  };
 
   for component in components {
     match component {

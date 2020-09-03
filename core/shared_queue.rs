@@ -45,9 +45,7 @@ impl SharedQueue {
     buf.resize(HEAD_INIT + len, 0);
     let buf = buf.into_boxed_slice();
     let buf = v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf);
-    let mut q = Self {
-      buf: buf.make_shared(),
-    };
+    let mut q = Self { buf: buf.make_shared() };
     q.reset();
     q
   }
@@ -57,19 +55,11 @@ impl SharedQueue {
   }
 
   pub fn bytes(&self) -> &[u8] {
-    unsafe {
-      bindings::get_backing_store_slice(&self.buf, 0, self.buf.byte_length())
-    }
+    unsafe { bindings::get_backing_store_slice(&self.buf, 0, self.buf.byte_length()) }
   }
 
   pub fn bytes_mut(&mut self) -> &mut [u8] {
-    unsafe {
-      bindings::get_backing_store_slice_mut(
-        &self.buf,
-        0,
-        self.buf.byte_length(),
-      )
-    }
+    unsafe { bindings::get_backing_store_slice_mut(&self.buf, 0, self.buf.byte_length()) }
   }
 
   fn reset(&mut self) {
@@ -169,12 +159,7 @@ impl SharedQueue {
     } else {
       self.reset();
     }
-    println!(
-      "rust:shared_queue:shift: num_records={}, num_shifted_off={}, head={}",
-      self.num_records(),
-      self.num_shifted_off(),
-      self.head()
-    );
+    println!("rust:shared_queue:shift: num_records={}, num_shifted_off={}, head={}", self.num_records(), self.num_shifted_off(), self.head());
     Some((op_id, &self.bytes()[off..end]))
   }
 
@@ -185,14 +170,7 @@ impl SharedQueue {
     assert_eq!(off % 4, 0);
     let end = off + record.len();
     let aligned_end = (end + 3) & !3;
-    debug!(
-      "rust:shared_queue:pre-push: op={}, off={}, end={}, len={}, aligned_end={}",
-      op_id,
-      off,
-      end,
-      record.len(),
-      aligned_end,
-    );
+    debug!("rust:shared_queue:pre-push: op={}, off={}, end={}, len={}, aligned_end={}", op_id, off, end, record.len(), aligned_end,);
     let index = self.num_records();
     if aligned_end > self.bytes().len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");
@@ -205,12 +183,7 @@ impl SharedQueue {
     let u32_slice = self.as_u32_slice_mut();
     u32_slice[INDEX_NUM_RECORDS] += 1;
     u32_slice[INDEX_HEAD] = aligned_end as u32;
-    debug!(
-      "rust:shared_queue:push: num_records={}, num_shifted_off={}, head={}",
-      self.num_records(),
-      self.num_shifted_off(),
-      self.head()
-    );
+    debug!("rust:shared_queue:push: num_records={}, num_shifted_off={}, head={}", self.num_records(), self.num_shifted_off(), self.head());
     true
   }
 }

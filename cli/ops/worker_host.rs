@@ -24,47 +24,20 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+  let t = (); // Temp.
 
-  i.register_op(
-    "op_create_worker",
-    s.stateful_json_op_sync(t, op_create_worker),
-  );
-  i.register_op(
-    "op_host_terminate_worker",
-    s.stateful_json_op_sync(t, op_host_terminate_worker),
-  );
-  i.register_op(
-    "op_host_post_message",
-    s.stateful_json_op_sync(t, op_host_post_message),
-  );
-  i.register_op(
-    "op_host_get_message",
-    s.stateful_json_op_async(t, op_host_get_message),
-  );
+  i.register_op("op_create_worker", s.stateful_json_op_sync(t, op_create_worker));
+  i.register_op("op_host_terminate_worker", s.stateful_json_op_sync(t, op_host_terminate_worker));
+  i.register_op("op_host_post_message", s.stateful_json_op_sync(t, op_host_post_message));
+  i.register_op("op_host_get_message", s.stateful_json_op_async(t, op_host_get_message));
 }
 
-fn create_web_worker(
-  worker_id: u32,
-  name: String,
-  global_state: &Arc<GlobalState>,
-  permissions: Permissions,
-  specifier: ModuleSpecifier,
-  has_deno_namespace: bool,
-) -> Result<WebWorker, ErrBox> {
-  let state =
-    State::new_for_worker(global_state, Some(permissions), specifier)?;
+fn create_web_worker(worker_id: u32, name: String, global_state: &Arc<GlobalState>, permissions: Permissions, specifier: ModuleSpecifier, has_deno_namespace: bool) -> Result<WebWorker, ErrBox> {
+  let state = State::new_for_worker(global_state, Some(permissions), specifier)?;
 
-  let mut worker = WebWorker::new(
-    name.clone(),
-    startup_data::deno_isolate_init(),
-    &state,
-    has_deno_namespace,
-  );
+  let mut worker = WebWorker::new(name.clone(), startup_data::deno_isolate_init(), &state, has_deno_namespace);
 
   if has_deno_namespace {
-    let state_rc = CoreIsolate::state(&worker.isolate);
-    let state = state_rc.borrow();
     let mut resource_table = state.resource_table.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
     if let Some(stream) = stdin {
@@ -80,44 +53,24 @@ fn create_web_worker(
 
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.
-  let script = format!(
-    "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
-    name, worker.has_deno_namespace, worker_id
-  );
+  let script = format!("bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")", name, worker.has_deno_namespace, worker_id);
   worker.execute(&script)?;
 
   Ok(worker)
 }
 
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
-fn run_worker_thread(
-  worker_id: u32,
-  name: String,
-  global_state: &Arc<GlobalState>,
-  permissions: Permissions,
-  specifier: ModuleSpecifier,
-  has_deno_namespace: bool,
-  maybe_source_code: Option<String>,
-) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
+fn run_worker_thread(worker_id: u32, name: String, global_state: &Arc<GlobalState>, permissions: Permissions, specifier: ModuleSpecifier, has_deno_namespace: bool, maybe_source_code: Option<String>) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
   let global_state = global_state.clone();
-  let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
+  let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
 
-  let builder =
-    std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
+  let builder = std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
   let join_handle = builder.spawn(move || {
     // Any error inside this block is terminal:
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let result = create_web_worker(
-      worker_id,
-      name,
-      &global_state,
-      permissions,
-      specifier.clone(),
-      has_deno_namespace,
-    );
+    let result = create_web_worker(worker_id, name, &global_state, permissions, specifier.clone(), has_deno_namespace);
 
     if let Err(err) = result {
       handle_sender.send(Err(err)).unwrap();
@@ -157,9 +110,7 @@ fn run_worker_thread(
 
     if let Err(e) = result {
       let mut sender = worker.internal_channels.sender.clone();
-      sender
-        .try_send(WorkerEvent::TerminalError(e))
-        .expect("Failed to post message to host");
+      sender.try_send(WorkerEvent::TerminalError(e)).expect("Failed to post message to host");
 
       // Failure to execute script is a terminal error, bye, bye.
       return;
@@ -187,20 +138,11 @@ struct CreateWorkerArgs {
 }
 
 /// Create worker as the host
-fn op_create_worker(
-  state: &State,
-  _resource_table: &mut ResourceTable,
-  args: Value,
-  _data: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_create_worker(state: &State, _: (), args: Value, _data: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
-  let maybe_source_code = if args.has_source_code {
-    Some(args.source_code.clone())
-  } else {
-    None
-  };
+  let maybe_source_code = if args.has_source_code { Some(args.source_code.clone()) } else { None };
   let args_name = args.name;
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
@@ -214,21 +156,10 @@ fn op_create_worker(
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
-  let (join_handle, worker_handle) = run_worker_thread(
-    worker_id,
-    worker_name,
-    &global_state,
-    permissions,
-    module_specifier,
-    use_deno_namespace,
-    maybe_source_code,
-  )?;
+  let (join_handle, worker_handle) = run_worker_thread(worker_id, worker_name, &global_state, permissions, module_specifier, use_deno_namespace, maybe_source_code)?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
-  state
-    .workers
-    .borrow_mut()
-    .insert(worker_id, (join_handle, worker_handle));
+  state.workers.borrow_mut().insert(worker_id, (join_handle, worker_handle));
 
   Ok(json!({ "id": worker_id }))
 }
@@ -238,19 +169,10 @@ struct WorkerArgs {
   id: i32,
 }
 
-fn op_host_terminate_worker(
-  state: &State,
-  _resource_table: &mut ResourceTable,
-  args: Value,
-  _data: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_host_terminate_worker(state: &State, _: (), args: Value, _data: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let (join_handle, worker_handle) = state
-    .workers
-    .borrow_mut()
-    .remove(&id)
-    .expect("No worker handle found");
+  let (join_handle, worker_handle) = state.workers.borrow_mut().remove(&id).expect("No worker handle found");
   worker_handle.terminate();
   join_handle.join().expect("Panic in worker thread");
   Ok(json!({}))
@@ -307,12 +229,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 }
 
 /// Get message from guest worker as host
-async fn op_host_get_message(
-  state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+async fn op_host_get_message(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let state = state.clone();
@@ -331,9 +248,7 @@ async fn op_host_get_message(
     Some(event) => {
       // Terminal error means that worker should be removed from worker table.
       if let WorkerEvent::TerminalError(_) = &event {
-        if let Some((join_handle, mut worker_handle)) =
-          state.workers.borrow_mut().remove(&id)
-        {
+        if let Some((join_handle, mut worker_handle)) = state.workers.borrow_mut().remove(&id) {
           worker_handle.sender.close_channel();
           join_handle.join().expect("Worker thread panicked");
         }
@@ -356,12 +271,7 @@ async fn op_host_get_message(
 }
 
 /// Post message to guest worker as host
-fn op_host_post_message(
-  state: &State,
-  _resource_table: &mut ResourceTable,
-  args: Value,
-  data: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_host_post_message(state: &State, _: (), args: Value, data: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;

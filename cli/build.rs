@@ -11,11 +11,7 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
-fn create_snapshot(
-  mut isolate: CoreIsolate,
-  snapshot_path: &Path,
-  files: Vec<String>,
-) {
+fn create_snapshot(mut isolate: CoreIsolate, snapshot_path: &Path, files: Vec<String>) {
   deno_web::init(&mut isolate);
   for file in files {
     println!("cargo:rerun-if-changed={}", file);
@@ -35,58 +31,24 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<String>) {
   create_snapshot(runtime_isolate, snapshot_path, files);
 }
 
-fn create_compiler_snapshot(
-  snapshot_path: &Path,
-  files: Vec<String>,
-  cwd: &Path,
-) {
+fn create_compiler_snapshot(snapshot_path: &Path, files: Vec<String>, cwd: &Path) {
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
-  custom_libs
-    .insert("lib.deno.web.d.ts".to_string(), deno_web::get_declaration());
-  custom_libs.insert(
-    "lib.deno.window.d.ts".to_string(),
-    cwd.join("dts/lib.deno.window.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.worker.d.ts".to_string(),
-    cwd.join("dts/lib.deno.worker.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.shared_globals.d.ts".to_string(),
-    cwd.join("dts/lib.deno.shared_globals.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.ns.d.ts".to_string(),
-    cwd.join("dts/lib.deno.ns.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.unstable.d.ts".to_string(),
-    cwd.join("dts/lib.deno.unstable.d.ts"),
-  );
+  custom_libs.insert("lib.deno.web.d.ts".to_string(), deno_web::get_declaration());
+  custom_libs.insert("lib.deno.window.d.ts".to_string(), cwd.join("dts/lib.deno.window.d.ts"));
+  custom_libs.insert("lib.deno.worker.d.ts".to_string(), cwd.join("dts/lib.deno.worker.d.ts"));
+  custom_libs.insert("lib.deno.shared_globals.d.ts".to_string(), cwd.join("dts/lib.deno.shared_globals.d.ts"));
+  custom_libs.insert("lib.deno.ns.d.ts".to_string(), cwd.join("dts/lib.deno.ns.d.ts"));
+  custom_libs.insert("lib.deno.unstable.d.ts".to_string(), cwd.join("dts/lib.deno.unstable.d.ts"));
 
   let compiler_ops = OpRegistry::new();
-  compiler_ops.register_op(
-    "op_fetch_asset",
-    op_fetch_asset::op_fetch_asset(custom_libs),
-  );
+  compiler_ops.register_op("op_fetch_asset", op_fetch_asset::op_fetch_asset(custom_libs));
 
-  let compiler_isolate =
-    CoreIsolate::new(compiler_ops, StartupData::None, true);
+  let compiler_isolate = CoreIsolate::new(compiler_ops, StartupData::None, true);
   create_snapshot(compiler_isolate, snapshot_path, files);
 }
 
 fn ts_version() -> String {
-  std::fs::read_to_string("tsc/00_typescript.js")
-    .unwrap()
-    .lines()
-    .find(|l| l.contains("ts.version = "))
-    .expect(
-      "Failed to find the pattern `ts.version = ` in typescript source code",
-    )
-    .chars()
-    .skip_while(|c| !char::is_numeric(*c))
-    .take_while(|c| *c != '"')
-    .collect::<String>()
+  std::fs::read_to_string("tsc/00_typescript.js").unwrap().lines().find(|l| l.contains("ts.version = ")).expect("Failed to find the pattern `ts.version = ` in typescript source code").chars().skip_while(|c| !char::is_numeric(*c)).take_while(|c| *c != '"').collect::<String>()
 }
 
 fn main() {
@@ -99,15 +61,9 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
-  println!(
-    "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
-    deno_web::get_declaration().display()
-  );
+  println!("cargo:rustc-env=DENO_WEB_LIB_PATH={}", deno_web::get_declaration().display());
 
-  println!(
-    "cargo:rustc-env=TARGET={}",
-    std::env::var("TARGET").unwrap()
-  );
+  println!("cargo:rustc-env=TARGET={}", std::env::var("TARGET").unwrap());
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -126,10 +82,7 @@ fn main() {
   {
     let mut res = winres::WindowsResource::new();
     res.set_icon("deno.ico");
-    res.set_language(winapi::um::winnt::MAKELANGID(
-      winapi::um::winnt::LANG_ENGLISH,
-      winapi::um::winnt::SUBLANG_ENGLISH_US,
-    ));
+    res.set_language(winapi::um::winnt::MAKELANGID(winapi::um::winnt::LANG_ENGLISH, winapi::um::winnt::SUBLANG_ENGLISH_US));
     res.compile().unwrap();
   }
 }

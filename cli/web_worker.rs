@@ -82,44 +82,23 @@ pub struct WebWorker {
 }
 
 impl WebWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: &Rc<State>,
-    has_deno_namespace: bool,
-  ) -> Self {
+  pub fn new(name: String, startup_data: StartupData, state: &Rc<State>, has_deno_namespace: bool) -> Self {
     let mut worker = Worker::new(name, startup_data, &state);
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
     let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
 
-    let handle = WebWorkerHandle {
-      worker_handle: worker.thread_safe_handle(),
-      terminated,
-      isolate_handle,
-      terminate_tx,
-    };
+    let handle = WebWorkerHandle { worker_handle: worker.thread_safe_handle(), terminated, isolate_handle, terminate_tx };
 
-    let mut web_worker = Self {
-      worker,
-      event_loop_idle: false,
-      terminate_rx,
-      handle,
-      has_deno_namespace,
-    };
+    let mut web_worker = Self { worker, event_loop_idle: false, terminate_rx, handle, has_deno_namespace };
 
     let handle = web_worker.thread_safe_handle();
 
     {
       let isolate = &mut web_worker.worker.isolate;
       ops::runtime::init(isolate, &state);
-      ops::web_worker::init(
-        isolate,
-        &state,
-        &web_worker.worker.internal_channels.sender,
-        handle,
-      );
+      ops::web_worker::init(isolate, &state, &web_worker.worker.internal_channels.sender, handle);
       ops::worker_host::init(isolate, &state);
       ops::idna::init(isolate, &state);
       ops::io::init(isolate, &state);
@@ -191,9 +170,7 @@ impl Future for WebWorker {
 
           if let Err(e) = r {
             let mut sender = worker.internal_channels.sender.clone();
-            sender
-              .try_send(WorkerEvent::Error(e))
-              .expect("Failed to post message to host");
+            sender.try_send(WorkerEvent::Error(e)).expect("Failed to post message to host");
           }
           inner.event_loop_idle = true;
         }
@@ -207,9 +184,7 @@ impl Future for WebWorker {
       return Poll::Ready(Ok(()));
     }
 
-    if let Poll::Ready(r) =
-      worker.internal_channels.receiver.poll_next_unpin(cx)
-    {
+    if let Poll::Ready(r) = worker.internal_channels.receiver.poll_next_unpin(cx) {
       match r {
         Some(msg) => {
           let msg = String::from_utf8(msg.to_vec()).unwrap();
@@ -224,9 +199,7 @@ impl Future for WebWorker {
 
             // Otherwise forward error to host
             let mut sender = worker.internal_channels.sender.clone();
-            sender
-              .try_send(WorkerEvent::Error(e))
-              .expect("Failed to post message to host");
+            sender.try_send(WorkerEvent::Error(e)).expect("Failed to post message to host");
           }
 
           // Let event loop be polled again
@@ -251,21 +224,13 @@ mod tests {
 
   fn create_test_worker() -> WebWorker {
     let state = State::mock("./hello.js");
-    let mut worker = WebWorker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      &state,
-      false,
-    );
-    worker
-      .execute("bootstrap.workerRuntime(\"TEST\", false)")
-      .unwrap();
+    let mut worker = WebWorker::new("TEST".to_string(), startup_data::deno_isolate_init(), &state, false);
+    worker.execute("bootstrap.workerRuntime(\"TEST\", false)").unwrap();
     worker
   }
   #[test]
   fn test_worker_messages() {
-    let (handle_sender, handle_receiver) =
-      std::sync::mpsc::sync_channel::<WebWorkerHandle>(1);
+    let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<WebWorkerHandle>(1);
 
     let join_handle = std::thread::spawn(move || {
       let mut worker = create_test_worker();
@@ -310,10 +275,7 @@ mod tests {
         _ => unreachable!(),
       }
 
-      let msg = json!("exit")
-        .to_string()
-        .into_boxed_str()
-        .into_boxed_bytes();
+      let msg = json!("exit").to_string().into_boxed_str().into_boxed_bytes();
       let r = handle.post_message(msg);
       assert!(r.is_ok());
       let event = handle.get_event().await.unwrap();
@@ -325,8 +287,7 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    let (handle_sender, handle_receiver) =
-      std::sync::mpsc::sync_channel::<WebWorkerHandle>(1);
+    let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<WebWorkerHandle>(1);
 
     let join_handle = std::thread::spawn(move || {
       let mut worker = create_test_worker();

@@ -29,9 +29,7 @@ impl fmt::Display for ModuleResolutionError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
       InvalidUrl(ref err) => write!(f, "invalid URL: {}", err),
-      InvalidBaseUrl(ref err) => {
-        write!(f, "invalid base URL for relative import: {}", err)
-      }
+      InvalidBaseUrl(ref err) => write!(f, "invalid base URL for relative import: {}", err),
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
       ImportPrefixMissing(ref specifier, ref maybe_referrer) => write!(
         f,
@@ -65,10 +63,7 @@ impl ModuleSpecifier {
 
   /// Resolves module using this algorithm:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  pub fn resolve_import(
-    specifier: &str,
-    base: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  pub fn resolve_import(specifier: &str, base: &str) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let url = match Url::parse(specifier) {
       // 1. Apply the URL parser to specifier.
       //    If the result is not failure, return he result.
@@ -78,16 +73,8 @@ impl ModuleSpecifier {
       //    the two-character sequence U+002E FULL STOP, U+002F SOLIDUS (./),
       //    or the three-character sequence U+002E FULL STOP, U+002E FULL STOP,
       //    U+002F SOLIDUS (../), return failure.
-      Err(ParseError::RelativeUrlWithoutBase)
-        if !(specifier.starts_with('/')
-          || specifier.starts_with("./")
-          || specifier.starts_with("../")) =>
-      {
-        let maybe_referrer = if base.is_empty() {
-          None
-        } else {
-          Some(base.to_string())
-        };
+      Err(ParseError::RelativeUrlWithoutBase) if !(specifier.starts_with('/') || specifier.starts_with("./") || specifier.starts_with("../")) => {
+        let maybe_referrer = if base.is_empty() { None } else { Some(base.to_string()) };
         return Err(ImportPrefixMissing(specifier.to_string(), maybe_referrer));
       }
 
@@ -120,12 +107,8 @@ impl ModuleSpecifier {
   }
 
   /// Converts a string representing an absolute URL into a ModuleSpecifier.
-  pub fn resolve_url(
-    url_str: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-    Url::parse(url_str)
-      .map(ModuleSpecifier)
-      .map_err(ModuleResolutionError::InvalidUrl)
+  pub fn resolve_url(url_str: &str) -> Result<ModuleSpecifier, ModuleResolutionError> {
+    Url::parse(url_str).map(ModuleSpecifier).map_err(ModuleResolutionError::InvalidUrl)
   }
 
   /// Takes a string representing either an absolute URL or a file path,
@@ -134,9 +117,7 @@ impl ModuleSpecifier {
   /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
   /// file path; if it is a relative path it's resolved relative to the current
   /// working directory.
-  pub fn resolve_url_or_path(
-    specifier: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  pub fn resolve_url_or_path(specifier: &str) -> Result<ModuleSpecifier, ModuleResolutionError> {
     if Self::specifier_has_uri_scheme(specifier) {
       Self::resolve_url(specifier)
     } else {
@@ -147,14 +128,10 @@ impl ModuleSpecifier {
   /// Converts a string representing a relative or absolute path into a
   /// ModuleSpecifier. A relative path is considered relative to the current
   /// working directory.
-  fn resolve_path(
-    path_str: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  fn resolve_path(path_str: &str) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let path = current_dir().unwrap().join(path_str);
     let path = normalize_path(&path);
-    Url::from_file_path(path.clone())
-      .map(ModuleSpecifier)
-      .map_err(|()| ModuleResolutionError::InvalidPath(path))
+    Url::from_file_path(path.clone()).map(ModuleSpecifier).map_err(|()| ModuleResolutionError::InvalidPath(path))
   }
 
   /// Returns true if the input string starts with a sequence of characters
@@ -222,61 +199,17 @@ mod tests {
     let tests = vec![
       ("/awesome.ts", "<unknown>", awesome.as_str()),
       ("/service/awesome.ts", "<unknown>", awesome_srv.as_str()),
-      (
-        "./005_more_imports.ts",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "http://deno.land/core/tests/005_more_imports.ts",
-      ),
-      (
-        "../005_more_imports.ts",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "http://deno.land/core/005_more_imports.ts",
-      ),
-      (
-        "http://deno.land/core/tests/005_more_imports.ts",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "http://deno.land/core/tests/005_more_imports.ts",
-      ),
-      (
-        "data:text/javascript,export default 'grapes';",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "data:text/javascript,export default 'grapes';",
-      ),
-      (
-        "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
-      ),
-      (
-        "javascript:export default 'artichokes';",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "javascript:export default 'artichokes';",
-      ),
-      (
-        "data:text/plain,export default 'kale';",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "data:text/plain,export default 'kale';",
-      ),
-      (
-        "/dev/core/tests/005_more_imports.ts",
-        "file:///home/yeti",
-        "file:///dev/core/tests/005_more_imports.ts",
-      ),
-      (
-        "//zombo.com/1999.ts",
-        "https://cherry.dev/its/a/thing",
-        "https://zombo.com/1999.ts",
-      ),
-      (
-        "http://deno.land/this/url/is/valid",
-        "base is clearly not a valid url",
-        "http://deno.land/this/url/is/valid",
-      ),
-      (
-        "//server/some/dir/file",
-        "file:///home/yeti/deno",
-        "file://server/some/dir/file",
-      ),
+      ("./005_more_imports.ts", "http://deno.land/core/tests/006_url_imports.ts", "http://deno.land/core/tests/005_more_imports.ts"),
+      ("../005_more_imports.ts", "http://deno.land/core/tests/006_url_imports.ts", "http://deno.land/core/005_more_imports.ts"),
+      ("http://deno.land/core/tests/005_more_imports.ts", "http://deno.land/core/tests/006_url_imports.ts", "http://deno.land/core/tests/005_more_imports.ts"),
+      ("data:text/javascript,export default 'grapes';", "http://deno.land/core/tests/006_url_imports.ts", "data:text/javascript,export default 'grapes';"),
+      ("blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f", "http://deno.land/core/tests/006_url_imports.ts", "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f"),
+      ("javascript:export default 'artichokes';", "http://deno.land/core/tests/006_url_imports.ts", "javascript:export default 'artichokes';"),
+      ("data:text/plain,export default 'kale';", "http://deno.land/core/tests/006_url_imports.ts", "data:text/plain,export default 'kale';"),
+      ("/dev/core/tests/005_more_imports.ts", "file:///home/yeti", "file:///dev/core/tests/005_more_imports.ts"),
+      ("//zombo.com/1999.ts", "https://cherry.dev/its/a/thing", "https://zombo.com/1999.ts"),
+      ("http://deno.land/this/url/is/valid", "base is clearly not a valid url", "http://deno.land/this/url/is/valid"),
+      ("//server/some/dir/file", "file:///home/yeti/deno", "file://server/some/dir/file"),
       // This test is disabled because the url crate does not follow the spec,
       // dropping the server part from the final result.
       // (
@@ -287,9 +220,7 @@ mod tests {
     ];
 
     for (specifier, base, expected_url) in tests {
-      let url = ModuleSpecifier::resolve_import(specifier, base)
-        .unwrap()
-        .to_string();
+      let url = ModuleSpecifier::resolve_import(specifier, base).unwrap().to_string();
       assert_eq!(url, expected_url);
     }
   }
@@ -299,71 +230,7 @@ mod tests {
     use url::ParseError::*;
     use ModuleResolutionError::*;
 
-    let tests = vec![
-      (
-        "awesome.ts",
-        "<unknown>",
-        ImportPrefixMissing(
-          "awesome.ts".to_string(),
-          Some("<unknown>".to_string()),
-        ),
-      ),
-      (
-        "005_more_imports.ts",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(
-          "005_more_imports.ts".to_string(),
-          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
-        ),
-      ),
-      (
-        ".tomato",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(
-          ".tomato".to_string(),
-          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
-        ),
-      ),
-      (
-        "..zucchini.mjs",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(
-          "..zucchini.mjs".to_string(),
-          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
-        ),
-      ),
-      (
-        r".\yam.es",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(
-          r".\yam.es".to_string(),
-          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
-        ),
-      ),
-      (
-        r"..\yam.es",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(
-          r"..\yam.es".to_string(),
-          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
-        ),
-      ),
-      (
-        "https://eggplant:b/c",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        InvalidUrl(InvalidPort),
-      ),
-      (
-        "https://eggplant@/c",
-        "http://deno.land/core/tests/006_url_imports.ts",
-        InvalidUrl(EmptyHost),
-      ),
-      (
-        "./foo.ts",
-        "/relative/base/url",
-        InvalidBaseUrl(RelativeUrlWithoutBase),
-      ),
-    ];
+    let tests = vec![("awesome.ts", "<unknown>", ImportPrefixMissing("awesome.ts".to_string(), Some("<unknown>".to_string()))), ("005_more_imports.ts", "http://deno.land/core/tests/006_url_imports.ts", ImportPrefixMissing("005_more_imports.ts".to_string(), Some("http://deno.land/core/tests/006_url_imports.ts".to_string()))), (".tomato", "http://deno.land/core/tests/006_url_imports.ts", ImportPrefixMissing(".tomato".to_string(), Some("http://deno.land/core/tests/006_url_imports.ts".to_string()))), ("..zucchini.mjs", "http://deno.land/core/tests/006_url_imports.ts", ImportPrefixMissing("..zucchini.mjs".to_string(), Some("http://deno.land/core/tests/006_url_imports.ts".to_string()))), (r".\yam.es", "http://deno.land/core/tests/006_url_imports.ts", ImportPrefixMissing(r".\yam.es".to_string(), Some("http://deno.land/core/tests/006_url_imports.ts".to_string()))), (r"..\yam.es", "http://deno.land/core/tests/006_url_imports.ts", ImportPrefixMissing(r"..\yam.es".to_string(), Some("http://deno.land/core/tests/006_url_imports.ts".to_string()))), ("https://eggplant:b/c", "http://deno.land/core/tests/006_url_imports.ts", InvalidUrl(InvalidPort)), ("https://eggplant@/c", "http://deno.land/core/tests/006_url_imports.ts", InvalidUrl(EmptyHost)), ("./foo.ts", "/relative/base/url", InvalidBaseUrl(RelativeUrlWithoutBase))];
 
     for (specifier, base, expected_err) in tests {
       let err = ModuleSpecifier::resolve_import(specifier, base).unwrap_err();
@@ -374,16 +241,7 @@ mod tests {
   #[test]
   fn test_resolve_url_or_path() {
     // Absolute URL.
-    let mut tests: Vec<(&str, String)> = vec![
-      (
-        "http://deno.land/core/tests/006_url_imports.ts",
-        "http://deno.land/core/tests/006_url_imports.ts".to_string(),
-      ),
-      (
-        "https://deno.land/core/tests/006_url_imports.ts",
-        "https://deno.land/core/tests/006_url_imports.ts".to_string(),
-      ),
-    ];
+    let mut tests: Vec<(&str, String)> = vec![("http://deno.land/core/tests/006_url_imports.ts", "http://deno.land/core/tests/006_url_imports.ts".to_string()), ("https://deno.land/core/tests/006_url_imports.ts", "https://deno.land/core/tests/006_url_imports.ts".to_string())];
 
     // The local path tests assume that the cwd is the deno repo root.
     let cwd = current_dir().unwrap();
@@ -393,18 +251,9 @@ mod tests {
       // Absolute local path.
       let expected_url = "file:///C:/deno/tests/006_url_imports.ts";
       tests.extend(vec![
-        (
-          r"C:/deno/tests/006_url_imports.ts",
-          expected_url.to_string(),
-        ),
-        (
-          r"C:\deno\tests\006_url_imports.ts",
-          expected_url.to_string(),
-        ),
-        (
-          r"\\?\C:\deno\tests\006_url_imports.ts",
-          expected_url.to_string(),
-        ),
+        (r"C:/deno/tests/006_url_imports.ts", expected_url.to_string()),
+        (r"C:\deno\tests\006_url_imports.ts", expected_url.to_string()),
+        (r"\\?\C:\deno\tests\006_url_imports.ts", expected_url.to_string()),
         // Not supported: `Url::from_file_path()` fails.
         // (r"\\.\C:\deno\tests\006_url_imports.ts", expected_url.to_string()),
         // Not supported: `Url::from_file_path()` performs the wrong conversion.
@@ -412,31 +261,12 @@ mod tests {
       ]);
 
       // Rooted local path without drive letter.
-      let expected_url = format!(
-        "file:///{}:/deno/tests/006_url_imports.ts",
-        cwd_str.get(..1).unwrap(),
-      );
-      tests.extend(vec![
-        (r"/deno/tests/006_url_imports.ts", expected_url.to_string()),
-        (r"\deno\tests\006_url_imports.ts", expected_url.to_string()),
-        (
-          r"\deno\..\deno\tests\006_url_imports.ts",
-          expected_url.to_string(),
-        ),
-        (r"\deno\.\tests\006_url_imports.ts", expected_url),
-      ]);
+      let expected_url = format!("file:///{}:/deno/tests/006_url_imports.ts", cwd_str.get(..1).unwrap(),);
+      tests.extend(vec![(r"/deno/tests/006_url_imports.ts", expected_url.to_string()), (r"\deno\tests\006_url_imports.ts", expected_url.to_string()), (r"\deno\..\deno\tests\006_url_imports.ts", expected_url.to_string()), (r"\deno\.\tests\006_url_imports.ts", expected_url)]);
 
       // Relative local path.
-      let expected_url = format!(
-        "file:///{}/tests/006_url_imports.ts",
-        cwd_str.replace("\\", "/")
-      );
-      tests.extend(vec![
-        (r"tests/006_url_imports.ts", expected_url.to_string()),
-        (r"tests\006_url_imports.ts", expected_url.to_string()),
-        (r"./tests/006_url_imports.ts", (*expected_url).to_string()),
-        (r".\tests\006_url_imports.ts", (*expected_url).to_string()),
-      ]);
+      let expected_url = format!("file:///{}/tests/006_url_imports.ts", cwd_str.replace("\\", "/"));
+      tests.extend(vec![(r"tests/006_url_imports.ts", expected_url.to_string()), (r"tests\006_url_imports.ts", expected_url.to_string()), (r"./tests/006_url_imports.ts", (*expected_url).to_string()), (r".\tests\006_url_imports.ts", (*expected_url).to_string())]);
 
       // UNC network path.
       let expected_url = "file://server/share/deno/cool";
@@ -449,28 +279,15 @@ mod tests {
     } else {
       // Absolute local path.
       let expected_url = "file:///deno/tests/006_url_imports.ts";
-      tests.extend(vec![
-        ("/deno/tests/006_url_imports.ts", expected_url.to_string()),
-        ("//deno/tests/006_url_imports.ts", expected_url.to_string()),
-      ]);
+      tests.extend(vec![("/deno/tests/006_url_imports.ts", expected_url.to_string()), ("//deno/tests/006_url_imports.ts", expected_url.to_string())]);
 
       // Relative local path.
       let expected_url = format!("file://{}/tests/006_url_imports.ts", cwd_str);
-      tests.extend(vec![
-        ("tests/006_url_imports.ts", expected_url.to_string()),
-        ("./tests/006_url_imports.ts", expected_url.to_string()),
-        (
-          "tests/../tests/006_url_imports.ts",
-          expected_url.to_string(),
-        ),
-        ("tests/./006_url_imports.ts", expected_url),
-      ]);
+      tests.extend(vec![("tests/006_url_imports.ts", expected_url.to_string()), ("./tests/006_url_imports.ts", expected_url.to_string()), ("tests/../tests/006_url_imports.ts", expected_url.to_string()), ("tests/./006_url_imports.ts", expected_url)]);
     }
 
     for (specifier, expected_url) in tests {
-      let url = ModuleSpecifier::resolve_url_or_path(specifier)
-        .unwrap()
-        .to_string();
+      let url = ModuleSpecifier::resolve_url_or_path(specifier).unwrap().to_string();
       assert_eq!(url, expected_url);
     }
   }
@@ -480,10 +297,7 @@ mod tests {
     use url::ParseError::*;
     use ModuleResolutionError::*;
 
-    let mut tests = vec![
-      ("https://eggplant:b/c", InvalidUrl(InvalidPort)),
-      ("https://:8080/a/b/c", InvalidUrl(EmptyHost)),
-    ];
+    let mut tests = vec![("https://eggplant:b/c", InvalidUrl(InvalidPort)), ("https://:8080/a/b/c", InvalidUrl(EmptyHost))];
     if cfg!(target_os = "windows") {
       let p = r"\\.\c:/stuff/deno/script.ts";
       tests.push((p, InvalidPath(PathBuf::from(p))));
@@ -497,27 +311,7 @@ mod tests {
 
   #[test]
   fn test_specifier_has_uri_scheme() {
-    let tests = vec![
-      ("http://foo.bar/etc", true),
-      ("HTTP://foo.bar/etc", true),
-      ("http:ftp:", true),
-      ("http:", true),
-      ("hTtP:", true),
-      ("ftp:", true),
-      ("mailto:spam@please.me", true),
-      ("git+ssh://git@github.com/denoland/deno", true),
-      ("blob:https://whatwg.org/mumbojumbo", true),
-      ("abc.123+DEF-ghi:", true),
-      ("abc.123+def-ghi:@", true),
-      ("", false),
-      (":not", false),
-      ("http", false),
-      ("c:dir", false),
-      ("X:", false),
-      ("./http://not", false),
-      ("1abc://kinda/but/no", false),
-      ("schluẞ://no/more", false),
-    ];
+    let tests = vec![("http://foo.bar/etc", true), ("HTTP://foo.bar/etc", true), ("http:ftp:", true), ("http:", true), ("hTtP:", true), ("ftp:", true), ("mailto:spam@please.me", true), ("git+ssh://git@github.com/denoland/deno", true), ("blob:https://whatwg.org/mumbojumbo", true), ("abc.123+DEF-ghi:", true), ("abc.123+def-ghi:@", true), ("", false), (":not", false), ("http", false), ("c:dir", false), ("X:", false), ("./http://not", false), ("1abc://kinda/but/no", false), ("schluẞ://no/more", false)];
 
     for (specifier, expected) in tests {
       let result = ModuleSpecifier::specifier_has_uri_scheme(specifier);
@@ -529,16 +323,10 @@ mod tests {
   fn test_normalize_path() {
     assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
     assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
-    assert_eq!(
-      normalize_path(Path::new("a/./b/../c")),
-      PathBuf::from("a/c")
-    );
+    assert_eq!(normalize_path(Path::new("a/./b/../c")), PathBuf::from("a/c"));
 
     if cfg!(windows) {
-      assert_eq!(
-        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
-        PathBuf::from("C:\\a\\c")
-      );
+      assert_eq!(normalize_path(Path::new("C:\\a\\.\\b\\..\\c")), PathBuf::from("C:\\a\\c"));
     }
   }
 }

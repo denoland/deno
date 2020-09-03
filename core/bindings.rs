@@ -20,48 +20,10 @@ use std::option::Option;
 use std::rc::Rc;
 
 lazy_static! {
-  pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
-    v8::ExternalReferences::new(&[
-      v8::ExternalReference {
-        function: print.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: recv.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: send.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: set_macrotask_callback.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: eval_context.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: format_error.map_fn_to()
-      },
-      v8::ExternalReference {
-        getter: shared_getter.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: queue_microtask.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: encode.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: decode.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: get_promise_details.map_fn_to(),
-      }
-    ]);
+  pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences = v8::ExternalReferences::new(&[v8::ExternalReference { function: print.map_fn_to() }, v8::ExternalReference { function: recv.map_fn_to() }, v8::ExternalReference { function: send.map_fn_to() }, v8::ExternalReference { function: set_macrotask_callback.map_fn_to() }, v8::ExternalReference { function: eval_context.map_fn_to() }, v8::ExternalReference { function: format_error.map_fn_to() }, v8::ExternalReference { getter: shared_getter.map_fn_to() }, v8::ExternalReference { function: queue_microtask.map_fn_to() }, v8::ExternalReference { function: encode.map_fn_to() }, v8::ExternalReference { function: decode.map_fn_to() }, v8::ExternalReference { function: get_promise_details.map_fn_to() }]);
 }
 
-pub fn script_origin<'a>(
-  s: &mut v8::HandleScope<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
+pub fn script_origin<'a>(s: &mut v8::HandleScope<'a>, resource_name: v8::Local<'a, v8::String>) -> v8::ScriptOrigin<'a> {
   let resource_line_offset = v8::Integer::new(s, 0);
   let resource_column_offset = v8::Integer::new(s, 0);
   let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
@@ -70,23 +32,10 @@ pub fn script_origin<'a>(
   let resource_is_opaque = v8::Boolean::new(s, true);
   let is_wasm = v8::Boolean::new(s, false);
   let is_module = v8::Boolean::new(s, false);
-  v8::ScriptOrigin::new(
-    resource_name.into(),
-    resource_line_offset,
-    resource_column_offset,
-    resource_is_shared_cross_origin,
-    script_id,
-    source_map_url.into(),
-    resource_is_opaque,
-    is_wasm,
-    is_module,
-  )
+  v8::ScriptOrigin::new(resource_name.into(), resource_line_offset, resource_column_offset, resource_is_shared_cross_origin, script_id, source_map_url.into(), resource_is_opaque, is_wasm, is_module)
 }
 
-pub fn module_origin<'a>(
-  s: &mut v8::HandleScope<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
+pub fn module_origin<'a>(s: &mut v8::HandleScope<'a>, resource_name: v8::Local<'a, v8::String>) -> v8::ScriptOrigin<'a> {
   let resource_line_offset = v8::Integer::new(s, 0);
   let resource_column_offset = v8::Integer::new(s, 0);
   let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
@@ -95,22 +44,10 @@ pub fn module_origin<'a>(
   let resource_is_opaque = v8::Boolean::new(s, true);
   let is_wasm = v8::Boolean::new(s, false);
   let is_module = v8::Boolean::new(s, true);
-  v8::ScriptOrigin::new(
-    resource_name.into(),
-    resource_line_offset,
-    resource_column_offset,
-    resource_is_shared_cross_origin,
-    script_id,
-    source_map_url.into(),
-    resource_is_opaque,
-    is_wasm,
-    is_module,
-  )
+  v8::ScriptOrigin::new(resource_name.into(), resource_line_offset, resource_column_offset, resource_is_shared_cross_origin, script_id, source_map_url.into(), resource_is_opaque, is_wasm, is_module)
 }
 
-pub fn initialize_context<'s>(
-  scope: &mut v8::HandleScope<'s, ()>,
-) -> v8::Local<'s, v8::Context> {
+pub fn initialize_context<'s>(scope: &mut v8::HandleScope<'s, ()>) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
   let context = v8::Context::new(scope);
@@ -141,17 +78,10 @@ pub fn initialize_context<'s>(
   let send_val = send_tmpl.get_function(scope).unwrap();
   core_val.set(scope, send_key.into(), send_val.into());
 
-  let set_macrotask_callback_key =
-    v8::String::new(scope, "setMacrotaskCallback").unwrap();
-  let set_macrotask_callback_tmpl =
-    v8::FunctionTemplate::new(scope, set_macrotask_callback);
-  let set_macrotask_callback_val =
-    set_macrotask_callback_tmpl.get_function(scope).unwrap();
-  core_val.set(
-    scope,
-    set_macrotask_callback_key.into(),
-    set_macrotask_callback_val.into(),
-  );
+  let set_macrotask_callback_key = v8::String::new(scope, "setMacrotaskCallback").unwrap();
+  let set_macrotask_callback_tmpl = v8::FunctionTemplate::new(scope, set_macrotask_callback);
+  let set_macrotask_callback_val = set_macrotask_callback_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, set_macrotask_callback_key.into(), set_macrotask_callback_val.into());
 
   let eval_context_key = v8::String::new(scope, "evalContext").unwrap();
   let eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
@@ -173,17 +103,10 @@ pub fn initialize_context<'s>(
   let decode_val = decode_tmpl.get_function(scope).unwrap();
   core_val.set(scope, decode_key.into(), decode_val.into());
 
-  let get_promise_details_key =
-    v8::String::new(scope, "getPromiseDetails").unwrap();
-  let get_promise_details_tmpl =
-    v8::FunctionTemplate::new(scope, get_promise_details);
-  let get_promise_details_val =
-    get_promise_details_tmpl.get_function(scope).unwrap();
-  core_val.set(
-    scope,
-    get_promise_details_key.into(),
-    get_promise_details_val.into(),
-  );
+  let get_promise_details_key = v8::String::new(scope, "getPromiseDetails").unwrap();
+  let get_promise_details_tmpl = v8::FunctionTemplate::new(scope, get_promise_details);
+  let get_promise_details_val = get_promise_details_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, get_promise_details_key.into(), get_promise_details_val.into());
 
   let shared_key = v8::String::new(scope, "shared").unwrap();
   core_val.set_accessor(scope, shared_key.into(), shared_getter);
@@ -192,45 +115,27 @@ pub fn initialize_context<'s>(
   let queue_microtask_key = v8::String::new(scope, "queueMicrotask").unwrap();
   let queue_microtask_tmpl = v8::FunctionTemplate::new(scope, queue_microtask);
   let queue_microtask_val = queue_microtask_tmpl.get_function(scope).unwrap();
-  global.set(
-    scope,
-    queue_microtask_key.into(),
-    queue_microtask_val.into(),
-  );
+  global.set(scope, queue_microtask_key.into(), queue_microtask_val.into());
 
   scope.escape(context)
 }
 
-pub fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut v8::HandleScope<'sc>,
-  buf: Box<[u8]>,
-) -> v8::Local<'sc, v8::Uint8Array> {
+pub fn boxed_slice_to_uint8array<'sc>(scope: &mut v8::HandleScope<'sc>, buf: Box<[u8]>) -> v8::Local<'sc, v8::Uint8Array> {
   assert!(!buf.is_empty());
   let buf_len = buf.len();
   let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
   let backing_store_shared = backing_store.make_shared();
   let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
+  v8::Uint8Array::new(scope, ab, 0, buf_len).expect("Failed to create UintArray8")
 }
 
-pub extern "C" fn host_import_module_dynamically_callback(
-  context: v8::Local<v8::Context>,
-  referrer: v8::Local<v8::ScriptOrModule>,
-  specifier: v8::Local<v8::String>,
-) -> *mut v8::Promise {
+pub extern "C" fn host_import_module_dynamically_callback(context: v8::Local<v8::Context>, referrer: v8::Local<v8::ScriptOrModule>, specifier: v8::Local<v8::String>) -> *mut v8::Promise {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
-  let specifier_str = specifier
-    .to_string(scope)
-    .unwrap()
-    .to_rust_string_lossy(scope);
+  let specifier_str = specifier.to_string(scope).unwrap().to_rust_string_lossy(scope);
   let referrer_name = referrer.get_resource_name();
-  let referrer_name_str = referrer_name
-    .to_string(scope)
-    .unwrap()
-    .to_rust_string_lossy(scope);
+  let referrer_name_str = referrer_name.to_string(scope).unwrap().to_rust_string_lossy(scope);
 
   // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
   // to use it. For now we check that it is not used. This check may need to be
@@ -251,11 +156,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   &*promise as *const _ as *mut _
 }
 
-pub extern "C" fn host_initialize_import_meta_object_callback(
-  context: v8::Local<v8::Context>,
-  module: v8::Local<v8::Module>,
-  meta: v8::Local<v8::Object>,
-) {
+pub extern "C" fn host_initialize_import_meta_object_callback(context: v8::Local<v8::Context>, module: v8::Local<v8::Module>, meta: v8::Local<v8::Object>) {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let state_rc = EsIsolate::state(scope);
   let state = state_rc.borrow();
@@ -287,9 +188,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
       let error = message.get_value();
       let error_global = v8::Global::new(scope, error);
-      state
-        .pending_promise_exceptions
-        .insert(promise_id, error_global);
+      state.pending_promise_exceptions.insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
       state.pending_promise_exceptions.remove(&promise_id);
@@ -301,34 +200,20 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   };
 }
 
-pub(crate) unsafe fn get_backing_store_slice(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &[u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
+pub(crate) unsafe fn get_backing_store_slice(backing_store: &v8::SharedRef<v8::BackingStore>, byte_offset: usize, byte_length: usize) -> &[u8] {
+  let cells: *const [Cell<u8>] = &backing_store[byte_offset..byte_offset + byte_length];
   let bytes = cells as *const [u8];
   &*bytes
 }
 
 #[allow(clippy::mut_from_ref)]
-pub(crate) unsafe fn get_backing_store_slice_mut(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &mut [u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
+pub(crate) unsafe fn get_backing_store_slice_mut(backing_store: &v8::SharedRef<v8::BackingStore>, byte_offset: usize, byte_length: usize) -> &mut [u8] {
+  let cells: *const [Cell<u8>] = &backing_store[byte_offset..byte_offset + byte_length];
   let bytes = cells as *const _ as *mut [u8];
   &mut *bytes
 }
 
-fn print(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
+fn print(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, _rv: v8::ReturnValue) {
   let arg_len = args.length();
   assert!(arg_len >= 0 && arg_len <= 2);
 
@@ -337,9 +222,7 @@ fn print(
 
   let mut is_err = false;
   if arg_len == 2 {
-    let int_val = is_err_arg
-      .integer_value(scope)
-      .expect("Unable to convert to integer");
+    let int_val = is_err_arg.integer_value(scope).expect("Unable to convert to integer");
     is_err = int_val != 0;
   };
   let tc_scope = &mut v8::TryCatch::new(scope);
@@ -354,11 +237,7 @@ fn print(
   }
 }
 
-fn recv(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
+fn recv(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, _rv: v8::ReturnValue) {
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -375,11 +254,7 @@ fn recv(
   slot.replace(v8::Global::new(scope, cb));
 }
 
-fn send<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+fn send<'s>(scope: &mut v8::HandleScope<'s>, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
   let state_rc = CoreIsolate::state(scope);
   let state = state_rc.borrow_mut();
 
@@ -395,13 +270,11 @@ fn send<'s>(
   };
 
   let buf_iter = (1..args.length()).map(|idx| {
-    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
-      .map(|view| ZeroCopyBuf::new(scope, view))
-      .map_err(|err| {
-        let msg = format!("Invalid argument at position {}: {}", idx, err);
-        let msg = v8::String::new(scope, &msg).unwrap();
-        v8::Exception::type_error(scope, msg)
-      })
+    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx)).map(|view| ZeroCopyBuf::new(scope, view)).map_err(|err| {
+      let msg = format!("Invalid argument at position {}: {}", idx, err);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      v8::Exception::type_error(scope, msg)
+    })
   });
 
   let bufs = match buf_iter.collect::<Result<_, _>>() {
@@ -450,11 +323,7 @@ fn send<'s>(
   }
 }
 
-fn set_macrotask_callback(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
+fn set_macrotask_callback(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, _rv: v8::ReturnValue) {
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -466,21 +335,14 @@ fn set_macrotask_callback(
   let slot = match &mut state.js_macrotask_cb {
     slot @ None => slot,
     _ => {
-      return throw_type_error(
-        scope,
-        "Deno.core.setMacrotaskCallback() already called",
-      );
+      return throw_type_error(scope, "Deno.core.setMacrotaskCallback() already called");
     }
   };
 
   slot.replace(v8::Global::new(scope, cb));
 }
 
-fn eval_context(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+fn eval_context(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
@@ -491,8 +353,7 @@ fn eval_context(
     }
   };
 
-  let url = v8::Local::<v8::String>::try_from(args.get(1))
-    .map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
+  let url = v8::Local::<v8::String>::try_from(args.get(1)).map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
 
   let output = v8::Array::new(scope, 2);
   /*
@@ -505,9 +366,7 @@ fn eval_context(
      }
   */
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let name =
-    v8::String::new(tc_scope, url.as_ref().map_or("<unknown>", Url::as_str))
-      .unwrap();
+  let name = v8::String::new(tc_scope, url.as_ref().map_or("<unknown>", Url::as_str)).unwrap();
   let origin = script_origin(tc_scope, name);
   let maybe_script = v8::Script::compile(tc_scope, source, Some(&origin));
 
@@ -521,24 +380,13 @@ fn eval_context(
 
     let errinfo_obj = v8::Object::new(tc_scope);
 
-    let is_compile_error_key =
-      v8::String::new(tc_scope, "isCompileError").unwrap();
+    let is_compile_error_key = v8::String::new(tc_scope, "isCompileError").unwrap();
     let is_compile_error_val = v8::Boolean::new(tc_scope, true);
-    errinfo_obj.set(
-      tc_scope,
-      is_compile_error_key.into(),
-      is_compile_error_val.into(),
-    );
+    errinfo_obj.set(tc_scope, is_compile_error_key.into(), is_compile_error_val.into());
 
-    let is_native_error_key =
-      v8::String::new(tc_scope, "isNativeError").unwrap();
-    let is_native_error_val =
-      v8::Boolean::new(tc_scope, exception.is_native_error());
-    errinfo_obj.set(
-      tc_scope,
-      is_native_error_key.into(),
-      is_native_error_val.into(),
-    );
+    let is_native_error_key = v8::String::new(tc_scope, "isNativeError").unwrap();
+    let is_native_error_val = v8::Boolean::new(tc_scope, exception.is_native_error());
+    errinfo_obj.set(tc_scope, is_native_error_key.into(), is_native_error_val.into());
 
     let thrown_key = v8::String::new(tc_scope, "thrown").unwrap();
     errinfo_obj.set(tc_scope, thrown_key.into(), exception);
@@ -562,24 +410,13 @@ fn eval_context(
 
     let errinfo_obj = v8::Object::new(tc_scope);
 
-    let is_compile_error_key =
-      v8::String::new(tc_scope, "isCompileError").unwrap();
+    let is_compile_error_key = v8::String::new(tc_scope, "isCompileError").unwrap();
     let is_compile_error_val = v8::Boolean::new(tc_scope, false);
-    errinfo_obj.set(
-      tc_scope,
-      is_compile_error_key.into(),
-      is_compile_error_val.into(),
-    );
+    errinfo_obj.set(tc_scope, is_compile_error_key.into(), is_compile_error_val.into());
 
-    let is_native_error_key =
-      v8::String::new(tc_scope, "isNativeError").unwrap();
-    let is_native_error_val =
-      v8::Boolean::new(tc_scope, exception.is_native_error());
-    errinfo_obj.set(
-      tc_scope,
-      is_native_error_key.into(),
-      is_native_error_val.into(),
-    );
+    let is_native_error_key = v8::String::new(tc_scope, "isNativeError").unwrap();
+    let is_native_error_val = v8::Boolean::new(tc_scope, exception.is_native_error());
+    errinfo_obj.set(tc_scope, is_native_error_key.into(), is_native_error_val.into());
 
     let thrown_key = v8::String::new(tc_scope, "thrown").unwrap();
     errinfo_obj.set(tc_scope, thrown_key.into(), exception);
@@ -599,11 +436,7 @@ fn eval_context(
   rv.set(output.into());
 }
 
-fn format_error(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+fn format_error(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
   let e = JSError::from_v8_exception(scope, args.get(0));
   let state_rc = CoreIsolate::state(scope);
   let state = state_rc.borrow();
@@ -613,11 +446,7 @@ fn format_error(
   rv.set(e.into())
 }
 
-fn encode(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+fn encode(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
   let text = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
@@ -635,22 +464,16 @@ fn encode(
     v8::Uint8Array::new(scope, ab, 0, 0).expect("Failed to create UintArray8")
   } else {
     let buf_len = text_bytes.len();
-    let backing_store =
-      v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
+    let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
     let backing_store_shared = backing_store.make_shared();
     let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-    v8::Uint8Array::new(scope, ab, 0, buf_len)
-      .expect("Failed to create UintArray8")
+    v8::Uint8Array::new(scope, ab, 0, buf_len).expect("Failed to create UintArray8")
   };
 
   rv.set(buf.into())
 }
 
-fn decode(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+fn decode(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
   let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
     Ok(view) => view,
     Err(_) => {
@@ -662,24 +485,13 @@ fn decode(
   };
 
   let backing_store = view.buffer(scope).unwrap().get_backing_store();
-  let buf = unsafe {
-    get_backing_store_slice(
-      &backing_store,
-      view.byte_offset(),
-      view.byte_length(),
-    )
-  };
+  let buf = unsafe { get_backing_store_slice(&backing_store, view.byte_offset(), view.byte_length()) };
 
-  let text_str =
-    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
+  let text_str = v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
   rv.set(text_str.into())
 }
 
-fn queue_microtask(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
+fn queue_microtask(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, _rv: v8::ReturnValue) {
   match v8::Local::<v8::Function>::try_from(args.get(0)) {
     Ok(f) => scope.enqueue_microtask(f),
     Err(_) => {
@@ -690,26 +502,16 @@ fn queue_microtask(
   };
 }
 
-fn shared_getter(
-  scope: &mut v8::HandleScope,
-  _name: v8::Local<v8::Name>,
-  _args: v8::PropertyCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+fn shared_getter(scope: &mut v8::HandleScope, _name: v8::Local<v8::Name>, _args: v8::PropertyCallbackArguments, mut rv: v8::ReturnValue) {
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
-  let CoreIsolateState {
-    shared_ab, shared, ..
-  } = &mut *state;
+  let CoreIsolateState { shared_ab, shared, .. } = &mut *state;
 
   // Lazily initialize the persistent external ArrayBuffer.
   let shared_ab = match shared_ab {
     Some(ref ab) => v8::Local::new(scope, ab),
     slot @ None => {
-      let ab = v8::SharedArrayBuffer::with_backing_store(
-        scope,
-        shared.get_backing_store(),
-      );
+      let ab = v8::SharedArrayBuffer::with_backing_store(scope, shared.get_backing_store());
       slot.replace(v8::Global::new(scope, ab));
       ab
     }
@@ -717,23 +519,14 @@ fn shared_getter(
   rv.set(shared_ab.into())
 }
 
-pub fn module_resolve_callback<'s>(
-  context: v8::Local<'s, v8::Context>,
-  specifier: v8::Local<'s, v8::String>,
-  referrer: v8::Local<'s, v8::Module>,
-) -> Option<v8::Local<'s, v8::Module>> {
+pub fn module_resolve_callback<'s>(context: v8::Local<'s, v8::Context>, specifier: v8::Local<'s, v8::String>, referrer: v8::Local<'s, v8::Module>) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
   let state_rc = EsIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let referrer_id = referrer.get_identity_hash();
-  let referrer_name = state
-    .modules
-    .get_info(referrer_id)
-    .expect("ModuleInfo not found")
-    .name
-    .to_string();
+  let referrer_name = state.modules.get_info(referrer_id).expect("ModuleInfo not found").name.to_string();
   let len_ = referrer.get_module_requests_length();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
@@ -747,10 +540,7 @@ pub fn module_resolve_callback<'s>(
       match state.modules.get_info(id) {
         Some(info) => return Some(v8::Local::new(scope, &info.handle)),
         None => {
-          let msg = format!(
-            r#"Cannot resolve module "{}" from "{}""#,
-            req_str, referrer_name
-          );
+          let msg = format!(r#"Cannot resolve module "{}" from "{}""#, req_str, referrer_name);
           throw_type_error(scope, msg);
           return None;
         }
@@ -766,11 +556,7 @@ pub fn module_resolve_callback<'s>(
 // promise_details = [State, Result]
 // State = enum { Pending = 0, Fulfilled = 1, Rejected = 2}
 // Result = PromiseResult<T> | PromiseError
-fn get_promise_details(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+fn get_promise_details(scope: &mut v8::HandleScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,
     Err(_) => {
@@ -809,10 +595,7 @@ fn get_promise_details(
   }
 }
 
-fn throw_type_error<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  message: impl AsRef<str>,
-) {
+fn throw_type_error<'s>(scope: &mut v8::HandleScope<'s>, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);

@@ -14,13 +14,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+  let t = (); // Temp.
 
   i.register_op("op_repl_start", s.stateful_json_op_sync(t, op_repl_start));
-  i.register_op(
-    "op_repl_readline",
-    s.stateful_json_op_async(t, op_repl_readline),
-  );
+  i.register_op("op_repl_readline", s.stateful_json_op_async(t, op_repl_readline));
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);
@@ -31,19 +28,13 @@ struct ReplStartArgs {
   history_file: String,
 }
 
-fn op_repl_start(
-  state: &State,
-  resource_table: &mut ResourceTable,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+fn op_repl_start(state: &State, _: (), args: Value, _zero_copy: &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
   debug!("op_repl_start {}", args.history_file);
-  let history_path =
-    repl::history_path(&state.global_state.dir, &args.history_file);
+  let history_path = repl::history_path(&state.global_state.dir, &args.history_file);
   let repl = repl::Repl::new(history_path);
   let resource = ReplResource(Arc::new(Mutex::new(repl)));
-  let rid = resource_table.add("repl", Box::new(resource));
+  let rid = state.resource_table.borrow_mut().add("repl", Box::new(resource));
   Ok(json!(rid))
 }
 
@@ -53,20 +44,13 @@ struct ReplReadlineArgs {
   prompt: String,
 }
 
-async fn op_repl_readline(
-  _state: Rc<State>,
-  resource_table: Rc<RefCell<ResourceTable>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+async fn op_repl_readline(state: Rc<State>, _: (), args: Value, _zero_copy: BufVec) -> Result<Value, ErrBox> {
   let args: ReplReadlineArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
-  let resource_table = resource_table.borrow();
-  let resource = resource_table
-    .get::<ReplResource>(rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+  let resource_table = state.resource_table.borrow();
+  let resource = resource_table.get::<ReplResource>(rid).ok_or_else(ErrBox::bad_resource_id)?;
   let repl = resource.0.clone();
   drop(resource_table);
   tokio::task::spawn_blocking(move || {

@@ -60,11 +60,7 @@ impl ResourceTable {
   }
 
   pub fn entries(&self) -> Vec<(ResourceId, String)> {
-    self
-      .map
-      .iter()
-      .map(|(key, (name, _resource))| (*key, name.clone()))
-      .collect()
+    self.map.iter().map(|(key, (name, _resource))| (*key, name.clone())).collect()
   }
 
   // close(2) is done by dropping the value. Therefore we just need to remove

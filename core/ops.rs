@@ -9,6 +9,8 @@ use futures::Future;
 use futures::FutureExt;
 use serde_json::json;
 use serde_json::Value;
+use std::borrow;
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -40,8 +42,7 @@ pub trait OpManager: OpRouter + 'static {
 
   fn register_op_json_sync<F>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
-    F: 'static
-      + Fn(serde_json::Value, BufVec) -> Result<serde_json::Value, ErrBox>,
+    F: 'static + Fn(serde_json::Value, BufVec) -> Result<serde_json::Value, ErrBox>,
   {
     let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
       let value = serde_json::from_slice(&bufs[0]).unwrap();
@@ -54,14 +55,10 @@ pub trait OpManager: OpRouter + 'static {
     self.register_op(name, bin_op_fn)
   }
 
-  fn register_op_json_async<F, Fut>(
-    self: &Rc<Self>,
-    name: &str,
-    op_fn: F,
-  ) -> OpId
+  fn register_op_json_async<F, R>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
-    Fut: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
-    F: Fn(serde_json::Value, BufVec) -> Fut + 'static,
+    F: Fn(serde_json::Value, BufVec) -> R + 'static,
+    R: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
   {
     let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
       let mgr_ = mgr.clone();
@@ -69,18 +66,35 @@ pub trait OpManager: OpRouter + 'static {
       let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
       let bufs = bufs[1..].into();
       let fut = op_fn(value, bufs);
-      let fut2 = fut.map(move |result| {
-        serialize_result(Some(promise_id), result, move |err| {
-          mgr_.get_error_class(err)
-        })
-      });
+      let fut2 = fut.map(move |result| serialize_result(Some(promise_id), result, move |err| mgr_.get_error_class(err)));
       Op::Async(Box::pin(fut2))
     };
 
     self.register_op(name, bin_op_fn)
   }
 
-  fn get_error_class(&self, err: &ErrBox) -> &'static str {
+  fn register_op_meta_catalog<F, R, I, K, V>(self: &Rc<Self>, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<Self>) -> R + 'static,
+    R: borrow::Borrow<I>,
+    for<'a> &'a I: IntoIterator<Item = (&'a K, &'a V)>,
+    K: AsRef<str>,
+    V: ToOwned<Owned = OpId>,
+    V::Owned: std::borrow::Borrow<V>,
+  {
+    let bin_op_fn = move |mgr: Rc<Self>, _: BufVec| -> Op {
+      let catalog = op_fn(mgr);
+      let index = catalog.borrow().into_iter().map(|(k, v)| (k.as_ref(), v.to_owned())).collect::<HashMap<&str, OpId>>();
+      let buf = serde_json::to_vec(&index).unwrap().into();
+      Op::Sync(buf)
+    };
+
+    let op_id = self.register_op("ops", bin_op_fn);
+    assert_eq!(op_id, 0, "the 'meta_catalog' op should be the first one registered");
+    op_id
+  }
+
+  fn get_error_class(&self, _err: &ErrBox) -> &'static str {
     "Error"
   }
 }
@@ -105,24 +119,14 @@ impl Deref for OpRegistry {
 impl OpRegistry {
   pub fn new() -> Rc<Self> {
     let self_rc = Rc::new(Self(Default::default()));
-    let op_id =
-      self_rc.register_op("ops", &|self_rc: Rc<Self>, _: BufVec| -> Op {
-        Op::Sync(
-          serde_json::to_string(&self_rc.borrow().name_to_id)
-            .unwrap()
-            .as_bytes()
-            .to_owned()
-            .into_boxed_slice(),
-        )
-      });
-    assert_eq!(op_id, 0);
+    self_rc.register_op_meta_catalog(|s| s.borrow().name_to_id.clone());
     self_rc
   }
 }
 
 impl OpRouter for OpRegistry {
   fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let op_fn = self.borrow().dispatchers.get(op_id as usize).cloned();
+    let op_fn = self.borrow_mut().dispatchers.get(op_id as usize).cloned();
     match op_fn {
       Some(op_fn) => (op_fn)(self, bufs),
       None => Op::NoSuchOp,
@@ -149,11 +153,7 @@ impl OpManager for OpRegistry {
   }
 }
 
-fn serialize_result(
-  promise_id: Option<u64>,
-  result: Result<Value, ErrBox>,
-  get_error_class_fn: impl FnOnce(&ErrBox) -> &'static str,
-) -> Buf {
+fn serialize_result(promise_id: Option<u64>, result: Result<Value, ErrBox>, get_error_class_fn: impl FnOnce(&ErrBox) -> &'static str) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => json!({

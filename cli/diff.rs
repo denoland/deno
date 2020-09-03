@@ -28,23 +28,10 @@ fn fmt_rem_text_highlight(x: &str) -> String {
   format!("{}", colors::white_on_red(x))
 }
 
-fn write_line_diff(
-  diff: &mut String,
-  orig_line: &mut usize,
-  edit_line: &mut usize,
-  line_number_width: usize,
-  orig: &mut String,
-  edit: &mut String,
-) -> fmt::Result {
+fn write_line_diff(diff: &mut String, orig_line: &mut usize, edit_line: &mut usize, line_number_width: usize, orig: &mut String, edit: &mut String) -> fmt::Result {
   let split = orig.split('\n').enumerate();
   for (i, s) in split {
-    write!(
-      diff,
-      "{:0width$}{} ",
-      *orig_line + i,
-      colors::gray("|"),
-      width = line_number_width
-    )?;
+    write!(diff, "{:0width$}{} ", *orig_line + i, colors::gray("|"), width = line_number_width)?;
     write!(diff, "{}", fmt_rem())?;
     write!(diff, "{}", s)?;
     writeln!(diff)?;
@@ -52,13 +39,7 @@ fn write_line_diff(
 
   let split = edit.split('\n').enumerate();
   for (i, s) in split {
-    write!(
-      diff,
-      "{:0width$}{} ",
-      *edit_line + i,
-      colors::gray("|"),
-      width = line_number_width
-    )?;
+    write!(diff, "{:0width$}{} ", *edit_line + i, colors::gray("|"), width = line_number_width)?;
     write!(diff, "{}", fmt_add())?;
     write!(diff, "{}", s)?;
     writeln!(diff)?;
@@ -126,14 +107,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
         for (i, s) in split {
           if i > 0 {
             if changes {
-              write_line_diff(
-                &mut diff,
-                &mut orig_line,
-                &mut edit_line,
-                line_number_width,
-                &mut orig,
-                &mut edit,
-              )?;
+              write_line_diff(&mut diff, &mut orig_line, &mut edit_line, line_number_width, &mut orig, &mut edit)?;
               changes = false
             } else {
               orig.clear();
@@ -155,17 +129,9 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
 fn test_diff() {
   let simple_console_log_unfmt = "console.log('Hello World')";
   let simple_console_log_fmt = "console.log(\"Hello World\");";
-  assert_eq!(
-    colors::strip_ansi_codes(
-      &diff(simple_console_log_unfmt, simple_console_log_fmt).unwrap()
-    ),
-    "1| -console.log('Hello World')\n1| +console.log(\"Hello World\");\n"
-  );
+  assert_eq!(colors::strip_ansi_codes(&diff(simple_console_log_unfmt, simple_console_log_fmt).unwrap()), "1| -console.log('Hello World')\n1| +console.log(\"Hello World\");\n");
 
   let line_number_unfmt = "\n\n\n\nconsole.log(\n'Hello World'\n)";
   let line_number_fmt = "console.log(\n\"Hello World\"\n);";
-  assert_eq!(
-    colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt).unwrap()),
-    "1| -\n2| -\n3| -\n4| -\n5| -console.log(\n1| +console.log(\n6| -'Hello World'\n2| +\"Hello World\"\n7| -)\n3| +);\n"
-  )
+  assert_eq!(colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt).unwrap()), "1| -\n2| -\n3| -\n4| -\n5| -console.log(\n1| +console.log(\n6| -'Hello World'\n2| +\"Hello World\"\n7| -)\n3| +);\n")
 }

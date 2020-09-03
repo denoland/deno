@@ -1,6 +1,7 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
 use crate::state::State;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
@@ -90,11 +91,7 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_write", s.stateful_minimal_op2(op_write));
 }
 
-pub fn get_stdio() -> (
-  Option<StreamResourceHolder>,
-  Option<StreamResourceHolder>,
-  Option<StreamResourceHolder>,
-) {
+pub fn get_stdio() -> (Option<StreamResourceHolder>, Option<StreamResourceHolder>, Option<StreamResourceHolder>) {
   let stdin = get_stdio_stream(&STDIN_HANDLE);
   let stdout = get_stdio_stream(&STDOUT_HANDLE);
   let stderr = get_stdio_stream(&STDERR_HANDLE);
@@ -102,15 +99,11 @@ pub fn get_stdio() -> (
   (stdin, stdout, stderr)
 }
 
-fn get_stdio_stream(
-  handle: &Option<std::fs::File>,
-) -> Option<StreamResourceHolder> {
+fn get_stdio_stream(handle: &Option<std::fs::File>) -> Option<StreamResourceHolder> {
   match handle {
     None => None,
     Some(file_handle) => match file_handle.try_clone() {
-      Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(
-        Some((tokio::fs::File::from_std(clone), FileMetadata::default())),
-      ))),
+      Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(Some((tokio::fs::File::from_std(clone), FileMetadata::default()))))),
       Err(_e) => None,
     },
   }
@@ -202,19 +195,11 @@ impl<T: AsyncWrite + Unpin> UnpinAsyncWrite for T {}
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
 /// but uses an `ErrBox` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
-  fn poll_read(
-    &mut self,
-    cx: &mut Context,
-    buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<Result<usize, ErrBox>>;
 }
 
 impl DenoAsyncRead for StreamResource {
-  fn poll_read(
-    &mut self,
-    cx: &mut Context,
-    buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<Result<usize, ErrBox>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncRead = match self {
       FsFile(Some((f, _))) => f,
@@ -235,50 +220,34 @@ impl DenoAsyncRead for StreamResource {
   }
 }
 
-pub fn op_read(
-  isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
-  is_sync: bool,
-  rid: i32,
-  zero_copy: &mut [ZeroCopyBuf],
-) -> MinimalOp {
+pub fn op_read(state: Rc<State>, is_sync: bool, rid: i32, zero_copy: BufVec) -> MinimalOp {
   debug!("read rid={}", rid);
   match zero_copy.len() {
     0 => return MinimalOp::Sync(Err(no_buffer_specified())),
     1 => {}
     _ => panic!("Invalid number of arguments"),
   }
-  let resource_table = isolate_state.resource_table.clone();
 
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      std_file_resource(&state, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Read;
-          std_file
-            .read(&mut zero_copy[0])
-            .map(|n: usize| n as i32)
-            .map_err(ErrBox::from)
+          std_file.read(&mut zero_copy[0]).map(|n: usize| n as i32).map_err(ErrBox::from)
         }
-        Err(_) => {
-          Err(ErrBox::type_error("sync read not allowed on this resource"))
-        }
+        Err(_) => Err(ErrBox::type_error("sync read not allowed on this resource")),
       })
     })
   } else {
     let mut zero_copy = zero_copy[0].clone();
     MinimalOp::Async(
       poll_fn(move |cx| {
-        let mut resource_table = resource_table.borrow_mut();
-        let resource_holder = resource_table
-          .get_mut::<StreamResourceHolder>(rid as u32)
-          .ok_or_else(ErrBox::bad_resource_id)?;
+        let mut resource_table = state.resource_table.borrow_mut();
+        let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid as u32).ok_or_else(ErrBox::bad_resource_id)?;
 
         let mut task_tracker_id: Option<usize> = None;
-        let nread = match resource_holder.resource.poll_read(cx, &mut zero_copy)
-        {
+        let nread = match resource_holder.resource.poll_read(cx, &mut zero_copy) {
           Poll::Ready(t) => {
             if let Some(id) = task_tracker_id {
               resource_holder.untrack_task(id);
@@ -300,11 +269,7 @@ pub fn op_read(
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
 /// but uses an `ErrBox` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
-  fn poll_write(
-    &mut self,
-    cx: &mut Context,
-    buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>>;
+  fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize, ErrBox>>;
 
   fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
 
@@ -312,11 +277,7 @@ pub trait DenoAsyncWrite {
 }
 
 impl DenoAsyncWrite for StreamResource {
-  fn poll_write(
-    &mut self,
-    cx: &mut Context,
-    buf: &[u8],
-  ) -> Poll<Result<usize, ErrBox>> {
+  fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize, ErrBox>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
@@ -357,13 +318,7 @@ impl DenoAsyncWrite for StreamResource {
   }
 }
 
-pub fn op_write(
-  isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
-  is_sync: bool,
-  rid: i32,
-  zero_copy: &mut [ZeroCopyBuf],
-) -> MinimalOp {
+pub fn op_write(state: Rc<State>, is_sync: bool, rid: i32, zero_copy: BufVec) -> MinimalOp {
   debug!("write rid={}", rid);
   match zero_copy.len() {
     0 => return MinimalOp::Sync(Err(no_buffer_specified())),
@@ -374,30 +329,21 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = isolate_state.resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      std_file_resource(&state, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
-          std_file
-            .write(&zero_copy[0])
-            .map(|nwritten: usize| nwritten as i32)
-            .map_err(ErrBox::from)
+          std_file.write(&zero_copy[0]).map(|nwritten: usize| nwritten as i32).map_err(ErrBox::from)
         }
-        Err(_) => {
-          Err(ErrBox::type_error("sync read not allowed on this resource"))
-        }
+        Err(_) => Err(ErrBox::type_error("sync read not allowed on this resource")),
       })
     })
   } else {
     let zero_copy = zero_copy[0].clone();
-    let resource_table = isolate_state.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {
-          let mut resource_table = resource_table.borrow_mut();
-          let resource_holder = resource_table
-            .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(ErrBox::bad_resource_id)?;
+          let mut resource_table = state.resource_table.borrow_mut();
+          let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid as u32).ok_or_else(ErrBox::bad_resource_id)?;
           resource_holder.resource.poll_write(cx, &zero_copy)
         })
         .await?;
@@ -407,10 +353,8 @@ pub fn op_write(
         // Figure out why it's needed and preferably remove it.
         // https://github.com/denoland/deno/issues/3565
         poll_fn(|cx| {
-          let mut resource_table = resource_table.borrow_mut();
-          let resource_holder = resource_table
-            .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(ErrBox::bad_resource_id)?;
+          let mut resource_table = state.resource_table.borrow_mut();
+          let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid as u32).ok_or_else(ErrBox::bad_resource_id)?;
           resource_holder.resource.poll_flush(cx)
         })
         .await?;
@@ -429,17 +373,12 @@ pub fn op_write(
 /// operations.
 ///
 /// Returns ErrorKind::Busy if the resource is being used by another op.
-pub fn std_file_resource<F, T>(
-  resource_table: &mut ResourceTable,
-  rid: u32,
-  mut f: F,
-) -> Result<T, ErrBox>
+pub fn std_file_resource<F, T>(state: &State, rid: u32, mut f: F) -> Result<T, ErrBox>
 where
-  F:
-    FnMut(Result<&mut std::fs::File, &mut StreamResource>) -> Result<T, ErrBox>,
+  F: FnMut(Result<&mut std::fs::File, &mut StreamResource>) -> Result<T, ErrBox>,
 {
   // First we look up the rid in the resource table.
-  let mut r = resource_table.get_mut::<StreamResourceHolder>(rid);
+  let mut r = state.resource_table.borrow_mut().get_mut::<StreamResourceHolder>(rid);
   if let Some(ref mut resource_holder) = r {
     // Sync write only works for FsFile. It doesn't make sense to do this
     // for non-blocking sockets. So we error out if not FsFile.
@@ -455,16 +394,14 @@ where
               // Turn the std_file handle back into a tokio file, put it back
               // in the resource table.
               let tokio_file = tokio::fs::File::from_std(std_file);
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
+              resource_holder.resource = StreamResource::FsFile(Some((tokio_file, metadata)));
               // return the result.
               result
             }
             Err(tokio_file) => {
               // This function will return an error containing the file if
               // some operation is in-flight.
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
+              resource_holder.resource = StreamResource::FsFile(Some((tokio_file, metadata)));
               Err(ErrBox::resource_unavailable())
             }
           }
