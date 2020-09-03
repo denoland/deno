@@ -133,25 +133,24 @@ pub async fn fetch_once(
   }
 
   if response.status().is_redirection() {
-    let location_string = response
-      .headers()
-      .get(LOCATION)
-      .expect("url redirection should provide 'location' header")
-      .to_str()
-      .unwrap();
-
-    debug!("Redirecting to {:?}...", &location_string);
-    let new_url = resolve_url_from_location(&url, location_string);
-    return Ok(FetchOnceResult::Redirect(new_url, headers_));
+    if let Some(location) = response.headers().get(LOCATION) {
+      let location_string = location.to_str().unwrap();
+      debug!("Redirecting to {:?}...", &location_string);
+      let new_url = resolve_url_from_location(&url, location_string);
+      return Ok(FetchOnceResult::Redirect(new_url, headers_));
+    } else {
+      return Err(ErrBox::error(format!(
+        "Redirection from '{}' did not provide location header",
+        url
+      )));
+    }
   }
 
   if response.status().is_client_error() || response.status().is_server_error()
   {
-    let err = io::Error::new(
-      io::ErrorKind::Other,
-      format!("Import '{}' failed: {}", &url, response.status()),
-    );
-    return Err(err.into());
+    let err =
+      ErrBox::error(format!("Import '{}' failed: {}", &url, response.status()));
+    return Err(err);
   }
 
   let body = response.bytes().await?.to_vec();
@@ -493,5 +492,18 @@ mod tests {
     } else {
       panic!();
     }
+  }
+
+  #[tokio::test]
+  async fn bad_redirect() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:4545/bad_redirect";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_http_client(None).unwrap();
+    let result = fetch_once(client, &url, None).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    // Check that the error message contains the original URL
+    assert!(err.to_string().contains(url_str));
   }
 }
