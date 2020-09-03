@@ -750,6 +750,10 @@ async fn test_command(
       .filter(|e| !test_scripts.contains(&e.url))
       .filter(|e| !e.url.contains(".deno"))
       .filter(|e| !e.url.contains("__anonymous__"))
+      // XXX; just blackboxing these while I figure out why the source map doesn't resolve
+      .filter(|e| !e.url.contains("core.js"))
+      .filter(|e| !e.url.contains("rt/"))
+      .filter(|e| !e.url.contains("op_crates/"))
       .collect::<Vec<ScriptCoverage>>();
 
     // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
@@ -758,12 +762,19 @@ async fn test_command(
     let mut pretty_coverage_reporter = PrettyCoverageReporter::new();
     for script_coverage in filtered_coverage {
       let module_specifier = ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+      println!("{}", module_specifier.to_string());
       let source_file = global_state
         .file_fetcher
         .fetch_cached_source_file(&module_specifier, Permissions::allow_all());
 
+      // FIXME this always fails
+      let maybe_source_map_file = global_state
+          .ts_compiler
+          .get_source_map_file(&module_specifier)
+          .ok();
+
       if let Some(source_file) = source_file {
-        pretty_coverage_reporter.visit(&script_coverage, &source_file);
+        pretty_coverage_reporter.visit(&script_coverage, &source_file, maybe_source_map_file);
       }
     }
   }

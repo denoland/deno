@@ -4,6 +4,7 @@
 
 use crate::futures::SinkExt;
 use crate::futures::StreamExt;
+use sourcemap::SourceMap;
 use crate::tokio_util;
 use deno_core::ErrBox;
 use crate::file_fetcher::SourceFile;
@@ -139,7 +140,14 @@ impl PrettyCoverageReporter {
     &mut self,
     script_coverage: &ScriptCoverage,
     source_file: &SourceFile,
+    maybe_source_map_file: Option<SourceFile>,
   ) {
+    let mut maybe_source_map = if let Some(source_map_file) = maybe_source_map_file {
+      Some(SourceMap::from_slice(source_map_file.source_code.as_bytes()))
+    } else {
+      None
+    };
+
     let mut total = 0;
     let mut covered = 0;
 
@@ -162,6 +170,7 @@ impl PrettyCoverageReporter {
 
       for function in &script_coverage.functions {
         for range in &function.ranges {
+          // TODO if maybe_source_map, translate range offsets into local space
           if range.start_offset <= line_start_offset
             && range.end_offset >= line_end_offset
             && !ignore
