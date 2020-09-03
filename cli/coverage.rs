@@ -144,7 +144,11 @@ impl PrettyCoverageReporter {
     let mut covered = 0;
 
     let mut offset = 0;
-    let source_string = source_file.source_code.to_string().unwrap();
+    let source_string = source_file
+        .source_code
+        .to_string()
+        .unwrap();
+
     for line in source_string.lines() {
       let line_start_offset = offset;
       let line_end_offset = line_start_offset + line.len();
@@ -172,7 +176,6 @@ impl PrettyCoverageReporter {
       }
 
       total += 1;
-
       offset += line.len();
     }
 
