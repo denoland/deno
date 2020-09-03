@@ -155,7 +155,7 @@ pub async fn fetch_once(
 
   let body = response.bytes().await?.to_vec();
 
-  return Ok(FetchOnceResult::Code(body, headers_));
+  Ok(FetchOnceResult::Code(body, headers_))
 }
 
 /// Wraps reqwest `Response` so that it can be exposed as an `AsyncRead` and integrated
