@@ -6,6 +6,37 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.3.2 / 2020.08.29
+
+- fix(cli): revert "never type check deno info #6978" (#7199)
+- fix(console): handle escape sequences when logging objects (#7171)
+- fix(doc): stack overflow for .d.ts files (#7167)
+- fix(install): Strip "@..." suffixes from inferred names (#7223)
+- fix(lint): use recommended rules set (#7222)
+- fix(url): Add missing part assignment (#7239)
+- fix(url): Don't encode "'" in non-special query strings (#7152)
+- fix(web): throw TypeError on invalid input types in TextDecoder.decode()
+  (#7179)
+- build: Move benchmarks to Rust (#7134)
+- upgrade: swc, dprint, deno_lint, deno_doc (#7162, #7194)
+- upgrade: rusty_v8 0.9.1 / V8 8.6.334 (#7243)
+- upgrade: TypeScript 4.0 (#6514)
+
+Changes in std version 0.67.0:
+
+- BREAKING(std/wasi): rename Module to Context (#7110)
+- BREAKING(std/wasi): use record for exports (#7109)
+- feat(std/fmt): add bright color variations (#7241)
+- feat(std/node): add URL export (#7132)
+- feat(std/testing): add assertNotMatch (#6775)
+- fix(std/encoding/toml): Comment after arrays causing incorrect output (#7224)
+- fix(std/node): "events" and "util" modules (#7170)
+- fix(std/testing): invalid dates assertion equality (#7230)
+- fix(std/wasi): always capture syscall exceptions (#7116)
+- fix(std/wasi): ignore lint errors (#7197)
+- fix(std/wasi): invalid number to bigint conversion in fd_tell (#7215)
+- fix(std/wasi): return flags from fd_fdstat_get (#7112)
+
 ### 1.3.1 / 2020.08.21
 
 - fix: Allow isolated "%"s when parsing file URLs (#7108)

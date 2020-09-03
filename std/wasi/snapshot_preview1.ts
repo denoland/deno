@@ -228,6 +228,7 @@ const clock_time_monotonic = function (): bigint {
 const clock_time_process = clock_time_monotonic;
 const clock_time_thread = clock_time_monotonic;
 
+// deno-lint-ignore ban-types
 function syscall(target: Function): Function {
   return function (...args: unknown[]): number {
     try {
@@ -298,6 +299,7 @@ export default class Context {
   // deno-lint-ignore no-explicit-any
   fds: any[];
 
+  // deno-lint-ignore ban-types
   exports: Record<string, Function>;
 
   constructor(options: ContextOptions) {
@@ -307,14 +309,17 @@ export default class Context {
 
     this.fds = [
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stdin,
       },
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stdout,
       },
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stderr,
       },
@@ -521,7 +526,7 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
         view.setUint8(stat_out, entry.type);
-        view.setUint16(stat_out + 4, 0, true); // TODO
+        view.setUint16(stat_out + 2, entry.fdflags, true);
         view.setBigUint64(stat_out + 8, 0n, true); // TODO
         view.setBigUint64(stat_out + 16, 0n, true); // TODO
 
@@ -820,21 +825,22 @@ export default class Context {
           );
           entry_view.setUint32(16, name_data.byteLength, true);
 
+          let type: number;
           switch (true) {
             case entries[i].isFile:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
 
             case entries[i].isDirectory:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
 
             case entries[i].isSymlink:
-              var type = FILETYPE_SYMBOLIC_LINK;
+              type = FILETYPE_SYMBOLIC_LINK;
               break;
 
             default:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
           }
 
@@ -910,7 +916,7 @@ export default class Context {
         const view = new DataView(this.memory.buffer);
 
         const offset = entry.handle.seekSync(0, Deno.SeekMode.Current);
-        view.setBigUint64(offset_out, offset, true);
+        view.setBigUint64(offset_out, BigInt(offset), true);
 
         return ERRNO_SUCCESS;
       }),
@@ -1155,9 +1161,9 @@ export default class Context {
           // directory this way so there's no native fstat but Deno.open
           // doesn't work with directories on windows so we'll have to work
           // around it for now.
-
           const entries = Array.from(Deno.readDirSync(path));
           const opened_fd = this.fds.push({
+            fdflags,
             entries,
             path,
           }) - 1;
@@ -1237,6 +1243,7 @@ export default class Context {
 
         const handle = Deno.openSync(path, options);
         const opened_fd = this.fds.push({
+          fdflags,
           handle,
           path,
         }) - 1;

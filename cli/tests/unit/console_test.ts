@@ -720,9 +720,8 @@ unitTest(function consoleTestWithCustomInspector(): void {
 
 unitTest(function consoleTestWithCustomInspectorError(): void {
   class A {
-    [customInspect](): string {
+    [customInspect](): never {
       throw new Error("BOOM");
-      return "b";
     }
   }
 

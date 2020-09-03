@@ -21,7 +21,7 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      throw new (core.getErrorClass(res.err.kind))(res.err.message);
+      throw new (core.getErrorClass(res.err.className))(res.err.message);
     }
     util.assert(res.ok != null);
     return res.ok;

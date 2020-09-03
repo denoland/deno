@@ -379,9 +379,9 @@ unitTest(async function timerIgnoresDateOverride(): Promise<void> {
       reject("global Date override used over original Date object");
       return 0;
     };
-    function DateOverride(): void {
+    const DateOverride = (): void => {
       overrideCalled();
-    }
+    };
     globalThis.Date = DateOverride as DateConstructor;
     globalThis.Date.now = overrideCalled;
     globalThis.Date.UTC = overrideCalled;

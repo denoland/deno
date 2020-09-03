@@ -11,7 +11,7 @@
     offset,
     whence,
   ) {
-    return sendSync("op_seek", { rid, offset, whence });
+    return sendSync("op_seek_sync", { rid, offset, whence });
   }
 
   function seek(
@@ -19,7 +19,7 @@
     offset,
     whence,
   ) {
-    return sendAsync("op_seek", { rid, offset, whence });
+    return sendAsync("op_seek_async", { rid, offset, whence });
   }
 
   function openSync(
