@@ -3360,7 +3360,6 @@ fn rust_log() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("cli/tests/001_hello.js")
-    .env("RUST_LOG", "debug")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
