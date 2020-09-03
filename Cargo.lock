@@ -412,6 +412,7 @@ dependencies = [
  "serde_json",
  "sourcemap",
  "swc_common",
+ "swc_ecma_dep_graph",
  "swc_ecmascript",
  "sys-info",
  "tempfile",
@@ -2258,6 +2259,18 @@ dependencies = [
  "quote 1.0.7",
  "swc_macros_common",
  "syn 1.0.36",
+]
+
+[[package]]
+name = "swc_ecma_dep_graph"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb38c4567ac35d625c0da0a70d68449e38b23c1ae95df9ca6837811e2711136e"
+dependencies = [
+ "swc_atoms",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_visit",
 ]
 
 [[package]]

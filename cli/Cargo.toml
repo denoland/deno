@@ -63,6 +63,7 @@ sys-info = "0.7.0"
 sourcemap = "6.0.1"
 swc_common = { version = "=0.10.2", features = ["sourcemap"] }
 swc_ecmascript = { version = "=0.7.0", features = ["codegen", "parser", "react", "transforms", "visit"] }
+swc_ecma_dep_graph = "0.3.0"
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
