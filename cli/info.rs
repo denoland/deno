@@ -126,7 +126,7 @@ impl std::fmt::Display for ModuleDepInfo {
     ))?;
 
     for (idx, dep) in self.deps.deps.iter().enumerate() {
-      print_file_dep_info(&dep, "  ", idx == self.deps.deps.len() - 1, f)?;
+      print_file_dep_info(&dep, "", idx == self.deps.deps.len() - 1, f)?;
     }
 
     Ok(())
@@ -291,7 +291,8 @@ fn get_formatted_totals(info: &FileInfoDepTree) -> String {
   if let Some(_total_size) = info.total_size {
     colors::gray(&format!(" ({})", human_size(info.size as f64),)).to_string()
   } else {
-    "".to_string()
+    // This dependency has already been displayed somewhere else in the tree.
+    colors::gray(" *").to_string()
   }
 }
 
