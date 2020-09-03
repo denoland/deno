@@ -1,0 +1,12 @@
+Debugger listening on [WILDCARD]
+Check [WILDCARD]
+Debugger session started.
+running 1 tests
+test returnsHiSuccess ... ok ([WILDCARD])
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+test coverage:
+file://[WILDCARD]/cli/tests/subdir/mod1.ts 100.000%
+file://[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts 100.000%
+file://[WILDCARD]/cli/tests/subdir/print_hello.ts 100.000%
