@@ -1,8 +1,10 @@
 # ws
 
-ws module is made to provide helpers to create a WebSocket server.
+ws module is made to provide helpers to create WebSocket client/server.
 
 ## Usage
+
+### Server
 
 ```ts
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
@@ -11,10 +13,10 @@ import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
-  Server,
+  WebSocket,
 } from "https://deno.land/std/ws/mod.ts";
 
-async function handleWs(sock: Server) {
+async function handleWs(sock: WebSocket) {
   console.log("socket connected!");
   try {
     for await (const ev of sock) {
@@ -65,6 +67,67 @@ if (import.meta.main) {
 }
 ```
 
+### Client
+
+```ts
+import {
+  connectWebSocket,
+  isWebSocketCloseEvent,
+  isWebSocketPingEvent,
+  isWebSocketPongEvent,
+} from "https://deno.land/std/ws/mod.ts";
+import { encode } from "https://deno.land/std/encoding/utf8.ts";
+import { BufReader } from "https://deno.land/std/io/bufio.ts";
+import { TextProtoReader } from "https://deno.land/std/textproto/mod.ts";
+import { blue, green, red, yellow } from "https://deno.land/std/fmt/colors.ts";
+
+const endpoint = Deno.args[0] || "ws://127.0.0.1:8080";
+/** simple websocket cli */
+try {
+  const sock = await connectWebSocket(endpoint);
+  console.log(green("ws connected! (type 'close' to quit)"));
+
+  const messages = async (): Promise<void> => {
+    for await (const msg of sock) {
+      if (typeof msg === "string") {
+        console.log(yellow(`< ${msg}`));
+      } else if (isWebSocketPingEvent(msg)) {
+        console.log(blue("< ping"));
+      } else if (isWebSocketPongEvent(msg)) {
+        console.log(blue("< pong"));
+      } else if (isWebSocketCloseEvent(msg)) {
+        console.log(red(`closed: code=${msg.code}, reason=${msg.reason}`));
+      }
+    }
+  };
+
+  const cli = async (): Promise<void> => {
+    const tpr = new TextProtoReader(new BufReader(Deno.stdin));
+    while (true) {
+      await Deno.stdout.write(encode("> "));
+      const line = await tpr.readLine();
+      if (line === null || line === "close") {
+        break;
+      } else if (line === "ping") {
+        await sock.ping();
+      } else {
+        await sock.send(line);
+      }
+    }
+  };
+
+  await Promise.race([messages(), cli()]).catch(console.error);
+
+  if (!sock.isClosed) {
+    await sock.close(1000).catch(console.error);
+  }
+} catch (err) {
+  console.error(red(`Could not connect to WebSocket: '${err}'`));
+}
+
+Deno.exit(0);
+```
+
 ## API
 
 ### isWebSocketCloseEvent
@@ -91,9 +154,13 @@ Write WebSocket frame to inputted writer.
 
 Read WebSocket frame from inputted BufReader.
 
+### createMask
+
+Create mask from the client to the server with random 32bit number.
+
 ### acceptable
 
-Returns true if input headers are usable for WebSocket, otherwise false.
+Returns true if input headers are usable for WebSocket, otherwise false
 
 ### createSecAccept
 
@@ -106,3 +173,9 @@ Upgrade inputted TCP connection into WebSocket connection.
 ### createSecKey
 
 Returns base64 encoded 16 bytes string for Sec-WebSocket-Key header.
+
+### connectWebSocket
+
+Connect to WebSocket endpoint url with inputted endpoint string and headers.
+
+- note: Endpoint must be acceptable for URL.

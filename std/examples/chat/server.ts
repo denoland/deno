@@ -2,19 +2,19 @@ import { listenAndServe } from "../../http/server.ts";
 import {
   acceptWebSocket,
   acceptable,
-  Server,
+  WebSocket,
   isWebSocketCloseEvent,
 } from "../../ws/mod.ts";
 import { fromFileUrl } from "../../path/mod.ts";
 
-const clients = new Map<number, Server>();
+const clients = new Map<number, WebSocket>();
 let clientId = 0;
 function dispatch(msg: string): void {
   for (const client of clients.values()) {
     client.send(msg);
   }
 }
-async function wsHandler(ws: Server): Promise<void> {
+async function wsHandler(ws: WebSocket): Promise<void> {
   const id = ++clientId;
   clients.set(id, ws);
   dispatch(`Connected: [${id}]`);

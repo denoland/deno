@@ -62,7 +62,7 @@ export interface WebSocketFrame {
   payload: Uint8Array;
 }
 
-export interface Server extends AsyncIterable<WebSocketEvent> {
+export interface WebSocket extends AsyncIterable<WebSocketEvent> {
   readonly conn: Deno.Conn;
   readonly isClosed: boolean;
 
@@ -191,7 +191,12 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   };
 }
 
-class ServerImpl implements Server {
+// Create client-to-server mask, random 32bit number
+function createMask(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(4));
+}
+
+class WebSocketImpl implements WebSocket {
   readonly conn: Deno.Conn;
   private readonly mask?: Uint8Array;
   private readonly bufReader: BufReader;
@@ -415,10 +420,10 @@ export async function acceptWebSocket(req: {
   bufWriter: BufWriter;
   bufReader: BufReader;
   headers: Headers;
-}): Promise<Server> {
+}): Promise<WebSocket> {
   const { conn, headers, bufReader, bufWriter } = req;
   if (acceptable(req)) {
-    const sock = new ServerImpl({ conn, bufReader, bufWriter });
+    const sock = new WebSocketImpl({ conn, bufReader, bufWriter });
     const secKey = headers.get("sec-websocket-key");
     if (typeof secKey !== "string") {
       throw new Error("sec-websocket-key is not provided");
@@ -509,11 +514,47 @@ export async function handshake(
   }
 }
 
+/**
+ * Connect to given websocket endpoint url.
+ * Endpoint must be acceptable for URL.
+ */
+export async function connectWebSocket(
+  endpoint: string,
+  headers: Headers = new Headers(),
+): Promise<WebSocket> {
+  const url = new URL(endpoint);
+  const { hostname } = url;
+  let conn: Deno.Conn;
+  if (url.protocol === "http:" || url.protocol === "ws:") {
+    const port = parseInt(url.port || "80");
+    conn = await Deno.connect({ hostname, port });
+  } else if (url.protocol === "https:" || url.protocol === "wss:") {
+    const port = parseInt(url.port || "443");
+    conn = await Deno.connectTls({ hostname, port });
+  } else {
+    throw new Error("ws: unsupported protocol: " + url.protocol);
+  }
+  const bufWriter = new BufWriter(conn);
+  const bufReader = new BufReader(conn);
+  try {
+    await handshake(url, headers, bufReader, bufWriter);
+  } catch (err) {
+    conn.close();
+    throw err;
+  }
+  return new WebSocketImpl({
+    conn,
+    bufWriter,
+    bufReader,
+    mask: createMask(),
+  });
+}
+
 export function createWebSocket(params: {
   conn: Deno.Conn;
   bufWriter?: BufWriter;
   bufReader?: BufReader;
   mask?: Uint8Array;
-}): Server {
-  return new ServerImpl(params);
+}): WebSocket {
+  return new WebSocketImpl(params);
 }
