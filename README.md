@@ -20,8 +20,6 @@ specifics.
 
 [Style Guide](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md)
 
-[Architecture](https://github.com/mustafapc19/deno/blob/master/docs/contributing/architecture.md)
-
 [Module Repository](https://deno.land/x/)
 
 [Releases](Releases.md)
