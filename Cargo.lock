@@ -448,9 +448,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd4f71fdc2933d6ca9da204cf033786e25561b79abe02e395187c7888da06177"
+checksum = "d394f900edfefea7dbf39a6c078942df91d09a718279c3ef33f755c1720a146d"
 dependencies = [
  "futures",
  "lazy_static",
@@ -465,9 +465,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.1.27"
+version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9818f45029f09d92a06a5dd372130c21cb054bc5f582f3f660089ac2c82e68b3"
+checksum = "e5283c646efd6ccdb3376aedf0ce2ee6bf4623f929252251dfe032f4796885aa"
 dependencies = [
  "lazy_static",
  "log 0.4.11",
@@ -542,9 +542,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.30.2"
+version = "0.30.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f00344a4ad6872c12e8aa4bc8a324605a84561db837d5156f8d8b722a4a064a"
+checksum = "aa33c3669a2b89c6a8809d34648422262907b2f7cc15d51fe53c860f5161626b"
 dependencies = [
  "dprint-core",
  "serde",
@@ -1055,9 +1055,9 @@ dependencies = [
 
 [[package]]
 name = "jsdoc"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2b681c0ecd27f4dc55a4a3c4f618b3cb0c5237f01a81800a03e4401f000c4bf"
+checksum = "0bf288cd831329dde36e0c5b667d1823c4cfba4fcb311c6471e37cdcb8b019a7"
 dependencies = [
  "nom",
  "serde",
@@ -2219,9 +2219,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_ast"
-version = "0.30.0"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3159067b05b6ecab961c54a89dbd2e2eaa892c00071f6cff4da452d582a24b49"
+checksum = "c274b87589578efaa3b8696bb41e460686c6537eb886b8a36ac575977cb341cd"
 dependencies = [
  "enum_kind",
  "is-macro",
@@ -2234,9 +2234,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_codegen"
-version = "0.34.0"
+version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31f240721f77a56be0be535f004cf8d8c27510f11cb245c23e57239394ddc65"
+checksum = "03b765da439d3908c680de8e0aadf7f049d18755f0d5eedef8fb0dddbbc7f461"
 dependencies = [
  "bitflags",
  "num-bigint",
@@ -2262,9 +2262,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_parser"
-version = "0.36.1"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99d84ff32ac5969d9d26354b9aeac21db3346927c7752af4b07ad124390c7c2b"
+checksum = "f11b0d3f9f4acd485f2cb4fab74159c079b2d47795adfb63f23a213a03783b5c"
 dependencies = [
  "either",
  "enum_kind",
@@ -2296,9 +2296,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms"
-version = "0.22.1"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e99fc5c5b87871fa19036fd8a622ecf6b2a29b30b4d632e48f6a1923e393ea"
+checksum = "541442cb0e23bc0a3ad181eeb380487907696a2e22e4f6976d621b2434a9a9ee"
 dependencies = [
  "Inflector",
  "arrayvec",
@@ -2342,9 +2342,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_utils"
-version = "0.20.0"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c1fa08910729be47932200a737acb080ed53ca5371b2a5a4a6f52db351b49ea"
+checksum = "c811f214abc4ece34f2770c98a455c165564f549d2847c70ea1de1bb2c704c2f"
 dependencies = [
  "once_cell",
  "scoped-tls",
@@ -2357,9 +2357,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_visit"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "195bd781f518653e1f8deff6826348e120c9c4081bd3587a4defe1b34fbe7b98"
+checksum = "b52333de0bd51168fb818b3c769bc8adcb343d8c1ea6114c72fde3d2a0af493b"
 dependencies = [
  "num-bigint",
  "swc_atoms",
@@ -2370,9 +2370,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecmascript"
-version = "0.6.3"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f61891f71f934ef272500cbd753952f1495d41f9bffb1554c95e46c74907eb8"
+checksum = "357e213aac6934a3eb6592fc9a12ef1b6ce96ae7d2cf22d142eb827c94b26644"
 dependencies = [
  "swc_ecma_ast",
  "swc_ecma_codegen",
