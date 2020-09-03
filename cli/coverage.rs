@@ -6,6 +6,7 @@ use crate::futures::SinkExt;
 use crate::futures::StreamExt;
 use crate::tokio_util;
 use deno_core::ErrBox;
+use crate::file_fetcher::SourceFile;
 use serde::Deserialize;
 use serde::Serialize;
 use url::Url;
@@ -125,4 +126,57 @@ struct TakePreciseCoverageResult {
 struct TakePreciseCoverageResponse {
   id: usize,
   result: TakePreciseCoverageResult,
+}
+
+pub struct PrettyCoverageReporter {}
+
+impl PrettyCoverageReporter {
+  pub fn new() -> PrettyCoverageReporter {
+    PrettyCoverageReporter {}
+  }
+
+  pub fn visit(
+    &mut self,
+    script_coverage: &ScriptCoverage,
+    source_file: &SourceFile,
+  ) {
+    let mut total = 0;
+    let mut covered = 0;
+
+    let mut offset = 0;
+    let source_string = source_file.source_code.to_string().unwrap();
+    for line in source_string.lines() {
+      let line_start_offset = offset;
+      let line_end_offset = line_start_offset + line.len();
+
+      let mut count = 1;
+      let mut ignore = false;
+
+      if line.is_empty() {
+        ignore = true;
+      }
+
+      for function in &script_coverage.functions {
+        for range in &function.ranges {
+          if range.start_offset <= line_start_offset
+            && range.end_offset >= line_end_offset
+            && !ignore
+          {
+            count = range.count;
+          }
+        }
+      }
+
+      if count > 0 {
+        covered += 1;
+      }
+
+      total += 1;
+
+      offset += line.len();
+    }
+
+    let result = (covered as f32 / total as f32) * 100.0;
+    println!("{} {:.3}%", source_file.url.as_str(), result);
+  }
 }

@@ -70,6 +70,7 @@ mod web_worker;
 pub mod worker;
 
 use crate::coverage::CoverageCollector;
+use crate::coverage::PrettyCoverageReporter;
 use crate::coverage::ScriptCoverage;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
@@ -754,51 +755,15 @@ async fn test_command(
     // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
     println!("test coverage:");
 
-    for script in filtered_coverage {
-      let module_specifier = ModuleSpecifier::resolve_url_or_path(&script.url)?;
+    let mut pretty_coverage_reporter = PrettyCoverageReporter::new();
+    for script_coverage in filtered_coverage {
+      let module_specifier = ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
       let source_file = global_state
         .file_fetcher
         .fetch_cached_source_file(&module_specifier, Permissions::allow_all());
 
       if let Some(source_file) = source_file {
-        let mut total = 0;
-        let mut covered = 0;
-
-        let mut offset = 0;
-        let source_string = source_file.source_code.to_string()?;
-        for line in source_string.lines() {
-          let line_start_offset = offset;
-          let line_end_offset = line_start_offset + line.len();
-
-          let mut count = 1;
-          let mut ignore = false;
-
-          if line.is_empty() {
-            ignore = true;
-          }
-
-          for function in &script.functions {
-            for range in &function.ranges {
-              if range.start_offset <= line_start_offset
-                && range.end_offset >= line_end_offset
-                && !ignore
-              {
-                count = range.count;
-              }
-            }
-          }
-
-          if count > 0 {
-            covered += 1;
-          }
-
-          total += 1;
-
-          offset += line.len();
-        }
-
-        let result = (covered as f32 / total as f32) * 100.0;
-        println!("{} {:.3}%", module_specifier.as_str(), result);
+        pretty_coverage_reporter.visit(&script_coverage, &source_file);
       }
     }
   }
