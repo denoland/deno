@@ -1486,7 +1486,6 @@ pub fn pre_process_file(
       if analyze_dynamic_imports {
         return true;
       }
-
       !desc.is_dynamic
     })
     .map(|desc| {
