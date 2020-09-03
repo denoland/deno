@@ -756,15 +756,18 @@ async fn test_command(
     println!("test coverage:");
 
     for script in filtered_coverage {
-      let url = Url::parse(&script.url)?;
-      let path = url.to_file_path().unwrap();
-      let source = tokio::fs::read_to_string(&path).await?;
+      let module_specifier = ModuleSpecifier::resolve_url_or_path(&script.url)?;
+      let source_file = global_state
+        .file_fetcher
+        .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
+        .unwrap();
 
       let mut total = 0;
       let mut covered = 0;
 
       let mut offset = 0;
-      for line in source.lines() {
+      let source_string = source_file.source_code.to_string()?;
+      for line in source_string.lines() {
         let line_start_offset = offset;
         let line_end_offset = line_start_offset + line.len();
 
@@ -795,9 +798,8 @@ async fn test_command(
         offset += line.len();
       }
 
-      let relative_path = path.strip_prefix(&cwd)?;
       let result = (covered as f32 / total as f32) * 100.0;
-      println!("{} {:.3}%", relative_path.to_str().unwrap(), result);
+      println!("{} {:.3}%", module_specifier.as_str(), result);
     }
   }
 
