@@ -19,7 +19,7 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
 
 fn op_start(
   state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let gs = &state.global_state;
@@ -44,7 +44,7 @@ fn op_start(
 
 fn op_main_module(
   state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let main = &state.main_module.to_string();
@@ -58,7 +58,7 @@ fn op_main_module(
 
 fn op_metrics(
   state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let m = &state.metrics.borrow();

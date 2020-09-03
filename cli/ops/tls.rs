@@ -55,7 +55,7 @@ struct StartTLSArgs {
 
 async fn op_start_tls(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.startTls");
@@ -129,7 +129,7 @@ async fn op_start_tls(
 
 async fn op_connect_tls(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
@@ -297,7 +297,7 @@ struct ListenTlsArgs {
 
 fn op_listen_tls(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
@@ -348,7 +348,7 @@ struct AcceptTlsArgs {
 
 async fn op_accept_tls(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;

@@ -21,7 +21,7 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
 
 fn op_global_timer_stop(
   state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.global_timer.borrow_mut().cancel();
@@ -35,7 +35,7 @@ struct GlobalTimerArgs {
 
 async fn op_global_timer(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
@@ -57,7 +57,7 @@ async fn op_global_timer(
 // nanoseconds are rounded on 2ms.
 fn op_now(
   state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();

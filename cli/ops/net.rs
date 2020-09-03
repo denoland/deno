@@ -96,7 +96,7 @@ async fn accept_tcp(
 
 async fn op_accept(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: AcceptArgs = serde_json::from_value(args)?;
@@ -152,7 +152,7 @@ async fn receive_udp(
 
 async fn op_datagram_receive(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
@@ -182,7 +182,7 @@ struct SendArgs {
 
 async fn op_datagram_send(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
@@ -243,7 +243,7 @@ struct ConnectArgs {
 
 async fn op_connect(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   match serde_json::from_value(args)? {
@@ -321,7 +321,7 @@ struct ShutdownArgs {
 
 fn op_shutdown(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.shutdown");
@@ -467,7 +467,7 @@ fn listen_udp(
 
 fn op_listen(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   match serde_json::from_value(args)? {

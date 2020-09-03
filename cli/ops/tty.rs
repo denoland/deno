@@ -49,7 +49,7 @@ struct SetRawArgs {
 
 fn op_set_raw(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.setRaw");
@@ -216,7 +216,7 @@ struct IsattyArgs {
 
 fn op_isatty(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: IsattyArgs = serde_json::from_value(args)?;
@@ -260,7 +260,7 @@ struct ConsoleSize {
 
 fn op_console_size(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.consoleSize");

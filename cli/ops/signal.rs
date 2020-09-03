@@ -45,7 +45,7 @@ struct SignalArgs {
 #[cfg(unix)]
 fn op_signal_bind(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.signal");
@@ -65,7 +65,7 @@ fn op_signal_bind(
 #[cfg(unix)]
 async fn op_signal_poll(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.signal");
@@ -89,7 +89,7 @@ async fn op_signal_poll(
 #[cfg(unix)]
 pub fn op_signal_unbind(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.signal");
@@ -112,7 +112,7 @@ pub fn op_signal_unbind(
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   unimplemented!();
@@ -121,7 +121,7 @@ pub fn op_signal_bind(
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   unimplemented!();
@@ -130,7 +130,7 @@ fn op_signal_unbind(
 #[cfg(not(unix))]
 async fn op_signal_poll(
   _state: Rc<State>,
-   _args: Value,
+  _args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   unimplemented!();

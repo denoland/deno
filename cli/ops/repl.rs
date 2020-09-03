@@ -29,7 +29,7 @@ struct ReplStartArgs {
 
 fn op_repl_start(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
@@ -53,7 +53,7 @@ struct ReplReadlineArgs {
 
 async fn op_repl_readline(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: ReplReadlineArgs = serde_json::from_value(args)?;

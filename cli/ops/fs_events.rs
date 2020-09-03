@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op(
     "op_fs_events_open",
-    s.stateful_json_op_sync( op_fs_events_open),
+    s.stateful_json_op_sync(op_fs_events_open),
   );
   i.register_op(
     "op_fs_events_poll",
@@ -69,7 +69,7 @@ impl From<NotifyEvent> for FsEvent {
 
 fn op_fs_events_open(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]
@@ -107,7 +107,7 @@ fn op_fs_events_open(
 
 async fn op_fs_events_poll(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]

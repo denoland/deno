@@ -183,7 +183,7 @@ struct CreateWorkerArgs {
 /// Create worker as the host
 fn op_create_worker(
   state: &State,
-   args: Value,
+  args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
@@ -233,7 +233,7 @@ struct WorkerArgs {
 
 fn op_host_terminate_worker(
   state: &State,
-   args: Value,
+  args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
@@ -301,7 +301,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<State>,
-   args: Value,
+  args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
@@ -349,7 +349,7 @@ async fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &State,
-   args: Value,
+  args: Value,
   data: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");

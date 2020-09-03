@@ -13,7 +13,7 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
 
 fn op_resources(
   state: &State,
-   _args: Value,
+  _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let resource_table = state.resource_table.borrow();
@@ -24,7 +24,7 @@ fn op_resources(
 /// op_close removes a resource from the resource table.
 fn op_close(
   state: &State,
-   args: Value,
+  args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]
