@@ -17,17 +17,12 @@ use std::task::Waker;
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_signal_bind", s.stateful_json_op_sync(t, op_signal_bind));
+  i.register_op("op_signal_bind", s.stateful_json_op_sync(op_signal_bind));
   i.register_op(
     "op_signal_unbind",
-    s.stateful_json_op_sync(t, op_signal_unbind),
+    s.stateful_json_op_sync(op_signal_unbind),
   );
-  i.register_op(
-    "op_signal_poll",
-    s.stateful_json_op_async(t, op_signal_poll),
-  );
+  i.register_op("op_signal_poll", s.stateful_json_op_async(op_signal_poll));
 }
 
 #[cfg(unix)]
@@ -50,8 +45,7 @@ struct SignalArgs {
 #[cfg(unix)]
 fn op_signal_bind(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.signal");
@@ -71,8 +65,7 @@ fn op_signal_bind(
 #[cfg(unix)]
 async fn op_signal_poll(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.signal");
@@ -96,8 +89,7 @@ async fn op_signal_poll(
 #[cfg(unix)]
 pub fn op_signal_unbind(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.signal");
@@ -120,8 +112,7 @@ pub fn op_signal_unbind(
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   unimplemented!();
@@ -130,8 +121,7 @@ pub fn op_signal_bind(
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   unimplemented!();
@@ -140,8 +130,7 @@ fn op_signal_unbind(
 #[cfg(not(unix))]
 async fn op_signal_poll(
   _state: Rc<State>,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   unimplemented!();

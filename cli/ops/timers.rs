@@ -11,23 +11,17 @@ use std::time::Duration;
 use std::time::Instant;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
   i.register_op(
     "op_global_timer_stop",
-    s.stateful_json_op_sync(t, op_global_timer_stop),
+    s.stateful_json_op_sync(op_global_timer_stop),
   );
-  i.register_op(
-    "op_global_timer",
-    s.stateful_json_op_async(t, op_global_timer),
-  );
-  i.register_op("op_now", s.stateful_json_op_sync(t, op_now));
+  i.register_op("op_global_timer", s.stateful_json_op_async(op_global_timer));
+  i.register_op("op_now", s.stateful_json_op_sync(op_now));
 }
 
 fn op_global_timer_stop(
   state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.global_timer.borrow_mut().cancel();
@@ -41,8 +35,7 @@ struct GlobalTimerArgs {
 
 async fn op_global_timer(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
@@ -64,8 +57,7 @@ async fn op_global_timer(
 // nanoseconds are rounded on 2ms.
 fn op_now(
   state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();

@@ -21,19 +21,17 @@ use tokio::net::UdpSocket;
 use super::net_unix;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_accept", s.stateful_json_op_async(t, op_accept));
-  i.register_op("op_connect", s.stateful_json_op_async(t, op_connect));
-  i.register_op("op_shutdown", s.stateful_json_op_sync(t, op_shutdown));
-  i.register_op("op_listen", s.stateful_json_op_sync(t, op_listen));
+  i.register_op("op_accept", s.stateful_json_op_async(op_accept));
+  i.register_op("op_connect", s.stateful_json_op_async(op_connect));
+  i.register_op("op_shutdown", s.stateful_json_op_sync(op_shutdown));
+  i.register_op("op_listen", s.stateful_json_op_sync(op_listen));
   i.register_op(
     "op_datagram_receive",
-    s.stateful_json_op_async(t, op_datagram_receive),
+    s.stateful_json_op_async(op_datagram_receive),
   );
   i.register_op(
     "op_datagram_send",
-    s.stateful_json_op_async(t, op_datagram_send),
+    s.stateful_json_op_async(op_datagram_send),
   );
 }
 
@@ -98,8 +96,7 @@ async fn accept_tcp(
 
 async fn op_accept(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: AcceptArgs = serde_json::from_value(args)?;
@@ -155,8 +152,7 @@ async fn receive_udp(
 
 async fn op_datagram_receive(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
@@ -186,8 +182,7 @@ struct SendArgs {
 
 async fn op_datagram_send(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
@@ -248,8 +243,7 @@ struct ConnectArgs {
 
 async fn op_connect(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   match serde_json::from_value(args)? {
@@ -327,8 +321,7 @@ struct ShutdownArgs {
 
 fn op_shutdown(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.shutdown");
@@ -474,8 +467,7 @@ fn listen_udp(
 
 fn op_listen(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   match serde_json::from_value(args)? {

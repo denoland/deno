@@ -30,15 +30,10 @@ use tokio_rustls::{
 use webpki::DNSNameRef;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_start_tls", s.stateful_json_op_async(t, op_start_tls));
-  i.register_op(
-    "op_connect_tls",
-    s.stateful_json_op_async(t, op_connect_tls),
-  );
-  i.register_op("op_listen_tls", s.stateful_json_op_sync(t, op_listen_tls));
-  i.register_op("op_accept_tls", s.stateful_json_op_async(t, op_accept_tls));
+  i.register_op("op_start_tls", s.stateful_json_op_async(op_start_tls));
+  i.register_op("op_connect_tls", s.stateful_json_op_async(op_connect_tls));
+  i.register_op("op_listen_tls", s.stateful_json_op_sync(op_listen_tls));
+  i.register_op("op_accept_tls", s.stateful_json_op_async(op_accept_tls));
 }
 
 #[derive(Deserialize)]
@@ -60,8 +55,7 @@ struct StartTLSArgs {
 
 async fn op_start_tls(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.startTls");
@@ -135,8 +129,7 @@ async fn op_start_tls(
 
 async fn op_connect_tls(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
@@ -304,8 +297,7 @@ struct ListenTlsArgs {
 
 fn op_listen_tls(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
@@ -356,8 +348,7 @@ struct AcceptTlsArgs {
 
 async fn op_accept_tls(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;

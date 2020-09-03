@@ -7,16 +7,13 @@ use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_resources", s.stateful_json_op_sync(t, op_resources));
-  i.register_op("op_close", s.stateful_json_op_sync(t, op_close));
+  i.register_op("op_resources", s.stateful_json_op_sync(op_resources));
+  i.register_op("op_close", s.stateful_json_op_sync(op_close));
 }
 
 fn op_resources(
   state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let resource_table = state.resource_table.borrow();
@@ -27,8 +24,7 @@ fn op_resources(
 /// op_close removes a resource from the resource table.
 fn op_close(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]

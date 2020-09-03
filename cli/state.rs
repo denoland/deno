@@ -67,11 +67,10 @@ pub struct State {
 impl State {
   pub fn stateful_json_op_sync<D>(
     self: &Rc<Self>,
-    _: (),
     dispatcher: D,
   ) -> impl Fn(Rc<Self>, BufVec) -> Op
   where
-    D: Fn(&State, (), Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>,
+    D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>,
   {
     let f = move |state: Rc<Self>, mut bufs: BufVec| {
       // The first buffer should contain JSON encoded op arguments; parse them.
@@ -87,7 +86,7 @@ impl State {
       // Make a slice containing all buffers except for the first one.
       let zero_copy = &mut bufs[1..];
 
-      let result = dispatcher(&state, (), args, zero_copy);
+      let result = dispatcher(&state, args, zero_copy);
 
       // Convert to Op.
       Op::Sync(serialize_result(None, result, |err| {
@@ -99,11 +98,10 @@ impl State {
 
   pub fn stateful_json_op_async<D, F>(
     self: &Rc<Self>,
-    _: (),
     dispatcher: D,
   ) -> impl Fn(Rc<Self>, BufVec) -> Op
   where
-    D: FnOnce(Rc<Self>, (), Value, BufVec) -> F + Clone,
+    D: FnOnce(Rc<Self>, Value, BufVec) -> F + Clone,
     F: Future<Output = Result<Value, ErrBox>> + 'static,
   {
     let f = move |state: Rc<Self>, bufs: BufVec| {
@@ -133,7 +131,7 @@ impl State {
       let zero_copy: BufVec = bufs[1..].into();
 
       // Call dispatcher to obtain op future.
-      let fut = (dispatcher.clone())(state.clone(), (), args, zero_copy);
+      let fut = (dispatcher.clone())(state.clone(), args, zero_copy);
 
       // Convert to Op.
       Op::Async(
@@ -193,7 +191,6 @@ impl State {
             .metrics
             .borrow_mut()
             .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
-          let state = state.clone();
           let result_fut = fut.map(move |buf: Buf| {
             state
               .metrics
@@ -208,7 +205,6 @@ impl State {
             bytes_sent_control,
             bytes_sent_zero_copy,
           );
-          let state = state.clone();
           let result_fut = fut.map(move |buf: Buf| {
             state
               .metrics

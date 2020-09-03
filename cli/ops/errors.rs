@@ -11,15 +11,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
   i.register_op(
     "op_apply_source_map",
-    s.stateful_json_op_sync(t, op_apply_source_map),
+    s.stateful_json_op_sync(op_apply_source_map),
   );
   i.register_op(
     "op_format_diagnostic",
-    s.stateful_json_op_sync(t, op_format_diagnostic),
+    s.stateful_json_op_sync(op_format_diagnostic),
   );
 }
 
@@ -33,7 +31,6 @@ struct ApplySourceMap {
 
 fn op_apply_source_map(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -58,7 +55,6 @@ fn op_apply_source_map(
 
 fn op_format_diagnostic(
   _state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

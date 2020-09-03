@@ -12,10 +12,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_compile", s.stateful_json_op_async(t, op_compile));
-  i.register_op("op_transpile", s.stateful_json_op_async(t, op_transpile));
+  i.register_op("op_compile", s.stateful_json_op_async(op_compile));
+  i.register_op("op_transpile", s.stateful_json_op_async(op_transpile));
 }
 
 #[derive(Deserialize, Debug)]
@@ -29,7 +27,6 @@ struct CompileArgs {
 
 async fn op_compile(
   state: Rc<State>,
-  _: (),
   args: Value,
   _data: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -68,7 +65,6 @@ struct TranspileArgs {
 
 async fn op_transpile(
   state: Rc<State>,
-  _: (),
   args: Value,
   _data: BufVec,
 ) -> Result<Value, ErrBox> {

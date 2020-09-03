@@ -16,11 +16,9 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_run", s.stateful_json_op_sync(t, op_run));
-  i.register_op("op_run_status", s.stateful_json_op_async(t, op_run_status));
-  i.register_op("op_kill", s.stateful_json_op_sync(t, op_kill));
+  i.register_op("op_run", s.stateful_json_op_sync(op_run));
+  i.register_op("op_run_status", s.stateful_json_op_async(op_run_status));
+  i.register_op("op_kill", s.stateful_json_op_sync(op_kill));
 }
 
 fn clone_file(state: &State, rid: u32) -> Result<std::fs::File, ErrBox> {
@@ -59,7 +57,6 @@ struct ChildResource {
 
 fn op_run(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -171,7 +168,6 @@ struct RunStatusArgs {
 
 async fn op_run_status(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -217,7 +213,6 @@ struct KillArgs {
 
 fn op_kill(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

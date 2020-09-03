@@ -8,19 +8,17 @@ use std::path::Path;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
   i.register_op(
     "op_query_permission",
-    s.stateful_json_op_sync(t, op_query_permission),
+    s.stateful_json_op_sync(op_query_permission),
   );
   i.register_op(
     "op_revoke_permission",
-    s.stateful_json_op_sync(t, op_revoke_permission),
+    s.stateful_json_op_sync(op_revoke_permission),
   );
   i.register_op(
     "op_request_permission",
-    s.stateful_json_op_sync(t, op_request_permission),
+    s.stateful_json_op_sync(op_request_permission),
   );
 }
 
@@ -33,7 +31,6 @@ struct PermissionArgs {
 
 pub fn op_query_permission(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -60,7 +57,6 @@ pub fn op_query_permission(
 
 pub fn op_revoke_permission(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -87,7 +83,6 @@ pub fn op_revoke_permission(
 
 pub fn op_request_permission(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

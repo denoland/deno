@@ -12,17 +12,14 @@ use std::env;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_start", s.stateful_json_op_sync(t, op_start));
-  i.register_op("op_main_module", s.stateful_json_op_sync(t, op_main_module));
-  i.register_op("op_metrics", s.stateful_json_op_sync(t, op_metrics));
+  i.register_op("op_start", s.stateful_json_op_sync(op_start));
+  i.register_op("op_main_module", s.stateful_json_op_sync(op_main_module));
+  i.register_op("op_metrics", s.stateful_json_op_sync(op_metrics));
 }
 
 fn op_start(
   state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let gs = &state.global_state;
@@ -47,8 +44,7 @@ fn op_start(
 
 fn op_main_module(
   state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let main = &state.main_module.to_string();
@@ -62,8 +58,7 @@ fn op_main_module(
 
 fn op_metrics(
   state: &State,
-  _: (),
-  _args: Value,
+   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let m = &state.metrics.borrow();

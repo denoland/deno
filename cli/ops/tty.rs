@@ -36,14 +36,9 @@ fn get_windows_handle(
 }
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_set_raw", s.stateful_json_op_sync(t, op_set_raw));
-  i.register_op("op_isatty", s.stateful_json_op_sync(t, op_isatty));
-  i.register_op(
-    "op_console_size",
-    s.stateful_json_op_sync(t, op_console_size),
-  );
+  i.register_op("op_set_raw", s.stateful_json_op_sync(op_set_raw));
+  i.register_op("op_isatty", s.stateful_json_op_sync(op_isatty));
+  i.register_op("op_console_size", s.stateful_json_op_sync(op_console_size));
 }
 
 #[derive(Deserialize)]
@@ -54,8 +49,7 @@ struct SetRawArgs {
 
 fn op_set_raw(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.setRaw");
@@ -222,8 +216,7 @@ struct IsattyArgs {
 
 fn op_isatty(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: IsattyArgs = serde_json::from_value(args)?;
@@ -267,8 +260,7 @@ struct ConsoleSize {
 
 fn op_console_size(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.consoleSize");

@@ -12,12 +12,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_repl_start", s.stateful_json_op_sync(t, op_repl_start));
+  i.register_op("op_repl_start", s.stateful_json_op_sync(op_repl_start));
   i.register_op(
     "op_repl_readline",
-    s.stateful_json_op_async(t, op_repl_readline),
+    s.stateful_json_op_async(op_repl_readline),
   );
 }
 
@@ -31,8 +29,7 @@ struct ReplStartArgs {
 
 fn op_repl_start(
   state: &State,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
@@ -56,8 +53,7 @@ struct ReplReadlineArgs {
 
 async fn op_repl_readline(
   state: Rc<State>,
-  _: (),
-  args: Value,
+   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: ReplReadlineArgs = serde_json::from_value(args)?;

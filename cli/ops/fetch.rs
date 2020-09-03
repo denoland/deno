@@ -16,12 +16,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
-  i.register_op("op_fetch", s.stateful_json_op_async(t, op_fetch));
+  i.register_op("op_fetch", s.stateful_json_op_async(op_fetch));
   i.register_op(
     "op_create_http_client",
-    s.stateful_json_op_sync(t, op_create_http_client),
+    s.stateful_json_op_sync(op_create_http_client),
   );
 }
 
@@ -36,7 +34,6 @@ struct FetchArgs {
 
 async fn op_fetch(
   state: Rc<State>,
-  _: (),
   args: Value,
   data: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -133,7 +130,6 @@ struct CreateHttpClientOptions {
 
 fn op_create_http_client(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

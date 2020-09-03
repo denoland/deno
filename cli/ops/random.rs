@@ -9,17 +9,14 @@ use rand::Rng;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
-
   i.register_op(
     "op_get_random_values",
-    s.stateful_json_op_sync(t, op_get_random_values),
+    s.stateful_json_op_sync(op_get_random_values),
   );
 }
 
 fn op_get_random_values(
   state: &State,
-  _: (),
   _args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

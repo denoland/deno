@@ -21,168 +21,136 @@ use std::time::UNIX_EPOCH;
 use rand::{thread_rng, Rng};
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = (); // Temp.
+  i.register_op("op_open_sync", s.stateful_json_op_sync(op_open_sync));
+  i.register_op("op_open_async", s.stateful_json_op_async(op_open_async));
 
-  i.register_op("op_open_sync", s.stateful_json_op_sync(t, op_open_sync));
-  i.register_op("op_open_async", s.stateful_json_op_async(t, op_open_async));
-
-  i.register_op("op_seek_sync", s.stateful_json_op_sync(t, op_seek_sync));
-  i.register_op("op_seek_async", s.stateful_json_op_async(t, op_seek_async));
+  i.register_op("op_seek_sync", s.stateful_json_op_sync(op_seek_sync));
+  i.register_op("op_seek_async", s.stateful_json_op_async(op_seek_async));
 
   i.register_op(
     "op_fdatasync_sync",
-    s.stateful_json_op_sync(t, op_fdatasync_sync),
+    s.stateful_json_op_sync(op_fdatasync_sync),
   );
   i.register_op(
     "op_fdatasync_async",
-    s.stateful_json_op_async(t, op_fdatasync_async),
+    s.stateful_json_op_async(op_fdatasync_async),
   );
 
-  i.register_op("op_fsync_sync", s.stateful_json_op_sync(t, op_fsync_sync));
-  i.register_op(
-    "op_fsync_async",
-    s.stateful_json_op_async(t, op_fsync_async),
-  );
+  i.register_op("op_fsync_sync", s.stateful_json_op_sync(op_fsync_sync));
+  i.register_op("op_fsync_async", s.stateful_json_op_async(op_fsync_async));
 
-  i.register_op("op_fstat_sync", s.stateful_json_op_sync(t, op_fstat_sync));
-  i.register_op(
-    "op_fstat_async",
-    s.stateful_json_op_async(t, op_fstat_async),
-  );
+  i.register_op("op_fstat_sync", s.stateful_json_op_sync(op_fstat_sync));
+  i.register_op("op_fstat_async", s.stateful_json_op_async(op_fstat_async));
 
-  i.register_op("op_umask", s.stateful_json_op_sync(t, op_umask));
-  i.register_op("op_chdir", s.stateful_json_op_sync(t, op_chdir));
+  i.register_op("op_umask", s.stateful_json_op_sync(op_umask));
+  i.register_op("op_chdir", s.stateful_json_op_sync(op_chdir));
 
-  i.register_op("op_mkdir_sync", s.stateful_json_op_sync(t, op_mkdir_sync));
-  i.register_op(
-    "op_mkdir_async",
-    s.stateful_json_op_async(t, op_mkdir_async),
-  );
+  i.register_op("op_mkdir_sync", s.stateful_json_op_sync(op_mkdir_sync));
+  i.register_op("op_mkdir_async", s.stateful_json_op_async(op_mkdir_async));
 
-  i.register_op("op_chmod_sync", s.stateful_json_op_sync(t, op_chmod_sync));
-  i.register_op(
-    "op_chmod_async",
-    s.stateful_json_op_async(t, op_chmod_async),
-  );
+  i.register_op("op_chmod_sync", s.stateful_json_op_sync(op_chmod_sync));
+  i.register_op("op_chmod_async", s.stateful_json_op_async(op_chmod_async));
 
-  i.register_op("op_chown_sync", s.stateful_json_op_sync(t, op_chown_sync));
-  i.register_op(
-    "op_chown_async",
-    s.stateful_json_op_async(t, op_chown_async),
-  );
+  i.register_op("op_chown_sync", s.stateful_json_op_sync(op_chown_sync));
+  i.register_op("op_chown_async", s.stateful_json_op_async(op_chown_async));
 
-  i.register_op("op_remove_sync", s.stateful_json_op_sync(t, op_remove_sync));
-  i.register_op(
-    "op_remove_async",
-    s.stateful_json_op_async(t, op_remove_async),
-  );
+  i.register_op("op_remove_sync", s.stateful_json_op_sync(op_remove_sync));
+  i.register_op("op_remove_async", s.stateful_json_op_async(op_remove_async));
 
   i.register_op(
     "op_copy_file_sync",
-    s.stateful_json_op_sync(t, op_copy_file_sync),
+    s.stateful_json_op_sync(op_copy_file_sync),
   );
   i.register_op(
     "op_copy_file_async",
-    s.stateful_json_op_async(t, op_copy_file_async),
+    s.stateful_json_op_async(op_copy_file_async),
   );
 
-  i.register_op("op_stat_sync", s.stateful_json_op_sync(t, op_stat_sync));
-  i.register_op("op_stat_async", s.stateful_json_op_async(t, op_stat_async));
+  i.register_op("op_stat_sync", s.stateful_json_op_sync(op_stat_sync));
+  i.register_op("op_stat_async", s.stateful_json_op_async(op_stat_async));
 
   i.register_op(
     "op_realpath_sync",
-    s.stateful_json_op_sync(t, op_realpath_sync),
+    s.stateful_json_op_sync(op_realpath_sync),
   );
   i.register_op(
     "op_realpath_async",
-    s.stateful_json_op_async(t, op_realpath_async),
+    s.stateful_json_op_async(op_realpath_async),
   );
 
   i.register_op(
     "op_read_dir_sync",
-    s.stateful_json_op_sync(t, op_read_dir_sync),
+    s.stateful_json_op_sync(op_read_dir_sync),
   );
   i.register_op(
     "op_read_dir_async",
-    s.stateful_json_op_async(t, op_read_dir_async),
+    s.stateful_json_op_async(op_read_dir_async),
   );
 
-  i.register_op("op_rename_sync", s.stateful_json_op_sync(t, op_rename_sync));
-  i.register_op(
-    "op_rename_async",
-    s.stateful_json_op_async(t, op_rename_async),
-  );
+  i.register_op("op_rename_sync", s.stateful_json_op_sync(op_rename_sync));
+  i.register_op("op_rename_async", s.stateful_json_op_async(op_rename_async));
 
-  i.register_op("op_link_sync", s.stateful_json_op_sync(t, op_link_sync));
-  i.register_op("op_link_async", s.stateful_json_op_async(t, op_link_async));
+  i.register_op("op_link_sync", s.stateful_json_op_sync(op_link_sync));
+  i.register_op("op_link_async", s.stateful_json_op_async(op_link_async));
 
-  i.register_op(
-    "op_symlink_sync",
-    s.stateful_json_op_sync(t, op_symlink_sync),
-  );
+  i.register_op("op_symlink_sync", s.stateful_json_op_sync(op_symlink_sync));
   i.register_op(
     "op_symlink_async",
-    s.stateful_json_op_async(t, op_symlink_async),
+    s.stateful_json_op_async(op_symlink_async),
   );
 
   i.register_op(
     "op_read_link_sync",
-    s.stateful_json_op_sync(t, op_read_link_sync),
+    s.stateful_json_op_sync(op_read_link_sync),
   );
   i.register_op(
     "op_read_link_async",
-    s.stateful_json_op_async(t, op_read_link_async),
+    s.stateful_json_op_async(op_read_link_async),
   );
 
   i.register_op(
     "op_ftruncate_sync",
-    s.stateful_json_op_sync(t, op_ftruncate_sync),
+    s.stateful_json_op_sync(op_ftruncate_sync),
   );
   i.register_op(
     "op_ftruncate_async",
-    s.stateful_json_op_async(t, op_ftruncate_async),
+    s.stateful_json_op_async(op_ftruncate_async),
   );
 
   i.register_op(
     "op_truncate_sync",
-    s.stateful_json_op_sync(t, op_truncate_sync),
+    s.stateful_json_op_sync(op_truncate_sync),
   );
   i.register_op(
     "op_truncate_async",
-    s.stateful_json_op_async(t, op_truncate_async),
+    s.stateful_json_op_async(op_truncate_async),
   );
 
   i.register_op(
     "op_make_temp_dir_sync",
-    s.stateful_json_op_sync(t, op_make_temp_dir_sync),
+    s.stateful_json_op_sync(op_make_temp_dir_sync),
   );
   i.register_op(
     "op_make_temp_dir_async",
-    s.stateful_json_op_async(t, op_make_temp_dir_async),
+    s.stateful_json_op_async(op_make_temp_dir_async),
   );
 
   i.register_op(
     "op_make_temp_file_sync",
-    s.stateful_json_op_sync(t, op_make_temp_file_sync),
+    s.stateful_json_op_sync(op_make_temp_file_sync),
   );
   i.register_op(
     "op_make_temp_file_async",
-    s.stateful_json_op_async(t, op_make_temp_file_async),
+    s.stateful_json_op_async(op_make_temp_file_async),
   );
 
-  i.register_op("op_cwd", s.stateful_json_op_sync(t, op_cwd));
+  i.register_op("op_cwd", s.stateful_json_op_sync(op_cwd));
 
-  i.register_op("op_futime_sync", s.stateful_json_op_sync(t, op_futime_sync));
-  i.register_op(
-    "op_futime_async",
-    s.stateful_json_op_async(t, op_futime_async),
-  );
+  i.register_op("op_futime_sync", s.stateful_json_op_sync(op_futime_sync));
+  i.register_op("op_futime_async", s.stateful_json_op_async(op_futime_async));
 
-  i.register_op("op_utime_sync", s.stateful_json_op_sync(t, op_utime_sync));
-  i.register_op(
-    "op_utime_async",
-    s.stateful_json_op_async(t, op_utime_async),
-  );
+  i.register_op("op_utime_sync", s.stateful_json_op_sync(op_utime_sync));
+  i.register_op("op_utime_async", s.stateful_json_op_async(op_utime_async));
 }
 
 fn into_string(s: std::ffi::OsString) -> Result<String, ErrBox> {
@@ -255,7 +223,6 @@ fn open_helper(
 
 fn op_open_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -274,7 +241,6 @@ fn op_open_sync(
 
 async fn op_open_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -320,7 +286,6 @@ fn seek_helper(args: Value) -> Result<(u32, SeekFrom), ErrBox> {
 
 fn op_seek_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -336,7 +301,6 @@ fn op_seek_sync(
 
 async fn op_seek_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -360,7 +324,6 @@ struct FdatasyncArgs {
 
 fn op_fdatasync_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -378,7 +341,6 @@ fn op_fdatasync_sync(
 
 async fn op_fdatasync_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -402,7 +364,6 @@ struct FsyncArgs {
 
 fn op_fsync_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -420,7 +381,6 @@ fn op_fsync_sync(
 
 async fn op_fsync_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -444,7 +404,6 @@ struct FstatArgs {
 
 fn op_fstat_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -462,7 +421,6 @@ fn op_fstat_sync(
 
 async fn op_fstat_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -485,7 +443,6 @@ struct UmaskArgs {
 
 fn op_umask(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -524,7 +481,6 @@ struct ChdirArgs {
 
 fn op_chdir(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -545,7 +501,6 @@ struct MkdirArgs {
 
 fn op_mkdir_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -567,7 +522,6 @@ fn op_mkdir_sync(
 
 async fn op_mkdir_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -600,7 +554,6 @@ struct ChmodArgs {
 
 fn op_chmod_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -628,7 +581,6 @@ fn op_chmod_sync(
 
 async fn op_chmod_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -667,7 +619,6 @@ struct ChownArgs {
 
 fn op_chown_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -697,7 +648,6 @@ fn op_chown_sync(
 
 async fn op_chown_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -736,7 +686,6 @@ struct RemoveArgs {
 
 fn op_remove_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -780,7 +729,6 @@ fn op_remove_sync(
 
 async fn op_remove_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -835,7 +783,6 @@ struct CopyFileArgs {
 
 fn op_copy_file_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -861,7 +808,6 @@ fn op_copy_file_sync(
 
 async fn op_copy_file_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -956,7 +902,6 @@ struct StatArgs {
 
 fn op_stat_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -975,7 +920,6 @@ fn op_stat_sync(
 
 async fn op_stat_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1006,7 +950,6 @@ struct RealpathArgs {
 
 fn op_realpath_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1032,7 +975,6 @@ fn op_realpath_sync(
 
 async fn op_realpath_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1068,7 +1010,6 @@ struct ReadDirArgs {
 
 fn op_read_dir_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1101,7 +1042,6 @@ fn op_read_dir_sync(
 
 async fn op_read_dir_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1145,7 +1085,6 @@ struct RenameArgs {
 
 fn op_rename_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1163,7 +1102,6 @@ fn op_rename_sync(
 
 async fn op_rename_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1197,7 +1135,6 @@ struct LinkArgs {
 
 fn op_link_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1216,7 +1153,6 @@ fn op_link_sync(
 
 async fn op_link_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1255,7 +1191,6 @@ struct SymlinkOptions {
 
 fn op_symlink_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1307,7 +1242,6 @@ fn op_symlink_sync(
 
 async fn op_symlink_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1365,7 +1299,6 @@ struct ReadLinkArgs {
 
 fn op_read_link_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1382,7 +1315,6 @@ fn op_read_link_sync(
 
 async fn op_read_link_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1410,7 +1342,6 @@ struct FtruncateArgs {
 
 fn op_ftruncate_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1427,7 +1358,6 @@ fn op_ftruncate_sync(
 
 async fn op_ftruncate_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1451,7 +1381,6 @@ struct TruncateArgs {
 
 fn op_truncate_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1469,7 +1398,6 @@ fn op_truncate_sync(
 
 async fn op_truncate_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1544,7 +1472,6 @@ struct MakeTempArgs {
 
 fn op_make_temp_dir_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1573,7 +1500,6 @@ fn op_make_temp_dir_sync(
 
 async fn op_make_temp_dir_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1606,7 +1532,6 @@ async fn op_make_temp_dir_async(
 
 fn op_make_temp_file_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1635,7 +1560,6 @@ fn op_make_temp_file_sync(
 
 async fn op_make_temp_file_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1676,7 +1600,6 @@ struct FutimeArgs {
 
 fn op_futime_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1701,7 +1624,6 @@ fn op_futime_sync(
 
 async fn op_futime_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1734,7 +1656,6 @@ struct UtimeArgs {
 
 fn op_utime_sync(
   state: &State,
-  _: (),
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -1752,7 +1673,6 @@ fn op_utime_sync(
 
 async fn op_utime_async(
   state: Rc<State>,
-  _: (),
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -1775,7 +1695,6 @@ async fn op_utime_async(
 
 fn op_cwd(
   state: &State,
-  _: (),
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
