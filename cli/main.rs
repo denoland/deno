@@ -749,7 +749,6 @@ async fn test_command(
       .filter(|e| !test_scripts.contains(&e.url))
       .filter(|e| !e.url.contains(".deno"))
       .filter(|e| !e.url.contains("__anonymous__"))
-      .filter(|e| e.url.contains(cwd.as_os_str().to_str().unwrap()))
       .collect::<Vec<ScriptCoverage>>();
 
     // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
@@ -759,47 +758,48 @@ async fn test_command(
       let module_specifier = ModuleSpecifier::resolve_url_or_path(&script.url)?;
       let source_file = global_state
         .file_fetcher
-        .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
-        .unwrap();
+        .fetch_cached_source_file(&module_specifier, Permissions::allow_all());
 
-      let mut total = 0;
-      let mut covered = 0;
+      if let Some(source_file) = source_file {
+        let mut total = 0;
+        let mut covered = 0;
 
-      let mut offset = 0;
-      let source_string = source_file.source_code.to_string()?;
-      for line in source_string.lines() {
-        let line_start_offset = offset;
-        let line_end_offset = line_start_offset + line.len();
+        let mut offset = 0;
+        let source_string = source_file.source_code.to_string()?;
+        for line in source_string.lines() {
+          let line_start_offset = offset;
+          let line_end_offset = line_start_offset + line.len();
 
-        let mut count = 1;
-        let mut ignore = false;
+          let mut count = 1;
+          let mut ignore = false;
 
-        if line.is_empty() {
-          ignore = true;
-        }
+          if line.is_empty() {
+            ignore = true;
+          }
 
-        for function in &script.functions {
-          for range in &function.ranges {
-            if range.start_offset <= line_start_offset
-              && range.end_offset >= line_end_offset
-              && !ignore
-            {
-              count = range.count;
+          for function in &script.functions {
+            for range in &function.ranges {
+              if range.start_offset <= line_start_offset
+                && range.end_offset >= line_end_offset
+                && !ignore
+              {
+                count = range.count;
+              }
             }
           }
+
+          if count > 0 {
+            covered += 1;
+          }
+
+          total += 1;
+
+          offset += line.len();
         }
 
-        if count > 0 {
-          covered += 1;
-        }
-
-        total += 1;
-
-        offset += line.len();
+        let result = (covered as f32 / total as f32) * 100.0;
+        println!("{} {:.3}%", module_specifier.as_str(), result);
       }
-
-      let result = (covered as f32 / total as f32) * 100.0;
-      println!("{} {:.3}%", module_specifier.as_str(), result);
     }
   }
 
