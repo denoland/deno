@@ -48,6 +48,13 @@ unitTest(function urlSearchParamsInitString(): void {
   );
 });
 
+unitTest(function urlSearchParamsInitStringWithPlusCharacter(): void {
+  const init = "q=a+b";
+  const searchParams = new URLSearchParams(init);
+  assertEquals(searchParams.toString(), init);
+  assertEquals(searchParams.get("q"), "a b");
+});
+
 unitTest(function urlSearchParamsInitIterable(): void {
   const init = [
     ["a", "54"],

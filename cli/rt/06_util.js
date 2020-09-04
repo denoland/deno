@@ -53,7 +53,6 @@
   function immutableDefine(
     o,
     p,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value,
   ) {
     Object.defineProperty(o, p, {

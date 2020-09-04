@@ -64,5 +64,3 @@ pub fn v8_version() -> &'static str {
 fn test_v8_version() {
   assert!(v8_version().len() > 3);
 }
-
-crate_modules!();
