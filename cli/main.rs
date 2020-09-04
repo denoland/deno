@@ -775,7 +775,9 @@ async fn test_command(
               &module_specifier,
               Permissions::allow_all(),
             )
-            .ok_or(ErrBox::error("unable to fetch source file"))
+            .ok_or_else(|| {
+                ErrBox::error("unable to fetch source file")
+            })
         })?;
 
       pretty_coverage_reporter.visit(&script_coverage, &source_file);
