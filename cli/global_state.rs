@@ -5,7 +5,6 @@ use crate::flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
-use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
@@ -107,7 +106,7 @@ impl GlobalState {
     permissions: Permissions,
     is_dyn_import: bool,
     maybe_import_map: Option<ImportMap>,
-  ) -> Result<ModuleGraph, ErrBox> {
+  ) -> Result<(), ErrBox> {
     let module_specifier = module_specifier.clone();
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -176,7 +175,7 @@ impl GlobalState {
 
     drop(compile_lock);
 
-    Ok(module_graph)
+    Ok(())
   }
 
   // TODO(bartlomieju): this method doesn't need to be async anymore

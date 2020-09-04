@@ -1,8 +1,7 @@
 use crate::colors;
 use crate::global_state::GlobalState;
-use crate::module_graph::{ModuleGraphFile, ModuleGraphLoader};
+use crate::module_graph::{ModuleGraph, ModuleGraphFile, ModuleGraphLoader};
 use crate::msg;
-use crate::ModuleGraph;
 use crate::ModuleSpecifier;
 use crate::Permissions;
 use deno_core::ErrBox;

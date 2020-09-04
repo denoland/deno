@@ -89,8 +89,6 @@ use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
 use log::Level;
-use log::Metadata;
-use log::Record;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
