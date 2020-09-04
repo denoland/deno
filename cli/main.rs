@@ -769,10 +769,13 @@ async fn test_command(
         .ts_compiler
         .get_compiled_source_file(&module_specifier.as_url())
         .or_else(|_| {
-          global_state.file_fetcher.fetch_cached_source_file(
-            &module_specifier,
-            Permissions::allow_all(),
-          ).ok_or(ErrBox::error("unable to fetch source file"))
+          global_state
+            .file_fetcher
+            .fetch_cached_source_file(
+              &module_specifier,
+              Permissions::allow_all(),
+            )
+            .ok_or(ErrBox::error("unable to fetch source file"))
         })?;
 
       pretty_coverage_reporter.visit(&script_coverage, &source_file);
