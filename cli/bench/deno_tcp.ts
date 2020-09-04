@@ -1,4 +1,4 @@
-// Used for benchmarking Deno's networking. See tools/http_benchmark.py
+// Used for benchmarking Deno's networking.
 // TODO Replace this with a real HTTP server once
 // https://github.com/denoland/deno/issues/726 is completed.
 // Note: this is a keep-alive server.

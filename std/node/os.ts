@@ -19,7 +19,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { notImplemented } from "./_utils.ts";
-import { validateIntegerRange } from "./util.ts";
+import { validateIntegerRange } from "./_utils.ts";
 import { EOL as fsEOL } from "../fs/eol.ts";
 import process from "./process.ts";
 

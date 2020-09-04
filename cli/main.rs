@@ -64,6 +64,7 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
+mod tsc_config;
 mod upgrade;
 pub mod version;
 mod web_worker;

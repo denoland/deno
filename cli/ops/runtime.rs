@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{JsonOp, Value};
+use super::dispatch_json::Value;
 use crate::colors;
 use crate::state::State;
 use crate::version;
@@ -7,24 +7,28 @@ use crate::DenoSubcommand;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use std::env;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_start", s.stateful_json_op(op_start));
-  i.register_op("op_main_module", s.stateful_json_op(op_main_module));
-  i.register_op("op_metrics", s.stateful_json_op(op_metrics));
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
+  i.register_op("op_start", s.stateful_json_op_sync(t, op_start));
+  i.register_op("op_main_module", s.stateful_json_op_sync(t, op_main_module));
+  i.register_op("op_metrics", s.stateful_json_op_sync(t, op_metrics));
 }
 
 fn op_start(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let gs = &state.global_state;
 
-  Ok(JsonOp::Sync(json!({
+  Ok(json!({
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
     "args": gs.flags.argv.clone(),
     "cwd": &env::current_dir().unwrap(),
@@ -39,31 +43,33 @@ fn op_start(
     "unstableFlag": gs.flags.unstable,
     "v8Version": version::v8(),
     "versionFlag": gs.flags.version,
-  })))
+  }))
 }
 
 fn op_main_module(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let main = &state.main_module.to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state.check_read_blind(&main_path, "main_module")?;
   }
-  Ok(JsonOp::Sync(json!(&main)))
+  Ok(json!(&main))
 }
 
 fn op_metrics(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let m = &state.metrics.borrow();
 
-  Ok(JsonOp::Sync(json!({
+  Ok(json!({
     "opsDispatched": m.ops_dispatched,
     "opsDispatchedSync": m.ops_dispatched_sync,
     "opsDispatchedAsync": m.ops_dispatched_async,
@@ -75,7 +81,7 @@ fn op_metrics(
     "bytesSentControl": m.bytes_sent_control,
     "bytesSentData": m.bytes_sent_data,
     "bytesReceived": m.bytes_received
-  })))
+  }))
 }
 
 fn ppid() -> Value {

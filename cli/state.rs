@@ -58,17 +58,6 @@ pub struct State {
 }
 
 impl State {
-  pub fn stateful_json_op<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
-  where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
-  {
-    use crate::ops::json_op;
-    self.core_op(json_op(self.stateful_op(dispatcher)))
-  }
-
   pub fn stateful_json_op_sync<D>(
     self: &Rc<Self>,
     resource_table: &Rc<RefCell<ResourceTable>>,
@@ -85,16 +74,18 @@ impl State {
     let state = self.clone();
     let resource_table = resource_table.clone();
 
-    move |isolate_state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
-      let rust_err_to_json_fn = isolate_state.rust_err_to_json_fn;
+    let f = move |isolate_state: &mut CoreIsolateState,
+                  bufs: &mut [ZeroCopyBuf]| {
+      let get_error_class_fn = isolate_state.get_error_class_fn;
+
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
           return Op::Sync(serialize_result(
-            rust_err_to_json_fn,
             None,
             Err(e.into()),
+            get_error_class_fn,
           ));
         }
       };
@@ -106,8 +97,9 @@ impl State {
         dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy);
 
       // Convert to Op.
-      Op::Sync(serialize_result(rust_err_to_json_fn, None, result))
-    }
+      Op::Sync(serialize_result(None, result, get_error_class_fn))
+    };
+    self.core_op(f)
   }
 
   pub fn stateful_json_op_async<D, F>(
@@ -123,14 +115,16 @@ impl State {
     let state = self.clone();
     let resource_table = resource_table.clone();
 
-    move |isolate_state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
-      let rust_err_to_json_fn = isolate_state.rust_err_to_json_fn;
+    let f = move |isolate_state: &mut CoreIsolateState,
+                  bufs: &mut [ZeroCopyBuf]| {
+      let get_error_class_fn = isolate_state.get_error_class_fn;
+
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
           let e = e.into();
-          return Op::Sync(serialize_result(rust_err_to_json_fn, None, Err(e)));
+          return Op::Sync(serialize_result(None, Err(e), get_error_class_fn));
         }
       };
 
@@ -139,7 +133,7 @@ impl State {
         Some(i) => i,
         None => {
           let e = ErrBox::new("TypeError", "`promiseId` invalid/missing");
-          return Op::Sync(serialize_result(rust_err_to_json_fn, None, Err(e)));
+          return Op::Sync(serialize_result(None, Err(e), get_error_class_fn));
         }
       };
 
@@ -157,13 +151,16 @@ impl State {
       // Convert to Op.
       Op::Async(
         async move {
-          serialize_result(rust_err_to_json_fn, Some(promise_id), fut.await)
+          serialize_result(Some(promise_id), fut.await, get_error_class_fn)
         }
         .boxed_local(),
       )
-    }
+    };
+    self.core_op(f)
   }
 
+  // TODO(bartlomieju): remove me - still used by `op_open_plugin` which
+  // needs access to isolate_state
   pub fn stateful_json_op2<D>(
     self: &Rc<Self>,
     dispatcher: D,
@@ -183,7 +180,7 @@ impl State {
   /// Wrap core `OpDispatcher` to collect metrics.
   // TODO(ry) this should be private. Is called by stateful_json_op or
   // stateful_minimal_op
-  pub fn core_op<D>(
+  pub(crate) fn core_op<D>(
     self: &Rc<Self>,
     dispatcher: D,
   ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
@@ -322,7 +319,7 @@ impl State {
   ///
   /// This is intentionally a non-recoverable check so that people cannot probe
   /// for unstable APIs from stable programs.
-  pub fn check_unstable(self: &Rc<Self>, api_name: &str) {
+  pub fn check_unstable(&self, api_name: &str) {
     // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
     // stack trace in JS.
     if !self.global_state.flags.unstable {

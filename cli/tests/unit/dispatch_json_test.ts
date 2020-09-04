@@ -39,7 +39,7 @@ unitTest(function malformedJsonControlBuffer(): void {
   const resText = new TextDecoder().decode(resBuf);
   const resObj = JSON.parse(resText);
   assertStrictEquals(resObj.ok, undefined);
-  assertStrictEquals(resObj.err.kind, "SyntaxError");
+  assertStrictEquals(resObj.err.className, "SyntaxError");
   assertMatch(resObj.err.message, /\bexpected value\b/);
 });
 
@@ -65,6 +65,6 @@ unitTest(function invalidPromiseId(): void {
   const resObj = JSON.parse(resText);
   console.error(resText);
   assertStrictEquals(resObj.ok, undefined);
-  assertStrictEquals(resObj.err.kind, "TypeError");
+  assertStrictEquals(resObj.err.className, "TypeError");
   assertMatch(resObj.err.message, /\bpromiseId\b/);
 });

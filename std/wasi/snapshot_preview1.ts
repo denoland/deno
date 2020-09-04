@@ -228,6 +228,7 @@ const clock_time_monotonic = function (): bigint {
 const clock_time_process = clock_time_monotonic;
 const clock_time_thread = clock_time_monotonic;
 
+// deno-lint-ignore ban-types
 function syscall(target: Function): Function {
   return function (...args: unknown[]): number {
     try {
@@ -298,6 +299,7 @@ export default class Context {
   // deno-lint-ignore no-explicit-any
   fds: any[];
 
+  // deno-lint-ignore ban-types
   exports: Record<string, Function>;
 
   constructor(options: ContextOptions) {
@@ -823,21 +825,22 @@ export default class Context {
           );
           entry_view.setUint32(16, name_data.byteLength, true);
 
+          let type: number;
           switch (true) {
             case entries[i].isFile:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
 
             case entries[i].isDirectory:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
 
             case entries[i].isSymlink:
-              var type = FILETYPE_SYMBOLIC_LINK;
+              type = FILETYPE_SYMBOLIC_LINK;
               break;
 
             default:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
           }
 
@@ -913,7 +916,7 @@ export default class Context {
         const view = new DataView(this.memory.buffer);
 
         const offset = entry.handle.seekSync(0, Deno.SeekMode.Current);
-        view.setBigUint64(offset_out, offset, true);
+        view.setBigUint64(offset_out, BigInt(offset), true);
 
         return ERRNO_SUCCESS;
       }),

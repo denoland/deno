@@ -27,8 +27,8 @@ pub use rusty_v8 as v8;
 pub use crate::core_isolate::js_check;
 pub use crate::core_isolate::CoreIsolate;
 pub use crate::core_isolate::CoreIsolateState;
+pub use crate::core_isolate::GetErrorClassFn;
 pub use crate::core_isolate::HeapLimits;
-pub use crate::core_isolate::RustErrToJsonFn;
 pub use crate::core_isolate::Script;
 pub use crate::core_isolate::Snapshot;
 pub use crate::core_isolate::StartupData;
@@ -64,5 +64,3 @@ pub fn v8_version() -> &'static str {
 fn test_v8_version() {
   assert!(v8_version().len() > 3);
 }
-
-crate_modules!();
