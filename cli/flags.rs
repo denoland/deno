@@ -365,10 +365,10 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   config_arg_parse(flags, matches);
-  importmap_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
+  importmap_arg_parse(flags, matches);
 
   let root = if matches.is_present("root") {
     let install_root = matches.value_of("root").unwrap();
@@ -743,6 +743,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
         .arg(ca_file_arg())
         .arg(unstable_arg())
         .arg(config_arg())
+        .arg(importmap_arg())
         .about("Install script as an executable")
         .long_about(
 "Installs a script as an executable in the installation root's bin directory.
@@ -2506,24 +2507,22 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
-      "--importmap",
-      "import_map.json",
+      "--importmap=importmap.json",
       "asd",
       "asd.ts"
-    ]);
+      ]);
 
     assert_eq!(
       r.unwrap(),
       Flags {
-        unstable: true,
         subcommand: DenoSubcommand::Install {
           name: None,
-          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
-          args: svec![],
+          module_url: "asd".to_string(),
+          args: svec!["asd.ts"],
           root: None,
           force: false,
-
         },
+        import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()
       }
     );
