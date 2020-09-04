@@ -290,6 +290,7 @@ pub fn transpile(
 
   let jsx_pass = react::react(
     ast_parser.source_map.clone(),
+    Some(&ast_parser.comments),
     react::Options {
       pragma: options.jsx_factory.clone(),
       pragma_frag: options.jsx_fragment_factory.clone(),
