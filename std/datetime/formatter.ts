@@ -52,7 +52,7 @@ function createMatchTestFunction(match: RegExp): TestFunction {
   };
 }
 
-// according to unicode symbols (http://userguide.icu-project.org/formatparse/datetime)
+// according to unicode symbols (http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table)
 const defaultRules = [
   {
     test: createLiteralTestFunction("yyyy"),
