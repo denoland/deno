@@ -2,6 +2,7 @@
 
 #![allow(unused)]
 
+use crate::colors;
 use crate::file_fetcher::SourceFile;
 use crate::futures::SinkExt;
 use crate::futures::StreamExt;
@@ -177,7 +178,15 @@ impl PrettyCoverageReporter {
       line_offset += line.len();
     }
 
-    let line_ratio = (covered_lines as f32 / total_lines as f32) * 100.0;
-    println!("{} {:.3}%", source_file.url.as_str(), line_ratio);
+    let line_ratio = (covered_lines as f32 / total_lines as f32);
+    let line_coverage = format!("{:.3}%", line_ratio * 100.0);
+
+    if line_ratio >= 0.9 {
+      println!("{} {}", source_file.url.to_string(), colors::green(&line_coverage));
+    } else if line_ratio >= 0.75 {
+      println!("{} {}", source_file.url.to_string(), colors::gray(&line_coverage));
+    } else {
+      println!("{} {}", source_file.url.to_string(), colors::red(&line_coverage));
+    }
   }
 }
