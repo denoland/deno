@@ -153,17 +153,10 @@ impl PrettyCoverageReporter {
       let line_end_offset = line_start_offset + line.len();
 
       let mut count = 1;
-      let mut ignore = false;
-
-      if line.is_empty() {
-        ignore = true;
-      }
-
       for function in &script_coverage.functions {
         for range in &function.ranges {
           if range.start_offset <= line_start_offset
             && range.end_offset >= line_end_offset
-            && !ignore
           {
             count = range.count;
           }
