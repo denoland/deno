@@ -764,7 +764,6 @@ async fn test_command(
     for script_coverage in filtered_coverage {
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
-      println!("{}", module_specifier.to_string());
       let source_file = global_state
         .file_fetcher
         .fetch_cached_source_file(&module_specifier, Permissions::allow_all());
