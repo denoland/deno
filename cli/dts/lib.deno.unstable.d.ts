@@ -130,6 +130,17 @@ declare namespace Deno {
    */
   export function osRelease(): string;
 
+  export function memoryInfo(): MemoryInfo;
+
+  interface MemoryInfo {
+    total: number;
+    free: number;
+    available: number;
+    buffers: number;
+    cached: number;
+    swapTotal: number;
+    swapFree: number;
+  }
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initialize a plugin.
