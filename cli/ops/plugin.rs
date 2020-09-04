@@ -102,6 +102,10 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     self.state.register_op(
       name,
       move |state: Rc<State>, mut zero_copy: BufVec| {
+        // This is a hack that ensures that dispatch_op_fn is dropped first to
+        // prevent segfaults.
+        let _ = &dispatch_op_fn;
+        let _ = &plugin_lib;
         let mut interface = PluginInterface::new(&state, &plugin_lib);
         let op = dispatch_op_fn(&mut interface, &mut zero_copy);
         match op {
