@@ -10,7 +10,6 @@ use crate::ops::JsonOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
-use deno_core::Buf;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::ModuleLoadId;
@@ -18,7 +17,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::OpId;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use deno_core::OpRouter;
 use deno_core::ResourceTable;
 use futures::future::FutureExt;
@@ -59,7 +58,7 @@ pub struct State {
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
   pub resource_table: RefCell<ResourceTable>,
-  pub op_catalog:
+  pub op_registry:
     RefCell<IndexMap<String, Rc<dyn Fn(Rc<Self>, BufVec) -> Op + 'static>>>,
 }
 
@@ -109,7 +108,7 @@ impl State {
             .metrics
             .borrow_mut()
             .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
-          let result_fut = fut.map(move |buf: Buf| {
+          let result_fut = fut.map(move |buf: Box<[u8]>| {
             state
               .metrics
               .borrow_mut()
@@ -123,7 +122,7 @@ impl State {
             bytes_sent_control,
             bytes_sent_zero_copy,
           );
-          let result_fut = fut.map(move |buf: Buf| {
+          let result_fut = fut.map(move |buf: Box<[u8]>| {
             state
               .metrics
               .borrow_mut()
@@ -281,7 +280,7 @@ impl State {
       is_internal,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
       resource_table: Default::default(),
-      op_catalog: Default::default(),
+      op_registry: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -311,7 +310,7 @@ impl State {
       is_internal: false,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
       resource_table: Default::default(),
-      op_catalog: Default::default(),
+      op_registry: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -414,7 +413,7 @@ impl OpRouter for State {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
     let index = usize::try_from(op_id).unwrap();
     let op_fn = self
-      .op_catalog
+      .op_registry
       .borrow()
       .get_index(index)
       .map(|(_, op_fn)| op_fn.clone())
@@ -423,14 +422,14 @@ impl OpRouter for State {
   }
 }
 
-impl OpManager for State {
+impl OpRegistry for State {
   fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
-    let mut op_catalog = self.op_catalog.borrow_mut();
+    let mut op_registry = self.op_registry.borrow_mut();
     let (op_id, removed_op_fn) =
-      op_catalog.insert_full(name.to_owned(), Rc::new(op_fn));
+      op_registry.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(removed_op_fn.is_none());
     op_id.try_into().unwrap()
   }

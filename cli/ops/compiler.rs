@@ -6,7 +6,7 @@ use crate::ops::json_op;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;

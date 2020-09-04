@@ -218,7 +218,6 @@ impl SharedQueue {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ops::Buf;
 
   #[test]
   fn basic() {
@@ -262,7 +261,7 @@ mod tests {
     assert_eq!(q.size(), 0);
   }
 
-  fn alloc_buf(byte_length: usize) -> Buf {
+  fn alloc_buf(byte_length: usize) -> Box<[u8]> {
     let mut v = Vec::new();
     v.resize(byte_length, 0);
     v.into_boxed_slice()

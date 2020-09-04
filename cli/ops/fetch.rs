@@ -5,7 +5,7 @@ use crate::http_util::{create_http_client, HttpBody};
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
 use http::header::HeaderValue;

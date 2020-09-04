@@ -1,12 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::state::State;
-use deno_core::Buf;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpId;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::iter::repeat;
@@ -28,8 +27,8 @@ pub struct Record {
   pub result: i32,
 }
 
-impl Into<Buf> for Record {
-  fn into(self) -> Buf {
+impl Into<Box<[u8]>> for Record {
+  fn into(self) -> Box<[u8]> {
     let vec = vec![self.promise_id, self.arg, self.result];
     let buf32 = vec.into_boxed_slice();
     let ptr = Box::into_raw(buf32) as *mut [u8; 3 * 4];
@@ -45,8 +44,8 @@ pub struct ErrorRecord {
   pub error_message: Vec<u8>,
 }
 
-impl Into<Buf> for ErrorRecord {
-  fn into(self) -> Buf {
+impl Into<Box<[u8]>> for ErrorRecord {
+  fn into(self) -> Box<[u8]> {
     let Self {
       promise_id,
       arg,
@@ -89,7 +88,7 @@ fn test_error_record() {
     error_class: b"BadResource",
     error_message: b"Error".to_vec(),
   };
-  let buf: Buf = err_record.into();
+  let buf: Box<[u8]> = err_record.into();
   assert_eq!(buf, expected.into_boxed_slice());
 }
 

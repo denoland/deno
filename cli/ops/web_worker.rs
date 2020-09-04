@@ -6,7 +6,7 @@ use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use futures::channel::mpsc;
 use std::convert::From;
 use std::rc::Rc;

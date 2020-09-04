@@ -7,7 +7,6 @@ use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::startup_data;
 use crate::state::State;
-use deno_core::Buf;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
@@ -32,25 +31,25 @@ use url::Url;
 /// Events that are sent to host from child
 /// worker.
 pub enum WorkerEvent {
-  Message(Buf),
+  Message(Box<[u8]>),
   Error(ErrBox),
   TerminalError(ErrBox),
 }
 
 pub struct WorkerChannelsInternal {
   pub sender: mpsc::Sender<WorkerEvent>,
-  pub receiver: mpsc::Receiver<Buf>,
+  pub receiver: mpsc::Receiver<Box<[u8]>>,
 }
 
 #[derive(Clone)]
 pub struct WorkerHandle {
-  pub sender: mpsc::Sender<Buf>,
+  pub sender: mpsc::Sender<Box<[u8]>>,
   pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
 }
 
 impl WorkerHandle {
   /// Post message to worker as a host.
-  pub fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
     sender.try_send(buf)?;
     Ok(())
@@ -65,7 +64,7 @@ impl WorkerHandle {
 }
 
 fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
-  let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
+  let (in_tx, in_rx) = mpsc::channel::<Box<[u8]>>(1);
   let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
   let internal_channels = WorkerChannelsInternal {
     sender: out_tx,

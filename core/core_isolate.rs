@@ -33,7 +33,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Buf)>>>;
+type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Box<[u8]>)>>>;
 
 /// Stores a script used to initialize a Isolate
 pub struct Script<'a> {
@@ -497,7 +497,7 @@ impl Future for CoreIsolate {
 
     check_promise_exceptions(scope)?;
 
-    let mut overflow_response: Option<(OpId, Buf)> = None;
+    let mut overflow_response: Option<(OpId, Box<[u8]>)> = None;
 
     loop {
       let mut state = state_rc.borrow_mut();

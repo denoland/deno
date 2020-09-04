@@ -9,7 +9,7 @@ use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use dlopen::symbor::Library;
 use futures::prelude::*;
 use std::path::PathBuf;

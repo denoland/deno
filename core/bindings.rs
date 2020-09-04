@@ -409,8 +409,8 @@ fn send<'s>(
     }
   };
 
-  let mgr = state.op_router.clone();
-  let op = mgr.route_op(op_id, bufs);
+  let op_router = state.op_router.clone();
+  let op = op_router.route_op(op_id, bufs);
   assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(buf) if !buf.is_empty() => {

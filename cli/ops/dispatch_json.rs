@@ -3,7 +3,7 @@ use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use futures::future::FutureExt;
 pub use serde_derive::Deserialize;
 pub use serde_json::Value;

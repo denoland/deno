@@ -2,7 +2,7 @@
 use super::dispatch_json::Value;
 use crate::state::State;
 use deno_core::ErrBox;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;

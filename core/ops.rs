@@ -9,18 +9,14 @@ use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 
 pub type OpId = u32;
-
-pub type Buf = Box<[u8]>;
-
-pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Buf>>>;
+pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
 
 pub enum Op {
-  Sync(Buf),
+  Sync(Box<[u8]>),
   Async(OpAsyncFuture),
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
@@ -31,7 +27,7 @@ pub trait OpRouter {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
 }
 
-pub trait OpManager: OpRouter + 'static {
+pub trait OpRegistry: OpRouter + 'static {
   fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static;
@@ -45,10 +41,10 @@ pub trait OpManager: OpRouter + 'static {
       ) -> Result<serde_json::Value, ErrBox>
       + 'static,
   {
-    let base_op_fn = move |mgr: Rc<Self>, mut bufs: BufVec| -> Op {
+    let base_op_fn = move |op_registry: Rc<Self>, mut bufs: BufVec| -> Op {
       let value = serde_json::from_slice(&bufs[0]).unwrap();
-      let result = op_fn(&mgr, value, &mut bufs[1..]);
-      let buf = mgr.json_serialize_op_result(None, result);
+      let result = op_fn(&op_registry, value, &mut bufs[1..]);
+      let buf = op_registry.json_serialize_op_result(None, result);
       Op::Sync(buf)
     };
 
@@ -60,12 +56,12 @@ pub trait OpManager: OpRouter + 'static {
     F: Fn(Rc<Self>, serde_json::Value, BufVec) -> R + 'static,
     R: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
   {
-    let base_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
+    let base_op_fn = move |op_registry: Rc<Self>, bufs: BufVec| -> Op {
       let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
       let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
       let bufs = bufs[1..].into();
-      let fut = op_fn(mgr.clone(), value, bufs).map(move |result| {
-        mgr.json_serialize_op_result(Some(promise_id), result)
+      let fut = op_fn(op_registry.clone(), value, bufs).map(move |result| {
+        op_registry.json_serialize_op_result(Some(promise_id), result)
       });
       Op::Async(Box::pin(fut))
     };
@@ -77,12 +73,12 @@ pub trait OpManager: OpRouter + 'static {
   where
     for<'a> F: Fn(&'a Self, &'a mut dyn FnMut((String, OpId))) + 'static,
   {
-    let base_op_fn = move |mgr: Rc<Self>, _: BufVec| -> Op {
+    let base_op_fn = move |op_registry: Rc<Self>, _: BufVec| -> Op {
       let mut index = HashMap::<String, OpId>::new();
-      let mut iter_fn = |(k, v)| {
+      let mut visitor = |(k, v)| {
         assert!(index.insert(k, v).is_none());
       };
-      op_fn(&mgr, &mut iter_fn);
+      op_fn(&op_registry, &mut visitor);
       let buf = serde_json::to_vec(&index).unwrap().into();
       Op::Sync(buf)
     };
@@ -99,7 +95,7 @@ pub trait OpManager: OpRouter + 'static {
     &self,
     promise_id: Option<u64>,
     result: Result<Value, ErrBox>,
-  ) -> Buf {
+  ) -> Box<[u8]> {
     let value = match result {
       Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
       Err(err) => json!({
@@ -118,40 +114,33 @@ pub trait OpManager: OpRouter + 'static {
   }
 }
 
-pub struct OpRegistry(RefCell<OpRegistryInner>)
-where
-  Self: OpManager;
+pub struct SimpleOpRegistry(RefCell<SimpleOpRegistryInner>);
 
 #[derive(Default)]
-pub struct OpRegistryInner {
-  dispatchers: Vec<Rc<dyn Fn(Rc<OpRegistry>, BufVec) -> Op + 'static>>,
+struct SimpleOpRegistryInner {
+  dispatchers: Vec<Rc<dyn Fn(Rc<SimpleOpRegistry>, BufVec) -> Op + 'static>>,
   name_to_id: HashMap<String, OpId>,
 }
 
-impl Deref for OpRegistry {
-  type Target = RefCell<OpRegistryInner>;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl OpRegistry {
+impl SimpleOpRegistry {
   pub fn new() -> Rc<Self> {
     let self_rc = Rc::new(Self(Default::default()));
-    self_rc.register_op_json_catalog(|s, it| {
-      s.borrow()
+    self_rc.register_op_json_catalog(|op_registry, visitor| {
+      op_registry
+        .0
+        .borrow()
         .name_to_id
         .iter()
         .map(|(k, &v)| (k.clone(), v))
-        .for_each(it);
+        .for_each(visitor);
     });
     self_rc
   }
 }
 
-impl OpRouter for OpRegistry {
+impl OpRouter for SimpleOpRegistry {
   fn route_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let op_fn = self.borrow_mut().dispatchers.get(op_id as usize).cloned();
+    let op_fn = self.0.borrow_mut().dispatchers.get(op_id as usize).cloned();
     match op_fn {
       Some(op_fn) => (op_fn)(self, bufs),
       None => Op::NotFound,
@@ -159,7 +148,7 @@ impl OpRouter for OpRegistry {
   }
 }
 
-impl OpManager for OpRegistry {
+impl OpRegistry for SimpleOpRegistry {
   /// Defines the how Deno.core.dispatch() acts.
   /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
   /// corresponds to the second argument of Deno.core.dispatch().
@@ -169,7 +158,7 @@ impl OpManager for OpRegistry {
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
-    let mut inner = self.borrow_mut();
+    let mut inner = self.0.borrow_mut();
     let op_id = inner.dispatchers.len() as u32;
     let removed = inner.name_to_id.insert(name.to_string(), op_id);
     assert!(removed.is_none(), "op already registered: {}", name);
@@ -184,7 +173,7 @@ fn test_op_registry() {
   use crate::CoreIsolate;
   use std::sync::atomic;
   use std::sync::Arc;
-  let mut op_registry = OpRegistry::default();
+  let mut op_registry = SimpleOpRegistry::default();
 
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();
@@ -221,7 +210,7 @@ fn register_op_during_call() {
   use std::sync::atomic;
   use std::sync::Arc;
   use std::sync::Mutex;
-  let op_registry = Arc::new(Mutex::new(OpRegistry::default()));
+  let op_registry = Arc::new(Mutex::new(SimpleOpRegistry::default()));
 
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();

@@ -7,7 +7,7 @@ use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use std::collections::HashMap;
 use std::rc::Rc;
 

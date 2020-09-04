@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpManager;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use notify::event::Event as NotifyEvent;

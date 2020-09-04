@@ -3,8 +3,8 @@ mod op_fetch_asset;
 
 use deno_core::js_check;
 use deno_core::CoreIsolate;
-use deno_core::OpManager;
 use deno_core::OpRegistry;
+use deno_core::SimpleOpRegistry;
 use deno_core::StartupData;
 use std::collections::HashMap;
 use std::env;
@@ -30,7 +30,7 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<String>) {
-  let runtime_ops = OpRegistry::new();
+  let runtime_ops = SimpleOpRegistry::new();
   let runtime_isolate = CoreIsolate::new(runtime_ops, StartupData::None, true);
   create_snapshot(runtime_isolate, snapshot_path, files);
 }
@@ -64,7 +64,7 @@ fn create_compiler_snapshot(
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
 
-  let compiler_ops = OpRegistry::new();
+  let compiler_ops = SimpleOpRegistry::new();
   compiler_ops.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),
