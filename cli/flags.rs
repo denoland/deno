@@ -2355,32 +2355,7 @@ mod tests {
       }
     );
   }
-
-
-
-  #[test]
-  fn install_importmap() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "install",
-      "--importmap=importmap.json",
-      "asd" ,
-      "asd.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Install {
-          name: None,
-          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
-          args: vec![],
-          root: None,
-          force: false,
-        },
-        ..Flags::default()
-      }
-    );
-  }
+  
   #[test]
   fn cache_importmap() {
     let r = flags_from_vec_safe(svec![
