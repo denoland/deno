@@ -132,7 +132,7 @@ impl State {
           });
           Op::AsyncUnref(result_fut.boxed_local())
         }
-        Op::NoSuchOp => Op::NoSuchOp,
+        Op::NotFound => Op::NotFound,
       }
     }
   }
@@ -411,7 +411,7 @@ impl State {
 }
 
 impl OpRouter for State {
-  fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
     let index = usize::try_from(op_id).unwrap();
     let op_fn = self
       .op_catalog

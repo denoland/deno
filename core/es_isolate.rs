@@ -77,12 +77,12 @@ impl DerefMut for EsIsolate {
 impl EsIsolate {
   pub fn new(
     loader: Rc<dyn ModuleLoader>,
-    op_manager: Rc<dyn OpRouter>,
+    op_router: Rc<dyn OpRouter>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Self {
     let mut core_isolate =
-      CoreIsolate::new(op_manager, startup_data, will_snapshot);
+      CoreIsolate::new(op_router, startup_data, will_snapshot);
     {
       core_isolate.set_host_initialize_import_meta_object_callback(
         bindings::host_initialize_import_meta_object_callback,

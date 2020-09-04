@@ -25,10 +25,10 @@ pub enum Op {
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
   AsyncUnref(OpAsyncFuture),
-  NoSuchOp,
+  NotFound,
 }
 pub trait OpRouter {
-  fn dispatch_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
+  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
 }
 
 pub trait OpManager: OpRouter + 'static {
@@ -150,11 +150,11 @@ impl OpRegistry {
 }
 
 impl OpRouter for OpRegistry {
-  fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+  fn route_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
     let op_fn = self.borrow_mut().dispatchers.get(op_id as usize).cloned();
     match op_fn {
       Some(op_fn) => (op_fn)(self, bufs),
-      None => Op::NoSuchOp,
+      None => Op::NotFound,
     }
   }
 }

@@ -77,6 +77,7 @@ fn op_run(
   for (key, value) in &env {
     c.env(key, value);
   }
+
   // TODO: make this work with other resources, eg. sockets
   if run_args.stdin != "" {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);

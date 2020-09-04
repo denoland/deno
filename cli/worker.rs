@@ -12,7 +12,6 @@ use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
-
 use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;

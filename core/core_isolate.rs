@@ -125,7 +125,7 @@ pub struct CoreIsolateState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub op_manager: Rc<dyn OpRouter>,
+  pub op_router: Rc<dyn OpRouter>,
   waker: AtomicWaker,
 }
 
@@ -200,7 +200,7 @@ pub struct HeapLimits {
 }
 
 pub(crate) struct IsolateOptions {
-  op_manager: Rc<dyn OpRouter>,
+  op_router: Rc<dyn OpRouter>,
   startup_script: Option<OwnedScript>,
   startup_snapshot: Option<Snapshot>,
   will_snapshot: bool,
@@ -211,13 +211,13 @@ impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(
-    op_manager: Rc<dyn OpRouter>,
+    op_router: Rc<dyn OpRouter>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Self {
     let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
-      op_manager,
+      op_router,
       startup_script,
       startup_snapshot,
       will_snapshot,
@@ -234,13 +234,13 @@ impl CoreIsolate {
   /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
   /// to prevent v8 from crashing when reaching the upper limit.
   pub fn with_heap_limits(
-    op_manager: Rc<dyn OpRouter>,
+    op_router: Rc<dyn OpRouter>,
     startup_data: StartupData,
     heap_limits: HeapLimits,
   ) -> Self {
     let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
-      op_manager,
+      op_router,
       startup_script,
       startup_snapshot,
       will_snapshot: false,
@@ -316,7 +316,7 @@ impl CoreIsolate {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: Cell::new(false),
-      op_manager: options.op_manager,
+      op_router: options.op_router,
       waker: AtomicWaker::new(),
     })));
 

@@ -409,19 +409,8 @@ fn send<'s>(
     }
   };
 
-  let mgr = state.op_manager.clone();
-
-  //let dispatcher = match self.op_registry.get(op_id) {
-  //  Some(d) => d,
-  //  None => {
-  //    let message =
-  //      v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
-  //    let exception = v8::Exception::type_error(scope, message);
-  //    return Err(exception);
-  //  }
-  //};
-
-  let op = mgr.dispatch_op(op_id, bufs);
+  let mgr = state.op_router.clone();
+  let op = mgr.route_op(op_id, bufs);
   assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(buf) if !buf.is_empty() => {
@@ -438,8 +427,8 @@ fn send<'s>(
       state.pending_unref_ops.push(fut2.boxed_local());
       state.have_unpolled_ops.set(true);
     }
-    Op::NoSuchOp => {
-      let msg = format!("op id not found: {}", op_id);
+    Op::NotFound => {
+      let msg = format!("Unknown op id: {}", op_id);
       let msg = v8::String::new(scope, &msg).unwrap();
       let exc = v8::Exception::type_error(scope, msg);
       scope.throw_exception(exc);
