@@ -4,18 +4,18 @@ use crate::diagnostics::Diagnostic;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op(
     "op_apply_source_map",
     s.stateful_json_op_sync(op_apply_source_map),
   );
-  i.register_op(
+  s.register_op(
     "op_format_diagnostic",
     s.stateful_json_op_sync(op_format_diagnostic),
   );

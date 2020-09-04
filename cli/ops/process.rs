@@ -4,8 +4,8 @@ use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -15,10 +15,10 @@ use tokio::process::Command;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_run", s.stateful_json_op_sync(op_run));
-  i.register_op("op_run_status", s.stateful_json_op_async(op_run_status));
-  i.register_op("op_kill", s.stateful_json_op_sync(op_kill));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_run", s.stateful_json_op_sync(op_run));
+  s.register_op("op_run_status", s.stateful_json_op_async(op_run_status));
+  s.register_op("op_kill", s.stateful_json_op_sync(op_kill));
 }
 
 fn clone_file(state: &State, rid: u32) -> Result<std::fs::File, ErrBox> {

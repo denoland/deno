@@ -2,8 +2,8 @@
 use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use notify::event::Event as NotifyEvent;
@@ -18,12 +18,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op(
     "op_fs_events_open",
     s.stateful_json_op_sync(op_fs_events_open),
   );
-  i.register_op(
+  s.register_op(
     "op_fs_events_poll",
     s.stateful_json_op_async(op_fs_events_poll),
   );

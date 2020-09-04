@@ -4,8 +4,8 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -15,9 +15,9 @@ use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_fetch", s.stateful_json_op_async(op_fetch));
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_fetch", s.stateful_json_op_async(op_fetch));
+  s.register_op(
     "op_create_http_client",
     s.stateful_json_op_sync(op_create_http_client),
   );

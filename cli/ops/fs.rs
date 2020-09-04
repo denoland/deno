@@ -6,9 +6,11 @@ use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
+use rand::thread_rng;
+use rand::Rng;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
@@ -18,139 +20,137 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use rand::{thread_rng, Rng};
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_open_sync", s.stateful_json_op_sync(op_open_sync));
+  s.register_op("op_open_async", s.stateful_json_op_async(op_open_async));
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_open_sync", s.stateful_json_op_sync(op_open_sync));
-  i.register_op("op_open_async", s.stateful_json_op_async(op_open_async));
+  s.register_op("op_seek_sync", s.stateful_json_op_sync(op_seek_sync));
+  s.register_op("op_seek_async", s.stateful_json_op_async(op_seek_async));
 
-  i.register_op("op_seek_sync", s.stateful_json_op_sync(op_seek_sync));
-  i.register_op("op_seek_async", s.stateful_json_op_async(op_seek_async));
-
-  i.register_op(
+  s.register_op(
     "op_fdatasync_sync",
     s.stateful_json_op_sync(op_fdatasync_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_fdatasync_async",
     s.stateful_json_op_async(op_fdatasync_async),
   );
 
-  i.register_op("op_fsync_sync", s.stateful_json_op_sync(op_fsync_sync));
-  i.register_op("op_fsync_async", s.stateful_json_op_async(op_fsync_async));
+  s.register_op("op_fsync_sync", s.stateful_json_op_sync(op_fsync_sync));
+  s.register_op("op_fsync_async", s.stateful_json_op_async(op_fsync_async));
 
-  i.register_op("op_fstat_sync", s.stateful_json_op_sync(op_fstat_sync));
-  i.register_op("op_fstat_async", s.stateful_json_op_async(op_fstat_async));
+  s.register_op("op_fstat_sync", s.stateful_json_op_sync(op_fstat_sync));
+  s.register_op("op_fstat_async", s.stateful_json_op_async(op_fstat_async));
 
-  i.register_op("op_umask", s.stateful_json_op_sync(op_umask));
-  i.register_op("op_chdir", s.stateful_json_op_sync(op_chdir));
+  s.register_op("op_umask", s.stateful_json_op_sync(op_umask));
+  s.register_op("op_chdir", s.stateful_json_op_sync(op_chdir));
 
-  i.register_op("op_mkdir_sync", s.stateful_json_op_sync(op_mkdir_sync));
-  i.register_op("op_mkdir_async", s.stateful_json_op_async(op_mkdir_async));
+  s.register_op("op_mkdir_sync", s.stateful_json_op_sync(op_mkdir_sync));
+  s.register_op("op_mkdir_async", s.stateful_json_op_async(op_mkdir_async));
 
-  i.register_op("op_chmod_sync", s.stateful_json_op_sync(op_chmod_sync));
-  i.register_op("op_chmod_async", s.stateful_json_op_async(op_chmod_async));
+  s.register_op("op_chmod_sync", s.stateful_json_op_sync(op_chmod_sync));
+  s.register_op("op_chmod_async", s.stateful_json_op_async(op_chmod_async));
 
-  i.register_op("op_chown_sync", s.stateful_json_op_sync(op_chown_sync));
-  i.register_op("op_chown_async", s.stateful_json_op_async(op_chown_async));
+  s.register_op("op_chown_sync", s.stateful_json_op_sync(op_chown_sync));
+  s.register_op("op_chown_async", s.stateful_json_op_async(op_chown_async));
 
-  i.register_op("op_remove_sync", s.stateful_json_op_sync(op_remove_sync));
-  i.register_op("op_remove_async", s.stateful_json_op_async(op_remove_async));
+  s.register_op("op_remove_sync", s.stateful_json_op_sync(op_remove_sync));
+  s.register_op("op_remove_async", s.stateful_json_op_async(op_remove_async));
 
-  i.register_op(
+  s.register_op(
     "op_copy_file_sync",
     s.stateful_json_op_sync(op_copy_file_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_copy_file_async",
     s.stateful_json_op_async(op_copy_file_async),
   );
 
-  i.register_op("op_stat_sync", s.stateful_json_op_sync(op_stat_sync));
-  i.register_op("op_stat_async", s.stateful_json_op_async(op_stat_async));
+  s.register_op("op_stat_sync", s.stateful_json_op_sync(op_stat_sync));
+  s.register_op("op_stat_async", s.stateful_json_op_async(op_stat_async));
 
-  i.register_op(
+  s.register_op(
     "op_realpath_sync",
     s.stateful_json_op_sync(op_realpath_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_realpath_async",
     s.stateful_json_op_async(op_realpath_async),
   );
 
-  i.register_op(
+  s.register_op(
     "op_read_dir_sync",
     s.stateful_json_op_sync(op_read_dir_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_read_dir_async",
     s.stateful_json_op_async(op_read_dir_async),
   );
 
-  i.register_op("op_rename_sync", s.stateful_json_op_sync(op_rename_sync));
-  i.register_op("op_rename_async", s.stateful_json_op_async(op_rename_async));
+  s.register_op("op_rename_sync", s.stateful_json_op_sync(op_rename_sync));
+  s.register_op("op_rename_async", s.stateful_json_op_async(op_rename_async));
 
-  i.register_op("op_link_sync", s.stateful_json_op_sync(op_link_sync));
-  i.register_op("op_link_async", s.stateful_json_op_async(op_link_async));
+  s.register_op("op_link_sync", s.stateful_json_op_sync(op_link_sync));
+  s.register_op("op_link_async", s.stateful_json_op_async(op_link_async));
 
-  i.register_op("op_symlink_sync", s.stateful_json_op_sync(op_symlink_sync));
-  i.register_op(
+  s.register_op("op_symlink_sync", s.stateful_json_op_sync(op_symlink_sync));
+  s.register_op(
     "op_symlink_async",
     s.stateful_json_op_async(op_symlink_async),
   );
 
-  i.register_op(
+  s.register_op(
     "op_read_link_sync",
     s.stateful_json_op_sync(op_read_link_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_read_link_async",
     s.stateful_json_op_async(op_read_link_async),
   );
 
-  i.register_op(
+  s.register_op(
     "op_ftruncate_sync",
     s.stateful_json_op_sync(op_ftruncate_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_ftruncate_async",
     s.stateful_json_op_async(op_ftruncate_async),
   );
 
-  i.register_op(
+  s.register_op(
     "op_truncate_sync",
     s.stateful_json_op_sync(op_truncate_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_truncate_async",
     s.stateful_json_op_async(op_truncate_async),
   );
 
-  i.register_op(
+  s.register_op(
     "op_make_temp_dir_sync",
     s.stateful_json_op_sync(op_make_temp_dir_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_make_temp_dir_async",
     s.stateful_json_op_async(op_make_temp_dir_async),
   );
 
-  i.register_op(
+  s.register_op(
     "op_make_temp_file_sync",
     s.stateful_json_op_sync(op_make_temp_file_sync),
   );
-  i.register_op(
+  s.register_op(
     "op_make_temp_file_async",
     s.stateful_json_op_async(op_make_temp_file_async),
   );
 
-  i.register_op("op_cwd", s.stateful_json_op_sync(op_cwd));
+  s.register_op("op_cwd", s.stateful_json_op_sync(op_cwd));
 
-  i.register_op("op_futime_sync", s.stateful_json_op_sync(op_futime_sync));
-  i.register_op("op_futime_async", s.stateful_json_op_async(op_futime_async));
+  s.register_op("op_futime_sync", s.stateful_json_op_sync(op_futime_sync));
+  s.register_op("op_futime_async", s.stateful_json_op_async(op_futime_async));
 
-  i.register_op("op_utime_sync", s.stateful_json_op_sync(op_utime_sync));
-  i.register_op("op_utime_async", s.stateful_json_op_async(op_utime_async));
+  s.register_op("op_utime_sync", s.stateful_json_op_sync(op_utime_sync));
+  s.register_op("op_utime_async", s.stateful_json_op_async(op_utime_async));
 }
 
 fn into_string(s: std::ffi::OsString) -> Result<String, ErrBox> {

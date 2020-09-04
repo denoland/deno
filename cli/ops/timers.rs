@@ -2,21 +2,21 @@
 use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op(
     "op_global_timer_stop",
     s.stateful_json_op_sync(op_global_timer_stop),
   );
-  i.register_op("op_global_timer", s.stateful_json_op_async(op_global_timer));
-  i.register_op("op_now", s.stateful_json_op_sync(op_now));
+  s.register_op("op_global_timer", s.stateful_json_op_async(op_global_timer));
+  s.register_op("op_now", s.stateful_json_op_sync(op_now));
 }
 
 fn op_global_timer_stop(

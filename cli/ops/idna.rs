@@ -4,14 +4,15 @@
 
 use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
-use idna::{domain_to_ascii, domain_to_ascii_strict};
+use idna::domain_to_ascii;
+use idna::domain_to_ascii_strict;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op(
     "op_domain_to_ascii",
     s.stateful_json_op_sync(op_domain_to_ascii),
   );

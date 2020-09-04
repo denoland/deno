@@ -4,8 +4,8 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use std::convert::From;
@@ -29,11 +29,11 @@ use tokio_rustls::{
 };
 use webpki::DNSNameRef;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_start_tls", s.stateful_json_op_async(op_start_tls));
-  i.register_op("op_connect_tls", s.stateful_json_op_async(op_connect_tls));
-  i.register_op("op_listen_tls", s.stateful_json_op_sync(op_listen_tls));
-  i.register_op("op_accept_tls", s.stateful_json_op_async(op_accept_tls));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_start_tls", s.stateful_json_op_async(op_start_tls));
+  s.register_op("op_connect_tls", s.stateful_json_op_async(op_connect_tls));
+  s.register_op("op_listen_tls", s.stateful_json_op_sync(op_listen_tls));
+  s.register_op("op_accept_tls", s.stateful_json_op_async(op_accept_tls));
 }
 
 #[derive(Deserialize)]

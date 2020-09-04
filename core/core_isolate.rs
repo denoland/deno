@@ -346,8 +346,6 @@ impl CoreIsolate {
     s.clone()
   }
 
-  pub fn register_op<Q1, Q2>(&mut self, _: Q1, _: Q2) {}
-
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
   pub(crate) fn shared_init(&mut self) {
     if self.needs_init {

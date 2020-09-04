@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::Value;
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op(
     "op_get_random_values",
     s.stateful_json_op_sync(op_get_random_values),
   );

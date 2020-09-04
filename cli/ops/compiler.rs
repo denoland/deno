@@ -5,18 +5,13 @@ use crate::ops::dispatch_json::Value;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::OpManager;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(
-  i: &mut CoreIsolate,
-  s: &Rc<State>,
-  response: Arc<Mutex<Option<String>>>,
-) {
+pub fn init(s: &Rc<State>, response: Arc<Mutex<Option<String>>>) {
   let custom_assets = std::collections::HashMap::new();
   // TODO(ry) use None.
   // TODO(bartlomieju): is this op even required?
@@ -25,7 +20,7 @@ pub fn init(
     crate::op_fetch_asset::op_fetch_asset(custom_assets),
   );
 
-  i.register_op(
+  s.register_op(
     "op_compiler_respond",
     json_op(compiler_op(response, op_compiler_respond)),
   );

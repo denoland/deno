@@ -5,8 +5,8 @@ use crate::state::State;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use futures::channel::mpsc;
 use std::convert::From;
 use std::rc::Rc;
@@ -46,19 +46,18 @@ where
 }
 
 pub fn init(
-  i: &mut CoreIsolate,
   s: &Rc<State>,
   sender: &mpsc::Sender<WorkerEvent>,
   handle: WebWorkerHandle,
 ) {
-  i.register_op(
+  s.register_op(
     "op_worker_post_message",
     s.core_op(json_op(web_worker_op(
       sender.clone(),
       op_worker_post_message,
     ))),
   );
-  i.register_op(
+  s.register_op(
     "op_worker_close",
     s.core_op(json_op(web_worker_op2(
       handle,

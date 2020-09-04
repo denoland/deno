@@ -1,24 +1,24 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
 use url::Url;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_exit", s.stateful_json_op_sync(op_exit));
-  i.register_op("op_env", s.stateful_json_op_sync(op_env));
-  i.register_op("op_exec_path", s.stateful_json_op_sync(op_exec_path));
-  i.register_op("op_set_env", s.stateful_json_op_sync(op_set_env));
-  i.register_op("op_get_env", s.stateful_json_op_sync(op_get_env));
-  i.register_op("op_delete_env", s.stateful_json_op_sync(op_delete_env));
-  i.register_op("op_hostname", s.stateful_json_op_sync(op_hostname));
-  i.register_op("op_loadavg", s.stateful_json_op_sync(op_loadavg));
-  i.register_op("op_os_release", s.stateful_json_op_sync(op_os_release));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_exit", s.stateful_json_op_sync(op_exit));
+  s.register_op("op_env", s.stateful_json_op_sync(op_env));
+  s.register_op("op_exec_path", s.stateful_json_op_sync(op_exec_path));
+  s.register_op("op_set_env", s.stateful_json_op_sync(op_set_env));
+  s.register_op("op_get_env", s.stateful_json_op_sync(op_get_env));
+  s.register_op("op_delete_env", s.stateful_json_op_sync(op_delete_env));
+  s.register_op("op_hostname", s.stateful_json_op_sync(op_hostname));
+  s.register_op("op_loadavg", s.stateful_json_op_sync(op_loadavg));
+  s.register_op("op_os_release", s.stateful_json_op_sync(op_os_release));
 }
 
 fn op_exec_path(

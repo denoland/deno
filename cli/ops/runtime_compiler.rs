@@ -6,14 +6,14 @@ use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_compile", s.stateful_json_op_async(op_compile));
-  i.register_op("op_transpile", s.stateful_json_op_async(op_transpile));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_compile", s.stateful_json_op_async(op_compile));
+  s.register_op("op_transpile", s.stateful_json_op_async(op_transpile));
 }
 
 #[derive(Deserialize, Debug)]

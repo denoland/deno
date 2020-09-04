@@ -88,7 +88,7 @@ pub fn op_fetch_asset<H: std::hash::BuildHasher, M>(
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |_mgt: Rc<M>, bufs: BufVec| -> Op {
+  move |_mgr: Rc<M>, bufs: BufVec| -> Op {
     assert_eq!(bufs.len(), 1, "Invalid number of arguments");
     let name = std::str::from_utf8(&bufs[0]).unwrap();
 

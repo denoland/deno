@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_resources", s.stateful_json_op_sync(op_resources));
-  i.register_op("op_close", s.stateful_json_op_sync(op_close));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_resources", s.stateful_json_op_sync(op_resources));
+  s.register_op("op_close", s.stateful_json_op_sync(op_close));
 }
 
 fn op_resources(

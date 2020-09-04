@@ -4,17 +4,17 @@ use crate::colors;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::env;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_start", s.stateful_json_op_sync(op_start));
-  i.register_op("op_main_module", s.stateful_json_op_sync(op_main_module));
-  i.register_op("op_metrics", s.stateful_json_op_sync(op_metrics));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_start", s.stateful_json_op_sync(op_start));
+  s.register_op("op_main_module", s.stateful_json_op_sync(op_main_module));
+  s.register_op("op_metrics", s.stateful_json_op_sync(op_metrics));
 }
 
 fn op_start(

@@ -5,7 +5,6 @@ use crate::ops::dispatch_json::Value;
 use crate::state::State;
 use deno_core::plugin_api;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
@@ -19,8 +18,8 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_open_plugin", s.stateful_json_op2(op_open_plugin));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_open_plugin", s.stateful_json_op2(op_open_plugin));
 }
 
 #[derive(Deserialize)]

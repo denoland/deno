@@ -2,8 +2,8 @@
 use super::dispatch_json::Value;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 
@@ -16,13 +16,13 @@ use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_signal_bind", s.stateful_json_op_sync(op_signal_bind));
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_signal_bind", s.stateful_json_op_sync(op_signal_bind));
+  s.register_op(
     "op_signal_unbind",
     s.stateful_json_op_sync(op_signal_unbind),
   );
-  i.register_op("op_signal_poll", s.stateful_json_op_async(op_signal_poll));
+  s.register_op("op_signal_poll", s.stateful_json_op_async(op_signal_poll));
 }
 
 #[cfg(unix)]

@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use nix::sys::termios;
@@ -35,10 +36,10 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_set_raw", s.stateful_json_op_sync(op_set_raw));
-  i.register_op("op_isatty", s.stateful_json_op_sync(op_isatty));
-  i.register_op("op_console_size", s.stateful_json_op_sync(op_console_size));
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_set_raw", s.stateful_json_op_sync(op_set_raw));
+  s.register_op("op_isatty", s.stateful_json_op_sync(op_isatty));
+  s.register_op("op_console_size", s.stateful_json_op_sync(op_console_size));
 }
 
 #[derive(Deserialize)]

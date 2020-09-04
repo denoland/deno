@@ -4,8 +4,8 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use std::net::Shutdown;
@@ -20,16 +20,16 @@ use tokio::net::UdpSocket;
 #[cfg(unix)]
 use super::net_unix;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_accept", s.stateful_json_op_async(op_accept));
-  i.register_op("op_connect", s.stateful_json_op_async(op_connect));
-  i.register_op("op_shutdown", s.stateful_json_op_sync(op_shutdown));
-  i.register_op("op_listen", s.stateful_json_op_sync(op_listen));
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_accept", s.stateful_json_op_async(op_accept));
+  s.register_op("op_connect", s.stateful_json_op_async(op_connect));
+  s.register_op("op_shutdown", s.stateful_json_op_sync(op_shutdown));
+  s.register_op("op_listen", s.stateful_json_op_sync(op_listen));
+  s.register_op(
     "op_datagram_receive",
     s.stateful_json_op_async(op_datagram_receive),
   );
-  i.register_op(
+  s.register_op(
     "op_datagram_send",
     s.stateful_json_op_async(op_datagram_send),
   );

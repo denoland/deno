@@ -4,16 +4,16 @@ use crate::repl;
 use crate::repl::Repl;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_repl_start", s.stateful_json_op_sync(op_repl_start));
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op("op_repl_start", s.stateful_json_op_sync(op_repl_start));
+  s.register_op(
     "op_repl_readline",
     s.stateful_json_op_async(op_repl_readline),
   );

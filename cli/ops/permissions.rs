@@ -1,22 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::path::Path;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
+pub fn init(s: &Rc<State>) {
+  s.register_op(
     "op_query_permission",
     s.stateful_json_op_sync(op_query_permission),
   );
-  i.register_op(
+  s.register_op(
     "op_revoke_permission",
     s.stateful_json_op_sync(op_revoke_permission),
   );
-  i.register_op(
+  s.register_op(
     "op_request_permission",
     s.stateful_json_op_sync(op_request_permission),
   );

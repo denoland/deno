@@ -139,14 +139,13 @@ impl CompilerWorker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, state);
+    let worker = Worker::new(name, startup_data, state);
     let response = Arc::new(Mutex::new(None));
     {
-      let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::compiler::init(isolate, &state, response.clone());
+      ops::runtime::init(&state);
+      ops::errors::init(&state);
+      ops::timers::init(&state);
+      ops::compiler::init(&state, response.clone());
     }
 
     Self { worker, response }
