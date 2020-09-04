@@ -51,7 +51,7 @@ struct AsyncArgs {
 
 pub fn json_op<D>(d: D) -> impl Fn(Rc<State>, BufVec) -> Op
 where
-  D: Fn(Rc<State>, serde_json::Value, BufVec) -> Result<JsonOp, ErrBox>,
+  D: Fn(Rc<State>, Value, BufVec) -> Result<JsonOp, ErrBox>,
 {
   move |state: Rc<State>, bufs: BufVec| {
     let state_ = state.clone();

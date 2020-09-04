@@ -80,7 +80,7 @@ pub trait OpManager: OpRouter + 'static {
     for<'a> &'a I: IntoIterator<Item = (&'a K, &'a V)>,
     K: AsRef<str>,
     V: ToOwned<Owned = OpId>,
-    V::Owned: std::borrow::Borrow<V>,
+    V::Owned: borrow::Borrow<V>,
   {
     let bin_op_fn = move |mgr: Rc<Self>, _: BufVec| -> Op {
       let catalog = op_fn(mgr);

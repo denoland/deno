@@ -835,7 +835,7 @@ async fn op_copy_file_async(
   .unwrap()
 }
 
-fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
+fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Value {
   match maybe_time {
     Ok(time) => {
       let msec = time
@@ -843,10 +843,10 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
         .map(|t| t.as_secs_f64() * 1000f64)
         .unwrap_or_else(|err| err.duration().as_secs_f64() * -1000f64);
       serde_json::Number::from_f64(msec)
-        .map(serde_json::Value::Number)
-        .unwrap_or(serde_json::Value::Null)
+        .map(Value::Number)
+        .unwrap_or(Value::Null)
     }
-    Err(_) => serde_json::Value::Null,
+    Err(_) => Value::Null,
   }
 }
 

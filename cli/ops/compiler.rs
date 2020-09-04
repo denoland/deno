@@ -34,7 +34,7 @@ pub fn init(
 pub fn compiler_op<D>(
   response: Arc<Mutex<Option<String>>>,
   dispatcher: D,
-) -> impl Fn(Rc<State>, serde_json::Value, BufVec) -> Result<JsonOp, ErrBox>
+) -> impl Fn(Rc<State>, Value, BufVec) -> Result<JsonOp, ErrBox>
 where
   D: Fn(Arc<Mutex<Option<String>>>, Value, BufVec) -> Result<JsonOp, ErrBox>,
 {

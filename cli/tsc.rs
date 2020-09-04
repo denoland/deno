@@ -1431,7 +1431,7 @@ pub async fn runtime_transpile(
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_errbox)?;
-  let v = serde_json::from_str::<serde_json::Value>(&json_str)
+  let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
 }

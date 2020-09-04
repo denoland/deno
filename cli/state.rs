@@ -18,6 +18,7 @@ use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
+use deno_core::OpId;
 use deno_core::OpManager;
 use deno_core::OpRouter;
 use deno_core::ResourceTable;
@@ -541,11 +542,7 @@ impl State {
 }
 
 impl OpRouter for State {
-  fn dispatch_op<'s>(
-    self: Rc<Self>,
-    op_id: deno_core::OpId,
-    bufs: BufVec,
-  ) -> Op {
+  fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
     let index = usize::try_from(op_id).unwrap();
     let op_fn = self
       .op_dispatchers
@@ -558,7 +555,7 @@ impl OpRouter for State {
 }
 
 impl OpManager for State {
-  fn register_op<F>(&self, _name: &str, _op_fn: F) -> deno_core::OpId
+  fn register_op<F>(&self, _name: &str, _op_fn: F) -> OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
