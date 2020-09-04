@@ -96,9 +96,7 @@ async fn op_accept(
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, zero_copy).await,
     #[cfg(unix)]
-    "unix" => {
-      net_unix::accept_unix(resource_table, args.rid as u32, zero_copy).await
-    }
+    "unix" => net_unix::accept_unix(&state, args.rid as u32, zero_copy).await,
     _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport
@@ -155,8 +153,7 @@ async fn op_datagram_receive(
     "udp" => receive_udp(state, args, zero_copy).await,
     #[cfg(unix)]
     "unixpacket" => {
-      net_unix::receive_unix_packet(resource_table, args.rid as u32, zero_copy)
-        .await
+      net_unix::receive_unix_packet(&state, args.rid as u32, zero_copy).await
     }
     _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
@@ -280,7 +277,7 @@ async fn op_connect(
         net_unix::UnixStream::connect(net_unix::Path::new(&path)).await?;
       let local_addr = unix_stream.local_addr()?;
       let remote_addr = unix_stream.peer_addr()?;
-      let mut resource_table = state.resource_table.borrow_mut();
+      let _resource_table = state.resource_table.borrow_mut();
       let rid = state.resource_table.borrow_mut().add(
         "unixStream",
         Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
@@ -505,9 +502,9 @@ fn op_listen(
       state.check_read(&address_path)?;
       state.check_write(&address_path)?;
       let (rid, local_addr) = if transport == "unix" {
-        net_unix::listen_unix(resource_table, &address_path)?
+        net_unix::listen_unix(state, &address_path)?
       } else {
-        net_unix::listen_unix_packet(resource_table, &address_path)?
+        net_unix::listen_unix_packet(state, &address_path)?
       };
       debug!(
         "New listener {} {}",

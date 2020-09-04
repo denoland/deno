@@ -135,6 +135,7 @@ fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
+    let mut resource_table = state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(ErrBox::bad_resource_id());

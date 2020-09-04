@@ -90,9 +90,10 @@ pub fn op_signal_unbind(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.signal");
+  let mut resource_table = state.resource_table.borrow_mut();
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let resource = resource_table.get::<SignalStreamResource>(rid);
+  let resource = resource_table.get_mut::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
       // Wakes up the pending poll if exists.

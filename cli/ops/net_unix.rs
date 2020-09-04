@@ -1,13 +1,11 @@
-use super::dispatch_json::{Deserialize, Value};
-use super::io::{StreamResource, StreamResourceHolder};
+use crate::ops::dispatch_json::{Deserialize, Value};
+use crate::ops::io::{StreamResource, StreamResourceHolder};
+use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
-use std::cell::RefCell;
 use std::fs::remove_file;
 use std::os::unix;
 pub use std::path::Path;
-use std::rc::Rc;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
@@ -27,23 +25,22 @@ pub struct UnixListenArgs {
 }
 
 pub async fn accept_unix(
-  resource_table: Rc<RefCell<ResourceTable>>,
+  state: &State,
   rid: u32,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  let mut resource_table_ = resource_table.borrow_mut();
+  let mut resource_table_ = state.resource_table.borrow_mut();
   let listener_resource = {
     resource_table_
       .get_mut::<UnixListenerResource>(rid)
       .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?
   };
-
   let (unix_stream, _socket_addr) = listener_resource.listener.accept().await?;
   drop(resource_table_);
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
-  let mut resource_table_ = resource_table.borrow_mut();
+  let mut resource_table_ = state.resource_table.borrow_mut();
   let rid = resource_table_.add(
     "unixStream",
     Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
@@ -64,14 +61,14 @@ pub async fn accept_unix(
 }
 
 pub async fn receive_unix_packet(
-  resource_table: Rc<RefCell<ResourceTable>>,
+  state: &State,
   rid: u32,
   zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let mut zero_copy = zero_copy[0].clone();
 
-  let mut resource_table_ = resource_table.borrow_mut();
+  let mut resource_table_ = state.resource_table.borrow_mut();
   let resource = resource_table_
     .get_mut::<UnixDatagramResource>(rid)
     .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
