@@ -23,13 +23,13 @@ serde_json = { version = "1.0.57", features = ["preserve_order"] }
 smallvec = "1.4.2"
 url = "2.1.1"
 
-# [[example]]
-# name = "http_bench_bin_ops"
-# path = "examples/http_bench_bin_ops.rs"
-# 
-# [[example]]
-# name = "http_bench_json_ops"
-# path = "examples/http_bench_json_ops.rs"
+[[example]]
+name = "http_bench_bin_ops"
+path = "examples/http_bench_bin_ops.rs"
+
+[[example]]
+name = "http_bench_json_ops"
+path = "examples/http_bench_json_ops.rs"
 
 # These dependendencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
