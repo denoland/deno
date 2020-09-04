@@ -2355,7 +2355,7 @@ mod tests {
       }
     );
   }
-  
+
   #[test]
   fn cache_importmap() {
     let r = flags_from_vec_safe(svec![
