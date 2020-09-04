@@ -137,9 +137,12 @@ impl State {
   where
     F: Fn(Rc<Self>, bool, i32, BufVec) -> MinimalOp + 'static,
   {
-    let base_op_fn = move |state: Rc<Self>, zero_copy: BufVec| {
-      assert!(!zero_copy.is_empty(), "Expected record at position 0");
-      let mut record = match parse_min_record(&zero_copy[0]) {
+    let base_op_fn = move |state: Rc<Self>, bufs: BufVec| {
+      let mut bufs_iter = bufs.into_iter();
+      let record_buf = bufs_iter.next().expect("Expected record at position 0");
+      let zero_copy = bufs_iter.collect::<BufVec>();
+
+      let mut record = match parse_min_record(&record_buf) {
         Some(r) => r,
         None => {
           let error = ErrBox::type_error("Unparsable control buffer");
