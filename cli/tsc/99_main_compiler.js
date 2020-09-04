@@ -14,7 +14,6 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete Object.prototype.__proto__;
 
 ((window) => {
@@ -1528,7 +1527,7 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("TypeError", TypeError);
     core.registerErrorClass("Other", Error);
     core.registerErrorClass("Busy", errors.Busy);
-    globalThis.__bootstrap = undefined;
+    delete globalThis.__bootstrap;
     runtimeStart("TS");
   }
 

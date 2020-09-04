@@ -1077,7 +1077,7 @@ declare namespace Deno {
    * Deno.chmodSync("/path/to/file", 0o666);
    * ```
    *
-   * For a full description, see [chmod](#chmod)
+   * For a full description, see [chmod](#Deno.chmod)
    *
    * NOTE: This API currently throws on Windows
    *

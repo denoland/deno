@@ -1,7 +1,6 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete Object.prototype.__proto__;
 
 ((window) => {
@@ -292,9 +291,9 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -360,9 +359,9 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -412,7 +411,6 @@ delete Object.prototype.__proto__;
         workerRuntime: bootstrapWorkerRuntime,
       },
       configurable: true,
-      writable: true,
     },
   });
 })(this);
