@@ -15,6 +15,10 @@
     return sendSync("op_os_release");
   }
 
+  function memoryInfo() {
+    return sendSync("op_memory_info");
+  }
+
   function exit(code = 0) {
     sendSync("op_exit", { code });
     throw new Error("Code not reachable");
@@ -50,6 +54,7 @@
     execPath,
     exit,
     osRelease,
+    memoryInfo,
     hostname,
     loadavg,
   };

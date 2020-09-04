@@ -22,6 +22,7 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_hostname", s.stateful_json_op_sync(t, op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op_sync(t, op_loadavg));
   i.register_op("op_os_release", s.stateful_json_op_sync(t, op_os_release));
+  i.register_op("op_memory_info", s.stateful_json_op_sync(t, op_memory_info));
 }
 
 fn op_exec_path(
@@ -156,4 +157,26 @@ fn op_os_release(
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(json!(release))
+}
+
+fn op_memory_info(
+  state: &State,
+  _resource_table: &mut ResourceTable,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.memoryInfo");
+  state.check_env()?;
+  match sys_info::mem_info() {
+    Ok(info) => Ok(json!({
+      "total": info.total,
+      "free": info.free,
+      "available": info.avail,
+      "buffers": info.buffers,
+      "cached": info.cached,
+      "swapTotal": info.swap_total,
+      "swapFree": info.swap_free
+    })),
+    Err(_) => Ok(json!({"idk": "what i'm doing"})),
+  }
 }
