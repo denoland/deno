@@ -750,7 +750,6 @@ async fn test_command(
       .into_iter()
       .filter(|e| !test_scripts.contains(&e.url))
       .filter(|e| !e.url.contains(".deno"))
-      .filter(|e| !e.url.contains("__anonymous__"))
       // XXX; just blackboxing these while I figure out why the source map doesn't resolve
       .filter(|e| !e.url.contains("core.js"))
       .filter(|e| !e.url.contains("rt/"))
@@ -765,7 +764,7 @@ async fn test_command(
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
 
-      let source_file = global_state
+      let maybe_source_file = global_state
         .ts_compiler
         .get_compiled_source_file(&module_specifier.as_url())
         .or_else(|_| {
@@ -776,9 +775,11 @@ async fn test_command(
               Permissions::allow_all(),
             )
             .ok_or_else(|| ErrBox::error("unable to fetch source file"))
-        })?;
+        }).ok();
 
-      pretty_coverage_reporter.visit(&script_coverage, &source_file);
+      if let Some(source_file) = maybe_source_file {
+        pretty_coverage_reporter.visit(&script_coverage, &source_file);
+      }
     }
   }
 
