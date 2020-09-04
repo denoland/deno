@@ -177,6 +177,6 @@ fn op_memory_info(
       "swapTotal": info.swap_total,
       "swapFree": info.swap_free
     })),
-    Err(_) => Ok(json!({"idk": "what i'm doing"})),
+    Err(_) => Ok(json!({})),
   }
 }
