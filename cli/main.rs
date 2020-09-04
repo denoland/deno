@@ -775,7 +775,8 @@ async fn test_command(
               Permissions::allow_all(),
             )
             .ok_or_else(|| ErrBox::error("unable to fetch source file"))
-        }).ok();
+        })
+        .ok();
 
       if let Some(source_file) = maybe_source_file {
         pretty_coverage_reporter.visit(&script_coverage, &source_file);

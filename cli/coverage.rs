@@ -175,11 +175,23 @@ impl PrettyCoverageReporter {
     let line_coverage = format!("{:.3}%", line_ratio * 100.0);
 
     if line_ratio >= 0.9 {
-      println!("{} {}", source_file.url.to_string(), colors::green(&line_coverage));
+      println!(
+        "{} {}",
+        source_file.url.to_string(),
+        colors::green(&line_coverage)
+      );
     } else if line_ratio >= 0.75 {
-      println!("{} {}", source_file.url.to_string(), colors::gray(&line_coverage));
+      println!(
+        "{} {}",
+        source_file.url.to_string(),
+        colors::gray(&line_coverage)
+      );
     } else {
-      println!("{} {}", source_file.url.to_string(), colors::red(&line_coverage));
+      println!(
+        "{} {}",
+        source_file.url.to_string(),
+        colors::red(&line_coverage)
+      );
     }
   }
 }
