@@ -185,18 +185,24 @@ impl Future for CompilerWorker {
 }
 
 lazy_static! {
+  /// Matches the `@deno-types` pragma.
   static ref DENO_TYPES_RE: Regex =
-    Regex::new(r"^\s*@deno-types\s?=\s?(\S+)\s*(.*)\s*$").unwrap();
-  // These regexes were adapted from TypeScript
-  // https://github.com/microsoft/TypeScript/blob/87fd1827f2f2f3dafa76c14f13b9defc69481766/src/compiler/parser.ts#L8780-L8781
-  static ref XML_COMMENT_START_RE: Regex =
-    Regex::new(r"^/\s*<(\S+)\s.*?/>").unwrap();
+    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
+      .unwrap();
+  /// Matches a `/// <reference ... />` comment reference.
+  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
+    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
+  /// Matches a path reference, which adds a dependency to a module
   static ref PATH_REFERENCE_RE: Regex =
-    Regex::new(r#"(\spath\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
+  /// Matches a types reference, which for JavaScript files indicates the
+  /// location of types to use when type checking a program that includes it as
+  /// a dependency.
   static ref TYPES_REFERENCE_RE: Regex =
-    Regex::new(r#"(\stypes\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+  /// Matches a lib reference.
   static ref LIB_REFERENCE_RE: Regex =
-    Regex::new(r#"(\slib\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\slib\s*=\s*["']([^"']*)["']"#).unwrap();
 }
 
 fn warn_ignored_options(
@@ -1537,17 +1543,17 @@ fn get_deno_types(comments: &[Comment]) -> Option<String> {
 }
 
 fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
-  if !XML_COMMENT_START_RE.is_match(comment) {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
     return None;
   }
 
   let (kind, specifier) =
     if let Some(capture_groups) = PATH_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Path, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Path, capture_groups.get(1).unwrap())
     } else if let Some(capture_groups) = TYPES_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Types, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Types, capture_groups.get(1).unwrap())
     } else if let Some(capture_groups) = LIB_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Lib, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Lib, capture_groups.get(1).unwrap())
     } else {
       return None;
     };
@@ -1558,14 +1564,10 @@ fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
 fn parse_deno_types(comment: &str) -> Option<String> {
   if let Some(capture_groups) = DENO_TYPES_RE.captures(comment) {
     if let Some(specifier) = capture_groups.get(1) {
-      let s = specifier
-        .as_str()
-        .trim_start_matches('\"')
-        .trim_start_matches('\'')
-        .trim_end_matches('\"')
-        .trim_end_matches('\'')
-        .to_string();
-      return Some(s);
+      return Some(specifier.as_str().to_string());
+    }
+    if let Some(specifier) = capture_groups.get(2) {
+      return Some(specifier.as_str().to_string());
     }
   }
 
@@ -1613,6 +1615,10 @@ mod tests {
       ),
       Some("./a/b/c.d.ts".to_string())
     );
+    assert_eq!(
+      parse_deno_types(r#"@deno-types="https://deno.land/x/foo/index.d.ts";"#),
+      Some("https://deno.land/x/foo/index.d.ts".to_string())
+    );
   }
 
   #[test]
@@ -1633,6 +1639,7 @@ mod tests {
     assert!(
       parse_ts_reference(r#"/ <reference unknown="unknown" />"#).is_none()
     );
+    assert!(parse_ts_reference(r#"/ <asset path="./styles.css" />"#).is_none());
   }
 
   #[tokio::test]
