@@ -2,15 +2,13 @@
 
 use crate::BufVec;
 use crate::ErrBox;
+use crate::ZeroCopyBuf;
 use futures::Future;
 use futures::FutureExt;
 use serde_json::json;
 use serde_json::Value;
-use std::borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryInto;
-use std::fmt::Debug;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -40,68 +38,63 @@ pub trait OpManager: OpRouter + 'static {
 
   fn register_op_json_sync<F>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
-    F: 'static
-      + Fn(serde_json::Value, BufVec) -> Result<serde_json::Value, ErrBox>,
+    F: Fn(
+        &Self,
+        serde_json::Value,
+        &mut [ZeroCopyBuf],
+      ) -> Result<serde_json::Value, ErrBox>
+      + 'static,
   {
-    let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
+    let base_op_fn = move |mgr: Rc<Self>, mut bufs: BufVec| -> Op {
       let value = serde_json::from_slice(&bufs[0]).unwrap();
-      let bufs = bufs[1..].into();
-      let result = op_fn(value, bufs);
+      let result = op_fn(&mgr, value, &mut bufs[1..]);
       let buf = serialize_result(None, result, |err| mgr.get_error_class(err));
       Op::Sync(buf)
     };
 
-    self.register_op(name, bin_op_fn)
+    self.register_op(name, base_op_fn)
   }
 
   fn register_op_json_async<F, R>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(serde_json::Value, BufVec) -> R + 'static,
+    F: Fn(Rc<Self>, serde_json::Value, BufVec) -> R + 'static,
     R: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
   {
-    let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
+    let base_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
       let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
       let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
       let bufs = bufs[1..].into();
-      let fut = op_fn(value, bufs);
-      let fut2 = fut.map(move |result| {
+      let fut = op_fn(mgr.clone(), value, bufs).map(move |result| {
         serialize_result(Some(promise_id), result, move |err| {
           mgr.get_error_class(err)
         })
       });
-      Op::Async(Box::pin(fut2))
+      Op::Async(Box::pin(fut))
     };
 
-    self.register_op(name, bin_op_fn)
+    self.register_op(name, base_op_fn)
   }
 
-  fn register_op_meta_catalog<F, R, I, K, V>(self: &Rc<Self>, op_fn: F) -> OpId
+  fn register_op_json_catalog<F>(self: &Rc<Self>, op_fn: F) -> OpId
   where
-    F: Fn(Rc<Self>) -> R + 'static,
-    R: borrow::Borrow<I>,
-    for<'a> &'a I: IntoIterator<Item = (&'a K, &'a V)>,
-    K: AsRef<str>,
-    V: ToOwned,
-    V::Owned: borrow::Borrow<V> + TryInto<OpId>,
-    <V::Owned as TryInto<OpId>>::Error: Debug,
+    for<'a> F: Fn(&'a Self, &'a mut dyn FnMut((String, OpId))) + 'static,
   {
-    let bin_op_fn = move |mgr: Rc<Self>, _: BufVec| -> Op {
-      let catalog = op_fn(mgr);
-      let index = catalog
-        .borrow()
-        .into_iter()
-        .map(|(k, v)| (k.as_ref(), v.to_owned().try_into().unwrap()))
-        .collect::<HashMap<&str, OpId>>();
+    let base_op_fn = move |mgr: Rc<Self>, _: BufVec| -> Op {
+      let mut index = HashMap::<String, OpId>::new();
+      let mut iter_fn = |(k, v)| {
+        assert!(index.insert(k, v).is_none());
+      };
+      op_fn(&mgr, &mut iter_fn);
       let buf = serde_json::to_vec(&index).unwrap().into();
       Op::Sync(buf)
     };
 
-    let op_id = self.register_op("ops", bin_op_fn);
+    let op_id = self.register_op("ops", base_op_fn);
     assert_eq!(
       op_id, 0,
       "the 'meta_catalog' op should be the first one registered"
     );
-    op_id.try_into().unwrap()
+    op_id
   }
 
   fn get_error_class(&self, _err: &ErrBox) -> &'static str {
@@ -129,7 +122,13 @@ impl Deref for OpRegistry {
 impl OpRegistry {
   pub fn new() -> Rc<Self> {
     let self_rc = Rc::new(Self(Default::default()));
-    self_rc.register_op_meta_catalog(|s| s.borrow().name_to_id.clone());
+    self_rc.register_op_json_catalog(|s, it| {
+      s.borrow()
+        .name_to_id
+        .iter()
+        .map(|(k, &v)| (k.clone(), v))
+        .for_each(it);
+    });
     self_rc
   }
 }

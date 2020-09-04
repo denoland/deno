@@ -19,14 +19,8 @@ use std::rc::Rc;
 use tokio::sync::mpsc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op(
-    "op_fs_events_open",
-    s.stateful_json_op_sync(op_fs_events_open),
-  );
-  s.register_op(
-    "op_fs_events_poll",
-    s.stateful_json_op_async(op_fs_events_poll),
-  );
+  s.register_op_json_sync("op_fs_events_open", op_fs_events_open);
+  s.register_op_json_async("op_fs_events_poll", op_fs_events_poll);
 }
 
 struct FsEventsResource {

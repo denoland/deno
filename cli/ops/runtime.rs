@@ -6,15 +6,28 @@ use crate::version;
 use crate::DenoSubcommand;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use deno_core::OpId;
 use deno_core::OpManager;
 use deno_core::ZeroCopyBuf;
 use std::env;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_start", s.stateful_json_op_sync(op_start));
-  s.register_op("op_main_module", s.stateful_json_op_sync(op_main_module));
-  s.register_op("op_metrics", s.stateful_json_op_sync(op_metrics));
+  s.register_op_json_catalog(op_catalog);
+
+  s.register_op_json_sync("op_start", op_start);
+  s.register_op_json_sync("op_main_module", op_main_module);
+  s.register_op_json_sync("op_metrics", op_metrics);
+}
+
+fn op_catalog(state: &State, it: &mut dyn FnMut((String, OpId))) {
+  state
+    .op_dispatchers
+    .borrow()
+    .keys()
+    .map(|&k| k.to_owned())
+    .zip(0..)
+    .for_each(it)
 }
 
 fn op_start(

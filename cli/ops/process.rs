@@ -16,9 +16,9 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_run", s.stateful_json_op_sync(op_run));
-  s.register_op("op_run_status", s.stateful_json_op_async(op_run_status));
-  s.register_op("op_kill", s.stateful_json_op_sync(op_kill));
+  s.register_op_json_sync("op_run", op_run);
+  s.register_op_json_async("op_run_status", op_run_status);
+  s.register_op_json_sync("op_kill", op_kill);
 }
 
 fn clone_file(state: &State, rid: u32) -> Result<std::fs::File, ErrBox> {

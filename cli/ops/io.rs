@@ -3,7 +3,6 @@ use crate::http_util::HttpBody;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpManager;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::ready;
@@ -84,8 +83,8 @@ lazy_static! {
 }
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_read", s.stateful_minimal_op2(op_read));
-  s.register_op("op_write", s.stateful_minimal_op2(op_write));
+  s.register_op_minimal("op_read", op_read);
+  s.register_op_minimal("op_write", op_write);
 }
 
 pub fn get_stdio() -> (

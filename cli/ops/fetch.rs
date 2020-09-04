@@ -16,11 +16,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_fetch", s.stateful_json_op_async(op_fetch));
-  s.register_op(
-    "op_create_http_client",
-    s.stateful_json_op_sync(op_create_http_client),
-  );
+  s.register_op_json_async("op_fetch", op_fetch);
+  s.register_op_json_sync("op_create_http_client", op_create_http_client);
 }
 
 #[derive(Deserialize)]

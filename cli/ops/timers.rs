@@ -11,12 +11,9 @@ use std::time::Duration;
 use std::time::Instant;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op(
-    "op_global_timer_stop",
-    s.stateful_json_op_sync(op_global_timer_stop),
-  );
-  s.register_op("op_global_timer", s.stateful_json_op_async(op_global_timer));
-  s.register_op("op_now", s.stateful_json_op_sync(op_now));
+  s.register_op_json_sync("op_global_timer_stop", op_global_timer_stop);
+  s.register_op_json_async("op_global_timer", op_global_timer);
+  s.register_op_json_sync("op_now", op_now);
 }
 
 fn op_global_timer_stop(

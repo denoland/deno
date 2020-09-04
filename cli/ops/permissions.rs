@@ -8,18 +8,9 @@ use std::path::Path;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op(
-    "op_query_permission",
-    s.stateful_json_op_sync(op_query_permission),
-  );
-  s.register_op(
-    "op_revoke_permission",
-    s.stateful_json_op_sync(op_revoke_permission),
-  );
-  s.register_op(
-    "op_request_permission",
-    s.stateful_json_op_sync(op_request_permission),
-  );
+  s.register_op_json_sync("op_query_permission", op_query_permission);
+  s.register_op_json_sync("op_revoke_permission", op_revoke_permission);
+  s.register_op_json_sync("op_request_permission", op_request_permission);
 }
 
 #[derive(Deserialize)]

@@ -142,7 +142,6 @@ impl CompilerWorker {
     let worker = Worker::new(name, startup_data, state);
     let response = Arc::new(Mutex::new(None));
     {
-      // state.register_op_meta_catalog(|s| s.op_dispatchers.borrow().clone());
       ops::runtime::init(&state);
       ops::errors::init(&state);
       ops::timers::init(&state);

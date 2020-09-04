@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_compile", s.stateful_json_op_async(op_compile));
-  s.register_op("op_transpile", s.stateful_json_op_async(op_transpile));
+  s.register_op_json_async("op_compile", op_compile);
+  s.register_op_json_async("op_transpile", op_transpile);
 }
 
 #[derive(Deserialize, Debug)]

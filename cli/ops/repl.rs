@@ -12,11 +12,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_repl_start", s.stateful_json_op_sync(op_repl_start));
-  s.register_op(
-    "op_repl_readline",
-    s.stateful_json_op_async(op_repl_readline),
-  );
+  s.register_op_json_sync("op_repl_start", op_repl_start);
+  s.register_op_json_async("op_repl_readline", op_repl_readline);
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);

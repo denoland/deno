@@ -22,22 +22,10 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op(
-    "op_create_worker",
-    s.stateful_json_op_sync(op_create_worker),
-  );
-  s.register_op(
-    "op_host_terminate_worker",
-    s.stateful_json_op_sync(op_host_terminate_worker),
-  );
-  s.register_op(
-    "op_host_post_message",
-    s.stateful_json_op_sync(op_host_post_message),
-  );
-  s.register_op(
-    "op_host_get_message",
-    s.stateful_json_op_async(op_host_get_message),
-  );
+  s.register_op_json_sync("op_create_worker", op_create_worker);
+  s.register_op_json_sync("op_host_terminate_worker", op_host_terminate_worker);
+  s.register_op_json_sync("op_host_post_message", op_host_post_message);
+  s.register_op_json_async("op_host_get_message", op_host_get_message);
 }
 
 fn create_web_worker(

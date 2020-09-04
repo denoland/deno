@@ -11,14 +11,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op(
-    "op_apply_source_map",
-    s.stateful_json_op_sync(op_apply_source_map),
-  );
-  s.register_op(
-    "op_format_diagnostic",
-    s.stateful_json_op_sync(op_format_diagnostic),
-  );
+  s.register_op_json_sync("op_apply_source_map", op_apply_source_map);
+  s.register_op_json_sync("op_format_diagnostic", op_format_diagnostic);
 }
 
 #[derive(Deserialize)]

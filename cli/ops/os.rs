@@ -10,15 +10,15 @@ use std::rc::Rc;
 use url::Url;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_exit", s.stateful_json_op_sync(op_exit));
-  s.register_op("op_env", s.stateful_json_op_sync(op_env));
-  s.register_op("op_exec_path", s.stateful_json_op_sync(op_exec_path));
-  s.register_op("op_set_env", s.stateful_json_op_sync(op_set_env));
-  s.register_op("op_get_env", s.stateful_json_op_sync(op_get_env));
-  s.register_op("op_delete_env", s.stateful_json_op_sync(op_delete_env));
-  s.register_op("op_hostname", s.stateful_json_op_sync(op_hostname));
-  s.register_op("op_loadavg", s.stateful_json_op_sync(op_loadavg));
-  s.register_op("op_os_release", s.stateful_json_op_sync(op_os_release));
+  s.register_op_json_sync("op_exit", op_exit);
+  s.register_op_json_sync("op_env", op_env);
+  s.register_op_json_sync("op_exec_path", op_exec_path);
+  s.register_op_json_sync("op_set_env", op_set_env);
+  s.register_op_json_sync("op_get_env", op_get_env);
+  s.register_op_json_sync("op_delete_env", op_delete_env);
+  s.register_op_json_sync("op_hostname", op_hostname);
+  s.register_op_json_sync("op_loadavg", op_loadavg);
+  s.register_op_json_sync("op_os_release", op_os_release);
 }
 
 fn op_exec_path(

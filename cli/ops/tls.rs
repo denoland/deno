@@ -30,10 +30,10 @@ use tokio_rustls::{
 use webpki::DNSNameRef;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_start_tls", s.stateful_json_op_async(op_start_tls));
-  s.register_op("op_connect_tls", s.stateful_json_op_async(op_connect_tls));
-  s.register_op("op_listen_tls", s.stateful_json_op_sync(op_listen_tls));
-  s.register_op("op_accept_tls", s.stateful_json_op_async(op_accept_tls));
+  s.register_op_json_async("op_start_tls", op_start_tls);
+  s.register_op_json_async("op_connect_tls", op_connect_tls);
+  s.register_op_json_sync("op_listen_tls", op_listen_tls);
+  s.register_op_json_async("op_accept_tls", op_accept_tls);
 }
 
 #[derive(Deserialize)]

@@ -262,7 +262,6 @@ impl MainWorker {
   fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
     let worker = Worker::new(name, startup_data, state);
     {
-      // state.register_op_meta_catalog(|s| s.op_dispatchers.borrow().clone());
       ops::runtime::init(&state);
       ops::runtime_compiler::init(&state);
       ops::errors::init(&state);

@@ -307,7 +307,6 @@ impl CoreIsolate {
 
     isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
       global_context: Some(global_context),
-      //resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       pending_promise_exceptions: HashMap::new(),
       shared_ab: None,
       js_recv_cb: None,
@@ -317,7 +316,6 @@ impl CoreIsolate {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: Cell::new(false),
-      // op_registry: OpRegistry::new(),
       op_manager: options.op_manager,
       waker: AtomicWaker::new(),
     })));

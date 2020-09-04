@@ -12,10 +12,7 @@ use idna::domain_to_ascii_strict;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op(
-    "op_domain_to_ascii",
-    s.stateful_json_op_sync(op_domain_to_ascii),
-  );
+  s.register_op_json_sync("op_domain_to_ascii", op_domain_to_ascii);
 }
 
 #[derive(Deserialize)]

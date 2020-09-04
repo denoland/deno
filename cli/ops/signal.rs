@@ -17,12 +17,9 @@ use std::task::Waker;
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_signal_bind", s.stateful_json_op_sync(op_signal_bind));
-  s.register_op(
-    "op_signal_unbind",
-    s.stateful_json_op_sync(op_signal_unbind),
-  );
-  s.register_op("op_signal_poll", s.stateful_json_op_async(op_signal_poll));
+  s.register_op_json_sync("op_signal_bind", op_signal_bind);
+  s.register_op_json_sync("op_signal_unbind", op_signal_unbind);
+  s.register_op_json_async("op_signal_poll", op_signal_poll);
 }
 
 #[cfg(unix)]

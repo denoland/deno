@@ -6,11 +6,9 @@ use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::ops::JsonOp;
-use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
-use deno_core::serialize_result;
 use deno_core::Buf;
 use deno_core::BufVec;
 use deno_core::ErrBox;
@@ -22,7 +20,6 @@ use deno_core::OpId;
 use deno_core::OpManager;
 use deno_core::OpRouter;
 use deno_core::ResourceTable;
-use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use futures::Future;
 use indexmap::IndexMap;
@@ -66,87 +63,6 @@ pub struct State {
 }
 
 impl State {
-  pub fn stateful_json_op_sync<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(Rc<Self>, BufVec) -> Op
-  where
-    D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>,
-  {
-    let f = move |state: Rc<Self>, mut bufs: BufVec| {
-      // The first buffer should contain JSON encoded op arguments; parse them.
-      let args: Value = match serde_json::from_slice(&bufs[0]) {
-        Ok(v) => v,
-        Err(e) => {
-          return Op::Sync(serialize_result(None, Err(e.into()), |err| {
-            state.get_error_class(err)
-          }));
-        }
-      };
-
-      // Make a slice containing all buffers except for the first one.
-      let zero_copy = &mut bufs[1..];
-
-      let result = dispatcher(&state, args, zero_copy);
-
-      // Convert to Op.
-      Op::Sync(serialize_result(None, result, |err| {
-        state.get_error_class(err)
-      }))
-    };
-    self.core_op(f)
-  }
-
-  pub fn stateful_json_op_async<D, F>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(Rc<Self>, BufVec) -> Op
-  where
-    D: FnOnce(Rc<Self>, Value, BufVec) -> F + Clone,
-    F: Future<Output = Result<Value, ErrBox>> + 'static,
-  {
-    let f = move |state: Rc<Self>, bufs: BufVec| {
-      // The first buffer should contain JSON encoded op arguments; parse them.
-      let args: Value = match serde_json::from_slice(&bufs[0]) {
-        Ok(v) => v,
-        Err(e) => {
-          let e = e.into();
-          return Op::Sync(serialize_result(None, Err(e), |err| {
-            state.get_error_class(err)
-          }));
-        }
-      };
-
-      // `args` should have a `promiseId` property with positive integer value.
-      let promise_id = match args.get("promiseId").and_then(|v| v.as_u64()) {
-        Some(i) => i,
-        None => {
-          let e = ErrBox::new("TypeError", "`promiseId` invalid/missing");
-          return Op::Sync(serialize_result(None, Err(e), |err| {
-            state.get_error_class(err)
-          }));
-        }
-      };
-
-      // Take ownership of all buffers after the first one.
-      let zero_copy: BufVec = bufs[1..].into();
-
-      // Call dispatcher to obtain op future.
-      let fut = (dispatcher.clone())(state.clone(), args, zero_copy);
-
-      // Convert to Op.
-      Op::Async(
-        async move {
-          serialize_result(Some(promise_id), fut.await, |err| {
-            state.get_error_class(err)
-          })
-        }
-        .boxed_local(),
-      )
-    };
-    self.core_op(f)
-  }
-
   // TODO(bartlomieju): remove me - still used by `op_open_plugin` which
   // needs access to isolate_state
   pub fn stateful_json_op2<D>(
@@ -157,7 +73,7 @@ impl State {
     D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
-    self.core_op(json_op(self.clone().stateful_op2(dispatcher)))
+    self.core_op(json_op(dispatcher))
   }
 
   /// Wrap core `OpDispatcher` to collect metrics.
@@ -218,54 +134,6 @@ impl State {
         Op::NoSuchOp => Op::NoSuchOp,
       }
     }
-  }
-
-  pub fn stateful_minimal_op2<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(Rc<Self>, BufVec) -> Op
-  where
-    D: Fn(Rc<Self>, bool, i32, BufVec) -> MinimalOp,
-  {
-    //let state = self.clone();
-    self.core_op(crate::ops::minimal_op(
-      move |state: Rc<Self>,
-            is_sync: bool,
-            rid: i32,
-            zero_copy: BufVec|
-            -> MinimalOp { dispatcher(state, is_sync, rid, zero_copy) },
-    ))
-  }
-
-  /// This is a special function that provides `state` argument to dispatcher.
-  ///
-  /// NOTE: This only works with JSON dispatcher.
-  /// This is a band-aid for transition to `CoreIsolate.register_op` API as most of our
-  /// ops require `state` argument.
-  pub fn stateful_op<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>
-  where
-    D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
-  {
-    move |state: Rc<Self>,
-          args: Value,
-          zero_copy: BufVec|
-          -> Result<JsonOp, ErrBox> { dispatcher(state, args, zero_copy) }
-  }
-
-  pub fn stateful_op2<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>
-  where
-    D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
-  {
-    move |state: Rc<Self>,
-          args: Value,
-          zero_copy: BufVec|
-          -> Result<JsonOp, ErrBox> { dispatcher(state, args, zero_copy) }
   }
 
   /// Quits the process if the --unstable flag was not provided.

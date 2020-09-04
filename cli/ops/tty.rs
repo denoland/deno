@@ -37,9 +37,9 @@ fn get_windows_handle(
 }
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_set_raw", s.stateful_json_op_sync(op_set_raw));
-  s.register_op("op_isatty", s.stateful_json_op_sync(op_isatty));
-  s.register_op("op_console_size", s.stateful_json_op_sync(op_console_size));
+  s.register_op_json_sync("op_set_raw", op_set_raw);
+  s.register_op_json_sync("op_isatty", op_isatty);
+  s.register_op_json_sync("op_console_size", op_console_size);
 }
 
 #[derive(Deserialize)]

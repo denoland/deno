@@ -21,18 +21,12 @@ use tokio::net::UdpSocket;
 use super::net_unix;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_accept", s.stateful_json_op_async(op_accept));
-  s.register_op("op_connect", s.stateful_json_op_async(op_connect));
-  s.register_op("op_shutdown", s.stateful_json_op_sync(op_shutdown));
-  s.register_op("op_listen", s.stateful_json_op_sync(op_listen));
-  s.register_op(
-    "op_datagram_receive",
-    s.stateful_json_op_async(op_datagram_receive),
-  );
-  s.register_op(
-    "op_datagram_send",
-    s.stateful_json_op_async(op_datagram_send),
-  );
+  s.register_op_json_async("op_accept", op_accept);
+  s.register_op_json_async("op_connect", op_connect);
+  s.register_op_json_sync("op_shutdown", op_shutdown);
+  s.register_op_json_sync("op_listen", op_listen);
+  s.register_op_json_async("op_datagram_receive", op_datagram_receive);
+  s.register_op_json_async("op_datagram_send", op_datagram_send);
 }
 
 #[derive(Deserialize)]

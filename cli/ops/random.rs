@@ -9,10 +9,7 @@ use rand::Rng;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op(
-    "op_get_random_values",
-    s.stateful_json_op_sync(op_get_random_values),
-  );
+  s.register_op_json_sync("op_get_random_values", op_get_random_values);
 }
 
 fn op_get_random_values(

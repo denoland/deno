@@ -7,8 +7,8 @@ use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_resources", s.stateful_json_op_sync(op_resources));
-  s.register_op("op_close", s.stateful_json_op_sync(op_close));
+  s.register_op_json_sync("op_resources", op_resources);
+  s.register_op_json_sync("op_close", op_close);
 }
 
 fn op_resources(
