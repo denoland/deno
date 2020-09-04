@@ -2485,7 +2485,7 @@ mod tests {
       "--importmap=importmap.json",
       "asd",
       "asd.ts"
-      ]);
+    ]);
 
     assert_eq!(
       r.unwrap(),
@@ -2502,7 +2502,6 @@ mod tests {
       }
     );
   }
-
 
   #[test]
   fn install_with_args() {
