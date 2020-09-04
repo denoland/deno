@@ -4,7 +4,7 @@ Simple helper to help parse date strings into `Date`, with additional functions.
 
 ## Usage
 
-The following symbols are supported:
+The following symbols from [unicode LDML](http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table) are supported:
 
 - `yyyy` - numeric year
 - `yy` - 2-digit year
