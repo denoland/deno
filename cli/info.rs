@@ -1,8 +1,7 @@
 use crate::colors;
 use crate::global_state::GlobalState;
-use crate::module_graph::ModuleGraphFile;
+use crate::module_graph::{ModuleGraphFile, ModuleGraphLoader};
 use crate::msg;
-use crate::tsc::TargetLib;
 use crate::ModuleGraph;
 use crate::ModuleSpecifier;
 use crate::Permissions;
@@ -32,16 +31,17 @@ impl ModuleDepInfo {
   ) -> Result<ModuleDepInfo, ErrBox> {
     // First load module as if it was to be executed by worker
     // including compilation step
-    let module_graph = global_state
-      .prepare_module_load(
-        module_specifier.clone(),
-        None,
-        TargetLib::Main,
-        Permissions::allow_all(),
-        false,
-        global_state.maybe_import_map.clone(),
-      )
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      global_state.maybe_import_map.clone(),
+      Permissions::allow_all(),
+      false,
+      true,
+    );
+    module_graph_loader
+      .add_to_graph(&module_specifier, None)
       .await?;
+    let module_graph = module_graph_loader.get_graph();
 
     let ts_compiler = &global_state.ts_compiler;
     let file_fetcher = &global_state.file_fetcher;
