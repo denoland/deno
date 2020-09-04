@@ -179,5 +179,13 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
 });
 
 unitTest({ perms: { env: true } }, functions memoryInfo(): void {
-  assertNotEquals(Deno.memoryInfo(), {});
+  const info = Deno.memoryInfo();
+  console.log(info);
+  assert(info.total >= 0);
+  assert(info.free >= 0);
+  assert(info.available >= 0);
+  assert(info.buffers >= 0);
+  assert(info.cached >= 0);
+  assert(info.swapTotal >= 0);
+  assert(info.swapFree >= 0);
 });
