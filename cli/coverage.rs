@@ -2,14 +2,14 @@
 
 #![allow(unused)]
 
+use crate::file_fetcher::SourceFile;
 use crate::futures::SinkExt;
 use crate::futures::StreamExt;
-use sourcemap::SourceMap;
 use crate::tokio_util;
 use deno_core::ErrBox;
-use crate::file_fetcher::SourceFile;
 use serde::Deserialize;
 use serde::Serialize;
+use sourcemap::SourceMap;
 use url::Url;
 
 pub struct CoverageCollector {
@@ -142,20 +142,20 @@ impl PrettyCoverageReporter {
     source_file: &SourceFile,
     maybe_source_map_file: Option<SourceFile>,
   ) {
-    let mut maybe_source_map = if let Some(source_map_file) = maybe_source_map_file {
-      Some(SourceMap::from_slice(source_map_file.source_code.as_bytes()))
-    } else {
-      None
-    };
+    let mut maybe_source_map =
+      if let Some(source_map_file) = maybe_source_map_file {
+        Some(SourceMap::from_slice(
+          source_map_file.source_code.as_bytes(),
+        ))
+      } else {
+        None
+      };
 
     let mut total = 0;
     let mut covered = 0;
 
     let mut offset = 0;
-    let source_string = source_file
-        .source_code
-        .to_string()
-        .unwrap();
+    let source_string = source_file.source_code.to_string().unwrap();
 
     for line in source_string.lines() {
       let line_start_offset = offset;

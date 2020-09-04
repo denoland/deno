@@ -762,7 +762,8 @@ async fn test_command(
 
     let mut pretty_coverage_reporter = PrettyCoverageReporter::new();
     for script_coverage in filtered_coverage {
-      let module_specifier = ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+      let module_specifier =
+        ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
       println!("{}", module_specifier.to_string());
       let source_file = global_state
         .file_fetcher
@@ -770,12 +771,16 @@ async fn test_command(
 
       // FIXME this always fails
       let maybe_source_map_file = global_state
-          .ts_compiler
-          .get_source_map_file(&module_specifier)
-          .ok();
+        .ts_compiler
+        .get_source_map_file(&module_specifier)
+        .ok();
 
       if let Some(source_file) = source_file {
-        pretty_coverage_reporter.visit(&script_coverage, &source_file, maybe_source_map_file);
+        pretty_coverage_reporter.visit(
+          &script_coverage,
+          &source_file,
+          maybe_source_map_file,
+        );
       }
     }
   }
