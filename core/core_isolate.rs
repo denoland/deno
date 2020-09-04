@@ -20,6 +20,8 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
+use serde_json::json;
+use serde_json::Value;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -85,6 +87,8 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
+pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
 struct IsolateAllocations {
@@ -121,6 +125,7 @@ pub struct CoreIsolateState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
+  pub get_error_class_fn: GetErrorClassFn,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -305,6 +310,7 @@ impl CoreIsolate {
       js_recv_cb: None,
       js_macrotask_cb: None,
       js_error_create_fn: Box::new(JSError::create),
+      get_error_class_fn: &|_| "Error",
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -429,6 +435,52 @@ impl CoreIsolate {
     state.op_registry.register(name, op)
   }
 
+  pub fn register_op_json_sync<F>(&mut self, name: &str, op: F) -> OpId
+  where
+    F: 'static
+      + Fn(
+        &mut CoreIsolateState,
+        serde_json::Value,
+        &mut [ZeroCopyBuf],
+      ) -> Result<serde_json::Value, ErrBox>,
+  {
+    let core_op =
+      move |state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| -> Op {
+        let value = serde_json::from_slice(&bufs[0]).unwrap();
+        let result = op(state, value, &mut bufs[1..]);
+        let buf = serialize_result(None, result, state.get_error_class_fn);
+        Op::Sync(buf)
+      };
+
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+    state.op_registry.register(name, core_op)
+  }
+
+  pub fn register_op_json_async<F, Fut>(&mut self, name: &str, op: F) -> OpId
+  where
+    Fut: 'static + Future<Output = Result<serde_json::Value, ErrBox>>,
+    F: 'static
+      + Fn(&mut CoreIsolateState, serde_json::Value, &mut [ZeroCopyBuf]) -> Fut,
+  {
+    let core_op = move |state: &mut CoreIsolateState,
+                        bufs: &mut [ZeroCopyBuf]|
+          -> Op {
+      let get_error_class_fn = state.get_error_class_fn;
+      let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
+      let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
+      let fut = op(state, value, &mut bufs[1..]);
+      let fut2 = fut.map(move |result| {
+        serialize_result(Some(promise_id), result, get_error_class_fn)
+      });
+      Op::Async(Box::pin(fut2))
+    };
+
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+    state.op_registry.register(name, core_op)
+  }
+
   /// Registers a callback on the isolate when the memory limits are approached.
   /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
@@ -482,6 +534,24 @@ where
 {
   let callback = unsafe { &mut *(data as *mut F) };
   callback(current_heap_limit, initial_heap_limit)
+}
+
+fn serialize_result(
+  promise_id: Option<u64>,
+  result: Result<Value, ErrBox>,
+  get_error_class_fn: GetErrorClassFn,
+) -> Buf {
+  let value = match result {
+    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
+    Err(err) => json!({
+      "promiseId": promise_id ,
+      "err": {
+        "className": (get_error_class_fn)(&err),
+        "message": err.to_string(),
+      }
+    }),
+  };
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
 
 impl Future for CoreIsolate {
@@ -603,6 +673,10 @@ impl CoreIsolateState {
     f: impl Fn(JSError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
+  }
+
+  pub fn set_get_error_class_fn(&mut self, f: GetErrorClassFn) {
+    self.get_error_class_fn = f;
   }
 
   pub fn dispatch_op<'s>(

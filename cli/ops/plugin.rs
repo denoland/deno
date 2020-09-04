@@ -1,13 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::op_error::OpError;
 use crate::ops::dispatch_json::Deserialize;
 use crate::ops::dispatch_json::JsonOp;
 use crate::ops::dispatch_json::Value;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::plugin_api;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
@@ -21,10 +20,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
-    "op_open_plugin",
-    s.core_op(json_op(s.stateful_op2(op_open_plugin))),
-  );
+  i.register_op("op_open_plugin", s.stateful_json_op2(op_open_plugin));
 }
 
 #[derive(Deserialize)]
@@ -38,7 +34,7 @@ pub fn op_open_plugin(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
   let filename = PathBuf::from(&args.filename);
@@ -46,9 +42,7 @@ pub fn op_open_plugin(
   state.check_plugin(&filename)?;
 
   debug!("Loading Plugin: {:#?}", filename);
-  let plugin_lib = Library::open(filename)
-    .map(Rc::new)
-    .map_err(OpError::from)?;
+  let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();

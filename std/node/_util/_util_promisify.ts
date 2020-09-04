@@ -56,7 +56,11 @@ class NodeInvalidArgTypeError extends TypeError {
   }
 }
 
-export function promisify(original: Function): Function {
+export function promisify(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  original: (...args: any[]) => void,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): (...args: any[]) => Promise<any> {
   if (typeof original !== "function") {
     throw new NodeInvalidArgTypeError("original", "Function", original);
   }

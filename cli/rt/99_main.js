@@ -1,7 +1,6 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete Object.prototype.__proto__;
 
 ((window) => {
@@ -20,7 +19,6 @@ delete Object.prototype.__proto__;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
   const { internalSymbol, internalObject } = window.__bootstrap.internals;
-  const abortSignal = window.__bootstrap.abortSignal;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
@@ -196,10 +194,14 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
     core.registerErrorClass("BadResource", errors.BadResource);
     core.registerErrorClass("Http", errors.Http);
-    core.registerErrorClass("URIError", URIError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("Other", Error);
     core.registerErrorClass("Busy", errors.Busy);
+    core.registerErrorClass("NotSupported", errors.NotSupported);
+    core.registerErrorClass("Error", Error);
+    core.registerErrorClass("RangeError", RangeError);
+    core.registerErrorClass("ReferenceError", ReferenceError);
+    core.registerErrorClass("SyntaxError", SyntaxError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("URIError", URIError);
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -217,8 +219,6 @@ delete Object.prototype.__proto__;
   // Other properties shared between WindowScope and WorkerGlobalScope
   const windowOrWorkerGlobalScopeProperties = {
     console: util.writable(new Console(core.print)),
-    AbortController: util.nonEnumerable(abortSignal.AbortController),
-    AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
     Blob: util.nonEnumerable(blob.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       queuingStrategy.ByteLengthQueuingStrategy,
@@ -291,9 +291,9 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -359,9 +359,9 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -411,7 +411,6 @@ delete Object.prototype.__proto__;
         workerRuntime: bootstrapWorkerRuntime,
       },
       configurable: true,
-      writable: true,
     },
   });
 })(this);

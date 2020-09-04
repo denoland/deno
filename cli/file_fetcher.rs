@@ -5,7 +5,6 @@ use crate::http_util;
 use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::text_encoding;
 use deno_core::ErrBox;
@@ -138,11 +137,12 @@ impl SourceFileFetcher {
 
   pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
-      return Err(
-        OpError::other(
-          format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", url.scheme(), url, SUPPORTED_URL_SCHEMES),
-        ).into()
-      );
+      return Err(ErrBox::error(format!(
+        "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
+        url.scheme(),
+        url,
+        SUPPORTED_URL_SCHEMES
+      )));
     }
 
     Ok(())
@@ -255,13 +255,13 @@ impl SourceFileFetcher {
             r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
             module_url, referrer_suffix
           );
-          OpError::not_found(msg).into()
+          ErrBox::new("NotFound", msg)
         } else if is_not_found {
           let msg = format!(
             r#"Cannot resolve module "{}"{}"#,
             module_url, referrer_suffix
           );
-          OpError::not_found(msg).into()
+          ErrBox::new("NotFound", msg)
         } else {
           err
         };
@@ -346,9 +346,7 @@ impl SourceFileFetcher {
     permissions: &Permissions,
   ) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::from(OpError::uri_error(
-        "File URL contains invalid path".to_owned(),
-      ))
+      ErrBox::new("URIError", "File URL contains invalid path")
     })?;
 
     permissions.check_read(&filepath)?;
@@ -385,8 +383,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Result<Option<SourceFile>, ErrBox> {
     if redirect_limit < 0 {
-      let e = OpError::http("too many redirects".to_string());
-      return Err(e.into());
+      return Err(ErrBox::new("Http", "too many redirects"));
     }
 
     let result = self.http_cache.get(&module_url);
@@ -451,12 +448,12 @@ impl SourceFileFetcher {
     permissions: &Permissions,
   ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
-      let e = OpError::http("too many redirects".to_string());
-      return futures::future::err(e.into()).boxed_local();
+      let e = ErrBox::new("Http", "too many redirects");
+      return futures::future::err(e).boxed_local();
     }
 
     if let Err(e) = permissions.check_net_url(&module_url) {
-      return futures::future::err(e.into()).boxed_local();
+      return futures::future::err(e).boxed_local();
     }
 
     let is_blocked =
@@ -479,17 +476,12 @@ impl SourceFileFetcher {
     // If file wasn't found in cache check if we can fetch it
     if cached_only {
       // We can't fetch remote file - bail out
-      return futures::future::err(
-        std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!(
-            "Cannot find remote file '{}' in cache, --cached-only is specified",
-            module_url.to_string()
-          ),
-        )
-        .into(),
-      )
-      .boxed_local();
+      let message = format!(
+        "Cannot find remote file '{}' in cache, --cached-only is specified",
+        module_url
+      );
+      return futures::future::err(ErrBox::new("NotFound", message))
+        .boxed_local();
     }
 
     info!("{} {}", colors::green("Download"), module_url.to_string());

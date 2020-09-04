@@ -99,7 +99,7 @@ current directory (recursively) that match the glob
 files in the directory that match this glob will be run.
 
 ```shell
-# Run all tests in the current directly and all sub-directories
+# Run all tests in the current directory and all sub-directories
 deno test
 
 # Run all tests in the util directory

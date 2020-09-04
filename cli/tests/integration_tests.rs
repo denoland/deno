@@ -273,11 +273,6 @@ grault",
 }
 
 #[test]
-fn benchmark_test() {
-  util::run_python_script("tools/benchmark_test.py")
-}
-
-#[test]
 fn deno_dir_test() {
   use std::fs::remove_dir_all;
   let _g = util::http_server();
@@ -1446,9 +1441,8 @@ itest!(_030_eval_ts {
 });
 
 itest!(_031_info_no_check {
-  args: "info 031_info_no_check.ts",
+  args: "info --no-check 031_info_no_check.ts",
   output: "031_info_no_check.out",
-  http_server: true,
 });
 
 itest!(_033_import_map {
@@ -1544,10 +1538,7 @@ itest!(_048_media_types_jsx {
   http_server: true,
 });
 
-// TODO(nayeemrmn): This hits an SWC type-stripping bug:
-// `error: Unterminated regexp literal at http://localhost:4545/cli/tests/subdir/mt_video_vdn_tsx.t2.tsx:4:19`
-// Re-enable once fixed.
-itest_ignore!(_049_info_flag_script_jsx {
+itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
@@ -2262,6 +2253,30 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(deno_lint_from_stdin {
+  args: "lint --unstable -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_from_stdin_json {
+  args: "lint --unstable --json -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin_json.out",
+  exit_code: 1,
+});
+
+itest!(deno_doc_builtin {
+  args: "doc",
+  output: "deno_doc_builtin.out",
+});
+
+itest!(deno_doc {
+  args: "doc deno_doc.ts",
+  output: "deno_doc.out",
+});
+
 itest!(compiler_js_error {
   args: "run --unstable compiler_js_error.ts",
   output: "compiler_js_error.ts.out",
@@ -2272,6 +2287,11 @@ itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
+});
+
+itest!(info_type_import {
+  args: "info info_type_import.ts",
+  output: "info_type_import.out",
 });
 
 #[test]
@@ -3293,7 +3313,6 @@ fn should_not_panic_on_undefined_home_environment_variable() {
     .arg("run")
     .arg("cli/tests/echo.ts")
     .env_remove("HOME")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3308,7 +3327,6 @@ fn should_not_panic_on_undefined_deno_dir_environment_variable() {
     .arg("run")
     .arg("cli/tests/echo.ts")
     .env_remove("DENO_DIR")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3325,10 +3343,39 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
     .arg("cli/tests/echo.ts")
     .env_remove("DENO_DIR")
     .env_remove("HOME")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
+}
+
+#[test]
+fn rust_log() {
+  // Without RUST_LOG the stderr is empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+
+  // With RUST_LOG the stderr is not empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .env("RUST_LOG", "debug")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(!output.stderr.is_empty());
 }

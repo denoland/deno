@@ -27,6 +27,7 @@ pub use rusty_v8 as v8;
 pub use crate::core_isolate::js_check;
 pub use crate::core_isolate::CoreIsolate;
 pub use crate::core_isolate::CoreIsolateState;
+pub use crate::core_isolate::GetErrorClassFn;
 pub use crate::core_isolate::HeapLimits;
 pub use crate::core_isolate::Script;
 pub use crate::core_isolate::Snapshot;
@@ -53,6 +54,7 @@ pub use crate::ops::OpId;
 pub use crate::resources::ResourceTable;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
+pub use serde_json;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
@@ -62,5 +64,3 @@ pub fn v8_version() -> &'static str {
 fn test_v8_version() {
   assert!(v8_version().len() > 3);
 }
-
-crate_modules!();

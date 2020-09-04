@@ -72,6 +72,8 @@
       "hello_world": "Hello World",
       "import_export": "Import and Export Modules",
       "manage_dependencies": "Manage Dependencies",
+      "fetch_data": "Fetch Data",
+      "read_write_files": "Read and Write Files",
       "unix_cat": "Unix cat program",
       "file_server": "File server",
       "tcp_echo": "TCP echo server",

@@ -393,9 +393,9 @@
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function isEitherArrayBuffer(x) {
-    return x instanceof SharedArrayBuffer || x instanceof ArrayBuffer;
+    return x instanceof SharedArrayBuffer || x instanceof ArrayBuffer ||
+      typeof x === "undefined";
   }
 
   class TextDecoder {
@@ -442,6 +442,7 @@
         bytes = new Uint8Array(input);
       } else if (
         typeof input === "object" &&
+        input !== null &&
         "buffer" in input &&
         isEitherArrayBuffer(input.buffer)
       ) {
@@ -451,7 +452,9 @@
           input.byteLength,
         );
       } else {
-        bytes = new Uint8Array(0);
+        throw new TypeError(
+          "Provided input is not of type ArrayBuffer or ArrayBufferView",
+        );
       }
 
       // For simple utf-8 decoding "Deno.core.decode" can be used for performance

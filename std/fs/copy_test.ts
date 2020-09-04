@@ -32,13 +32,6 @@ function testCopy(
   });
 }
 
-function testCopyIgnore(
-  name: string,
-  cb: (tempDir: string) => Promise<void>,
-): void {
-  testCopy(name, cb, true);
-}
-
 function testCopySync(name: string, cb: (tempDir: string) => void): void {
   Deno.test({
     name,
@@ -144,8 +137,7 @@ testCopy(
   },
 );
 
-// TODO(#6644) This case is ignored because of the issue #5065.
-testCopyIgnore(
+testCopy(
   "[fs] copy with preserve timestamps",
   async (tempDir: string): Promise<void> => {
     const srcFile = path.join(testdataDir, "copy_file.txt");

@@ -7,8 +7,6 @@ It works like this currently:
 1. Checkout typescript repo in a seperate directory.
 2. Copy typescript.js into Deno repo
 3. Copy d.ts files into dts directory
-4. Update `ts_version()` in `cli/build.rs`
-   https://github.com/denoland/deno/blob/452693256ce7b607fa0b9454b22c57748f616742/cli/build.rs#L73-L76
 
 So that might look something like this:
 

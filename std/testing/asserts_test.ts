@@ -6,8 +6,10 @@ import {
   assertStringContains,
   assertArrayContains,
   assertMatch,
+  assertNotMatch,
   assertEquals,
   assertStrictEquals,
+  assertNotStrictEquals,
   assertThrows,
   assertThrowsAsync,
   AssertionError,
@@ -48,6 +50,9 @@ Deno.test("testingEqual", function (): void {
       new Date(2019, 0, 3, 4, 20, 1, 20),
     ),
   );
+  assert(equal(new Date("Invalid"), new Date("Invalid")));
+  assert(!equal(new Date("Invalid"), new Date(2019, 0, 3)));
+  assert(!equal(new Date("Invalid"), new Date(2019, 0, 3, 4, 20, 1, 10)));
   assert(equal(new Set([1]), new Set([1])));
   assert(!equal(new Set([1]), new Set([2])));
   assert(equal(new Set([1, 2, 3]), new Set([3, 2, 1])));
@@ -137,6 +142,10 @@ Deno.test("testingNotEquals", function (): void {
   assertNotEquals("Denosaurus", "Tyrannosaurus");
   assertNotEquals(
     new Date(2019, 0, 3, 4, 20, 1, 10),
+    new Date(2019, 0, 3, 4, 20, 1, 20),
+  );
+  assertNotEquals(
+    new Date("invalid"),
     new Date(2019, 0, 3, 4, 20, 1, 20),
   );
   let didThrow;
@@ -231,6 +240,25 @@ Deno.test("testingAssertStringMatchingThrows", function (): void {
   assert(didThrow);
 });
 
+Deno.test("testingAssertStringNotMatching", function (): void {
+  assertNotMatch("foobar.deno.com", RegExp(/[a-zA-Z]+@[a-zA-Z]+.com/));
+});
+
+Deno.test("testingAssertStringNotMatchingThrows", function (): void {
+  let didThrow = false;
+  try {
+    assertNotMatch("Denosaurus from Jurassic", RegExp(/from/));
+  } catch (e) {
+    assert(
+      e.message ===
+        `actual: "Denosaurus from Jurassic" expected to not match: "/from/"`,
+    );
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assert(didThrow);
+});
+
 Deno.test("testingAssertsUnimplemented", function (): void {
   let didThrow = false;
   try {
@@ -300,7 +328,9 @@ const createHeader = (): string[] => [
   "",
   "",
   `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${
-    green(bold("Expected"))
+    green(
+      bold("Expected"),
+    )
   }`,
   "",
   "",
@@ -317,6 +347,7 @@ Deno.test({
     assertEquals(10, 10);
     assertEquals("abc", "abc");
     assertEquals({ a: 10, b: { c: "1" } }, { a: 10, b: { c: "1" } });
+    assertEquals(new Date("invalid"), new Date("invalid"));
   },
 });
 
@@ -408,6 +439,21 @@ Deno.test({
         "",
       ].join("\n"),
     );
+    assertThrows(
+      (): void =>
+        assertEquals(
+          new Date("invalid"),
+          new Date(2019, 0, 3, 4, 20, 1, 20),
+        ),
+      AssertionError,
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   ${new Date("invalid")}`),
+        added(`+   ${new Date(2019, 0, 3, 4, 20, 1, 20).toISOString()}`),
+        "",
+      ].join("\n"),
+    );
   },
 });
 
@@ -463,13 +509,40 @@ Deno.test({
 });
 
 Deno.test({
-  name: "assert* functions with specified type paratemeter",
+  name: "strictly unequal pass case",
+  fn(): void {
+    assertNotStrictEquals(true, false);
+    assertNotStrictEquals(10, 11);
+    assertNotStrictEquals("abc", "xyz");
+    assertNotStrictEquals(1, "1");
+
+    const xs = [1, false, "foo"];
+    const ys = [1, true, "bar"];
+    assertNotStrictEquals(xs, ys);
+
+    const x = { a: 1 };
+    const y = { a: 2 };
+    assertNotStrictEquals(x, y);
+  },
+});
+
+Deno.test({
+  name: "strictly unequal fail case",
+  fn(): void {
+    assertThrows(() => assertNotStrictEquals(1, 1), AssertionError);
+  },
+});
+
+Deno.test({
+  name: "assert* functions with specified type parameter",
   fn(): void {
     assertEquals<string>("hello", "hello");
     assertNotEquals<number>(1, 2);
     assertArrayContains<boolean>([true, false], [true]);
     const value = { x: 1 };
     assertStrictEquals<typeof value>(value, value);
+    // eslint-disable-next-line @typescript-eslint/ban-types
+    assertNotStrictEquals<object>(value, { x: 1 });
   },
 });
 
