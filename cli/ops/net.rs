@@ -90,13 +90,13 @@ async fn accept_tcp(
 async fn op_accept(
   state: Rc<State>,
   args: Value,
-  zero_copy: BufVec,
+  bufs: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
-    "tcp" => accept_tcp(state, args, zero_copy).await,
+    "tcp" => accept_tcp(state, args, bufs).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(&state, args.rid as u32, zero_copy).await,
+    "unix" => net_unix::accept_unix(state, args, bufs).await,
     _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport

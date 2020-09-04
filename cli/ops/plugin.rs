@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::ops::dispatch_json::Deserialize;
-use crate::ops::dispatch_json::JsonOp;
 use crate::ops::dispatch_json::Value;
 use crate::state::State;
 use deno_core::plugin_api;
@@ -10,6 +9,7 @@ use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
 use deno_core::OpRegistry;
+use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op("op_open_plugin", s.stateful_json_op2(op_open_plugin));
+  s.register_op_json_sync("op_open_plugin", op_open_plugin);
 }
 
 #[derive(Deserialize)]
@@ -29,11 +29,12 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  state: Rc<State>,
+  state: &State,
   args: Value,
-  _zero_copy: BufVec,
-) -> Result<JsonOp, ErrBox> {
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.openPlugin");
+
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
   let filename = PathBuf::from(&args.filename);
 
@@ -44,24 +45,26 @@ pub fn op_open_plugin(
   let plugin_resource = PluginResource::new(&plugin_lib);
 
   let resource_table = state.resource_table.borrow_mut();
+
   let rid = state
     .resource_table
     .borrow_mut()
     .add("plugin", Box::new(plugin_resource));
-  let plugin_resource = resource_table.get::<PluginResource>(rid).unwrap();
 
+  let plugin_resource_ref = resource_table.get::<PluginResource>(rid).unwrap();
   let deno_plugin_init = *unsafe {
-    plugin_resource
+    plugin_resource_ref
       .lib
       .symbol::<plugin_api::InitFn>("deno_plugin_init")
-  }
-  .unwrap();
+      .unwrap()
+  };
+
   drop(resource_table);
 
-  let mut interface = PluginInterface::new(&state, &plugin_lib);
+  let mut interface = PluginInterface::new(state, &plugin_lib);
   deno_plugin_init(&mut interface);
 
-  Ok(JsonOp::Sync(json!(rid)))
+  Ok(json!(rid))
 }
 
 struct PluginResource {
@@ -75,12 +78,12 @@ impl PluginResource {
 }
 
 struct PluginInterface<'a> {
-  state: &'a Rc<State>,
+  state: &'a State,
   plugin_lib: &'a Rc<Library>,
 }
 
 impl<'a> PluginInterface<'a> {
-  fn new(state: &'a Rc<State>, plugin_lib: &'a Rc<Library>) -> Self {
+  fn new(state: &'a State, plugin_lib: &'a Rc<Library>) -> Self {
     Self { state, plugin_lib }
   }
 }

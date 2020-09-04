@@ -6,7 +6,6 @@ use crate::global_timer::GlobalTimer;
 use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
-use crate::ops::JsonOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
@@ -25,7 +24,6 @@ use futures::Future;
 use indexmap::IndexMap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use serde_json::Value;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -63,19 +61,6 @@ pub struct State {
 }
 
 impl State {
-  // TODO(bartlomieju): remove me - still used by `op_open_plugin` which
-  // needs access to isolate_state
-  pub fn stateful_json_op2<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(Rc<Self>, BufVec) -> Op
-  where
-    D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
-  {
-    use crate::ops::json_op;
-    self.core_op(json_op(dispatcher))
-  }
-
   /// Wrap core `OpDispatcher` to collect metrics.
   // TODO(ry) this should be private. Is called by stateful_json_op or
   // stateful_minimal_op
