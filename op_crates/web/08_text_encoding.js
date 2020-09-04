@@ -838,11 +838,6 @@
   window.TextDecoder = TextDecoder;
   window.atob = atob;
   window.btoa = btoa;
-  if (!Object.getOwnPropertyDescriptor(window, "__bootstrap")) {
-    Object.defineProperty(window, "__bootstrap", {
-      value: {},
-      configurable: true,
-    });
-  }
+  window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.base64 = base64;
 })(this);
