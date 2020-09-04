@@ -3,6 +3,7 @@
 ((window) => {
   const { build } = window.__bootstrap.build;
   const internals = window.__bootstrap.internals;
+  const { exposeForTest } = internals;
   let logDebug = false;
   let logSource = "JS";
 
@@ -137,6 +138,41 @@
     };
   }
 
+  /** @type {Map<string, { msg: string; flag: boolean; }>} */
+  const deprecatedMap = new Map();
+
+  /**
+   * @param {string} feature The unique string representing the feature being
+   *                         deprecated
+   * @param {string=} msg    The message to be warned about being deprecated.
+   *                         This defaults to the value of `msg` in the map if
+   *                         present, otherwise a default message.
+   * @param {boolean=} force Normally a feature is warned once, a value of
+   *                         `true` will force the message to be displayed even
+   *                         if it has been displayed before.
+   */
+  function deprecated(feature, msg, force) {
+    if (!feature) {
+      throw new TypeError("Calls to deprecated() require a feature name.");
+    }
+    let value = deprecatedMap.get(feature);
+    if (!value) {
+      value = {
+        msg: msg ?? `The feature "${feature}" is deprecated.`,
+        flag: false,
+      };
+      deprecatedMap.set(feature, value);
+    }
+    if (force || !value.flag) {
+      globalThis.console.warn(msg ?? value.msg);
+    }
+    value.flag = true;
+  }
+
+  // Expose these fields to internalObject for tests.
+  exposeForTest("deprecatedMap", deprecatedMap);
+  exposeForTest("deprecated", deprecated);
+
   window.__bootstrap.util = {
     log,
     setLogDebug,
@@ -150,5 +186,7 @@
     nonEnumerable,
     readOnly,
     getterOnly,
+    deprecatedMap,
+    deprecated,
   };
 })(this);

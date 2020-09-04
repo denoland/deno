@@ -14,6 +14,7 @@ import "./chown_test.ts";
 import "./console_test.ts";
 import "./copy_file_test.ts";
 import "./custom_event_test.ts";
+import "./deprecated.ts";
 import "./dir_test.ts";
 import "./dispatch_minimal_test.ts";
 import "./dispatch_json_test.ts";
