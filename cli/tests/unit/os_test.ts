@@ -177,3 +177,7 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
     Deno.osRelease();
   }, Deno.errors.PermissionDenied);
 });
+
+unitTest({ perms: { env: true } }, functions memoryInfo(): void {
+  assertNotEquals(Deno.memoryInfo(), {});
+});
