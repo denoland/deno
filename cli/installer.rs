@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::flags::Flags;
 use log::Level;
 use regex::{Regex, RegexBuilder};

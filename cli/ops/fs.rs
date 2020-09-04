@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::dispatch_json::{Deserialize, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
@@ -11,6 +9,8 @@ use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
@@ -794,7 +794,7 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Value {
 }
 
 #[inline(always)]
-fn get_stat_json(metadata: std::fs::Metadata) -> JsonResult {
+fn get_stat_json(metadata: std::fs::Metadata) -> Result<Value, ErrBox> {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member: ident) => {{

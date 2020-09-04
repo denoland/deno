@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
@@ -13,6 +13,8 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use serde::Serialize;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;

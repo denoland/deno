@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
@@ -61,66 +62,6 @@ pub struct State {
 }
 
 impl State {
-  /// Wrap core `OpDispatcher` to collect metrics.
-  // TODO(ry) this should be private. Is called by stateful_json_op or
-  // stateful_minimal_op
-  pub(crate) fn core_op<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(Rc<Self>, BufVec) -> Op
-  where
-    D: Fn(Rc<Self>, BufVec) -> Op,
-  {
-    move |state: Rc<Self>, zero_copy: BufVec| -> Op {
-      let bytes_sent_control =
-        zero_copy.get(0).map(|s| s.len()).unwrap_or(0) as u64;
-      let bytes_sent_zero_copy =
-        zero_copy[1..].iter().map(|b| b.len()).sum::<usize>() as u64;
-
-      let op = dispatcher(state.clone(), zero_copy);
-
-      match op {
-        Op::Sync(buf) => {
-          state.metrics.borrow_mut().op_sync(
-            bytes_sent_control,
-            bytes_sent_zero_copy,
-            buf.len() as u64,
-          );
-          Op::Sync(buf)
-        }
-        Op::Async(fut) => {
-          state
-            .metrics
-            .borrow_mut()
-            .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
-          let result_fut = fut.map(move |buf: Box<[u8]>| {
-            state
-              .metrics
-              .borrow_mut()
-              .op_completed_async(buf.len() as u64);
-            buf
-          });
-          Op::Async(result_fut.boxed_local())
-        }
-        Op::AsyncUnref(fut) => {
-          state.metrics.borrow_mut().op_dispatched_async_unref(
-            bytes_sent_control,
-            bytes_sent_zero_copy,
-          );
-          let result_fut = fut.map(move |buf: Box<[u8]>| {
-            state
-              .metrics
-              .borrow_mut()
-              .op_completed_async_unref(buf.len() as u64);
-            buf
-          });
-          Op::AsyncUnref(result_fut.boxed_local())
-        }
-        Op::NotFound => Op::NotFound,
-      }
-    }
-  }
-
   /// Quits the process if the --unstable flag was not provided.
   ///
   /// This is intentionally a non-recoverable check so that people cannot probe

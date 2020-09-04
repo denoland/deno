@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::diagnostics::Diagnostic;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
@@ -7,6 +7,8 @@ use crate::state::State;
 use deno_core::ErrBox;
 use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::rc::Rc;
 

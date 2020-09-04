@@ -1,5 +1,3 @@
-use crate::ops::dispatch_json::Deserialize;
-use crate::ops::dispatch_json::Value;
 use crate::ops::io::StreamResource;
 use crate::ops::io::StreamResourceHolder;
 use crate::ops::net::AcceptArgs;
@@ -7,6 +5,8 @@ use crate::ops::net::ReceiveArgs;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::fs::remove_file;
 use std::os::unix;
 pub use std::path::Path;

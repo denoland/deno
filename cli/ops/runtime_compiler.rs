@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::futures::FutureExt;
 use crate::state::State;
 use crate::tsc::runtime_bundle;
@@ -8,6 +8,8 @@ use crate::tsc::runtime_transpile;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::OpRegistry;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::rc::Rc;
 

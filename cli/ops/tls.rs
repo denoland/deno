@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -8,6 +8,8 @@ use deno_core::ErrBox;
 use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::convert::From;
 use std::fs::File;
 use std::io::BufReader;

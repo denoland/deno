@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
 use crate::signal::kill;
 use crate::state::State;
@@ -9,6 +9,8 @@ use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::rc::Rc;
 use tokio::process::Command;
 

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
 use crate::state::State;
@@ -11,6 +11,8 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use reqwest::Client;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;

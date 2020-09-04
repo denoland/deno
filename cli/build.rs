@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 mod op_fetch_asset;
 
 use deno_core::js_check;

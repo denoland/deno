@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::Value;
+
 use crate::colors;
 use crate::state::State;
 use crate::version;
@@ -9,6 +9,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpId;
 use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
+use serde_json::Value;
 use std::env;
 use std::rc::Rc;
 

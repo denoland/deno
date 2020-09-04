@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::ops::dispatch_json::Deserialize;
-use crate::ops::dispatch_json::Value;
+
 use crate::state::State;
 use deno_core::plugin_api;
 use deno_core::BufVec;
@@ -12,6 +11,8 @@ use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
