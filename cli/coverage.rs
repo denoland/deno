@@ -141,14 +141,14 @@ impl PrettyCoverageReporter {
     script_coverage: &ScriptCoverage,
     source_file: &SourceFile,
   ) {
-    let mut total = 0;
-    let mut covered = 0;
+    let mut total_lines = 0;
+    let mut covered_lines = 0;
 
-    let mut offset = 0;
+    let mut line_offset = 0;
     let source_string = source_file.source_code.to_string().unwrap();
 
     for line in source_string.lines() {
-      let line_start_offset = offset;
+      let line_start_offset = line_offset;
       let line_end_offset = line_start_offset + line.len();
 
       let mut count = 1;
@@ -170,14 +170,14 @@ impl PrettyCoverageReporter {
       }
 
       if count > 0 {
-        covered += 1;
+        covered_lines += 1;
       }
 
-      total += 1;
-      offset += line.len();
+      total_lines += 1;
+      line_offset += line.len();
     }
 
-    let result = (covered as f32 / total as f32) * 100.0;
-    println!("{} {:.3}%", source_file.url.as_str(), result);
+    let line_ratio = (covered_lines as f32 / total_lines as f32) * 100.0;
+    println!("{} {:.3}%", source_file.url.as_str(), line_ratio);
   }
 }
