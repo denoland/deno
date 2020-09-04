@@ -764,23 +764,18 @@ async fn test_command(
     for script_coverage in filtered_coverage {
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+
       let source_file = global_state
-        .file_fetcher
-        .fetch_cached_source_file(&module_specifier, Permissions::allow_all());
-
-      // FIXME this always fails
-      let maybe_source_map_file = global_state
         .ts_compiler
-        .get_source_map_file(&module_specifier)
-        .ok();
+        .get_compiled_source_file(&module_specifier.as_url())
+        .or_else(|_| {
+          global_state.file_fetcher.fetch_cached_source_file(
+            &module_specifier,
+            Permissions::allow_all(),
+          ).ok_or(ErrBox::error("unable to fetch source file"))
+        })?;
 
-      if let Some(source_file) = source_file {
-        pretty_coverage_reporter.visit(
-          &script_coverage,
-          &source_file,
-          maybe_source_map_file,
-        );
-      }
+      pretty_coverage_reporter.visit(&script_coverage, &source_file);
     }
   }
 
