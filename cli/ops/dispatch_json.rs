@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::state::State;
-use deno_core::serialize_result;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
@@ -35,14 +34,11 @@ where
   D: Fn(Rc<State>, Value, BufVec) -> Result<JsonOp, ErrBox>,
 {
   move |state: Rc<State>, bufs: BufVec| {
-    let state_ = state.clone();
-    let get_error_class_fn =
-      move |err: &ErrBox| -> &'static str { state_.get_error_class(err) };
     assert!(!bufs.is_empty(), "Expected JSON string at position 0");
     let async_args: AsyncArgs = match serde_json::from_slice(&bufs[0]) {
       Ok(args) => args,
       Err(e) => {
-        let buf = serialize_result(None, Err(e.into()), get_error_class_fn);
+        let buf = state.json_serialize_op_result(None, Err(e.into()));
         return Op::Sync(buf);
       }
     };
@@ -58,32 +54,28 @@ where
     match result {
       Ok(JsonOp::Sync(sync_value)) => {
         assert!(promise_id.is_none());
-        Op::Sync(serialize_result(promise_id, Ok(sync_value), move |err| {
-          state.get_error_class(err)
-        }))
+        Op::Sync(state.json_serialize_op_result(promise_id, Ok(sync_value)))
       }
       Ok(JsonOp::Async(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
-          futures::future::ready(serialize_result(promise_id, result, |err| {
-            state.get_error_class(err)
-          }))
+          futures::future::ready(
+            state.json_serialize_op_result(promise_id, result),
+          )
         });
         Op::Async(fut2.boxed_local())
       }
       Ok(JsonOp::AsyncUnref(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
-          futures::future::ready(serialize_result(promise_id, result, |err| {
-            state.get_error_class(err)
-          }))
+          futures::future::ready(
+            state.json_serialize_op_result(promise_id, result),
+          )
         });
         Op::AsyncUnref(fut2.boxed_local())
       }
       Err(sync_err) => {
-        let buf = serialize_result(promise_id, Err(sync_err), move |err| {
-          state.get_error_class(err)
-        });
+        let buf = state.json_serialize_op_result(promise_id, Err(sync_err));
         if is_sync {
           Op::Sync(buf)
         } else {

@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::type_complexity)]
+
 #[macro_use]
 extern crate downcast_rs;
 extern crate futures;
@@ -47,7 +49,6 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
-pub use crate::ops::serialize_result;
 pub use crate::ops::Buf;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;

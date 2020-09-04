@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::errors::get_error_class_name;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
@@ -30,6 +31,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -57,9 +59,8 @@ pub struct State {
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
   pub resource_table: RefCell<ResourceTable>,
-  pub op_dispatchers: RefCell<
-    IndexMap<&'static str, Rc<dyn Fn(Rc<Self>, BufVec) -> Op + 'static>>,
-  >,
+  pub op_catalog:
+    RefCell<IndexMap<String, Rc<dyn Fn(Rc<Self>, BufVec) -> Op + 'static>>>,
 }
 
 impl State {
@@ -280,7 +281,7 @@ impl State {
       is_internal,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
       resource_table: Default::default(),
-      op_dispatchers: Default::default(),
+      op_catalog: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -310,7 +311,7 @@ impl State {
       is_internal: false,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
       resource_table: Default::default(),
-      op_dispatchers: Default::default(),
+      op_catalog: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -413,7 +414,7 @@ impl OpRouter for State {
   fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
     let index = usize::try_from(op_id).unwrap();
     let op_fn = self
-      .op_dispatchers
+      .op_catalog
       .borrow()
       .get_index(index)
       .map(|(_, op_fn)| op_fn.clone())
@@ -423,10 +424,18 @@ impl OpRouter for State {
 }
 
 impl OpManager for State {
-  fn register_op<F>(&self, _name: &str, _op_fn: F) -> OpId
+  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
-    todo!()
+    let mut op_catalog = self.op_catalog.borrow_mut();
+    let (op_id, removed_op_fn) =
+      op_catalog.insert_full(name.to_owned(), Rc::new(op_fn));
+    assert!(removed_op_fn.is_none());
+    op_id.try_into().unwrap()
+  }
+
+  fn get_error_class_name(&self, err: &ErrBox) -> &'static str {
+    get_error_class_name(err)
   }
 }

@@ -48,7 +48,7 @@ pub trait OpManager: OpRouter + 'static {
     let base_op_fn = move |mgr: Rc<Self>, mut bufs: BufVec| -> Op {
       let value = serde_json::from_slice(&bufs[0]).unwrap();
       let result = op_fn(&mgr, value, &mut bufs[1..]);
-      let buf = serialize_result(None, result, |err| mgr.get_error_class(err));
+      let buf = mgr.json_serialize_op_result(None, result);
       Op::Sync(buf)
     };
 
@@ -65,9 +65,7 @@ pub trait OpManager: OpRouter + 'static {
       let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
       let bufs = bufs[1..].into();
       let fut = op_fn(mgr.clone(), value, bufs).map(move |result| {
-        serialize_result(Some(promise_id), result, move |err| {
-          mgr.get_error_class(err)
-        })
+        mgr.json_serialize_op_result(Some(promise_id), result)
       });
       Op::Async(Box::pin(fut))
     };
@@ -97,7 +95,25 @@ pub trait OpManager: OpRouter + 'static {
     op_id
   }
 
-  fn get_error_class(&self, _err: &ErrBox) -> &'static str {
+  fn json_serialize_op_result(
+    &self,
+    promise_id: Option<u64>,
+    result: Result<Value, ErrBox>,
+  ) -> Buf {
+    let value = match result {
+      Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
+      Err(err) => json!({
+        "promiseId": promise_id ,
+        "err": {
+          "className": self.get_error_class_name(&err),
+          "message": err.to_string(),
+        }
+      }),
+    };
+    serde_json::to_vec(&value).unwrap().into_boxed_slice()
+  }
+
+  fn get_error_class_name(&self, _err: &ErrBox) -> &'static str {
     "Error"
   }
 }
@@ -160,24 +176,6 @@ impl OpManager for OpRegistry {
     inner.dispatchers.push(Rc::new(op_fn));
     op_id
   }
-}
-
-pub fn serialize_result(
-  promise_id: Option<u64>,
-  result: Result<Value, ErrBox>,
-  get_error_class_fn: impl Fn(&ErrBox) -> &'static str,
-) -> Buf {
-  let value = match result {
-    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
-    Err(err) => json!({
-      "promiseId": promise_id ,
-      "err": {
-        "className": (get_error_class_fn)(&err),
-        "message": err.to_string(),
-      }
-    }),
-  };
-  serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
 
 #[cfg(test_off)]

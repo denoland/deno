@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::type_complexity)]
+
 extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;

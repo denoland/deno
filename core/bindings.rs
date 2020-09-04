@@ -409,7 +409,7 @@ fn send<'s>(
     }
   };
 
-  let manager = state.op_manager.clone();
+  let mgr = state.op_manager.clone();
 
   //let dispatcher = match self.op_registry.get(op_id) {
   //  Some(d) => d,
@@ -421,7 +421,7 @@ fn send<'s>(
   //  }
   //};
 
-  let op = manager.dispatch_op(op_id, bufs);
+  let op = mgr.dispatch_op(op_id, bufs);
   assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(buf) if !buf.is_empty() => {

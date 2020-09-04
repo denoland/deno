@@ -22,10 +22,10 @@ pub fn init(s: &Rc<State>) {
 
 fn op_catalog(state: &State, it: &mut dyn FnMut((String, OpId))) {
   state
-    .op_dispatchers
+    .op_catalog
     .borrow()
     .keys()
-    .map(|&k| k.to_owned())
+    .cloned()
     .zip(0..)
     .for_each(it)
 }

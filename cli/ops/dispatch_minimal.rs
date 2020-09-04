@@ -1,10 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-// Do not add flatbuffer dependencies to this module.
-//! Connects to js/dispatch_minimal.ts sendAsyncMinimal This acts as a faster
-//! alternative to flatbuffers using a very simple list of int32s to lay out
-//! messages. The first i32 is used to determine if a message a flatbuffer
-//! message or a "minimal" message.
-use crate::errors::get_error_class;
+
 use crate::state::State;
 use deno_core::Buf;
 use deno_core::BufVec;
@@ -149,7 +144,7 @@ impl State {
         Some(r) => r,
         None => {
           let error = ErrBox::type_error("Unparsable control buffer");
-          let error_class = get_error_class(&error);
+          let error_class = state.get_error_class_name(&error);
           let error_record = ErrorRecord {
             promise_id: 0,
             arg: -1,
@@ -162,7 +157,7 @@ impl State {
       };
       let is_sync = record.promise_id == 0;
       let rid = record.arg;
-      let min_op = op_fn(state, is_sync, rid, zero_copy);
+      let min_op = op_fn(state.clone(), is_sync, rid, zero_copy);
 
       match min_op {
         MinimalOp::Sync(sync_result) => Op::Sync(match sync_result {
@@ -171,7 +166,7 @@ impl State {
             record.into()
           }
           Err(err) => {
-            let error_class = get_error_class(&err);
+            let error_class = state.get_error_class_name(&err);
             let error_record = ErrorRecord {
               promise_id: record.promise_id,
               arg: -1,
@@ -190,7 +185,7 @@ impl State {
                 record.into()
               }
               Err(err) => {
-                let error_class = get_error_class(&err);
+                let error_class = state.get_error_class_name(&err);
                 let error_record = ErrorRecord {
                   promise_id: record.promise_id,
                   arg: -1,
