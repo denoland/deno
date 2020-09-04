@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
-use super::io::{StreamResource, StreamResourceHolder};
+use crate::ops::dispatch_json::{Deserialize, Value};
+use crate::ops::io::{StreamResource, StreamResourceHolder};
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::BufVec;
@@ -30,9 +30,9 @@ pub fn init(s: &Rc<State>) {
 }
 
 #[derive(Deserialize)]
-struct AcceptArgs {
-  rid: i32,
-  transport: String,
+pub(crate) struct AcceptArgs {
+  pub rid: i32,
+  pub transport: String,
 }
 
 async fn accept_tcp(
@@ -105,9 +105,9 @@ async fn op_accept(
 }
 
 #[derive(Deserialize)]
-struct ReceiveArgs {
-  rid: i32,
-  transport: String,
+pub(crate) struct ReceiveArgs {
+  pub rid: i32,
+  pub transport: String,
 }
 
 async fn receive_udp(
@@ -152,9 +152,7 @@ async fn op_datagram_receive(
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
     #[cfg(unix)]
-    "unixpacket" => {
-      net_unix::receive_unix_packet(&state, args.rid as u32, zero_copy).await
-    }
+    "unixpacket" => net_unix::receive_unix_packet(state, args, zero_copy).await,
     _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport

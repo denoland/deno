@@ -1,11 +1,16 @@
-use crate::ops::dispatch_json::{Deserialize, Value};
-use crate::ops::io::{StreamResource, StreamResourceHolder};
+use crate::ops::dispatch_json::Deserialize;
+use crate::ops::dispatch_json::Value;
+use crate::ops::io::StreamResource;
+use crate::ops::io::StreamResourceHolder;
+use crate::ops::net::AcceptArgs;
+use crate::ops::net::ReceiveArgs;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use std::fs::remove_file;
 use std::os::unix;
 pub use std::path::Path;
+use std::rc::Rc;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
@@ -24,9 +29,9 @@ pub struct UnixListenArgs {
   pub path: String,
 }
 
-pub async fn accept_unix(
+pub(crate) async fn accept_unix(
   state: Rc<State>,
-  args: Value,
+  args: AcceptArgs,
   _bufs: BufVec,
 ) -> Result<Value, ErrBox> {
   let rid = args.rid as u32;
@@ -62,19 +67,21 @@ pub async fn accept_unix(
   }))
 }
 
-pub async fn receive_unix_packet(
-  state: &State,
-  rid: u32,
-  zero_copy: BufVec,
+pub(crate) async fn receive_unix_packet(
+  state: Rc<State>,
+  args: ReceiveArgs,
+  bufs: BufVec,
 ) -> Result<Value, ErrBox> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-  let mut zero_copy = zero_copy[0].clone();
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+
+  let rid = args.rid as u32;
+  let mut buf = bufs.into_iter().next().unwrap();
 
   let mut resource_table_ = state.resource_table.borrow_mut();
   let resource = resource_table_
     .get_mut::<UnixDatagramResource>(rid)
     .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
-  let (size, remote_addr) = resource.socket.recv_from(&mut zero_copy).await?;
+  let (size, remote_addr) = resource.socket.recv_from(&mut buf).await?;
   Ok(json!({
     "size": size,
     "remoteAddr": {
