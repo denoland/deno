@@ -1,15 +1,19 @@
 {
   "diagnostics": [
     {
-      "location": {
-        "line": 1,
-        "col": 7
+      "range": {
+        "start": {
+          "line": 1,
+          "col": 7
+        },
+        "end": {
+          "line": 1,
+          "col": 10
+        }
       },
       "filename": "_stdin.ts",
       "message": "`any` type is not allowed",
-      "code": "no-explicit-any",
-      "line_src": "let a: any;",
-      "snippet_length": 3
+      "code": "no-explicit-any"
     }
   ],
   "errors": []
