@@ -9,9 +9,9 @@ use serde_json::Value;
 use std::rc::Rc;
 
 #[cfg(unix)]
-use super::dispatch_json::Deserialize;
-#[cfg(unix)]
 use futures::future::poll_fn;
+#[cfg(unix)]
+use serde_derive::Deserialize;
 #[cfg(unix)]
 use std::task::Waker;
 #[cfg(unix)]
