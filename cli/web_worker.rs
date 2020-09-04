@@ -112,6 +112,7 @@ impl WebWorker {
     let handle = web_worker.thread_safe_handle();
 
     {
+      // state.register_op_meta_catalog(|s| s.op_dispatchers.borrow().clone());
       ops::runtime::init(&state);
       ops::web_worker::init(
         &state,

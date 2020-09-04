@@ -9,6 +9,8 @@ use serde_json::Value;
 use std::borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::convert::TryInto;
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -79,15 +81,16 @@ pub trait OpManager: OpRouter + 'static {
     R: borrow::Borrow<I>,
     for<'a> &'a I: IntoIterator<Item = (&'a K, &'a V)>,
     K: AsRef<str>,
-    V: ToOwned<Owned = OpId>,
-    V::Owned: borrow::Borrow<V>,
+    V: ToOwned,
+    V::Owned: borrow::Borrow<V> + TryInto<OpId>,
+    <V::Owned as TryInto<OpId>>::Error: Debug,
   {
     let bin_op_fn = move |mgr: Rc<Self>, _: BufVec| -> Op {
       let catalog = op_fn(mgr);
       let index = catalog
         .borrow()
         .into_iter()
-        .map(|(k, v)| (k.as_ref(), v.to_owned()))
+        .map(|(k, v)| (k.as_ref(), v.to_owned().try_into().unwrap()))
         .collect::<HashMap<&str, OpId>>();
       let buf = serde_json::to_vec(&index).unwrap().into();
       Op::Sync(buf)
@@ -98,7 +101,7 @@ pub trait OpManager: OpRouter + 'static {
       op_id, 0,
       "the 'meta_catalog' op should be the first one registered"
     );
-    op_id
+    op_id.try_into().unwrap()
   }
 
   fn get_error_class(&self, _err: &ErrBox) -> &'static str {
@@ -160,10 +163,10 @@ impl OpManager for OpRegistry {
   }
 }
 
-fn serialize_result(
+pub fn serialize_result(
   promise_id: Option<u64>,
   result: Result<Value, ErrBox>,
-  get_error_class_fn: impl FnOnce(&ErrBox) -> &'static str,
+  get_error_class_fn: impl Fn(&ErrBox) -> &'static str,
 ) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),

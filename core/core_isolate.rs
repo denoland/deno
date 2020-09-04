@@ -121,12 +121,10 @@ pub struct CoreIsolateState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
-  pub get_error_class_fn: &'static GetErrorClassFn,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  // pub op_registry: OpRegistry,
   pub op_manager: Rc<dyn OpRouter>,
   waker: AtomicWaker,
 }
@@ -315,7 +313,6 @@ impl CoreIsolate {
       js_recv_cb: None,
       js_macrotask_cb: None,
       js_error_create_fn: Box::new(JSError::create),
-      get_error_class_fn: &|_| "Error",
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -589,10 +586,6 @@ impl CoreIsolateState {
     f: impl Fn(JSError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
-  }
-
-  pub fn set_get_error_class_fn(&mut self, f: &'static GetErrorClassFn) {
-    self.get_error_class_fn = f;
   }
 }
 

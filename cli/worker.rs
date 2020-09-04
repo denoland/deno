@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::errors::get_error_class;
+
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
@@ -12,6 +12,7 @@ use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
+
 use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
@@ -120,7 +121,6 @@ impl Worker {
       core_state.set_js_error_create_fn(move |core_js_error| {
         JSError::create(core_js_error, &global_state.ts_compiler)
       });
-      core_state.set_get_error_class_fn(&get_error_class);
     }
 
     let inspector = {
@@ -262,6 +262,7 @@ impl MainWorker {
   fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
     let worker = Worker::new(name, startup_data, state);
     {
+      // state.register_op_meta_catalog(|s| s.op_dispatchers.borrow().clone());
       ops::runtime::init(&state);
       ops::runtime_compiler::init(&state);
       ops::errors::init(&state);

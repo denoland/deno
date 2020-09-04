@@ -1,13 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::state::State;
-use deno_core::Buf;
+use deno_core::serialize_result;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpManager;
 use futures::future::FutureExt;
 pub use serde_derive::Deserialize;
-use serde_json::json;
 pub use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
@@ -23,24 +22,6 @@ pub enum JsonOp {
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
   AsyncUnref(AsyncJsonOp),
-}
-
-pub fn serialize_result(
-  promise_id: Option<u64>,
-  result: JsonResult,
-  get_error_class_fn: impl Fn(&ErrBox) -> &'static str,
-) -> Buf {
-  let value = match result {
-    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
-    Err(err) => json!({
-      "err": {
-        "className": (get_error_class_fn)(&err),
-        "message": err.to_string()
-      },
-      "promiseId": promise_id
-    }),
-  };
-  serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
 
 #[derive(Deserialize)]
