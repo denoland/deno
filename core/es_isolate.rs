@@ -683,8 +683,8 @@ pub mod tests {
       }
     }
 
-    let loader = ModsLoader::default();
-    let state = BasicState::default();
+    let loader = Rc::new(ModsLoader::default());
+    let state = BasicState::new();
 
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
@@ -700,8 +700,7 @@ pub mod tests {
     };
     state.register_op("test", dispatcher);
 
-    let mut isolate =
-      EsIsolate::new(Rc::new(loader), Rc::new(state), StartupData::None, false);
+    let mut isolate = EsIsolate::new(loader, state, StartupData::None, false);
 
     js_check(isolate.execute(
       "setup.js",

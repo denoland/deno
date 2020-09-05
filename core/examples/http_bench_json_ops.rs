@@ -2,23 +2,17 @@
 extern crate log;
 
 use deno_core::serde_json;
+use deno_core::BasicState;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::Op;
-use deno_core::OpId;
 use deno_core::OpRegistry;
-use deno_core::OpRouter;
-use deno_core::OpTable;
-use deno_core::ResourceTable;
 use deno_core::Script;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::Future;
 use serde_json::Value;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
 use std::net::SocketAddr;
@@ -46,168 +40,138 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-#[derive(Default)]
-struct State {
-  resource_table: RefCell<ResourceTable>,
-  op_table: RefCell<OpTable<Self>>,
+fn create_isolate() -> CoreIsolate {
+  let state = BasicState::new();
+  state.register_op_json_sync("listen", op_listen);
+  state.register_op_json_sync("close", op_close);
+  state.register_op_json_async("accept", op_accept);
+  state.register_op_json_async("read", op_read);
+  state.register_op_json_async("write", op_write);
+
+  let startup_data = StartupData::Script(Script {
+    source: include_str!("http_bench_json_ops.js"),
+    filename: "http_bench_json_ops.js",
+  });
+
+  CoreIsolate::new(state, startup_data, false)
 }
 
-impl State {
-  fn new() -> Rc<Self> {
-    let s = Rc::new(Self::default());
-    s.register_op_json_sync("listen", Self::op_listen);
-    s.register_op_json_sync("close", Self::op_close);
-    s.register_op_json_async("accept", Self::op_accept);
-    s.register_op_json_async("read", Self::op_read);
-    s.register_op_json_async("write", Self::op_write);
-    s
-  }
-
-  fn op_listen(
-    &self,
-    _args: Value,
-    _bufs: &mut [ZeroCopyBuf],
-  ) -> Result<Value, ErrBox> {
-    debug!("listen");
-    let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-    let std_listener = std::net::TcpListener::bind(&addr)?;
-    let listener = TcpListener::from_std(std_listener)?;
-    let rid = self
-      .resource_table
-      .borrow_mut()
-      .add("tcpListener", Box::new(listener));
-    Ok(serde_json::json!({ "rid": rid }))
-  }
-
-  fn op_close(
-    &self,
-    args: Value,
-    _buf: &mut [ZeroCopyBuf],
-  ) -> Result<Value, ErrBox> {
-    let rid: u32 = args
-      .get("rid")
-      .unwrap()
-      .as_u64()
-      .unwrap()
-      .try_into()
-      .unwrap();
-    debug!("close rid={}", rid);
-
-    self
-      .resource_table
-      .borrow_mut()
-      .close(rid)
-      .map(|_| serde_json::json!(()))
-      .ok_or_else(ErrBox::bad_resource_id)
-  }
-
-  fn op_accept(
-    self: Rc<Self>,
-    args: Value,
-    _bufs: BufVec,
-  ) -> impl Future<Output = Result<Value, ErrBox>> {
-    let rid: u32 = args
-      .get("rid")
-      .unwrap()
-      .as_u64()
-      .unwrap()
-      .try_into()
-      .unwrap();
-    debug!("accept rid={}", rid);
-
-    poll_fn(move |cx| {
-      let resource_table = &mut self.resource_table.borrow_mut();
-      let listener = resource_table
-        .get_mut::<TcpListener>(rid)
-        .ok_or_else(ErrBox::bad_resource_id)?;
-      listener.poll_accept(cx)?.map(|(stream, _addr)| {
-        let rid = resource_table.add("tcpStream", Box::new(stream));
-        Ok(serde_json::json!({ "rid": rid }))
-      })
-    })
-  }
-
-  fn op_read(
-    self: Rc<Self>,
-    args: Value,
-    mut bufs: BufVec,
-  ) -> impl Future<Output = Result<Value, ErrBox>> {
-    assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-
-    let rid: u32 = args
-      .get("rid")
-      .unwrap()
-      .as_u64()
-      .unwrap()
-      .try_into()
-      .unwrap();
-    debug!("read rid={}", rid);
-
-    poll_fn(move |cx| -> Poll<Result<Value, ErrBox>> {
-      let resource_table = &mut self.resource_table.borrow_mut();
-      let stream = resource_table
-        .get_mut::<TcpStream>(rid)
-        .ok_or_else(ErrBox::bad_resource_id)?;
-      Pin::new(stream)
-        .poll_read(cx, &mut bufs[0])?
-        .map(|nread| Ok(serde_json::json!({ "nread": nread })))
-    })
-  }
-
-  fn op_write(
-    self: Rc<Self>,
-    args: Value,
-    bufs: BufVec,
-  ) -> impl Future<Output = Result<Value, ErrBox>> {
-    assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-
-    let rid: u32 = args
-      .get("rid")
-      .unwrap()
-      .as_u64()
-      .unwrap()
-      .try_into()
-      .unwrap();
-    debug!("write rid={}", rid);
-
-    poll_fn(move |cx| {
-      let resource_table = &mut self.resource_table.borrow_mut();
-      let stream = resource_table
-        .get_mut::<TcpStream>(rid)
-        .ok_or_else(ErrBox::bad_resource_id)?;
-      Pin::new(stream)
-        .poll_write(cx, &bufs[0])?
-        .map(|nwritten| Ok(serde_json::json!({ "nwritten": nwritten })))
-    })
-  }
+fn op_listen(
+  state: &BasicState,
+  _args: Value,
+  _bufs: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
+  debug!("listen");
+  let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
+  let std_listener = std::net::TcpListener::bind(&addr)?;
+  let listener = TcpListener::from_std(std_listener)?;
+  let rid = state
+    .resource_table
+    .borrow_mut()
+    .add("tcpListener", Box::new(listener));
+  Ok(serde_json::json!({ "rid": rid }))
 }
 
-impl OpRegistry for State {
-  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId> {
-    self.op_table.borrow().get_op_catalog()
-  }
+fn op_close(
+  state: &BasicState,
+  args: Value,
+  _buf: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
+  let rid: u32 = args
+    .get("rid")
+    .unwrap()
+    .as_u64()
+    .unwrap()
+    .try_into()
+    .unwrap();
+  debug!("close rid={}", rid);
 
-  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
-  {
-    let mut op_table = self.op_table.borrow_mut();
-    let (op_id, prev) = op_table.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(prev.is_none());
-    op_id
-  }
+  state
+    .resource_table
+    .borrow_mut()
+    .close(rid)
+    .map(|_| serde_json::json!(()))
+    .ok_or_else(ErrBox::bad_resource_id)
 }
 
-impl OpRouter for State {
-  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let op_fn = self
-      .op_table
-      .borrow()
-      .get_index(op_id)
-      .map(|(_, op_fn)| op_fn.clone())
-      .unwrap();
-    (op_fn)(self, bufs)
-  }
+fn op_accept(
+  state: Rc<BasicState>,
+  args: Value,
+  _bufs: BufVec,
+) -> impl Future<Output = Result<Value, ErrBox>> {
+  let rid: u32 = args
+    .get("rid")
+    .unwrap()
+    .as_u64()
+    .unwrap()
+    .try_into()
+    .unwrap();
+  debug!("accept rid={}", rid);
+
+  poll_fn(move |cx| {
+    let resource_table = &mut state.resource_table.borrow_mut();
+    let listener = resource_table
+      .get_mut::<TcpListener>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    listener.poll_accept(cx)?.map(|(stream, _addr)| {
+      let rid = resource_table.add("tcpStream", Box::new(stream));
+      Ok(serde_json::json!({ "rid": rid }))
+    })
+  })
+}
+
+fn op_read(
+  state: Rc<BasicState>,
+  args: Value,
+  mut bufs: BufVec,
+) -> impl Future<Output = Result<Value, ErrBox>> {
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+
+  let rid: u32 = args
+    .get("rid")
+    .unwrap()
+    .as_u64()
+    .unwrap()
+    .try_into()
+    .unwrap();
+  debug!("read rid={}", rid);
+
+  poll_fn(move |cx| -> Poll<Result<Value, ErrBox>> {
+    let resource_table = &mut state.resource_table.borrow_mut();
+    let stream = resource_table
+      .get_mut::<TcpStream>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    Pin::new(stream)
+      .poll_read(cx, &mut bufs[0])?
+      .map(|nread| Ok(serde_json::json!({ "nread": nread })))
+  })
+}
+
+fn op_write(
+  state: Rc<BasicState>,
+  args: Value,
+  bufs: BufVec,
+) -> impl Future<Output = Result<Value, ErrBox>> {
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+
+  let rid: u32 = args
+    .get("rid")
+    .unwrap()
+    .as_u64()
+    .unwrap()
+    .try_into()
+    .unwrap();
+  debug!("write rid={}", rid);
+
+  poll_fn(move |cx| {
+    let resource_table = &mut state.resource_table.borrow_mut();
+    let stream = resource_table
+      .get_mut::<TcpStream>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    Pin::new(stream)
+      .poll_write(cx, &bufs[0])?
+      .map(|nwritten| Ok(serde_json::json!({ "nwritten": nwritten })))
+  })
 }
 
 fn main() {
@@ -222,12 +186,7 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench_json_ops.js"),
-    filename: "http_bench_json_ops.js",
-  });
-  let isolate = CoreIsolate::new(State::new(), startup_data, false);
-
+  let isolate = create_isolate();
   let mut runtime = tokio::runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
