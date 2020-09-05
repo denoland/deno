@@ -68,7 +68,7 @@ swc_ecma_dep_graph = "0.3.0"
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
-tokio-tungstenite = { version = "0.10.1", features = ["connect"] }
+tokio-tungstenite = { version = "0.11.0", features = ["connect"] }
 tokio-rustls = "0.14.0"
 url = "2.1.1"
 webpki = "0.21.3"
