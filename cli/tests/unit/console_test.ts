@@ -745,8 +745,7 @@ unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");
   assertEquals(stringify("%i", 42), "42");
-  assertEquals(stringify("%i", "42"), "42");
-  assertEquals(stringify("%i", "42.0"), "42");
+  assertEquals(stringify("%i", "42"), "NaN");
   assertEquals(stringify("%i", 1.5), "1");
   assertEquals(stringify("%i", -0.5), "0");
   assertEquals(stringify("%i", ""), "NaN");
@@ -764,14 +763,13 @@ unitTest(function consoleTestWithFloatFormatSpecifier(): void {
   assertEquals(stringify("%f"), "%f");
   assertEquals(stringify("%f", 42.0), "42");
   assertEquals(stringify("%f", 42), "42");
-  assertEquals(stringify("%f", "42"), "42");
-  assertEquals(stringify("%f", "42.0"), "42");
+  assertEquals(stringify("%f", "42"), "NaN");
   assertEquals(stringify("%f", 1.5), "1.5");
   assertEquals(stringify("%f", -0.5), "-0.5");
   assertEquals(stringify("%f", Math.PI), "3.141592653589793");
   assertEquals(stringify("%f", ""), "NaN");
   assertEquals(stringify("%f", Symbol("foo")), "NaN");
-  assertEquals(stringify("%f", 5n), "5");
+  assertEquals(stringify("%f", 5n), "NaN");
   assertEquals(stringify("%f %f", 42, 43), "42 43");
   assertEquals(stringify("%f %f", 42), "42 %f");
 });
@@ -797,6 +795,12 @@ unitTest(function consoleTestWithObjectFormatSpecifier(): void {
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }",
   );
+});
+
+unitTest(function consoleTestWithStyleSpecifier(): void {
+  assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
+  assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
+  assertEquals(stripColor(stringify("%cfoo%cbar", "", "color: red")), "foobar");
 });
 
 unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
