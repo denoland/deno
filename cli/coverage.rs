@@ -188,7 +188,7 @@ impl PrettyCoverageReporter {
       println!(
         "{} {}",
         source_file.url.to_string(),
-        colors::gray(&line_coverage)
+        colors::yellow(&line_coverage)
       );
     } else {
       println!(
