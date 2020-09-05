@@ -304,15 +304,7 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), ErrBox> {
-  // Firstly fetch and compile module, this step ensures that module exists.
-  let mut fetch_flags = flags.clone();
-  fetch_flags.reload = true;
-  let global_state = GlobalState::new(fetch_flags)?;
-  let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
-  worker.preload_module(&main_module).await?;
-  installer::install(flags, &module_url, args, name, root, force)
-    .map_err(ErrBox::from)
+  installer::install(flags, &module_url, args, name, root, force).await
 }
 
 async fn lint_command(
