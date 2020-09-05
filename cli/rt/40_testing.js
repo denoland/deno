@@ -29,15 +29,14 @@
     return gray(italic(timeStr));
   }
 
+  function isAsyncFunction(fn) {
+    return fn.constructor.name === "AsyncFunction";
+  }
+
   // Wrap async test function to set timeout period, which allows
   // to interrupt too long operations and ever-pending promise.
   function setTimeoutForPromise(fn, ms = undefined) {
-    if (
-      ms === undefined ||
-      typeof ms !== "number" ||
-      typeof fn.then !== "function" ||
-      typeof fn.catch !== "function"
-    ) {
+    if (ms === undefined || typeof ms !== "number" || !isAsyncFunction(fn)) {
       return fn;
     }
 
@@ -119,7 +118,7 @@ finishing test case.`;
 
   // Main test function provided by Deno, as you can see it merely
   // creates a new object with "name" and "fn" fields.
-  function test(t, fn) {
+  function test(t, fn, ms) {
     let testDef;
     const defaults = {
       ignore: false,
@@ -135,7 +134,8 @@ finishing test case.`;
       if (!t) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { fn: fn, name: t, ...defaults };
+      const timeout = ms || 2000;
+      testDef = { fn: fn, name: t, timeout, ...defaults };
     } else {
       if (!t.fn) {
         throw new TypeError("Missing test function");
@@ -143,11 +143,11 @@ finishing test case.`;
       if (!t.name) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { ...defaults, ...t };
+      const timeout = t.timeout || 2000;
+      testDef = { ...defaults, ...t, timeout };
     }
 
-    // TODO(magurotuna) make timeout period configurable
-    testDef.fn = setTimeoutForPromise(testDef.fn, 1000);
+    testDef.fn = setTimeoutForPromise(testDef.fn, testDef.timeout);
 
     if (testDef.sanitizeOps) {
       testDef.fn = assertOps(testDef.fn);
