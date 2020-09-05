@@ -1,5 +1,3 @@
-/* eslint-disable */
-
 import { resolve } from "../path/mod.ts";
 
 const CLOCKID_REALTIME = 0;
@@ -8,132 +6,132 @@ const CLOCKID_PROCESS_CPUTIME_ID = 2;
 const CLOCKID_THREAD_CPUTIME_ID = 3;
 
 const ERRNO_SUCCESS = 0;
-const ERRNO_2BIG = 1;
+const _ERRNO_2BIG = 1;
 const ERRNO_ACCES = 2;
 const ERRNO_ADDRINUSE = 3;
 const ERRNO_ADDRNOTAVAIL = 4;
-const ERRNO_AFNOSUPPORT = 5;
-const ERRNO_AGAIN = 6;
-const ERRNO_ALREADY = 7;
+const _ERRNO_AFNOSUPPORT = 5;
+const _ERRNO_AGAIN = 6;
+const _ERRNO_ALREADY = 7;
 const ERRNO_BADF = 8;
-const ERRNO_BADMSG = 9;
+const _ERRNO_BADMSG = 9;
 const ERRNO_BUSY = 10;
-const ERRNO_CANCELED = 11;
-const ERRNO_CHILD = 12;
+const _ERRNO_CANCELED = 11;
+const _ERRNO_CHILD = 12;
 const ERRNO_CONNABORTED = 13;
 const ERRNO_CONNREFUSED = 14;
 const ERRNO_CONNRESET = 15;
-const ERRNO_DEADLK = 16;
-const ERRNO_DESTADDRREQ = 17;
-const ERRNO_DOM = 18;
-const ERRNO_DQUOT = 19;
-const ERRNO_EXIST = 20;
-const ERRNO_FAULT = 21;
-const ERRNO_FBIG = 22;
-const ERRNO_HOSTUNREACH = 23;
-const ERRNO_IDRM = 24;
-const ERRNO_ILSEQ = 25;
-const ERRNO_INPROGRESS = 26;
+const _ERRNO_DEADLK = 16;
+const _ERRNO_DESTADDRREQ = 17;
+const _ERRNO_DOM = 18;
+const _ERRNO_DQUOT = 19;
+const _ERRNO_EXIST = 20;
+const _ERRNO_FAULT = 21;
+const _ERRNO_FBIG = 22;
+const _ERRNO_HOSTUNREACH = 23;
+const _ERRNO_IDRM = 24;
+const _ERRNO_ILSEQ = 25;
+const _ERRNO_INPROGRESS = 26;
 const ERRNO_INTR = 27;
 const ERRNO_INVAL = 28;
-const ERRNO_IO = 29;
-const ERRNO_ISCONN = 30;
-const ERRNO_ISDIR = 31;
-const ERRNO_LOOP = 32;
-const ERRNO_MFILE = 33;
-const ERRNO_MLINK = 34;
-const ERRNO_MSGSIZE = 35;
-const ERRNO_MULTIHOP = 36;
-const ERRNO_NAMETOOLONG = 37;
-const ERRNO_NETDOWN = 38;
-const ERRNO_NETRESET = 39;
-const ERRNO_NETUNREACH = 40;
-const ERRNO_NFILE = 41;
-const ERRNO_NOBUFS = 42;
-const ERRNO_NODEV = 43;
+const _ERRNO_IO = 29;
+const _ERRNO_ISCONN = 30;
+const _ERRNO_ISDIR = 31;
+const _ERRNO_LOOP = 32;
+const _ERRNO_MFILE = 33;
+const _ERRNO_MLINK = 34;
+const _ERRNO_MSGSIZE = 35;
+const _ERRNO_MULTIHOP = 36;
+const _ERRNO_NAMETOOLONG = 37;
+const _ERRNO_NETDOWN = 38;
+const _ERRNO_NETRESET = 39;
+const _ERRNO_NETUNREACH = 40;
+const _ERRNO_NFILE = 41;
+const _ERRNO_NOBUFS = 42;
+const _ERRNO_NODEV = 43;
 const ERRNO_NOENT = 44;
-const ERRNO_NOEXEC = 45;
-const ERRNO_NOLCK = 46;
-const ERRNO_NOLINK = 47;
-const ERRNO_NOMEM = 48;
-const ERRNO_NOMSG = 49;
-const ERRNO_NOPROTOOPT = 50;
-const ERRNO_NOSPC = 51;
+const _ERRNO_NOEXEC = 45;
+const _ERRNO_NOLCK = 46;
+const _ERRNO_NOLINK = 47;
+const _ERRNO_NOMEM = 48;
+const _ERRNO_NOMSG = 49;
+const _ERRNO_NOPROTOOPT = 50;
+const _ERRNO_NOSPC = 51;
 const ERRNO_NOSYS = 52;
 const ERRNO_NOTCONN = 53;
 const ERRNO_NOTDIR = 54;
-const ERRNO_NOTEMPTY = 55;
-const ERRNO_NOTRECOVERABLE = 56;
-const ERRNO_NOTSOCK = 57;
-const ERRNO_NOTSUP = 58;
-const ERRNO_NOTTY = 59;
-const ERRNO_NXIO = 60;
-const ERRNO_OVERFLOW = 61;
-const ERRNO_OWNERDEAD = 62;
-const ERRNO_PERM = 63;
+const _ERRNO_NOTEMPTY = 55;
+const _ERRNO_NOTRECOVERABLE = 56;
+const _ERRNO_NOTSOCK = 57;
+const _ERRNO_NOTSUP = 58;
+const _ERRNO_NOTTY = 59;
+const _ERRNO_NXIO = 60;
+const _ERRNO_OVERFLOW = 61;
+const _ERRNO_OWNERDEAD = 62;
+const _ERRNO_PERM = 63;
 const ERRNO_PIPE = 64;
-const ERRNO_PROTO = 65;
-const ERRNO_PROTONOSUPPORT = 66;
-const ERRNO_PROTOTYPE = 67;
-const ERRNO_RANGE = 68;
-const ERRNO_ROFS = 69;
-const ERRNO_SPIPE = 70;
-const ERRNO_SRCH = 71;
-const ERRNO_STALE = 72;
+const _ERRNO_PROTO = 65;
+const _ERRNO_PROTONOSUPPORT = 66;
+const _ERRNO_PROTOTYPE = 67;
+const _ERRNO_RANGE = 68;
+const _ERRNO_ROFS = 69;
+const _ERRNO_SPIPE = 70;
+const _ERRNO_SRCH = 71;
+const _ERRNO_STALE = 72;
 const ERRNO_TIMEDOUT = 73;
-const ERRNO_TXTBSY = 74;
-const ERRNO_XDEV = 75;
-const ERRNO_NOTCAPABLE = 76;
+const _ERRNO_TXTBSY = 74;
+const _ERRNO_XDEV = 75;
+const _ERRNO_NOTCAPABLE = 76;
 
 const RIGHTS_FD_DATASYNC = 0x0000000000000001n;
 const RIGHTS_FD_READ = 0x0000000000000002n;
-const RIGHTS_FD_SEEK = 0x0000000000000004n;
-const RIGHTS_FD_FDSTAT_SET_FLAGS = 0x0000000000000008n;
-const RIGHTS_FD_SYNC = 0x0000000000000010n;
-const RIGHTS_FD_TELL = 0x0000000000000020n;
+const _RIGHTS_FD_SEEK = 0x0000000000000004n;
+const _RIGHTS_FD_FDSTAT_SET_FLAGS = 0x0000000000000008n;
+const _RIGHTS_FD_SYNC = 0x0000000000000010n;
+const _RIGHTS_FD_TELL = 0x0000000000000020n;
 const RIGHTS_FD_WRITE = 0x0000000000000040n;
-const RIGHTS_FD_ADVISE = 0x0000000000000080n;
+const _RIGHTS_FD_ADVISE = 0x0000000000000080n;
 const RIGHTS_FD_ALLOCATE = 0x0000000000000100n;
-const RIGHTS_PATH_CREATE_DIRECTORY = 0x0000000000000200n;
-const RIGHTS_PATH_CREATE_FILE = 0x0000000000000400n;
-const RIGHTS_PATH_LINK_SOURCE = 0x0000000000000800n;
-const RIGHTS_PATH_LINK_TARGET = 0x0000000000001000n;
-const RIGHTS_PATH_OPEN = 0x0000000000002000n;
+const _RIGHTS_PATH_CREATE_DIRECTORY = 0x0000000000000200n;
+const _RIGHTS_PATH_CREATE_FILE = 0x0000000000000400n;
+const _RIGHTS_PATH_LINK_SOURCE = 0x0000000000000800n;
+const _RIGHTS_PATH_LINK_TARGET = 0x0000000000001000n;
+const _RIGHTS_PATH_OPEN = 0x0000000000002000n;
 const RIGHTS_FD_READDIR = 0x0000000000004000n;
-const RIGHTS_PATH_READLINK = 0x0000000000008000n;
-const RIGHTS_PATH_RENAME_SOURCE = 0x0000000000010000n;
-const RIGHTS_PATH_RENAME_TARGET = 0x0000000000020000n;
-const RIGHTS_PATH_FILESTAT_GET = 0x0000000000040000n;
-const RIGHTS_PATH_FILESTAT_SET_SIZE = 0x0000000000080000n;
-const RIGHTS_PATH_FILESTAT_SET_TIMES = 0x0000000000100000n;
-const RIGHTS_FD_FILESTAT_GET = 0x0000000000200000n;
+const _RIGHTS_PATH_READLINK = 0x0000000000008000n;
+const _RIGHTS_PATH_RENAME_SOURCE = 0x0000000000010000n;
+const _RIGHTS_PATH_RENAME_TARGET = 0x0000000000020000n;
+const _RIGHTS_PATH_FILESTAT_GET = 0x0000000000040000n;
+const _RIGHTS_PATH_FILESTAT_SET_SIZE = 0x0000000000080000n;
+const _RIGHTS_PATH_FILESTAT_SET_TIMES = 0x0000000000100000n;
+const _RIGHTS_FD_FILESTAT_GET = 0x0000000000200000n;
 const RIGHTS_FD_FILESTAT_SET_SIZE = 0x0000000000400000n;
-const RIGHTS_FD_FILESTAT_SET_TIMES = 0x0000000000800000n;
-const RIGHTS_PATH_SYMLINK = 0x0000000001000000n;
-const RIGHTS_PATH_REMOVE_DIRECTORY = 0x0000000002000000n;
-const RIGHTS_PATH_UNLINK_FILE = 0x0000000004000000n;
-const RIGHTS_POLL_FD_READWRITE = 0x0000000008000000n;
-const RIGHTS_SOCK_SHUTDOWN = 0x0000000010000000n;
+const _RIGHTS_FD_FILESTAT_SET_TIMES = 0x0000000000800000n;
+const _RIGHTS_PATH_SYMLINK = 0x0000000001000000n;
+const _RIGHTS_PATH_REMOVE_DIRECTORY = 0x0000000002000000n;
+const _RIGHTS_PATH_UNLINK_FILE = 0x0000000004000000n;
+const _RIGHTS_POLL_FD_READWRITE = 0x0000000008000000n;
+const _RIGHTS_SOCK_SHUTDOWN = 0x0000000010000000n;
 
-const WHENCE_SET = 0;
-const WHENCE_CUR = 1;
-const WHENCE_END = 2;
+const _WHENCE_SET = 0;
+const _WHENCE_CUR = 1;
+const _WHENCE_END = 2;
 
 const FILETYPE_UNKNOWN = 0;
-const FILETYPE_BLOCK_DEVICE = 1;
+const _FILETYPE_BLOCK_DEVICE = 1;
 const FILETYPE_CHARACTER_DEVICE = 2;
 const FILETYPE_DIRECTORY = 3;
 const FILETYPE_REGULAR_FILE = 4;
-const FILETYPE_SOCKET_DGRAM = 5;
-const FILETYPE_SOCKET_STREAM = 6;
+const _FILETYPE_SOCKET_DGRAM = 5;
+const _FILETYPE_SOCKET_STREAM = 6;
 const FILETYPE_SYMBOLIC_LINK = 7;
 
-const ADVICE_NORMAL = 0;
-const ADVICE_SEQUENTIAL = 1;
-const ADVICE_RANDOM = 2;
-const ADVICE_WILLNEED = 3;
-const ADVICE_DONTNEED = 4;
-const ADVICE_NOREUSE = 5;
+const _ADVICE_NORMAL = 0;
+const _ADVICE_SEQUENTIAL = 1;
+const _ADVICE_RANDOM = 2;
+const _ADVICE_WILLNEED = 3;
+const _ADVICE_DONTNEED = 4;
+const _ADVICE_NOREUSE = 5;
 
 const FDFLAGS_APPEND = 0x0001;
 const FDFLAGS_DSYNC = 0x0002;
@@ -141,9 +139,9 @@ const FDFLAGS_NONBLOCK = 0x0004;
 const FDFLAGS_RSYNC = 0x0008;
 const FDFLAGS_SYNC = 0x0010;
 
-const FSTFLAGS_ATIM = 0x0001;
+const _FSTFLAGS_ATIM = 0x0001;
 const FSTFLAGS_ATIM_NOW = 0x0002;
-const FSTFLAGS_MTIM = 0x0004;
+const _FSTFLAGS_MTIM = 0x0004;
 const FSTFLAGS_MTIM_NOW = 0x0008;
 
 const LOOKUPFLAGS_SYMLINK_FOLLOW = 0x0001;
@@ -153,52 +151,52 @@ const OFLAGS_DIRECTORY = 0x0002;
 const OFLAGS_EXCL = 0x0004;
 const OFLAGS_TRUNC = 0x0008;
 
-const EVENTTYPE_CLOCK = 0;
-const EVENTTYPE_FD_READ = 1;
-const EVENTTYPE_FD_WRITE = 2;
+const _EVENTTYPE_CLOCK = 0;
+const _EVENTTYPE_FD_READ = 1;
+const _EVENTTYPE_FD_WRITE = 2;
 
-const EVENTRWFLAGS_FD_READWRITE_HANGUP = 1;
-const SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME = 1;
+const _EVENTRWFLAGS_FD_READWRITE_HANGUP = 1;
+const _SUBCLOCKFLAGS_SUBSCRIPTION_CLOCK_ABSTIME = 1;
 
-const SIGNAL_NONE = 0;
-const SIGNAL_HUP = 1;
-const SIGNAL_INT = 2;
-const SIGNAL_QUIT = 3;
-const SIGNAL_ILL = 4;
-const SIGNAL_TRAP = 5;
-const SIGNAL_ABRT = 6;
-const SIGNAL_BUS = 7;
-const SIGNAL_FPE = 8;
-const SIGNAL_KILL = 9;
-const SIGNAL_USR1 = 10;
-const SIGNAL_SEGV = 11;
-const SIGNAL_USR2 = 12;
-const SIGNAL_PIPE = 13;
-const SIGNAL_ALRM = 14;
-const SIGNAL_TERM = 15;
-const SIGNAL_CHLD = 16;
-const SIGNAL_CONT = 17;
-const SIGNAL_STOP = 18;
-const SIGNAL_TSTP = 19;
-const SIGNAL_TTIN = 20;
-const SIGNAL_TTOU = 21;
-const SIGNAL_URG = 22;
-const SIGNAL_XCPU = 23;
-const SIGNAL_XFSZ = 24;
-const SIGNAL_VTALRM = 25;
-const SIGNAL_PROF = 26;
-const SIGNAL_WINCH = 27;
-const SIGNAL_POLL = 28;
-const SIGNAL_PWR = 29;
-const SIGNAL_SYS = 30;
+const _SIGNAL_NONE = 0;
+const _SIGNAL_HUP = 1;
+const _SIGNAL_INT = 2;
+const _SIGNAL_QUIT = 3;
+const _SIGNAL_ILL = 4;
+const _SIGNAL_TRAP = 5;
+const _SIGNAL_ABRT = 6;
+const _SIGNAL_BUS = 7;
+const _SIGNAL_FPE = 8;
+const _SIGNAL_KILL = 9;
+const _SIGNAL_USR1 = 10;
+const _SIGNAL_SEGV = 11;
+const _SIGNAL_USR2 = 12;
+const _SIGNAL_PIPE = 13;
+const _SIGNAL_ALRM = 14;
+const _SIGNAL_TERM = 15;
+const _SIGNAL_CHLD = 16;
+const _SIGNAL_CONT = 17;
+const _SIGNAL_STOP = 18;
+const _SIGNAL_TSTP = 19;
+const _SIGNAL_TTIN = 20;
+const _SIGNAL_TTOU = 21;
+const _SIGNAL_URG = 22;
+const _SIGNAL_XCPU = 23;
+const _SIGNAL_XFSZ = 24;
+const _SIGNAL_VTALRM = 25;
+const _SIGNAL_PROF = 26;
+const _SIGNAL_WINCH = 27;
+const _SIGNAL_POLL = 28;
+const _SIGNAL_PWR = 29;
+const _SIGNAL_SYS = 30;
 
-const RIFLAGS_RECV_PEEK = 0x0001;
-const RIFLAGS_RECV_WAITALL = 0x0002;
+const _RIFLAGS_RECV_PEEK = 0x0001;
+const _RIFLAGS_RECV_WAITALL = 0x0002;
 
-const ROFLAGS_RECV_DATA_TRUNCATED = 0x0001;
+const _ROFLAGS_RECV_DATA_TRUNCATED = 0x0001;
 
-const SDFLAGS_RD = 0x0001;
-const SDFLAGS_WR = 0x0002;
+const _SDFLAGS_RD = 0x0001;
+const _SDFLAGS_WR = 0x0002;
 
 const PREOPENTYPE_DIR = 0;
 
@@ -228,9 +226,8 @@ const clock_time_monotonic = function (): bigint {
 const clock_time_process = clock_time_monotonic;
 const clock_time_thread = clock_time_monotonic;
 
-// deno-lint-ignore ban-types
-function syscall(target: Function): Function {
-  return function (...args: unknown[]): number {
+function syscall<T extends CallableFunction>(target: T) {
+  return function (...args: unknown[]) {
     try {
       return target(...args);
     } catch (err) {
@@ -284,6 +281,15 @@ function syscall(target: Function): Function {
   };
 }
 
+interface FileDescriptor {
+  rid?: number;
+  type?: number;
+  flags?: number;
+  path?: string;
+  vpath?: string;
+  entries?: Deno.DirEntry[];
+}
+
 export interface ContextOptions {
   args?: string[];
   env?: { [key: string]: string | undefined };
@@ -296,11 +302,9 @@ export default class Context {
   env: { [key: string]: string | undefined };
   memory: WebAssembly.Memory;
 
-  // deno-lint-ignore no-explicit-any
-  fds: any[];
+  fds: FileDescriptor[];
 
-  // deno-lint-ignore ban-types
-  exports: Record<string, Function>;
+  exports: Record<string, WebAssembly.ImportValue>;
 
   constructor(options: ContextOptions) {
     this.args = options.args ? options.args : [];
@@ -309,19 +313,19 @@ export default class Context {
 
     this.fds = [
       {
-        fdflags: FDFLAGS_APPEND,
+        rid: Deno.stdin.rid,
         type: FILETYPE_CHARACTER_DEVICE,
-        handle: Deno.stdin,
+        flags: FDFLAGS_APPEND,
       },
       {
-        fdflags: FDFLAGS_APPEND,
+        rid: Deno.stdout.rid,
         type: FILETYPE_CHARACTER_DEVICE,
-        handle: Deno.stdout,
+        flags: FDFLAGS_APPEND,
       },
       {
-        fdflags: FDFLAGS_APPEND,
+        rid: Deno.stderr.rid,
         type: FILETYPE_CHARACTER_DEVICE,
-        handle: Deno.stderr,
+        flags: FDFLAGS_APPEND,
       },
     ];
 
@@ -342,13 +346,16 @@ export default class Context {
     }
 
     this.exports = {
-      args_get: syscall((argv_ptr: number, argv_buf_ptr: number): number => {
+      args_get: syscall((
+        argv_ptr: number,
+        argv_buf_ptr: number,
+      ): number => {
         const args = this.args;
         const text = new TextEncoder();
         const heap = new Uint8Array(this.memory.buffer);
         const view = new DataView(this.memory.buffer);
 
-        for (let arg of args) {
+        for (const arg of args) {
           view.setUint32(argv_ptr, argv_buf_ptr, true);
           argv_ptr += 4;
 
@@ -360,44 +367,46 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      args_sizes_get: syscall(
-        (argc_out: number, argv_buf_size_out: number): number => {
-          const args = this.args;
-          const text = new TextEncoder();
-          const view = new DataView(this.memory.buffer);
+      args_sizes_get: syscall((
+        argc_out: number,
+        argv_buf_size_out: number,
+      ): number => {
+        const args = this.args;
+        const text = new TextEncoder();
+        const view = new DataView(this.memory.buffer);
 
-          view.setUint32(argc_out, args.length, true);
-          view.setUint32(
-            argv_buf_size_out,
-            args.reduce(function (acc, arg) {
-              return acc + text.encode(`${arg}\0`).length;
-            }, 0),
-            true,
-          );
+        view.setUint32(argc_out, args.length, true);
+        view.setUint32(
+          argv_buf_size_out,
+          args.reduce(function (acc, arg) {
+            return acc + text.encode(`${arg}\0`).length;
+          }, 0),
+          true,
+        );
 
-          return ERRNO_SUCCESS;
-        },
-      ),
+        return ERRNO_SUCCESS;
+      }),
 
-      environ_get: syscall(
-        (environ_ptr: number, environ_buf_ptr: number): number => {
-          const entries = Object.entries(this.env);
-          const text = new TextEncoder();
-          const heap = new Uint8Array(this.memory.buffer);
-          const view = new DataView(this.memory.buffer);
+      environ_get: syscall((
+        environ_ptr: number,
+        environ_buf_ptr: number,
+      ): number => {
+        const entries = Object.entries(this.env);
+        const text = new TextEncoder();
+        const heap = new Uint8Array(this.memory.buffer);
+        const view = new DataView(this.memory.buffer);
 
-          for (let [key, value] of entries) {
-            view.setUint32(environ_ptr, environ_buf_ptr, true);
-            environ_ptr += 4;
+        for (const [key, value] of entries) {
+          view.setUint32(environ_ptr, environ_buf_ptr, true);
+          environ_ptr += 4;
 
-            const data = text.encode(`${key}=${value}\0`);
-            heap.set(data, environ_buf_ptr);
-            environ_buf_ptr += data.length;
-          }
+          const data = text.encode(`${key}=${value}\0`);
+          heap.set(data, environ_buf_ptr);
+          environ_buf_ptr += data.length;
+        }
 
-          return ERRNO_SUCCESS;
-        },
-      ),
+        return ERRNO_SUCCESS;
+      }),
 
       environ_sizes_get: syscall((
         environc_out: number,
@@ -419,7 +428,10 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      clock_res_get: syscall((id: number, resolution_out: number): number => {
+      clock_res_get: syscall((
+        id: number,
+        resolution_out: number,
+      ): number => {
         const view = new DataView(this.memory.buffer);
 
         switch (id) {
@@ -478,28 +490,32 @@ export default class Context {
       }),
 
       fd_advise: syscall((
-        fd: number,
-        offset: bigint,
-        len: bigint,
-        advice: number,
+        _fd: number,
+        _offset: bigint,
+        _len: bigint,
+        _advice: number,
       ): number => {
         return ERRNO_NOSYS;
       }),
 
-      fd_allocate: syscall(
-        (fd: number, offset: bigint, len: bigint): number => {
-          return ERRNO_NOSYS;
-        },
-      ),
+      fd_allocate: syscall((
+        _fd: number,
+        _offset: bigint,
+        _len: bigint,
+      ): number => {
+        return ERRNO_NOSYS;
+      }),
 
-      fd_close: syscall((fd: number): number => {
+      fd_close: syscall((
+        fd: number,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        if (entry.handle) {
-          entry.handle.close();
+        if (entry.rid) {
+          Deno.close(entry.rid);
         }
 
         delete this.fds[fd];
@@ -507,45 +523,56 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_datasync: syscall((fd: number): number => {
+      fd_datasync: syscall((
+        fd: number,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        Deno.fdatasyncSync(entry.handle.rid);
+        Deno.fdatasyncSync(entry.rid!);
 
         return ERRNO_SUCCESS;
       }),
 
-      fd_fdstat_get: syscall((fd: number, stat_out: number): number => {
+      fd_fdstat_get: syscall((
+        fd: number,
+        stat_out: number,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
         const view = new DataView(this.memory.buffer);
-        view.setUint8(stat_out, entry.type);
-        view.setUint16(stat_out + 2, entry.fdflags, true);
+        view.setUint8(stat_out, entry.type!);
+        view.setUint16(stat_out + 2, entry.flags!, true);
         view.setBigUint64(stat_out + 8, 0n, true); // TODO
         view.setBigUint64(stat_out + 16, 0n, true); // TODO
 
         return ERRNO_SUCCESS;
       }),
 
-      fd_fdstat_set_flags: syscall((fd: number, flags: number): number => {
-        return ERRNO_NOSYS;
-      }),
-
-      fd_fdstat_set_rights: syscall((
-        fd: number,
-        fs_rights_base: bigint,
-        fs_rights_inheriting: bigint,
+      fd_fdstat_set_flags: syscall((
+        _fd: number,
+        _flags: number,
       ): number => {
         return ERRNO_NOSYS;
       }),
 
-      fd_filestat_get: syscall((fd: number, buf_out: number): number => {
+      fd_fdstat_set_rights: syscall((
+        _fd: number,
+        _fs_rights_base: bigint,
+        _fs_rights_inheriting: bigint,
+      ): number => {
+        return ERRNO_NOSYS;
+      }),
+
+      fd_filestat_get: syscall((
+        fd: number,
+        buf_out: number,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -553,7 +580,7 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
 
-        const info = Deno.fstatSync(entry.handle.rid);
+        const info = Deno.fstatSync(entry.rid!);
 
         if (entry.type === undefined) {
           switch (true) {
@@ -614,13 +641,16 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_filestat_set_size: syscall((fd: number, size: bigint): number => {
+      fd_filestat_set_size: syscall((
+        fd: number,
+        size: bigint,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        Deno.ftruncateSync(entry.handle.rid, Number(size));
+        Deno.ftruncateSync(entry.rid!, Number(size));
 
         return ERRNO_SUCCESS;
       }),
@@ -648,7 +678,7 @@ export default class Context {
           mtim = BigInt(Date.now() * 1e6);
         }
 
-        Deno.utimeSync(entry.path, Number(atim), Number(mtim));
+        Deno.utimeSync(entry.path!, Number(atim), Number(mtim));
 
         return ERRNO_SUCCESS;
       }),
@@ -661,11 +691,11 @@ export default class Context {
         nread_out: number,
       ): number => {
         const entry = this.fds[fd];
-        if (!entry) {
+        if (entry == null) {
           return ERRNO_BADF;
         }
 
-        const seek = entry.handle.seekSync(0, Deno.SeekMode.Current);
+        const seek = Deno.seekSync(entry.rid!, 0, Deno.SeekMode.Current);
         const view = new DataView(this.memory.buffer);
 
         let nread = 0;
@@ -677,16 +707,19 @@ export default class Context {
           iovs_ptr += 4;
 
           const data = new Uint8Array(this.memory.buffer, data_ptr, data_len);
-          nread += entry.handle.readSync(data);
+          nread += Deno.readSync(entry.rid!, data) as number;
         }
 
-        entry.handle.seekSync(seek, Deno.SeekMode.Start);
+        Deno.seekSync(entry.rid!, seek, Deno.SeekMode.Start);
         view.setUint32(nread_out, nread, true);
 
         return ERRNO_SUCCESS;
       }),
 
-      fd_prestat_get: syscall((fd: number, buf_out: number): number => {
+      fd_prestat_get: syscall((
+        fd: number,
+        buf_out: number,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -739,7 +772,7 @@ export default class Context {
           return ERRNO_BADF;
         }
 
-        const seek = entry.handle.seekSync(0, Deno.SeekMode.Current);
+        const seek = Deno.seekSync(entry.rid!, 0, Deno.SeekMode.Current);
         const view = new DataView(this.memory.buffer);
 
         let nwritten = 0;
@@ -751,10 +784,10 @@ export default class Context {
           iovs_ptr += 4;
 
           const data = new Uint8Array(this.memory.buffer, data_ptr, data_len);
-          nwritten += entry.handle.writeSync(data);
+          nwritten += Deno.writeSync(entry.rid!, data) as number;
         }
 
-        entry.handle.seekSync(seek, Deno.SeekMode.Start);
+        Deno.seekSync(entry.rid!, seek, Deno.SeekMode.Start);
         view.setUint32(nwritten_out, nwritten, true);
 
         return ERRNO_SUCCESS;
@@ -782,7 +815,7 @@ export default class Context {
           iovs_ptr += 4;
 
           const data = new Uint8Array(this.memory.buffer, data_ptr, data_len);
-          nread += entry.handle.readSync(data);
+          nread += Deno.readSync(entry.rid!, data) as number;
         }
 
         view.setUint32(nread_out, nread, true);
@@ -807,12 +840,12 @@ export default class Context {
 
         let bufused = 0;
 
-        const entries = Array.from(Deno.readDirSync(entry.path));
+        const entries = Array.from(Deno.readDirSync(entry.path!));
         for (let i = Number(cookie); i < entries.length; i++) {
           const name_data = new TextEncoder().encode(entries[i].name);
 
           const entry_info = Deno.statSync(
-            resolve(entry.path, entries[i].name),
+            resolve(entry.path!, entries[i].name),
           );
           const entry_data = new Uint8Array(24 + name_data.byteLength);
           const entry_view = new DataView(entry_data.buffer);
@@ -860,7 +893,10 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_renumber: syscall((fd: number, to: number): number => {
+      fd_renumber: syscall((
+        fd: number,
+        to: number,
+      ): number => {
         if (!this.fds[fd]) {
           return ERRNO_BADF;
         }
@@ -869,7 +905,10 @@ export default class Context {
           return ERRNO_BADF;
         }
 
-        this.fds[to].handle.close();
+        if (this.fds[to].rid) {
+          Deno.close(this.fds[to].rid!);
+        }
+
         this.fds[to] = this.fds[fd];
         delete this.fds[fd];
 
@@ -890,24 +929,29 @@ export default class Context {
         const view = new DataView(this.memory.buffer);
 
         // FIXME Deno does not support seeking with big integers
-        const newoffset = entry.handle.seekSync(Number(offset), whence);
+        const newoffset = Deno.seekSync(entry.rid!, Number(offset), whence);
         view.setBigUint64(newoffset_out, BigInt(newoffset), true);
 
         return ERRNO_SUCCESS;
       }),
 
-      fd_sync: syscall((fd: number): number => {
+      fd_sync: syscall((
+        fd: number,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        Deno.fsyncSync(entry.handle.rid);
+        Deno.fsyncSync(entry.rid!);
 
         return ERRNO_SUCCESS;
       }),
 
-      fd_tell: syscall((fd: number, offset_out: number): number => {
+      fd_tell: syscall((
+        fd: number,
+        offset_out: number,
+      ): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -915,7 +959,7 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
 
-        const offset = entry.handle.seekSync(0, Deno.SeekMode.Current);
+        const offset = Deno.seekSync(entry.rid!, 0, Deno.SeekMode.Current);
         view.setBigUint64(offset_out, BigInt(offset), true);
 
         return ERRNO_SUCCESS;
@@ -942,9 +986,8 @@ export default class Context {
           const data_len = view.getUint32(iovs_ptr, true);
           iovs_ptr += 4;
 
-          nwritten += entry.handle.writeSync(
-            new Uint8Array(this.memory.buffer, data_ptr, data_len),
-          );
+          const data = new Uint8Array(this.memory.buffer, data_ptr, data_len);
+          nwritten += Deno.writeSync(entry.rid!, data) as number;
         }
 
         view.setUint32(nwritten_out, nwritten, true);
@@ -968,7 +1011,7 @@ export default class Context {
 
         const text = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
-        const path = resolve(entry.path, text.decode(data));
+        const path = resolve(entry.path!, text.decode(data));
 
         Deno.mkdirSync(path);
 
@@ -993,7 +1036,7 @@ export default class Context {
 
         const text = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
-        const path = resolve(entry.path, text.decode(data));
+        const path = resolve(entry.path!, text.decode(data));
 
         const view = new DataView(this.memory.buffer);
 
@@ -1079,7 +1122,7 @@ export default class Context {
 
         const text = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
-        const path = resolve(entry.path, text.decode(data));
+        const path = resolve(entry.path!, text.decode(data));
 
         if ((fst_flags & FSTFLAGS_ATIM_NOW) == FSTFLAGS_ATIM_NOW) {
           atim = BigInt(Date.now()) * BigInt(1e6);
@@ -1119,13 +1162,13 @@ export default class Context {
           old_path_ptr,
           old_path_len,
         );
-        const old_path = resolve(old_entry.path, text.decode(old_data));
+        const old_path = resolve(old_entry.path!, text.decode(old_data));
         const new_data = new Uint8Array(
           this.memory.buffer,
           new_path_ptr,
           new_path_len,
         );
-        const new_path = resolve(new_entry.path, text.decode(new_data));
+        const new_path = resolve(new_entry.path!, text.decode(new_data));
 
         Deno.linkSync(old_path, new_path);
 
@@ -1154,7 +1197,7 @@ export default class Context {
 
         const text = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
-        const path = resolve(entry.path, text.decode(data));
+        const path = resolve(entry.path!, text.decode(data));
 
         if ((oflags & OFLAGS_DIRECTORY) !== 0) {
           // XXX (caspervonb) this isn't ideal as we can't get a rid for the
@@ -1163,9 +1206,9 @@ export default class Context {
           // around it for now.
           const entries = Array.from(Deno.readDirSync(path));
           const opened_fd = this.fds.push({
-            fdflags,
-            entries,
+            flags: fdflags,
             path,
+            entries,
           }) - 1;
 
           const view = new DataView(this.memory.buffer);
@@ -1241,10 +1284,10 @@ export default class Context {
           options.read = true;
         }
 
-        const handle = Deno.openSync(path, options);
+        const { rid } = Deno.openSync(path, options);
         const opened_fd = this.fds.push({
-          fdflags,
-          handle,
+          rid,
+          flags: fdflags,
           path,
         }) - 1;
 
@@ -1279,7 +1322,7 @@ export default class Context {
           path_ptr,
           path_len,
         );
-        const path = resolve(entry.path, new TextDecoder().decode(path_data));
+        const path = resolve(entry.path!, new TextDecoder().decode(path_data));
 
         const link = Deno.readLinkSync(path);
         const link_data = new TextEncoder().encode(link);
@@ -1307,7 +1350,7 @@ export default class Context {
 
         const text = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
-        const path = resolve(entry.path, text.decode(data));
+        const path = resolve(entry.path!, text.decode(data));
 
         if (!Deno.statSync(path).isDirectory) {
           return ERRNO_NOTDIR;
@@ -1342,13 +1385,13 @@ export default class Context {
           old_path_ptr,
           old_path_len,
         );
-        const old_path = resolve(old_entry.path, text.decode(old_data));
+        const old_path = resolve(old_entry.path!, text.decode(old_data));
         const new_data = new Uint8Array(
           this.memory.buffer,
           new_path_ptr,
           new_path_len,
         );
-        const new_path = resolve(new_entry.path, text.decode(new_data));
+        const new_path = resolve(new_entry.path!, text.decode(new_data));
 
         Deno.renameSync(old_path, new_path);
 
@@ -1383,7 +1426,7 @@ export default class Context {
           new_path_ptr,
           new_path_len,
         );
-        const new_path = resolve(entry.path, text.decode(new_data));
+        const new_path = resolve(entry.path!, text.decode(new_data));
 
         Deno.symlinkSync(old_path, new_path);
 
@@ -1406,7 +1449,7 @@ export default class Context {
 
         const text = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
-        const path = resolve(entry.path, text.decode(data));
+        const path = resolve(entry.path!, text.decode(data));
 
         Deno.removeSync(path);
 
@@ -1414,19 +1457,23 @@ export default class Context {
       }),
 
       poll_oneoff: syscall((
-        in_ptr: number,
-        out_ptr: number,
-        nsubscriptions: number,
-        nevents_out: number,
+        _in_ptr: number,
+        _out_ptr: number,
+        _nsubscriptions: number,
+        _nevents_out: number,
       ): number => {
         return ERRNO_NOSYS;
       }),
 
-      proc_exit: syscall((rval: number): never => {
+      proc_exit: syscall((
+        rval: number,
+      ): never => {
         Deno.exit(rval);
       }),
 
-      proc_raise: syscall((sig: number): number => {
+      proc_raise: syscall((
+        _sig: number,
+      ): number => {
         return ERRNO_NOSYS;
       }),
 
@@ -1434,7 +1481,10 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      random_get: syscall((buf_ptr: number, buf_len: number): number => {
+      random_get: syscall((
+        buf_ptr: number,
+        buf_len: number,
+      ): number => {
         const buffer = new Uint8Array(this.memory.buffer, buf_ptr, buf_len);
         crypto.getRandomValues(buffer);
 
@@ -1442,27 +1492,30 @@ export default class Context {
       }),
 
       sock_recv: syscall((
-        fd: number,
-        ri_data_ptr: number,
-        ri_data_len: number,
-        ri_flags: number,
-        ro_datalen_out: number,
-        ro_flags_out: number,
+        _fd: number,
+        _ri_data_ptr: number,
+        _ri_data_len: number,
+        _ri_flags: number,
+        _ro_datalen_out: number,
+        _ro_flags_out: number,
       ): number => {
         return ERRNO_NOSYS;
       }),
 
       sock_send: syscall((
-        fd: number,
-        si_data_ptr: number,
-        si_data_len: number,
-        si_flags: number,
-        so_datalen_out: number,
+        _fd: number,
+        _si_data_ptr: number,
+        _si_data_len: number,
+        _si_flags: number,
+        _so_datalen_out: number,
       ): number => {
         return ERRNO_NOSYS;
       }),
 
-      sock_shutdown: syscall((fd: number, how: number): number => {
+      sock_shutdown: syscall((
+        _fd: number,
+        _how: number,
+      ): number => {
         return ERRNO_NOSYS;
       }),
     };
