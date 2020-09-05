@@ -1,8 +1,7 @@
 # Import and Export Modules
 
 Deno by default standardizes the way modules are imported in both JavaScript and
-TypeScript. It follows the ECMAScript 6 `import/export` standard with one
-caveat, the file type must be included at the end of import statement.
+TypeScript using the ECMAScript 6 `import/export` standard.
 
 ```js
 import {
