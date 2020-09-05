@@ -797,7 +797,7 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Value {
 fn get_stat_json(metadata: std::fs::Metadata) -> Result<Value, ErrBox> {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
-    ($member: ident) => {{
+    ($member:ident) => {{
       #[cfg(unix)]
       {
         metadata.$member()
