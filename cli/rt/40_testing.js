@@ -278,13 +278,12 @@ finishing test case.`;
             endMessage.status = "passed";
             this.stats.passed++;
           } catch (err) {
+            endMessage.error = err;
             if (err instanceof TimeoutError) {
               endMessage.status = "timed out";
-              endMessage.error = err;
               this.stats.timedout++;
             } else {
               endMessage.status = "failed";
-              endMessage.error = err;
               this.stats.failed++;
             }
           }
