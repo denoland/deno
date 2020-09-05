@@ -31,23 +31,6 @@ pub trait OpRouter {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
 }
 
-#[derive(Default)]
-pub struct MockOpRouter {
-  _private: usize,
-}
-
-impl MockOpRouter {
-  pub fn new() -> Rc<Self> {
-    Default::default()
-  }
-}
-
-impl OpRouter for MockOpRouter {
-  fn route_op(self: Rc<Self>, _op_id: OpId, _bufs: BufVec) -> Op {
-    unimplemented!()
-  }
-}
-
 pub trait OpRegistry: OpRouter + 'static {
   fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId>;
 
@@ -82,7 +65,7 @@ pub trait OpRegistry: OpRouter + 'static {
       let promise_id = args
         .get("promiseId")
         .and_then(Value::as_u64)
-        .ok_or_else(|| ErrBox::type_error("`promiseId` missing or invalid"))?;
+        .ok_or_else(|| ErrBox::type_error("missing or invalid `promiseId`"))?;
       let bufs = bufs[1..].into();
       let fut = op_fn(state.clone(), args, bufs).map(move |result| {
         state.json_serialize_op_result(Some(promise_id), result)
@@ -159,107 +142,4 @@ impl<S> DerefMut for OpTable<S> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
   }
-}
-
-#[cfg(test_off)]
-#[test]
-fn test_op_registry() {
-  use crate::CoreIsolate;
-  use std::sync::atomic;
-  use std::sync::Arc;
-  let mut op_registry = SimpleOpRegistry::default();
-
-  let c = Arc::new(atomic::AtomicUsize::new(0));
-  let c_ = c.clone();
-
-  let test_id = op_registry.register("test", move |_, _| {
-    c_.fetch_add(1, atomic::Ordering::SeqCst);
-    Op::Sync(Box::new([]))
-  });
-  assert!(test_id != 0);
-
-  let mut expected = HashMap::new();
-  expected.insert("ops".to_string(), 0);
-  expected.insert("test".to_string(), 1);
-  assert_eq!(op_registry.name_to_id, expected);
-
-  let isolate = CoreIsolate::new(crate::StartupData::None, false);
-
-  let dispatch = op_registry.get(test_id).unwrap();
-  let state_rc = CoreIsolate::state(&isolate);
-  let mut state = state_rc.borrow_mut();
-  let res = dispatch(&mut state, &mut []);
-  if let Op::Sync(buf) = res {
-    assert_eq!(buf.len(), 0);
-  } else {
-    unreachable!();
-  }
-  assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
-}
-
-#[cfg(test_off)]
-#[test]
-fn register_op_during_call() {
-  use crate::CoreIsolate;
-  use std::sync::atomic;
-  use std::sync::Arc;
-  use std::sync::Mutex;
-  let op_registry = Arc::new(Mutex::new(SimpleOpRegistry::default()));
-
-  let c = Arc::new(atomic::AtomicUsize::new(0));
-  let c_ = c.clone();
-
-  let op_registry_ = op_registry.clone();
-
-  let test_id = {
-    let mut g = op_registry.lock().unwrap();
-    g.register("dynamic_register_op", move |_, _| {
-      let c__ = c_.clone();
-      let mut g = op_registry_.lock().unwrap();
-      g.register("test", move |_, _| {
-        c__.fetch_add(1, atomic::Ordering::SeqCst);
-        Op::Sync(Box::new([]))
-      });
-      Op::Sync(Box::new([]))
-    })
-  };
-  assert!(test_id != 0);
-
-  let isolate = CoreIsolate::new(crate::StartupData::None, false);
-
-  let dispatcher1 = {
-    let g = op_registry.lock().unwrap();
-    g.get(test_id).unwrap()
-  };
-  {
-    let state_rc = CoreIsolate::state(&isolate);
-    let mut state = state_rc.borrow_mut();
-    dispatcher1(&mut state, &mut []);
-  }
-
-  let mut expected = HashMap::new();
-  expected.insert("ops".to_string(), 0);
-  expected.insert("dynamic_register_op".to_string(), 1);
-  expected.insert("test".to_string(), 2);
-  {
-    let g = op_registry.lock().unwrap();
-    assert_eq!(g.name_to_id, expected);
-  }
-
-  let dispatcher2 = {
-    let g = op_registry.lock().unwrap();
-    g.get(2).unwrap()
-  };
-  let state_rc = CoreIsolate::state(&isolate);
-  let mut state = state_rc.borrow_mut();
-  let res = dispatcher2(&mut state, &mut []);
-  if let Op::Sync(buf) = res {
-    assert_eq!(buf.len(), 0);
-  } else {
-    unreachable!();
-  }
-  assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
-
-  let g = op_registry.lock().unwrap();
-  assert!(g.get(100).is_none());
 }

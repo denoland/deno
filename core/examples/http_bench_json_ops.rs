@@ -192,20 +192,18 @@ impl OpRegistry for State {
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
     let mut op_table = self.op_table.borrow_mut();
-    let (op_id, removed_op_fn) =
-      op_table.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(removed_op_fn.is_none());
-    op_id.try_into().unwrap()
+    let (op_id, prev) = op_table.insert_full(name.to_owned(), Rc::new(op_fn));
+    assert!(prev.is_none());
+    op_id
   }
 }
 
 impl OpRouter for State {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let index = op_id.try_into().unwrap();
     let op_fn = self
       .op_table
       .borrow()
-      .get_index(index)
+      .get_index(op_id)
       .map(|(_, op_fn)| op_fn.clone())
       .unwrap();
     (op_fn)(self, bufs)

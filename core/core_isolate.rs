@@ -124,7 +124,7 @@ pub struct CoreIsolateState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub op_router: Rc<dyn OpRouter>,
+  pub(crate) op_router: Rc<dyn OpRouter>,
   waker: AtomicWaker,
 }
 
@@ -731,6 +731,7 @@ fn boxed_slice_to_uint8array<'sc>(
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::BasicState;
   use crate::BufVec;
   use futures::future::lazy;
   use futures::FutureExt;
@@ -1220,7 +1221,7 @@ pub mod tests {
   #[test]
   fn syntax_error() {
     let mut isolate =
-      CoreIsolate::new(MockOpRouter::new(), StartupData::None, false);
+      CoreIsolate::new(BasicState::new(), StartupData::None, false);
     let src = "hocuspocus(";
     let r = isolate.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1246,14 +1247,13 @@ pub mod tests {
   fn will_snapshot() {
     let snapshot = {
       let mut isolate =
-        CoreIsolate::new(MockOpRouter::new(), StartupData::None, true);
+        CoreIsolate::new(BasicState::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       isolate.snapshot()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut isolate2 =
-      CoreIsolate::new(MockOpRouter::new(), startup_data, false);
+    let mut isolate2 = CoreIsolate::new(BasicState::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1261,15 +1261,14 @@ pub mod tests {
   fn test_from_boxed_snapshot() {
     let snapshot = {
       let mut isolate =
-        CoreIsolate::new(MockOpRouter::new(), StartupData::None, true);
+        CoreIsolate::new(BasicState::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*isolate.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut isolate2 =
-      CoreIsolate::new(MockOpRouter::new(), startup_data, false);
+    let mut isolate2 = CoreIsolate::new(BasicState::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1280,7 +1279,7 @@ pub mod tests {
       max: 20 * 1024, // 20 kB
     };
     let mut isolate = CoreIsolate::with_heap_limits(
-      MockOpRouter::new(),
+      BasicState::new(),
       StartupData::None,
       heap_limits,
     );
@@ -1312,7 +1311,7 @@ pub mod tests {
   #[test]
   fn test_heap_limit_cb_remove() {
     let mut isolate =
-      CoreIsolate::new(MockOpRouter::new(), StartupData::None, false);
+      CoreIsolate::new(BasicState::new(), StartupData::None, false);
 
     isolate.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1328,7 +1327,7 @@ pub mod tests {
       max: 20 * 1024, // 20 kB
     };
     let mut isolate = CoreIsolate::with_heap_limits(
-      MockOpRouter::new(),
+      BasicState::new(),
       StartupData::None,
       heap_limits,
     );

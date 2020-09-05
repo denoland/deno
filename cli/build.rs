@@ -3,62 +3,14 @@
 mod op_fetch_asset;
 
 use deno_core::js_check;
-use deno_core::BufVec;
+use deno_core::BasicState;
 use deno_core::CoreIsolate;
-use deno_core::Op;
-use deno_core::OpId;
 use deno_core::OpRegistry;
-use deno_core::OpRouter;
-use deno_core::OpTable;
 use deno_core::StartupData;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
-
-#[derive(Default)]
-struct BasicState {
-  op_table: RefCell<OpTable<Self>>,
-}
-
-impl BasicState {
-  pub fn new() -> Rc<Self> {
-    Default::default()
-  }
-}
-
-impl OpRegistry for BasicState {
-  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId> {
-    self.op_table.borrow().get_op_catalog()
-  }
-
-  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
-  {
-    let mut op_table = self.op_table.borrow_mut();
-    let (op_id, removed_op_fn) =
-      op_table.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(removed_op_fn.is_none());
-    op_id.try_into().unwrap()
-  }
-}
-
-impl OpRouter for BasicState {
-  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let index = op_id.try_into().unwrap();
-    let op_fn = self
-      .op_table
-      .borrow()
-      .get_index(index)
-      .map(|(_, op_fn)| op_fn.clone())
-      .unwrap();
-    (op_fn)(self, bufs)
-  }
-}
 
 fn create_snapshot(
   mut isolate: CoreIsolate,

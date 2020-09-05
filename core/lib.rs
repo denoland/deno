@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(clippy::type_complexity)]
-
 #[macro_use]
 extern crate downcast_rs;
 extern crate futures;
@@ -10,6 +8,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+mod basic_state;
 mod bindings;
 mod core_isolate;
 mod errors;
@@ -26,6 +25,7 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
+pub use crate::basic_state::BasicState;
 pub use crate::core_isolate::js_check;
 pub use crate::core_isolate::CoreIsolate;
 pub use crate::core_isolate::CoreIsolateState;
@@ -50,7 +50,6 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
-pub use crate::ops::MockOpRouter;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
