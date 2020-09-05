@@ -2,20 +2,19 @@
 
 use crate::CoreIsolate;
 use crate::CoreIsolateState;
+use crate::ErrBox;
 use crate::EsIsolate;
 use crate::JSError;
 use crate::Op;
+use crate::OpId;
 use crate::ZeroCopyBuf;
-
 use futures::future::FutureExt;
 use rusty_v8 as v8;
-use url::Url;
-use v8::MapFnTo;
-
 use std::cell::Cell;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::option::Option;
+use url::Url;
+use v8::MapFnTo;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -381,8 +380,11 @@ fn send<'s>(
   let state_rc = CoreIsolate::state(scope);
   let state = state_rc.borrow_mut();
 
-  let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
-    Ok(op_id) => op_id.value().try_into().unwrap(),
+  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map_err(ErrBox::from)
+    .and_then(|l| OpId::try_from(l.value()).map_err(ErrBox::from))
+  {
+    Ok(op_id) => op_id,
     Err(err) => {
       let msg = format!("invalid op id: {}", err);
       let msg = v8::String::new(scope, &msg).unwrap();
