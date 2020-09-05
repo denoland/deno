@@ -42,10 +42,11 @@ pub trait OpRegistry: OpRouter + 'static {
       ) -> Result<serde_json::Value, ErrBox>
       + 'static,
   {
-    let base_op_fn = move |op_registry: Rc<Self>, mut bufs: BufVec| -> Op {
-      let value = serde_json::from_slice(&bufs[0]).unwrap();
-      let result = op_fn(&op_registry, value, &mut bufs[1..]);
-      let buf = op_registry.json_serialize_op_result(None, result);
+    let base_op_fn = move |state: Rc<Self>, mut bufs: BufVec| -> Op {
+      let result = serde_json::from_slice(&bufs[0])
+        .map_err(ErrBox::from)
+        .and_then(|args| op_fn(&state, args, &mut bufs[1..]));
+      let buf = state.json_serialize_op_result(None, result);
       Op::Sync(buf)
     };
 
@@ -57,14 +58,26 @@ pub trait OpRegistry: OpRouter + 'static {
     F: Fn(Rc<Self>, serde_json::Value, BufVec) -> R + 'static,
     R: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
   {
-    let base_op_fn = move |op_registry: Rc<Self>, bufs: BufVec| -> Op {
-      let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
-      let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
+    let try_dispatch_op = move |state: Rc<Self>,
+                                bufs: BufVec|
+          -> Result<Op, ErrBox> {
+      let args: Value = serde_json::from_slice(&bufs[0])?;
+      let promise_id = args
+        .get("promiseId")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ErrBox::type_error("`promiseId` missing or invalid"))?;
       let bufs = bufs[1..].into();
-      let fut = op_fn(op_registry.clone(), value, bufs).map(move |result| {
-        op_registry.json_serialize_op_result(Some(promise_id), result)
+      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
+        state.json_serialize_op_result(Some(promise_id), result)
       });
-      Op::Async(Box::pin(fut))
+      Ok(Op::Async(Box::pin(fut)))
+    };
+
+    let base_op_fn = move |state: Rc<Self>, bufs: BufVec| -> Op {
+      match try_dispatch_op(state.clone(), bufs) {
+        Ok(op) => op,
+        Err(err) => Op::Sync(state.json_serialize_op_result(None, Err(err))),
+      }
     };
 
     self.register_op(name, base_op_fn)
@@ -74,12 +87,12 @@ pub trait OpRegistry: OpRouter + 'static {
   where
     for<'a> F: Fn(&'a Self, &'a mut dyn FnMut((String, OpId))) + 'static,
   {
-    let base_op_fn = move |op_registry: Rc<Self>, _: BufVec| -> Op {
+    let base_op_fn = move |state: Rc<Self>, _: BufVec| -> Op {
       let mut index = HashMap::<String, OpId>::new();
       let mut visitor = |(k, v)| {
         assert!(index.insert(k, v).is_none());
       };
-      op_fn(&op_registry, &mut visitor);
+      op_fn(&state, &mut visitor);
       let buf = serde_json::to_vec(&index).unwrap().into();
       Op::Sync(buf)
     };
@@ -126,8 +139,8 @@ struct SimpleOpRegistryInner {
 impl SimpleOpRegistry {
   pub fn new() -> Rc<Self> {
     let self_rc = Rc::new(Self(Default::default()));
-    self_rc.register_op_json_catalog(|op_registry, visitor| {
-      op_registry
+    self_rc.register_op_json_catalog(|state, visitor| {
+      state
         .0
         .borrow()
         .name_to_id

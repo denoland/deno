@@ -728,11 +728,14 @@ fn boxed_slice_to_uint8array<'sc>(
     .expect("Failed to create UintArray8")
 }
 
-#[cfg(test_off)]
+#[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::BufVec;
   use futures::future::lazy;
+  use futures::FutureExt;
   use std::ops::FnOnce;
+  use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
 
@@ -760,7 +763,7 @@ pub mod tests {
     )
   }
 
-  pub enum Mode {
+  enum Mode {
     Async,
     AsyncUnref,
     AsyncZeroCopy(u8),
@@ -770,80 +773,89 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
-    let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let dispatch_count_ = dispatch_count.clone();
+  struct TestState {
+    mode: Mode,
+    dispatch_count: Arc<AtomicUsize>,
+  }
 
-    let mut isolate = CoreIsolate::new(StartupData::None, false);
-
-    let dispatcher =
-      move |_state: &CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| -> Op {
-        dispatch_count_.fetch_add(1, Ordering::Relaxed);
-        match mode {
-          Mode::Async => {
-            assert_eq!(zero_copy.len(), 1);
-            assert_eq!(zero_copy[0].len(), 1);
-            assert_eq!(zero_copy[0][0], 42);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ready(buf).boxed())
-          }
-          Mode::AsyncUnref => {
-            assert_eq!(zero_copy.len(), 1);
-            assert_eq!(zero_copy[0].len(), 1);
-            assert_eq!(zero_copy[0][0], 42);
-            let fut = async {
-              // This future never finish.
-              futures::future::pending::<()>().await;
-              vec![43u8].into_boxed_slice()
-            };
-            Op::AsyncUnref(fut.boxed())
-          }
-          Mode::AsyncZeroCopy(count) => {
-            assert_eq!(zero_copy.len(), count as usize);
-            zero_copy.iter().enumerate().for_each(|(idx, buf)| {
-              assert_eq!(buf.len(), 1);
-              assert_eq!(idx, buf[0] as usize);
-            });
-
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ready(buf).boxed())
-          }
-          Mode::OverflowReqSync => {
-            assert_eq!(zero_copy.len(), 1);
-            assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowResSync => {
-            assert_eq!(zero_copy.len(), 1);
-            assert_eq!(zero_copy[0].len(), 1);
-            assert_eq!(zero_copy[0][0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 99;
-            let buf = vec.into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowReqAsync => {
-            assert_eq!(zero_copy.len(), 1);
-            assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ready(buf).boxed())
-          }
-          Mode::OverflowResAsync => {
-            assert_eq!(zero_copy.len(), 1);
-            assert_eq!(zero_copy[0].len(), 1);
-            assert_eq!(zero_copy[0][0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 4;
-            let buf = vec.into_boxed_slice();
-            Op::Async(futures::future::ready(buf).boxed())
-          }
+  impl OpRouter for TestState {
+    fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+      if op_id != 1 {
+        return Op::NotFound;
+      }
+      self.dispatch_count.fetch_add(1, Ordering::Relaxed);
+      match self.mode {
+        Mode::Async => {
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
         }
-      };
+        Mode::AsyncUnref => {
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
+          let fut = async {
+            // This future never finish.
+            futures::future::pending::<()>().await;
+            vec![43u8].into_boxed_slice()
+          };
+          Op::AsyncUnref(fut.boxed())
+        }
+        Mode::AsyncZeroCopy(count) => {
+          assert_eq!(bufs.len(), count as usize);
+          bufs.iter().enumerate().for_each(|(idx, buf)| {
+            assert_eq!(buf.len(), 1);
+            assert_eq!(idx, buf[0] as usize);
+          });
 
-    isolate.register_op("test", dispatcher);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
+        }
+        Mode::OverflowReqSync => {
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Sync(buf)
+        }
+        Mode::OverflowResSync => {
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
+          let mut vec = Vec::<u8>::new();
+          vec.resize(100 * 1024 * 1024, 0);
+          vec[0] = 99;
+          let buf = vec.into_boxed_slice();
+          Op::Sync(buf)
+        }
+        Mode::OverflowReqAsync => {
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
+        }
+        Mode::OverflowResAsync => {
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
+          let mut vec = Vec::<u8>::new();
+          vec.resize(100 * 1024 * 1024, 0);
+          vec[0] = 4;
+          let buf = vec.into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
+        }
+      }
+    }
+  }
+
+  fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
+    let dispatch_count = Arc::new(AtomicUsize::new(0));
+    let test_state = Rc::new(TestState {
+      mode,
+      dispatch_count: dispatch_count.clone(),
+    });
+    let mut isolate = CoreIsolate::new(test_state, StartupData::None, false);
 
     js_check(isolate.execute(
       "setup.js",
@@ -1205,9 +1217,27 @@ pub mod tests {
     });
   }
 
+  #[derive(Default)]
+  struct MockState {
+    _private: usize,
+  }
+
+  impl MockState {
+    fn new() -> Rc<Self> {
+      Default::default()
+    }
+  }
+
+  impl OpRouter for MockState {
+    fn route_op(self: Rc<Self>, _op_id: OpId, _bufs: BufVec) -> Op {
+      unimplemented!()
+    }
+  }
+
   #[test]
   fn syntax_error() {
-    let mut isolate = CoreIsolate::new(StartupData::None, false);
+    let mut isolate =
+      CoreIsolate::new(MockState::new(), StartupData::None, false);
     let src = "hocuspocus(";
     let r = isolate.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1232,27 +1262,29 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      let mut isolate =
+        CoreIsolate::new(MockState::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       isolate.snapshot()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    let mut isolate2 = CoreIsolate::new(MockState::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      let mut isolate =
+        CoreIsolate::new(MockState::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*isolate.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    let mut isolate2 = CoreIsolate::new(MockState::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1262,8 +1294,11 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut isolate =
-      CoreIsolate::with_heap_limits(StartupData::None, heap_limits);
+    let mut isolate = CoreIsolate::with_heap_limits(
+      MockState::new(),
+      StartupData::None,
+      heap_limits,
+    );
     let cb_handle = isolate.thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
@@ -1291,7 +1326,8 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_remove() {
-    let mut isolate = CoreIsolate::new(StartupData::None, false);
+    let mut isolate =
+      CoreIsolate::new(MockState::new(), StartupData::None, false);
 
     isolate.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1306,8 +1342,11 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut isolate =
-      CoreIsolate::with_heap_limits(StartupData::None, heap_limits);
+    let mut isolate = CoreIsolate::with_heap_limits(
+      MockState::new(),
+      StartupData::None,
+      heap_limits,
+    );
     let cb_handle = isolate.thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());

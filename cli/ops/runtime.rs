@@ -23,7 +23,7 @@ pub fn init(s: &Rc<State>) {
 
 fn op_catalog(state: &State, visitor: &mut dyn FnMut((String, OpId))) {
   state
-    .op_registry
+    .op_table
     .borrow()
     .keys()
     .cloned()

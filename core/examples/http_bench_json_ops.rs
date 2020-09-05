@@ -17,6 +17,7 @@ use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::Future;
 use indexmap::IndexMap;
+use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env;
@@ -48,7 +49,7 @@ impl log::Log for Logger {
 #[derive(Default)]
 struct State {
   resource_table: RefCell<ResourceTable>,
-  op_registry: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
+  op_table: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
 }
 
 impl State {
@@ -65,7 +66,7 @@ impl State {
 
   fn op_catalog(state: &State, visitor: &mut dyn FnMut((String, OpId))) {
     state
-      .op_registry
+      .op_table
       .borrow()
       .keys()
       .cloned()
@@ -75,9 +76,9 @@ impl State {
 
   fn op_listen(
     &self,
-    _args: serde_json::Value,
+    _args: Value,
     _bufs: &mut [ZeroCopyBuf],
-  ) -> Result<serde_json::Value, ErrBox> {
+  ) -> Result<Value, ErrBox> {
     debug!("listen");
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
     let std_listener = std::net::TcpListener::bind(&addr)?;
@@ -91,10 +92,16 @@ impl State {
 
   fn op_close(
     &self,
-    args: serde_json::Value,
+    args: Value,
     _buf: &mut [ZeroCopyBuf],
-  ) -> Result<serde_json::Value, ErrBox> {
-    let rid = args.get("rid").unwrap().as_u64().unwrap() as u32;
+  ) -> Result<Value, ErrBox> {
+    let rid: u32 = args
+      .get("rid")
+      .unwrap()
+      .as_u64()
+      .unwrap()
+      .try_into()
+      .unwrap();
     debug!("close rid={}", rid);
 
     self
@@ -107,10 +114,16 @@ impl State {
 
   fn op_accept(
     self: Rc<Self>,
-    args: serde_json::Value,
+    args: Value,
     _bufs: BufVec,
-  ) -> impl Future<Output = Result<serde_json::Value, ErrBox>> {
-    let rid = args.get("rid").unwrap().as_u64().unwrap() as u32;
+  ) -> impl Future<Output = Result<Value, ErrBox>> {
+    let rid: u32 = args
+      .get("rid")
+      .unwrap()
+      .as_u64()
+      .unwrap()
+      .try_into()
+      .unwrap();
     debug!("accept rid={}", rid);
 
     poll_fn(move |cx| {
@@ -127,15 +140,21 @@ impl State {
 
   fn op_read(
     self: Rc<Self>,
-    args: serde_json::Value,
+    args: Value,
     mut bufs: BufVec,
-  ) -> impl Future<Output = Result<serde_json::Value, ErrBox>> {
+  ) -> impl Future<Output = Result<Value, ErrBox>> {
     assert_eq!(bufs.len(), 1, "Invalid number of arguments");
 
-    let rid = args.get("rid").unwrap().as_u64().unwrap() as u32;
+    let rid: u32 = args
+      .get("rid")
+      .unwrap()
+      .as_u64()
+      .unwrap()
+      .try_into()
+      .unwrap();
     debug!("read rid={}", rid);
 
-    poll_fn(move |cx| -> Poll<Result<serde_json::Value, ErrBox>> {
+    poll_fn(move |cx| -> Poll<Result<Value, ErrBox>> {
       let resource_table = &mut self.resource_table.borrow_mut();
       let stream = resource_table
         .get_mut::<TcpStream>(rid)
@@ -148,12 +167,18 @@ impl State {
 
   fn op_write(
     self: Rc<Self>,
-    args: serde_json::Value,
+    args: Value,
     bufs: BufVec,
-  ) -> impl Future<Output = Result<serde_json::Value, ErrBox>> {
+  ) -> impl Future<Output = Result<Value, ErrBox>> {
     assert_eq!(bufs.len(), 1, "Invalid number of arguments");
 
-    let rid = args.get("rid").unwrap().as_u64().unwrap() as u32;
+    let rid: u32 = args
+      .get("rid")
+      .unwrap()
+      .as_u64()
+      .unwrap()
+      .try_into()
+      .unwrap();
     debug!("write rid={}", rid);
 
     poll_fn(move |cx| {
@@ -173,9 +198,9 @@ impl OpRegistry for State {
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
-    let mut op_registry = self.op_registry.borrow_mut();
+    let mut op_table = self.op_table.borrow_mut();
     let (op_id, removed_op_fn) =
-      op_registry.insert_full(name.to_owned(), Rc::new(op_fn));
+      op_table.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(removed_op_fn.is_none());
     op_id.try_into().unwrap()
   }
@@ -185,7 +210,7 @@ impl OpRouter for State {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
     let index = op_id.try_into().unwrap();
     let op_fn = self
-      .op_registry
+      .op_table
       .borrow()
       .get_index(index)
       .map(|(_, op_fn)| op_fn.clone())

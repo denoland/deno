@@ -45,22 +45,20 @@ pub fn op_open_plugin(
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
 
-  let resource_table = state.resource_table.borrow_mut();
-
-  let rid = state
-    .resource_table
-    .borrow_mut()
-    .add("plugin", Box::new(plugin_resource));
-
-  let plugin_resource_ref = resource_table.get::<PluginResource>(rid).unwrap();
-  let deno_plugin_init = *unsafe {
-    plugin_resource_ref
-      .lib
-      .symbol::<plugin_api::InitFn>("deno_plugin_init")
-      .unwrap()
-  };
-
-  drop(resource_table);
+  let rid;
+  let deno_plugin_init;
+  {
+    let mut resource_table = state.resource_table.borrow_mut();
+    rid = resource_table.add("plugin", Box::new(plugin_resource));
+    deno_plugin_init = *unsafe {
+      resource_table
+        .get::<PluginResource>(rid)
+        .unwrap()
+        .lib
+        .symbol::<plugin_api::InitFn>("deno_plugin_init")
+        .unwrap()
+    };
+  }
 
   let mut interface = PluginInterface::new(state, &plugin_lib);
   deno_plugin_init(&mut interface);

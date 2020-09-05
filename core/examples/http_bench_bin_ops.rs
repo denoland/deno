@@ -83,7 +83,7 @@ impl From<Record> for RecordBuf {
 #[derive(Default)]
 struct State {
   resource_table: RefCell<ResourceTable>,
-  op_registry: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
+  op_table: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
 }
 
 impl State {
@@ -100,7 +100,7 @@ impl State {
 
   fn op_catalog(state: &State, visitor: &mut dyn FnMut((String, OpId))) {
     state
-      .op_registry
+      .op_table
       .borrow()
       .keys()
       .cloned()
@@ -251,9 +251,9 @@ impl OpRegistry for State {
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
-    let mut op_registry = self.op_registry.borrow_mut();
+    let mut op_table = self.op_table.borrow_mut();
     let (op_id, removed_op_fn) =
-      op_registry.insert_full(name.to_owned(), Rc::new(op_fn));
+      op_table.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(removed_op_fn.is_none());
     op_id.try_into().unwrap()
   }
@@ -263,7 +263,7 @@ impl OpRouter for State {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
     let index = op_id.try_into().unwrap();
     let op_fn = self
-      .op_registry
+      .op_table
       .borrow()
       .get_index(index)
       .map(|(_, op_fn)| op_fn.clone())

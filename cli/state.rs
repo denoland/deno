@@ -57,7 +57,7 @@ pub struct State {
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
   pub resource_table: RefCell<ResourceTable>,
-  pub op_registry: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
+  pub op_table: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
 }
 
 impl State {
@@ -205,7 +205,7 @@ impl State {
       is_internal,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
       resource_table: Default::default(),
-      op_registry: Default::default(),
+      op_table: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -235,7 +235,7 @@ impl State {
       is_internal: false,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
       resource_table: Default::default(),
-      op_registry: Default::default(),
+      op_table: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -336,14 +336,52 @@ impl State {
 
 impl OpRouter for State {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+    // TODO: consider removing these 'bytes' metrics.
+    let mut buf_len_iter = bufs.iter().map(|buf| buf.len());
+    let bytes_sent_control = buf_len_iter.next().unwrap_or(0);
+    let bytes_sent_data = buf_len_iter.sum();
+
     let index: usize = op_id.try_into().unwrap();
     let op_fn = self
-      .op_registry
+      .op_table
       .borrow()
       .get_index(index)
       .map(|(_, op_fn)| op_fn.clone())
       .unwrap();
-    (op_fn)(self, bufs)
+
+    let self_ = self.clone();
+    let op = (op_fn)(self_, bufs);
+
+    let self_ = self.clone();
+    let mut metrics = self_.metrics.borrow_mut();
+    match op {
+      Op::Sync(buf) => {
+        metrics.op_sync(bytes_sent_control, bytes_sent_data, buf.len());
+        Op::Sync(buf)
+      }
+      Op::Async(fut) => {
+        metrics.op_dispatched_async(bytes_sent_control, bytes_sent_data);
+        let fut = fut
+          .inspect(move |buf| {
+            self.metrics.borrow_mut().op_completed_async(buf.len());
+          })
+          .boxed_local();
+        Op::Async(fut)
+      }
+      Op::AsyncUnref(fut) => {
+        metrics.op_dispatched_async_unref(bytes_sent_control, bytes_sent_data);
+        let fut = fut
+          .inspect(move |buf| {
+            self
+              .metrics
+              .borrow_mut()
+              .op_completed_async_unref(buf.len());
+          })
+          .boxed_local();
+        Op::AsyncUnref(fut)
+      }
+      other => other,
+    }
   }
 }
 
@@ -352,9 +390,9 @@ impl OpRegistry for State {
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,
   {
-    let mut op_registry = self.op_registry.borrow_mut();
+    let mut op_table = self.op_table.borrow_mut();
     let (op_id, removed_op_fn) =
-      op_registry.insert_full(name.to_owned(), Rc::new(op_fn));
+      op_table.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(removed_op_fn.is_none());
     op_id.try_into().unwrap()
   }

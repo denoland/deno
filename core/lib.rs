@@ -34,6 +34,7 @@ pub use crate::core_isolate::HeapLimits;
 pub use crate::core_isolate::Script;
 pub use crate::core_isolate::Snapshot;
 pub use crate::core_isolate::StartupData;
+pub use crate::errors::AnyError;
 pub use crate::errors::ErrBox;
 pub use crate::errors::JSError;
 pub use crate::es_isolate::EsIsolate;
