@@ -135,7 +135,7 @@ impl State {
       .borrow_mut()
       .close(rid)
       .map(|_| 0)
-      .ok_or_else(bad_resource)
+      .ok_or_else(bad_resource_id)
   }
 
   fn op_accept(
@@ -149,7 +149,7 @@ impl State {
       let resource_table = &mut self.resource_table.borrow_mut();
       let listener = resource_table
         .get_mut::<TcpListener>(rid)
-        .ok_or_else(bad_resource)?;
+        .ok_or_else(bad_resource_id)?;
       listener.poll_accept(cx).map_ok(|(stream, _addr)| {
         resource_table.add("tcpStream", Box::new(stream))
       })
@@ -170,7 +170,7 @@ impl State {
       let resource_table = &mut self.resource_table.borrow_mut();
       let stream = resource_table
         .get_mut::<TcpStream>(rid)
-        .ok_or_else(bad_resource)?;
+        .ok_or_else(bad_resource_id)?;
       Pin::new(stream).poll_read(cx, &mut buf)
     })
   }
@@ -188,7 +188,7 @@ impl State {
       let resource_table = &mut self.resource_table.borrow_mut();
       let stream = resource_table
         .get_mut::<TcpStream>(rid)
-        .ok_or_else(bad_resource)?;
+        .ok_or_else(bad_resource_id)?;
       Pin::new(stream).poll_write(cx, &buf)
     })
   }
@@ -272,7 +272,7 @@ impl OpRouter for State {
   }
 }
 
-fn bad_resource() -> Error {
+fn bad_resource_id() -> Error {
   Error::new(ErrorKind::NotFound, "bad resource id")
 }
 
