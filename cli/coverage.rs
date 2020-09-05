@@ -160,8 +160,8 @@ impl PrettyCoverageReporter {
           {
             count += range.count;
             if (range.count == 0) {
-                count = 0;
-                break;
+              count = 0;
+              break;
             }
           }
         }
