@@ -6,7 +6,7 @@ import { parse, stringify } from "./toml.ts";
 
 const testFilesDir = path.resolve("encoding", "testdata");
 
-function parseFile(filePath: string): object {
+function parseFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
@@ -254,7 +254,6 @@ Deno.test({
 Deno.test({
   name: "[TOML] Cargo",
   fn(): void {
-    /* eslint-disable @typescript-eslint/camelcase */
     const expected = {
       workspace: { members: ["./", "core"] },
       bin: [{ name: "deno", path: "cli/main.rs" }],
@@ -291,7 +290,6 @@ Deno.test({
       },
       target: { "cfg(windows)": { dependencies: { winapi: "0.3.6" } } },
     };
-    /* eslint-enable @typescript-eslint/camelcase */
     const actual = parseFile(path.join(testFilesDir, "cargo.toml"));
     assertEquals(actual, expected);
   },
@@ -412,6 +410,33 @@ stuff   = "in"
 the     = "array"
 `;
     const actual = stringify(src);
+    assertEquals(actual, expected);
+  },
+});
+
+Deno.test({
+  name: "[TOML] Comments",
+  fn: () => {
+    const expected = {
+      str0: "value",
+      str1: "# This is not a comment",
+      str2:
+        " # this is not a comment!\nA multiline string with a #\n# this is also not a comment",
+      str3:
+        '"# not a comment"\n\t# this is a real tab on purpose \n# not a comment',
+      point0: { x: 1, y: 2, str0: "#not a comment", z: 3 },
+      point1: { x: 7, y: 8, z: 9, str0: "#not a comment" },
+      deno: {
+        features: ["#secure by default", "supports typescript # not a comment"],
+        url: "https://deno.land/",
+        is_not_node: true,
+      },
+      toml: {
+        name: "Tom's Obvious, Minimal Language",
+        objectives: ["easy to read", "minimal config file", "#not a comment"],
+      },
+    };
+    const actual = parseFile(path.join(testFilesDir, "comment.toml"));
     assertEquals(actual, expected);
   },
 });

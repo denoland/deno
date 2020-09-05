@@ -6,6 +6,82 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.3.3 / 2020.09.04
+
+- feat(unstable): Add Deno.futime and Deno.futimeSync (#7266)
+- feat(unstable): Allow deno lint to read from stdin (#7263)
+- fix: Don't expose globalThis.__bootstrap (#7344)
+- fix: Handle bad redirects more gracefully (#7342)
+- fix: Handling of + character in URLSearchParams (#7314)
+- fix: Regex for TS refereces and deno-types (#7333)
+- fix: Set maximum size of thread pool to 31 (#7290)
+- fix: Support missing features in --no-check (#7289)
+- fix: Use millisecond precision for Deno.futime and Deno.utime (#7299)
+- fix: Use upstream type definitions for WebAssembly (#7216)
+- refactor: Compiler config in Rust (#7228)
+- refactor: Support env_logger / RUST_LOG (#7142)
+- refactor: Support multiline diagnostics in linter (#7303)
+- refactor: Use dependency analyzer from SWC (#7334)
+- upgrade: rust 1.46.0 (#7251)
+- upgrade: swc, deno_doc, deno_lint, dprint (#7276, #7332)
+
+Changes in std version 0.68.0:
+
+- refactor(std/uuid): remove dependency on isString from std/node (#7273)
+
+### 1.3.2 / 2020.08.29
+
+- fix(cli): revert "never type check deno info #6978" (#7199)
+- fix(console): handle escape sequences when logging objects (#7171)
+- fix(doc): stack overflow for .d.ts files (#7167)
+- fix(install): Strip "@..." suffixes from inferred names (#7223)
+- fix(lint): use recommended rules set (#7222)
+- fix(url): Add missing part assignment (#7239)
+- fix(url): Don't encode "'" in non-special query strings (#7152)
+- fix(web): throw TypeError on invalid input types in TextDecoder.decode()
+  (#7179)
+- build: Move benchmarks to Rust (#7134)
+- upgrade: swc, dprint, deno_lint, deno_doc (#7162, #7194)
+- upgrade: rusty_v8 0.9.1 / V8 8.6.334 (#7243)
+- upgrade: TypeScript 4.0 (#6514)
+
+Changes in std version 0.67.0:
+
+- BREAKING(std/wasi): rename Module to Context (#7110)
+- BREAKING(std/wasi): use record for exports (#7109)
+- feat(std/fmt): add bright color variations (#7241)
+- feat(std/node): add URL export (#7132)
+- feat(std/testing): add assertNotMatch (#6775)
+- fix(std/encoding/toml): Comment after arrays causing incorrect output (#7224)
+- fix(std/node): "events" and "util" modules (#7170)
+- fix(std/testing): invalid dates assertion equality (#7230)
+- fix(std/wasi): always capture syscall exceptions (#7116)
+- fix(std/wasi): ignore lint errors (#7197)
+- fix(std/wasi): invalid number to bigint conversion in fd_tell (#7215)
+- fix(std/wasi): return flags from fd_fdstat_get (#7112)
+
+### 1.3.1 / 2020.08.21
+
+- fix: Allow isolated "%"s when parsing file URLs (#7108)
+- fix: Blob.arrayBuffer returns Uint8Array (#7086)
+- fix: CLI argument parsing with dash values (#7039)
+- fix: Create Body stream from any valid bodySource (#7128)
+- fix: Granular permission requests/revokes (#7074)
+- fix: Handling of multiple spaces in URLSearchParams (#7068)
+- core: Enable WebAssembly.instantiateStreaming (#7043)
+- core: Add missing export of HeapLimits (#7047)
+- upgrade: swc_ecmascript, deno_lint, dprint (#7098)
+
+Changes in std version 0.66.0:
+
+- BREAKING(std/datetime): Remove currentDayOfYear (#7059)
+- feat(std/node): Add basic asserts (#7091)
+- feat(std/datetime): Generalise parser, add formatter (#6619)
+- fix(std/node): Misnamed assert exports (#7123)
+- fix(std/encoding/toml): Stop TOML parser from detecting numbers in strings.
+  (#7064)
+- fix(std/encoding/csv): Improve error message on ParseError (#7057)
+
 ### 1.3.0 / 2020.08.13
 
 Changes in the CLI:

@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assert } from "./test_util.ts";
+import {
+  unitTest,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
 
@@ -28,11 +33,9 @@ unitTest(
   { ignore: Deno.build.os == "windows" },
   async function chownNoWritePermission(): Promise<void> {
     const filePath = "chown_test_file.txt";
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.chown(filePath, 1000, 1000);
-    } catch (e) {
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
+    }, Deno.errors.PermissionDenied);
   },
 );
 
@@ -42,11 +45,9 @@ unitTest(
     const { uid, gid } = await getUidAndGid();
     const filePath = Deno.makeTempDirSync() + "/chown_test_file.txt";
 
-    try {
+    assertThrows(() => {
       Deno.chownSync(filePath, uid, gid);
-    } catch (e) {
-      assert(e instanceof Deno.errors.NotFound);
-    }
+    }, Deno.errors.NotFound);
   },
 );
 
@@ -56,11 +57,9 @@ unitTest(
     const { uid, gid } = await getUidAndGid();
     const filePath = (await Deno.makeTempDir()) + "/chown_test_file.txt";
 
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.chown(filePath, uid, gid);
-    } catch (e) {
-      assert(e instanceof Deno.errors.NotFound);
-    }
+    }, Deno.errors.NotFound);
   },
 );
 
@@ -71,12 +70,10 @@ unitTest(
     const filePath = dirPath + "/chown_test_file.txt";
     Deno.writeTextFileSync(filePath, "Hello");
 
-    try {
+    assertThrows(() => {
       // try changing the file's owner to root
       Deno.chownSync(filePath, 0, 0);
-    } catch (e) {
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
+    }, Deno.errors.PermissionDenied);
     Deno.removeSync(dirPath, { recursive: true });
   },
 );
@@ -88,12 +85,10 @@ unitTest(
     const filePath = dirPath + "/chown_test_file.txt";
     await Deno.writeTextFile(filePath, "Hello");
 
-    try {
+    await assertThrowsAsync(async () => {
       // try changing the file's owner to root
       await Deno.chown(filePath, 0, 0);
-    } catch (e) {
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
+    }, Deno.errors.PermissionDenied);
     await Deno.remove(dirPath, { recursive: true });
   },
 );

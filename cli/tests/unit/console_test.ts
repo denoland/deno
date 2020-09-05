@@ -57,6 +57,23 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
+unitTest(
+  function consoleTestStringifyComplexObjectsWithEscapedSequences(): void {
+    assertEquals(
+      stringify(["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v"]),
+      `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v" ]`,
+    );
+    assertEquals(
+      stringify({ "foo\b": "bar\n", "bar\r": "baz\t" }),
+      `{ foo\\b: "bar\\n", bar\\r: "baz\\t" }`,
+    );
+    assertEquals(
+      stringify(new Set(["foo\n", "foo\r"])),
+      `Set { "foo\\n", "foo\\r" }`,
+    );
+  },
+);
+
 unitTest(function consoleTestStringifyQuotes(): void {
   assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
   assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
@@ -703,9 +720,8 @@ unitTest(function consoleTestWithCustomInspector(): void {
 
 unitTest(function consoleTestWithCustomInspectorError(): void {
   class A {
-    [customInspect](): string {
+    [customInspect](): never {
       throw new Error("BOOM");
-      return "b";
     }
   }
 

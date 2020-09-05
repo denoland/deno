@@ -5,6 +5,13 @@ unitTest(function globalThisExists(): void {
   assert(globalThis != null);
 });
 
+unitTest(function noInternalGlobals(): void {
+  // globalThis.__bootstrap should not be there.
+  for (const key of Object.keys(globalThis)) {
+    assert(!key.startsWith("_"));
+  }
+});
+
 unitTest(function windowExists(): void {
   assert(window != null);
 });
@@ -72,7 +79,8 @@ unitTest(function DenoNamespaceImmutable(): void {
   }
   assert(denoCopy === Deno);
   try {
-    delete window.Deno;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno;
   } catch {
     // pass
   }
@@ -87,7 +95,8 @@ unitTest(function DenoNamespaceImmutable(): void {
   }
   assert(readFile === Deno.readFile);
   try {
-    delete window.Deno.readFile;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno.readFile;
   } catch {
     // pass
   }

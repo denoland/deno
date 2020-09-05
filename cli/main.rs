@@ -29,6 +29,7 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
 mod disk_cache;
+pub mod errors;
 mod file_fetcher;
 pub mod flags;
 mod flags_allow_net;
@@ -48,7 +49,6 @@ mod lockfile;
 mod metrics;
 mod module_graph;
 pub mod msg;
-pub mod op_error;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -63,6 +63,7 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
+mod tsc_config;
 mod upgrade;
 pub mod version;
 mod web_worker;
@@ -90,8 +91,6 @@ use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
 use log::Level;
-use log::Metadata;
-use log::Record;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
@@ -102,35 +101,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use upgrade::upgrade_command;
 use url::Url;
-
-static LOGGER: Logger = Logger;
-
-// TODO(ry) Switch to env_logger or other standard crate.
-struct Logger;
-
-impl log::Log for Logger {
-  fn enabled(&self, metadata: &Metadata) -> bool {
-    metadata.level() <= log::max_level()
-  }
-
-  fn log(&self, record: &Record) {
-    if self.enabled(record.metadata()) {
-      let mut target = record.target().to_string();
-
-      if let Some(line_no) = record.line() {
-        target.push_str(":");
-        target.push_str(&line_no.to_string());
-      }
-
-      if record.level() >= Level::Info {
-        eprintln!("{}", record.args());
-      } else {
-        eprintln!("{} RS - {} - {}", record.level(), target, record.args());
-      }
-    }
-  }
-  fn flush(&self) {}
-}
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -334,15 +304,7 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), ErrBox> {
-  // Firstly fetch and compile module, this step ensures that module exists.
-  let mut fetch_flags = flags.clone();
-  fetch_flags.reload = true;
-  let global_state = GlobalState::new(fetch_flags)?;
-  let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
-  worker.preload_module(&main_module).await?;
-  installer::install(flags, &module_url, args, name, root, force)
-    .map_err(ErrBox::from)
+  installer::install(flags, &module_url, args, name, root, force).await
 }
 
 async fn lint_command(
@@ -545,16 +507,22 @@ async fn doc_command(
 
   let loader = Box::new(global_state.file_fetcher.clone());
   let doc_parser = doc::DocParser::new(loader, private);
-  let media_type = map_file_extension(&PathBuf::from(&source_file));
-  let syntax = swc_util::get_syntax_for_media_type(media_type);
 
   let parse_result = if source_file == "--builtin" {
+    let syntax = swc_util::get_syntax_for_dts();
     doc_parser.parse_source(
       "lib.deno.d.ts",
       syntax,
       get_types(flags.unstable).as_str(),
     )
   } else {
+    let path = PathBuf::from(&source_file);
+    let syntax = if path.ends_with("d.ts") {
+      swc_util::get_syntax_for_dts()
+    } else {
+      let media_type = map_file_extension(&path);
+      swc_util::get_syntax_for_media_type(media_type)
+    };
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
     doc_parser
@@ -698,7 +666,6 @@ pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
 
-  log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
   let flags = flags::flags_from_vec(args);
 
@@ -730,7 +697,29 @@ pub fn main() {
     Some(level) => level,
     None => Level::Info, // Default log level
   };
-  log::set_max_level(log_level.to_level_filter());
+  env_logger::Builder::from_env(
+    env_logger::Env::default()
+      .default_filter_or(log_level.to_level_filter().to_string()),
+  )
+  .format(|buf, record| {
+    let mut target = record.target().to_string();
+    if let Some(line_no) = record.line() {
+      target.push_str(":");
+      target.push_str(&line_no.to_string());
+    }
+    if record.level() >= Level::Info {
+      writeln!(buf, "{}", record.args())
+    } else {
+      writeln!(
+        buf,
+        "{} RS - {} - {}",
+        record.level(),
+        target,
+        record.args()
+      )
+    }
+  })
+  .init();
 
   let fut = match flags.clone().subcommand {
     DenoSubcommand::Bundle {

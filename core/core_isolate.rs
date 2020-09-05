@@ -87,6 +87,8 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
+pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
 struct IsolateAllocations {
@@ -123,6 +125,7 @@ pub struct CoreIsolateState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
+  pub get_error_class_fn: GetErrorClassFn,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -307,6 +310,7 @@ impl CoreIsolate {
       js_recv_cb: None,
       js_macrotask_cb: None,
       js_error_create_fn: Box::new(JSError::create),
+      get_error_class_fn: &|_| "Error",
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -444,7 +448,7 @@ impl CoreIsolate {
       move |state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| -> Op {
         let value = serde_json::from_slice(&bufs[0]).unwrap();
         let result = op(state, value, &mut bufs[1..]);
-        let buf = serialize_result(None, result);
+        let buf = serialize_result(None, result, state.get_error_class_fn);
         Op::Sync(buf)
       };
 
@@ -462,11 +466,13 @@ impl CoreIsolate {
     let core_op = move |state: &mut CoreIsolateState,
                         bufs: &mut [ZeroCopyBuf]|
           -> Op {
+      let get_error_class_fn = state.get_error_class_fn;
       let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
       let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
       let fut = op(state, value, &mut bufs[1..]);
-      let fut2 =
-        fut.map(move |result| serialize_result(Some(promise_id), result));
+      let fut2 = fut.map(move |result| {
+        serialize_result(Some(promise_id), result, get_error_class_fn)
+      });
       Op::Async(Box::pin(fut2))
     };
 
@@ -533,14 +539,15 @@ where
 fn serialize_result(
   promise_id: Option<u64>,
   result: Result<Value, ErrBox>,
+  get_error_class_fn: GetErrorClassFn,
 ) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => json!({
       "promiseId": promise_id ,
       "err": {
+        "className": (get_error_class_fn)(&err),
         "message": err.to_string(),
-        "kind": "Other", // TODO(ry) Figure out how to propagate errors.
       }
     }),
   };
@@ -666,6 +673,10 @@ impl CoreIsolateState {
     f: impl Fn(JSError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
+  }
+
+  pub fn set_get_error_class_fn(&mut self, f: GetErrorClassFn) {
+    self.get_error_class_fn = f;
   }
 
   pub fn dispatch_op<'s>(
