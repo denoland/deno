@@ -250,6 +250,10 @@ pub fn install(
     generate_config_file(file_path.to_owned(), config_path)?;
   }
 
+  if let Some(import_map) = flags.import_map_path {
+    generate_config_file(PathBuf::from(flags.import_map_path), import_map)?;
+  }
+
   println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
   let installation_dir_str = installation_dir.to_string_lossy();
@@ -724,6 +728,7 @@ mod tests {
   #[test]
   fn install_with_import_map() {
     let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
     let import_map_file_path = temp_dir.path().join("importmap.json");
     let import_map = "{}";
     let mut import_map_file = File::create(&import_map_file_path).unwrap();
@@ -752,10 +757,7 @@ mod tests {
     assert!(result.is_ok());
 
     let import_map_file_name = "importmap.json";
-    let file_path = temp_dir
-      .path()
-      .to_path_buf()
-      .join(import_map_file_name.to_string());
+    let file_path = bin_dir.join(import_map_file_name.to_string());
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
