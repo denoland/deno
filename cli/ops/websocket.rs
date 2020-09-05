@@ -115,10 +115,10 @@ pub async fn op_ws_create(
     .map(|header| header.to_str().unwrap())
     .collect::<String>();
   Ok(json!({
-  "success": true,
-  "rid": rid,
-  "protocol": protocol,
-  "extensions": extensions
+    "success": true,
+    "rid": rid,
+    "protocol": protocol,
+    "extensions": extensions
   }))
 }
 
@@ -232,7 +232,8 @@ pub async fn op_ws_next_event(
             "data": text
           }),
           Some(Ok(Message::Binary(data))) => {
-            json!({ // TODO(ry): don't use json to send binary data.
+            // TODO(ry): don't use json to send binary data.
+            json!({
               "type": "binary",
               "data": data
             })
@@ -245,14 +246,10 @@ pub async fn op_ws_next_event(
           Some(Ok(Message::Close(None))) => json!({ "type": "close" }),
           Some(Ok(Message::Ping(_))) => json!({"type": "ping"}),
           Some(Ok(Message::Pong(_))) => json!({"type": "pong"}),
-          Some(Err(_)) => json!({
-            "type": "error",
-          }),
+          Some(Err(_)) => json!({"type": "error"}),
           None => {
             resource_table.close(args.rid).unwrap();
-            json!({
-              "type": "closed",
-            })
+            json!({"type": "closed"})
           }
         }
       })
