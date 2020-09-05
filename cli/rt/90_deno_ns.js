@@ -118,6 +118,8 @@ __bootstrap.denoNsUnstable = {
   umask: __bootstrap.fs.umask,
   link: __bootstrap.fs.link,
   linkSync: __bootstrap.fs.linkSync,
+  futime: __bootstrap.fs.futime,
+  futimeSync: __bootstrap.fs.futimeSync,
   utime: __bootstrap.fs.utime,
   utimeSync: __bootstrap.fs.utimeSync,
   symlink: __bootstrap.fs.symlink,

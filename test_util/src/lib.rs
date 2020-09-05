@@ -10,6 +10,7 @@ use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
+use std::collections::HashMap;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -38,6 +39,8 @@ const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const HTTPS_PORT: u16 = 5545;
+const WS_PORT: u16 = 4242;
+const WSS_PORT: u16 = 4243;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -57,8 +60,16 @@ pub fn root_path() -> PathBuf {
   PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
 }
 
+pub fn prebuilt_path() -> PathBuf {
+  third_party_path().join("prebuilt")
+}
+
 pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
+}
+
+pub fn third_party_path() -> PathBuf {
+  root_path().join("third_party")
 }
 
 pub fn target_dir() -> PathBuf {
@@ -75,6 +86,24 @@ pub fn deno_exe_path() -> PathBuf {
     p.set_extension("exe");
   }
   p
+}
+
+pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
+  let mut exe = tool.to_string();
+  exe.push_str(if cfg!(windows) { ".exe" } else { "" });
+  prebuilt_path().join(platform_dir_name()).join(exe)
+}
+
+fn platform_dir_name() -> &'static str {
+  if cfg!(target_os = "linux") {
+    "linux64"
+  } else if cfg!(target_os = "macos") {
+    "mac"
+  } else if cfg!(target_os = "windows") {
+    "win"
+  } else {
+    unreachable!()
+  }
 }
 
 pub fn test_server_path() -> PathBuf {
@@ -107,6 +136,25 @@ pub async fn run_all_servers() {
   });
   let redirect_server_fut =
     warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_PORT));
+
+  let websocket_route = warp::ws().map(|ws: warp::ws::Ws| {
+    ws.on_upgrade(|websocket| {
+      use futures::stream::StreamExt;
+      let (tx, rx) = websocket.split();
+      rx.forward(tx).map(|result| {
+        if let Err(e) = result {
+          println!("websocket server error: {:?}", e);
+        }
+      })
+    })
+  });
+  let ws_server_fut =
+    warp::serve(websocket_route).bind(([127, 0, 0, 1], WS_PORT));
+  let wss_server_fut = warp::serve(websocket_route)
+    .tls()
+    .cert_path("std/http/testdata/tls/localhost.crt")
+    .key_path("std/http/testdata/tls/localhost.key")
+    .bind(([127, 0, 0, 1], WSS_PORT));
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -237,6 +285,11 @@ pub async fn run_all_servers() {
       );
       Box::new(res)
     });
+  let bad_redirect = warp::path("bad_redirect").map(|| -> Box<dyn Reply> {
+    let mut res = Response::new(Body::from(""));
+    *res.status_mut() = StatusCode::FOUND;
+    Box::new(res)
+  });
 
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
@@ -377,7 +430,8 @@ pub async fn run_all_servers() {
     .or(xtypescripttypes)
     .or(echo_server)
     .or(echo_multipart_file)
-    .or(multipart_form_data);
+    .or(multipart_form_data)
+    .or(bad_redirect);
 
   let http_fut =
     warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
@@ -393,6 +447,8 @@ pub async fn run_all_servers() {
       http_fut,
       https_fut,
       redirect_server_fut,
+      ws_server_fut,
+      wss_server_fut,
       another_redirect_server_fut,
       inf_redirect_server_fut,
       double_redirect_server_fut,
@@ -576,6 +632,76 @@ pub fn http_server() -> HttpServerGuard {
 /// Helper function to strip ansi codes.
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
   STRIP_ANSI_RE.replace_all(s, "")
+}
+
+pub fn run(
+  cmd: &[&str],
+  input: Option<&[&str]>,
+  envs: Option<Vec<(String, String)>>,
+  current_dir: Option<&str>,
+  expect_success: bool,
+) {
+  let mut process_builder = Command::new(cmd[0]);
+  process_builder.args(&cmd[1..]).stdin(Stdio::piped());
+
+  if let Some(dir) = current_dir {
+    process_builder.current_dir(dir);
+  }
+  if let Some(envs) = envs {
+    process_builder.envs(envs);
+  }
+  let mut prog = process_builder.spawn().expect("failed to spawn script");
+  if let Some(lines) = input {
+    let stdin = prog.stdin.as_mut().expect("failed to get stdin");
+    stdin
+      .write_all(lines.join("\n").as_bytes())
+      .expect("failed to write to stdin");
+  }
+  let status = prog.wait().expect("failed to wait on child");
+  if expect_success != status.success() {
+    panic!("Unexpected exit code: {:?}", status.code());
+  }
+}
+
+pub fn run_collect(
+  cmd: &[&str],
+  input: Option<&[&str]>,
+  envs: Option<Vec<(String, String)>>,
+  current_dir: Option<&str>,
+  expect_success: bool,
+) -> (String, String) {
+  let mut process_builder = Command::new(cmd[0]);
+  process_builder
+    .args(&cmd[1..])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+  if let Some(dir) = current_dir {
+    process_builder.current_dir(dir);
+  }
+  if let Some(envs) = envs {
+    process_builder.envs(envs);
+  }
+  let mut prog = process_builder.spawn().expect("failed to spawn script");
+  if let Some(lines) = input {
+    let stdin = prog.stdin.as_mut().expect("failed to get stdin");
+    stdin
+      .write_all(lines.join("\n").as_bytes())
+      .expect("failed to write to stdin");
+  }
+  let Output {
+    stdout,
+    stderr,
+    status,
+  } = prog.wait_with_output().expect("failed to wait on child");
+  let stdout = String::from_utf8(stdout).unwrap();
+  let stderr = String::from_utf8(stderr).unwrap();
+  if expect_success != status.success() {
+    eprintln!("stdout: <<<{}>>>", stdout);
+    eprintln!("stderr: <<<{}>>>", stderr);
+    panic!("Unexpected exit code: {:?}", status.code());
+  }
+  (stdout, stderr)
 }
 
 pub fn run_and_collect_output(
@@ -855,45 +981,248 @@ pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
   }
 }
 
-#[test]
-fn test_wildcard_match() {
-  let fixtures = vec![
-    ("foobarbaz", "foobarbaz", true),
-    ("[WILDCARD]", "foobarbaz", true),
-    ("foobar", "foobarbaz", false),
-    ("foo[WILDCARD]baz", "foobarbaz", true),
-    ("foo[WILDCARD]baz", "foobazbar", false),
-    ("foo[WILDCARD]baz[WILDCARD]qux", "foobarbazqatqux", true),
-    ("foo[WILDCARD]", "foobar", true),
-    ("foo[WILDCARD]baz[WILDCARD]", "foobarbazqat", true),
-    // check with different line endings
-    ("foo[WILDCARD]\nbaz[WILDCARD]\n", "foobar\nbazqat\n", true),
-    (
-      "foo[WILDCARD]\nbaz[WILDCARD]\n",
-      "foobar\r\nbazqat\r\n",
-      true,
-    ),
-    (
-      "foo[WILDCARD]\r\nbaz[WILDCARD]\n",
-      "foobar\nbazqat\r\n",
-      true,
-    ),
-    (
-      "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
-      "foobar\nbazqat\n",
-      true,
-    ),
-    (
-      "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
-      "foobar\r\nbazqat\r\n",
-      true,
-    ),
-  ];
+pub struct WrkOutput {
+  pub latency: f64,
+  pub requests: u64,
+}
 
-  // Iterate through the fixture lists, testing each one
-  for (pattern, string, expected) in fixtures {
-    let actual = wildcard_match(pattern, string);
-    dbg!(pattern, string, expected);
-    assert_eq!(actual, expected);
+pub fn parse_wrk_output(output: &str) -> WrkOutput {
+  lazy_static! {
+    static ref REQUESTS_RX: Regex =
+      Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
+    static ref LATENCY_RX: Regex =
+      Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
+  }
+
+  let mut requests = None;
+  let mut latency = None;
+
+  for line in output.lines() {
+    if requests == None {
+      if let Some(cap) = REQUESTS_RX.captures(line) {
+        requests =
+          Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
+      }
+    }
+    if latency == None {
+      if let Some(cap) = LATENCY_RX.captures(line) {
+        let time = cap.get(1).unwrap();
+        let unit = cap.get(2).unwrap();
+
+        latency = Some(
+          str::parse::<f64>(time.as_str()).unwrap()
+            * match unit.as_str() {
+              "ms" => 1.0,
+              "us" => 0.001,
+              "s" => 1000.0,
+              _ => unreachable!(),
+            },
+        );
+      }
+    }
+  }
+
+  WrkOutput {
+    requests: requests.unwrap(),
+    latency: latency.unwrap(),
+  }
+}
+
+pub struct StraceOutput {
+  pub percent_time: f64,
+  pub seconds: f64,
+  pub usecs_per_call: Option<u64>,
+  pub calls: u64,
+  pub errors: u64,
+}
+
+pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
+  let mut summary = HashMap::new();
+
+  // Filter out non-relevant lines. See the error log at
+  // https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
+  // This is checked in testdata/strace_summary2.out
+  let mut lines = output
+    .lines()
+    .filter(|line| !line.is_empty() && !line.contains("detached ..."));
+  let count = lines.clone().count();
+
+  if count < 4 {
+    return summary;
+  }
+
+  let total_line = lines.next_back().unwrap();
+  lines.next_back(); // Drop separator
+  let data_lines = lines.skip(2);
+
+  for line in data_lines {
+    let syscall_fields = line.split_whitespace().collect::<Vec<_>>();
+    let len = syscall_fields.len();
+    let syscall_name = syscall_fields.last().unwrap();
+
+    if 5 <= len && len <= 6 {
+      summary.insert(
+        syscall_name.to_string(),
+        StraceOutput {
+          percent_time: str::parse::<f64>(syscall_fields[0]).unwrap(),
+          seconds: str::parse::<f64>(syscall_fields[1]).unwrap(),
+          usecs_per_call: Some(str::parse::<u64>(syscall_fields[2]).unwrap()),
+          calls: str::parse::<u64>(syscall_fields[3]).unwrap(),
+          errors: if syscall_fields.len() < 6 {
+            0
+          } else {
+            str::parse::<u64>(syscall_fields[4]).unwrap()
+          },
+        },
+      );
+    }
+  }
+
+  let total_fields = total_line.split_whitespace().collect::<Vec<_>>();
+  summary.insert(
+    "total".to_string(),
+    StraceOutput {
+      percent_time: str::parse::<f64>(total_fields[0]).unwrap(),
+      seconds: str::parse::<f64>(total_fields[1]).unwrap(),
+      usecs_per_call: None,
+      calls: str::parse::<u64>(total_fields[2]).unwrap(),
+      errors: str::parse::<u64>(total_fields[3]).unwrap(),
+    },
+  );
+
+  summary
+}
+
+pub fn parse_max_mem(output: &str) -> Option<u64> {
+  // Takes the output from "time -v" as input and extracts the 'maximum
+  // resident set size' and returns it in bytes.
+  for line in output.lines() {
+    if line
+      .to_lowercase()
+      .contains("maximum resident set size (kbytes)")
+    {
+      let value = line.split(": ").nth(1).unwrap();
+      return Some(str::parse::<u64>(value).unwrap() * 1024);
+    }
+  }
+
+  None
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_wrk_output_1() {
+    const TEXT: &str = include_str!("./testdata/wrk1.txt");
+    let wrk = parse_wrk_output(TEXT);
+    assert_eq!(wrk.requests, 1837);
+    assert!((wrk.latency - 6.25).abs() < f64::EPSILON);
+  }
+
+  #[test]
+  fn parse_wrk_output_2() {
+    const TEXT: &str = include_str!("./testdata/wrk2.txt");
+    let wrk = parse_wrk_output(TEXT);
+    assert_eq!(wrk.requests, 53435);
+    assert!((wrk.latency - 6.22).abs() < f64::EPSILON);
+  }
+
+  #[test]
+  fn parse_wrk_output_3() {
+    const TEXT: &str = include_str!("./testdata/wrk3.txt");
+    let wrk = parse_wrk_output(TEXT);
+    assert_eq!(wrk.requests, 96037);
+    assert!((wrk.latency - 6.36).abs() < f64::EPSILON);
+  }
+
+  #[test]
+  fn strace_parse_1() {
+    const TEXT: &str = include_str!("./testdata/strace_summary.out");
+    let strace = parse_strace_output(TEXT);
+
+    // first syscall line
+    let munmap = strace.get("munmap").unwrap();
+    assert_eq!(munmap.calls, 60);
+    assert_eq!(munmap.errors, 0);
+
+    // line with errors
+    assert_eq!(strace.get("mkdir").unwrap().errors, 2);
+
+    // last syscall line
+    let prlimit = strace.get("prlimit64").unwrap();
+    assert_eq!(prlimit.calls, 2);
+    assert!((prlimit.percent_time - 0.0).abs() < f64::EPSILON);
+
+    // summary line
+    assert_eq!(strace.get("total").unwrap().calls, 704);
+    assert_eq!(strace.get("total").unwrap().errors, 5);
+  }
+
+  #[test]
+  fn strace_parse_2() {
+    const TEXT: &str = include_str!("./testdata/strace_summary2.out");
+    let strace = parse_strace_output(TEXT);
+
+    // first syscall line
+    let futex = strace.get("futex").unwrap();
+    assert_eq!(futex.calls, 449);
+    assert_eq!(futex.errors, 94);
+
+    // summary line
+    assert_eq!(strace.get("total").unwrap().calls, 821);
+    assert_eq!(strace.get("total").unwrap().errors, 107);
+  }
+
+  #[test]
+  fn test_wildcard_match() {
+    let fixtures = vec![
+      ("foobarbaz", "foobarbaz", true),
+      ("[WILDCARD]", "foobarbaz", true),
+      ("foobar", "foobarbaz", false),
+      ("foo[WILDCARD]baz", "foobarbaz", true),
+      ("foo[WILDCARD]baz", "foobazbar", false),
+      ("foo[WILDCARD]baz[WILDCARD]qux", "foobarbazqatqux", true),
+      ("foo[WILDCARD]", "foobar", true),
+      ("foo[WILDCARD]baz[WILDCARD]", "foobarbazqat", true),
+      // check with different line endings
+      ("foo[WILDCARD]\nbaz[WILDCARD]\n", "foobar\nbazqat\n", true),
+      (
+        "foo[WILDCARD]\nbaz[WILDCARD]\n",
+        "foobar\r\nbazqat\r\n",
+        true,
+      ),
+      (
+        "foo[WILDCARD]\r\nbaz[WILDCARD]\n",
+        "foobar\nbazqat\r\n",
+        true,
+      ),
+      (
+        "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
+        "foobar\nbazqat\n",
+        true,
+      ),
+      (
+        "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
+        "foobar\r\nbazqat\r\n",
+        true,
+      ),
+    ];
+
+    // Iterate through the fixture lists, testing each one
+    for (pattern, string, expected) in fixtures {
+      let actual = wildcard_match(pattern, string);
+      dbg!(pattern, string, expected);
+      assert_eq!(actual, expected);
+    }
+  }
+
+  #[test]
+  fn max_mem_parse() {
+    const TEXT: &str = include_str!("./testdata/time.out");
+    let size = parse_max_mem(TEXT);
+
+    assert_eq!(size, Some(120380 * 1024));
   }
 }

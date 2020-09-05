@@ -33,4 +33,5 @@ pub mod timers;
 pub mod tls;
 pub mod tty;
 pub mod web_worker;
+pub mod websocket;
 pub mod worker_host;

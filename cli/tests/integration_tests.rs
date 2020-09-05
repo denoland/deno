@@ -273,11 +273,6 @@ grault",
 }
 
 #[test]
-fn benchmark_test() {
-  util::run_python_script("tools/benchmark_test.py")
-}
-
-#[test]
 fn deno_dir_test() {
   use std::fs::remove_dir_all;
   let _g = util::http_server();
@@ -2258,6 +2253,20 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(deno_lint_from_stdin {
+  args: "lint --unstable -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_from_stdin_json {
+  args: "lint --unstable --json -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin_json.out",
+  exit_code: 1,
+});
+
 itest!(deno_doc_builtin {
   args: "doc",
   output: "deno_doc_builtin.out",
@@ -3196,6 +3205,27 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 }
 
 #[test]
+fn websocket() {
+  let _g = util::http_server();
+
+  let script = util::tests_path().join("websocket_test.ts");
+  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
+}
+
+#[test]
 fn exec_path() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -3304,7 +3334,6 @@ fn should_not_panic_on_undefined_home_environment_variable() {
     .arg("run")
     .arg("cli/tests/echo.ts")
     .env_remove("HOME")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3319,7 +3348,6 @@ fn should_not_panic_on_undefined_deno_dir_environment_variable() {
     .arg("run")
     .arg("cli/tests/echo.ts")
     .env_remove("DENO_DIR")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3336,10 +3364,39 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
     .arg("cli/tests/echo.ts")
     .env_remove("DENO_DIR")
     .env_remove("HOME")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
+}
+
+#[test]
+fn rust_log() {
+  // Without RUST_LOG the stderr is empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+
+  // With RUST_LOG the stderr is not empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .env("RUST_LOG", "debug")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(!output.stderr.is_empty());
 }
