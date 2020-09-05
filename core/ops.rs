@@ -28,6 +28,23 @@ pub trait OpRouter {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
 }
 
+#[derive(Default)]
+pub struct MockOpRouter {
+  _private: usize,
+}
+
+impl MockOpRouter {
+  pub fn new() -> Rc<Self> {
+    Default::default()
+  }
+}
+
+impl OpRouter for MockOpRouter {
+  fn route_op(self: Rc<Self>, _op_id: OpId, _bufs: BufVec) -> Op {
+    unimplemented!()
+  }
+}
+
 pub trait OpRegistry: OpRouter + 'static {
   fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
   where

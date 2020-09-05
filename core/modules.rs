@@ -516,11 +516,12 @@ impl fmt::Display for Deps {
   }
 }
 
-#[cfg(test_off)]
+#[cfg(test)]
 mod tests {
   use super::*;
   use crate::es_isolate::EsIsolate;
   use crate::js_check;
+  use crate::MockOpRouter;
   use crate::StartupData;
   use futures::future::FutureExt;
   use std::error::Error;
@@ -535,15 +536,14 @@ mod tests {
   // removed in the future.
   use crate::core_isolate::tests::run_in_task;
 
+  #[derive(Default)]
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
   }
 
   impl MockLoader {
-    fn new() -> Self {
-      Self {
-        loads: Arc::new(Mutex::new(Vec::new())),
-      }
+    fn new() -> Rc<Self> {
+      Default::default()
     }
   }
 
@@ -699,7 +699,9 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let op_router = MockOpRouter::new();
+    let mut isolate =
+      EsIsolate::new(loader, op_router, StartupData::None, false);
     let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
     let a_id_fut = isolate.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
@@ -761,7 +763,9 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let op_router = MockOpRouter::new();
+    let mut isolate =
+      EsIsolate::new(loader, op_router, StartupData::None, false);
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
@@ -834,7 +838,9 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let op_router = MockOpRouter::new();
+    let mut isolate =
+      EsIsolate::new(loader, op_router, StartupData::None, false);
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
@@ -898,8 +904,9 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
+      let op_router = MockOpRouter::new();
       let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+        EsIsolate::new(loader, op_router, StartupData::None, false);
       let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
       let mut recursive_load = isolate.load_module(&spec, None).boxed_local();
 
@@ -944,8 +951,9 @@ mod tests {
   fn loader_disappears_after_error() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
+      let op_router = MockOpRouter::new();
       let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+        EsIsolate::new(loader, op_router, StartupData::None, false);
       let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = isolate.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
@@ -973,7 +981,9 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let op_router = MockOpRouter::new();
+    let mut isolate =
+      EsIsolate::new(loader, op_router, StartupData::None, false);
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.

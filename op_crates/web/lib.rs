@@ -28,10 +28,11 @@ fn get_path(file_name: &str) -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_name)
 }
 
-#[cfg(test_off)]
+#[cfg(test)]
 mod tests {
   use deno_core::js_check;
   use deno_core::CoreIsolate;
+  use deno_core::MockOpRouter;
   use deno_core::StartupData;
   use futures::future::lazy;
   use futures::future::FutureExt;
@@ -46,7 +47,8 @@ mod tests {
   }
 
   fn setup() -> CoreIsolate {
-    let mut isolate = CoreIsolate::new(StartupData::None, false);
+    let mut isolate =
+      CoreIsolate::new(MockOpRouter::new(), StartupData::None, false);
     crate::init(&mut isolate);
     isolate
   }

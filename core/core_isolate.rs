@@ -773,12 +773,12 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  struct TestState {
+  struct TestOpRouter {
     mode: Mode,
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  impl OpRouter for TestState {
+  impl OpRouter for TestOpRouter {
     fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
       if op_id != 1 {
         return Op::NotFound;
@@ -851,7 +851,7 @@ pub mod tests {
 
   fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let test_state = Rc::new(TestState {
+    let test_state = Rc::new(TestOpRouter {
       mode,
       dispatch_count: dispatch_count.clone(),
     });
@@ -1217,27 +1217,10 @@ pub mod tests {
     });
   }
 
-  #[derive(Default)]
-  struct MockState {
-    _private: usize,
-  }
-
-  impl MockState {
-    fn new() -> Rc<Self> {
-      Default::default()
-    }
-  }
-
-  impl OpRouter for MockState {
-    fn route_op(self: Rc<Self>, _op_id: OpId, _bufs: BufVec) -> Op {
-      unimplemented!()
-    }
-  }
-
   #[test]
   fn syntax_error() {
     let mut isolate =
-      CoreIsolate::new(MockState::new(), StartupData::None, false);
+      CoreIsolate::new(MockOpRouter::new(), StartupData::None, false);
     let src = "hocuspocus(";
     let r = isolate.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1263,13 +1246,14 @@ pub mod tests {
   fn will_snapshot() {
     let snapshot = {
       let mut isolate =
-        CoreIsolate::new(MockState::new(), StartupData::None, true);
+        CoreIsolate::new(MockOpRouter::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       isolate.snapshot()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut isolate2 = CoreIsolate::new(MockState::new(), startup_data, false);
+    let mut isolate2 =
+      CoreIsolate::new(MockOpRouter::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1277,14 +1261,15 @@ pub mod tests {
   fn test_from_boxed_snapshot() {
     let snapshot = {
       let mut isolate =
-        CoreIsolate::new(MockState::new(), StartupData::None, true);
+        CoreIsolate::new(MockOpRouter::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*isolate.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut isolate2 = CoreIsolate::new(MockState::new(), startup_data, false);
+    let mut isolate2 =
+      CoreIsolate::new(MockOpRouter::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1295,7 +1280,7 @@ pub mod tests {
       max: 20 * 1024, // 20 kB
     };
     let mut isolate = CoreIsolate::with_heap_limits(
-      MockState::new(),
+      MockOpRouter::new(),
       StartupData::None,
       heap_limits,
     );
@@ -1327,7 +1312,7 @@ pub mod tests {
   #[test]
   fn test_heap_limit_cb_remove() {
     let mut isolate =
-      CoreIsolate::new(MockState::new(), StartupData::None, false);
+      CoreIsolate::new(MockOpRouter::new(), StartupData::None, false);
 
     isolate.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1343,7 +1328,7 @@ pub mod tests {
       max: 20 * 1024, // 20 kB
     };
     let mut isolate = CoreIsolate::with_heap_limits(
-      MockState::new(),
+      MockOpRouter::new(),
       StartupData::None,
       heap_limits,
     );
