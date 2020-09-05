@@ -12,6 +12,12 @@
 
   const disabledConsole = new Console(() => {});
 
+  class TimeoutError {
+    constructor(ms) {
+      this.message = `Not finished within the ${ms}ms timeout`;
+    }
+  }
+
   function delay(ms) {
     return new Promise((resolve) => {
       setTimeout(resolve, ms);
@@ -21,6 +27,37 @@
   function formatDuration(time = 0) {
     const timeStr = `(${time}ms)`;
     return gray(italic(timeStr));
+  }
+
+  // Wrap async test function to set timeout period, which allows
+  // to interrupt too long operations and ever-pending promise.
+  function setTimeoutForPromise(fn, ms = undefined) {
+    if (
+      ms === undefined ||
+      typeof ms !== "number" ||
+      typeof fn.then !== "function" ||
+      typeof fn.catch !== "function"
+    ) {
+      return fn;
+    }
+
+    return function promiseWithTimeout() {
+      return new Promise((resolve, reject) => {
+        const timeoutHandle = setTimeout(
+          () => reject(new TimeoutError(ms)),
+          ms
+        );
+        fn()
+          .then(() => {
+            clearTimeout(timeoutHandle);
+            resolve();
+          })
+          .catch((err) => {
+            clearTimeout(timeoutHandle);
+            reject(err);
+          });
+      });
+    };
   }
 
   // Wrap test function in additional assertion that makes sure
@@ -114,6 +151,9 @@ finishing test case.`;
       testDef = { ...defaults, ...t };
     }
 
+    // TODO(magurotuna) make timeout period configurable
+    testDef.fn = setTimeoutForPromise(testDef.fn, 1000);
+
     if (testDef.sanitizeOps) {
       testDef.fn = assertOps(testDef.fn);
     }
@@ -140,6 +180,7 @@ finishing test case.`;
 
   function reportToConsole(message) {
     const redFailed = red("FAILED");
+    const redTimeout = red("TIMEOUT");
     const greenOk = green("ok");
     const yellowIgnored = yellow("ignored");
     if (message.start != null) {
@@ -160,6 +201,8 @@ finishing test case.`;
         case "ignored":
           log(`${yellowIgnored} ${formatDuration(message.testEnd.duration)}`);
           break;
+        case "timed out":
+          log(`${redTimeout} ${formatDuration(message.testEnd.duration)}`);
       }
     } else if (message.end != null) {
       const failures = message.end.results.filter((m) => m.error != null);
@@ -179,11 +222,13 @@ finishing test case.`;
         }
       }
       log(
-        `\ntest result: ${message.end.failed ? redFailed : greenOk}. ` +
-          `${message.end.passed} passed; ${message.end.failed} failed; ` +
+        `\ntest result: ${
+          message.end.failed || message.end.timedout ? redFailed : greenOk
+        }. ` +
+          `${message.end.passed} passed; ${message.end.failed} failed; ${message.end.timedout} timed out; ` +
           `${message.end.ignored} ignored; ${message.end.measured} measured; ` +
           `${message.end.filtered} filtered out ` +
-          `${formatDuration(message.end.duration)}\n`,
+          `${formatDuration(message.end.duration)}\n`
       );
 
       if (message.end.usedOnly && message.end.failed == 0) {
@@ -199,17 +244,14 @@ finishing test case.`;
   class TestRunner {
     #usedOnly = false;
 
-    constructor(
-      tests,
-      filterFn,
-      failFast,
-    ) {
+    constructor(tests, filterFn, failFast) {
       this.stats = {
         filtered: 0,
         ignored: 0,
         measured: 0,
         passed: 0,
         failed: 0,
+        timedout: 0,
       };
       this.filterFn = filterFn;
       this.failFast = failFast;
@@ -241,9 +283,15 @@ finishing test case.`;
             endMessage.status = "passed";
             this.stats.passed++;
           } catch (err) {
-            endMessage.status = "failed";
-            endMessage.error = err;
-            this.stats.failed++;
+            if (err instanceof TimeoutError) {
+              endMessage.status = "timed out";
+              endMessage.error = err;
+              this.stats.timedout++;
+            } else {
+              endMessage.status = "failed";
+              endMessage.error = err;
+              this.stats.failed++;
+            }
           }
           endMessage.duration = +new Date() - start;
         }
