@@ -1,14 +1,12 @@
 #[macro_use]
 extern crate log;
 
+use deno_core::js_check;
+use deno_core::BasicState;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::Op;
-use deno_core::OpId;
 use deno_core::OpRegistry;
-use deno_core::OpRouter;
-use deno_core::OpTable;
-use deno_core::ResourceTable;
 use deno_core::Script;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
@@ -16,8 +14,6 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
 use futures::future::TryFutureExt;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
 use std::fmt::Debug;
@@ -32,6 +28,7 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::runtime;
 
 struct Logger;
 
@@ -80,187 +77,157 @@ impl From<Record> for RecordBuf {
   }
 }
 
-#[derive(Default)]
-struct State {
-  resource_table: RefCell<ResourceTable>,
-  op_table: RefCell<OpTable<Self>>,
+fn create_isolate() -> CoreIsolate {
+  let state = BasicState::new();
+  register_op_bin_sync(&state, "listen", op_listen);
+  register_op_bin_sync(&state, "close", op_close);
+  register_op_bin_async(&state, "accept", op_accept);
+  register_op_bin_async(&state, "read", op_read);
+  register_op_bin_async(&state, "write", op_write);
+
+  let startup_data = StartupData::Script(Script {
+    source: include_str!("http_bench_bin_ops.js"),
+    filename: "http_bench_bin_ops.js",
+  });
+
+  CoreIsolate::new(state, startup_data, false)
 }
 
-impl State {
-  fn new() -> Rc<Self> {
-    let s = Rc::new(Self::default());
-    s.register_op_bin_sync("listen", Self::op_listen);
-    s.register_op_bin_sync("close", Self::op_close);
-    s.register_op_bin_async("accept", Self::op_accept);
-    s.register_op_bin_async("read", Self::op_read);
-    s.register_op_bin_async("write", Self::op_write);
-    s
-  }
+fn op_listen(
+  state: &BasicState,
+  _rid: u32,
+  _bufs: &mut [ZeroCopyBuf],
+) -> Result<u32, Error> {
+  debug!("listen");
+  let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
+  let std_listener = std::net::TcpListener::bind(&addr)?;
+  let listener = TcpListener::from_std(std_listener)?;
+  let rid = state
+    .resource_table
+    .borrow_mut()
+    .add("tcpListener", Box::new(listener));
+  Ok(rid)
+}
 
-  fn op_listen(
-    &self,
-    _rid: u32,
-    _bufs: &mut [ZeroCopyBuf],
-  ) -> Result<u32, Error> {
-    debug!("listen");
-    let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-    let std_listener = std::net::TcpListener::bind(&addr)?;
-    let listener = TcpListener::from_std(std_listener)?;
-    let rid = self
-      .resource_table
-      .borrow_mut()
-      .add("tcpListener", Box::new(listener));
-    Ok(rid)
-  }
+fn op_close(
+  state: &BasicState,
+  rid: u32,
+  _bufs: &mut [ZeroCopyBuf],
+) -> Result<u32, Error> {
+  debug!("close rid={}", rid);
+  state
+    .resource_table
+    .borrow_mut()
+    .close(rid)
+    .map(|_| 0)
+    .ok_or_else(bad_resource_id)
+}
 
-  fn op_close(
-    &self,
-    rid: u32,
-    _bufs: &mut [ZeroCopyBuf],
-  ) -> Result<u32, Error> {
-    debug!("close rid={}", rid);
-    self
-      .resource_table
-      .borrow_mut()
-      .close(rid)
-      .map(|_| 0)
-      .ok_or_else(bad_resource_id)
-  }
+fn op_accept(
+  state: Rc<BasicState>,
+  rid: u32,
+  _bufs: BufVec,
+) -> impl TryFuture<Ok = u32, Error = Error> {
+  debug!("accept rid={}", rid);
 
-  fn op_accept(
-    self: Rc<Self>,
-    rid: u32,
-    _bufs: BufVec,
-  ) -> impl TryFuture<Ok = u32, Error = Error> {
-    debug!("accept rid={}", rid);
-
-    poll_fn(move |cx| {
-      let resource_table = &mut self.resource_table.borrow_mut();
-      let listener = resource_table
-        .get_mut::<TcpListener>(rid)
-        .ok_or_else(bad_resource_id)?;
-      listener.poll_accept(cx).map_ok(|(stream, _addr)| {
-        resource_table.add("tcpStream", Box::new(stream))
-      })
+  poll_fn(move |cx| {
+    let resource_table = &mut state.resource_table.borrow_mut();
+    let listener = resource_table
+      .get_mut::<TcpListener>(rid)
+      .ok_or_else(bad_resource_id)?;
+    listener.poll_accept(cx).map_ok(|(stream, _addr)| {
+      resource_table.add("tcpStream", Box::new(stream))
     })
-  }
+  })
+}
 
-  fn op_read(
-    self: Rc<Self>,
-    rid: u32,
-    bufs: BufVec,
-  ) -> impl TryFuture<Ok = usize, Error = Error> {
-    assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-    let mut buf = bufs[0].clone();
+fn op_read(
+  state: Rc<BasicState>,
+  rid: u32,
+  bufs: BufVec,
+) -> impl TryFuture<Ok = usize, Error = Error> {
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  let mut buf = bufs[0].clone();
 
-    debug!("read rid={}", rid);
+  debug!("read rid={}", rid);
 
-    poll_fn(move |cx| {
-      let resource_table = &mut self.resource_table.borrow_mut();
-      let stream = resource_table
-        .get_mut::<TcpStream>(rid)
-        .ok_or_else(bad_resource_id)?;
-      Pin::new(stream).poll_read(cx, &mut buf)
-    })
-  }
+  poll_fn(move |cx| {
+    let resource_table = &mut state.resource_table.borrow_mut();
+    let stream = resource_table
+      .get_mut::<TcpStream>(rid)
+      .ok_or_else(bad_resource_id)?;
+    Pin::new(stream).poll_read(cx, &mut buf)
+  })
+}
 
-  fn op_write(
-    self: Rc<Self>,
-    rid: u32,
-    bufs: BufVec,
-  ) -> impl TryFuture<Ok = usize, Error = Error> {
-    assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-    let buf = bufs[0].clone();
-    debug!("write rid={}", rid);
+fn op_write(
+  state: Rc<BasicState>,
+  rid: u32,
+  bufs: BufVec,
+) -> impl TryFuture<Ok = usize, Error = Error> {
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  let buf = bufs[0].clone();
+  debug!("write rid={}", rid);
 
-    poll_fn(move |cx| {
-      let resource_table = &mut self.resource_table.borrow_mut();
-      let stream = resource_table
-        .get_mut::<TcpStream>(rid)
-        .ok_or_else(bad_resource_id)?;
-      Pin::new(stream).poll_write(cx, &buf)
-    })
-  }
+  poll_fn(move |cx| {
+    let resource_table = &mut state.resource_table.borrow_mut();
+    let stream = resource_table
+      .get_mut::<TcpStream>(rid)
+      .ok_or_else(bad_resource_id)?;
+    Pin::new(stream).poll_write(cx, &buf)
+  })
+}
 
-  fn register_op_bin_sync<F>(&self, name: &'static str, op_fn: F)
-  where
-    F: Fn(&Self, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
-  {
-    let base_op_fn = move |state: Rc<State>, mut bufs: BufVec| -> Op {
-      let record = Record::from(bufs[0].as_ref());
-      let is_sync = record.promise_id == 0;
-      assert!(is_sync);
+fn register_op_bin_sync<F>(state: &BasicState, name: &'static str, op_fn: F)
+where
+  F: Fn(&BasicState, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
+{
+  let base_op_fn = move |state: Rc<BasicState>, mut bufs: BufVec| -> Op {
+    let record = Record::from(bufs[0].as_ref());
+    let is_sync = record.promise_id == 0;
+    assert!(is_sync);
 
-      let zero_copy_bufs = &mut bufs[1..];
-      let result: i32 = match op_fn(&state, record.rid, zero_copy_bufs) {
-        Ok(r) => r as i32,
-        Err(_) => -1,
-      };
-      let buf = RecordBuf::from(Record { result, ..record })[..].into();
-      Op::Sync(buf)
+    let zero_copy_bufs = &mut bufs[1..];
+    let result: i32 = match op_fn(&state, record.rid, zero_copy_bufs) {
+      Ok(r) => r as i32,
+      Err(_) => -1,
+    };
+    let buf = RecordBuf::from(Record { result, ..record })[..].into();
+    Op::Sync(buf)
+  };
+
+  state.register_op(name, base_op_fn);
+}
+
+fn register_op_bin_async<F, R>(state: &BasicState, name: &'static str, op_fn: F)
+where
+  F: Fn(Rc<BasicState>, u32, BufVec) -> R + Copy + 'static,
+  R: TryFuture,
+  R::Ok: TryInto<i32>,
+  <R::Ok as TryInto<i32>>::Error: Debug,
+{
+  let base_op_fn = move |state: Rc<BasicState>, bufs: BufVec| -> Op {
+    let mut bufs_iter = bufs.into_iter();
+    let record_buf = bufs_iter.next().unwrap();
+    let zero_copy_bufs = bufs_iter.collect::<BufVec>();
+
+    let record = Record::from(record_buf.as_ref());
+    let is_sync = record.promise_id == 0;
+    assert!(!is_sync);
+
+    let fut = async move {
+      let op = op_fn(state, record.rid, zero_copy_bufs);
+      let result = op
+        .map_ok(|r| r.try_into().expect("op result does not fit in i32"))
+        .unwrap_or_else(|_| -1)
+        .await;
+      RecordBuf::from(Record { result, ..record })[..].into()
     };
 
-    self.register_op(name, base_op_fn);
-  }
+    Op::Async(fut.boxed_local())
+  };
 
-  fn register_op_bin_async<F, R>(&self, name: &'static str, op_fn: F)
-  where
-    F: Fn(Rc<Self>, u32, BufVec) -> R + Copy + 'static,
-    R: TryFuture,
-    R::Ok: TryInto<i32>,
-    <R::Ok as TryInto<i32>>::Error: Debug,
-  {
-    let base_op_fn = move |state: Rc<Self>, bufs: BufVec| -> Op {
-      let mut bufs_iter = bufs.into_iter();
-      let record_buf = bufs_iter.next().unwrap();
-      let zero_copy_bufs = bufs_iter.collect::<BufVec>();
-
-      let record = Record::from(record_buf.as_ref());
-      let is_sync = record.promise_id == 0;
-      assert!(!is_sync);
-
-      let fut = async move {
-        let op = op_fn(state, record.rid, zero_copy_bufs);
-        let result = op
-          .map_ok(|r| r.try_into().expect("op result does not fit in i32"))
-          .unwrap_or_else(|_| -1)
-          .await;
-        RecordBuf::from(Record { result, ..record })[..].into()
-      };
-
-      Op::Async(fut.boxed_local())
-    };
-
-    self.register_op(name, base_op_fn);
-  }
-}
-
-impl OpRegistry for State {
-  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId> {
-    self.op_table.borrow().get_op_catalog()
-  }
-
-  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
-  {
-    let mut op_table = self.op_table.borrow_mut();
-    let (op_id, prev) = op_table.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(prev.is_none());
-    op_id
-  }
-}
-
-impl OpRouter for State {
-  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let op_fn = self
-      .op_table
-      .borrow()
-      .get_index(op_id)
-      .map(|(_, op_fn)| op_fn.clone())
-      .unwrap();
-    (op_fn)(self, bufs)
-  }
+  state.register_op(name, base_op_fn);
 }
 
 fn bad_resource_id() -> Error {
@@ -279,18 +246,13 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench_bin_ops.js"),
-    filename: "http_bench_bin_ops.js",
-  });
-  let isolate = CoreIsolate::new(State::new(), startup_data, false);
-
-  let mut runtime = tokio::runtime::Builder::new()
+  let isolate = create_isolate();
+  let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
     .build()
     .unwrap();
-  runtime.block_on(isolate).expect("unexpected isolate error");
+  js_check(runtime.block_on(isolate));
 }
 
 #[test]

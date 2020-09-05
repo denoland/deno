@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use deno_core::serde_json;
+use deno_core::js_check;
 use deno_core::BasicState;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
@@ -23,6 +23,7 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::runtime;
 
 struct Logger;
 
@@ -187,10 +188,10 @@ fn main() {
   deno_core::v8_set_flags(env::args().collect());
 
   let isolate = create_isolate();
-  let mut runtime = tokio::runtime::Builder::new()
+  let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
     .build()
     .unwrap();
-  deno_core::js_check(runtime.block_on(isolate));
+  js_check(runtime.block_on(isolate));
 }
