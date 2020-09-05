@@ -11,5 +11,5 @@ AssertionError: fail1 assertion
 failures:
 [WILDCARD]
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: FAILED. 0 passed; 1 failed; 0 timed out; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
 

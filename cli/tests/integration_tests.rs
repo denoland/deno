@@ -1216,7 +1216,7 @@ fn deno_test_no_color() {
   assert!(out.contains("test success ... ok"));
   assert!(out.contains("test fail ... FAILED"));
   assert!(out.contains("test ignored ... ignored"));
-  assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
+  assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 0 timed out; 1 ignored; 0 measured; 0 filtered out"));
 }
 
 #[test]
