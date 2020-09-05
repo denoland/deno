@@ -178,14 +178,8 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
   }, Deno.errors.PermissionDenied);
 });
 
-/* unitTest({ perms: { env: true } }, functions memoryInfo(): void { */
-/*   const info = Deno.memoryInfo(); */
-/*   console.log(info); */
-/*   assert(info.total >= 0); */
-/*   assert(info.free >= 0); */
-/*   assert(info.available >= 0); */
-/*   assert(info.buffers >= 0); */
-/*   assert(info.cached >= 0); */
-/*   assert(info.swapTotal >= 0); */
-/*   assert(info.swapFree >= 0); */
-/* }); */
+unitTest({ perms: { env: true } }, functions memoryInfo(): void {
+  const info = Deno.memoryInfo();
+  assert(info.total >= 0);
+  /* assetNotEquals(Deno.memoryInfo(), {}); */
+});
