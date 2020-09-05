@@ -127,6 +127,7 @@ impl WebWorker {
       ops::errors::init(isolate, &state);
       ops::timers::init(isolate, &state);
       ops::fetch::init(isolate, &state);
+      ops::websocket::init(isolate, &state);
 
       if has_deno_namespace {
         ops::runtime_compiler::init(isolate, &state);
