@@ -1384,6 +1384,12 @@ itest!(deno_test_only {
   output: "deno_test_only.ts.out",
 });
 
+itest!(deno_test_timeout {
+  args: "test deno_test_timeout.ts",
+  exit_code: 1,
+  output: "deno_test_timeout.ts.out",
+});
+
 #[test]
 fn workers() {
   let _g = util::http_server();

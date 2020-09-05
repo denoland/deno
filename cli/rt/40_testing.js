@@ -369,7 +369,10 @@ finishing test case.`;
       globalThis.console = originalConsole;
     }
 
-    if ((endMsg.failed > 0 || endMsg?.usedOnly) && exitOnFail) {
+    if (
+      (endMsg.failed > 0 || endMsg.timedout > 0 || endMsg?.usedOnly) &&
+      exitOnFail
+    ) {
       exit(1);
     }
 

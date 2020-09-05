@@ -1,0 +1,15 @@
+[WILDCARD]
+running 1 tests
+test ever-pending promise ... TIMEOUT ([WILDCARD])
+
+failures:
+
+ever-pending promise
+TimeoutError { message: "Not finished within the 500ms timeout" }
+
+failures:
+
+	ever-pending promise
+
+test result: FAILED. 0 passed; 0 failed; 1 timed out; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
