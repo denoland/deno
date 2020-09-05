@@ -97,6 +97,7 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: () => void | Promise<void>;
     name: string;
+    timeout?: number;
     ignore?: boolean;
     /** If at lease one test has `only` set to true, only run tests that have
      * `only` set to true and fail the test suite. */
