@@ -40,7 +40,7 @@
       return fn;
     }
 
-    return function promiseWithTimeout() {
+    return function () {
       return new Promise((resolve, reject) => {
         const timeoutHandle = setTimeout(
           () => reject(new TimeoutError(ms)),
