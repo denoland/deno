@@ -2,7 +2,6 @@
 use crate::version;
 use bytes::Bytes;
 use deno_core::ErrBox;
-use futures::future::FutureExt;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::IF_NONE_MATCH;
@@ -92,77 +91,71 @@ pub enum FetchOnceResult {
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-pub fn fetch_once(
+pub async fn fetch_once(
   client: Client,
   url: &Url,
   cached_etag: Option<String>,
-) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
+) -> Result<FetchOnceResult, ErrBox> {
   let url = url.clone();
 
-  let fut = async move {
-    let mut request = client.get(url.clone());
+  let mut request = client.get(url.clone());
 
-    if let Some(etag) = cached_etag {
-      let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
-      request = request.header(IF_NONE_MATCH, if_none_match_val);
-    }
-    let response = request.send().await?;
+  if let Some(etag) = cached_etag {
+    let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
+    request = request.header(IF_NONE_MATCH, if_none_match_val);
+  }
+  let response = request.send().await?;
 
-    if response.status() == StatusCode::NOT_MODIFIED {
-      return Ok(FetchOnceResult::NotModified);
-    }
+  if response.status() == StatusCode::NOT_MODIFIED {
+    return Ok(FetchOnceResult::NotModified);
+  }
 
-    let mut headers_: HashMap<String, String> = HashMap::new();
-    let headers = response.headers();
+  let mut headers_: HashMap<String, String> = HashMap::new();
+  let headers = response.headers();
 
-    if let Some(warning) = headers.get("X-Deno-Warning") {
-      eprintln!(
-        "{} {}",
-        crate::colors::yellow("Warning"),
-        warning.to_str().unwrap()
-      );
-    }
+  if let Some(warning) = headers.get("X-Deno-Warning") {
+    eprintln!(
+      "{} {}",
+      crate::colors::yellow("Warning"),
+      warning.to_str().unwrap()
+    );
+  }
 
-    for key in headers.keys() {
-      let key_str = key.to_string();
-      let values = headers.get_all(key);
-      let values_str = values
-        .iter()
-        .map(|e| e.to_str().unwrap().to_string())
-        .collect::<Vec<String>>()
-        .join(",");
-      headers_.insert(key_str, values_str);
-    }
+  for key in headers.keys() {
+    let key_str = key.to_string();
+    let values = headers.get_all(key);
+    let values_str = values
+      .iter()
+      .map(|e| e.to_str().unwrap().to_string())
+      .collect::<Vec<String>>()
+      .join(",");
+    headers_.insert(key_str, values_str);
+  }
 
-    if response.status().is_redirection() {
-      let location_string = response
-        .headers()
-        .get(LOCATION)
-        .expect("url redirection should provide 'location' header")
-        .to_str()
-        .unwrap();
-
+  if response.status().is_redirection() {
+    if let Some(location) = response.headers().get(LOCATION) {
+      let location_string = location.to_str().unwrap();
       debug!("Redirecting to {:?}...", &location_string);
       let new_url = resolve_url_from_location(&url, location_string);
       return Ok(FetchOnceResult::Redirect(new_url, headers_));
+    } else {
+      return Err(ErrBox::error(format!(
+        "Redirection from '{}' did not provide location header",
+        url
+      )));
     }
+  }
 
-    if response.status().is_client_error()
-      || response.status().is_server_error()
-    {
-      let err = io::Error::new(
-        io::ErrorKind::Other,
-        format!("Import '{}' failed: {}", &url, response.status()),
-      );
-      return Err(err.into());
-    }
+  if response.status().is_client_error() || response.status().is_server_error()
+  {
+    let err =
+      ErrBox::error(format!("Import '{}' failed: {}", &url, response.status()));
+    return Err(err);
+  }
 
-    let body = response.bytes().await?.to_vec();
+  let body = response.bytes().await?.to_vec();
 
-    return Ok(FetchOnceResult::Code(body, headers_));
-  };
-
-  fut.boxed()
+  Ok(FetchOnceResult::Code(body, headers_))
 }
 
 /// Wraps reqwest `Response` so that it can be exposed as an `AsyncRead` and integrated
@@ -499,5 +492,18 @@ mod tests {
     } else {
       panic!();
     }
+  }
+
+  #[tokio::test]
+  async fn bad_redirect() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:4545/bad_redirect";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_http_client(None).unwrap();
+    let result = fetch_once(client, &url, None).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    // Check that the error message contains the original URL
+    assert!(err.to_string().contains(url_str));
   }
 }
