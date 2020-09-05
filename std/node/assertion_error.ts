@@ -390,8 +390,12 @@ export interface AssertionErrorConstructorOptions {
   stackStartFunction?: Function;
 }
 
+interface ErrorWithStackTraceLimit extends ErrorConstructor {
+  stackTraceLimit: number;
+}
+
 export class AssertionError extends Error {
-  [key: string]: unknown
+  [key: string]: unknown;
 
   // deno-lint-ignore constructor-super
   constructor(options: AssertionErrorConstructorOptions) {
@@ -412,12 +416,8 @@ export class AssertionError extends Error {
 
     // TODO: `stackTraceLimit` should be added to `ErrorConstructor` in
     // cli/dts/lib.deno.shared_globals.d.ts
-    // deno-lint-ignore ban-ts-comment
-    // @ts-ignore
-    const limit = Error.stackTraceLimit;
-    // deno-lint-ignore ban-ts-comment
-    // @ts-ignore
-    Error.stackTraceLimit = 0;
+    const limit = (Error as ErrorWithStackTraceLimit).stackTraceLimit;
+    (Error as ErrorWithStackTraceLimit).stackTraceLimit = 0;
 
     if (message != null) {
       super(String(message));
@@ -518,9 +518,7 @@ export class AssertionError extends Error {
       }
     }
 
-    // deno-lint-ignore ban-ts-comment
-    // @ts-ignore
-    Error.stackTraceLimit = limit;
+    (Error as ErrorWithStackTraceLimit).stackTraceLimit = limit;
 
     this.generatedMessage = !message;
     ObjectDefineProperty(this, "name", {
