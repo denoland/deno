@@ -4,10 +4,10 @@ extern crate log;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::Op;
-use deno_core::OpFn;
 use deno_core::OpId;
 use deno_core::OpRegistry;
 use deno_core::OpRouter;
+use deno_core::OpTable;
 use deno_core::ResourceTable;
 use deno_core::Script;
 use deno_core::StartupData;
@@ -16,8 +16,8 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
 use futures::future::TryFutureExt;
-use indexmap::IndexMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
 use std::fmt::Debug;
@@ -83,29 +83,18 @@ impl From<Record> for RecordBuf {
 #[derive(Default)]
 struct State {
   resource_table: RefCell<ResourceTable>,
-  op_table: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
+  op_table: RefCell<OpTable<Self>>,
 }
 
 impl State {
   fn new() -> Rc<Self> {
     let s = Rc::new(Self::default());
-    s.register_op_json_catalog(Self::op_catalog);
     s.register_op_bin_sync("listen", Self::op_listen);
     s.register_op_bin_sync("close", Self::op_close);
     s.register_op_bin_async("accept", Self::op_accept);
     s.register_op_bin_async("read", Self::op_read);
     s.register_op_bin_async("write", Self::op_write);
     s
-  }
-
-  fn op_catalog(state: &State, visitor: &mut dyn FnMut((String, OpId))) {
-    state
-      .op_table
-      .borrow()
-      .keys()
-      .cloned()
-      .zip(0..)
-      .for_each(visitor)
   }
 
   fn op_listen(
@@ -247,6 +236,10 @@ impl State {
 }
 
 impl OpRegistry for State {
+  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId> {
+    self.op_table.borrow().get_op_catalog()
+  }
+
   fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,

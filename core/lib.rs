@@ -57,7 +57,7 @@ pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpRegistry;
 pub use crate::ops::OpRouter;
-pub use crate::ops::SimpleOpRegistry;
+pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;

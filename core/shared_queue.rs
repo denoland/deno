@@ -19,6 +19,7 @@ SharedQueue Binary Layout
 use crate::bindings;
 use crate::ops::OpId;
 use rusty_v8 as v8;
+use std::convert::TryInto;
 
 const MAX_RECORDS: usize = 100;
 /// Total number of records added.
@@ -121,7 +122,7 @@ impl SharedQueue {
   fn set_meta(&mut self, index: usize, end: usize, op_id: OpId) {
     let s = self.as_u32_slice_mut();
     s[INDEX_OFFSETS + 2 * index] = end as u32;
-    s[INDEX_OFFSETS + 2 * index + 1] = op_id;
+    s[INDEX_OFFSETS + 2 * index + 1] = op_id.try_into().unwrap();
   }
 
   #[cfg(test)]
@@ -129,7 +130,7 @@ impl SharedQueue {
     if index < self.num_records() {
       let s = self.as_u32_slice();
       let end = s[INDEX_OFFSETS + 2 * index] as usize;
-      let op_id = s[INDEX_OFFSETS + 2 * index + 1];
+      let op_id = s[INDEX_OFFSETS + 2 * index + 1] as OpId;
       Some((op_id, end))
     } else {
       None

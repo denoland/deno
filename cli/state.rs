@@ -16,14 +16,13 @@ use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
-use deno_core::OpFn;
 use deno_core::OpId;
 use deno_core::OpRegistry;
 use deno_core::OpRouter;
+use deno_core::OpTable;
 use deno_core::ResourceTable;
 use futures::future::FutureExt;
 use futures::Future;
-use indexmap::IndexMap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::cell::Cell;
@@ -57,7 +56,7 @@ pub struct State {
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
   pub resource_table: RefCell<ResourceTable>,
-  pub op_table: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
+  pub op_table: RefCell<OpTable<Self>>,
 }
 
 impl State {
@@ -393,6 +392,10 @@ impl OpRouter for State {
 }
 
 impl OpRegistry for State {
+  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId> {
+    self.op_table.borrow().get_op_catalog()
+  }
+
   fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static,

@@ -5,16 +5,19 @@ use crate::ErrBox;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use futures::FutureExt;
+use indexmap::IndexMap;
 use serde_json::json;
 use serde_json::Value;
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::iter::once;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
 pub type OpFn<S> = dyn Fn(Rc<S>, BufVec) -> Op + 'static;
-pub type OpId = u32;
+pub type OpId = usize;
 
 pub enum Op {
   Sync(Box<[u8]>),
@@ -46,18 +49,15 @@ impl OpRouter for MockOpRouter {
 }
 
 pub trait OpRegistry: OpRouter + 'static {
+  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId>;
+
   fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<Self>, BufVec) -> Op + 'static;
 
   fn register_op_json_sync<F>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(
-        &Self,
-        serde_json::Value,
-        &mut [ZeroCopyBuf],
-      ) -> Result<serde_json::Value, ErrBox>
-      + 'static,
+    F: Fn(&Self, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> + 'static,
   {
     let base_op_fn = move |state: Rc<Self>, mut bufs: BufVec| -> Op {
       let result = serde_json::from_slice(&bufs[0])
@@ -72,8 +72,8 @@ pub trait OpRegistry: OpRouter + 'static {
 
   fn register_op_json_async<F, R>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<Self>, serde_json::Value, BufVec) -> R + 'static,
-    R: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
+    F: Fn(Rc<Self>, Value, BufVec) -> R + 'static,
+    R: Future<Output = Result<Value, ErrBox>> + 'static,
   {
     let try_dispatch_op = move |state: Rc<Self>,
                                 bufs: BufVec|
@@ -100,28 +100,6 @@ pub trait OpRegistry: OpRouter + 'static {
     self.register_op(name, base_op_fn)
   }
 
-  fn register_op_json_catalog<F>(self: &Rc<Self>, op_fn: F) -> OpId
-  where
-    for<'a> F: Fn(&'a Self, &'a mut dyn FnMut((String, OpId))) + 'static,
-  {
-    let base_op_fn = move |state: Rc<Self>, _: BufVec| -> Op {
-      let mut index = HashMap::<String, OpId>::new();
-      let mut visitor = |(k, v)| {
-        assert!(index.insert(k, v).is_none());
-      };
-      op_fn(&state, &mut visitor);
-      let buf = serde_json::to_vec(&index).unwrap().into();
-      Op::Sync(buf)
-    };
-
-    let op_id = self.register_op("ops", base_op_fn);
-    assert_eq!(
-      op_id, 0,
-      "the 'catalog' op should be the first one registered"
-    );
-    op_id
-  }
-
   fn json_serialize_op_result(
     &self,
     promise_id: Option<u64>,
@@ -145,56 +123,41 @@ pub trait OpRegistry: OpRouter + 'static {
   }
 }
 
-pub struct SimpleOpRegistry(RefCell<SimpleOpRegistryInner>);
+/// Collection for storing registered ops. The special 'get_op_catalog'
+/// op with OpId `0` is automatically added when the OpTable is created.
+pub struct OpTable<S>(IndexMap<String, Rc<OpFn<S>>>);
 
-#[derive(Default)]
-struct SimpleOpRegistryInner {
-  dispatchers: Vec<Rc<dyn Fn(Rc<SimpleOpRegistry>, BufVec) -> Op + 'static>>,
-  name_to_id: HashMap<String, OpId>,
-}
+impl<S: OpRegistry> OpTable<S> {
+  pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
+    self.keys().cloned().zip(0..).collect()
+  }
 
-impl SimpleOpRegistry {
-  pub fn new() -> Rc<Self> {
-    let self_rc = Rc::new(Self(Default::default()));
-    self_rc.register_op_json_catalog(|state, visitor| {
-      state
-        .0
-        .borrow()
-        .name_to_id
-        .iter()
-        .map(|(k, &v)| (k.clone(), v))
-        .for_each(visitor);
-    });
-    self_rc
+  fn op_get_op_catalog(state: Rc<S>, _bufs: BufVec) -> Op {
+    let ops = state.get_op_catalog();
+    let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
+    Op::Sync(buf)
   }
 }
 
-impl OpRouter for SimpleOpRegistry {
-  fn route_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let op_fn = self.0.borrow_mut().dispatchers.get(op_id as usize).cloned();
-    match op_fn {
-      Some(op_fn) => (op_fn)(self, bufs),
-      None => Op::NotFound,
-    }
+impl<S: OpRegistry> Default for OpTable<S> {
+  fn default() -> Self {
+    Self(
+      once(("ops".to_owned(), Rc::new(Self::op_get_op_catalog) as _)).collect(),
+    )
   }
 }
 
-impl OpRegistry for SimpleOpRegistry {
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
-  ///
-  /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
-  {
-    let mut inner = self.0.borrow_mut();
-    let op_id = inner.dispatchers.len() as u32;
-    let removed = inner.name_to_id.insert(name.to_string(), op_id);
-    assert!(removed.is_none(), "op already registered: {}", name);
-    inner.dispatchers.push(Rc::new(op_fn));
-    op_id
+impl<S> Deref for OpTable<S> {
+  type Target = IndexMap<String, Rc<OpFn<S>>>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl<S> DerefMut for OpTable<S> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
   }
 }
 

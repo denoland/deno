@@ -14,6 +14,7 @@ use v8::MapFnTo;
 
 use std::cell::Cell;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::option::Option;
 
 lazy_static! {
@@ -381,7 +382,7 @@ fn send<'s>(
   let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
-    Ok(op_id) => op_id.value() as u32,
+    Ok(op_id) => op_id.value().try_into().unwrap(),
     Err(err) => {
       let msg = format!("invalid op id: {}", err);
       let msg = v8::String::new(scope, &msg).unwrap();

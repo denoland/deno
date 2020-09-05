@@ -8,6 +8,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -481,7 +482,7 @@ impl Deps {
     }
   }
 
-  pub fn to_json(&self) -> serde_json::Value {
+  pub fn to_json(&self) -> Value {
     let children;
     if let Some(deps) = &self.deps {
       children = deps.iter().map(|c| c.to_json()).collect();
