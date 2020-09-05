@@ -277,7 +277,6 @@ async fn op_connect(
         net_unix::UnixStream::connect(net_unix::Path::new(&path)).await?;
       let local_addr = unix_stream.local_addr()?;
       let remote_addr = unix_stream.peer_addr()?;
-      let _resource_table = state.resource_table.borrow_mut();
       let rid = state.resource_table.borrow_mut().add(
         "unixStream",
         Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
