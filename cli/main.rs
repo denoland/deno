@@ -690,7 +690,7 @@ async fn test_command(
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
-    url: test_file_url,
+    url: test_file_url.clone(),
     types_header: None,
     media_type: MediaType::TypeScript,
     source_code: TextDocument::new(
@@ -745,6 +745,10 @@ async fn test_command(
       .into_iter()
       .filter(|e| {
         if let Ok(url) = Url::parse(&e.url) {
+          if url == test_file_url {
+            return false;
+          }
+
           for test_module_url in &test_modules {
             if &url == test_module_url {
               return false;
