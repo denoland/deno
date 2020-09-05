@@ -82,13 +82,13 @@ fn get_asset(name: &str) -> Option<&'static str> {
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
 /// CoreIsolate.
-pub fn op_fetch_asset<H: std::hash::BuildHasher, M>(
+pub fn op_fetch_asset<H: std::hash::BuildHasher, S>(
   custom_assets: HashMap<String, PathBuf, H>,
-) -> impl Fn(Rc<M>, BufVec) -> Op + Sized {
+) -> impl Fn(Rc<S>, BufVec) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |_op_registry: Rc<M>, bufs: BufVec| -> Op {
+  move |_state: Rc<S>, bufs: BufVec| -> Op {
     assert_eq!(bufs.len(), 1, "Invalid number of arguments");
     let name = std::str::from_utf8(&bufs[0]).unwrap();
 
