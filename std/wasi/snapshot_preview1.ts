@@ -346,7 +346,7 @@ export default class Context {
     }
 
     this.exports = {
-      args_get: syscall((
+      "args_get": syscall((
         argv_ptr: number,
         argv_buf_ptr: number,
       ): number => {
@@ -367,7 +367,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      args_sizes_get: syscall((
+      "args_sizes_get": syscall((
         argc_out: number,
         argv_buf_size_out: number,
       ): number => {
@@ -387,7 +387,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      environ_get: syscall((
+      "environ_get": syscall((
         environ_ptr: number,
         environ_buf_ptr: number,
       ): number => {
@@ -408,7 +408,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      environ_sizes_get: syscall((
+      "environ_sizes_get": syscall((
         environc_out: number,
         environ_buf_size_out: number,
       ): number => {
@@ -428,7 +428,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      clock_res_get: syscall((
+      "clock_res_get": syscall((
         id: number,
         resolution_out: number,
       ): number => {
@@ -458,7 +458,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      clock_time_get: syscall((
+      "clock_time_get": syscall((
         id: number,
         precision: bigint,
         time_out: number,
@@ -489,7 +489,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_advise: syscall((
+      "fd_advise": syscall((
         _fd: number,
         _offset: bigint,
         _len: bigint,
@@ -498,7 +498,7 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
 
-      fd_allocate: syscall((
+      "fd_allocate": syscall((
         _fd: number,
         _offset: bigint,
         _len: bigint,
@@ -506,7 +506,7 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
 
-      fd_close: syscall((
+      "fd_close": syscall((
         fd: number,
       ): number => {
         const entry = this.fds[fd];
@@ -523,7 +523,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_datasync: syscall((
+      "fd_datasync": syscall((
         fd: number,
       ): number => {
         const entry = this.fds[fd];
@@ -536,7 +536,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_fdstat_get: syscall((
+      "fd_fdstat_get": syscall((
         fd: number,
         stat_out: number,
       ): number => {
@@ -554,14 +554,14 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_fdstat_set_flags: syscall((
+      "fd_fdstat_set_flags": syscall((
         _fd: number,
         _flags: number,
       ): number => {
         return ERRNO_NOSYS;
       }),
 
-      fd_fdstat_set_rights: syscall((
+      "fd_fdstat_set_rights": syscall((
         _fd: number,
         _fs_rights_base: bigint,
         _fs_rights_inheriting: bigint,
@@ -569,7 +569,7 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
 
-      fd_filestat_get: syscall((
+      "fd_filestat_get": syscall((
         fd: number,
         buf_out: number,
       ): number => {
@@ -641,7 +641,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_filestat_set_size: syscall((
+      "fd_filestat_set_size": syscall((
         fd: number,
         size: bigint,
       ): number => {
@@ -655,7 +655,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_filestat_set_times: syscall((
+      "fd_filestat_set_times": syscall((
         fd: number,
         atim: bigint,
         mtim: bigint,
@@ -683,7 +683,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_pread: syscall((
+      "fd_pread": syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -716,7 +716,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_prestat_get: syscall((
+      "fd_prestat_get": syscall((
         fd: number,
         buf_out: number,
       ): number => {
@@ -740,7 +740,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_prestat_dir_name: syscall((
+      "fd_prestat_dir_name": syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -760,7 +760,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_pwrite: syscall((
+      "fd_pwrite": syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -793,7 +793,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_read: syscall((
+      "fd_read": syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -823,7 +823,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_readdir: syscall((
+      "fd_readdir": syscall((
         fd: number,
         buf_ptr: number,
         buf_len: number,
@@ -893,7 +893,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_renumber: syscall((
+      "fd_renumber": syscall((
         fd: number,
         to: number,
       ): number => {
@@ -915,7 +915,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_seek: syscall((
+      "fd_seek": syscall((
         fd: number,
         offset: bigint,
         whence: number,
@@ -935,7 +935,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_sync: syscall((
+      "fd_sync": syscall((
         fd: number,
       ): number => {
         const entry = this.fds[fd];
@@ -948,7 +948,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_tell: syscall((
+      "fd_tell": syscall((
         fd: number,
         offset_out: number,
       ): number => {
@@ -965,7 +965,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      fd_write: syscall((
+      "fd_write": syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -995,7 +995,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_create_directory: syscall((
+      "path_create_directory": syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -1018,7 +1018,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_filestat_get: syscall((
+      "path_filestat_get": syscall((
         fd: number,
         flags: number,
         path_ptr: number,
@@ -1102,7 +1102,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_filestat_set_times: syscall((
+      "path_filestat_set_times": syscall((
         fd: number,
         flags: number,
         path_ptr: number,
@@ -1137,7 +1137,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_link: syscall((
+      "path_link": syscall((
         old_fd: number,
         old_flags: number,
         old_path_ptr: number,
@@ -1175,7 +1175,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_open: syscall((
+      "path_open": syscall((
         fd: number,
         dirflags: number,
         path_ptr: number,
@@ -1297,7 +1297,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_readlink: syscall((
+      "path_readlink": syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -1334,7 +1334,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_remove_directory: syscall((
+      "path_remove_directory": syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -1361,7 +1361,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_rename: syscall((
+      "path_rename": syscall((
         fd: number,
         old_path_ptr: number,
         old_path_len: number,
@@ -1398,7 +1398,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_symlink: syscall((
+      "path_symlink": syscall((
         old_path_ptr: number,
         old_path_len: number,
         fd: number,
@@ -1433,7 +1433,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      path_unlink_file: syscall((
+      "path_unlink_file": syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -1456,7 +1456,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      poll_oneoff: syscall((
+      "poll_oneoff": syscall((
         _in_ptr: number,
         _out_ptr: number,
         _nsubscriptions: number,
@@ -1465,23 +1465,23 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
 
-      proc_exit: syscall((
+      "proc_exit": syscall((
         rval: number,
       ): never => {
         Deno.exit(rval);
       }),
 
-      proc_raise: syscall((
+      "proc_raise": syscall((
         _sig: number,
       ): number => {
         return ERRNO_NOSYS;
       }),
 
-      sched_yield: syscall((): number => {
+      "sched_yield": syscall((): number => {
         return ERRNO_SUCCESS;
       }),
 
-      random_get: syscall((
+      "random_get": syscall((
         buf_ptr: number,
         buf_len: number,
       ): number => {
@@ -1491,7 +1491,7 @@ export default class Context {
         return ERRNO_SUCCESS;
       }),
 
-      sock_recv: syscall((
+      "sock_recv": syscall((
         _fd: number,
         _ri_data_ptr: number,
         _ri_data_len: number,
@@ -1502,7 +1502,7 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
 
-      sock_send: syscall((
+      "sock_send": syscall((
         _fd: number,
         _si_data_ptr: number,
         _si_data_len: number,
@@ -1512,7 +1512,7 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
 
-      sock_shutdown: syscall((
+      "sock_shutdown": syscall((
         _fd: number,
         _how: number,
       ): number => {
