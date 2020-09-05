@@ -130,17 +130,31 @@ declare namespace Deno {
    */
   export function osRelease(): string;
 
+  /** **Unstable** new API. yet to be vetted. 
+   *
+   * Returns the release version of the Operating System.
+   *
+   * ```ts
+   * console.log(Deno.memoryInfo());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   */
   export function memoryInfo(): MemoryInfo;
 
-  interface MemoryInfo {
+  export interface MemoryInfo {
+    /** Total physical memory. */
     total: number;
     free: number;
     available: number;
     buffers: number;
     cached: number;
+    /** Total swap memory. */
     swapTotal: number;
     swapFree: number;
   }
+
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initialize a plugin.
