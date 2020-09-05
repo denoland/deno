@@ -336,7 +336,14 @@ impl State {
 
 impl OpRouter for State {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    // TODO: consider removing these 'bytes' metrics.
+    // TODOs:
+    // * The 'bytes' metrics seem pretty useless, especially now that
+    //   the distinction between 'control' and 'data' buffers has become
+    //   blurry.
+    // * Tracking completion of async ops currently makes us put the
+    //   boxed future into _another_ box. Keeping some counters may
+    //   not be expensive in itself, but adding a heap allocation for
+    //   every metric seems bad.
     let mut buf_len_iter = bufs.iter().map(|buf| buf.len());
     let bytes_sent_control = buf_len_iter.next().unwrap_or(0);
     let bytes_sent_data = buf_len_iter.sum();
