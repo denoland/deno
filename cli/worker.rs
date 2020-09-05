@@ -264,6 +264,7 @@ impl MainWorker {
       ops::runtime_compiler::init(&state);
       ops::errors::init(&state);
       ops::fetch::init(&state);
+      ops::websocket::init(&state);
       ops::fs::init(&state);
       ops::fs_events::init(&state);
       ops::idna::init(&state);

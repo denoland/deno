@@ -39,20 +39,6 @@
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
-  class MessageEvent extends Event {
-    constructor(type, eventInitDict) {
-      super(type, {
-        bubbles: eventInitDict?.bubbles ?? false,
-        cancelable: eventInitDict?.cancelable ?? false,
-        composed: eventInitDict?.composed ?? false,
-      });
-
-      this.data = eventInitDict?.data ?? null;
-      this.origin = eventInitDict?.origin ?? "";
-      this.lastEventId = eventInitDict?.lastEventId ?? "";
-    }
-  }
-
   function encodeMessage(data) {
     const dataJson = JSON.stringify(data);
     return encoder.encode(dataJson);
@@ -226,6 +212,5 @@
 
   window.__bootstrap.worker = {
     Worker,
-    MessageEvent,
   };
 })(this);
