@@ -12,8 +12,9 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub type OpId = u32;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
+pub type OpFn<S> = dyn Fn(Rc<S>, BufVec) -> Op + 'static;
+pub type OpId = u32;
 
 pub enum Op {
   Sync(Box<[u8]>),
@@ -86,7 +87,7 @@ pub trait OpRegistry: OpRouter + 'static {
     let op_id = self.register_op("ops", base_op_fn);
     assert_eq!(
       op_id, 0,
-      "the 'meta_catalog' op should be the first one registered"
+      "the 'catalog' op should be the first one registered"
     );
     op_id
   }

@@ -16,6 +16,7 @@ use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
+use deno_core::OpFn;
 use deno_core::OpId;
 use deno_core::OpRegistry;
 use deno_core::OpRouter;
@@ -28,7 +29,6 @@ use rand::SeedableRng;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::path::Path;
 use std::pin::Pin;
@@ -57,8 +57,7 @@ pub struct State {
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
   pub resource_table: RefCell<ResourceTable>,
-  pub op_registry:
-    RefCell<IndexMap<String, Rc<dyn Fn(Rc<Self>, BufVec) -> Op + 'static>>>,
+  pub op_registry: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
 }
 
 impl State {
@@ -337,7 +336,7 @@ impl State {
 
 impl OpRouter for State {
   fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    let index = usize::try_from(op_id).unwrap();
+    let index: usize = op_id.try_into().unwrap();
     let op_fn = self
       .op_registry
       .borrow()

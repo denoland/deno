@@ -114,7 +114,6 @@ pub struct CoreIsolate {
 /// Internal state for CoreIsolate which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct CoreIsolateState {
-  //pub resource_table: Rc<RefCell<ResourceTable>>,
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,

@@ -51,6 +51,7 @@ pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
+pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpRegistry;
 pub use crate::ops::OpRouter;

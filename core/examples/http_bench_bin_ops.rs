@@ -1,9 +1,13 @@
 #[macro_use]
 extern crate log;
 
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
 use deno_core::Op;
+use deno_core::OpFn;
+use deno_core::OpId;
+use deno_core::OpRegistry;
+use deno_core::OpRouter;
 use deno_core::ResourceTable;
 use deno_core::Script;
 use deno_core::StartupData;
@@ -12,6 +16,7 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
 use futures::future::TryFutureExt;
+use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env;
@@ -46,9 +51,9 @@ impl log::Log for Logger {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct Record {
-  pub promise_id: u32,
-  pub rid: u32,
-  pub result: i32,
+  promise_id: u32,
+  rid: u32,
+  result: i32,
 }
 
 type RecordBuf = [u8; size_of::<Record>()];
@@ -75,23 +80,130 @@ impl From<Record> for RecordBuf {
   }
 }
 
-pub fn isolate_new() -> CoreIsolate {
-  let startup_data = StartupData::Script(Script { source: include_str!("http_bench_bin_ops.js"), filename: "http_bench_bin_ops.js" });
+#[derive(Default)]
+struct State {
+  resource_table: RefCell<ResourceTable>,
+  op_registry: RefCell<IndexMap<String, Rc<OpFn<Self>>>>,
+}
 
-  let mut isolate = CoreIsolate::new(startup_data, false);
+impl State {
+  fn new() -> Rc<Self> {
+    let s = Rc::new(Self::default());
+    s.register_op_json_catalog(Self::op_catalog);
+    s.register_op_bin_sync("listen", Self::op_listen);
+    s.register_op_bin_sync("close", Self::op_close);
+    s.register_op_bin_async("accept", Self::op_accept);
+    s.register_op_bin_async("read", Self::op_read);
+    s.register_op_bin_async("write", Self::op_write);
+    s
+  }
 
-  fn register_sync_op<F>(isolate: &mut CoreIsolate, name: &'static str, handler: F)
+  fn op_catalog(state: &State, visitor: &mut dyn FnMut((String, OpId))) {
+    state
+      .op_registry
+      .borrow()
+      .keys()
+      .cloned()
+      .zip(0..)
+      .for_each(visitor)
+  }
+
+  fn op_listen(
+    &self,
+    _rid: u32,
+    _bufs: &mut [ZeroCopyBuf],
+  ) -> Result<u32, Error> {
+    debug!("listen");
+    let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
+    let std_listener = std::net::TcpListener::bind(&addr)?;
+    let listener = TcpListener::from_std(std_listener)?;
+    let rid = self
+      .resource_table
+      .borrow_mut()
+      .add("tcpListener", Box::new(listener));
+    Ok(rid)
+  }
+
+  fn op_close(
+    &self,
+    rid: u32,
+    _bufs: &mut [ZeroCopyBuf],
+  ) -> Result<u32, Error> {
+    debug!("close rid={}", rid);
+    self
+      .resource_table
+      .borrow_mut()
+      .close(rid)
+      .map(|_| 0)
+      .ok_or_else(bad_resource)
+  }
+
+  fn op_accept(
+    self: Rc<Self>,
+    rid: u32,
+    _bufs: BufVec,
+  ) -> impl TryFuture<Ok = u32, Error = Error> {
+    debug!("accept rid={}", rid);
+
+    poll_fn(move |cx| {
+      let resource_table = &mut self.resource_table.borrow_mut();
+      let listener = resource_table
+        .get_mut::<TcpListener>(rid)
+        .ok_or_else(bad_resource)?;
+      listener.poll_accept(cx).map_ok(|(stream, _addr)| {
+        resource_table.add("tcpStream", Box::new(stream))
+      })
+    })
+  }
+
+  fn op_read(
+    self: Rc<Self>,
+    rid: u32,
+    bufs: BufVec,
+  ) -> impl TryFuture<Ok = usize, Error = Error> {
+    assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+    let mut buf = bufs[0].clone();
+
+    debug!("read rid={}", rid);
+
+    poll_fn(move |cx| {
+      let resource_table = &mut self.resource_table.borrow_mut();
+      let stream = resource_table
+        .get_mut::<TcpStream>(rid)
+        .ok_or_else(bad_resource)?;
+      Pin::new(stream).poll_read(cx, &mut buf)
+    })
+  }
+
+  fn op_write(
+    self: Rc<Self>,
+    rid: u32,
+    bufs: BufVec,
+  ) -> impl TryFuture<Ok = usize, Error = Error> {
+    assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+    let buf = bufs[0].clone();
+    debug!("write rid={}", rid);
+
+    poll_fn(move |cx| {
+      let resource_table = &mut self.resource_table.borrow_mut();
+      let stream = resource_table
+        .get_mut::<TcpStream>(rid)
+        .ok_or_else(bad_resource)?;
+      Pin::new(stream).poll_write(cx, &buf)
+    })
+  }
+
+  fn register_op_bin_sync<F>(&self, name: &'static str, op_fn: F)
   where
-    F: 'static + Fn(Rc<RefCell<ResourceTable>>, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error>,
+    F: Fn(&Self, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
   {
-    let core_handler = move |state: &mut CoreIsolateState, zero_copy_bufs: &mut [ZeroCopyBuf]| -> Op {
-      assert!(!zero_copy_bufs.is_empty());
-      let record = Record::from(zero_copy_bufs[0].as_ref());
+    let base_op_fn = move |state: Rc<State>, mut bufs: BufVec| -> Op {
+      let record = Record::from(bufs[0].as_ref());
       let is_sync = record.promise_id == 0;
       assert!(is_sync);
 
-      let resource_table = state.resource_table.clone();
-      let result: i32 = match handler(resource_table, record.rid, &mut zero_copy_bufs[1..]) {
+      let zero_copy_bufs = &mut bufs[1..];
+      let result: i32 = match op_fn(&state, record.rid, zero_copy_bufs) {
         Ok(r) => r as i32,
         Err(_) => -1,
       };
@@ -99,93 +211,65 @@ pub fn isolate_new() -> CoreIsolate {
       Op::Sync(buf)
     };
 
-    isolate.register_op(name, core_handler);
+    self.register_op(name, base_op_fn);
   }
 
-  fn register_async_op<F>(isolate: &mut CoreIsolate, name: &'static str, handler: impl Fn(Rc<RefCell<ResourceTable>>, u32, &mut [ZeroCopyBuf]) -> F + Copy + 'static)
+  fn register_op_bin_async<F, R>(&self, name: &'static str, op_fn: F)
   where
-    F: TryFuture,
-    F::Ok: TryInto<i32>,
-    <F::Ok as TryInto<i32>>::Error: Debug,
+    F: Fn(Rc<Self>, u32, BufVec) -> R + Copy + 'static,
+    R: TryFuture,
+    R::Ok: TryInto<i32>,
+    <R::Ok as TryInto<i32>>::Error: Debug,
   {
-    let core_handler = move |state: &mut CoreIsolateState, zero_copy_bufs: &mut [ZeroCopyBuf]| -> Op {
-      assert!(!zero_copy_bufs.is_empty());
-      let record = Record::from(zero_copy_bufs[0].as_ref());
+    let base_op_fn = move |state: Rc<Self>, bufs: BufVec| -> Op {
+      let mut bufs_iter = bufs.into_iter();
+      let record_buf = bufs_iter.next().unwrap();
+      let zero_copy_bufs = bufs_iter.collect::<BufVec>();
+
+      let record = Record::from(record_buf.as_ref());
       let is_sync = record.promise_id == 0;
       assert!(!is_sync);
 
-      let mut zero_copy = zero_copy_bufs[1..].to_vec();
-      let resource_table = state.resource_table.clone();
       let fut = async move {
-        let op = handler(resource_table, record.rid, &mut zero_copy);
-        let result = op.map_ok(|r| r.try_into().expect("op result does not fit in i32")).unwrap_or_else(|_| -1).await;
+        let op = op_fn(state, record.rid, zero_copy_bufs);
+        let result = op
+          .map_ok(|r| r.try_into().expect("op result does not fit in i32"))
+          .unwrap_or_else(|_| -1)
+          .await;
         RecordBuf::from(Record { result, ..record })[..].into()
       };
 
       Op::Async(fut.boxed_local())
     };
 
-    isolate.register_op(name, core_handler);
+    self.register_op(name, base_op_fn);
   }
-
-  register_sync_op(&mut isolate, "listen", op_listen);
-  register_async_op(&mut isolate, "accept", op_accept);
-  register_async_op(&mut isolate, "read", op_read);
-  register_async_op(&mut isolate, "write", op_write);
-  register_sync_op(&mut isolate, "close", op_close);
-
-  isolate
 }
 
-fn op_close(resource_table: Rc<RefCell<ResourceTable>>, rid: u32, _buf: &mut [ZeroCopyBuf]) -> Result<u32, Error> {
-  debug!("close rid={}", rid);
-  let resource_table = &mut resource_table.borrow_mut();
-  resource_table.close(rid).map(|_| 0).ok_or_else(bad_resource)
+impl OpRegistry for State {
+  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
+  {
+    let mut op_registry = self.op_registry.borrow_mut();
+    let (op_id, removed_op_fn) =
+      op_registry.insert_full(name.to_owned(), Rc::new(op_fn));
+    assert!(removed_op_fn.is_none());
+    op_id.try_into().unwrap()
+  }
 }
 
-fn op_listen(resource_table: Rc<RefCell<ResourceTable>>, _rid: u32, _buf: &mut [ZeroCopyBuf]) -> Result<u32, Error> {
-  debug!("listen");
-  let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-  let std_listener = std::net::TcpListener::bind(&addr)?;
-  let listener = TcpListener::from_std(std_listener)?;
-  let resource_table = &mut resource_table.borrow_mut();
-  let rid = state.resource_table.borrow_mut().add("tcpListener", Box::new(listener));
-  Ok(rid)
-}
-
-fn op_accept(resource_table: Rc<RefCell<ResourceTable>>, rid: u32, _buf: &mut [ZeroCopyBuf]) -> impl TryFuture<Ok = u32, Error = Error> {
-  debug!("accept rid={}", rid);
-
-  poll_fn(move |cx| {
-    let resource_table = &mut resource_table.borrow_mut();
-    let listener = resource_table.get_mut::<TcpListener>(rid).ok_or_else(bad_resource)?;
-    listener.poll_accept(cx).map_ok(|(stream, _addr)| resource_table.add("tcpStream", Box::new(stream)))
-  })
-}
-
-fn op_read(resource_table: Rc<RefCell<ResourceTable>>, rid: u32, bufs: &mut [ZeroCopyBuf]) -> impl TryFuture<Ok = usize, Error = Error> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  let mut buf = bufs[0].clone();
-
-  debug!("read rid={}", rid);
-
-  poll_fn(move |cx| {
-    let resource_table = &mut resource_table.borrow_mut();
-    let stream = resource_table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    Pin::new(stream).poll_read(cx, &mut buf)
-  })
-}
-
-fn op_write(resource_table: Rc<RefCell<ResourceTable>>, rid: u32, bufs: &mut [ZeroCopyBuf]) -> impl TryFuture<Ok = usize, Error = Error> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  let buf = bufs[0].clone();
-  debug!("write rid={}", rid);
-
-  poll_fn(move |cx| {
-    let resource_table = &mut resource_table.borrow_mut();
-    let stream = resource_table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    Pin::new(stream).poll_write(cx, &buf)
-  })
+impl OpRouter for State {
+  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+    let index = op_id.try_into().unwrap();
+    let op_fn = self
+      .op_registry
+      .borrow()
+      .get_index(index)
+      .map(|(_, op_fn)| op_fn.clone())
+      .unwrap();
+    (op_fn)(self, bufs)
+  }
 }
 
 fn bad_resource() -> Error {
@@ -194,19 +278,37 @@ fn bad_resource() -> Error {
 
 fn main() {
   log::set_logger(&Logger).unwrap();
-  log::set_max_level(env::args().find(|a| a == "-D").map(|_| log::LevelFilter::Debug).unwrap_or(log::LevelFilter::Warn));
+  log::set_max_level(
+    env::args()
+      .find(|a| a == "-D")
+      .map(|_| log::LevelFilter::Debug)
+      .unwrap_or(log::LevelFilter::Warn),
+  );
 
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let isolate = isolate_new();
-  let mut runtime = tokio::runtime::Builder::new().basic_scheduler().enable_all().build().unwrap();
+  let startup_data = StartupData::Script(Script {
+    source: include_str!("http_bench_bin_ops.js"),
+    filename: "http_bench_bin_ops.js",
+  });
+  let isolate = CoreIsolate::new(State::new(), startup_data, false);
+
+  let mut runtime = tokio::runtime::Builder::new()
+    .basic_scheduler()
+    .enable_all()
+    .build()
+    .unwrap();
   runtime.block_on(isolate).expect("unexpected isolate error");
 }
 
 #[test]
 fn test_record_from() {
-  let expected = Record { promise_id: 1, rid: 3, result: 4 };
+  let expected = Record {
+    promise_id: 1,
+    rid: 3,
+    result: 4,
+  };
   let buf = RecordBuf::from(expected);
   if cfg!(target_endian = "little") {
     assert_eq!(buf, [1u8, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0]);

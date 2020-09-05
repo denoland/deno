@@ -14,14 +14,14 @@ use std::env;
 use std::rc::Rc;
 
 pub fn init(s: &Rc<State>) {
-  s.register_op_json_catalog(op_registry);
+  s.register_op_json_catalog(op_catalog);
 
   s.register_op_json_sync("op_start", op_start);
   s.register_op_json_sync("op_main_module", op_main_module);
   s.register_op_json_sync("op_metrics", op_metrics);
 }
 
-fn op_registry(state: &State, visitor: &mut dyn FnMut((String, OpId))) {
+fn op_catalog(state: &State, visitor: &mut dyn FnMut((String, OpId))) {
   state
     .op_registry
     .borrow()
