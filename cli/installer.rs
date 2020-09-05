@@ -720,4 +720,45 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     assert!(content == "{}");
   }
+
+  #[test]
+  fn install_with_import_map() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let import_map_file_path = temp_dir.path().join("importmap.json");
+    let import_map = "{}";
+    let mut import_map_file = File::create(&import_map_file_path).unwrap();
+    let result = import_map_file.write_all(import_map.as_bytes());
+
+    let local_module = env::current_dir().unwrap().join("echo_server.ts");
+    let local_module_str = local_module.to_string_lossy();
+
+    assert!(result.is_ok());
+
+    let result = install(
+      Flags {
+        import_map_path: Some(
+          import_map_file_path.to_string_lossy().to_string(),
+        ),
+        ..Flags::default()
+      },
+      &local_module_str,
+      vec![],
+      Some("echo_server".to_string()),
+      Some(temp_dir.path().to_path_buf()),
+      true,
+    );
+
+    eprintln!("result {:?}", result);
+    assert!(result.is_ok());
+
+    let import_map_file_name = "importmap.json";
+    let file_path = temp_dir
+      .path()
+      .to_path_buf()
+      .join(import_map_file_name.to_string());
+    assert!(file_path.exists());
+
+    let content = fs::read_to_string(file_path).unwrap();
+    assert_eq!(content, "{}");
+  }
 }
