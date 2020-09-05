@@ -395,7 +395,7 @@ interface ErrorWithStackTraceLimit extends ErrorConstructor {
 }
 
 export class AssertionError extends Error {
-  [key: string]: unknown;
+  [key: string]: unknown
 
   // deno-lint-ignore constructor-super
   constructor(options: AssertionErrorConstructorOptions) {
