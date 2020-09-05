@@ -234,6 +234,14 @@ pub fn install(
     }
   }
 
+  if flags.import_map_path.is_some() {
+    let import_map_file_path = flags.import_map_path.as_ref();
+    if let Some(import_map_file_path_string) = import_map_file_path {
+      executable_args.push("--importmap".to_string());
+      executable_args.push(import_map_file_path_string.to_string());
+    }
+  }
+
   executable_args.push(module_url.to_string());
   executable_args.extend_from_slice(&args);
 
