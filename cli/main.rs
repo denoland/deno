@@ -741,19 +741,29 @@ async fn test_command(
     (&mut *worker).await?;
 
     let script_coverage = coverage_collector.take_precise_coverage().await?;
-    let test_scripts = test_modules
-      .into_iter()
-      .map(|u| u.to_string())
-      .collect::<Vec<String>>();
-
     let filtered_coverage = script_coverage
       .into_iter()
-      .filter(|e| !test_scripts.contains(&e.url))
-      .filter(|e| !e.url.contains(".deno"))
-      // XXX; just blackboxing these while I figure out why the source map doesn't resolve
-      .filter(|e| !e.url.contains("core.js"))
-      .filter(|e| !e.url.contains("rt/"))
-      .filter(|e| !e.url.contains("op_crates/"))
+      .filter(|e| {
+        if let Ok(url) = Url::parse(&e.url) {
+          for test_module_url in &test_modules {
+            if &url == test_module_url {
+              return false;
+            }
+          }
+
+          if let Ok(path) = url.to_file_path() {
+            for test_module_url in &test_modules {
+              if let Ok(test_module_path) = test_module_url.to_file_path() {
+                if path.starts_with(test_module_path.parent().unwrap()) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+
+        false
+      })
       .collect::<Vec<ScriptCoverage>>();
 
     // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
