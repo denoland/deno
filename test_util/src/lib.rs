@@ -264,6 +264,11 @@ pub async fn run_all_servers() {
       );
       Box::new(res)
     });
+  let bad_redirect = warp::path("bad_redirect").map(|| -> Box<dyn Reply> {
+    let mut res = Response::new(Body::from(""));
+    *res.status_mut() = StatusCode::FOUND;
+    Box::new(res)
+  });
 
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
@@ -404,7 +409,8 @@ pub async fn run_all_servers() {
     .or(xtypescripttypes)
     .or(echo_server)
     .or(echo_multipart_file)
-    .or(multipart_form_data);
+    .or(multipart_form_data)
+    .or(bad_redirect);
 
   let http_fut =
     warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
