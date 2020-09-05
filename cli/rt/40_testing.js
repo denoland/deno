@@ -45,7 +45,7 @@
       return new Promise((resolve, reject) => {
         const timeoutHandle = setTimeout(
           () => reject(new TimeoutError(ms)),
-          ms
+          ms,
         );
         fn()
           .then(() => {
@@ -97,9 +97,7 @@ finishing test case.`,
   // Wrap test function in additional assertion that makes sure
   // the test case does not "leak" resources - ie. resource table after
   // the test has exactly the same contents as before the test.
-  function assertResources(
-    fn,
-  ) {
+  function assertResources(fn) {
     return async function resourceSanitizer() {
       const pre = resources();
       await fn();
@@ -121,10 +119,7 @@ finishing test case.`;
 
   // Main test function provided by Deno, as you can see it merely
   // creates a new object with "name" and "fn" fields.
-  function test(
-    t,
-    fn,
-  ) {
+  function test(t, fn) {
     let testDef;
     const defaults = {
       ignore: false,
@@ -228,7 +223,7 @@ finishing test case.`;
           `${message.end.passed} passed; ${message.end.failed} failed; ${message.end.timedout} timed out; ` +
           `${message.end.ignored} ignored; ${message.end.measured} measured; ` +
           `${message.end.filtered} filtered out ` +
-          `${formatDuration(message.end.duration)}\n`
+          `${formatDuration(message.end.duration)}\n`,
       );
 
       if (message.end.usedOnly && message.end.failed == 0) {
@@ -310,10 +305,7 @@ finishing test case.`;
     }
   }
 
-  function createFilterFn(
-    filter,
-    skip,
-  ) {
+  function createFilterFn(filter, skip) {
     return (def) => {
       let passes = true;
 
