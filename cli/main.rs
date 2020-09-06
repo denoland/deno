@@ -756,6 +756,10 @@ async fn test_command(
     }
   }
 
+  // XXX
+  use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+  let _socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0000);
+
   Ok(())
 }
 
