@@ -5,21 +5,18 @@ use crate::file_fetcher::SourceFile;
 use crate::inspector::DenoInspector;
 use deno_core::v8;
 use deno_core::ErrBox;
+use futures::channel::mpsc;
 use serde::Deserialize;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr;
 
-use std::thread;
-
-use futures::channel::mpsc;
-// use futures::channel::mpsc::UnboundedReceiver;
-// use futures::channel::mpsc::UnboundedSender;
-
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  sender: mpsc::Sender<String>,
+  receiver: mpsc::Receiver<String>,
 }
 
 impl Deref for CoverageCollector {
@@ -50,15 +47,13 @@ impl v8::inspector::ChannelImpl for CoverageCollector {
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let message = message.unwrap().string().to_string();
-    println!("response: {}", message);
+    self.sender.try_send(message.clone()).unwrap();
   }
 
   fn send_notification(
     &mut self,
-    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    let message = message.unwrap().string().to_string();
-    println!("notification: {}", message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
@@ -76,38 +71,53 @@ impl CoverageCollector {
         v8::inspector::StringView::empty(),
       );
 
+      let (sender, receiver) = mpsc::channel::<String>(1);
+
       Self {
         v8_channel,
         v8_session,
+        sender,
+        receiver,
       }
     })
   }
 
-  pub fn send_to_channel(&mut self, msg: String) {
-    let msg = v8::inspector::StringView::from(msg.as_bytes());
-    self.v8_session.dispatch_protocol_message(msg);
+  async fn dispatch(&mut self, message: String) -> Result<String, ErrBox> {
+    let message = v8::inspector::StringView::from(message.as_bytes());
+    self.v8_session.dispatch_protocol_message(message);
+
+    let response = self.receiver.try_next()?;
+    Ok(response.unwrap())
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), ErrBox> {
-    self.send_to_channel(r#"{"id":1,"method":"Runtime.enable"}"#.into());
-    self.send_to_channel(r#"{"id":2,"method":"Profiler.enable"}"#.into());
-    self.send_to_channel(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into());
+    self
+      .dispatch(r#"{"id":1,"method":"Runtime.enable"}"#.into())
+      .await?;
+    self
+      .dispatch(r#"{"id":2,"method":"Profiler.enable"}"#.into())
+      .await?;
+    self.dispatch(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into()).await?;
+
     Ok(())
   }
 
   pub async fn stop_collecting(&mut self) -> Result<(), ErrBox> {
+    self
+      .dispatch(r#"{"id":4,"method":"Profiler.stopPreciseCoverage"}"#.into())
+      .await?;
     Ok(())
   }
 
   pub async fn take_precise_coverage(
     &mut self,
   ) -> Result<Vec<ScriptCoverage>, ErrBox> {
-    self.send_to_channel(
-      r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into(),
-    );
-
-    let coverage: Vec<ScriptCoverage> = Vec::new();
-    Ok(coverage)
+    let response = self
+      .dispatch(r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into())
+      .await?;
+    let coverage_result: TakePreciseCoverageResponse =
+      serde_json::from_str(&response).unwrap();
+    Ok(coverage_result.result.result)
   }
 }
 

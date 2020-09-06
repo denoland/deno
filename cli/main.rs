@@ -696,15 +696,9 @@ async fn test_command(
   (&mut *worker).await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    let script_coverage = coverage_collector.take_precise_coverage().await?;
     coverage_collector.stop_collecting().await?;
 
-    // TODO(caspervonb) Use either a thread and join it here or tasks and poll
-    // the worker and coverage_collector concurrently
-    // to avoid having to depend on this somewhat arbritrary delay.
-    tokio::time::delay_for(std::time::Duration::from_millis(500)).await;
-    (&mut *worker).await?;
-
-    let script_coverage = coverage_collector.take_precise_coverage().await?;
     let filtered_coverage = script_coverage
       .into_iter()
       .filter(|e| {
