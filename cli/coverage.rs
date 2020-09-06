@@ -47,7 +47,7 @@ impl v8::inspector::ChannelImpl for CoverageCollector {
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let message = message.unwrap().string().to_string();
-    self.sender.try_send(message.clone()).unwrap();
+    self.sender.try_send(message).unwrap();
   }
 
   fn send_notification(
