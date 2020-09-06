@@ -213,7 +213,7 @@ impl LintReporter for PrettyLintReporter {
     self.lint_count += 1;
 
     let pretty_message =
-      format!("({}) {}", colors::gray(&d.code), d.message.clone());
+      format!("({}) {}", colors::intense_black(&d.code), d.message.clone());
 
     let message = format_diagnostic(
       &pretty_message,
