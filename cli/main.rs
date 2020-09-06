@@ -666,6 +666,8 @@ async fn test_command(
     .save_source_file_in_cache(&main_module, source_file);
 
   let mut maybe_coverage_collector = if coverage {
+    (&mut *worker).await?;
+
     let inspector = match worker.inspector.as_mut() {
       Some(inspector) => inspector,
       None => {
