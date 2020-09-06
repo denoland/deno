@@ -1,6 +1,5 @@
 Debugger listening on [WILDCARD]
 Check [WILDCARD]
-Debugger session started.
 running 1 tests
 test returnsHiSuccess ... ok ([WILDCARD])
 
