@@ -4,7 +4,8 @@ import { existsSync } from "../fs/exists.ts";
 import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
 
-const testFilesDir = path.resolve("encoding", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 function parseFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
@@ -33,7 +34,7 @@ Deno.test({
           "Prevent bug from stripping string here ->0xabcdef",
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "string.toml"));
+    const actual = parseFile(path.join(testdataDir, "string.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -42,7 +43,7 @@ Deno.test({
   name: "[TOML] CRLF",
   fn(): void {
     const expected = { boolean: { bool1: true, bool2: false } };
-    const actual = parseFile(path.join(testFilesDir, "CRLF.toml"));
+    const actual = parseFile(path.join(testdataDir, "CRLF.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -51,7 +52,7 @@ Deno.test({
   name: "[TOML] Boolean",
   fn(): void {
     const expected = { boolean: { bool1: true, bool2: false, bool3: true } };
-    const actual = parseFile(path.join(testFilesDir, "boolean.toml"));
+    const actual = parseFile(path.join(testdataDir, "boolean.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -76,7 +77,7 @@ Deno.test({
         bin1: "0b11010110",
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "integer.toml"));
+    const actual = parseFile(path.join(testdataDir, "integer.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -102,7 +103,7 @@ Deno.test({
         sf6: NaN,
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "float.toml"));
+    const actual = parseFile(path.join(testdataDir, "float.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -119,7 +120,7 @@ Deno.test({
         hosts: ["alpha", "omega"],
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "arrays.toml"));
+    const actual = parseFile(path.join(testdataDir, "arrays.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -152,7 +153,7 @@ Deno.test({
         },
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "table.toml"));
+    const actual = parseFile(path.join(testdataDir, "table.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -167,7 +168,7 @@ Deno.test({
       NANI: "何?!",
       comment: "Comment inside # the comment",
     };
-    const actual = parseFile(path.join(testFilesDir, "simple.toml"));
+    const actual = parseFile(path.join(testdataDir, "simple.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -186,7 +187,7 @@ Deno.test({
         lt2: "00:32:00.999999",
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "datetime.toml"));
+    const actual = parseFile(path.join(testdataDir, "datetime.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -231,7 +232,7 @@ Deno.test({
         },
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "inlineTable.toml"));
+    const actual = parseFile(path.join(testdataDir, "inlineTable.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -246,7 +247,7 @@ Deno.test({
       ],
       nib: [{ name: "node", path: "not_found" }],
     };
-    const actual = parseFile(path.join(testFilesDir, "arrayTable.toml"));
+    const actual = parseFile(path.join(testdataDir, "arrayTable.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -290,7 +291,7 @@ Deno.test({
       },
       target: { "cfg(windows)": { dependencies: { winapi: "0.3.6" } } },
     };
-    const actual = parseFile(path.join(testFilesDir, "cargo.toml"));
+    const actual = parseFile(path.join(testdataDir, "cargo.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -436,7 +437,7 @@ Deno.test({
         objectives: ["easy to read", "minimal config file", "#not a comment"],
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "comment.toml"));
+    const actual = parseFile(path.join(testdataDir, "comment.toml"));
     assertEquals(actual, expected);
   },
 });
