@@ -414,7 +414,7 @@ async fn bundle_command(
       "{} {:?} ({})",
       colors::green("Emit"),
       out_file_,
-      colors::gray(&human_size(output_len as f64))
+      colors::intense_black(&human_size(output_len as f64))
     );
   } else {
     println!("{}", output);
