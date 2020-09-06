@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
@@ -11,37 +11,23 @@ use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
-use std::cell::RefCell;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::convert::From;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op(
-    "op_create_worker",
-    s.stateful_json_op_sync(t, op_create_worker),
-  );
-  i.register_op(
-    "op_host_terminate_worker",
-    s.stateful_json_op_sync(t, op_host_terminate_worker),
-  );
-  i.register_op(
-    "op_host_post_message",
-    s.stateful_json_op_sync(t, op_host_post_message),
-  );
-  i.register_op(
-    "op_host_get_message",
-    s.stateful_json_op_async(t, op_host_get_message),
-  );
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_create_worker", op_create_worker);
+  s.register_op_json_sync("op_host_terminate_worker", op_host_terminate_worker);
+  s.register_op_json_sync("op_host_post_message", op_host_post_message);
+  s.register_op_json_async("op_host_get_message", op_host_get_message);
 }
 
 fn create_web_worker(
@@ -63,8 +49,6 @@ fn create_web_worker(
   );
 
   if has_deno_namespace {
-    let state_rc = CoreIsolate::state(&worker.isolate);
-    let state = state_rc.borrow();
     let mut resource_table = state.resource_table.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
     if let Some(stream) = stdin {
@@ -189,7 +173,6 @@ struct CreateWorkerArgs {
 /// Create worker as the host
 fn op_create_worker(
   state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -240,7 +223,6 @@ struct WorkerArgs {
 
 fn op_host_terminate_worker(
   state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -309,7 +291,6 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -358,7 +339,6 @@ async fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   data: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

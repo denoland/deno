@@ -446,19 +446,21 @@ impl fmt::Debug for ErrWithV8Handle {
   }
 }
 
-#[cfg(tests)]
+#[cfg(test)]
 mod tests {
+  use super::*;
+
   #[test]
   fn test_bad_resource() {
     let err = ErrBox::bad_resource("Resource has been closed");
-    assert_eq!(err.1, "BadResource");
+    assert!(matches!(err, ErrBox::Simple { class: "BadResource", .. }));
     assert_eq!(err.to_string(), "Resource has been closed");
   }
 
   #[test]
   fn test_bad_resource_id() {
     let err = ErrBox::bad_resource_id();
-    assert_eq!(err.1, "BadResource");
+    assert!(matches!(err, ErrBox::Simple { class: "BadResource", .. }));
     assert_eq!(err.to_string(), "Bad resource ID");
   }
 }

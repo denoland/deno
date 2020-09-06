@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use nix::sys::termios;
@@ -36,15 +36,10 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_set_raw", s.stateful_json_op_sync(t, op_set_raw));
-  i.register_op("op_isatty", s.stateful_json_op_sync(t, op_isatty));
-  i.register_op(
-    "op_console_size",
-    s.stateful_json_op_sync(t, op_console_size),
-  );
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_set_raw", op_set_raw);
+  s.register_op_json_sync("op_isatty", op_isatty);
+  s.register_op_json_sync("op_console_size", op_console_size);
 }
 
 #[derive(Deserialize)]
@@ -55,7 +50,6 @@ struct SetRawArgs {
 
 fn op_set_raw(
   state: &State,
-  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -75,6 +69,7 @@ fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
+    let mut resource_table = state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(ErrBox::bad_resource_id());
@@ -140,6 +135,7 @@ fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
+    let mut resource_table = state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(ErrBox::bad_resource_id());
@@ -221,37 +217,35 @@ struct IsattyArgs {
 }
 
 fn op_isatty(
-  _state: &State,
-  resource_table: &mut ResourceTable,
+  state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let isatty: bool =
-    std_file_resource(resource_table, rid as u32, move |r| match r {
-      Ok(std_file) => {
-        #[cfg(windows)]
-        {
-          use winapi::um::consoleapi;
+  let isatty: bool = std_file_resource(state, rid as u32, move |r| match r {
+    Ok(std_file) => {
+      #[cfg(windows)]
+      {
+        use winapi::um::consoleapi;
 
-          let handle = get_windows_handle(&std_file)?;
-          let mut test_mode: DWORD = 0;
-          // If I cannot get mode out of console, it is not a console.
-          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
-        }
-        #[cfg(unix)]
-        {
-          use std::os::unix::io::AsRawFd;
-          let raw_fd = std_file.as_raw_fd();
-          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
-        }
+        let handle = get_windows_handle(&std_file)?;
+        let mut test_mode: DWORD = 0;
+        // If I cannot get mode out of console, it is not a console.
+        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
       }
-      Err(StreamResource::FsFile(_)) => unreachable!(),
-      Err(StreamResource::Stdin(..)) => Ok(atty::is(atty::Stream::Stdin)),
-      _ => Ok(false),
-    })?;
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        let raw_fd = std_file.as_raw_fd();
+        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      }
+    }
+    Err(StreamResource::FsFile(_)) => unreachable!(),
+    Err(StreamResource::Stdin(..)) => Ok(atty::is(atty::Stream::Stdin)),
+    _ => Ok(false),
+  })?;
   Ok(json!(isatty))
 }
 
@@ -268,7 +262,6 @@ struct ConsoleSize {
 
 fn op_console_size(
   state: &State,
-  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -276,7 +269,7 @@ fn op_console_size(
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let size = std_file_resource(resource_table, rid as u32, move |r| match r {
+  let size = std_file_resource(state, rid as u32, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
       {

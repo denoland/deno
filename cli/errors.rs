@@ -168,7 +168,7 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
-pub fn get_error_class(e: &ErrBox) -> &'static str {
+pub(crate) fn get_error_class_name(e: &ErrBox) -> &'static str {
   use ErrBox::*;
   match e {
     Simple { class, .. } => Some(*class),

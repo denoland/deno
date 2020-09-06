@@ -1,33 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
 use url::Url;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_exit", s.stateful_json_op_sync(t, op_exit));
-  i.register_op("op_env", s.stateful_json_op_sync(t, op_env));
-  i.register_op("op_exec_path", s.stateful_json_op_sync(t, op_exec_path));
-  i.register_op("op_set_env", s.stateful_json_op_sync(t, op_set_env));
-  i.register_op("op_get_env", s.stateful_json_op_sync(t, op_get_env));
-  i.register_op("op_delete_env", s.stateful_json_op_sync(t, op_delete_env));
-  i.register_op("op_hostname", s.stateful_json_op_sync(t, op_hostname));
-  i.register_op("op_loadavg", s.stateful_json_op_sync(t, op_loadavg));
-  i.register_op("op_os_release", s.stateful_json_op_sync(t, op_os_release));
-  i.register_op("op_memory_info", s.stateful_json_op_sync(t, op_memory_info));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_exit", op_exit);
+  s.register_op_json_sync("op_env", op_env);
+  s.register_op_json_sync("op_exec_path", op_exec_path);
+  s.register_op_json_sync("op_set_env", op_set_env);
+  s.register_op_json_sync("op_get_env", op_get_env);
+  s.register_op_json_sync("op_delete_env", op_delete_env);
+  s.register_op_json_sync("op_hostname", op_hostname);
+  s.register_op_json_sync("op_loadavg", op_loadavg);
+  s.register_op_json_sync("op_os_release", op_os_release);
+  s.register_op_json_sync("op_memory_info", op_memory_info);
 }
 
 fn op_exec_path(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -48,7 +46,6 @@ struct SetEnv {
 
 fn op_set_env(
   state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -60,7 +57,6 @@ fn op_set_env(
 
 fn op_env(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -76,7 +72,6 @@ struct GetEnv {
 
 fn op_get_env(
   state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -96,7 +91,6 @@ struct DeleteEnv {
 
 fn op_delete_env(
   state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -113,7 +107,6 @@ struct Exit {
 
 fn op_exit(
   _state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -123,7 +116,6 @@ fn op_exit(
 
 fn op_loadavg(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -137,7 +129,6 @@ fn op_loadavg(
 
 fn op_hostname(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -149,7 +140,6 @@ fn op_hostname(
 
 fn op_os_release(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -161,7 +151,6 @@ fn op_os_release(
 
 fn op_memory_info(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
