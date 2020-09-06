@@ -121,22 +121,22 @@ pub fn bold(s: &str) -> impl fmt::Display {
   style(&s, style_spec)
 }
 
-pub fn gray(s: &str) -> impl fmt::Display {
+pub fn intense_black(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(0)));
+  style_spec.set_fg(Some(Ansi256(8)));
   style(&s, style_spec)
 }
 
-pub fn italic_gray(s: &str) -> impl fmt::Display {
+pub fn intense_italic_balck(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(0))).set_italic(true);
+  style_spec.set_fg(Some(Ansi256(8))).set_italic(true);
   style(&s, style_spec)
 }
 
-pub fn italic_bold_gray(s: &str) -> impl fmt::Display {
+pub fn intense_italic_bold_black(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec
-    .set_fg(Some(Ansi256(0)))
+    .set_fg(Some(Ansi256(8)))
     .set_bold(true)
     .set_italic(true);
   style(&s, style_spec)
@@ -144,6 +144,6 @@ pub fn italic_bold_gray(s: &str) -> impl fmt::Display {
 
 pub fn intense_blue(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Blue));
+  style_spec.set_fg(Some(Blue)).set_intense(true);
   style(&s, style_spec)
 }
