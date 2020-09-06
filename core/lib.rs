@@ -20,6 +20,7 @@ pub mod plugin_api;
 mod resources;
 mod runtime;
 mod shared_queue;
+mod state;
 mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
