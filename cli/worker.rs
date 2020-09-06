@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::errors::get_error_class;
+
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
@@ -7,7 +7,6 @@ use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::startup_data;
 use crate::state::State;
-use deno_core::Buf;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
@@ -32,25 +31,25 @@ use url::Url;
 /// Events that are sent to host from child
 /// worker.
 pub enum WorkerEvent {
-  Message(Buf),
+  Message(Box<[u8]>),
   Error(ErrBox),
   TerminalError(ErrBox),
 }
 
 pub struct WorkerChannelsInternal {
   pub sender: mpsc::Sender<WorkerEvent>,
-  pub receiver: mpsc::Receiver<Buf>,
+  pub receiver: mpsc::Receiver<Box<[u8]>>,
 }
 
 #[derive(Clone)]
 pub struct WorkerHandle {
-  pub sender: mpsc::Sender<Buf>,
+  pub sender: mpsc::Sender<Box<[u8]>>,
   pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
 }
 
 impl WorkerHandle {
   /// Post message to worker as a host.
-  pub fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
     sender.try_send(buf)?;
     Ok(())
@@ -65,7 +64,7 @@ impl WorkerHandle {
 }
 
 fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
-  let (in_tx, in_rx) = mpsc::channel::<Buf>(1);
+  let (in_tx, in_rx) = mpsc::channel::<Box<[u8]>>(1);
   let (out_tx, out_rx) = mpsc::channel::<WorkerEvent>(1);
   let internal_channels = WorkerChannelsInternal {
     sender: out_tx,
@@ -106,8 +105,12 @@ impl Worker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut isolate =
-      deno_core::EsIsolate::new(state.clone(), startup_data, false);
+    let mut isolate = deno_core::EsIsolate::new(
+      state.clone(),
+      state.clone(),
+      startup_data,
+      false,
+    );
 
     {
       let global_state = state.global_state.clone();
@@ -116,7 +119,6 @@ impl Worker {
       core_state.set_js_error_create_fn(move |core_js_error| {
         JSError::create(core_js_error, &global_state.ts_compiler)
       });
-      core_state.set_get_error_class_fn(&get_error_class);
     }
 
     let inspector = {
@@ -256,31 +258,30 @@ pub struct MainWorker(Worker);
 impl MainWorker {
   // TODO(ry) combine MainWorker::new and MainWorker::create.
   fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
-    let mut worker = Worker::new(name, startup_data, state);
+    let worker = Worker::new(name, startup_data, state);
     {
-      let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::runtime_compiler::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::fetch::init(isolate, &state);
-      ops::websocket::init(isolate, &state);
-      ops::fs::init(isolate, &state);
-      ops::fs_events::init(isolate, &state);
-      ops::idna::init(isolate, &state);
-      ops::io::init(isolate, &state);
-      ops::plugin::init(isolate, &state);
-      ops::net::init(isolate, &state);
-      ops::tls::init(isolate, &state);
-      ops::os::init(isolate, &state);
-      ops::permissions::init(isolate, &state);
-      ops::process::init(isolate, &state);
-      ops::random::init(isolate, &state);
-      ops::repl::init(isolate, &state);
-      ops::resources::init(isolate, &state);
-      ops::signal::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::tty::init(isolate, &state);
-      ops::worker_host::init(isolate, &state);
+      ops::runtime::init(&state);
+      ops::runtime_compiler::init(&state);
+      ops::errors::init(&state);
+      ops::fetch::init(&state);
+      ops::websocket::init(&state);
+      ops::fs::init(&state);
+      ops::fs_events::init(&state);
+      ops::idna::init(&state);
+      ops::io::init(&state);
+      ops::plugin::init(&state);
+      ops::net::init(&state);
+      ops::tls::init(&state);
+      ops::os::init(&state);
+      ops::permissions::init(&state);
+      ops::process::init(&state);
+      ops::random::init(&state);
+      ops::repl::init(&state);
+      ops::resources::init(&state);
+      ops::signal::init(&state);
+      ops::timers::init(&state);
+      ops::tty::init(&state);
+      ops::worker_host::init(&state);
     }
     Self(worker)
   }
@@ -302,10 +303,8 @@ impl MainWorker {
       &state,
     );
     {
-      let (stdin, stdout, stderr) = get_stdio();
-      let state_rc = CoreIsolate::state(&worker.isolate);
-      let state = state_rc.borrow();
       let mut t = state.resource_table.borrow_mut();
+      let (stdin, stdout, stderr) = get_stdio();
       if let Some(stream) = stdin {
         t.add("stdin", Box::new(stream));
       }

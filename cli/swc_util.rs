@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::msg::MediaType;
 use deno_core::ErrBox;
 use serde::Serialize;
@@ -304,7 +305,7 @@ pub fn transpile(
     Optional::new(jsx_pass, options.transform_jsx),
     decorators::decorators(decorators::Config {
       legacy: true,
-      emit_metadata: options.emit_metadata,
+      emit_metadata: options.emit_metadata
     }),
     typescript::strip(),
     fixer(Some(&ast_parser.comments)),

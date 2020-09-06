@@ -1,35 +1,30 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use std::cell::RefCell;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::rc::Rc;
 use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_run", s.stateful_json_op_sync(t, op_run));
-  i.register_op("op_run_status", s.stateful_json_op_async(t, op_run_status));
-  i.register_op("op_kill", s.stateful_json_op_sync(t, op_kill));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_run", op_run);
+  s.register_op_json_async("op_run_status", op_run_status);
+  s.register_op_json_sync("op_kill", op_kill);
 }
 
-fn clone_file(
-  rid: u32,
-  resource_table: &mut ResourceTable,
-) -> Result<std::fs::File, ErrBox> {
-  std_file_resource(resource_table, rid, move |r| match r {
+fn clone_file(state: &State, rid: u32) -> Result<std::fs::File, ErrBox> {
+  std_file_resource(state, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(ErrBox::from),
     Err(_) => Err(ErrBox::bad_resource_id()),
   })
@@ -64,7 +59,6 @@ struct ChildResource {
 
 fn op_run(
   state: &State,
-  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -90,21 +84,21 @@ fn op_run(
   if run_args.stdin != "" {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);
   } else {
-    let file = clone_file(run_args.stdin_rid, resource_table)?;
+    let file = clone_file(state, run_args.stdin_rid)?;
     c.stdin(file);
   }
 
   if run_args.stdout != "" {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref())?);
   } else {
-    let file = clone_file(run_args.stdout_rid, resource_table)?;
+    let file = clone_file(state, run_args.stdout_rid)?;
     c.stdout(file);
   }
 
   if run_args.stderr != "" {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref())?);
   } else {
-    let file = clone_file(run_args.stderr_rid, resource_table)?;
+    let file = clone_file(state, run_args.stderr_rid)?;
     c.stderr(file);
   }
 
@@ -117,7 +111,7 @@ fn op_run(
 
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
-      let rid = resource_table.add(
+      let rid = state.resource_table.borrow_mut().add(
         "childStdin",
         Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(
           child_stdin,
@@ -130,7 +124,7 @@ fn op_run(
 
   let stdout_rid = match child.stdout.take() {
     Some(child_stdout) => {
-      let rid = resource_table.add(
+      let rid = state.resource_table.borrow_mut().add(
         "childStdout",
         Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(
           child_stdout,
@@ -143,7 +137,7 @@ fn op_run(
 
   let stderr_rid = match child.stderr.take() {
     Some(child_stderr) => {
-      let rid = resource_table.add(
+      let rid = state.resource_table.borrow_mut().add(
         "childStderr",
         Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(
           child_stderr,
@@ -155,7 +149,10 @@ fn op_run(
   };
 
   let child_resource = ChildResource { child };
-  let child_rid = resource_table.add("child", Box::new(child_resource));
+  let child_rid = state
+    .resource_table
+    .borrow_mut()
+    .add("child", Box::new(child_resource));
 
   Ok(json!({
     "rid": child_rid,
@@ -174,7 +171,6 @@ struct RunStatusArgs {
 
 async fn op_run_status(
   state: Rc<State>,
-  resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -184,7 +180,7 @@ async fn op_run_status(
   state.check_run()?;
 
   let run_status = poll_fn(|cx| {
-    let mut resource_table = resource_table.borrow_mut();
+    let mut resource_table = state.resource_table.borrow_mut();
     let child_resource = resource_table
       .get_mut::<ChildResource>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
@@ -220,7 +216,6 @@ struct KillArgs {
 
 fn op_kill(
   state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

@@ -10,6 +10,7 @@ use crate::bindings;
 use crate::errors::ErrBox;
 use crate::errors::ErrWithV8Handle;
 use crate::futures::FutureExt;
+use crate::OpRouter;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -76,10 +77,12 @@ impl DerefMut for EsIsolate {
 impl EsIsolate {
   pub fn new(
     loader: Rc<dyn ModuleLoader>,
+    op_router: Rc<dyn OpRouter>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Self {
-    let mut core_isolate = CoreIsolate::new(startup_data, will_snapshot);
+    let mut core_isolate =
+      CoreIsolate::new(op_router, startup_data, will_snapshot);
     {
       core_isolate.set_host_initialize_import_meta_object_callback(
         bindings::host_initialize_import_meta_object_callback,
@@ -640,11 +643,11 @@ impl EsIsolateState {
 pub mod tests {
   use super::*;
   use crate::core_isolate::tests::run_in_task;
-  use crate::core_isolate::CoreIsolateState;
   use crate::js_check;
   use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
-  use crate::ZeroCopyBuf;
+  use crate::BasicState;
+  use crate::BufVec;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
@@ -681,24 +684,23 @@ pub mod tests {
     }
 
     let loader = Rc::new(ModsLoader::default());
+    let state = BasicState::new();
+
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = EsIsolate::new(loader, StartupData::None, false);
-
-    let dispatcher = move |_state: &mut CoreIsolateState,
-                           zero_copy: &mut [ZeroCopyBuf]|
-          -> Op {
+    let dispatcher = move |_state: Rc<BasicState>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      assert_eq!(zero_copy.len(), 1);
-      assert_eq!(zero_copy[0].len(), 1);
-      assert_eq!(zero_copy[0][0], 42);
-      let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+      assert_eq!(bufs.len(), 1);
+      assert_eq!(bufs[0].len(), 1);
+      assert_eq!(bufs[0][0], 42);
+      let buf = [43u8, 0, 0, 0][..].into();
       Op::Async(futures::future::ready(buf).boxed())
     };
+    state.register_op("test", dispatcher);
 
-    isolate.register_op("test", dispatcher);
+    let mut isolate = EsIsolate::new(loader, state, StartupData::None, false);
 
     js_check(isolate.execute(
       "setup.js",
@@ -792,7 +794,8 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
 
       js_check(isolate.execute(
         "file:///dyn_import2.js",
@@ -869,7 +872,8 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
 
       // Dynamically import mod_b
       js_check(isolate.execute(
@@ -909,7 +913,8 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
       js_check(isolate.execute(
         "file:///dyn_import3.js",
         r#"
@@ -960,7 +965,8 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime_isolate = EsIsolate::new(loader, StartupData::None, true);
+    let mut runtime_isolate =
+      EsIsolate::new(loader, BasicState::new(), StartupData::None, true);
 
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();

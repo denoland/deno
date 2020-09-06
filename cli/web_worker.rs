@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::ops;
 use crate::state::State;
 use crate::worker::Worker;
@@ -101,7 +102,7 @@ impl WebWorker {
       terminate_tx,
     };
 
-    let mut web_worker = Self {
+    let web_worker = Self {
       worker,
       event_loop_idle: false,
       terminate_rx,
@@ -112,36 +113,34 @@ impl WebWorker {
     let handle = web_worker.thread_safe_handle();
 
     {
-      let isolate = &mut web_worker.worker.isolate;
-      ops::runtime::init(isolate, &state);
+      ops::runtime::init(&state);
       ops::web_worker::init(
-        isolate,
         &state,
         &web_worker.worker.internal_channels.sender,
         handle,
       );
-      ops::worker_host::init(isolate, &state);
-      ops::idna::init(isolate, &state);
-      ops::io::init(isolate, &state);
-      ops::resources::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::fetch::init(isolate, &state);
-      ops::websocket::init(isolate, &state);
+      ops::worker_host::init(&state);
+      ops::idna::init(&state);
+      ops::io::init(&state);
+      ops::resources::init(&state);
+      ops::errors::init(&state);
+      ops::timers::init(&state);
+      ops::fetch::init(&state);
+      ops::websocket::init(&state);
 
       if has_deno_namespace {
-        ops::runtime_compiler::init(isolate, &state);
-        ops::fs::init(isolate, &state);
-        ops::fs_events::init(isolate, &state);
-        ops::plugin::init(isolate, &state);
-        ops::net::init(isolate, &state);
-        ops::tls::init(isolate, &state);
-        ops::os::init(isolate, &state);
-        ops::permissions::init(isolate, &state);
-        ops::process::init(isolate, &state);
-        ops::random::init(isolate, &state);
-        ops::signal::init(isolate, &state);
-        ops::tty::init(isolate, &state);
+        ops::runtime_compiler::init(&state);
+        ops::fs::init(&state);
+        ops::fs_events::init(&state);
+        ops::plugin::init(&state);
+        ops::net::init(&state);
+        ops::tls::init(&state);
+        ops::os::init(&state);
+        ops::permissions::init(&state);
+        ops::process::init(&state);
+        ops::random::init(&state);
+        ops::signal::init(&state);
+        ops::tty::init(&state);
       }
     }
 

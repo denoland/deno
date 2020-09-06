@@ -17,6 +17,7 @@ use futures::stream::FuturesUnordered;
 use futures::task;
 use futures::task::Context;
 use futures::task::Poll;
+use serde_json::Value;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -95,7 +96,7 @@ struct InspectorInfo {
 }
 
 impl InspectorInfo {
-  fn get_json_metadata(&self) -> serde_json::Value {
+  fn get_json_metadata(&self) -> Value {
     json!({
       "description": "deno",
       "devtoolsFrontendUrl": self.get_frontend_url(),

@@ -22,6 +22,7 @@ rusty_v8 = "0.9.1"
 serde_json = { version = "1.0.57", features = ["preserve_order"] }
 smallvec = "1.4.2"
 url = "2.1.1"
+indexmap = "1.5.2"
 
 [[example]]
 name = "http_bench_bin_ops"
