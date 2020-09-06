@@ -3,7 +3,6 @@
 use crate::CoreIsolate;
 use crate::CoreIsolateState;
 use crate::ErrBox;
-use crate::EsIsolate;
 use crate::JSError;
 use crate::Op;
 use crate::OpId;
@@ -240,7 +239,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = EsIsolate::state(scope);
+    let state_rc = CoreIsolate::state(scope);
     let mut state = state_rc.borrow_mut();
     state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
   }
@@ -254,7 +253,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   meta: v8::Local<v8::Object>,
 ) {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let state_rc = EsIsolate::state(scope);
+  let state_rc = CoreIsolate::state(scope);
   let state = state_rc.borrow();
 
   let id = module.get_identity_hash();
@@ -713,7 +712,7 @@ pub fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let state_rc = EsIsolate::state(scope);
+  let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let referrer_id = referrer.get_identity_hash();
