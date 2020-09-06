@@ -8,7 +8,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-mod basic_state;
 mod bindings;
 mod errors;
 mod flags;
@@ -25,7 +24,6 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
-pub use crate::basic_state::BasicState;
 pub use crate::errors::AnyError;
 pub use crate::errors::ErrBox;
 pub use crate::errors::JsError;
@@ -56,6 +54,7 @@ pub use crate::runtime::JsRuntimeState;
 pub use crate::runtime::Script;
 pub use crate::runtime::Snapshot;
 pub use crate::runtime::StartupData;
+pub use crate::state::State;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 pub use serde_json;

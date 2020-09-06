@@ -22,6 +22,7 @@ use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::ErrBox;
 use crate::JsError;
 use crate::OpRouter;
+use crate::State;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
@@ -137,7 +138,8 @@ pub struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub(crate) op_router: Rc<dyn OpRouter>,
+  pub(crate) op_table: Rc<OpTable>,
+  pub(crate) gotham_state: Rc<State>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
@@ -219,7 +221,6 @@ pub struct HeapLimits {
 
 pub(crate) struct IsolateOptions {
   loader: Rc<dyn ModuleLoader>,
-  op_router: Rc<dyn OpRouter>,
   startup_script: Option<OwnedScript>,
   startup_snapshot: Option<Snapshot>,
   will_snapshot: bool,
@@ -229,15 +230,10 @@ pub(crate) struct IsolateOptions {
 impl JsRuntime {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(
-    op_router: Rc<dyn OpRouter>,
-    startup_data: StartupData,
-    will_snapshot: bool,
-  ) -> Self {
+  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
     let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
       loader: Rc::new(NoopModuleLoader),
-      op_router,
       startup_script,
       startup_snapshot,
       will_snapshot,
@@ -251,14 +247,12 @@ impl JsRuntime {
   /// Create new isolate that can load and execute ESModules.
   pub fn new_with_loader(
     loader: Rc<dyn ModuleLoader>,
-    op_router: Rc<dyn OpRouter>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Self {
     let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
       loader,
-      op_router,
       startup_script,
       startup_snapshot,
       will_snapshot,
@@ -275,14 +269,12 @@ impl JsRuntime {
   /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
   /// to prevent v8 from crashing when reaching the upper limit.
   pub fn with_heap_limits(
-    op_router: Rc<dyn OpRouter>,
     startup_data: StartupData,
     heap_limits: HeapLimits,
   ) -> Self {
     let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
       loader: Rc::new(NoopModuleLoader),
-      op_router,
       startup_script,
       startup_snapshot,
       will_snapshot: false,
@@ -358,7 +350,6 @@ impl JsRuntime {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: Cell::new(false),
-      op_router: options.op_router,
       modules: Modules::new(),
       loader: options.loader,
       dyn_import_map: HashMap::new(),
@@ -1958,7 +1949,7 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state: Rc<BasicState>, bufs: BufVec| -> Op {
+    let dispatcher = move |_state: Rc<State>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(bufs.len(), 1);
       assert_eq!(bufs[0].len(), 1);
@@ -1966,10 +1957,10 @@ pub mod tests {
       let buf = [43u8, 0, 0, 0][..].into();
       Op::Async(futures::future::ready(buf).boxed())
     };
-    state.register_op("test", dispatcher);
 
     let mut runtime =
       JsRuntime::new_with_loader(loader, state, StartupData::None, false);
+    runtime.register_op("test", dispatcher);
 
     js_check(runtime.execute(
       "setup.js",

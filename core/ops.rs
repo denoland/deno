@@ -2,6 +2,7 @@
 
 use crate::BufVec;
 use crate::ErrBox;
+use crate::State;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use futures::FutureExt;
@@ -16,7 +17,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
-pub type OpFn<S> = dyn Fn(Rc<S>, BufVec) -> Op + 'static;
+pub type OpFn = dyn Fn(Rc<State>, BufVec) -> Op + 'static;
 pub type OpId = usize;
 
 pub enum Op {
@@ -28,18 +29,32 @@ pub enum Op {
   NotFound,
 }
 
-pub trait OpRouter {
-  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
-}
+/// Collection for storing registered ops. The special 'get_op_catalog'
+/// op with OpId `0` is automatically added when the OpTable is created.
+pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 
-pub trait OpRegistry: OpRouter + 'static {
-  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId>;
+impl OpTable {
+  pub fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+    let op_fn = self
+      .op_table
+      .borrow()
+      .get_index(op_id)
+      .map(|(_, op_fn)| op_fn.clone())
+      .unwrap();
+    (op_fn)(self, bufs)
+  }
 
-  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<Self>, BufVec) -> Op + 'static;
+  pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
+    self.keys().cloned().zip(0..).collect()
+  }
 
-  fn register_op_json_sync<F>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
+  fn op_get_op_catalog(state: Rc<S>, _bufs: BufVec) -> Op {
+    let ops = state.get_op_catalog();
+    let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
+    Op::Sync(buf)
+  }
+
+  pub fn register_op_json_sync<F>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
   where
     F: Fn(&Self, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> + 'static,
   {
@@ -54,7 +69,11 @@ pub trait OpRegistry: OpRouter + 'static {
     self.register_op(name, base_op_fn)
   }
 
-  fn register_op_json_async<F, R>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
+  pub fn register_op_json_async<F, R>(
+    self: &Rc<Self>,
+    name: &str,
+    op_fn: F,
+  ) -> OpId
   where
     F: Fn(Rc<Self>, Value, BufVec) -> R + 'static,
     R: Future<Output = Result<Value, ErrBox>> + 'static,
@@ -102,28 +121,18 @@ pub trait OpRegistry: OpRouter + 'static {
     serde_json::to_vec(&value).unwrap().into_boxed_slice()
   }
 
-  fn get_error_class_name(&self, _err: &ErrBox) -> &'static str {
-    "Error"
+  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<State>, BufVec) -> Op + 'static,
+  {
+    let mut op_table = self.op_table.borrow_mut();
+    let (op_id, prev) = op_table.insert_full(name.to_owned(), Rc::new(op_fn));
+    assert!(prev.is_none());
+    op_id
   }
 }
 
-/// Collection for storing registered ops. The special 'get_op_catalog'
-/// op with OpId `0` is automatically added when the OpTable is created.
-pub struct OpTable<S>(IndexMap<String, Rc<OpFn<S>>>);
-
-impl<S: OpRegistry> OpTable<S> {
-  pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
-    self.keys().cloned().zip(0..).collect()
-  }
-
-  fn op_get_op_catalog(state: Rc<S>, _bufs: BufVec) -> Op {
-    let ops = state.get_op_catalog();
-    let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
-    Op::Sync(buf)
-  }
-}
-
-impl<S: OpRegistry> Default for OpTable<S> {
+impl Default for OpTable {
   fn default() -> Self {
     Self(
       once(("ops".to_owned(), Rc::new(Self::op_get_op_catalog) as _)).collect(),
@@ -131,16 +140,54 @@ impl<S: OpRegistry> Default for OpTable<S> {
   }
 }
 
-impl<S> Deref for OpTable<S> {
-  type Target = IndexMap<String, Rc<OpFn<S>>>;
+impl Deref for OpTable {
+  type Target = IndexMap<String, Rc<OpFn>>;
 
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl<S> DerefMut for OpTable<S> {
+impl DerefMut for OpTable {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
   }
 }
+
+/*
+#[test]
+fn test_optable() {
+  let op_table = OpTable::new();
+
+  let foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
+  assert_eq!(foo_id, 1);
+
+  let bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
+  assert_eq!(bar_id, 2);
+
+  let state_ = op_table.clone();
+  let foo_res = state_.route_op(foo_id, Default::default());
+  assert!(matches!(foo_res, Op::Sync(buf) if &*buf == b"oof!"));
+
+  let state_ = op_table.clone();
+  let bar_res = state_.route_op(bar_id, Default::default());
+  assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
+
+  let catalog_res = op_table.route_op(0, Default::default());
+  let mut catalog_entries = match catalog_res {
+    Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
+      .map(|map| map.into_iter().collect::<Vec<_>>())
+      .unwrap(),
+    _ => panic!("unexpected `Op` variant"),
+  };
+  catalog_entries.sort_by(|(_, id1), (_, id2)| id1.partial_cmp(id2).unwrap());
+  assert_eq!(
+    catalog_entries,
+    vec![
+      ("ops".to_owned(), 0),
+      ("foo".to_owned(), 1),
+      ("bar".to_owned(), 2)
+    ]
+  )
+}
+*/
