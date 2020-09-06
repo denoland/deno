@@ -14,6 +14,7 @@ pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 #[test]
 fn cli_snapshot() {
   let mut isolate = deno_core::CoreIsolate::new(
+    deno_core::BasicState::new(),
     deno_core::StartupData::Snapshot(deno_core::Snapshot::Static(CLI_SNAPSHOT)),
     false,
   );
@@ -31,6 +32,7 @@ fn cli_snapshot() {
 #[test]
 fn compiler_snapshot() {
   let mut isolate = deno_core::CoreIsolate::new(
+    deno_core::BasicState::new(),
     deno_core::StartupData::Snapshot(deno_core::Snapshot::Static(
       COMPILER_SNAPSHOT,
     )),

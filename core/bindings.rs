@@ -2,18 +2,19 @@
 
 use crate::CoreIsolate;
 use crate::CoreIsolateState;
+use crate::ErrBox;
 use crate::EsIsolate;
 use crate::JSError;
+use crate::Op;
+use crate::OpId;
 use crate::ZeroCopyBuf;
-
+use futures::future::FutureExt;
 use rusty_v8 as v8;
-use v8::MapFnTo;
-
-use smallvec::SmallVec;
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::option::Option;
 use url::Url;
+use v8::MapFnTo;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -49,7 +50,7 @@ lazy_static! {
         function: decode.map_fn_to()
       },
       v8::ExternalReference {
-        function: get_promise_details.map_fn_to(),
+        function: get_promise_details.map_fn_to()
       }
     ]);
 }
@@ -371,13 +372,19 @@ fn recv(
   slot.replace(v8::Global::new(scope, cb));
 }
 
-fn send(
-  scope: &mut v8::HandleScope,
+fn send<'s>(
+  scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
-    Ok(op_id) => op_id.value() as u32,
+  let state_rc = CoreIsolate::state(scope);
+  let state = state_rc.borrow_mut();
+
+  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map_err(ErrBox::from)
+    .and_then(|l| OpId::try_from(l.value()).map_err(ErrBox::from))
+  {
+    Ok(op_id) => op_id,
     Err(err) => {
       let msg = format!("invalid op id: {}", err);
       let msg = v8::String::new(scope, &msg).unwrap();
@@ -386,9 +393,6 @@ fn send(
       return;
     }
   };
-
-  let state_rc = CoreIsolate::state(scope);
-  let mut state = state_rc.borrow_mut();
 
   let buf_iter = (1..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
@@ -400,24 +404,37 @@ fn send(
       })
   });
 
-  // If response is empty then it's either async op or exception was thrown.
-  let maybe_response =
-    match buf_iter.collect::<Result<SmallVec<[ZeroCopyBuf; 2]>, _>>() {
-      Ok(mut bufs) => state.dispatch_op(scope, op_id, &mut bufs),
-      Err(exc) => {
-        scope.throw_exception(exc);
-        return;
-      }
-    };
+  let bufs = match buf_iter.collect::<Result<_, _>>() {
+    Ok(bufs) => bufs,
+    Err(exc) => {
+      scope.throw_exception(exc);
+      return;
+    }
+  };
 
-  if let Some(response) = maybe_response {
-    // Synchronous response.
-    // Note op_id is not passed back in the case of synchronous response.
-    let (_op_id, buf) = response;
-
-    if !buf.is_empty() {
-      let ui8 = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ui8.into());
+  let op_router = state.op_router.clone();
+  let op = op_router.route_op(op_id, bufs);
+  assert_eq!(state.shared.size(), 0);
+  match op {
+    Op::Sync(buf) if !buf.is_empty() => {
+      rv.set(boxed_slice_to_uint8array(scope, buf).into());
+    }
+    Op::Sync(_) => {}
+    Op::Async(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::AsyncUnref(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_unref_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::NotFound => {
+      let msg = format!("Unknown op id: {}", op_id);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
     }
   }
 }

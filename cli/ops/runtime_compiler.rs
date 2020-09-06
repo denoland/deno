@@ -1,23 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::futures::FutureExt;
 use crate::state::State;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
-use std::cell::RefCell;
+use deno_core::OpRegistry;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_compile", s.stateful_json_op_async(t, op_compile));
-  i.register_op("op_transpile", s.stateful_json_op_async(t, op_transpile));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_async("op_compile", op_compile);
+  s.register_op_json_async("op_transpile", op_transpile);
 }
 
 #[derive(Deserialize, Debug)]
@@ -31,7 +29,6 @@ struct CompileArgs {
 
 async fn op_compile(
   state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   _data: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -70,7 +67,6 @@ struct TranspileArgs {
 
 async fn op_transpile(
   state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   _data: BufVec,
 ) -> Result<Value, ErrBox> {

@@ -8,6 +8,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+mod basic_state;
 mod bindings;
 mod core_isolate;
 mod errors;
@@ -24,6 +25,7 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
+pub use crate::basic_state::BasicState;
 pub use crate::core_isolate::js_check;
 pub use crate::core_isolate::CoreIsolate;
 pub use crate::core_isolate::CoreIsolateState;
@@ -32,6 +34,7 @@ pub use crate::core_isolate::HeapLimits;
 pub use crate::core_isolate::Script;
 pub use crate::core_isolate::Snapshot;
 pub use crate::core_isolate::StartupData;
+pub use crate::errors::AnyError;
 pub use crate::errors::ErrBox;
 pub use crate::errors::JSError;
 pub use crate::es_isolate::EsIsolate;
@@ -47,10 +50,13 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
-pub use crate::ops::Buf;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
+pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
+pub use crate::ops::OpRegistry;
+pub use crate::ops::OpRouter;
+pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;

@@ -1,26 +1,26 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::ops::dispatch_json::Deserialize;
-use crate::ops::dispatch_json::JsonOp;
-use crate::ops::dispatch_json::Value;
+
 use crate::state::State;
 use deno_core::plugin_api;
-use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
+use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_open_plugin", s.stateful_json_op2(op_open_plugin));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_open_plugin", op_open_plugin);
 }
 
 #[derive(Deserialize)]
@@ -30,12 +30,12 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+  state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.openPlugin");
+
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
   let filename = PathBuf::from(&args.filename);
 
@@ -45,22 +45,25 @@ pub fn op_open_plugin(
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
 
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
-  let rid = resource_table.add("plugin", Box::new(plugin_resource));
-  let plugin_resource = resource_table.get::<PluginResource>(rid).unwrap();
-
-  let deno_plugin_init = *unsafe {
-    plugin_resource
-      .lib
-      .symbol::<plugin_api::InitFn>("deno_plugin_init")
+  let rid;
+  let deno_plugin_init;
+  {
+    let mut resource_table = state.resource_table.borrow_mut();
+    rid = resource_table.add("plugin", Box::new(plugin_resource));
+    deno_plugin_init = *unsafe {
+      resource_table
+        .get::<PluginResource>(rid)
+        .unwrap()
+        .lib
+        .symbol::<plugin_api::InitFn>("deno_plugin_init")
+        .unwrap()
+    };
   }
-  .unwrap();
-  drop(resource_table);
 
-  let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
+  let mut interface = PluginInterface::new(state, &plugin_lib);
   deno_plugin_init(&mut interface);
 
-  Ok(JsonOp::Sync(json!(rid)))
+  Ok(json!(rid))
 }
 
 struct PluginResource {
@@ -74,19 +77,13 @@ impl PluginResource {
 }
 
 struct PluginInterface<'a> {
-  isolate_state: &'a mut CoreIsolateState,
+  state: &'a State,
   plugin_lib: &'a Rc<Library>,
 }
 
 impl<'a> PluginInterface<'a> {
-  fn new(
-    isolate_state: &'a mut CoreIsolateState,
-    plugin_lib: &'a Rc<Library>,
-  ) -> Self {
-    Self {
-      isolate_state,
-      plugin_lib,
-    }
+  fn new(state: &'a State, plugin_lib: &'a Rc<Library>) -> Self {
+    Self { state, plugin_lib }
   }
 }
 
@@ -102,11 +99,11 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self.isolate_state.op_registry.register(
+    self.state.register_op(
       name,
-      move |isolate_state, zero_copy| {
-        let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
-        let op = dispatch_op_fn(&mut interface, zero_copy);
+      move |state: Rc<State>, mut zero_copy: BufVec| {
+        let mut interface = PluginInterface::new(&state, &plugin_lib);
+        let op = dispatch_op_fn(&mut interface, &mut zero_copy);
         match op {
           sync_op @ Op::Sync(..) => sync_op,
           Op::Async(fut) => {
@@ -115,6 +112,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
           Op::AsyncUnref(fut) => {
             Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
           }
+          _ => unreachable!(),
         }
       },
     )
