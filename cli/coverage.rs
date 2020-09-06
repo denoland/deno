@@ -1,99 +1,117 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(unused)]
-
 use crate::colors;
 use crate::file_fetcher::SourceFile;
-use crate::futures::SinkExt;
-use crate::futures::StreamExt;
-use crate::tokio_util;
+use crate::inspector::DenoInspector;
+use deno_core::v8;
 use deno_core::ErrBox;
 use serde::Deserialize;
-use serde::Serialize;
-use sourcemap::SourceMap;
-use url::Url;
+use std::mem::MaybeUninit;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::ptr;
+
+use std::thread;
+
+use futures::channel::mpsc;
+// use futures::channel::mpsc::UnboundedReceiver;
+// use futures::channel::mpsc::UnboundedSender;
 
 pub struct CoverageCollector {
-  socket: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+  v8_channel: v8::inspector::ChannelBase,
+  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
 }
 
-// TODO(caspervonb) do not hard-code message ids.
-// TODO yield then await each command response after sending the request.
-impl CoverageCollector {
-  pub async fn connect(url: Url) -> Result<Self, ErrBox> {
-    let (socket, response) = tokio_tungstenite::connect_async(url)
-      .await
-      .expect("Can't connect");
-    assert_eq!(response.status(), 101);
+impl Deref for CoverageCollector {
+  type Target = v8::inspector::V8InspectorSession;
+  fn deref(&self) -> &Self::Target {
+    &self.v8_session
+  }
+}
 
-    Ok(Self { socket })
+impl DerefMut for CoverageCollector {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.v8_session
+  }
+}
+
+impl v8::inspector::ChannelImpl for CoverageCollector {
+  fn base(&self) -> &v8::inspector::ChannelBase {
+    &self.v8_channel
+  }
+
+  fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
+    &mut self.v8_channel
+  }
+
+  fn send_response(
+    &mut self,
+    _call_id: i32,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+    let message = message.unwrap().string().to_string();
+    println!("response: {}", message);
+  }
+
+  fn send_notification(
+    &mut self,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+    let message = message.unwrap().string().to_string();
+    println!("notification: {}", message);
+  }
+
+  fn flush_protocol_notifications(&mut self) {}
+}
+
+impl CoverageCollector {
+  const CONTEXT_GROUP_ID: i32 = 1;
+
+  pub fn new(inspector_ptr: *mut DenoInspector) -> Box<Self> {
+    new_box_with(move |self_ptr| {
+      let v8_channel = v8::inspector::ChannelBase::new::<Self>();
+      let v8_session = unsafe { &mut *inspector_ptr }.connect(
+        Self::CONTEXT_GROUP_ID,
+        unsafe { &mut *self_ptr },
+        v8::inspector::StringView::empty(),
+      );
+
+      Self {
+        v8_channel,
+        v8_session,
+      }
+    })
+  }
+
+  pub fn send_to_channel(&mut self, msg: String) {
+    let msg = v8::inspector::StringView::from(msg.as_bytes());
+    self.v8_session.dispatch_protocol_message(msg);
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), ErrBox> {
-    self
-      .socket
-      .send(r#"{"id":1,"method":"Runtime.enable"}"#.into())
-      .await
-      .unwrap();
-
-    self
-      .socket
-      .send(r#"{"id":2,"method":"Profiler.enable"}"#.into())
-      .await
-      .unwrap();
-
-    self
-          .socket
-          .send(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into()).await.unwrap();
-
-    self
-      .socket
-      .send(r#"{"id":4,"method":"Runtime.runIfWaitingForDebugger"}"#.into())
-      .await
-      .unwrap();
-
+    self.send_to_channel(r#"{"id":1,"method":"Runtime.enable"}"#.into());
+    self.send_to_channel(r#"{"id":2,"method":"Profiler.enable"}"#.into());
+    self.send_to_channel(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into());
     Ok(())
   }
 
   pub async fn stop_collecting(&mut self) -> Result<(), ErrBox> {
-    self.socket.next().await.unwrap();
-    self.socket.next().await.unwrap();
-    self.socket.next().await.unwrap();
-    self.socket.next().await.unwrap();
-    self.socket.next().await.unwrap();
-
-    self
-      .socket
-      .send(r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into())
-      .await
-      .unwrap();
-
-    self
-      .socket
-      .send(r#"{"id":6,"method":"Profiler.stopPreciseCoverage" }"#.into())
-      .await
-      .unwrap();
-
     Ok(())
   }
 
   pub async fn take_precise_coverage(
     &mut self,
-  ) -> Result<(Vec<ScriptCoverage>), ErrBox> {
-    let msg = self.socket.next().await.unwrap();
-    let msg = msg.unwrap();
-    let msg_text = msg.to_text()?;
+  ) -> Result<Vec<ScriptCoverage>, ErrBox> {
+    self.send_to_channel(
+      r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into(),
+    );
 
-    let coverage_result: TakePreciseCoverageResponse =
-      serde_json::from_str(msg_text).unwrap();
-
-    self.socket.next().await.unwrap();
-
-    Ok(coverage_result.result.result)
+    let coverage: Vec<ScriptCoverage> = Vec::new();
+    Ok(coverage)
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
   pub start_offset: usize,
@@ -101,7 +119,7 @@ pub struct CoverageRange {
   pub count: usize,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverage {
   pub function_name: String,
@@ -109,7 +127,7 @@ pub struct FunctionCoverage {
   pub is_block_coverage: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptCoverage {
   pub script_id: String,
@@ -159,7 +177,7 @@ impl PrettyCoverageReporter {
             && range.end_offset >= line_end_offset
           {
             count += range.count;
-            if (range.count == 0) {
+            if range.count == 0 {
               count = 0;
               break;
             }
@@ -175,7 +193,7 @@ impl PrettyCoverageReporter {
       line_offset += line.len();
     }
 
-    let line_ratio = (covered_lines as f32 / total_lines as f32);
+    let line_ratio = covered_lines as f32 / total_lines as f32;
     let line_coverage = format!("{:.3}%", line_ratio * 100.0);
 
     if line_ratio >= 0.9 {
@@ -198,4 +216,11 @@ impl PrettyCoverageReporter {
       );
     }
   }
+}
+
+fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
+  let b = Box::new(MaybeUninit::<T>::uninit());
+  let p = Box::into_raw(b) as *mut T;
+  unsafe { ptr::write(p, new_fn(p)) };
+  unsafe { Box::from_raw(p) }
 }

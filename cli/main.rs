@@ -679,9 +679,8 @@ async fn test_command(
         );
       }
     };
-    let inspector_url = Url::parse(&inspector.debugger_url)?;
-    let mut coverage_collector =
-      CoverageCollector::connect(inspector_url).await?;
+
+    let mut coverage_collector = CoverageCollector::new(&mut **inspector);
     coverage_collector.start_collecting().await?;
 
     Some(coverage_collector)
