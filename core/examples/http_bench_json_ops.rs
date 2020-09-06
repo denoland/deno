@@ -4,8 +4,8 @@ extern crate log;
 use deno_core::js_check;
 use deno_core::BasicState;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::JsRuntime;
 use deno_core::OpRegistry;
 use deno_core::Script;
 use deno_core::StartupData;
@@ -41,7 +41,7 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn create_isolate() -> CoreIsolate {
+fn create_isolate() -> JsRuntime {
   let state = BasicState::new();
   state.register_op_json_sync("listen", op_listen);
   state.register_op_json_sync("close", op_close);
@@ -54,7 +54,7 @@ fn create_isolate() -> CoreIsolate {
     filename: "http_bench_json_ops.js",
   });
 
-  CoreIsolate::new(state, startup_data, false)
+  JsRuntime::new(state, startup_data, false)
 }
 
 fn op_listen(

@@ -8,8 +8,8 @@ The main dependency of this crate is
 bindings.
 
 This Rust crate contains the essential V8 bindings for Deno's command-line
-interface (Deno CLI). The main abstraction here is the Isolate which provides a
-way to execute JavaScript. The Isolate is modeled as a
+interface (Deno CLI). The main abstraction here is the JsRuntime which provides a
+way to execute JavaScript. The JsRuntime is modeled as a
 `Future<Item=(), Error=JSError>` which completes once all of its ops have
 completed.
 
