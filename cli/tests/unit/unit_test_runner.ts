@@ -97,6 +97,7 @@ function spawnWorkerRunner(
     Deno.execPath(),
     "run",
     "--unstable", // TODO(ry) be able to test stable vs unstable
+    "--location=http://js-unit-tests/foo/bar",
     "-A",
     "cli/tests/unit/unit_test_runner.ts",
     "--worker",

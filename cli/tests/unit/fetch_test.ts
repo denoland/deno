@@ -221,17 +221,6 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   }
 });
 
-unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
-  void
-> {
-  await assertThrowsAsync(
-    async () => {
-      await fetch("");
-    },
-    URIError,
-  );
-});
-
 unitTest(
   { perms: { net: true } },
   async function fetchMultipartFormDataSuccess(): Promise<void> {

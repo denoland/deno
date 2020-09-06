@@ -9,10 +9,11 @@ is run on a separate thread, dedicated only to that worker.
 Currently Deno supports only `module` type workers; thus it's essential to pass
 the `type: "module"` option when creating a new worker.
 
-Relative module specifiers are
-[not supported](https://github.com/denoland/deno/issues/5216) at the moment. You
-can instead use the `URL` constructor and `import.meta.url` to easily create a
-specifier for some nearby script.
+Use of relative module specifiers in the main worker are only supported with
+`--location <href>` passed on the CLI. This is not recommended for portability.
+You can instead use the `URL` contructor and `import.meta.url` to easily create
+a specifier for some nearby script. Dedicated workers, however, have a location
+and this capability by default.
 
 ```ts
 // Good

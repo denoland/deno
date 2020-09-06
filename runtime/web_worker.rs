@@ -130,6 +130,7 @@ pub struct WebWorker {
   terminate_rx: mpsc::Receiver<()>,
   handle: WebWorkerHandle,
   pub use_deno_namespace: bool,
+  pub main_module: ModuleSpecifier,
 }
 
 pub struct WebWorkerOptions {
@@ -197,6 +198,7 @@ impl WebWorker {
       terminate_rx,
       handle,
       use_deno_namespace: options.use_deno_namespace,
+      main_module: main_module.clone(),
     };
 
     {
@@ -286,6 +288,7 @@ impl WebWorker {
       "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
+      "location": self.main_module,
     });
 
     let runtime_options_str =

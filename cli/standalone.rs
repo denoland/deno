@@ -167,7 +167,7 @@ async fn run(source_code: String, metadata: Metadata) -> Result<(), AnyError> {
   // TODO(nayeemrmn): Unify this Flags -> WorkerOptions mapping with `deno run`.
   let options = WorkerOptions {
     apply_source_maps: false,
-    args: flags.argv.clone(),
+    args: flags.argv,
     debug_flag: flags.log_level.map_or(false, |l| l == log::Level::Debug),
     user_agent: crate::http_util::get_user_agent(),
     unstable: flags.unstable,
@@ -183,6 +183,7 @@ async fn run(source_code: String, metadata: Metadata) -> Result<(), AnyError> {
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
+    location: flags.location,
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
@@ -297,6 +298,7 @@ pub fn compile_to_runtime_flags(
     import_map_path: None,
     inspect: None,
     inspect_brk: None,
+    location: flags.location,
     lock: None,
     lock_write: false,
     log_level: flags.log_level,
