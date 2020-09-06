@@ -43,7 +43,7 @@ fn write_line_diff(
       diff,
       "{:0width$}{} ",
       *orig_line + i,
-      colors::gray("|"),
+      colors::intense_black("|"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_rem())?;
@@ -57,7 +57,7 @@ fn write_line_diff(
       diff,
       "{:0width$}{} ",
       *edit_line + i,
-      colors::gray("|"),
+      colors::intense_black("|"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_add())?;
