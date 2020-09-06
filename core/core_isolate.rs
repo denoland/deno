@@ -250,6 +250,8 @@ impl CoreIsolate {
     Self::from_options(options)
   }
 
+  // TODO(bartlomieju): add `new_with_loader_and_heap_limits` function?
+  /// Create new isolate that can load and execute ESModules.
   pub fn new_with_loader(
     loader: Rc<dyn ModuleLoader>,
     op_router: Rc<dyn OpRouter>,

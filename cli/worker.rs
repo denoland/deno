@@ -91,7 +91,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: deno_core::EsIsolate,
+  pub isolate: deno_core::CoreIsolate,
   pub inspector: Option<Box<DenoInspector>>,
   pub state: Rc<State>,
   pub waker: AtomicWaker,
@@ -105,7 +105,7 @@ impl Worker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut isolate = deno_core::EsIsolate::new(
+    let mut isolate = deno_core::CoreIsolate::new_with_loader(
       state.clone(),
       state.clone(),
       startup_data,
@@ -235,7 +235,7 @@ impl Future for Worker {
 }
 
 impl Deref for Worker {
-  type Target = deno_core::EsIsolate;
+  type Target = deno_core::CoreIsolate;
   fn deref(&self) -> &Self::Target {
     &self.isolate
   }

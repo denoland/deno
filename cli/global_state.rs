@@ -96,7 +96,7 @@ impl GlobalState {
   }
 
   /// This function is called when new module load is
-  /// initialized by the EsIsolate. Its resposibility is to collect
+  /// initialized by the CoreIsolate. Its resposibility is to collect
   /// all dependencies and if it is required then also perform TS typecheck
   /// and traspilation.
   pub async fn prepare_module_load(
@@ -180,7 +180,7 @@ impl GlobalState {
   }
 
   // TODO(bartlomieju): this method doesn't need to be async anymore
-  /// This method is used after `prepare_module_load` finishes and EsIsolate
+  /// This method is used after `prepare_module_load` finishes and CoreIsolate
   /// starts loading source and executing source code. This method shouldn't
   /// perform any IO (besides $DENO_DIR) and only operate on sources collected
   /// during `prepare_module_load`.
