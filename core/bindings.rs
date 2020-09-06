@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::ErrBox;
-use crate::JSError;
+use crate::JsError;
 use crate::JsRuntime;
 use crate::JsRuntimeState;
 use crate::Op;
@@ -592,7 +592,7 @@ fn format_error(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let e = JSError::from_v8_exception(scope, args.get(0));
+  let e = JsError::from_v8_exception(scope, args.get(0));
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   let e = (state.js_error_create_fn)(e);

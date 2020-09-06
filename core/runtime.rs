@@ -20,7 +20,7 @@ use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::ErrBox;
-use crate::JSError;
+use crate::JsError;
 use crate::OpRouter;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -92,7 +92,7 @@ impl StartupData<'_> {
   }
 }
 
-type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
+type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
 
 pub type GetErrorClassFn = dyn for<'e> Fn(&'e ErrBox) -> &'static str;
 
@@ -132,7 +132,7 @@ pub struct JsRuntimeState {
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
-  pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
+  pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -353,7 +353,7 @@ impl JsRuntime {
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
-      js_error_create_fn: Box::new(JSError::create),
+      js_error_create_fn: Box::new(JsError::create),
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -409,7 +409,7 @@ impl JsRuntime {
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
+  /// the V8 exception. By default this type is JsError, however it may be a
   /// different type if JsRuntime::set_js_error_create_fn() has been used.
   pub fn execute(
     &mut self,
@@ -456,7 +456,7 @@ impl JsRuntime {
   /// set to true.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
+  /// the V8 exception. By default this type is JsError, however it may be a
   /// different type if JsRuntime::set_js_error_create_fn() has been used.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
@@ -653,11 +653,11 @@ impl Future for JsRuntime {
 
 impl JsRuntimeState {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the JSError into an error. By default this callback
-  /// is set to JSError::create.
+  /// the caller to wrap the JsError into an error. By default this callback
+  /// is set to JsError::create.
   pub fn set_js_error_create_fn(
     &mut self,
-    f: impl Fn(JSError) -> ErrBox + 'static,
+    f: impl Fn(JsError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
   }
@@ -787,7 +787,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
     }
   }
 
-  let js_error = JSError::from_v8_exception(scope, exception);
+  let js_error = JsError::from_v8_exception(scope, exception);
 
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
@@ -899,7 +899,7 @@ impl JsRuntime {
   /// Instantiates a ES module
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
+  /// the V8 exception. By default this type is JsError, however it may be a
   /// different type if JsRuntime::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let state_rc = Self::state(self);
@@ -935,7 +935,7 @@ impl JsRuntime {
   /// Evaluates an already instantiated ES module.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
+  /// the V8 exception. By default this type is JsError, however it may be a
   /// different type if JsRuntime::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     self.shared_init();
@@ -1779,7 +1779,7 @@ pub mod tests {
     let src = "hocuspocus(";
     let r = runtime.execute("i.js", src);
     let e = r.unwrap_err();
-    let js_error = e.downcast::<JSError>().unwrap();
+    let js_error = e.downcast::<JsError>().unwrap();
     assert_eq!(js_error.end_column, Some(11));
   }
 
@@ -1857,7 +1857,7 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JSError>().unwrap().message
+      err.downcast::<JsError>().unwrap().message
     );
     assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
   }
@@ -1914,7 +1914,7 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JSError>().unwrap().message
+      err.downcast::<JsError>().unwrap().message
     );
     assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
     assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);

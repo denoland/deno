@@ -27,7 +27,7 @@ pub use rusty_v8 as v8;
 pub use crate::basic_state::BasicState;
 pub use crate::errors::AnyError;
 pub use crate::errors::ErrBox;
-pub use crate::errors::JSError;
+pub use crate::errors::JsError;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;

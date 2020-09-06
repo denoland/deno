@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fmt_errors::JSError;
+use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::ops;
@@ -117,7 +117,7 @@ impl Worker {
       let core_state_rc = JsRuntime::state(&isolate);
       let mut core_state = core_state_rc.borrow_mut();
       core_state.set_js_error_create_fn(move |core_js_error| {
-        JSError::create(core_js_error, &global_state.ts_compiler)
+        JsError::create(core_js_error, &global_state.ts_compiler)
       });
     }
 
