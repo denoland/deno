@@ -670,10 +670,6 @@ async fn test_command(
     .save_source_file_in_cache(&main_module, source_file);
 
   let mut maybe_coverage_collector = if coverage {
-    // Ugliness to let the socket serer thread spin up
-    (&mut *worker).await?;
-    tokio::time::delay_for(std::time::Duration::from_millis(5000)).await;
-
     let inspector = match worker.inspector.as_mut() {
       Some(inspector) => inspector,
       None => {
