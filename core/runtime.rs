@@ -105,7 +105,7 @@ struct IsolateAllocations {
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. A JsRuntime is a Future that can be used with
-/// an event loop (Tokio, async_std). 
+/// an event loop (Tokio, async_std).
 ////
 /// The JsRuntime future completes when there is an error or when all
 /// pending ops have completed.
