@@ -44,7 +44,7 @@ export const process = {
       get isTTY(): boolean {
         return Deno.isatty(this.fd);
       },
-      pipe(_destination: Deno.Writer, options: { end: boolean }): void {
+      pipe(_destination: Deno.Writer, _options: { end: boolean }): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
@@ -83,7 +83,7 @@ export const process = {
       get isTTY(): boolean {
         return Deno.isatty(this.fd);
       },
-      pipe(_destination: Deno.Writer, options: { end: boolean }): void {
+      pipe(_destination: Deno.Writer, _options: { end: boolean }): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
