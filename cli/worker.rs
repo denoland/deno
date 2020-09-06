@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fmt_errors::JSError;
+use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::startup_data;
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
@@ -91,7 +91,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: deno_core::CoreIsolate,
+  pub isolate: deno_core::JsRuntime,
   pub inspector: Option<Box<DenoInspector>>,
   pub state: Rc<State>,
   pub waker: AtomicWaker,
@@ -105,7 +105,7 @@ impl Worker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut isolate = deno_core::CoreIsolate::new_with_loader(
+    let mut isolate = deno_core::JsRuntime::new_with_loader(
       state.clone(),
       state.clone(),
       startup_data,
@@ -114,10 +114,10 @@ impl Worker {
 
     {
       let global_state = state.global_state.clone();
-      let core_state_rc = CoreIsolate::state(&isolate);
+      let core_state_rc = JsRuntime::state(&isolate);
       let mut core_state = core_state_rc.borrow_mut();
       core_state.set_js_error_create_fn(move |core_js_error| {
-        JSError::create(core_js_error, &global_state.ts_compiler)
+        JsError::create(core_js_error, &global_state.ts_compiler)
       });
     }
 
@@ -235,7 +235,7 @@ impl Future for Worker {
 }
 
 impl Deref for Worker {
-  type Target = deno_core::CoreIsolate;
+  type Target = deno_core::JsRuntime;
   fn deref(&self) -> &Self::Target {
     &self.isolate
   }

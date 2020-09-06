@@ -1,10 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Do not add any dependency to modules.rs!
-// modules.rs is complex and should remain decoupled from isolate.rs to keep the
-// Isolate struct from becoming too bloating for users who do not need
-// asynchronous module loading.
-
 use rusty_v8 as v8;
 
 use crate::bindings;
@@ -25,7 +20,7 @@ use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::ErrBox;
-use crate::JSError;
+use crate::JsError;
 use crate::OpRouter;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -97,7 +92,7 @@ impl StartupData<'_> {
   }
 }
 
-type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
+type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
 
 pub type GetErrorClassFn = dyn for<'e> Fn(&'e ErrBox) -> &'static str;
 
@@ -109,16 +104,18 @@ struct IsolateAllocations {
 }
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
-/// Tokio. The CoreIsolate future completes when there is an error or when all
+/// Worker" concept in the DOM. A JsRuntime is a Future that can be used with
+/// an event loop (Tokio, async_std).
+////
+/// The JsRuntime future completes when there is an error or when all
 /// pending ops have completed.
 ///
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
-pub struct CoreIsolate {
+pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
-  // an safety issue with SnapshotCreator. See CoreIsolate::drop.
+  // an safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
@@ -127,15 +124,15 @@ pub struct CoreIsolate {
   allocations: IsolateAllocations,
 }
 
-/// Internal state for CoreIsolate which is stored in one of v8::Isolate's
+/// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub struct CoreIsolateState {
+pub struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
-  pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
+  pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -150,20 +147,20 @@ pub struct CoreIsolateState {
   waker: AtomicWaker,
 }
 
-impl Deref for CoreIsolate {
+impl Deref for JsRuntime {
   type Target = v8::Isolate;
   fn deref(&self) -> &v8::Isolate {
     self.v8_isolate.as_ref().unwrap()
   }
 }
 
-impl DerefMut for CoreIsolate {
+impl DerefMut for JsRuntime {
   fn deref_mut(&mut self) -> &mut v8::Isolate {
     self.v8_isolate.as_mut().unwrap()
   }
 }
 
-impl Drop for CoreIsolate {
+impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
@@ -229,7 +226,7 @@ pub(crate) struct IsolateOptions {
   heap_limits: Option<HeapLimits>,
 }
 
-impl CoreIsolate {
+impl JsRuntime {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(
@@ -308,7 +305,7 @@ impl CoreIsolate {
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = CoreIsolate::setup_isolate(isolate);
+      let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(scope);
@@ -335,7 +332,7 @@ impl CoreIsolate {
       }
 
       let isolate = v8::Isolate::new(params);
-      let mut isolate = CoreIsolate::setup_isolate(isolate);
+      let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_loaded {
@@ -350,13 +347,13 @@ impl CoreIsolate {
       (isolate, None)
     };
 
-    isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
+    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
-      js_error_create_fn: Box::new(JSError::create),
+      js_error_create_fn: Box::new(JsError::create),
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -392,8 +389,8 @@ impl CoreIsolate {
     isolate
   }
 
-  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
-    let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
+  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+    let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
   }
 
@@ -412,8 +409,8 @@ impl CoreIsolate {
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  /// the V8 exception. By default this type is JsError, however it may be a
+  /// different type if JsRuntime::set_js_error_create_fn() has been used.
   pub fn execute(
     &mut self,
     js_filename: &str,
@@ -459,8 +456,8 @@ impl CoreIsolate {
   /// set to true.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  /// the V8 exception. By default this type is JsError, however it may be a
+  /// different type if JsRuntime::set_js_error_create_fn() has been used.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
     let state = Self::state(self);
@@ -535,14 +532,14 @@ where
   callback(current_heap_limit, initial_heap_limit)
 }
 
-impl Future for CoreIsolate {
+impl Future for JsRuntime {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let core_isolate = self.get_mut();
-    core_isolate.shared_init();
+    let runtime = self.get_mut();
+    runtime.shared_init();
 
-    let state_rc = Self::state(core_isolate);
+    let state_rc = Self::state(runtime);
     {
       let state = state_rc.borrow();
       state.waker.register(cx.waker());
@@ -553,7 +550,7 @@ impl Future for CoreIsolate {
       !state.preparing_dyn_imports.is_empty()
     };
     if has_preparing {
-      let poll_imports = core_isolate.prepare_dyn_imports(cx)?;
+      let poll_imports = runtime.prepare_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
@@ -562,12 +559,12 @@ impl Future for CoreIsolate {
       !state.pending_dyn_imports.is_empty()
     };
     if has_pending {
-      let poll_imports = core_isolate.poll_dyn_imports(cx)?;
+      let poll_imports = runtime.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
     let scope = &mut v8::HandleScope::with_context(
-      &mut **core_isolate,
+      &mut **runtime,
       state_rc.borrow().global_context.as_ref().unwrap(),
     );
 
@@ -654,13 +651,13 @@ impl Future for CoreIsolate {
   }
 }
 
-impl CoreIsolateState {
+impl JsRuntimeState {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the JSError into an error. By default this callback
-  /// is set to JSError::create.
+  /// the caller to wrap the JsError into an error. By default this callback
+  /// is set to JsError::create.
   pub fn set_js_error_create_fn(
     &mut self,
-    f: impl Fn(JSError) -> ErrBox + 'static,
+    f: impl Fn(JsError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
   }
@@ -706,7 +703,7 @@ fn async_op_response<'s>(
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-  let js_recv_cb = CoreIsolate::state(scope)
+  let js_recv_cb = JsRuntime::state(scope)
     .borrow()
     .js_recv_cb
     .as_ref()
@@ -736,7 +733,7 @@ fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
 
-  let js_macrotask_cb = match CoreIsolate::state(scope)
+  let js_macrotask_cb = match JsRuntime::state(scope)
     .borrow_mut()
     .js_macrotask_cb
     .as_ref()
@@ -790,9 +787,9 @@ pub(crate) fn exception_to_err_result<'s, T>(
     }
   }
 
-  let js_error = JSError::from_v8_exception(scope, exception);
+  let js_error = JsError::from_v8_exception(scope, exception);
 
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   let js_error = (state.js_error_create_fn)(js_error);
 
@@ -809,7 +806,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 fn check_promise_exceptions<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> Result<(), ErrBox> {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   if let Some(&key) = state.pending_promise_exceptions.keys().next() {
@@ -843,7 +840,7 @@ fn boxed_slice_to_uint8array<'sc>(
 }
 
 // Related to module loading
-impl CoreIsolate {
+impl JsRuntime {
   /// Low-level module creation.
   ///
   /// Called during module loading or dynamic import loading.
@@ -902,8 +899,8 @@ impl CoreIsolate {
   /// Instantiates a ES module
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  /// the V8 exception. By default this type is JsError, however it may be a
+  /// different type if JsRuntime::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
@@ -938,8 +935,8 @@ impl CoreIsolate {
   /// Evaluates an already instantiated ES module.
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  /// the V8 exception. By default this type is JsError, however it may be a
+  /// different type if JsRuntime::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     self.shared_init();
 
@@ -965,7 +962,7 @@ impl CoreIsolate {
       // Because that promise is created internally by V8, when error occurs during
       // module evaluation the promise is rejected, and since the promise has no rejection
       // handler it will result in call to `bindings::promise_reject_callback` adding
-      // the promise to pending promise rejection table - meaning Isolate will return
+      // the promise to pending promise rejection table - meaning JsRuntime will return
       // error on next poll().
       //
       // This situation is not desirable as we want to manually return error at the
@@ -1253,7 +1250,7 @@ impl CoreIsolate {
 
   /// Asynchronously load specified module and all of it's dependencies
   ///
-  /// User must call `Isolate::mod_evaluate` with returned `ModuleId`
+  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_module(
     &mut self,
@@ -1316,7 +1313,7 @@ pub mod tests {
       }
     }
     panic!(
-      "CoreIsolate still not ready after polling {} times.",
+      "JsRuntime still not ready after polling {} times.",
       max_poll_count
     )
   }
@@ -1407,15 +1404,15 @@ pub mod tests {
     }
   }
 
-  fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
+  fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let test_state = Rc::new(TestOpRouter {
       mode,
       dispatch_count: dispatch_count.clone(),
     });
-    let mut isolate = CoreIsolate::new(test_state, StartupData::None, false);
+    let mut runtime = JsRuntime::new(test_state, StartupData::None, false);
 
-    js_check(isolate.execute(
+    js_check(runtime.execute(
       "setup.js",
       r#"
         function assert(cond) {
@@ -1426,13 +1423,13 @@ pub mod tests {
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    (isolate, dispatch_count)
+    (runtime, dispatch_count)
   }
 
   #[test]
   fn test_dispatch() {
-    let (mut isolate, dispatch_count) = setup(Mode::Async);
-    js_check(isolate.execute(
+    let (mut runtime, dispatch_count) = setup(Mode::Async);
+    js_check(runtime.execute(
       "filename.js",
       r#"
         let control = new Uint8Array([42]);
@@ -1448,8 +1445,8 @@ pub mod tests {
 
   #[test]
   fn test_dispatch_no_zero_copy_buf() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(0));
-    js_check(isolate.execute(
+    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(0));
+    js_check(runtime.execute(
       "filename.js",
       r#"
         Deno.core.send(1);
@@ -1460,8 +1457,8 @@ pub mod tests {
 
   #[test]
   fn test_dispatch_stack_zero_copy_bufs() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
-    js_check(isolate.execute(
+    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
+    js_check(runtime.execute(
       "filename.js",
       r#"
         let zero_copy_a = new Uint8Array([0]);
@@ -1474,8 +1471,8 @@ pub mod tests {
 
   #[test]
   fn test_dispatch_heap_zero_copy_bufs() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(5));
-    js_check(isolate.execute(
+    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(5));
+    js_check(runtime.execute(
       "filename.js",
       r#"
         let zero_copy_a = new Uint8Array([0]);
@@ -1492,9 +1489,9 @@ pub mod tests {
   #[test]
   fn test_poll_async_delayed_ops() {
     run_in_task(|cx| {
-      let (mut isolate, dispatch_count) = setup(Mode::Async);
+      let (mut runtime, dispatch_count) = setup(Mode::Async);
 
-      js_check(isolate.execute(
+      js_check(runtime.execute(
         "setup2.js",
         r#"
          let nrecv = 0;
@@ -1504,7 +1501,7 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-      js_check(isolate.execute(
+      js_check(runtime.execute(
         "check1.js",
         r#"
          assert(nrecv == 0);
@@ -1514,9 +1511,9 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      js_check(isolate.execute(
+      js_check(runtime.execute(
         "check2.js",
         r#"
          assert(nrecv == 1);
@@ -1525,19 +1522,19 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
-      js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      js_check(runtime.execute("check3.js", "assert(nrecv == 2)"));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
     });
   }
 
   #[test]
   fn test_poll_async_optional_ops() {
     run_in_task(|cx| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncUnref);
-      js_check(isolate.execute(
+      let (mut runtime, dispatch_count) = setup(Mode::AsyncUnref);
+      js_check(runtime.execute(
         "check1.js",
         r#"
           Deno.core.setAsyncHandler(1, (buf) => {
@@ -1549,9 +1546,9 @@ pub mod tests {
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      // The above op never finish, but isolate can finish
+      // The above op never finish, but runtime can finish
       // because the op is an unreffed async op.
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
     })
   }
 
@@ -1604,10 +1601,10 @@ pub mod tests {
   fn dangling_shared_isolate() {
     let v8_isolate_handle = {
       // isolate is dropped at the end of this block
-      let (mut isolate, _dispatch_count) = setup(Mode::Async);
+      let (mut runtime, _dispatch_count) = setup(Mode::Async);
       // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
       // should not require a mutable reference to `struct rusty_v8::Isolate`.
-      isolate.v8_isolate.as_mut().unwrap().thread_safe_handle()
+      runtime.v8_isolate.as_mut().unwrap().thread_safe_handle()
     };
 
     // this should not SEGFAULT
@@ -1616,8 +1613,8 @@ pub mod tests {
 
   #[test]
   fn overflow_req_sync() {
-    let (mut isolate, dispatch_count) = setup(Mode::OverflowReqSync);
-    js_check(isolate.execute(
+    let (mut runtime, dispatch_count) = setup(Mode::OverflowReqSync);
+    js_check(runtime.execute(
       "overflow_req_sync.js",
       r#"
         let asyncRecv = 0;
@@ -1638,8 +1635,8 @@ pub mod tests {
   fn overflow_res_sync() {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
-    let (mut isolate, dispatch_count) = setup(Mode::OverflowResSync);
-    js_check(isolate.execute(
+    let (mut runtime, dispatch_count) = setup(Mode::OverflowResSync);
+    js_check(runtime.execute(
       "overflow_res_sync.js",
       r#"
         let asyncRecv = 0;
@@ -1659,8 +1656,8 @@ pub mod tests {
   #[test]
   fn overflow_req_async() {
     run_in_task(|cx| {
-      let (mut isolate, dispatch_count) = setup(Mode::OverflowReqAsync);
-      js_check(isolate.execute(
+      let (mut runtime, dispatch_count) = setup(Mode::OverflowReqAsync);
+      js_check(runtime.execute(
         "overflow_req_async.js",
         r#"
          let asyncRecv = 0;
@@ -1678,8 +1675,8 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
-      js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      js_check(runtime.execute("check.js", "assert(asyncRecv == 1);"));
     });
   }
 
@@ -1688,8 +1685,8 @@ pub mod tests {
     run_in_task(|_cx| {
       // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
       // should optimize this.
-      let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(isolate.execute(
+      let (mut runtime, dispatch_count) = setup(Mode::OverflowResAsync);
+      js_check(runtime.execute(
         "overflow_res_async.js",
         r#"
          let asyncRecv = 0;
@@ -1706,8 +1703,8 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      poll_until_ready(&mut isolate, 3).unwrap();
-      js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+      poll_until_ready(&mut runtime, 3).unwrap();
+      js_check(runtime.execute("check.js", "assert(asyncRecv == 1);"));
     });
   }
 
@@ -1716,8 +1713,8 @@ pub mod tests {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
     run_in_task(|_cx| {
-      let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(isolate.execute(
+      let (mut runtime, dispatch_count) = setup(Mode::OverflowResAsync);
+      js_check(runtime.execute(
         "overflow_res_multiple_dispatch_async.js",
         r#"
          let asyncRecv = 0;
@@ -1737,16 +1734,16 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      poll_until_ready(&mut isolate, 3).unwrap();
-      js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
+      poll_until_ready(&mut runtime, 3).unwrap();
+      js_check(runtime.execute("check.js", "assert(asyncRecv == 2);"));
     });
   }
 
   #[test]
   fn test_pre_dispatch() {
     run_in_task(|mut cx| {
-      let (mut isolate, _dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(isolate.execute(
+      let (mut runtime, _dispatch_count) = setup(Mode::OverflowResAsync);
+      js_check(runtime.execute(
         "bad_op_id.js",
         r#"
           let thrown;
@@ -1758,7 +1755,7 @@ pub mod tests {
           assert(String(thrown) === "TypeError: Unknown op id: 100");
          "#,
       ));
-      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
@@ -1767,9 +1764,9 @@ pub mod tests {
   #[test]
   fn core_test_js() {
     run_in_task(|mut cx| {
-      let (mut isolate, _dispatch_count) = setup(Mode::Async);
-      js_check(isolate.execute("core_test.js", include_str!("core_test.js")));
-      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+      js_check(runtime.execute("core_test.js", include_str!("core_test.js")));
+      if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
@@ -1777,24 +1774,24 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut isolate =
-      CoreIsolate::new(BasicState::new(), StartupData::None, false);
+    let mut runtime =
+      JsRuntime::new(BasicState::new(), StartupData::None, false);
     let src = "hocuspocus(";
-    let r = isolate.execute("i.js", src);
+    let r = runtime.execute("i.js", src);
     let e = r.unwrap_err();
-    let js_error = e.downcast::<JSError>().unwrap();
+    let js_error = e.downcast::<JsError>().unwrap();
     assert_eq!(js_error.end_column, Some(11));
   }
 
   #[test]
   fn test_encode_decode() {
     run_in_task(|mut cx| {
-      let (mut isolate, _dispatch_count) = setup(Mode::Async);
-      js_check(isolate.execute(
+      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+      js_check(runtime.execute(
         "encode_decode_test.js",
         include_str!("encode_decode_test.js"),
       ));
-      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
@@ -1803,30 +1800,30 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate =
-        CoreIsolate::new(BasicState::new(), StartupData::None, true);
-      js_check(isolate.execute("a.js", "a = 1 + 2"));
-      isolate.snapshot()
+      let mut runtime =
+        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      js_check(runtime.execute("a.js", "a = 1 + 2"));
+      runtime.snapshot()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut isolate2 = CoreIsolate::new(BasicState::new(), startup_data, false);
-    js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut isolate =
-        CoreIsolate::new(BasicState::new(), StartupData::None, true);
-      js_check(isolate.execute("a.js", "a = 1 + 2"));
-      let snap: &[u8] = &*isolate.snapshot();
+      let mut runtime =
+        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      js_check(runtime.execute("a.js", "a = 1 + 2"));
+      let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut isolate2 = CoreIsolate::new(BasicState::new(), startup_data, false);
-    js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
@@ -1835,24 +1832,24 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut isolate = CoreIsolate::with_heap_limits(
+    let mut runtime = JsRuntime::with_heap_limits(
       BasicState::new(),
       StartupData::None,
       heap_limits,
     );
-    let cb_handle = isolate.thread_safe_handle();
+    let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
     let inner_invoke_count = Rc::clone(&callback_invoke_count);
 
-    isolate.add_near_heap_limit_callback(
+    runtime.add_near_heap_limit_callback(
       move |current_limit, _initial_limit| {
         inner_invoke_count.fetch_add(1, Ordering::SeqCst);
         cb_handle.terminate_execution();
         current_limit * 2
       },
     );
-    let err = isolate
+    let err = runtime
       .execute(
         "script name",
         r#"let s = ""; while(true) { s += "Hello"; }"#,
@@ -1860,21 +1857,21 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JSError>().unwrap().message
+      err.downcast::<JsError>().unwrap().message
     );
     assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
   }
 
   #[test]
   fn test_heap_limit_cb_remove() {
-    let mut isolate =
-      CoreIsolate::new(BasicState::new(), StartupData::None, false);
+    let mut runtime =
+      JsRuntime::new(BasicState::new(), StartupData::None, false);
 
-    isolate.add_near_heap_limit_callback(|current_limit, _initial_limit| {
+    runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
     });
-    isolate.remove_near_heap_limit_callback(20 * 1024);
-    assert!(isolate.allocations.near_heap_limit_callback_data.is_none());
+    runtime.remove_near_heap_limit_callback(20 * 1024);
+    assert!(runtime.allocations.near_heap_limit_callback_data.is_none());
   }
 
   #[test]
@@ -1883,16 +1880,16 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut isolate = CoreIsolate::with_heap_limits(
+    let mut runtime = JsRuntime::with_heap_limits(
       BasicState::new(),
       StartupData::None,
       heap_limits,
     );
-    let cb_handle = isolate.thread_safe_handle();
+    let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());
     let inner_invoke_count_first = Rc::clone(&callback_invoke_count_first);
-    isolate.add_near_heap_limit_callback(
+    runtime.add_near_heap_limit_callback(
       move |current_limit, _initial_limit| {
         inner_invoke_count_first.fetch_add(1, Ordering::SeqCst);
         current_limit * 2
@@ -1901,7 +1898,7 @@ pub mod tests {
 
     let callback_invoke_count_second = Rc::new(AtomicUsize::default());
     let inner_invoke_count_second = Rc::clone(&callback_invoke_count_second);
-    isolate.add_near_heap_limit_callback(
+    runtime.add_near_heap_limit_callback(
       move |current_limit, _initial_limit| {
         inner_invoke_count_second.fetch_add(1, Ordering::SeqCst);
         cb_handle.terminate_execution();
@@ -1909,7 +1906,7 @@ pub mod tests {
       },
     );
 
-    let err = isolate
+    let err = runtime
       .execute(
         "script name",
         r#"let s = ""; while(true) { s += "Hello"; }"#,
@@ -1917,7 +1914,7 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JSError>().unwrap().message
+      err.downcast::<JsError>().unwrap().message
     );
     assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
     assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
@@ -1971,10 +1968,10 @@ pub mod tests {
     };
     state.register_op("test", dispatcher);
 
-    let mut isolate =
-      CoreIsolate::new_with_loader(loader, state, StartupData::None, false);
+    let mut runtime =
+      JsRuntime::new_with_loader(loader, state, StartupData::None, false);
 
-    js_check(isolate.execute(
+    js_check(runtime.execute(
       "setup.js",
       r#"
         function assert(cond) {
@@ -1988,7 +1985,7 @@ pub mod tests {
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     let specifier_a = "file:///a.js".to_string();
-    let mod_a = isolate
+    let mod_a = runtime
       .mod_new(
         true,
         &specifier_a,
@@ -2002,7 +1999,7 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let state_rc = CoreIsolate::state(&isolate);
+    let state_rc = JsRuntime::state(&runtime);
     {
       let state = state_rc.borrow();
       let imports = state.modules.get_children(mod_a);
@@ -2011,7 +2008,7 @@ pub mod tests {
         Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
       );
     }
-    let mod_b = isolate
+    let mod_b = runtime
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
     {
@@ -2020,14 +2017,14 @@ pub mod tests {
       assert_eq!(imports.len(), 0);
     }
 
-    js_check(isolate.mod_instantiate(mod_b));
+    js_check(runtime.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    js_check(isolate.mod_instantiate(mod_a));
+    js_check(runtime.mod_instantiate(mod_a));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    js_check(isolate.mod_evaluate(mod_a));
+    js_check(runtime.mod_evaluate(mod_a));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -2066,14 +2063,14 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut isolate = CoreIsolate::new_with_loader(
+      let mut runtime = JsRuntime::new_with_loader(
         loader,
         BasicState::new(),
         StartupData::None,
         false,
       );
 
-      js_check(isolate.execute(
+      js_check(runtime.execute(
         "file:///dyn_import2.js",
         r#"
         (async () => {
@@ -2084,7 +2081,7 @@ pub mod tests {
 
       assert_eq!(count.load(Ordering::Relaxed), 0);
       // We should get an error here.
-      let result = isolate.poll_unpin(cx);
+      let result = runtime.poll_unpin(cx);
       if let Poll::Ready(Ok(_)) = result {
         unreachable!();
       }
@@ -2148,7 +2145,7 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut isolate = CoreIsolate::new_with_loader(
+      let mut runtime = JsRuntime::new_with_loader(
         loader,
         BasicState::new(),
         StartupData::None,
@@ -2156,7 +2153,7 @@ pub mod tests {
       );
 
       // Dynamically import mod_b
-      js_check(isolate.execute(
+      js_check(runtime.execute(
         "file:///dyn_import3.js",
         r#"
           (async () => {
@@ -2174,14 +2171,14 @@ pub mod tests {
       ));
 
       // First poll runs `prepare_load` hook.
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Pending));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Pending));
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
 
       // Second poll actually loads modules into the isolate.
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
-      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
@@ -2193,13 +2190,13 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut isolate = CoreIsolate::new_with_loader(
+      let mut runtime = JsRuntime::new_with_loader(
         loader,
         BasicState::new(),
         StartupData::None,
         false,
       );
-      js_check(isolate.execute(
+      js_check(runtime.execute(
         "file:///dyn_import3.js",
         r#"
           (async () => {
@@ -2213,10 +2210,10 @@ pub mod tests {
           "#,
       ));
       // First poll runs `prepare_load` hook.
-      let _ = isolate.poll_unpin(cx);
+      let _ = runtime.poll_unpin(cx);
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       // Second poll triggers error
-      let _ = isolate.poll_unpin(cx);
+      let _ = runtime.poll_unpin(cx);
     })
   }
 
@@ -2249,7 +2246,7 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime_isolate = CoreIsolate::new_with_loader(
+    let mut runtime = JsRuntime::new_with_loader(
       loader,
       BasicState::new(),
       StartupData::None,
@@ -2260,12 +2257,12 @@ pub mod tests {
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
     let module_id = futures::executor::block_on(
-      runtime_isolate.load_module(&specifier, Some(source_code)),
+      runtime.load_module(&specifier, Some(source_code)),
     )
     .unwrap();
 
-    js_check(runtime_isolate.mod_evaluate(module_id));
+    js_check(runtime.mod_evaluate(module_id));
 
-    let _snapshot = runtime_isolate.snapshot();
+    let _snapshot = runtime.snapshot();
   }
 }

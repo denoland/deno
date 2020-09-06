@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::CoreIsolate;
-use crate::CoreIsolateState;
 use crate::ErrBox;
-use crate::JSError;
+use crate::JsError;
+use crate::JsRuntime;
+use crate::JsRuntimeState;
 use crate::Op;
 use crate::OpId;
 use crate::ZeroCopyBuf;
@@ -239,7 +239,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = CoreIsolate::state(scope);
+    let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
   }
@@ -253,7 +253,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   meta: v8::Local<v8::Object>,
 ) {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
 
   let id = module.get_identity_hash();
@@ -273,7 +273,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let promise = message.get_promise();
@@ -355,7 +355,7 @@ fn recv(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
@@ -376,7 +376,7 @@ fn send<'s>(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
@@ -443,7 +443,7 @@ fn set_macrotask_callback(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
@@ -592,8 +592,8 @@ fn format_error(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let e = JSError::from_v8_exception(scope, args.get(0));
-  let state_rc = CoreIsolate::state(scope);
+  let e = JsError::from_v8_exception(scope, args.get(0));
+  let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   let e = (state.js_error_create_fn)(e);
   let e = e.to_string();
@@ -684,9 +684,9 @@ fn shared_getter(
   _args: v8::PropertyCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  let CoreIsolateState {
+  let JsRuntimeState {
     shared_ab, shared, ..
   } = &mut *state;
 
@@ -712,7 +712,7 @@ pub fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let referrer_id = referrer.get_identity_hash();

@@ -4,7 +4,7 @@ mod op_fetch_asset;
 
 use deno_core::js_check;
 use deno_core::BasicState;
-use deno_core::CoreIsolate;
+use deno_core::JsRuntime;
 use deno_core::OpRegistry;
 use deno_core::StartupData;
 use std::collections::HashMap;
@@ -13,7 +13,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 fn create_snapshot(
-  mut isolate: CoreIsolate,
+  mut isolate: JsRuntime,
   snapshot_path: &Path,
   files: Vec<String>,
 ) {
@@ -32,7 +32,7 @@ fn create_snapshot(
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<String>) {
   let state = BasicState::new();
-  let isolate = CoreIsolate::new(state, StartupData::None, true);
+  let isolate = JsRuntime::new(state, StartupData::None, true);
   create_snapshot(isolate, snapshot_path, files);
 }
 
@@ -71,7 +71,7 @@ fn create_compiler_snapshot(
     op_fetch_asset::op_fetch_asset(custom_libs),
   );
 
-  let isolate = CoreIsolate::new(state, StartupData::None, true);
+  let isolate = JsRuntime::new(state, StartupData::None, true);
   create_snapshot(isolate, snapshot_path, files);
 }
 

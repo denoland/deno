@@ -81,7 +81,7 @@ fn get_asset(name: &str) -> Option<&'static str> {
 }
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
-/// CoreIsolate.
+/// JsRuntime.
 pub fn op_fetch_asset<H: std::hash::BuildHasher, S>(
   custom_assets: HashMap<String, PathBuf, H>,
 ) -> impl Fn(Rc<S>, BufVec) -> Op {
