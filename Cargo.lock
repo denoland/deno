@@ -453,6 +453,7 @@ version = "0.56.0"
 dependencies = [
  "downcast-rs",
  "futures",
+ "indexmap",
  "lazy_static",
  "libc",
  "log",

@@ -139,14 +139,13 @@ impl CompilerWorker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, state);
+    let worker = Worker::new(name, startup_data, state);
     let response = Arc::new(Mutex::new(None));
     {
-      let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::compiler::init(isolate, &state, response.clone());
+      ops::runtime::init(&state);
+      ops::errors::init(&state);
+      ops::timers::init(&state);
+      ops::compiler::init(&state, response.clone());
     }
 
     Self { worker, response }
@@ -1437,7 +1436,7 @@ pub async fn runtime_transpile(
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_errbox)?;
-  let v = serde_json::from_str::<serde_json::Value>(&json_str)
+  let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
 }
