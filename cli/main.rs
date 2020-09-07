@@ -623,7 +623,6 @@ async fn test_command(
   filter: Option<String>,
   coverage: bool,
 ) -> Result<(), ErrBox> {
-
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
