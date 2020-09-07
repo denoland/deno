@@ -30,18 +30,6 @@ function eventInitializedWithTypeAndDict() {
   assert(event.cancelable === true);
 }
 
-function eventMissingArgs() {
-  let threw = false;
-  try {
-    new Event();
-  } catch {
-    threw = true;
-  }
-  if (!threw) {
-    throw new Error("Event constructor without args should have thrown.");
-  }
-}
-
 function eventComposedPathSuccess() {
   const type = "click";
   const event = new Event(type);
@@ -111,7 +99,6 @@ function eventIsTrusted() {
 function main() {
   eventInitializedWithType();
   eventInitializedWithTypeAndDict();
-  eventMissingArgs();
   eventComposedPathSuccess();
   eventStopPropagationSuccess();
   eventStopImmediatePropagationSuccess();
