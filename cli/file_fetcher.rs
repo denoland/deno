@@ -402,6 +402,7 @@ impl SourceFileFetcher {
 
     let (mut source_file, headers) = result;
     if let Some(redirect_to) = headers.get("location") {
+      let redirect_to = redirect_to.first().unwrap();
       let redirect_url = match Url::parse(redirect_to) {
         Ok(redirect_url) => redirect_url,
         Err(url::ParseError::RelativeUrlWithoutBase) => {
@@ -424,9 +425,13 @@ impl SourceFileFetcher {
     let fake_filepath = PathBuf::from(module_url.path());
     let (media_type, charset) = map_content_type(
       &fake_filepath,
-      headers.get("content-type").map(|e| e.as_str()),
+      headers
+        .get("content-type")
+        .map(|e| e.first().unwrap().as_str()),
     );
-    let types_header = headers.get("x-typescript-types").map(|e| e.to_string());
+    let types_header = headers
+      .get("x-typescript-types")
+      .map(|e| e.first().unwrap().to_string());
     Ok(Some(SourceFile {
       url: module_url.clone(),
       filename: cache_filename,
@@ -490,14 +495,21 @@ impl SourceFileFetcher {
     let dir = self.clone();
     let module_url = module_url.clone();
     let module_etag = match self.http_cache.get(&module_url) {
-      Ok((_, headers)) => headers.get("etag").map(String::from),
+      Ok((_, headers)) => {
+        headers.get("etag").map(|e| e.first().unwrap().to_string())
+      }
       Err(_) => None,
     };
     let permissions = permissions.clone();
     let http_client = self.http_client.clone();
     // Single pass fetch, either yields code or yields redirect.
     let f = async move {
-      match http_util::fetch_once(http_client, &module_url, module_etag).await?
+      match http_util::fetch_once(
+        http_client,
+        &module_url,
+        module_etag,
+      )
+      .await?
       {
         FetchOnceResult::NotModified => {
           let source_file =
@@ -529,11 +541,14 @@ impl SourceFileFetcher {
           let fake_filepath = PathBuf::from(module_url.path());
           let (media_type, charset) = map_content_type(
             &fake_filepath,
-            headers.get("content-type").map(String::as_str),
+            headers
+              .get("content-type")
+              .map(|e| e.first().unwrap().as_str()),
           );
 
-          let types_header =
-            headers.get("x-typescript-types").map(String::to_string);
+          let types_header = headers
+            .get("x-typescript-types")
+            .map(|e| e.first().unwrap().to_string());
 
           let source_file = SourceFile {
             url: module_url.clone(),
@@ -825,7 +840,9 @@ mod tests {
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "text/javascript".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(|| vec![])
+      .push("text/javascript".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher_1
@@ -848,13 +865,15 @@ mod tests {
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher_2.http_cache.get(&module_url_1).unwrap();
 
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "text/javascript");
 
     // Modify .headers.json again, but the other way around
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "application/json".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(|| vec![])
+      .push("application/json".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result3 = fetcher_2
@@ -877,7 +896,7 @@ mod tests {
     assert_eq!(&(r3.media_type), &msg::MediaType::Json);
     let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
     assert_eq!(
-      metadata.headers.get("content-type").unwrap(),
+      metadata.headers.get("content-type").unwrap().first().unwrap().as_str(),
       "application/json"
     );
 
@@ -927,7 +946,7 @@ mod tests {
     assert_eq!(r.source_code.bytes, expected);
     assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "text/javascript");
 
     // Modify .headers.json
     let mut metadata =
@@ -935,7 +954,9 @@ mod tests {
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "text/typescript".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(|| vec![])
+      .push("text/typescript".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher
@@ -957,7 +978,7 @@ mod tests {
     assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
     let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
     assert_eq!(
-      metadata.headers.get("content-type").unwrap(),
+      metadata.headers.get("content-type").unwrap().first().unwrap().as_str(),
       "text/typescript"
     );
 
@@ -981,7 +1002,7 @@ mod tests {
     // (due to http fetch)
     assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "text/javascript");
   }
 
   #[tokio::test]
@@ -1067,7 +1088,7 @@ mod tests {
     assert_eq!(fs::read_to_string(&redirect_source_filename).unwrap(), "");
     let (_, headers) = fetcher.http_cache.get(&redirect_module_url).unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.get("location").unwrap().first().unwrap().as_str(),
       "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
     );
     // The target of redirection is downloaded instead.
@@ -1120,10 +1141,10 @@ mod tests {
     assert_eq!(fs::read_to_string(&redirect_path).unwrap(), "");
 
     let (_, headers) = fetcher.http_cache.get(&double_redirect_url).unwrap();
-    assert_eq!(headers.get("location").unwrap(), &redirect_url.to_string());
+    assert_eq!(headers.get("location").unwrap().first().unwrap(), &redirect_url.to_string());
 
     let (_, headers) = fetcher.http_cache.get(&redirect_url).unwrap();
-    assert_eq!(headers.get("location").unwrap(), &target_url.to_string());
+    assert_eq!(headers.get("location").unwrap().first().unwrap(), &target_url.to_string());
 
     // The target of redirection is downloaded instead.
     assert_eq!(
@@ -1276,7 +1297,7 @@ mod tests {
     assert_eq!(fs::read_to_string(&redirect_source_filename).unwrap(), "");
     let (_, headers) = fetcher.http_cache.get(&redirect_module_url).unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.get("location").unwrap().first().unwrap().as_str(),
       "/cli/tests/subdir/redirects/redirect1.js"
     );
     // The target of redirection is downloaded instead.
@@ -1390,7 +1411,9 @@ mod tests {
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "text/javascript".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(|| vec![])
+      .push("text/javascript".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher.fetch_cached_remote_source(&module_url, 1);
@@ -1421,7 +1444,7 @@ mod tests {
     assert_eq!(r.source_code.bytes, b"export const loaded = true;\n");
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
+    assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "text/typescript");
   }
 
   #[tokio::test]
@@ -1445,7 +1468,7 @@ mod tests {
     assert_eq!(r2.source_code.bytes, b"export const loaded = true;\n");
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "text/javascript");
   }
 
   #[tokio::test]
@@ -1469,7 +1492,7 @@ mod tests {
     assert_eq!(r3.source_code.bytes, b"export const loaded = true;\n");
     assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
+    assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "text/typescript");
   }
 
   #[tokio::test]
@@ -1869,7 +1892,7 @@ mod tests {
     assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
-    assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
+    assert_eq!(headers.get("etag").unwrap().first().unwrap().as_str(), "33a64df551425fcc55e");
 
     let metadata_path = crate::http_cache::Metadata::filename(
       &fetcher.http_cache.get_cache_filename(&module_url),
@@ -1994,7 +2017,7 @@ mod tests {
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(
-      headers.get("content-type").unwrap(),
+      headers.get("content-type").unwrap().first().unwrap().as_str(),
       &format!("application/typescript;charset={}", charset)
     );
   }
