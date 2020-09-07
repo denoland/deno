@@ -30,6 +30,7 @@ mod diff;
 mod disk_cache;
 pub mod errors;
 mod file_fetcher;
+mod file_watcher;
 pub mod flags;
 mod flags_allow_net;
 mod fmt;
@@ -229,6 +230,8 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
+    // TODO(bartlomieju): don't use `preload_module` in favor of calling "GlobalState::prepare_module_load()"
+    // explicitly? Seems wasteful to create multiple worker just to run TS compiler
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
 
@@ -436,33 +439,51 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   }
 }
 
-async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
+async fn run_from_stdin(flags: Flags) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  let main_module = if script != "-" {
-    ModuleSpecifier::resolve_url_or_path(&script).unwrap()
-  } else {
-    ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap()
-  };
+  let main_module = ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap();
   let mut worker =
     MainWorker::create(&global_state.clone(), main_module.clone())?;
-  if script == "-" {
-    let mut source = Vec::new();
-    std::io::stdin().read_to_end(&mut source)?;
-    let main_module_url = main_module.as_url().to_owned();
-    // Create a dummy source file.
-    let source_file = SourceFile {
-      filename: main_module_url.to_file_path().unwrap(),
-      url: main_module_url,
-      types_header: None,
-      media_type: MediaType::TypeScript,
-      source_code: source.into(),
-    };
-    // Save our fake file into file fetcher cache
-    // to allow module access by TS compiler
-    global_state
-      .file_fetcher
-      .save_source_file_in_cache(&main_module, source_file);
+
+  let mut source = Vec::new();
+  std::io::stdin().read_to_end(&mut source)?;
+  let main_module_url = main_module.as_url().to_owned();
+  // Create a dummy source file.
+  let source_file = SourceFile {
+    filename: main_module_url.to_file_path().unwrap(),
+    url: main_module_url,
+    types_header: None,
+    media_type: MediaType::TypeScript,
+    source_code: source.into(),
   };
+  // Save our fake file into file fetcher cache
+  // to allow module access by TS compiler
+  global_state
+    .file_fetcher
+    .save_source_file_in_cache(&main_module, source_file);
+
+  debug!("main_module {}", main_module);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  Ok(())
+}
+
+async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
+  // Read script content from stdin
+  if script == "-" {
+    return run_from_stdin(flags).await;
+  }
+  
+  // TODO(bartlomieju): why unwrap instead of "?""
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();  
+  let global_state = GlobalState::new(flags.clone())?;
+
+  let mut worker =
+    MainWorker::create(&global_state.clone(), main_module.clone())?;
+
+  // TODO(bartlomieju): setup file watcher
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
