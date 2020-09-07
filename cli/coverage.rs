@@ -97,15 +97,11 @@ impl CoverageCollector {
     self
       .dispatch(r#"{"id":2,"method":"Profiler.enable"}"#.into())
       .await?;
-    self.dispatch(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into()).await?;
 
-    Ok(())
-  }
-
-  pub async fn stop_collecting(&mut self) -> Result<(), ErrBox> {
     self
-      .dispatch(r#"{"id":4,"method":"Profiler.stopPreciseCoverage"}"#.into())
-      .await?;
+        .dispatch(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into())
+        .await?;
+
     Ok(())
   }
 
@@ -113,11 +109,29 @@ impl CoverageCollector {
     &mut self,
   ) -> Result<Vec<ScriptCoverage>, ErrBox> {
     let response = self
-      .dispatch(r#"{"id":5,"method":"Profiler.takePreciseCoverage" }"#.into())
+      .dispatch(r#"{"id":4,"method":"Profiler.takePreciseCoverage" }"#.into())
       .await?;
+
     let coverage_result: TakePreciseCoverageResponse =
       serde_json::from_str(&response).unwrap();
+
     Ok(coverage_result.result.result)
+  }
+
+  pub async fn stop_collecting(&mut self) -> Result<(), ErrBox> {
+    self
+      .dispatch(r#"{"id":5,"method":"Profiler.stopPreciseCoverage"}"#.into())
+      .await?;
+
+    self
+      .dispatch(r#"{"id":6,"method":"Profiler.disable"}"#.into())
+      .await?;
+
+    self
+      .dispatch(r#"{"id":7,"method":"Runtime.disable"}"#.into())
+      .await?;
+
+    Ok(())
   }
 }
 
