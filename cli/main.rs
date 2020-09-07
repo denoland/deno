@@ -500,7 +500,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
 
   // TODO(bartlomieju): setup file watcher
   file_watcher::watch_func(&paths_to_watch, move || {
-    let gs = global_state.clone();
+    // FIXME(bartlomieju): GlobalState must be created on each restart - otherwise file fetcher
+    // will use cached source files
+    let gs = GlobalState::new(flags.clone()).unwrap();
     let main_module = main_module.clone();
     async move {
       let mut worker = MainWorker::create(&gs, main_module.clone())?;
