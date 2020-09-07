@@ -98,7 +98,7 @@ impl StartupData<'_> {
 
 type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
 
-pub type GetErrorClassFn = dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e ErrBox) -> &'static str;
 
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
@@ -501,7 +501,11 @@ impl JsRuntime {
       let result = serde_json::from_slice(&bufs[0])
         .map_err(ErrBox::from)
         .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
-      let buf = json_serialize_op_result(None, result);
+      let buf = json_serialize_op_result(
+        None,
+        result,
+        state.borrow().get_error_class_fn,
+      );
       Op::Sync(buf)
     };
 
@@ -522,15 +526,24 @@ impl JsRuntime {
         .and_then(Value::as_u64)
         .ok_or_else(|| ErrBox::type_error("missing or invalid `promiseId`"))?;
       let bufs = bufs[1..].into();
-      let fut = op_fn(state.clone(), args, bufs)
-        .map(move |result| json_serialize_op_result(Some(promise_id), result));
+      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
+        json_serialize_op_result(
+          Some(promise_id),
+          result,
+          state.borrow().get_error_class_fn,
+        )
+      });
       Ok(Op::Async(Box::pin(fut)))
     };
 
     let base_op_fn = move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
       match try_dispatch_op(state.clone(), bufs) {
         Ok(op) => op,
-        Err(err) => Op::Sync(json_serialize_op_result(None, Err(err))),
+        Err(err) => Op::Sync(json_serialize_op_result(
+          None,
+          Err(err),
+          state.borrow().get_error_class_fn,
+        )),
       }
     };
 
@@ -583,13 +596,14 @@ impl JsRuntime {
 fn json_serialize_op_result(
   promise_id: Option<u64>,
   result: Result<Value, ErrBox>,
+  get_error_class_fn: GetErrorClassFn,
 ) -> Box<[u8]> {
   let value = match result {
     Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => serde_json::json!({
       "promiseId": promise_id ,
       "err": {
-        "className": "Error", // TODO(ry) self.get_error_class_name(&err),
+        "className": (get_error_class_fn)(&err),
         "message": err.to_string(),
       }
     }),
