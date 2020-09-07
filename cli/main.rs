@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![deny(warnings)]
 
 extern crate dissimilar;
 #[macro_use]
@@ -82,7 +81,7 @@ use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::Deps;
 use deno_core::ErrBox;
-use deno_core::EsIsolate;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
@@ -218,7 +217,7 @@ async fn print_file_info(
   {
     output.map = source_map.filename.to_str().map(|s| s.to_owned());
   }
-  let es_state_rc = EsIsolate::state(&worker.isolate);
+  let es_state_rc = JsRuntime::state(&worker.isolate);
   let es_state = es_state_rc.borrow();
 
   if let Some(deps) = es_state.modules.deps(&module_specifier) {

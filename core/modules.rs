@@ -8,6 +8,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -64,7 +65,7 @@ pub trait ModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    is_main: bool,
+    _is_main: bool,
   ) -> Result<ModuleSpecifier, ErrBox>;
 
   /// Given ModuleSpecifier, load its source code.
@@ -83,7 +84,7 @@ pub trait ModuleLoader {
   ///
   /// For example implementor might download multiple modules in
   /// parallel and transpile them to final JS sources before
-  /// yielding control back to Isolate.
+  /// yielding control back to the runtime.
   ///
   /// It's not required to implement this method.
   fn prepare_load(
@@ -94,6 +95,31 @@ pub trait ModuleLoader {
     _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
     async { Ok(()) }.boxed_local()
+  }
+}
+
+/// Placeholder structure used when creating
+/// a runtime that doesn't support module loading.
+pub(crate) struct NoopModuleLoader;
+
+impl ModuleLoader for NoopModuleLoader {
+  fn resolve(
+    &self,
+    _specifier: &str,
+    _referrer: &str,
+    _is_main: bool,
+  ) -> Result<ModuleSpecifier, ErrBox> {
+    Err(ErrBox::error("Module loading is not supported"))
+  }
+
+  fn load(
+    &self,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<ModuleSpecifier>,
+    _is_dyn_import: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    async { Err(ErrBox::error("Module loading is not supported")) }
+      .boxed_local()
   }
 }
 
@@ -112,8 +138,7 @@ pub enum LoadState {
   Done,
 }
 
-/// This future is used to implement parallel async module loading without
-/// that is consumed by the isolate.
+/// This future is used to implement parallel async module loading.
 pub struct RecursiveModuleLoad {
   kind: Kind,
   // TODO(bartlomieju): in future this value should
@@ -481,7 +506,7 @@ impl Deps {
     }
   }
 
-  pub fn to_json(&self) -> serde_json::Value {
+  pub fn to_json(&self) -> Value {
     let children;
     if let Some(deps) = &self.deps {
       children = deps.iter().map(|c| c.to_json()).collect();
@@ -519,8 +544,9 @@ impl fmt::Display for Deps {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::es_isolate::EsIsolate;
   use crate::js_check;
+  use crate::BasicState;
+  use crate::JsRuntime;
   use crate::StartupData;
   use futures::future::FutureExt;
   use std::error::Error;
@@ -533,17 +559,16 @@ mod tests {
   // even though we are only using poll() in these tests and not Tokio, we must
   // nevertheless run it in the tokio executor. Ideally run_in_task can be
   // removed in the future.
-  use crate::core_isolate::tests::run_in_task;
+  use crate::runtime::tests::run_in_task;
 
+  #[derive(Default)]
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
   }
 
   impl MockLoader {
-    fn new() -> Self {
-      Self {
-        loads: Arc::new(Mutex::new(Vec::new())),
-      }
+    fn new() -> Rc<Self> {
+      Default::default()
     }
   }
 
@@ -699,12 +724,17 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new_with_loader(
+      loader,
+      BasicState::new(),
+      StartupData::None,
+      false,
+    );
     let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
-    let a_id_fut = isolate.load_module(&spec, None);
+    let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    js_check(isolate.mod_evaluate(a_id));
+    js_check(runtime.mod_evaluate(a_id));
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -716,7 +746,7 @@ mod tests {
       ]
     );
 
-    let state_rc = EsIsolate::state(&isolate);
+    let state_rc = JsRuntime::state(&runtime);
     let state = state_rc.borrow();
     let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
@@ -761,14 +791,19 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new_with_loader(
+      loader,
+      BasicState::new(),
+      StartupData::None,
+      false,
+    );
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
-      let result = isolate.load_module(&spec, None).await;
+      let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      js_check(isolate.mod_evaluate(circular1_id));
+      js_check(runtime.mod_evaluate(circular1_id));
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -780,7 +815,7 @@ mod tests {
         ]
       );
 
-      let state_rc = EsIsolate::state(&isolate);
+      let state_rc = JsRuntime::state(&runtime);
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -834,15 +869,20 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new_with_loader(
+      loader,
+      BasicState::new(),
+      StartupData::None,
+      false,
+    );
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
-      let result = isolate.load_module(&spec, None).await;
+      let result = runtime.load_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      js_check(isolate.mod_evaluate(redirect1_id));
+      js_check(runtime.mod_evaluate(redirect1_id));
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -853,7 +893,7 @@ mod tests {
         ]
       );
 
-      let state_rc = EsIsolate::state(&isolate);
+      let state_rc = JsRuntime::state(&runtime);
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -898,10 +938,14 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
-      let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+      let mut runtime = JsRuntime::new_with_loader(
+        loader,
+        BasicState::new(),
+        StartupData::None,
+        false,
+      );
       let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
-      let mut recursive_load = isolate.load_module(&spec, None).boxed_local();
+      let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
       assert!(result.is_pending());
@@ -944,10 +988,14 @@ mod tests {
   fn loader_disappears_after_error() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
-      let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+      let mut runtime = JsRuntime::new_with_loader(
+        loader,
+        BasicState::new(),
+        StartupData::None,
+        false,
+      );
       let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
-      let mut load_fut = isolate.load_module(&spec, None).boxed_local();
+      let mut load_fut = runtime.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -973,19 +1021,24 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new_with_loader(
+      loader,
+      BasicState::new(),
+      StartupData::None,
+      false,
+    );
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
     let spec =
       ModuleSpecifier::resolve_url("file:///main_with_code.js").unwrap();
-    let main_id_fut = isolate
+    let main_id_fut = runtime
       .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    js_check(isolate.mod_evaluate(main_id));
+    js_check(runtime.mod_evaluate(main_id));
 
     let l = loads.lock().unwrap();
     assert_eq!(
@@ -993,7 +1046,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = EsIsolate::state(&isolate);
+    let state_rc = JsRuntime::state(&runtime);
     let state = state_rc.borrow();
     let modules = &state.modules;
 
