@@ -129,7 +129,7 @@ pub async fn fetch_once(
       .join(",");
     headers_
       .entry(key_str)
-      .or_insert_with(|| Vec::new())
+      .or_insert_with(Vec::new)
       .push(values_str);
   }
 
@@ -247,7 +247,15 @@ mod tests {
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
-      assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "application/json");
+      assert_eq!(
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
+        "application/json"
+      );
       assert_eq!(headers.get("etag"), None);
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {
@@ -268,7 +276,12 @@ mod tests {
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
-        headers.get("content-type").unwrap().first().unwrap().as_str(),
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
         "application/javascript"
       );
       assert_eq!(headers.get("etag"), None);
@@ -288,10 +301,18 @@ mod tests {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
       assert_eq!(
-        headers.get("content-type").unwrap().first().unwrap().as_str(),
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
         "application/typescript"
       );
-      assert_eq!(headers.get("etag").unwrap().first().unwrap().as_str(), "33a64df551425fcc55e");
+      assert_eq!(
+        headers.get("etag").unwrap().first().unwrap().as_str(),
+        "33a64df551425fcc55e"
+      );
     } else {
       panic!();
     }
@@ -315,7 +336,12 @@ mod tests {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
       assert_eq!(
-        headers.get("content-type").unwrap().first().unwrap().as_str(),
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
         "application/javascript"
       );
       assert_eq!(headers.get("etag"), None);
@@ -398,7 +424,15 @@ mod tests {
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
-      assert_eq!(headers.get("content-type").unwrap().first().unwrap().as_str(), "application/json");
+      assert_eq!(
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
+        "application/json"
+      );
       assert_eq!(headers.get("etag"), None);
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {
@@ -425,7 +459,12 @@ mod tests {
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
-        headers.get("content-type").unwrap().first().unwrap().as_str(),
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
         "application/javascript"
       );
       assert_eq!(headers.get("etag"), None);
@@ -451,10 +490,18 @@ mod tests {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
       assert_eq!(
-        headers.get("content-type").unwrap().first().unwrap().as_str(),
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
         "application/typescript"
       );
-      assert_eq!(headers.get("etag").unwrap().first().unwrap().as_str(), "33a64df551425fcc55e");
+      assert_eq!(
+        headers.get("etag").unwrap().first().unwrap().as_str(),
+        "33a64df551425fcc55e"
+      );
       assert_eq!(headers.get("x-typescript-types"), None);
     } else {
       panic!();
@@ -485,7 +532,12 @@ mod tests {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
       assert_eq!(
-        headers.get("content-type").unwrap().first().unwrap().as_str(),
+        headers
+          .get("content-type")
+          .unwrap()
+          .first()
+          .unwrap()
+          .as_str(),
         "application/javascript"
       );
       assert_eq!(headers.get("etag"), None);
