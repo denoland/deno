@@ -133,7 +133,7 @@ pub async fn fetch_once(
       .join(",");
     headers_
       .entry(key_str)
-      .or_insert_with(|| vec![])
+      .or_insert_with(|| Vec::new())
       .push(values_str);
   }
 

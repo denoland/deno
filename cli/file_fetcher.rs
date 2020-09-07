@@ -841,7 +841,7 @@ mod tests {
     metadata
       .headers
       .entry("content-type".to_string())
-      .or_insert_with(|| vec![])
+      .or_insert_with(|| Vec::new())
       .push("text/javascript".to_string());
     metadata.write(&cache_filename).unwrap();
 
@@ -872,7 +872,7 @@ mod tests {
     metadata
       .headers
       .entry("content-type".to_string())
-      .or_insert_with(|| vec![])
+      .or_insert_with(|| Vec::new())
       .push("application/json".to_string());
     metadata.write(&cache_filename).unwrap();
 
@@ -955,7 +955,7 @@ mod tests {
     metadata
       .headers
       .entry("content-type".to_string())
-      .or_insert_with(|| vec![])
+      .or_insert_with(|| Vec::new())
       .push("text/typescript".to_string());
     metadata.write(&cache_filename).unwrap();
 
@@ -1412,7 +1412,7 @@ mod tests {
     metadata
       .headers
       .entry("content-type".to_string())
-      .or_insert_with(|| vec![])
+      .or_insert_with(|| Vec::new())
       .push("text/javascript".to_string());
     metadata.write(&cache_filename).unwrap();
 

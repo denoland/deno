@@ -216,10 +216,10 @@ mod tests {
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
     headers.entry("content-type".to_string())
-      .or_insert_with(|| vec![])
+      .or_insert_with(|| Vec::new())
       .push("application/javascript".to_string());
     headers.entry("etag".to_string())
-      .or_insert_with(|| vec![])
+      .or_insert_with(|| Vec::new())
       .push("as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
