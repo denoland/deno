@@ -21,7 +21,7 @@ use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::ErrBox;
 use crate::JsError;
-use crate::OpRouter;
+use crate::OpTable;
 use crate::State;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -349,6 +349,8 @@ impl JsRuntime {
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
+      op_table: Rc::new(crate::OpTable::default()),
+      gotham_state: Rc::new(crate::State::new()),
       have_unpolled_ops: Cell::new(false),
       modules: Modules::new(),
       loader: options.loader,
@@ -395,6 +397,18 @@ impl JsRuntime {
         self.execute(&s.filename, &s.source).unwrap()
       }
     }
+  }
+
+  pub fn gotham_state(&self) -> Rc<State> {
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
+    state.gotham_state.clone()
+  }
+
+  pub fn op_table(&self) -> Rc<OpTable> {
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
+    state.op_table.clone()
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
@@ -1275,7 +1289,6 @@ pub mod tests {
   use super::*;
   use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
-  use crate::BasicState;
   use crate::BufVec;
   use futures::future::lazy;
   use futures::FutureExt;
@@ -1324,84 +1337,87 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  impl OpRouter for TestOpRouter {
-    fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-      if op_id != 1 {
-        return Op::NotFound;
+  /*
+  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+    if op_id != 1 {
+      return Op::NotFound;
+    }
+    self.dispatch_count.fetch_add(1, Ordering::Relaxed);
+    match self.mode {
+      Mode::Async => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
       }
-      self.dispatch_count.fetch_add(1, Ordering::Relaxed);
-      match self.mode {
-        Mode::Async => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::AsyncUnref => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let fut = async {
-            // This future never finish.
-            futures::future::pending::<()>().await;
-            vec![43u8].into_boxed_slice()
-          };
-          Op::AsyncUnref(fut.boxed())
-        }
-        Mode::AsyncZeroCopy(count) => {
-          assert_eq!(bufs.len(), count as usize);
-          bufs.iter().enumerate().for_each(|(idx, buf)| {
-            assert_eq!(buf.len(), 1);
-            assert_eq!(idx, buf[0] as usize);
-          });
+      Mode::AsyncUnref => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let fut = async {
+          // This future never finish.
+          futures::future::pending::<()>().await;
+          vec![43u8].into_boxed_slice()
+        };
+        Op::AsyncUnref(fut.boxed())
+      }
+      Mode::AsyncZeroCopy(count) => {
+        assert_eq!(bufs.len(), count as usize);
+        bufs.iter().enumerate().for_each(|(idx, buf)| {
+          assert_eq!(buf.len(), 1);
+          assert_eq!(idx, buf[0] as usize);
+        });
 
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::OverflowReqSync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowResSync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 99;
-          let buf = vec.into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowReqAsync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::OverflowResAsync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 4;
-          let buf = vec.into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      }
+      Mode::OverflowReqSync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Sync(buf)
+      }
+      Mode::OverflowResSync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let mut vec = Vec::<u8>::new();
+        vec.resize(100 * 1024 * 1024, 0);
+        vec[0] = 99;
+        let buf = vec.into_boxed_slice();
+        Op::Sync(buf)
+      }
+      Mode::OverflowReqAsync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      }
+      Mode::OverflowResAsync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let mut vec = Vec::<u8>::new();
+        vec.resize(100 * 1024 * 1024, 0);
+        vec[0] = 4;
+        let buf = vec.into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
       }
     }
   }
+  */
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let test_state = Rc::new(TestOpRouter {
-      mode,
-      dispatch_count: dispatch_count.clone(),
-    });
-    let mut runtime = JsRuntime::new(test_state, StartupData::None, false);
+    let mut runtime = JsRuntime::new(StartupData::None, false);
+    runtime
+      .gotham_state()
+      .borrow_mut::<State>()
+      .put(TestOpRouter {
+        mode,
+        dispatch_count: dispatch_count.clone(),
+      });
 
     js_check(runtime.execute(
       "setup.js",
@@ -1765,8 +1781,7 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut runtime =
-      JsRuntime::new(BasicState::new(), StartupData::None, false);
+    let mut runtime = JsRuntime::new(StartupData::None, false);
     let src = "hocuspocus(";
     let r = runtime.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1791,29 +1806,27 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut runtime =
-        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      let mut runtime = JsRuntime::new(StartupData::None, true);
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       runtime.snapshot()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    let mut runtime2 = JsRuntime::new(startup_data, false);
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut runtime =
-        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      let mut runtime = JsRuntime::new(StartupData::None, true);
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    let mut runtime2 = JsRuntime::new(startup_data, false);
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1823,11 +1836,8 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::with_heap_limits(
-      BasicState::new(),
-      StartupData::None,
-      heap_limits,
-    );
+    let mut runtime =
+      JsRuntime::with_heap_limits(StartupData::None, heap_limits);
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
@@ -1855,8 +1865,7 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_remove() {
-    let mut runtime =
-      JsRuntime::new(BasicState::new(), StartupData::None, false);
+    let mut runtime = JsRuntime::new(StartupData::None, false);
 
     runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1871,11 +1880,8 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::with_heap_limits(
-      BasicState::new(),
-      StartupData::None,
-      heap_limits,
-    );
+    let mut runtime =
+      JsRuntime::with_heap_limits(StartupData::None, heap_limits);
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());
@@ -1943,7 +1949,6 @@ pub mod tests {
     }
 
     let loader = Rc::new(ModsLoader::default());
-    let state = BasicState::new();
 
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
@@ -1959,8 +1964,8 @@ pub mod tests {
     };
 
     let mut runtime =
-      JsRuntime::new_with_loader(loader, state, StartupData::None, false);
-    runtime.register_op("test", dispatcher);
+      JsRuntime::new_with_loader(loader, StartupData::None, false);
+    runtime.op_table().register_op("test", dispatcher);
 
     js_check(runtime.execute(
       "setup.js",
@@ -2054,12 +2059,8 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime =
+        JsRuntime::new_with_loader(loader, StartupData::None, false);
 
       js_check(runtime.execute(
         "file:///dyn_import2.js",
@@ -2136,12 +2137,8 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime =
+        JsRuntime::new_with_loader(loader, StartupData::None, false);
 
       // Dynamically import mod_b
       js_check(runtime.execute(
@@ -2181,12 +2178,8 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime =
+        JsRuntime::new_with_loader(loader, StartupData::None, false);
       js_check(runtime.execute(
         "file:///dyn_import3.js",
         r#"
@@ -2237,12 +2230,8 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new_with_loader(
-      loader,
-      BasicState::new(),
-      StartupData::None,
-      true,
-    );
+    let mut runtime =
+      JsRuntime::new_with_loader(loader, StartupData::None, true);
 
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();

@@ -2,13 +2,12 @@
 extern crate log;
 
 use deno_core::js_check;
-use deno_core::State;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
-use deno_core::OpRegistry;
 use deno_core::Script;
 use deno_core::StartupData;
+use deno_core::State;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -78,13 +77,12 @@ impl From<Record> for RecordBuf {
 }
 
 fn create_isolate() -> JsRuntime {
-  let state = State::new();
   let startup_data = StartupData::Script(Script {
     source: include_str!("http_bench_bin_ops.js"),
     filename: "http_bench_bin_ops.js",
   });
 
-  let isolate = JsRuntime::new(state, startup_data, false)
+  let isolate = JsRuntime::new(startup_data, false);
   register_op_bin_sync(&mut isolate, "listen", op_listen);
   register_op_bin_sync(&mut isolate, "close", op_close);
   register_op_bin_async(&mut isolate, "accept", op_accept);
@@ -102,10 +100,8 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let rid = state
-    .resource_table
-    .borrow_mut()
-    .add("tcpListener", Box::new(listener));
+  let resource_table = state.borrow_mut::<ResourceTable>();
+  let rid = resource_table.add("tcpListener", Box::new(listener));
   Ok(rid)
 }
 
@@ -115,9 +111,8 @@ fn op_close(
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
-  state
-    .resource_table
-    .borrow_mut()
+  let resource_table = state.borrow_mut::<ResourceTable>();
+  resource_table
     .close(rid)
     .map(|_| 0)
     .ok_or_else(bad_resource_id)
@@ -178,8 +173,11 @@ fn op_write(
   })
 }
 
-fn register_op_bin_sync<F>(isolate: &mut JsRuntime, name: &'static str, op_fn: F)
-where
+fn register_op_bin_sync<F>(
+  isolate: &mut JsRuntime,
+  name: &'static str,
+  op_fn: F,
+) where
   F: Fn(&State, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
 {
   let base_op_fn = move |state: Rc<State>, mut bufs: BufVec| -> Op {
@@ -196,11 +194,14 @@ where
     Op::Sync(buf)
   };
 
-  isolate.register_op(name, base_op_fn);
+  isolate.op_table().register_op(name, base_op_fn);
 }
 
-fn register_op_bin_async<F, R>(isolate: &mut &JsRuntime, name: &'static str, op_fn: F)
-where
+fn register_op_bin_async<F, R>(
+  isolate: &mut JsRuntime,
+  name: &'static str,
+  op_fn: F,
+) where
   F: Fn(Rc<State>, u32, BufVec) -> R + Copy + 'static,
   R: TryFuture,
   R::Ok: TryInto<i32>,
@@ -227,7 +228,7 @@ where
     Op::Async(fut.boxed_local())
   };
 
-  isolate.register_op(name, base_op_fn);
+  isolate.op_table().register_op(name, base_op_fn);
 }
 
 fn bad_resource_id() -> Error {

@@ -412,7 +412,7 @@ fn send<'s>(
   };
 
   let op_table = state.op_table.clone();
-  let op = op_table.route_op(op_id, bufs);
+  let op = op_table.route_op(op_id, state.gotham_state.clone(), bufs);
   assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(buf) if !buf.is_empty() => {

@@ -28,9 +28,9 @@ indexmap = "1.5.2"
 name = "http_bench_bin_ops"
 path = "examples/http_bench_bin_ops.rs"
 
-[[example]]
-name = "http_bench_json_ops"
-path = "examples/http_bench_json_ops.rs"
+#[[example]]
+#name = "http_bench_json_ops"
+#path = "examples/http_bench_json_ops.rs"
 
 # These dependendencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
