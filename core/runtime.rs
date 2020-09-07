@@ -1403,18 +1403,16 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  struct TestOpRouter {
+  struct TestState {
     mode: Mode,
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  /*
-  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    if op_id != 1 {
-      return Op::NotFound;
-    }
-    self.dispatch_count.fetch_add(1, Ordering::Relaxed);
-    match self.mode {
+  fn dispatch(op_state: Rc<RefCell<OpState>>, bufs: BufVec) -> Op {
+    let op_state_ = op_state.borrow();
+    let test_state = op_state_.borrow::<TestState>();
+    test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
+    match test_state.mode {
       Mode::Async => {
         assert_eq!(bufs.len(), 1);
         assert_eq!(bufs[0].len(), 1);
@@ -1477,16 +1475,17 @@ pub mod tests {
       }
     }
   }
-  */
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let mut runtime = JsRuntime::new(StartupData::None, false);
-    let op_state = runtime.op_state().borrow_mut();
-    op_state.put(TestOpRouter {
+    let op_state = runtime.op_state();
+    op_state.borrow_mut().put(TestState {
       mode,
       dispatch_count: dispatch_count.clone(),
     });
+
+    runtime.register_op("test", dispatch);
 
     js_check(runtime.execute(
       "setup.js",
@@ -2023,7 +2022,7 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state: Rc<OpState>, bufs: BufVec| -> Op {
+    let dispatcher = move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(bufs.len(), 1);
       assert_eq!(bufs[0].len(), 1);

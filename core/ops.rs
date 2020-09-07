@@ -41,11 +41,11 @@ impl OpTable {
       let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
       return Op::Sync(buf);
     }
-    let op_fn = self
-      .get_index(op_id)
-      .map(|(_, op_fn)| op_fn.clone())
-      .unwrap();
-    (op_fn)(state, bufs)
+    if let Some(op_fn) = self.get_index(op_id).map(|(_, op_fn)| op_fn.clone()) {
+      (op_fn)(state, bufs)
+    } else {
+      Op::NotFound
+    }
   }
 
   pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
