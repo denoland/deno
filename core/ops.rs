@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::gotham_state::GothamState;
 use crate::BufVec;
-use crate::OpState;
 use futures::Future;
 use indexmap::IndexMap;
 use std::cell::RefCell;
@@ -25,13 +25,45 @@ pub enum Op {
   NotFound,
 }
 
+pub struct OpState {
+  pub resource_table: crate::ResourceTable,
+  pub get_error_class_fn: crate::runtime::GetErrorClassFn,
+  pub op_table: OpTable,
+  gotham_state: GothamState,
+}
+
+impl Default for OpState {
+  fn default() -> OpState {
+    OpState {
+      resource_table: crate::ResourceTable::default(),
+      get_error_class_fn: &|_| "Error",
+      op_table: OpTable::default(),
+      gotham_state: GothamState::default(),
+    }
+  }
+}
+
+impl Deref for OpState {
+  type Target = GothamState;
+
+  fn deref(&self) -> &Self::Target {
+    &self.gotham_state
+  }
+}
+
+impl DerefMut for OpState {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.gotham_state
+  }
+}
+
 /// Collection for storing registered ops. The special 'get_op_catalog'
 /// op with OpId `0` is automatically added when the OpTable is created.
 pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 
 impl OpTable {
   pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
-    self.keys().cloned().zip(0..).collect()
+    self.0.keys().cloned().zip(0..).collect()
   }
 
   fn op_get_op_catalog(state: Rc<RefCell<OpState>>, _bufs: BufVec) -> Op {
@@ -69,20 +101,6 @@ impl Default for OpTable {
     Self(
       once(("ops".to_owned(), Rc::new(Self::op_get_op_catalog) as _)).collect(),
     )
-  }
-}
-
-impl Deref for OpTable {
-  type Target = IndexMap<String, Rc<OpFn>>;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl DerefMut for OpTable {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
   }
 }
 
