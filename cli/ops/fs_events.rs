@@ -1,10 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use notify::event::Event as NotifyEvent;
@@ -14,23 +13,16 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use serde::Serialize;
-use std::cell::RefCell;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op(
-    "op_fs_events_open",
-    s.stateful_json_op_sync(t, op_fs_events_open),
-  );
-  i.register_op(
-    "op_fs_events_poll",
-    s.stateful_json_op_async(t, op_fs_events_poll),
-  );
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_fs_events_open", op_fs_events_open);
+  s.register_op_json_async("op_fs_events_poll", op_fs_events_poll);
 }
 
 struct FsEventsResource {
@@ -73,7 +65,6 @@ impl From<NotifyEvent> for FsEvent {
 
 fn op_fs_events_open(
   state: &State,
-  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -103,13 +94,15 @@ fn op_fs_events_open(
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
-  let rid = resource_table.add("fsEvents", Box::new(resource));
+  let rid = state
+    .resource_table
+    .borrow_mut()
+    .add("fsEvents", Box::new(resource));
   Ok(json!(rid))
 }
 
 async fn op_fs_events_poll(
-  _state: Rc<State>,
-  resource_table: Rc<RefCell<ResourceTable>>,
+  state: Rc<State>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -119,7 +112,7 @@ async fn op_fs_events_poll(
   }
   let PollArgs { rid } = serde_json::from_value(args)?;
   poll_fn(move |cx| {
-    let mut resource_table = resource_table.borrow_mut();
+    let mut resource_table = state.resource_table.borrow_mut();
     let watcher = resource_table
       .get_mut::<FsEventsResource>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;

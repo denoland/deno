@@ -72,7 +72,6 @@ function eventPreventDefaultSuccess() {
 }
 
 function eventInitializedWithNonStringType() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const type = undefined;
   const event = new Event(type);
 

@@ -264,8 +264,49 @@
     await sendAsync("op_link_async", { oldpath, newpath });
   }
 
-  function toSecondsFromEpoch(v) {
-    return v instanceof Date ? Math.trunc(v.valueOf() / 1000) : v;
+  function toUnixTimeFromEpoch(value) {
+    if (value instanceof Date) {
+      const time = value.valueOf();
+      const seconds = Math.trunc(time / 1e3);
+      const nanoseconds = Math.trunc(time - (seconds * 1e3)) * 1e6;
+
+      return [
+        seconds,
+        nanoseconds,
+      ];
+    }
+
+    const seconds = value;
+    const nanoseconds = 0;
+
+    return [
+      seconds,
+      nanoseconds,
+    ];
+  }
+
+  function futimeSync(
+    rid,
+    atime,
+    mtime,
+  ) {
+    sendSync("op_futime_sync", {
+      rid,
+      atime: toUnixTimeFromEpoch(atime),
+      mtime: toUnixTimeFromEpoch(mtime),
+    });
+  }
+
+  async function futime(
+    rid,
+    atime,
+    mtime,
+  ) {
+    await sendAsync("op_futime_async", {
+      rid,
+      atime: toUnixTimeFromEpoch(atime),
+      mtime: toUnixTimeFromEpoch(mtime),
+    });
   }
 
   function utimeSync(
@@ -275,9 +316,8 @@
   ) {
     sendSync("op_utime_sync", {
       path,
-      // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
-      atime: toSecondsFromEpoch(atime),
-      mtime: toSecondsFromEpoch(mtime),
+      atime: toUnixTimeFromEpoch(atime),
+      mtime: toUnixTimeFromEpoch(mtime),
     });
   }
 
@@ -288,9 +328,8 @@
   ) {
     await sendAsync("op_utime_async", {
       path,
-      // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
-      atime: toSecondsFromEpoch(atime),
-      mtime: toSecondsFromEpoch(mtime),
+      atime: toUnixTimeFromEpoch(atime),
+      mtime: toUnixTimeFromEpoch(mtime),
     });
   }
 
@@ -364,6 +403,8 @@
     umask,
     link,
     linkSync,
+    futime,
+    futimeSync,
     utime,
     utimeSync,
     symlink,

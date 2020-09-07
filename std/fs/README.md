@@ -118,17 +118,6 @@ copySync("./foo", "./existingFolder", { overwrite: true });
 // Will overwrite existingFolder
 ```
 
-### readJson
-
-Reads a JSON file and then parses it into an object
-
-```ts
-import { readJson, readJsonSync } from "https://deno.land/std/fs/mod.ts";
-
-const f = await readJson("./foo.json");
-const foo = readJsonSync("./foo.json");
-```
-
 ### walk
 
 Iterate all files in a directory recursively.
@@ -148,37 +137,6 @@ async function printFilesNames() {
 }
 
 printFilesNames().then(() => console.log("Done!"));
-```
-
-### readFileStr
-
-Read file and output it as a string. Note: this module does not require the
-`--unstable` flag.
-
-**ReadOptions**
-
-- encoding : The encoding to read file. lowercased.
-
-```ts
-import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
-
-readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
-readFileStrSync("./target.dat", { encoding: "utf8" }); // string
-```
-
-### writeFileStr
-
-Write the string to file. Note: this module does not require the `--unstable`
-flag.
-
-```ts
-import {
-  writeFileStr,
-  writeFileStrSync,
-} from "https://deno.land/std/fs/mod.ts";
-
-writeFileStr("./target.dat", "file content"); // returns a promise
-writeFileStrSync("./target.dat", "file content"); // void
 ```
 
 ### expandGlob

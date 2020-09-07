@@ -10,7 +10,13 @@ flag**
 deno lint --unstable
 # lint specific files
 deno lint --unstable myfile1.ts myfile2.ts
+# print result as JSON
+deno lint --unstable --json
+# read from stdin
+cat file.ts | deno lint --unstable -
 ```
+
+For more detail, run `deno lint --help`.
 
 ### Available rules
 
@@ -125,14 +131,14 @@ function bar(a: any) {
 ```
 
 To provide some compatibility with ESLint `deno lint` also supports
-`// eslint-ignore-next-line` directive. Just like with `// deno-lint-ignore`,
+`// eslint-disable-next-line` directive. Just like with `// deno-lint-ignore`,
 it's required to specify the ignored rule name:
 
 ```ts
-// eslint-ignore-next-line no-empty
+// eslint-disable-next-line no-empty
 while (true) {}
 
-// eslint-ignore-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function bar(a: any) {
   // ...
 }
