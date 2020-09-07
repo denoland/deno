@@ -16,16 +16,11 @@ pub fn init(isolate: &mut JsRuntime) {
   ];
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
-    js_check(
-      isolate.execute(
-        file
-          .strip_prefix(display_root_path)
-          .unwrap()
-          .to_str()
-          .unwrap(),
-        &std::fs::read_to_string(&file).unwrap(),
-      ),
-    );
+    let display_path = file.strip_prefix(display_root_path).unwrap();
+    js_check(isolate.execute(
+      display_path.to_str().unwrap(),
+      &std::fs::read_to_string(&file).unwrap(),
+    ));
   }
 }
 
