@@ -31,10 +31,15 @@ function eventInitializedWithTypeAndDict() {
 }
 
 function eventMissingArgs() {
+  let threw = false;
   try {
     new Event();
+  } catch {
+    threw = true;
+  }
+  if (!threw) {
     throw new Error("Event constructor without args should have thrown.");
-  } catch {}
+  }
 }
 
 function eventComposedPathSuccess() {
