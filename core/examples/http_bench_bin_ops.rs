@@ -122,16 +122,17 @@ fn op_close(
     .ok_or_else(bad_resource_id)
 }
 
-fn op_accept(
-  state: Rc<State>,
+async fn op_accept(
+  state: Rc<RefCell<State>>,
   rid: u32,
   _bufs: BufVec,
-) -> impl TryFuture<Ok = u32, Error = Error> {
+) -> Result<u32, Error> {
   debug!("accept rid={}", rid);
 
   poll_fn(move |cx| {
-    let mut resource_table =
-      state.borrow::<RefCell<ResourceTable>>().borrow_mut();
+    let mut x = state.borrow_mut();
+    let resource_table = x.borrow_mut::<ResourceTable>();
+
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -139,10 +140,11 @@ fn op_accept(
       resource_table.add("tcpStream", Box::new(stream))
     })
   })
+  .await
 }
 
 fn op_read(
-  state: Rc<State>,
+  state: Rc<RefCell<State>>,
   rid: u32,
   bufs: BufVec,
 ) -> impl TryFuture<Ok = usize, Error = Error> {
@@ -152,8 +154,9 @@ fn op_read(
   debug!("read rid={}", rid);
 
   poll_fn(move |cx| {
-    let mut resource_table =
-      state.borrow::<RefCell<ResourceTable>>().borrow_mut();
+    let mut x = state.borrow_mut();
+    let resource_table = x.borrow_mut::<ResourceTable>();
+
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -162,7 +165,7 @@ fn op_read(
 }
 
 fn op_write(
-  state: Rc<State>,
+  state: Rc<RefCell<State>>,
   rid: u32,
   bufs: BufVec,
 ) -> impl TryFuture<Ok = usize, Error = Error> {
@@ -171,8 +174,9 @@ fn op_write(
   debug!("write rid={}", rid);
 
   poll_fn(move |cx| {
-    let mut resource_table =
-      state.borrow::<RefCell<ResourceTable>>().borrow_mut();
+    let mut x = state.borrow_mut();
+    let resource_table = x.borrow_mut::<ResourceTable>();
+
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -187,13 +191,13 @@ fn register_op_bin_sync<F>(
 ) where
   F: Fn(&State, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
 {
-  let base_op_fn = move |state: Rc<State>, mut bufs: BufVec| -> Op {
+  let base_op_fn = move |state: Rc<RefCell<State>>, mut bufs: BufVec| -> Op {
     let record = Record::from(bufs[0].as_ref());
     let is_sync = record.promise_id == 0;
     assert!(is_sync);
 
     let zero_copy_bufs = &mut bufs[1..];
-    let result: i32 = match op_fn(&state, record.rid, zero_copy_bufs) {
+    let result: i32 = match op_fn(&state.borrow(), record.rid, zero_copy_bufs) {
       Ok(r) => r as i32,
       Err(_) => -1,
     };
@@ -209,12 +213,12 @@ fn register_op_bin_async<F, R>(
   name: &'static str,
   op_fn: F,
 ) where
-  F: Fn(Rc<State>, u32, BufVec) -> R + Copy + 'static,
+  F: Fn(Rc<RefCell<State>>, u32, BufVec) -> R + Copy + 'static,
   R: TryFuture,
   R::Ok: TryInto<i32>,
   <R::Ok as TryInto<i32>>::Error: Debug,
 {
-  let base_op_fn = move |state: Rc<State>, bufs: BufVec| -> Op {
+  let base_op_fn = move |state: Rc<RefCell<State>>, bufs: BufVec| -> Op {
     let mut bufs_iter = bufs.into_iter();
     let record_buf = bufs_iter.next().unwrap();
     let zero_copy_bufs = bufs_iter.collect::<BufVec>();

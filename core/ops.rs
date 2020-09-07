@@ -4,6 +4,7 @@ use crate::BufVec;
 use crate::State;
 use futures::Future;
 use indexmap::IndexMap;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter::once;
 use std::ops::Deref;
@@ -12,7 +13,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
-pub type OpFn = dyn Fn(Rc<State>, BufVec) -> Op + 'static;
+pub type OpFn = dyn Fn(Rc<RefCell<State>>, BufVec) -> Op + 'static;
 pub type OpId = usize;
 
 pub enum Op {
@@ -29,7 +30,12 @@ pub enum Op {
 pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 
 impl OpTable {
-  pub fn route_op(&self, op_id: OpId, state: Rc<State>, bufs: BufVec) -> Op {
+  pub fn route_op(
+    &self,
+    op_id: OpId,
+    state: Rc<RefCell<State>>,
+    bufs: BufVec,
+  ) -> Op {
     if op_id == 0 {
       let ops = self.get_op_catalog();
       let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
@@ -48,7 +54,7 @@ impl OpTable {
 
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<State>, BufVec) -> Op + 'static,
+    F: Fn(Rc<RefCell<State>>, BufVec) -> Op + 'static,
   {
     let (op_id, prev) = self.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(prev.is_none());
@@ -62,7 +68,7 @@ impl Default for OpTable {
   }
 }
 
-fn dummy(_state: Rc<State>, _v: BufVec) -> Op {
+fn dummy(_state: Rc<RefCell<State>>, _v: BufVec) -> Op {
   todo!()
 }
 

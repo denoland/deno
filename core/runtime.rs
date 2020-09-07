@@ -143,7 +143,7 @@ pub struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
   pub(crate) op_table: OpTable,
-  pub(crate) gotham_state: Rc<State>,
+  pub(crate) gotham_state: Rc<RefCell<State>>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
@@ -344,7 +344,7 @@ impl JsRuntime {
     };
 
     let mut gotham_state = State::new();
-    gotham_state.put(RefCell::new(ResourceTable::default()));
+    gotham_state.put(ResourceTable::default());
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
@@ -357,7 +357,7 @@ impl JsRuntime {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       op_table: crate::OpTable::default(),
-      gotham_state: Rc::new(gotham_state),
+      gotham_state: Rc::new(RefCell::new(gotham_state)),
       have_unpolled_ops: Cell::new(false),
       modules: Modules::new(),
       loader: options.loader,
@@ -406,7 +406,7 @@ impl JsRuntime {
     }
   }
 
-  pub fn gotham_state(&self) -> Rc<State> {
+  pub fn gotham_state(&mut self) -> Rc<RefCell<State>> {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
     state.gotham_state.clone()
@@ -485,7 +485,7 @@ impl JsRuntime {
 
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<State>, BufVec) -> Op + 'static,
+    F: Fn(Rc<RefCell<State>>, BufVec) -> Op + 'static,
   {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
@@ -497,12 +497,10 @@ impl JsRuntime {
     F: Fn(&mut State, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
       + 'static,
   {
-    let base_op_fn = move |state: Rc<State>, mut bufs: BufVec| -> Op {
-      let mut state = state.clone();
-      let state = Rc::get_mut(&mut state).unwrap();
+    let base_op_fn = move |state: Rc<RefCell<State>>, mut bufs: BufVec| -> Op {
       let result = serde_json::from_slice(&bufs[0])
         .map_err(ErrBox::from)
-        .and_then(|args| op_fn(state, args, &mut bufs[1..]));
+        .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
       let buf = json_serialize_op_result(None, result);
       Op::Sync(buf)
     };
@@ -512,10 +510,10 @@ impl JsRuntime {
 
   pub fn register_op_json_async<F, R>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<State>, Value, BufVec) -> R + 'static,
+    F: Fn(Rc<RefCell<State>>, Value, BufVec) -> R + 'static,
     R: Future<Output = Result<Value, ErrBox>> + 'static,
   {
-    let try_dispatch_op = move |state: Rc<State>,
+    let try_dispatch_op = move |state: Rc<RefCell<State>>,
                                 bufs: BufVec|
           -> Result<Op, ErrBox> {
       let args: Value = serde_json::from_slice(&bufs[0])?;
@@ -529,7 +527,7 @@ impl JsRuntime {
       Ok(Op::Async(Box::pin(fut)))
     };
 
-    let base_op_fn = move |state: Rc<State>, bufs: BufVec| -> Op {
+    let base_op_fn = move |state: Rc<RefCell<State>>, bufs: BufVec| -> Op {
       match try_dispatch_op(state.clone(), bufs) {
         Ok(op) => op,
         Err(err) => Op::Sync(json_serialize_op_result(None, Err(err))),
