@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::BufVec;
-use crate::State;
+use crate::OpState;
 use futures::Future;
 use indexmap::IndexMap;
 use std::cell::RefCell;
@@ -13,7 +13,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
-pub type OpFn = dyn Fn(Rc<RefCell<State>>, BufVec) -> Op + 'static;
+pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static;
 pub type OpId = usize;
 
 pub enum Op {
@@ -33,7 +33,7 @@ impl OpTable {
   pub fn route_op(
     &self,
     op_id: OpId,
-    state: Rc<RefCell<State>>,
+    state: Rc<RefCell<OpState>>,
     bufs: BufVec,
   ) -> Op {
     if op_id == 0 {
@@ -54,7 +54,7 @@ impl OpTable {
 
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<State>>, BufVec) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
     let (op_id, prev) = self.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(prev.is_none());
@@ -68,7 +68,7 @@ impl Default for OpTable {
   }
 }
 
-fn dummy(_state: Rc<RefCell<State>>, _v: BufVec) -> Op {
+fn dummy(_state: Rc<RefCell<OpState>>, _v: BufVec) -> Op {
   todo!()
 }
 

@@ -22,9 +22,8 @@ use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::BufVec;
 use crate::ErrBox;
 use crate::JsError;
+use crate::OpState;
 use crate::OpTable;
-use crate::ResourceTable;
-use crate::State;
 use crate::ZeroCopyBuf;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -143,7 +142,7 @@ pub struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
   pub(crate) op_table: OpTable,
-  pub(crate) gotham_state: Rc<RefCell<State>>,
+  pub(crate) op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
@@ -343,8 +342,7 @@ impl JsRuntime {
       (isolate, None)
     };
 
-    let mut gotham_state = State::new();
-    gotham_state.put(ResourceTable::default());
+    let op_state = OpState::default();
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
@@ -357,7 +355,7 @@ impl JsRuntime {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       op_table: crate::OpTable::default(),
-      gotham_state: Rc::new(RefCell::new(gotham_state)),
+      op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: Cell::new(false),
       modules: Modules::new(),
       loader: options.loader,
@@ -406,10 +404,10 @@ impl JsRuntime {
     }
   }
 
-  pub fn gotham_state(&mut self) -> Rc<RefCell<State>> {
+  pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
-    state.gotham_state.clone()
+    state.op_state.clone()
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
@@ -485,7 +483,7 @@ impl JsRuntime {
 
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<State>>, BufVec) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
@@ -494,10 +492,12 @@ impl JsRuntime {
 
   pub fn register_op_json_sync<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(&mut State, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
+    F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
       + 'static,
   {
-    let base_op_fn = move |state: Rc<RefCell<State>>, mut bufs: BufVec| -> Op {
+    let base_op_fn = move |state: Rc<RefCell<OpState>>,
+                           mut bufs: BufVec|
+          -> Op {
       let result = serde_json::from_slice(&bufs[0])
         .map_err(ErrBox::from)
         .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
@@ -510,10 +510,10 @@ impl JsRuntime {
 
   pub fn register_op_json_async<F, R>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<State>>, Value, BufVec) -> R + 'static,
+    F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
     R: Future<Output = Result<Value, ErrBox>> + 'static,
   {
-    let try_dispatch_op = move |state: Rc<RefCell<State>>,
+    let try_dispatch_op = move |state: Rc<RefCell<OpState>>,
                                 bufs: BufVec|
           -> Result<Op, ErrBox> {
       let args: Value = serde_json::from_slice(&bufs[0])?;
@@ -527,7 +527,7 @@ impl JsRuntime {
       Ok(Op::Async(Box::pin(fut)))
     };
 
-    let base_op_fn = move |state: Rc<RefCell<State>>, bufs: BufVec| -> Op {
+    let base_op_fn = move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
       match try_dispatch_op(state.clone(), bufs) {
         Ok(op) => op,
         Err(err) => Op::Sync(json_serialize_op_result(None, Err(err))),
@@ -1482,9 +1482,8 @@ pub mod tests {
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let mut runtime = JsRuntime::new(StartupData::None, false);
-    let mut gotham_state = runtime.gotham_state();
-    let gotham_state = Rc::get_mut(&mut gotham_state).unwrap();
-    gotham_state.put(TestOpRouter {
+    let op_state = runtime.op_state().borrow_mut();
+    op_state.put(TestOpRouter {
       mode,
       dispatch_count: dispatch_count.clone(),
     });
@@ -2024,7 +2023,7 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state: Rc<State>, bufs: BufVec| -> Op {
+    let dispatcher = move |_state: Rc<OpState>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(bufs.len(), 1);
       assert_eq!(bufs[0].len(), 1);

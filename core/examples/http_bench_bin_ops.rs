@@ -5,10 +5,9 @@ use deno_core::js_check;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
-use deno_core::ResourceTable;
+use deno_core::OpState;
 use deno_core::Script;
 use deno_core::StartupData;
-use deno_core::State;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -94,7 +93,7 @@ fn create_isolate() -> JsRuntime {
 }
 
 fn op_listen(
-  state: &State,
+  state: Rc<RefCell<OpState>>,
   _rid: u32,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
@@ -102,20 +101,18 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let mut resource_table =
-    state.borrow::<RefCell<ResourceTable>>().borrow_mut();
+  let resource_table = &mut state.borrow_mut().resource_table;
   let rid = resource_table.add("tcpListener", Box::new(listener));
   Ok(rid)
 }
 
 fn op_close(
-  state: &State,
+  state: Rc<RefCell<OpState>>,
   rid: u32,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
-  let mut resource_table =
-    state.borrow::<RefCell<ResourceTable>>().borrow_mut();
+  let resource_table = &mut state.borrow_mut().resource_table;
   resource_table
     .close(rid)
     .map(|_| 0)
@@ -123,15 +120,14 @@ fn op_close(
 }
 
 async fn op_accept(
-  state: Rc<RefCell<State>>,
+  state: Rc<RefCell<OpState>>,
   rid: u32,
   _bufs: BufVec,
 ) -> Result<u32, Error> {
   debug!("accept rid={}", rid);
 
   poll_fn(move |cx| {
-    let mut x = state.borrow_mut();
-    let resource_table = x.borrow_mut::<ResourceTable>();
+    let resource_table = &mut state.borrow_mut().resource_table;
 
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
@@ -144,7 +140,7 @@ async fn op_accept(
 }
 
 fn op_read(
-  state: Rc<RefCell<State>>,
+  state: Rc<RefCell<OpState>>,
   rid: u32,
   bufs: BufVec,
 ) -> impl TryFuture<Ok = usize, Error = Error> {
@@ -154,8 +150,7 @@ fn op_read(
   debug!("read rid={}", rid);
 
   poll_fn(move |cx| {
-    let mut x = state.borrow_mut();
-    let resource_table = x.borrow_mut::<ResourceTable>();
+    let resource_table = &mut state.borrow_mut().resource_table;
 
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
@@ -165,7 +160,7 @@ fn op_read(
 }
 
 fn op_write(
-  state: Rc<RefCell<State>>,
+  state: Rc<RefCell<OpState>>,
   rid: u32,
   bufs: BufVec,
 ) -> impl TryFuture<Ok = usize, Error = Error> {
@@ -174,8 +169,7 @@ fn op_write(
   debug!("write rid={}", rid);
 
   poll_fn(move |cx| {
-    let mut x = state.borrow_mut();
-    let resource_table = x.borrow_mut::<ResourceTable>();
+    let resource_table = &mut state.borrow_mut().resource_table;
 
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
@@ -189,15 +183,16 @@ fn register_op_bin_sync<F>(
   name: &'static str,
   op_fn: F,
 ) where
-  F: Fn(&State, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
+  F: Fn(Rc<RefCell<OpState>>, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error>
+    + 'static,
 {
-  let base_op_fn = move |state: Rc<RefCell<State>>, mut bufs: BufVec| -> Op {
+  let base_op_fn = move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
     let record = Record::from(bufs[0].as_ref());
     let is_sync = record.promise_id == 0;
     assert!(is_sync);
 
     let zero_copy_bufs = &mut bufs[1..];
-    let result: i32 = match op_fn(&state.borrow(), record.rid, zero_copy_bufs) {
+    let result: i32 = match op_fn(state, record.rid, zero_copy_bufs) {
       Ok(r) => r as i32,
       Err(_) => -1,
     };
@@ -213,12 +208,12 @@ fn register_op_bin_async<F, R>(
   name: &'static str,
   op_fn: F,
 ) where
-  F: Fn(Rc<RefCell<State>>, u32, BufVec) -> R + Copy + 'static,
+  F: Fn(Rc<RefCell<OpState>>, u32, BufVec) -> R + Copy + 'static,
   R: TryFuture,
   R::Ok: TryInto<i32>,
   <R::Ok as TryInto<i32>>::Error: Debug,
 {
-  let base_op_fn = move |state: Rc<RefCell<State>>, bufs: BufVec| -> Op {
+  let base_op_fn = move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
     let mut bufs_iter = bufs.into_iter();
     let record_buf = bufs_iter.next().unwrap();
     let zero_copy_bufs = bufs_iter.collect::<BufVec>();
