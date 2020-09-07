@@ -3,30 +3,34 @@
 use deno_core::js_check;
 use deno_core::JsRuntime;
 use std::path::PathBuf;
-use url::Url;
 
 pub fn init(isolate: &mut JsRuntime) {
+  let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  // This should point to "op_crates".
+  let display_root_path = manifest_dir.parent().unwrap();
   let files = vec![
-    get_path("00_dom_exception.js"),
-    get_path("01_event.js"),
-    get_path("02_abort_signal.js"),
-    get_path("08_text_encoding.js"),
+    manifest_dir.join("00_dom_exception.js"),
+    manifest_dir.join("01_event.js"),
+    manifest_dir.join("02_abort_signal.js"),
+    manifest_dir.join("08_text_encoding.js"),
   ];
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
-    js_check(isolate.execute(
-      Url::from_file_path(&file).unwrap().as_str(),
-      &std::fs::read_to_string(&file).unwrap(),
-    ));
+    js_check(
+      isolate.execute(
+        file
+          .strip_prefix(display_root_path)
+          .unwrap()
+          .to_str()
+          .unwrap(),
+        &std::fs::read_to_string(&file).unwrap(),
+      ),
+    );
   }
 }
 
 pub fn get_declaration() -> PathBuf {
-  get_path("lib.deno_web.d.ts")
-}
-
-fn get_path(file_name: &str) -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_name)
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_web.d.ts")
 }
 
 #[cfg(test)]
