@@ -441,7 +441,8 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
 
 async fn run_from_stdin(flags: Flags) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  let main_module = ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap();
+  let main_module =
+    ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap();
   let mut worker =
     MainWorker::create(&global_state.clone(), main_module.clone())?;
 
@@ -475,22 +476,44 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   if script == "-" {
     return run_from_stdin(flags).await;
   }
-  
-  // TODO(bartlomieju): why unwrap instead of "?""
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();  
+
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let global_state = GlobalState::new(flags.clone())?;
 
-  let mut worker =
-    MainWorker::create(&global_state.clone(), main_module.clone())?;
+  let mut module_graph_loader = module_graph::ModuleGraphLoader::new(
+    global_state.file_fetcher.clone(),
+    global_state.maybe_import_map.clone(),
+    Permissions::allow_all(),
+    false,
+    false,
+  );
+  module_graph_loader.add_to_graph(&main_module, None).await?;
+  let module_graph = module_graph_loader.get_graph();
+
+  // Find all local files in graph
+  let paths_to_watch: Vec<PathBuf> = module_graph
+    .values()
+    .map(|f| Url::parse(&f.url).unwrap())
+    .filter(|url| url.scheme() == "file")
+    .map(|url| url.to_file_path().unwrap())
+    .collect();
 
   // TODO(bartlomieju): setup file watcher
-
-  debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  Ok(())
+  file_watcher::watch_func(&paths_to_watch, move || {
+    let gs = global_state.clone();
+    let main_module = main_module.clone();
+    async move {
+      let mut worker = MainWorker::create(&gs, main_module.clone())?;
+      debug!("main_module {}", main_module);
+      worker.execute_module(&main_module).await?;
+      worker.execute("window.dispatchEvent(new Event('load'))")?;
+      (&mut *worker).await?;
+      worker.execute("window.dispatchEvent(new Event('unload'))")?;
+      Ok(())
+    }
+    .boxed_local()
+  })
+  .await
 }
 
 async fn test_command(

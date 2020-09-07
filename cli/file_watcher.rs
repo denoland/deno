@@ -1,17 +1,16 @@
 use crate::colors;
-use crate::state::State;
 use deno_core::ErrBox;
 use futures::stream::StreamExt;
 use futures::Future;
-use std::path::PathBuf;
-use std::pin::Pin;
-use tokio::select;
 use notify::event::Event as NotifyEvent;
+use notify::event::EventKind;
 use notify::Error as NotifyError;
-use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use std::path::PathBuf;
+use std::pin::Pin;
+use tokio::select;
 use tokio::sync::mpsc;
 
 // TODO(bartlomieju): rename
@@ -51,9 +50,7 @@ where
   }
 }
 
-pub async fn file_watcher(
-  paths: &[PathBuf],
-) -> Result<(), deno_core::ErrBox> {
+pub async fn file_watcher(paths: &[PathBuf]) -> Result<(), deno_core::ErrBox> {
   let (sender, mut receiver) = mpsc::channel::<Result<NotifyEvent, ErrBox>>(16);
   let sender = std::sync::Mutex::new(sender);
 
@@ -70,6 +67,14 @@ pub async fn file_watcher(
     watcher.watch(path, RecursiveMode::NonRecursive)?;
   }
 
-  receiver.next().await.expect("Expected FS event")?;
+  while let Some(result) = receiver.next().await {
+    let event = result?;
+    match event.kind {
+      EventKind::Create(_) => break,
+      EventKind::Modify(_) => break,
+      EventKind::Remove(_) => break,
+      _ => continue,
+    }
+  }
   Ok(())
 }
