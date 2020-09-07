@@ -623,9 +623,6 @@ async fn test_command(
   filter: Option<String>,
   coverage: bool,
 ) -> Result<(), ErrBox> {
-  // XXX
-  use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-  let _socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0000);
 
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
