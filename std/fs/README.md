@@ -118,17 +118,6 @@ copySync("./foo", "./existingFolder", { overwrite: true });
 // Will overwrite existingFolder
 ```
 
-### readJson
-
-Reads a JSON file and then parses it into an object
-
-```ts
-import { readJson, readJsonSync } from "https://deno.land/std/fs/mod.ts";
-
-const f = await readJson("./foo.json");
-const foo = readJsonSync("./foo.json");
-```
-
 ### writeJson
 
 Writes an object to a JSON file.
