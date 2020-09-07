@@ -23,7 +23,6 @@ use crate::BufVec;
 use crate::ErrBox;
 use crate::JsError;
 use crate::OpState;
-use crate::OpTable;
 use crate::ZeroCopyBuf;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -141,7 +140,6 @@ pub struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub(crate) op_table: OpTable,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
@@ -354,7 +352,6 @@ impl JsRuntime {
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
-      op_table: crate::OpTable::default(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: Cell::new(false),
       modules: Modules::new(),
@@ -486,8 +483,9 @@ impl JsRuntime {
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-    state.op_table.register_op(name, op_fn)
+    let state = state_rc.borrow_mut();
+    let mut op_state = state.op_state.borrow_mut();
+    op_state.op_table.register_op(name, op_fn)
   }
 
   pub fn register_op_json_sync<F>(&mut self, name: &str, op_fn: F) -> OpId

@@ -30,46 +30,46 @@ pub enum Op {
 pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 
 impl OpTable {
-  pub fn route_op(
-    &self,
-    op_id: OpId,
-    state: Rc<RefCell<OpState>>,
-    bufs: BufVec,
-  ) -> Op {
-    if op_id == 0 {
-      let ops = self.get_op_catalog();
-      let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
-      return Op::Sync(buf);
-    }
-    if let Some(op_fn) = self.get_index(op_id).map(|(_, op_fn)| op_fn.clone()) {
-      (op_fn)(state, bufs)
-    } else {
-      Op::NotFound
-    }
-  }
-
   pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
     self.keys().cloned().zip(0..).collect()
+  }
+
+  fn op_get_op_catalog(state: Rc<RefCell<OpState>>, _bufs: BufVec) -> Op {
+    let ops = state.borrow().op_table.get_op_catalog();
+    let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
+    Op::Sync(buf)
   }
 
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
-    let (op_id, prev) = self.insert_full(name.to_owned(), Rc::new(op_fn));
+    let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(prev.is_none());
     op_id
+  }
+
+  pub fn route_op(
+    &self,
+    op_id: OpId,
+    state: Rc<RefCell<OpState>>,
+    bufs: BufVec,
+  ) -> Op {
+    if let Some(op_fn) = self.0.get_index(op_id).map(|(_, op_fn)| op_fn.clone())
+    {
+      (op_fn)(state, bufs)
+    } else {
+      Op::NotFound
+    }
   }
 }
 
 impl Default for OpTable {
   fn default() -> Self {
-    Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
+    Self(
+      once(("ops".to_owned(), Rc::new(Self::op_get_op_catalog) as _)).collect(),
+    )
   }
-}
-
-fn dummy(_state: Rc<RefCell<OpState>>, _v: BufVec) -> Op {
-  todo!()
 }
 
 impl Deref for OpTable {
