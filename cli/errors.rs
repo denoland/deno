@@ -3,11 +3,11 @@
 //! There are many types of errors in Deno:
 //! - ErrBox: a generic boxed object. This is the super type of all
 //!   errors handled in Rust.
-//! - JSError: a container for the error message and stack trace for exceptions
+//! - JsError: a container for the error message and stack trace for exceptions
 //!   thrown in JavaScript code. We use this to pretty-print stack traces.
 //! - Diagnostic: these are errors that originate in TypeScript's compiler.
-//!   They're similar to JSError, in that they have line numbers.
-//!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime
+//!   They're similar to JsError, in that they have line numbers.
+//!   But Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
 use crate::import_map::ImportMapError;

@@ -4,7 +4,7 @@ extern crate log;
 use deno_core::js_check;
 use deno_core::BasicState;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
+use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpRegistry;
 use deno_core::Script;
@@ -77,7 +77,7 @@ impl From<Record> for RecordBuf {
   }
 }
 
-fn create_isolate() -> CoreIsolate {
+fn create_isolate() -> JsRuntime {
   let state = BasicState::new();
   register_op_bin_sync(&state, "listen", op_listen);
   register_op_bin_sync(&state, "close", op_close);
@@ -90,7 +90,7 @@ fn create_isolate() -> CoreIsolate {
     filename: "http_bench_bin_ops.js",
   });
 
-  CoreIsolate::new(state, startup_data, false)
+  JsRuntime::new(state, startup_data, false)
 }
 
 fn op_listen(

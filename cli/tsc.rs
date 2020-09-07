@@ -7,7 +7,7 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::fmt_errors::JSError;
+use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
@@ -1191,9 +1191,9 @@ async fn create_runtime_module_graph(
 }
 
 /// Because TS compiler can raise runtime error, we need to
-/// manually convert formatted JSError into and ErrBox.
+/// manually convert formatted JsError into and ErrBox.
 fn js_error_to_errbox(error: ErrBox) -> ErrBox {
-  match error.downcast::<JSError>() {
+  match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
       ErrBox::error(msg)
