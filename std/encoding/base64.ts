@@ -6,7 +6,7 @@
  */
 export function encode(data: string | ArrayBuffer): string {
   if (typeof data === "string") {
-    return window.btoa(data);
+    return btoa(data);
   } else {
     const d = new Uint8Array(data);
     let dataString = "";
@@ -14,7 +14,7 @@ export function encode(data: string | ArrayBuffer): string {
       dataString += String.fromCharCode(d[i]);
     }
 
-    return window.btoa(dataString);
+    return btoa(dataString);
   }
 }
 
@@ -37,5 +37,5 @@ export function decode(data: string): ArrayBuffer {
  * @param data input to decode
  */
 export function decodeString(data: string): string {
-  return window.atob(data);
+  return atob(data);
 }

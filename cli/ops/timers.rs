@@ -1,30 +1,30 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
+
 use crate::state::State;
-use deno_core::CoreIsolate;
+use deno_core::BufVec;
+use deno_core::ErrBox;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
+use serde_derive::Deserialize;
+use serde_json::Value;
+use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op(
-    "op_global_timer_stop",
-    s.stateful_json_op(op_global_timer_stop),
-  );
-  i.register_op("op_global_timer", s.stateful_json_op(op_global_timer));
-  i.register_op("op_now", s.stateful_json_op(op_now));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_global_timer_stop", op_global_timer_stop);
+  s.register_op_json_async("op_global_timer", op_global_timer);
+  s.register_op_json_sync("op_now", op_now);
 }
 
 fn op_global_timer_stop(
   state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let mut state = state.borrow_mut();
-  state.global_timer.cancel();
-  Ok(JsonOp::Sync(json!({})))
+) -> Result<Value, ErrBox> {
+  state.global_timer.borrow_mut().cancel();
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]
@@ -32,22 +32,22 @@ struct GlobalTimerArgs {
   timeout: u64,
 }
 
-fn op_global_timer(
-  state: &State,
+async fn op_global_timer(
+  state: Rc<State>,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
-  let mut state = state.borrow_mut();
   let deadline = Instant::now() + Duration::from_millis(val);
-  let f = state
+  let timer_fut = state
     .global_timer
+    .borrow_mut()
     .new_timeout(deadline)
-    .then(move |_| futures::future::ok(json!({})));
-
-  Ok(JsonOp::Async(f.boxed_local()))
+    .boxed_local();
+  let _ = timer_fut.await;
+  Ok(json!({}))
 }
 
 // Returns a milliseconds and nanoseconds subsec
@@ -58,8 +58,7 @@ fn op_now(
   state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let state = state.borrow();
+) -> Result<Value, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
@@ -67,12 +66,12 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !state.permissions.allow_hrtime.is_allow() {
-    subsec_nanos -= subsec_nanos % reduced_time_precision
+  if state.check_hrtime().is_err() {
+    subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
-  Ok(JsonOp::Sync(json!({
+  Ok(json!({
     "seconds": seconds,
     "subsecNanos": subsec_nanos,
-  })))
+  }))
 }

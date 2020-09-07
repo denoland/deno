@@ -1,4 +1,3 @@
-const { cwd, execPath, run } = Deno;
 import { decode } from "../encoding/utf8.ts";
 import {
   assert,
@@ -20,7 +19,7 @@ import {
 
 async function expandGlobArray(
   globString: string,
-  options: ExpandGlobOptions
+  options: ExpandGlobOptions,
 ): Promise<string[]> {
   const paths: string[] = [];
   for await (const { path } of expandGlob(globString, options)) {
@@ -28,16 +27,16 @@ async function expandGlobArray(
   }
   paths.sort();
   const pathsSync = [...expandGlobSync(globString, options)].map(
-    ({ path }): string => path
+    ({ path }): string => path,
   );
   pathsSync.sort();
   assertEquals(paths, pathsSync);
-  const root = normalize(options.root || cwd());
+  const root = normalize(options.root || Deno.cwd());
   for (const path of paths) {
     assert(path.startsWith(root));
   }
   const relativePaths = paths.map(
-    (path: string): string => relative(root, path) || "."
+    (path: string): string => relative(root, path) || ".",
   );
   relativePaths.sort();
   return relativePaths;
@@ -99,7 +98,7 @@ Deno.test("expandGlobGlobstar", async function (): Promise<void> {
   const options = { ...EG_OPTIONS, globstar: true };
   assertEquals(
     await expandGlobArray(joinGlobs(["**", "abc"], options), options),
-    ["abc", join("subdir", "abc")]
+    ["abc", join("subdir", "abc")],
   );
 });
 
@@ -107,7 +106,7 @@ Deno.test("expandGlobGlobstarParent", async function (): Promise<void> {
   const options = { ...EG_OPTIONS, globstar: true };
   assertEquals(
     await expandGlobArray(joinGlobs(["subdir", "**", ".."], options), options),
-    ["."]
+    ["."],
   );
 });
 
@@ -118,8 +117,8 @@ Deno.test("expandGlobIncludeDirs", async function (): Promise<void> {
 
 Deno.test("expandGlobPermError", async function (): Promise<void> {
   const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
-  const p = run({
-    cmd: [execPath(), "run", "--unstable", exampleUrl.toString()],
+  const p = Deno.run({
+    cmd: [Deno.execPath(), "run", "--unstable", exampleUrl.toString()],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",
@@ -128,7 +127,7 @@ Deno.test("expandGlobPermError", async function (): Promise<void> {
   assertEquals(decode(await p.output()), "");
   assertStringContains(
     decode(await p.stderrOutput()),
-    "Uncaught PermissionDenied"
+    "Uncaught PermissionDenied",
   );
   p.close();
 });

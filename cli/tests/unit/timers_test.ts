@@ -7,16 +7,19 @@ import {
   assertNotEquals,
 } from "./test_util.ts";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<any, any>;
+
 function deferred(): {
-  promise: Promise<{}>;
-  resolve: (value?: {} | PromiseLike<{}>) => void;
+  promise: Promise<AnyRecord>;
+  resolve: (value?: AnyRecord | PromiseLike<AnyRecord>) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
 } {
-  let resolve: (value?: {} | PromiseLike<{}>) => void;
+  let resolve: (value?: AnyRecord | PromiseLike<AnyRecord>) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let reject: ((reason?: any) => void) | undefined = undefined;
-  const promise = new Promise<{}>((res, rej): void => {
+  const promise = new Promise<AnyRecord>((res, rej): void => {
     resolve = res;
     reject = rej;
   });
@@ -56,7 +59,7 @@ unitTest(async function timeoutArgs(): Promise<void> {
     10,
     arg,
     arg.toString(),
-    [arg]
+    [arg],
   );
   await promise;
 });
@@ -365,4 +368,38 @@ unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
 
 unitTest(function testQueueMicrotask() {
   assertEquals(typeof queueMicrotask, "function");
+});
+
+unitTest(async function timerIgnoresDateOverride(): Promise<void> {
+  const OriginalDate = Date;
+  const { promise, resolve, reject } = deferred();
+  let hasThrown = 0;
+  try {
+    const overrideCalled: () => number = () => {
+      reject("global Date override used over original Date object");
+      return 0;
+    };
+    const DateOverride = (): void => {
+      overrideCalled();
+    };
+    globalThis.Date = DateOverride as DateConstructor;
+    globalThis.Date.now = overrideCalled;
+    globalThis.Date.UTC = overrideCalled;
+    globalThis.Date.parse = overrideCalled;
+    queueMicrotask(resolve);
+    await promise;
+    hasThrown = 1;
+  } catch (err) {
+    if (typeof err === "string") {
+      assertEquals(err, "global Date override used over original Date object");
+      hasThrown = 2;
+    } else if (err instanceof TypeError) {
+      hasThrown = 3;
+    } else {
+      hasThrown = 4;
+    }
+  } finally {
+    globalThis.Date = OriginalDate;
+  }
+  assertEquals(hasThrown, 1);
 });

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { CallbackWithError } from "./_fs_common.ts";
+import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
 /**
@@ -11,7 +11,7 @@ export function chown(
   path: string | URL,
   uid: number,
   gid: number,
-  callback: CallbackWithError
+  callback: CallbackWithError,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 

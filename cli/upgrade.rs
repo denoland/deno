@@ -10,7 +10,6 @@ extern crate semver_parser;
 use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
-use crate::op_error::OpError;
 use crate::ErrBox;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
@@ -56,8 +55,20 @@ pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
   version: Option<String>,
+  output: Option<PathBuf>,
+  ca_file: Option<String>,
 ) -> Result<(), ErrBox> {
-  let client = Client::builder().redirect(Policy::none()).build()?;
+  let mut client_builder = Client::builder().redirect(Policy::none());
+
+  // If we have been provided a CA Certificate, add it into the HTTP client
+  if let Some(ca_file) = ca_file {
+    let buf = std::fs::read(ca_file);
+    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
+    client_builder = client_builder.add_root_certificate(cert);
+  }
+
+  let client = client_builder.build()?;
+
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
   let install_version = match version {
@@ -65,7 +76,7 @@ pub async fn upgrade_command(
       Ok(ver) => {
         if !force && current_version == ver {
           println!("Version {} is already installed", &ver);
-          std::process::exit(1)
+          return Ok(());
         } else {
           ver
         }
@@ -83,21 +94,19 @@ pub async fn upgrade_command(
           "Local deno version {} is the most recent release",
           &crate::version::DENO
         );
-        std::process::exit(1)
+        return Ok(());
       } else {
         latest_version
       }
     }
   };
 
-  println!(
-    "Version has been found\nDeno is upgrading to version {}",
-    &install_version
-  );
-
-  let archive_data =
-    download_package(&compose_url_to_exec(&install_version)?, client).await?;
-
+  let archive_data = download_package(
+    &compose_url_to_exec(&install_version)?,
+    client,
+    &install_version,
+  )
+  .await?;
   let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
@@ -105,7 +114,13 @@ pub async fn upgrade_command(
   check_exe(&new_exe_path, &install_version)?;
 
   if !dry_run {
-    replace_exe(&new_exe_path, &old_exe_path)?;
+    match output {
+      Some(path) => {
+        fs::rename(&new_exe_path, &path)
+          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
+      }
+      None => replace_exe(&new_exe_path, &old_exe_path)?,
+    }
   }
 
   println!("Upgrade done successfully");
@@ -116,15 +131,29 @@ pub async fn upgrade_command(
 fn download_package(
   url: &Url,
   client: Client,
+  version: &Version,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ErrBox>>>> {
   println!("downloading {}", url);
   let url = url.clone();
+  let version = version.clone();
   let fut = async move {
-    match fetch_once(client.clone(), &url, None).await? {
-      FetchOnceResult::Code(source, _) => Ok(source),
-      FetchOnceResult::NotModified => unreachable!(),
-      FetchOnceResult::Redirect(_url, _) => {
-        download_package(&_url, client).await
+    match fetch_once(client.clone(), &url, None).await {
+      Ok(result) => {
+        println!(
+          "Version has been found\nDeno is upgrading to version {}",
+          &version
+        );
+        match result {
+          FetchOnceResult::Code(source, _) => Ok(source),
+          FetchOnceResult::NotModified => unreachable!(),
+          FetchOnceResult::Redirect(_url, _) => {
+            download_package(&_url, client, &version).await
+          }
+        }
+      }
+      Err(_) => {
+        println!("Version has not been found, aborting");
+        std::process::exit(1)
       }
     }
   };
@@ -136,7 +165,7 @@ fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
     "https://github.com/denoland/deno/releases/download/v{}/{}",
     version, ARCHIVE_NAME
   );
-  Ok(Url::parse(&s)?)
+  Url::parse(&s).map_err(ErrBox::from)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
@@ -145,10 +174,10 @@ fn find_version(text: &str) -> Result<String, ErrBox> {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
   }
-  Err(OpError::other("Cannot read latest tag version".to_string()).into())
+  Err(ErrBox::new("NotFound", "Cannot read latest tag version"))
 }
 
-fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
+fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
@@ -192,9 +221,9 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
           }",
         )
         .arg("-Path")
-        .arg(&archive_path)
+        .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
-        .arg(&temp_dir)
+        .arg(format!("'{}'", &temp_dir.to_str().unwrap()))
         .spawn()?
         .wait()?
     }
@@ -214,7 +243,7 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
   Ok(exe_path)
 }
 
-fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
+fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
   if cfg!(windows) {
     // On windows you cannot replace the currently running executable.
     // so first we rename it to deno.old.exe

@@ -5,7 +5,7 @@ const [errors, program] = await Deno.compile(
   },
   {
     lib: ["dom", "esnext"],
-  }
+  },
 );
 
 console.log(errors);

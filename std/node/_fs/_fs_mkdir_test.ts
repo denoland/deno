@@ -1,14 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { assert } from "../../testing/asserts.ts";
 import { mkdir, mkdirSync } from "./_fs_mkdir.ts";
 import { existsSync } from "./_fs_exists.ts";
 
-const { test } = Deno;
-
 const tmpDir = "./tmpdir";
 
-test({
+Deno.test({
   name: "[node/fs] mkdir",
   fn: async () => {
     const result = await new Promise((resolve) => {
@@ -22,7 +19,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[node/fs] mkdirSync",
   fn: () => {
     mkdirSync(tmpDir);

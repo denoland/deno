@@ -1,11 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-mod dispatch_json;
-mod dispatch_minimal;
 
-pub use dispatch_json::json_op;
-pub use dispatch_json::JsonOp;
-pub use dispatch_json::JsonResult;
-pub use dispatch_minimal::minimal_op;
+mod dispatch_minimal;
 pub use dispatch_minimal::MinimalOp;
 
 pub mod compiler;
@@ -13,6 +8,7 @@ pub mod errors;
 pub mod fetch;
 pub mod fs;
 pub mod fs_events;
+pub mod idna;
 pub mod io;
 pub mod net;
 #[cfg(unix)]
@@ -31,4 +27,5 @@ pub mod timers;
 pub mod tls;
 pub mod tty;
 pub mod web_worker;
+pub mod websocket;
 pub mod worker_host;

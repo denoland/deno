@@ -13,16 +13,16 @@ use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::ErrBox;
 use crate::JSError;
-use crate::ResourceTable;
-use crate::ZeroCopyBuf;
-use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
+use std::any::Any;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
+use std::ffi::c_void;
 use std::mem::forget;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -33,7 +33,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Buf)>>>;
+type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Box<[u8]>)>>>;
 
 /// Stores a script used to initialize a Isolate
 pub struct Script<'a> {
@@ -71,7 +71,26 @@ pub enum StartupData<'a> {
   None,
 }
 
+impl StartupData<'_> {
+  fn into_options(self) -> (Option<OwnedScript>, Option<Snapshot>) {
+    match self {
+      Self::Script(script) => (Some(script.into()), None),
+      Self::Snapshot(snapshot) => (None, Some(snapshot)),
+      Self::None => (None, None),
+    }
+  }
+}
+
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
+
+pub type GetErrorClassFn = dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+
+/// Objects that need to live as long as the isolate
+#[derive(Default)]
+struct IsolateAllocations {
+  near_heap_limit_callback_data:
+    Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
+}
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
@@ -89,32 +108,24 @@ pub struct CoreIsolate {
   has_snapshotted: bool,
   needs_init: bool,
   startup_script: Option<OwnedScript>,
+  allocations: IsolateAllocations,
 }
 
 /// Internal state for CoreIsolate which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct CoreIsolateState {
-  pub resource_table: Rc<RefCell<ResourceTable>>,
-  pub global_context: v8::Global<v8::Context>,
-  pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
-  pub(crate) js_recv_cb: v8::Global<v8::Function>,
-  pub(crate) js_macrotask_cb: v8::Global<v8::Function>,
+  pub global_context: Option<v8::Global<v8::Context>>,
+  pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
+  pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
   pub(crate) shared: SharedQueue,
-  pending_ops: FuturesUnordered<PendingOpFuture>,
-  pending_unref_ops: FuturesUnordered<PendingOpFuture>,
-  have_unpolled_ops: bool,
-  pub op_registry: OpRegistry,
+  pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) have_unpolled_ops: Cell<bool>,
+  pub(crate) op_router: Rc<dyn OpRouter>,
   waker: AtomicWaker,
-}
-
-// TODO(ry) The trait v8::InIsolate is superfluous. HandleScope::new should just
-// take &mut v8::Isolate.
-impl v8::InIsolate for CoreIsolate {
-  fn isolate(&mut self) -> &mut v8::Isolate {
-    self.v8_isolate.as_mut().unwrap()
-  }
 }
 
 impl Deref for CoreIsolate {
@@ -163,48 +174,106 @@ pub unsafe fn v8_init() {
   // See https://github.com/denoland/deno/issues/2544
   let argv = vec![
     "".to_string(),
+    "--wasm-test-streaming".to_string(),
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
+    "--experimental-wasm-bigint".to_string(),
   ];
   v8::V8::set_flags_from_command_line(argv);
+}
+
+/// Minimum and maximum bytes of heap used in an isolate
+pub struct HeapLimits {
+  /// By default V8 starts with a small heap and dynamically grows it to match
+  /// the set of live objects. This may lead to ineffective garbage collections
+  /// at startup if the live set is large. Setting the initial heap size avoids
+  /// such garbage collections. Note that this does not affect young generation
+  /// garbage collections.
+  pub initial: usize,
+  /// When the heap size approaches `max`, V8 will perform series of
+  /// garbage collections and invoke the
+  /// [NearHeapLimitCallback](TODO).
+  /// If the garbage collections do not help and the callback does not
+  /// increase the limit, then V8 will crash with V8::FatalProcessOutOfMemory.
+  pub max: usize,
+}
+
+pub(crate) struct IsolateOptions {
+  op_router: Rc<dyn OpRouter>,
+  startup_script: Option<OwnedScript>,
+  startup_snapshot: Option<Snapshot>,
+  will_snapshot: bool,
+  heap_limits: Option<HeapLimits>,
 }
 
 impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
+  pub fn new(
+    op_router: Rc<dyn OpRouter>,
+    startup_data: StartupData,
+    will_snapshot: bool,
+  ) -> Self {
+    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let options = IsolateOptions {
+      op_router,
+      startup_script,
+      startup_snapshot,
+      will_snapshot,
+      heap_limits: None,
+    };
+
+    Self::from_options(options)
+  }
+
+  /// This is useful for controlling memory usage of scripts.
+  ///
+  /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
+  ///
+  /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
+  /// to prevent v8 from crashing when reaching the upper limit.
+  pub fn with_heap_limits(
+    op_router: Rc<dyn OpRouter>,
+    startup_data: StartupData,
+    heap_limits: HeapLimits,
+  ) -> Self {
+    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let options = IsolateOptions {
+      op_router,
+      startup_script,
+      startup_snapshot,
+      will_snapshot: false,
+      heap_limits: Some(heap_limits),
+    };
+
+    Self::from_options(options)
+  }
+
+  fn from_options(options: IsolateOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
     });
 
-    let (startup_script, startup_snapshot) = match startup_data {
-      StartupData::Script(script) => (Some(script.into()), None),
-      StartupData::Snapshot(snapshot) => (None, Some(snapshot)),
-      StartupData::None => (None, None),
-    };
-
-    let mut global_context = v8::Global::<v8::Context>::new();
-    let (mut isolate, maybe_snapshot_creator) = if will_snapshot {
+    let global_context;
+    let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(startup_snapshot.is_none());
+      assert!(options.startup_snapshot.is_none());
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = CoreIsolate::setup_isolate(isolate);
-
-      let mut hs = v8::HandleScope::new(&mut isolate);
-      let scope = hs.enter();
-
-      let context = bindings::initialize_context(scope);
-      global_context.set(scope, context);
-      creator.set_default_context(context);
-
+      {
+        let scope = &mut v8::HandleScope::new(&mut isolate);
+        let context = bindings::initialize_context(scope);
+        global_context = v8::Global::new(scope, context);
+        creator.set_default_context(context);
+      }
       (isolate, Some(creator))
     } else {
       let mut params = v8::Isolate::create_params()
         .external_references(&**bindings::EXTERNAL_REFERENCES);
-      let snapshot_loaded = if let Some(snapshot) = startup_snapshot {
+      let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
@@ -215,37 +284,38 @@ impl CoreIsolate {
         false
       };
 
+      if let Some(heap_limits) = options.heap_limits {
+        params = params.heap_limits(heap_limits.initial, heap_limits.max)
+      }
+
       let isolate = v8::Isolate::new(params);
       let mut isolate = CoreIsolate::setup_isolate(isolate);
-
-      let mut hs = v8::HandleScope::new(&mut isolate);
-      let scope = hs.enter();
-
-      let context = if snapshot_loaded {
-        v8::Context::new(scope)
-      } else {
-        // If no snapshot is provided, we initialize the context with empty
-        // main source code and source maps.
-        bindings::initialize_context(scope)
-      };
-      global_context.set(scope, context);
-
+      {
+        let scope = &mut v8::HandleScope::new(&mut isolate);
+        let context = if snapshot_loaded {
+          v8::Context::new(scope)
+        } else {
+          // If no snapshot is provided, we initialize the context with empty
+          // main source code and source maps.
+          bindings::initialize_context(scope)
+        };
+        global_context = v8::Global::new(scope, context);
+      }
       (isolate, None)
     };
 
     isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
-      global_context,
-      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
+      global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
-      shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
-      js_recv_cb: v8::Global::<v8::Function>::new(),
-      js_macrotask_cb: v8::Global::<v8::Function>::new(),
+      shared_ab: None,
+      js_recv_cb: None,
+      js_macrotask_cb: None,
       js_error_create_fn: Box::new(JSError::create),
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
-      have_unpolled_ops: false,
-      op_registry: OpRegistry::new(),
+      have_unpolled_ops: Cell::new(false),
+      op_router: options.op_router,
       waker: AtomicWaker::new(),
     })));
 
@@ -254,7 +324,8 @@ impl CoreIsolate {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       needs_init: true,
-      startup_script,
+      startup_script: options.startup_script,
+      allocations: IsolateAllocations::default(),
     }
   }
 
@@ -296,11 +367,10 @@ impl CoreIsolate {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
 
-    let mut hs = v8::HandleScope::new(self.v8_isolate.as_mut().unwrap());
-    let scope = hs.enter();
-    let context = state.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::HandleScope::with_context(
+      self.v8_isolate.as_mut().unwrap(),
+      state.global_context.as_ref().unwrap(),
+    );
 
     drop(state);
 
@@ -308,24 +378,22 @@ impl CoreIsolate {
     let name = v8::String::new(scope, js_filename).unwrap();
     let origin = bindings::script_origin(scope, name);
 
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let mut script =
-      match v8::Script::compile(scope, context, source, Some(&origin)) {
-        Some(script) => script,
-        None => {
-          let exception = tc.exception(scope).unwrap();
-          return exception_to_err_result(scope, exception);
-        }
-      };
+    let script = match v8::Script::compile(tc_scope, source, Some(&origin)) {
+      Some(script) => script,
+      None => {
+        let exception = tc_scope.exception().unwrap();
+        return exception_to_err_result(tc_scope, exception);
+      }
+    };
 
-    match script.run(scope, context) {
+    match script.run(tc_scope) {
       Some(_) => Ok(()),
       None => {
-        assert!(tc.has_caught());
-        let exception = tc.exception(scope).unwrap();
-        exception_to_err_result(scope, exception)
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        exception_to_err_result(tc_scope, exception)
       }
     }
   }
@@ -341,14 +409,8 @@ impl CoreIsolate {
     let state = Self::state(self);
 
     // Note: create_blob() method must not be called from within a HandleScope.
-    // The HandleScope created here is exited at the end of the block.
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
-    {
-      let v8_isolate = self.v8_isolate.as_mut().unwrap();
-      let mut hs = v8::HandleScope::new(v8_isolate);
-      let scope = hs.enter();
-      state.borrow_mut().global_context.reset(scope);
-    }
+    state.borrow_mut().global_context.take();
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -359,19 +421,59 @@ impl CoreIsolate {
     snapshot
   }
 
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
+  /// Registers a callback on the isolate when the memory limits are approached.
+  /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
-  /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  /// Calls the closure with the current heap limit and the initial heap limit.
+  /// The return value of the closure is set as the new limit.
+  pub fn add_near_heap_limit_callback<C>(&mut self, cb: C)
   where
-    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
+    C: FnMut(usize, usize) -> usize + 'static,
   {
-    let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-    state.op_registry.register(name, op)
+    let boxed_cb = Box::new(RefCell::new(cb));
+    let data = boxed_cb.as_ptr() as *mut c_void;
+
+    let prev = self
+      .allocations
+      .near_heap_limit_callback_data
+      .replace((boxed_cb, near_heap_limit_callback::<C>));
+    if let Some((_, prev_cb)) = prev {
+      self
+        .v8_isolate
+        .as_mut()
+        .unwrap()
+        .remove_near_heap_limit_callback(prev_cb, 0);
+    }
+
+    self
+      .v8_isolate
+      .as_mut()
+      .unwrap()
+      .add_near_heap_limit_callback(near_heap_limit_callback::<C>, data);
   }
+
+  pub fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
+    if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data.take()
+    {
+      self
+        .v8_isolate
+        .as_mut()
+        .unwrap()
+        .remove_near_heap_limit_callback(cb, heap_limit);
+    }
+  }
+}
+
+extern "C" fn near_heap_limit_callback<F>(
+  data: *mut c_void,
+  current_heap_limit: usize,
+  initial_heap_limit: usize,
+) -> usize
+where
+  F: FnMut(usize, usize) -> usize,
+{
+  let callback = unsafe { &mut *(data as *mut F) };
+  callback(current_heap_limit, initial_heap_limit)
 }
 
 impl Future for CoreIsolate {
@@ -387,23 +489,19 @@ impl Future for CoreIsolate {
       state.waker.register(cx.waker());
     }
 
-    let mut hs = v8::HandleScope::new(core_isolate);
-    let scope = hs.enter();
-    let context = {
-      let state = state_rc.borrow();
-      state.global_context.get(scope).unwrap()
-    };
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::HandleScope::with_context(
+      &mut **core_isolate,
+      state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
     check_promise_exceptions(scope)?;
 
-    let mut overflow_response: Option<(OpId, Buf)> = None;
+    let mut overflow_response: Option<(OpId, Box<[u8]>)> = None;
 
     loop {
       let mut state = state_rc.borrow_mut();
       // Now handle actual ops.
-      state.have_unpolled_ops = false;
+      state.have_unpolled_ops.set(false);
 
       let pending_r = state.pending_ops.poll_next_unpin(cx);
       match pending_r {
@@ -468,7 +566,7 @@ impl Future for CoreIsolate {
     if state.pending_ops.is_empty() {
       Poll::Ready(Ok(()))
     } else {
-      if state.have_unpolled_ops {
+      if state.have_unpolled_ops.get() {
         state.waker.wake();
       }
       Poll::Pending
@@ -477,18 +575,6 @@ impl Future for CoreIsolate {
 }
 
 impl CoreIsolateState {
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
-  ///
-  /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
-  where
-    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
-  {
-    self.op_registry.register(name, op)
-  }
-
   /// Allows a callback to be set whenever a V8 exception is made. This allows
   /// the caller to wrap the JSError into an error. By default this callback
   /// is set to JSError::create.
@@ -498,112 +584,63 @@ impl CoreIsolateState {
   ) {
     self.js_error_create_fn = Box::new(f);
   }
-
-  pub fn dispatch_op<'s>(
-    &mut self,
-    scope: &mut impl v8::ToLocal<'s>,
-    op_id: OpId,
-    control_buf: &[u8],
-    zero_copy_bufs: &mut [ZeroCopyBuf],
-  ) -> Option<(OpId, Box<[u8]>)> {
-    let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
-      dispatcher(self, control_buf, zero_copy_bufs)
-    } else {
-      let message =
-        v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
-      let exception = v8::Exception::type_error(scope, message);
-      scope.isolate().throw_exception(exception);
-      return None;
-    };
-
-    debug_assert_eq!(self.shared.size(), 0);
-    match op {
-      Op::Sync(buf) => {
-        // For sync messages, we always return the response via Deno.core.send's
-        // return value. Sync messages ignore the op_id.
-        let op_id = 0;
-        Some((op_id, buf))
-      }
-      Op::Async(fut) => {
-        let fut2 = fut.map(move |buf| (op_id, buf));
-        self.pending_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops = true;
-        None
-      }
-      Op::AsyncUnref(fut) => {
-        let fut2 = fut.map(move |buf| (op_id, buf));
-        self.pending_unref_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops = true;
-        None
-      }
-    }
-  }
 }
 
 fn async_op_response<'s>(
-  scope: &mut impl v8::ToLocal<'s>,
+  scope: &mut v8::HandleScope<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
 ) -> Result<(), ErrBox> {
-  let context = scope.get_current_context().unwrap();
+  let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let state = state_rc.borrow_mut();
-
-  let js_recv_cb = state
+  let js_recv_cb = CoreIsolate::state(scope)
+    .borrow()
     .js_recv_cb
-    .get(scope)
+    .as_ref()
+    .map(|cb| v8::Local::new(scope, cb))
     .expect("Deno.core.recv has not been called.");
-  drop(state);
 
-  // TODO(piscisaureus): properly integrate TryCatch in the scope chain.
-  let mut try_catch = v8::TryCatch::new(scope);
-  let tc = try_catch.enter();
+  let tc_scope = &mut v8::TryCatch::new(scope);
 
   match maybe_buf {
     Some((op_id, buf)) => {
       let op_id: v8::Local<v8::Value> =
-        v8::Integer::new(scope, op_id as i32).into();
+        v8::Integer::new(tc_scope, op_id as i32).into();
       let ui8: v8::Local<v8::Value> =
-        bindings::boxed_slice_to_uint8array(scope, buf).into();
-      js_recv_cb.call(scope, context, global, &[op_id, ui8])
+        boxed_slice_to_uint8array(tc_scope, buf).into();
+      js_recv_cb.call(tc_scope, global, &[op_id, ui8])
     }
-    None => js_recv_cb.call(scope, context, global, &[]),
+    None => js_recv_cb.call(tc_scope, global, &[]),
   };
 
-  match tc.exception(scope) {
+  match tc_scope.exception() {
     None => Ok(()),
-    Some(exception) => exception_to_err_result(scope, exception),
+    Some(exception) => exception_to_err_result(tc_scope, exception),
   }
 }
 
-fn drain_macrotasks<'s>(
-  scope: &mut impl v8::ToLocal<'s>,
-) -> Result<(), ErrBox> {
-  let context = scope.get_current_context().unwrap();
+fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
+  let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
 
-  let js_macrotask_cb = {
-    let state_rc = CoreIsolate::state(scope.isolate());
-    let state = state_rc.borrow_mut();
-    state.js_macrotask_cb.get(scope)
+  let js_macrotask_cb = match CoreIsolate::state(scope)
+    .borrow_mut()
+    .js_macrotask_cb
+    .as_ref()
+  {
+    Some(cb) => v8::Local::new(scope, cb),
+    None => return Ok(()),
   };
-  if js_macrotask_cb.is_none() {
-    return Ok(());
-  }
-  let js_macrotask_cb = js_macrotask_cb.unwrap();
 
   // Repeatedly invoke macrotask callback until it returns true (done),
   // such that ready microtasks would be automatically run before
   // next macrotask is processed.
+  let tc_scope = &mut v8::TryCatch::new(scope);
+
   loop {
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
+    let is_done = js_macrotask_cb.call(tc_scope, global, &[]);
 
-    let is_done = js_macrotask_cb.call(scope, context, global, &[]);
-
-    if let Some(exception) = tc.exception(scope) {
-      return exception_to_err_result(scope, exception);
+    if let Some(exception) = tc_scope.exception() {
+      return exception_to_err_result(tc_scope, exception);
     }
 
     let is_done = is_done.unwrap();
@@ -616,15 +653,13 @@ fn drain_macrotasks<'s>(
 }
 
 pub(crate) fn exception_to_err_result<'s, T>(
-  scope: &mut impl v8::ToLocal<'s>,
+  scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
 ) -> Result<T, ErrBox> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
-  let is_terminating_exception = scope
-    .isolate()
-    .thread_safe_handle()
-    .is_execution_terminating();
+  let is_terminating_exception =
+    scope.thread_safe_handle().is_execution_terminating();
   let mut exception = exception;
 
   if is_terminating_exception {
@@ -632,10 +667,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
     // exception can be created..
     // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
     // also be implemented on `struct Isolate`.
-    scope
-      .isolate()
-      .thread_safe_handle()
-      .cancel_terminate_execution();
+    scope.thread_safe_handle().cancel_terminate_execution();
 
     // Maybe make a new exception object.
     if exception.is_null_or_undefined() {
@@ -646,7 +678,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
   let js_error = JSError::from_v8_exception(scope, exception);
 
-  let state_rc = CoreIsolate::state(scope.isolate());
+  let state_rc = CoreIsolate::state(scope);
   let state = state_rc.borrow();
   let js_error = (state.js_error_create_fn)(js_error);
 
@@ -654,22 +686,22 @@ pub(crate) fn exception_to_err_result<'s, T>(
     // Re-enable exception termination.
     // TODO(piscisaureus): in rusty_v8, `terminate_execution()` should also
     // be implemented on `struct Isolate`.
-    scope.isolate().thread_safe_handle().terminate_execution();
+    scope.thread_safe_handle().terminate_execution();
   }
 
   Err(js_error)
 }
 
 fn check_promise_exceptions<'s>(
-  scope: &mut impl v8::ToLocal<'s>,
+  scope: &mut v8::HandleScope<'s>,
 ) -> Result<(), ErrBox> {
-  let state_rc = CoreIsolate::state(scope.isolate());
+  let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
 
   if let Some(&key) = state.pending_promise_exceptions.keys().next() {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     drop(state);
-    let exception = handle.get(scope).expect("empty error handle");
+    let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception)
   } else {
     Ok(())
@@ -683,11 +715,28 @@ pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
   r.unwrap()
 }
 
+fn boxed_slice_to_uint8array<'sc>(
+  scope: &mut v8::HandleScope<'sc>,
+  buf: Box<[u8]>,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  assert!(!buf.is_empty());
+  let buf_len = buf.len();
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+  v8::Uint8Array::new(scope, ab, 0, buf_len)
+    .expect("Failed to create UintArray8")
+}
+
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::BasicState;
+  use crate::BufVec;
   use futures::future::lazy;
+  use futures::FutureExt;
   use std::ops::FnOnce;
+  use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
 
@@ -715,7 +764,7 @@ pub mod tests {
     )
   }
 
-  pub enum Mode {
+  enum Mode {
     Async,
     AsyncUnref,
     AsyncZeroCopy(u8),
@@ -725,27 +774,29 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
-    let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let dispatch_count_ = dispatch_count.clone();
+  struct TestOpRouter {
+    mode: Mode,
+    dispatch_count: Arc<AtomicUsize>,
+  }
 
-    let mut isolate = CoreIsolate::new(StartupData::None, false);
-
-    let dispatcher = move |_state: &mut CoreIsolateState,
-                           control: &[u8],
-                           zero_copy: &mut [ZeroCopyBuf]|
-          -> Op {
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      match mode {
+  impl OpRouter for TestOpRouter {
+    fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+      if op_id != 1 {
+        return Op::NotFound;
+      }
+      self.dispatch_count.fetch_add(1, Ordering::Relaxed);
+      match self.mode {
         Mode::Async => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
           let buf = vec![43u8].into_boxed_slice();
           Op::Async(futures::future::ready(buf).boxed())
         }
         Mode::AsyncUnref => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
           let fut = async {
             // This future never finish.
             futures::future::pending::<()>().await;
@@ -754,10 +805,8 @@ pub mod tests {
           Op::AsyncUnref(fut.boxed())
         }
         Mode::AsyncZeroCopy(count) => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 24);
-          assert_eq!(zero_copy.len(), count as usize);
-          zero_copy.iter().enumerate().for_each(|(idx, buf)| {
+          assert_eq!(bufs.len(), count as usize);
+          bufs.iter().enumerate().for_each(|(idx, buf)| {
             assert_eq!(buf.len(), 1);
             assert_eq!(idx, buf[0] as usize);
           });
@@ -766,13 +815,15 @@ pub mod tests {
           Op::Async(futures::future::ready(buf).boxed())
         }
         Mode::OverflowReqSync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
           Op::Sync(buf)
         }
         Mode::OverflowResSync => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
           let mut vec = Vec::<u8>::new();
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 99;
@@ -780,13 +831,15 @@ pub mod tests {
           Op::Sync(buf)
         }
         Mode::OverflowReqAsync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
           Op::Async(futures::future::ready(buf).boxed())
         }
         Mode::OverflowResAsync => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(bufs.len(), 1);
+          assert_eq!(bufs[0].len(), 1);
+          assert_eq!(bufs[0][0], 42);
           let mut vec = Vec::<u8>::new();
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 4;
@@ -794,9 +847,16 @@ pub mod tests {
           Op::Async(futures::future::ready(buf).boxed())
         }
       }
-    };
+    }
+  }
 
-    isolate.register_op("test", dispatcher);
+  fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
+    let dispatch_count = Arc::new(AtomicUsize::new(0));
+    let test_state = Rc::new(TestOpRouter {
+      mode,
+      dispatch_count: dispatch_count.clone(),
+    });
+    let mut isolate = CoreIsolate::new(test_state, StartupData::None, false);
 
     js_check(isolate.execute(
       "setup.js",
@@ -835,37 +895,38 @@ pub mod tests {
     js_check(isolate.execute(
       "filename.js",
       r#"
-        let control = new Uint8Array([24]);
-        Deno.core.send(1, control);
+        Deno.core.send(1);
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
-  fn test_dispatch_one_zero_copy_buf() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(1));
-    js_check(isolate.execute(
-      "filename.js",
-      r#"
-        let control = new Uint8Array([24]);
-        let zero_copy = new Uint8Array([0]);
-        Deno.core.send(1, control, zero_copy);
-        "#,
-    ));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-  }
-
-  #[test]
-  fn test_dispatch_two_zero_copy_bufs() {
+  fn test_dispatch_stack_zero_copy_bufs() {
     let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
     js_check(isolate.execute(
       "filename.js",
       r#"
-        let control = new Uint8Array([24]);
         let zero_copy_a = new Uint8Array([0]);
         let zero_copy_b = new Uint8Array([1]);
-        Deno.core.send(1, control, zero_copy_a, zero_copy_b);
+        Deno.core.send(1, zero_copy_a, zero_copy_b);
+        "#,
+    ));
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+  }
+
+  #[test]
+  fn test_dispatch_heap_zero_copy_bufs() {
+    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(5));
+    js_check(isolate.execute(
+      "filename.js",
+      r#"
+        let zero_copy_a = new Uint8Array([0]);
+        let zero_copy_b = new Uint8Array([1]);
+        let zero_copy_c = new Uint8Array([2]);
+        let zero_copy_d = new Uint8Array([3]);
+        let zero_copy_e = new Uint8Array([4]);
+        Deno.core.send(1, zero_copy_a, zero_copy_b, zero_copy_c, zero_copy_d, zero_copy_e);
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
@@ -896,10 +957,7 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       js_check(isolate.execute(
         "check2.js",
@@ -910,17 +968,11 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
     });
   }
 
@@ -942,10 +994,7 @@ pub mod tests {
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       // The above op never finish, but isolate can finish
       // because the op is an unreffed async op.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
     })
   }
 
@@ -1072,10 +1121,7 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
   }
@@ -1148,7 +1194,7 @@ pub mod tests {
         r#"
           let thrown;
           try {
-            Deno.core.dispatch(100, []);
+            Deno.core.dispatch(100);
           } catch (e) {
             thrown = e;
           }
@@ -1174,7 +1220,8 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut isolate = CoreIsolate::new(StartupData::None, false);
+    let mut isolate =
+      CoreIsolate::new(BasicState::new(), StartupData::None, false);
     let src = "hocuspocus(";
     let r = isolate.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1199,27 +1246,123 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      let mut isolate =
+        CoreIsolate::new(BasicState::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       isolate.snapshot()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    let mut isolate2 = CoreIsolate::new(BasicState::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      let mut isolate =
+        CoreIsolate::new(BasicState::new(), StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*isolate.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    let mut isolate2 = CoreIsolate::new(BasicState::new(), startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+  }
+
+  #[test]
+  fn test_heap_limits() {
+    let heap_limits = HeapLimits {
+      initial: 0,
+      max: 20 * 1024, // 20 kB
+    };
+    let mut isolate = CoreIsolate::with_heap_limits(
+      BasicState::new(),
+      StartupData::None,
+      heap_limits,
+    );
+    let cb_handle = isolate.thread_safe_handle();
+
+    let callback_invoke_count = Rc::new(AtomicUsize::default());
+    let inner_invoke_count = Rc::clone(&callback_invoke_count);
+
+    isolate.add_near_heap_limit_callback(
+      move |current_limit, _initial_limit| {
+        inner_invoke_count.fetch_add(1, Ordering::SeqCst);
+        cb_handle.terminate_execution();
+        current_limit * 2
+      },
+    );
+    let err = isolate
+      .execute(
+        "script name",
+        r#"let s = ""; while(true) { s += "Hello"; }"#,
+      )
+      .expect_err("script should fail");
+    assert_eq!(
+      "Uncaught Error: execution terminated",
+      err.downcast::<JSError>().unwrap().message
+    );
+    assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
+  }
+
+  #[test]
+  fn test_heap_limit_cb_remove() {
+    let mut isolate =
+      CoreIsolate::new(BasicState::new(), StartupData::None, false);
+
+    isolate.add_near_heap_limit_callback(|current_limit, _initial_limit| {
+      current_limit * 2
+    });
+    isolate.remove_near_heap_limit_callback(20 * 1024);
+    assert!(isolate.allocations.near_heap_limit_callback_data.is_none());
+  }
+
+  #[test]
+  fn test_heap_limit_cb_multiple() {
+    let heap_limits = HeapLimits {
+      initial: 0,
+      max: 20 * 1024, // 20 kB
+    };
+    let mut isolate = CoreIsolate::with_heap_limits(
+      BasicState::new(),
+      StartupData::None,
+      heap_limits,
+    );
+    let cb_handle = isolate.thread_safe_handle();
+
+    let callback_invoke_count_first = Rc::new(AtomicUsize::default());
+    let inner_invoke_count_first = Rc::clone(&callback_invoke_count_first);
+    isolate.add_near_heap_limit_callback(
+      move |current_limit, _initial_limit| {
+        inner_invoke_count_first.fetch_add(1, Ordering::SeqCst);
+        current_limit * 2
+      },
+    );
+
+    let callback_invoke_count_second = Rc::new(AtomicUsize::default());
+    let inner_invoke_count_second = Rc::clone(&callback_invoke_count_second);
+    isolate.add_near_heap_limit_callback(
+      move |current_limit, _initial_limit| {
+        inner_invoke_count_second.fetch_add(1, Ordering::SeqCst);
+        cb_handle.terminate_execution();
+        current_limit * 2
+      },
+    );
+
+    let err = isolate
+      .execute(
+        "script name",
+        r#"let s = ""; while(true) { s += "Hello"; }"#,
+      )
+      .expect_err("script should fail");
+    assert_eq!(
+      "Uncaught Error: execution terminated",
+      err.downcast::<JSError>().unwrap().message
+    );
+    assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
+    assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
   }
 }

@@ -8,10 +8,10 @@ import {
 
 const readErrorStackPattern = new RegExp(
   `^.*
-    at unwrapResponse \\(.*dispatch_minimal\\.ts:.*\\)
-    at Object.sendAsyncMinimal \\(.*dispatch_minimal\\.ts:.*\\)
-    at async Object\\.read \\(.*io\\.ts:.*\\).*$`,
-  "ms"
+    at unwrapResponse \\(.*dispatch_minimal\\.js:.*\\)
+    at sendAsync \\(.*dispatch_minimal\\.js:.*\\)
+    at async Object\\.read \\(.*io\\.js:.*\\).*$`,
+  "ms",
 );
 
 unitTest(async function sendAsyncStackTrace(): Promise<void> {
@@ -25,13 +25,13 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
   }
 });
 
-/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Deno {
-    var core: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    var core: any; // eslint-disable-line no-var
   }
 }
-/* eslint-enable */
 
 unitTest(function malformedMinimalControlBuffer(): void {
   const readOpId = Deno.core.ops()["op_read"];
@@ -40,10 +40,10 @@ unitTest(function malformedMinimalControlBuffer(): void {
   const buf32 = new Int32Array(
     header.buffer,
     header.byteOffset,
-    header.byteLength / 4
+    header.byteLength / 4,
   );
   const arg = buf32[1];
-  const message = new TextDecoder().decode(res.slice(12)).trim();
+  const codeAndMessage = new TextDecoder().decode(res.slice(12)).trim();
   assert(arg < 0);
-  assertEquals(message, "Unparsable control buffer");
+  assertEquals(codeAndMessage, "TypeErrorUnparsable control buffer");
 });

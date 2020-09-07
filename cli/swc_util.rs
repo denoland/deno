@@ -1,33 +1,66 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::doc::Location;
+
 use crate::msg::MediaType;
-use crate::swc_common;
-use crate::swc_common::comments::CommentKind;
-use crate::swc_common::comments::Comments;
-use crate::swc_common::errors::Diagnostic;
-use crate::swc_common::errors::DiagnosticBuilder;
-use crate::swc_common::errors::Emitter;
-use crate::swc_common::errors::Handler;
-use crate::swc_common::errors::HandlerFlags;
-use crate::swc_common::FileName;
-use crate::swc_common::Globals;
-use crate::swc_common::SourceMap;
-use crate::swc_common::Span;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_parser::lexer::Lexer;
-use crate::swc_ecma_parser::EsConfig;
-use crate::swc_ecma_parser::JscTarget;
-use crate::swc_ecma_parser::Parser;
-use crate::swc_ecma_parser::Session;
-use crate::swc_ecma_parser::SourceFileInput;
-use crate::swc_ecma_parser::Syntax;
-use crate::swc_ecma_parser::TsConfig;
+use deno_core::ErrBox;
+use serde::Serialize;
 use std::error::Error;
 use std::fmt;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
-use swc_ecma_visit::Node;
-use swc_ecma_visit::Visit;
+use swc_common::chain;
+use swc_common::comments::SingleThreadedComments;
+use swc_common::errors::Diagnostic;
+use swc_common::errors::DiagnosticBuilder;
+use swc_common::errors::Emitter;
+use swc_common::errors::Handler;
+use swc_common::errors::HandlerFlags;
+use swc_common::FileName;
+use swc_common::Globals;
+use swc_common::SourceMap;
+use swc_common::Span;
+use swc_ecmascript::ast::Program;
+use swc_ecmascript::codegen::text_writer::JsWriter;
+use swc_ecmascript::codegen::Node;
+use swc_ecmascript::parser::lexer::Lexer;
+use swc_ecmascript::parser::EsConfig;
+use swc_ecmascript::parser::JscTarget;
+use swc_ecmascript::parser::Parser;
+use swc_ecmascript::parser::StringInput;
+use swc_ecmascript::parser::Syntax;
+use swc_ecmascript::parser::TsConfig;
+use swc_ecmascript::transforms::fixer;
+use swc_ecmascript::transforms::helpers;
+use swc_ecmascript::transforms::pass::Optional;
+use swc_ecmascript::transforms::proposals::decorators;
+use swc_ecmascript::transforms::react;
+use swc_ecmascript::transforms::typescript;
+use swc_ecmascript::visit::FoldWith;
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct Location {
+  pub filename: String,
+  pub line: usize,
+  pub col: usize,
+}
+
+impl Into<Location> for swc_common::Loc {
+  fn into(self) -> Location {
+    use swc_common::FileName::*;
+
+    let filename = match &self.file.name {
+      Real(path_buf) => path_buf.to_string_lossy().to_string(),
+      Custom(str_) => str_.to_string(),
+      _ => panic!("invalid filename"),
+    };
+
+    Location {
+      filename,
+      line: self.line,
+      col: self.col_display,
+    }
+  }
+}
 
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
@@ -50,6 +83,30 @@ fn get_default_ts_config() -> TsConfig {
   ts_config.dynamic_import = true;
   ts_config.decorators = true;
   ts_config
+}
+
+pub fn get_syntax_for_dts() -> Syntax {
+  let mut ts_config = TsConfig::default();
+  ts_config.dts = true;
+  Syntax::Typescript(ts_config)
+}
+
+pub fn get_syntax_for_media_type(media_type: MediaType) -> Syntax {
+  match media_type {
+    MediaType::JavaScript => Syntax::Es(get_default_es_config()),
+    MediaType::JSX => {
+      let mut config = get_default_es_config();
+      config.jsx = true;
+      Syntax::Es(config)
+    }
+    MediaType::TypeScript => Syntax::Typescript(get_default_ts_config()),
+    MediaType::TSX => {
+      let mut config = get_default_ts_config();
+      config.tsx = true;
+      Syntax::Typescript(config)
+    }
+    _ => Syntax::Es(get_default_es_config()),
+  }
 }
 
 #[derive(Clone, Debug)]
@@ -120,14 +177,14 @@ impl Emitter for SwcErrorBuffer {
 /// to `parse_module`.
 pub struct AstParser {
   pub buffered_error: SwcErrorBuffer,
-  pub source_map: Arc<SourceMap>,
+  pub source_map: Rc<SourceMap>,
   pub handler: Handler,
-  pub comments: Comments,
+  pub comments: SingleThreadedComments,
   pub globals: Globals,
 }
 
 impl AstParser {
-  pub fn new() -> Self {
+  pub fn default() -> Self {
     let buffered_error = SwcErrorBuffer::default();
 
     let handler = Handler::with_emitter_and_flags(
@@ -141,69 +198,40 @@ impl AstParser {
 
     AstParser {
       buffered_error,
-      source_map: Arc::new(SourceMap::default()),
+      source_map: Rc::new(SourceMap::default()),
       handler,
-      comments: Comments::default(),
+      comments: SingleThreadedComments::default(),
       globals: Globals::new(),
     }
   }
 
-  pub fn parse_module<F, R>(
+  pub fn parse_module(
     &self,
     file_name: &str,
     media_type: MediaType,
     source_code: &str,
-    callback: F,
-  ) -> R
-  where
-    F: FnOnce(Result<swc_ecma_ast::Module, SwcDiagnosticBuffer>) -> R,
-  {
-    swc_common::GLOBALS.set(&self.globals, || {
-      let swc_source_file = self.source_map.new_source_file(
-        FileName::Custom(file_name.to_string()),
-        source_code.to_string(),
-      );
+  ) -> Result<swc_ecmascript::ast::Module, SwcDiagnosticBuffer> {
+    let swc_source_file = self.source_map.new_source_file(
+      FileName::Custom(file_name.to_string()),
+      source_code.to_string(),
+    );
 
-      let buffered_err = self.buffered_error.clone();
-      let session = Session {
-        handler: &self.handler,
-      };
+    let buffered_err = self.buffered_error.clone();
+    let syntax = get_syntax_for_media_type(media_type);
 
-      let syntax = match media_type {
-        MediaType::JavaScript => Syntax::Es(get_default_es_config()),
-        MediaType::JSX => {
-          let mut config = get_default_es_config();
-          config.jsx = true;
-          Syntax::Es(config)
-        }
-        MediaType::TypeScript => Syntax::Typescript(get_default_ts_config()),
-        MediaType::TSX => {
-          let mut config = get_default_ts_config();
-          config.tsx = true;
-          Syntax::Typescript(config)
-        }
-        _ => Syntax::Es(get_default_es_config()),
-      };
+    let lexer = Lexer::new(
+      syntax,
+      JscTarget::Es2019,
+      StringInput::from(&*swc_source_file),
+      Some(&self.comments),
+    );
 
-      let lexer = Lexer::new(
-        session,
-        syntax,
-        JscTarget::Es2019,
-        SourceFileInput::from(&*swc_source_file),
-        Some(&self.comments),
-      );
+    let mut parser = Parser::new_from(lexer);
 
-      let mut parser = Parser::new_from(session, lexer);
-
-      let parse_result =
-        parser
-          .parse_module()
-          .map_err(move |mut err: DiagnosticBuilder| {
-            err.emit();
-            SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
-          });
-
-      callback(parse_result)
+    parser.parse_module().map_err(move |err| {
+      let mut diagnostic = err.into_diagnostic(&self.handler);
+      diagnostic.emit();
+      SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
     })
   }
 
@@ -215,458 +243,203 @@ impl AstParser {
     &self,
     span: Span,
   ) -> Vec<swc_common::comments::Comment> {
-    let maybe_comments = self.comments.take_leading_comments(span.lo());
+    self
+      .comments
+      .with_leading(span.lo(), |comments| comments.to_vec())
+  }
+}
 
-    if let Some(comments) = maybe_comments {
-      // clone the comments and put them back in map
-      let to_return = comments.clone();
-      self.comments.add_leading(span.lo(), comments);
-      to_return
-    } else {
-      vec![]
+#[derive(Debug, Clone)]
+pub struct EmitTranspileOptions {
+  /// When emitting a legacy decorator, also emit experimental decorator meta
+  /// data.  Defaults to `false`.
+  pub emit_metadata: bool,
+  /// Should the source map be inlined in the emitted code file, or provided
+  /// as a separate file.  Defaults to `true`.
+  pub inline_source_map: bool,
+  /// When transforming JSX, what value should be used for the JSX factory.
+  /// Defaults to `React.createElement`.
+  pub jsx_factory: String,
+  /// When transforming JSX, what value should be used for the JSX fragment
+  /// factory.  Defaults to `React.Fragment`.
+  pub jsx_fragment_factory: String,
+  /// Should JSX be transformed or preserved.  Defaults to `true`.
+  pub transform_jsx: bool,
+}
+
+impl Default for EmitTranspileOptions {
+  fn default() -> Self {
+    EmitTranspileOptions {
+      emit_metadata: false,
+      inline_source_map: true,
+      jsx_factory: "React.createElement".into(),
+      jsx_fragment_factory: "React.Fragment".into(),
+      transform_jsx: true,
     }
   }
 }
 
-struct DependencyVisitor {
-  dependencies: Vec<String>,
-  analyze_dynamic_imports: bool,
-}
-
-impl Visit for DependencyVisitor {
-  fn visit_import_decl(
-    &mut self,
-    import_decl: &swc_ecma_ast::ImportDecl,
-    _parent: &dyn Node,
-  ) {
-    let src_str = import_decl.src.value.to_string();
-    self.dependencies.push(src_str);
-  }
-
-  fn visit_named_export(
-    &mut self,
-    named_export: &swc_ecma_ast::NamedExport,
-    _parent: &dyn Node,
-  ) {
-    if let Some(src) = &named_export.src {
-      let src_str = src.value.to_string();
-      self.dependencies.push(src_str);
-    }
-  }
-
-  fn visit_export_all(
-    &mut self,
-    export_all: &swc_ecma_ast::ExportAll,
-    _parent: &dyn Node,
-  ) {
-    let src_str = export_all.src.value.to_string();
-    self.dependencies.push(src_str);
-  }
-
-  fn visit_call_expr(
-    &mut self,
-    call_expr: &swc_ecma_ast::CallExpr,
-    _parent: &dyn Node,
-  ) {
-    if !self.analyze_dynamic_imports {
-      return;
-    }
-
-    use swc_ecma_ast::Expr::*;
-    use swc_ecma_ast::ExprOrSuper::*;
-
-    let boxed_expr = match call_expr.callee.clone() {
-      Super(_) => return,
-      Expr(boxed) => boxed,
-    };
-
-    match &*boxed_expr {
-      Ident(ident) => {
-        if &ident.sym.to_string() != "import" {
-          return;
-        }
-      }
-      _ => return,
-    };
-
-    if let Some(arg) = call_expr.args.get(0) {
-      match &*arg.expr {
-        Lit(lit) => {
-          if let swc_ecma_ast::Lit::Str(str_) = lit {
-            let src_str = str_.value.to_string();
-            self.dependencies.push(src_str);
-          }
-        }
-        _ => return,
-      }
-    }
-  }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum DependencyKind {
-  Import,
-  DynamicImport,
-  Export,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct DependencyDescriptor {
-  span: Span,
-  specifier: String,
-  kind: DependencyKind,
-}
-
-struct NewDependencyVisitor {
-  dependencies: Vec<DependencyDescriptor>,
-}
-
-impl Visit for NewDependencyVisitor {
-  fn visit_import_decl(
-    &mut self,
-    import_decl: &swc_ecma_ast::ImportDecl,
-    _parent: &dyn Node,
-  ) {
-    let src_str = import_decl.src.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Import,
-      span: import_decl.span,
-    });
-  }
-
-  fn visit_named_export(
-    &mut self,
-    named_export: &swc_ecma_ast::NamedExport,
-    _parent: &dyn Node,
-  ) {
-    if let Some(src) = &named_export.src {
-      let src_str = src.value.to_string();
-      self.dependencies.push(DependencyDescriptor {
-        specifier: src_str,
-        kind: DependencyKind::Export,
-        span: named_export.span,
-      });
-    }
-  }
-
-  fn visit_export_all(
-    &mut self,
-    export_all: &swc_ecma_ast::ExportAll,
-    _parent: &dyn Node,
-  ) {
-    let src_str = export_all.src.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Export,
-      span: export_all.span,
-    });
-  }
-
-  fn visit_ts_import_type(
-    &mut self,
-    ts_import_type: &swc_ecma_ast::TsImportType,
-    _parent: &dyn Node,
-  ) {
-    // TODO(bartlomieju): possibly add separate DependencyKind
-    let src_str = ts_import_type.arg.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Import,
-      span: ts_import_type.arg.span,
-    });
-  }
-
-  fn visit_call_expr(
-    &mut self,
-    call_expr: &swc_ecma_ast::CallExpr,
-    parent: &dyn Node,
-  ) {
-    use swc_ecma_ast::Expr::*;
-    use swc_ecma_ast::ExprOrSuper::*;
-
-    swc_ecma_visit::visit_call_expr(self, call_expr, parent);
-    let boxed_expr = match call_expr.callee.clone() {
-      Super(_) => return,
-      Expr(boxed) => boxed,
-    };
-
-    match &*boxed_expr {
-      Ident(ident) => {
-        if &ident.sym.to_string() != "import" {
-          return;
-        }
-      }
-      _ => return,
-    };
-
-    if let Some(arg) = call_expr.args.get(0) {
-      match &*arg.expr {
-        Lit(lit) => {
-          if let swc_ecma_ast::Lit::Str(str_) = lit {
-            let src_str = str_.value.to_string();
-            self.dependencies.push(DependencyDescriptor {
-              specifier: src_str,
-              kind: DependencyKind::DynamicImport,
-              span: call_expr.span,
-            });
-          }
-        }
-        _ => return,
-      }
-    }
-  }
-}
-
-fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
-  let comments = parser.get_span_comments(span);
-
-  if comments.is_empty() {
-    return None;
-  }
-
-  // @deno-types must directly prepend import statement - hence
-  // checking last comment for span
-  let last = comments.last().unwrap();
-  let comment = last.text.trim_start();
-
-  if comment.starts_with("@deno-types") {
-    let split: Vec<String> =
-      comment.split('=').map(|s| s.to_string()).collect();
-    assert_eq!(split.len(), 2);
-    let specifier_in_quotes = split.get(1).unwrap().to_string();
-    let specifier = specifier_in_quotes
-      .trim_start_matches('\"')
-      .trim_start_matches('\'')
-      .trim_end_matches('\"')
-      .trim_end_matches('\'')
-      .to_string();
-    return Some(specifier);
-  }
-
-  None
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ImportDescriptor {
-  pub specifier: String,
-  pub deno_types: Option<String>,
-  pub location: Location,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum TsReferenceKind {
-  Lib,
-  Types,
-  Path,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct TsReferenceDescriptor {
-  pub kind: TsReferenceKind,
-  pub specifier: String,
-  pub location: Location,
-}
-
-pub fn analyze_dependencies_and_references(
+pub fn transpile(
   file_name: &str,
   media_type: MediaType,
   source_code: &str,
-  analyze_dynamic_imports: bool,
-) -> Result<
-  (Vec<ImportDescriptor>, Vec<TsReferenceDescriptor>),
-  SwcDiagnosticBuffer,
-> {
-  let parser = AstParser::new();
-  parser.parse_module(file_name, media_type, source_code, |parse_result| {
-    let module = parse_result?;
-    let mut collector = NewDependencyVisitor {
-      dependencies: vec![],
+  options: &EmitTranspileOptions,
+) -> Result<(String, Option<String>), ErrBox> {
+  let ast_parser = AstParser::default();
+  let module = ast_parser.parse_module(file_name, media_type, source_code)?;
+  let program = Program::Module(module);
+
+  let jsx_pass = react::react(
+    ast_parser.source_map.clone(),
+    Some(&ast_parser.comments),
+    react::Options {
+      pragma: options.jsx_factory.clone(),
+      pragma_frag: options.jsx_fragment_factory.clone(),
+      // this will use `Object.assign()` instead of the `_extends` helper
+      // when spreading props.
+      use_builtins: true,
+      ..Default::default()
+    },
+  );
+  let mut passes = chain!(
+    Optional::new(jsx_pass, options.transform_jsx),
+    decorators::decorators(decorators::Config {
+      legacy: true,
+      emit_metadata: options.emit_metadata
+    }),
+    typescript::strip(),
+    fixer(Some(&ast_parser.comments)),
+  );
+
+  let program = swc_common::GLOBALS.set(&Globals::new(), || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      program.fold_with(&mut passes)
+    })
+  });
+
+  let mut src_map_buf = vec![];
+  let mut buf = vec![];
+  {
+    let writer = Box::new(JsWriter::new(
+      ast_parser.source_map.clone(),
+      "\n",
+      &mut buf,
+      Some(&mut src_map_buf),
+    ));
+    let config = swc_ecmascript::codegen::Config { minify: false };
+    let mut emitter = swc_ecmascript::codegen::Emitter {
+      cfg: config,
+      comments: Some(&ast_parser.comments),
+      cm: ast_parser.source_map.clone(),
+      wr: writer,
     };
-    let module_span = module.span;
-    collector.visit_module(&module, &module);
+    program.emit_with(&mut emitter)?;
+  }
+  let mut src = String::from_utf8(buf)?;
+  let mut map: Option<String> = None;
+  {
+    let mut buf = Vec::new();
+    ast_parser
+      .source_map
+      .build_source_map_from(&mut src_map_buf, None)
+      .to_writer(&mut buf)?;
 
-    let dependency_descriptors = collector.dependencies;
-
-    // for each import check if there's relevant @deno-types directive
-    let imports = dependency_descriptors
-      .iter()
-      .filter(|desc| {
-        if analyze_dynamic_imports {
-          return true;
-        }
-
-        desc.kind != DependencyKind::DynamicImport
-      })
-      .map(|desc| {
-        let location = parser.get_span_location(desc.span);
-        if desc.kind == DependencyKind::Import {
-          let deno_types = get_deno_types(&parser, desc.span);
-          ImportDescriptor {
-            specifier: desc.specifier.to_string(),
-            deno_types,
-            location: location.into(),
-          }
-        } else {
-          ImportDescriptor {
-            specifier: desc.specifier.to_string(),
-            deno_types: None,
-            location: location.into(),
-          }
-        }
-      })
-      .collect();
-
-    // analyze comment from beginning of the file and find TS directives
-    let comments = parser
-      .comments
-      .take_leading_comments(module_span.lo())
-      .unwrap_or_else(Vec::new);
-
-    let mut references = vec![];
-    for comment in comments {
-      if comment.kind != CommentKind::Line {
-        continue;
-      }
-
-      // TODO(bartlomieju): you can do better than that...
-      let text = comment.text.to_string();
-      let (kind, specifier_in_quotes) =
-        if text.starts_with("/ <reference path=") {
-          (
-            TsReferenceKind::Path,
-            text.trim_start_matches("/ <reference path="),
-          )
-        } else if text.starts_with("/ <reference lib=") {
-          (
-            TsReferenceKind::Lib,
-            text.trim_start_matches("/ <reference lib="),
-          )
-        } else if text.starts_with("/ <reference types=") {
-          (
-            TsReferenceKind::Types,
-            text.trim_start_matches("/ <reference types="),
-          )
-        } else {
-          continue;
-        };
-      let specifier = specifier_in_quotes
-        .trim_end_matches("/>")
-        .trim_end()
-        .trim_start_matches('\"')
-        .trim_start_matches('\'')
-        .trim_end_matches('\"')
-        .trim_end_matches('\'')
-        .to_string();
-
-      let location = parser.get_span_location(comment.span);
-      references.push(TsReferenceDescriptor {
-        kind,
-        specifier,
-        location: location.into(),
-      });
+    if options.inline_source_map {
+      src.push_str("//# sourceMappingURL=data:application/json;base64,");
+      let encoded_map = base64::encode(buf);
+      src.push_str(&encoded_map);
+    } else {
+      map = Some(String::from_utf8(buf)?);
     }
-    Ok((imports, references))
-  })
+  }
+  Ok((src, map))
 }
 
-#[test]
-fn test_analyze_dependencies_and_directives() {
-  let source = r#"
-// This comment is placed to make sure that directives are parsed
-// even when they start on non-first line
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_transpile() {
+    let source = r#"
+    enum D {
+      A,
+      B,
+      C,
+    }
+    export class A {
+      private b: string;
+      protected c: number = 1;
+      e: "foo";
+      constructor (public d = D.A) {
+        const e = "foo" as const;
+        this.e = e;
+      }
+    }
+    "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TypeScript,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, maybe_map) = result;
+    assert!(code.starts_with("var D;\n(function(D) {\n"));
+    assert!(
+      code.contains("\n//# sourceMappingURL=data:application/json;base64,")
+    );
+    assert!(maybe_map.is_none());
+  }
+
+  #[test]
+  fn test_transpile_tsx() {
+    let source = r#"
+  export class A {
+    render() {
+      return <div><span></span></div>
+    }
+  }
+  "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TSX,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, _maybe_source_map) = result;
+    assert!(code.contains("React.createElement(\"div\", null"));
+  }
+
+  #[test]
+  fn test_transpile_decorators() {
+    let source = r#"
+  function enumerable(value: boolean) {
+    return function (
+      _target: any,
+      _propertyKey: string,
+      descriptor: PropertyDescriptor,
+    ) {
+      descriptor.enumerable = value;
+    };
+  }
   
-/// <reference lib="dom" />
-/// <reference types="./type_reference.d.ts" />
-/// <reference path="./type_reference/dep.ts" />
-// @deno-types="./type_definitions/foo.d.ts"
-import { foo } from "./type_definitions/foo.js";
-// @deno-types="./type_definitions/fizz.d.ts"
-import "./type_definitions/fizz.js";
-
-/// <reference path="./type_reference/dep2.ts" />
-
-import * as qat from "./type_definitions/qat.ts";
-
-console.log(foo);
-console.log(fizz);
-console.log(qat.qat);  
-"#;
-
-  let (imports, references) = analyze_dependencies_and_references(
-    "some/file.ts",
-    MediaType::TypeScript,
-    source,
-    true,
-  )
-  .expect("Failed to parse");
-
-  assert_eq!(
-    imports,
-    vec![
-      ImportDescriptor {
-        specifier: "./type_definitions/foo.js".to_string(),
-        deno_types: Some("./type_definitions/foo.d.ts".to_string()),
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 9,
-          col: 0,
-        },
-      },
-      ImportDescriptor {
-        specifier: "./type_definitions/fizz.js".to_string(),
-        deno_types: Some("./type_definitions/fizz.d.ts".to_string()),
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 11,
-          col: 0,
-        },
-      },
-      ImportDescriptor {
-        specifier: "./type_definitions/qat.ts".to_string(),
-        deno_types: None,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 15,
-          col: 0,
-        },
-      },
-    ]
-  );
-
-  // According to TS docs (https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html)
-  // directives that are not at the top of the file are ignored, so only
-  // 3 references should be captured instead of 4.
-  assert_eq!(
-    references,
-    vec![
-      TsReferenceDescriptor {
-        specifier: "dom".to_string(),
-        kind: TsReferenceKind::Lib,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 5,
-          col: 0,
-        },
-      },
-      TsReferenceDescriptor {
-        specifier: "./type_reference.d.ts".to_string(),
-        kind: TsReferenceKind::Types,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 6,
-          col: 0,
-        },
-      },
-      TsReferenceDescriptor {
-        specifier: "./type_reference/dep.ts".to_string(),
-        kind: TsReferenceKind::Path,
-        location: Location {
-          filename: "some/file.ts".to_string(),
-          line: 7,
-          col: 0,
-        },
-      },
-    ]
-  );
+  export class A {
+    @enumerable(false)
+    a() {
+      Test.value;
+    }
+  }
+  "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TypeScript,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, _maybe_source_map) = result;
+    assert!(code.contains("_applyDecoratedDescriptor("));
+  }
 }

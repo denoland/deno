@@ -13,13 +13,13 @@ Deno.test("[examples/echo_server]", async () => {
 
   let conn: Deno.Conn | undefined;
   try {
-    const processReader = new BufReader(process.stdout!);
+    const processReader = new BufReader(process.stdout);
     const message = await processReader.readLine();
 
     assertNotEquals(message, null);
     assertStrictEquals(
       decoder.decode((message as ReadLineResult).line).trim(),
-      "Listening on 0.0.0.0:8080"
+      "Listening on 0.0.0.0:8080",
     );
 
     conn = await Deno.connect({ hostname: "127.0.0.1", port: 8080 });
@@ -38,7 +38,7 @@ Deno.test("[examples/echo_server]", async () => {
     assertStrictEquals(actualResponse, expectedResponse);
   } finally {
     conn?.close();
-    process.stdout!.close();
+    process.stdout.close();
     process.close();
   }
 });

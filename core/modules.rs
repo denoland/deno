@@ -8,6 +8,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -340,10 +341,7 @@ impl ModuleNameMap {
   /// Check if a name is an alias to another module.
   pub fn is_alias(&self, name: &str) -> bool {
     let cond = self.inner.get(name);
-    match cond {
-      Some(SymbolicModule::Alias(_)) => true,
-      _ => false,
-    }
+    matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 }
 
@@ -484,20 +482,14 @@ impl Deps {
     }
   }
 
-  pub fn to_json(&self) -> String {
-    let mut children = "[".to_string();
-
-    if let Some(ref deps) = self.deps {
-      for d in deps {
-        children.push_str(&d.to_json());
-        if !d.is_last {
-          children.push_str(",");
-        }
-      }
+  pub fn to_json(&self) -> Value {
+    let children;
+    if let Some(deps) = &self.deps {
+      children = deps.iter().map(|c| c.to_json()).collect();
+    } else {
+      children = Vec::new()
     }
-    children.push_str("]");
-
-    format!("[\"{}\",{}]", self.name, children)
+    serde_json::json!([&self.name, children])
   }
 }
 
@@ -525,31 +517,12 @@ impl fmt::Display for Deps {
   }
 }
 
-#[macro_export]
-macro_rules! crate_modules {
-  () => {
-    pub const DENO_CRATE_PATH: &'static str = env!("CARGO_MANIFEST_DIR");
-  };
-}
-
-#[macro_export]
-macro_rules! include_crate_modules {
-  ( $( $x:ident ),* ) => {
-    {
-      let mut temp: HashMap<String, String> = HashMap::new();
-      $(
-        temp.insert(stringify!($x).to_string(), $x::DENO_CRATE_PATH.to_string());
-      )*
-      temp
-    }
-  };
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::es_isolate::EsIsolate;
   use crate::js_check;
+  use crate::BasicState;
   use crate::StartupData;
   use futures::future::FutureExt;
   use std::error::Error;
@@ -564,15 +537,14 @@ mod tests {
   // removed in the future.
   use crate::core_isolate::tests::run_in_task;
 
+  #[derive(Default)]
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
   }
 
   impl MockLoader {
-    fn new() -> Self {
-      Self {
-        loads: Arc::new(Mutex::new(Vec::new())),
-      }
+    fn new() -> Rc<Self> {
+      Default::default()
     }
   }
 
@@ -728,7 +700,8 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut isolate =
+      EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
     let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
     let a_id_fut = isolate.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
@@ -790,7 +763,8 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut isolate =
+      EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
@@ -863,7 +837,8 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut isolate =
+      EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
@@ -928,7 +903,7 @@ mod tests {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
       let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
       let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
       let mut recursive_load = isolate.load_module(&spec, None).boxed_local();
 
@@ -974,7 +949,7 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
       let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = isolate.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
@@ -1002,7 +977,8 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut isolate =
+      EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
@@ -1056,6 +1032,29 @@ mod tests {
     assert!(modules.deps(&specifier).is_none());
   }
 
+  #[test]
+  fn deps_to_json() {
+    fn dep(name: &str, deps: Option<Vec<Deps>>) -> Deps {
+      Deps {
+        name: name.to_string(),
+        deps,
+        prefix: "".to_string(),
+        is_last: false,
+      }
+    }
+    let deps = dep(
+      "a",
+      Some(vec![
+        dep("b", Some(vec![dep("b2", None)])),
+        dep("c", Some(vec![])),
+      ]),
+    );
+    assert_eq!(
+      serde_json::json!(["a", [["b", [["b2", []]]], ["c", []]]]),
+      deps.to_json()
+    );
+  }
+
   /* TODO(bartlomieju): reenable
   #[test]
   fn deps() {
@@ -1076,22 +1075,5 @@ mod tests {
     assert_eq!(bar_deps.deps, Some(vec![]));
   }
 
-  #[test]
-  fn test_deps_to_json() {
-    let mut modules = Modules::new();
-    modules.register(1, "foo");
-    modules.register(2, "bar");
-    modules.register(3, "baz");
-    modules.register(4, "zuh");
-    modules.add_child(1, "bar");
-    modules.add_child(1, "baz");
-    modules.add_child(3, "zuh");
-    let maybe_deps = modules.deps("foo");
-    assert!(maybe_deps.is_some());
-    assert_eq!(
-      "[\"foo\",[[\"bar\",[]],[\"baz\",[[\"zuh\",[]]]]]]",
-      maybe_deps.unwrap().to_json()
-    );
-  }
   */
 }

@@ -3,8 +3,6 @@
 import { Sponge } from "./sponge.ts";
 import { keccakf } from "./keccakf.ts";
 
-/* eslint-disable @typescript-eslint/camelcase, @typescript-eslint/class-name-casing */
-
 /** Sha3-224 hash */
 export class Sha3_224 extends Sponge {
   constructor() {

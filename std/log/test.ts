@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as log from "./mod.ts";
 import {
@@ -17,7 +16,7 @@ class TestHandler extends log.handlers.BaseHandler {
   }
 }
 
-test("defaultHandlers", async function (): Promise<void> {
+Deno.test("defaultHandlers", async function (): Promise<void> {
   const loggers: {
     [key: string]: (msg: string, ...args: unknown[]) => void;
   } = {
@@ -55,7 +54,7 @@ test("defaultHandlers", async function (): Promise<void> {
   }
 });
 
-test("getLogger", async function (): Promise<void> {
+Deno.test("getLogger", async function (): Promise<void> {
   const handler = new TestHandler("DEBUG");
 
   await log.setup({
@@ -76,7 +75,7 @@ test("getLogger", async function (): Promise<void> {
   assertEquals(logger.handlers, [handler]);
 });
 
-test("getLoggerWithName", async function (): Promise<void> {
+Deno.test("getLoggerWithName", async function (): Promise<void> {
   const fooHandler = new TestHandler("DEBUG");
 
   await log.setup({
@@ -97,7 +96,7 @@ test("getLoggerWithName", async function (): Promise<void> {
   assertEquals(logger.handlers, [fooHandler]);
 });
 
-test("getLoggerUnknown", async function (): Promise<void> {
+Deno.test("getLoggerUnknown", async function (): Promise<void> {
   await log.setup({
     handlers: {},
     loggers: {},
@@ -109,7 +108,7 @@ test("getLoggerUnknown", async function (): Promise<void> {
   assertEquals(logger.handlers, []);
 });
 
-test("getInvalidLoggerLevels", function (): void {
+Deno.test("getInvalidLoggerLevels", function (): void {
   assertThrows(() => getLevelByName("FAKE_LOG_LEVEL" as LevelName));
   assertThrows(() => getLevelName(5000));
 });

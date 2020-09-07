@@ -1,10 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { ServerRequest, Response } from "./server.ts";
-import { getCookies, delCookie, setCookie } from "./cookie.ts";
+import { getCookies, deleteCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-const { test } = Deno;
 
-test({
+Deno.test({
   name: "Cookie parser",
   fn(): void {
     const req = new ServerRequest();
@@ -32,19 +31,19 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Cookie Delete",
   fn(): void {
     const res: Response = {};
-    delCookie(res, "deno");
+    deleteCookie(res, "deno");
     assertEquals(
       res.headers?.get("Set-Cookie"),
-      "deno=; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+      "deno=; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
     );
   },
 });
 
-test({
+Deno.test({
   name: "Cookie Set",
   fn(): void {
     const res: Response = {};
@@ -80,7 +79,7 @@ test({
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
-      "Space=Cat; Secure; HttpOnly; Max-Age=2"
+      "Space=Cat; Secure; HttpOnly; Max-Age=2",
     );
 
     let error = false;
@@ -109,7 +108,7 @@ test({
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
-      "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land"
+      "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land",
     );
 
     res.headers = new Headers();
@@ -125,7 +124,7 @@ test({
     assertEquals(
       res.headers.get("Set-Cookie"),
       "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land; " +
-        "SameSite=Strict"
+        "SameSite=Strict",
     );
 
     res.headers = new Headers();
@@ -140,7 +139,7 @@ test({
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
-      "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land; SameSite=Lax"
+      "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land; SameSite=Lax",
     );
 
     res.headers = new Headers();
@@ -155,7 +154,7 @@ test({
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
-      "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land; Path=/"
+      "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land; Path=/",
     );
 
     res.headers = new Headers();
@@ -172,7 +171,7 @@ test({
     assertEquals(
       res.headers.get("Set-Cookie"),
       "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land; Path=/; " +
-        "unparsed=keyvalue; batman=Bruce"
+        "unparsed=keyvalue; batman=Bruce",
     );
 
     res.headers = new Headers();
@@ -189,7 +188,7 @@ test({
     assertEquals(
       res.headers.get("Set-Cookie"),
       "Space=Cat; Secure; HttpOnly; Max-Age=2; Domain=deno.land; Path=/; " +
-        "Expires=Fri, 07 Jan 1983 15:32:00 GMT"
+        "Expires=Fri, 07 Jan 1983 15:32:00 GMT",
     );
 
     res.headers = new Headers();
@@ -204,7 +203,7 @@ test({
     });
     assertEquals(
       res.headers.get("Set-Cookie"),
-      "__Host-Kitty=Meow; Secure; Path=/"
+      "__Host-Kitty=Meow; Secure; Path=/",
     );
 
     res.headers = new Headers();
@@ -212,7 +211,7 @@ test({
     setCookie(res, { name: "cookie-2", value: "value-2", maxAge: 3600 });
     assertEquals(
       res.headers.get("Set-Cookie"),
-      "cookie-1=value-1; Secure, cookie-2=value-2; Max-Age=3600"
+      "cookie-1=value-1; Secure, cookie-2=value-2; Max-Age=3600",
     );
 
     res.headers = new Headers();

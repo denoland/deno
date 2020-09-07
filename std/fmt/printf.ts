@@ -153,8 +153,9 @@ class Printf {
           break;
         case State.POSITIONAL: // either a verb or * only verb for now, TODO
           if (c === "*") {
-            const worp =
-              this.flags.precision === -1 ? WorP.WIDTH : WorP.PRECISION;
+            const worp = this.flags.precision === -1
+              ? WorP.WIDTH
+              : WorP.PRECISION;
             this.handleWidthOrPrecisionRef(worp);
             this.state = State.PERCENT;
             break;
@@ -221,7 +222,7 @@ class Printf {
               flags.width += val;
           } // switch c
           break;
-        case State.PRECISION:
+        case State.PRECISION: {
           if (c === "*") {
             this.handleWidthOrPrecisionRef(WorP.PRECISION);
             break;
@@ -236,6 +237,7 @@ class Printf {
           flags.precision *= 10;
           flags.precision += val;
           break;
+        }
         default:
           throw new Error("can't be here. bug.");
       } // switch state
@@ -317,53 +319,37 @@ class Printf {
     switch (this.verb) {
       case "t":
         return this.pad(arg.toString());
-        break;
       case "b":
         return this.fmtNumber(arg as number, 2);
-        break;
       case "c":
         return this.fmtNumberCodePoint(arg as number);
-        break;
       case "d":
         return this.fmtNumber(arg as number, 10);
-        break;
       case "o":
         return this.fmtNumber(arg as number, 8);
-        break;
       case "x":
         return this.fmtHex(arg);
-        break;
       case "X":
         return this.fmtHex(arg, true);
-        break;
       case "e":
         return this.fmtFloatE(arg as number);
-        break;
       case "E":
         return this.fmtFloatE(arg as number, true);
-        break;
       case "f":
       case "F":
         return this.fmtFloatF(arg as number);
-        break;
       case "g":
         return this.fmtFloatG(arg as number);
-        break;
       case "G":
         return this.fmtFloatG(arg as number, true);
-        break;
       case "s":
         return this.fmtString(arg as string);
-        break;
       case "T":
         return this.fmtString(typeof arg);
-        break;
       case "v":
         return this.fmtV(arg);
-        break;
       case "j":
         return this.fmtJ(arg);
-        break;
       default:
         return `%!(BAD VERB '${this.verb}')`;
     }
@@ -502,8 +488,9 @@ class Printf {
     }
 
     let fractional = m[F.fractional];
-    const precision =
-      this.flags.precision !== -1 ? this.flags.precision : DEFAULT_PRECISION;
+    const precision = this.flags.precision !== -1
+      ? this.flags.precision
+      : DEFAULT_PRECISION;
     fractional = this.roundFractionToPrecision(fractional, precision);
 
     let e = m[F.exponent];
@@ -552,8 +539,9 @@ class Printf {
     const dig = arr[0];
     let fractional = arr[1];
 
-    const precision =
-      this.flags.precision !== -1 ? this.flags.precision : DEFAULT_PRECISION;
+    const precision = this.flags.precision !== -1
+      ? this.flags.precision
+      : DEFAULT_PRECISION;
     fractional = this.roundFractionToPrecision(fractional, precision);
 
     return this.padNum(`${dig}.${fractional}`, n < 0);
@@ -588,8 +576,9 @@ class Printf {
     // converted in the style of an f or F conversion specifier.
     // https://pubs.opengroup.org/onlinepubs/9699919799/functions/fprintf.html
 
-    let P =
-      this.flags.precision !== -1 ? this.flags.precision : DEFAULT_PRECISION;
+    let P = this.flags.precision !== -1
+      ? this.flags.precision
+      : DEFAULT_PRECISION;
     P = P === 0 ? 1 : P;
 
     const m = n.toExponential().match(FLOAT_REGEXP);
@@ -627,8 +616,7 @@ class Printf {
     switch (typeof val) {
       case "number":
         return this.fmtNumber(val as number, 16, upper);
-        break;
-      case "string":
+      case "string": {
         const sharp = this.flags.sharp && val.length !== 0;
         let hex = sharp ? "0x" : "";
         const prec = this.flags.precision;
@@ -647,18 +635,19 @@ class Printf {
           hex = hex.toUpperCase();
         }
         return this.pad(hex);
-        break;
+      }
       default:
         throw new Error(
-          "currently only number and string are implemented for hex"
+          "currently only number and string are implemented for hex",
         );
     }
   }
 
-  fmtV(val: object): string {
+  fmtV(val: Record<string, unknown>): string {
     if (this.flags.sharp) {
-      const options =
-        this.flags.precision !== -1 ? { depth: this.flags.precision } : {};
+      const options = this.flags.precision !== -1
+        ? { depth: this.flags.precision }
+        : {};
       return this.pad(Deno.inspect(val, options));
     } else {
       const p = this.flags.precision;

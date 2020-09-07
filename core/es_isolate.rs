@@ -10,6 +10,7 @@ use crate::bindings;
 use crate::errors::ErrBox;
 use crate::errors::ErrWithV8Handle;
 use crate::futures::FutureExt;
+use crate::OpRouter;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -76,10 +77,12 @@ impl DerefMut for EsIsolate {
 impl EsIsolate {
   pub fn new(
     loader: Rc<dyn ModuleLoader>,
+    op_router: Rc<dyn OpRouter>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Self {
-    let mut core_isolate = CoreIsolate::new(startup_data, will_snapshot);
+    let mut core_isolate =
+      CoreIsolate::new(op_router, startup_data, will_snapshot);
     {
       core_isolate.set_host_initialize_import_meta_object_callback(
         bindings::host_initialize_import_meta_object_callback,
@@ -111,14 +114,11 @@ impl EsIsolate {
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
     let state_rc = Self::state(self);
-
     let core_state_rc = CoreIsolate::state(self);
-    let core_state = core_state_rc.borrow();
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
-    let context = core_state.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -126,15 +126,14 @@ impl EsIsolate {
     let origin = bindings::module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, &origin);
 
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let maybe_module = v8::script_compiler::compile_module(scope, source);
+    let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
 
-    if tc.has_caught() {
+    if tc_scope.has_caught() {
       assert!(maybe_module.is_none());
-      let e = tc.exception(scope).unwrap();
-      return exception_to_err_result(scope, e);
+      let e = tc_scope.exception().unwrap();
+      return exception_to_err_result(tc_scope, e);
     }
 
     let module = maybe_module.unwrap();
@@ -143,22 +142,21 @@ impl EsIsolate {
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     for i in 0..module.get_module_requests_length() {
       let import_specifier =
-        module.get_module_request(i).to_rust_string_lossy(scope);
+        module.get_module_request(i).to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
       let module_specifier =
         state.loader.resolve(&import_specifier, name, false)?;
       import_specifiers.push(module_specifier);
     }
 
-    let mut handle = v8::Global::<v8::Module>::new();
-    handle.set(scope, module);
+    state_rc.borrow_mut().modules.register(
+      id,
+      name,
+      main,
+      v8::Global::<v8::Module>::new(tc_scope, module),
+      import_specifiers,
+    );
 
-    {
-      let mut state = state_rc.borrow_mut();
-      state
-        .modules
-        .register(id, name, main, handle, import_specifiers);
-    }
     Ok(id)
   }
 
@@ -168,39 +166,31 @@ impl EsIsolate {
   /// the V8 exception. By default this type is JSError, however it may be a
   /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let state_rc = Self::state(self);
-    let state = state_rc.borrow();
-
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
-    let context = core_state.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state.global_context.as_ref().unwrap(),
+    );
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
-
-    let module_info = match state.modules.get_info(id) {
-      Some(info) => info,
+    let module = match Self::state(tc_scope).borrow().modules.get_info(id) {
+      Some(info) => v8::Local::new(tc_scope, &info.handle),
       None if id == 0 => return Ok(()),
       _ => panic!("module id {} not found in module table", id),
     };
-    let mut module = module_info.handle.get(scope).unwrap();
-    drop(state);
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      exception_to_err_result(scope, module.get_exception())?
+      exception_to_err_result(tc_scope, module.get_exception())?
     }
 
     let result =
-      module.instantiate_module(context, bindings::module_resolve_callback);
+      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
     match result {
       Some(_) => Ok(()),
       None => {
-        let exception = tc.exception(scope).unwrap();
-        exception_to_err_result(scope, exception)
+        let exception = tc_scope.exception().unwrap();
+        exception_to_err_result(tc_scope, exception)
       }
     }
   }
@@ -212,24 +202,22 @@ impl EsIsolate {
   /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     self.shared_init();
-    let state_rc = Self::state(self);
-    let state = state_rc.borrow();
 
     let core_state_rc = CoreIsolate::state(self);
 
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
-    let context = {
-      let core_state = core_state_rc.borrow();
-      core_state.global_context.get(scope).unwrap()
-    };
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    let info = state.modules.get_info(id).expect("ModuleInfo not found");
-    let module = info.handle.get(scope).expect("Empty module handle");
+    let module = Self::state(scope)
+      .borrow()
+      .modules
+      .get_info(id)
+      .map(|info| v8::Local::new(scope, &info.handle))
+      .expect("ModuleInfo not found");
     let mut status = module.get_status();
-    drop(state);
+
     if status == v8::ModuleStatus::Instantiated {
       // IMPORTANT: Top-level-await is enabled, which means that return value
       // of module evaluation is a promise.
@@ -247,7 +235,7 @@ impl EsIsolate {
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
       // https://v8.dev/features/top-level-await#module-execution-order
-      let maybe_value = module.evaluate(scope, context);
+      let maybe_value = module.evaluate(scope);
 
       // Update status after evaluating.
       status = module.get_status();
@@ -261,11 +249,7 @@ impl EsIsolate {
           .expect("Expected to get promise as module evaluation result");
         let promise_id = promise.get_identity_hash();
         let mut core_state = core_state_rc.borrow_mut();
-        if let Some(mut handle) =
-          core_state.pending_promise_exceptions.remove(&promise_id)
-        {
-          handle.reset(scope);
-        }
+        core_state.pending_promise_exceptions.remove(&promise_id);
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -288,39 +272,31 @@ impl EsIsolate {
     err: ErrBox,
   ) -> Result<(), ErrBox> {
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-
     let core_state_rc = CoreIsolate::state(self);
-    let core_state = core_state_rc.borrow();
 
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
-    let context = core_state.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    drop(core_state);
-
-    let mut resolver_handle = state
+    let resolver_handle = state_rc
+      .borrow_mut()
       .dyn_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
-    let resolver = resolver_handle.get(scope).unwrap();
-    resolver_handle.reset(scope);
-
-    drop(state);
+    let resolver = resolver_handle.get(scope);
 
     let exception = err
       .downcast_ref::<ErrWithV8Handle>()
-      .and_then(|err| err.get_handle().get(scope))
+      .map(|err| err.get_handle(scope))
       .unwrap_or_else(|| {
         let message = err.to_string();
         let message = v8::String::new(scope, &message).unwrap();
         v8::Exception::type_error(scope, message)
       });
 
-    resolver.reject(context, exception).unwrap();
-    scope.isolate().run_microtasks();
+    resolver.reject(scope, exception).unwrap();
+    scope.perform_microtask_checkpoint();
     Ok(())
   }
 
@@ -335,39 +311,32 @@ impl EsIsolate {
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
-    let context = {
-      let core_state = core_state_rc.borrow();
-      core_state.global_context.get(scope).unwrap()
-    };
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    let mut resolver_handle = {
-      let mut state = state_rc.borrow_mut();
-      state
-        .dyn_import_map
-        .remove(&id)
-        .expect("Invalid dyn import id")
-    };
-    let resolver = resolver_handle.get(scope).unwrap();
-    resolver_handle.reset(scope);
+    let resolver_handle = state_rc
+      .borrow_mut()
+      .dyn_import_map
+      .remove(&id)
+      .expect("Invalid dyn import id");
+    let resolver = resolver_handle.get(scope);
 
     let module = {
       let state = state_rc.borrow();
-      let info = state
+      state
         .modules
         .get_info(mod_id)
-        .expect("Dyn import module info not found");
-      // Resolution success
-      info.handle.get(scope).unwrap()
+        .map(|info| v8::Local::new(scope, &info.handle))
+        .expect("Dyn import module info not found")
     };
+    // Resolution success
     assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
 
     let module_namespace = module.get_module_namespace();
-    resolver.resolve(context, module_namespace).unwrap();
-    scope.isolate().run_microtasks();
+    resolver.resolve(scope, module_namespace).unwrap();
+    scope.perform_microtask_checkpoint();
     Ok(())
   }
 
@@ -674,11 +643,11 @@ impl EsIsolateState {
 pub mod tests {
   use super::*;
   use crate::core_isolate::tests::run_in_task;
-  use crate::core_isolate::CoreIsolateState;
   use crate::js_check;
   use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
-  use crate::ZeroCopyBuf;
+  use crate::BasicState;
+  use crate::BufVec;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
@@ -715,24 +684,23 @@ pub mod tests {
     }
 
     let loader = Rc::new(ModsLoader::default());
+    let state = BasicState::new();
+
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = EsIsolate::new(loader, StartupData::None, false);
-
-    let dispatcher = move |_state: &mut CoreIsolateState,
-                           control: &[u8],
-                           _zero_copy: &mut [ZeroCopyBuf]|
-          -> Op {
+    let dispatcher = move |_state: Rc<BasicState>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      assert_eq!(control.len(), 1);
-      assert_eq!(control[0], 42);
-      let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+      assert_eq!(bufs.len(), 1);
+      assert_eq!(bufs[0].len(), 1);
+      assert_eq!(bufs[0][0], 42);
+      let buf = [43u8, 0, 0, 0][..].into();
       Op::Async(futures::future::ready(buf).boxed())
     };
+    state.register_op("test", dispatcher);
 
-    isolate.register_op("test", dispatcher);
+    let mut isolate = EsIsolate::new(loader, state, StartupData::None, false);
 
     js_check(isolate.execute(
       "setup.js",
@@ -818,8 +786,7 @@ pub mod tests {
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
-        async { Err(ErrBox::from(io::Error::from(io::ErrorKind::NotFound))) }
-          .boxed()
+        async { Err(io::Error::from(io::ErrorKind::NotFound).into()) }.boxed()
       }
     }
 
@@ -827,7 +794,8 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
 
       js_check(isolate.execute(
         "file:///dyn_import2.js",
@@ -904,7 +872,8 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
 
       // Dynamically import mod_b
       js_check(isolate.execute(
@@ -925,23 +894,14 @@ pub mod tests {
       ));
 
       // First poll runs `prepare_load` hook.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Pending => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Pending));
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
 
       // Second poll actually loads modules into the isolate.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
@@ -953,7 +913,8 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(loader, BasicState::new(), StartupData::None, false);
       js_check(isolate.execute(
         "file:///dyn_import3.js",
         r#"
@@ -1004,7 +965,8 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime_isolate = EsIsolate::new(loader, StartupData::None, true);
+    let mut runtime_isolate =
+      EsIsolate::new(loader, BasicState::new(), StartupData::None, true);
 
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();

@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
+  Encodings,
   WriteFileOptions,
   isFileOptions,
   CallbackWithError,
@@ -15,13 +16,13 @@ import { fromFileUrl } from "../path.ts";
 export function appendFile(
   pathOrRid: string | number | URL,
   data: string,
-  optionsOrCallback: string | WriteFileOptions | CallbackWithError,
-  callback?: CallbackWithError
+  optionsOrCallback: Encodings | WriteFileOptions | CallbackWithError,
+  callback?: CallbackWithError,
 ): void {
   pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
   const callbackFn: CallbackWithError | undefined =
     optionsOrCallback instanceof Function ? optionsOrCallback : callback;
-  const options: string | WriteFileOptions | undefined =
+  const options: Encodings | WriteFileOptions | undefined =
     optionsOrCallback instanceof Function ? undefined : optionsOrCallback;
   if (!callbackFn) {
     throw new Error("No callback function supplied");
@@ -79,7 +80,7 @@ function closeRidIfNecessary(isPathString: boolean, rid: number): void {
 export function appendFileSync(
   pathOrRid: string | number | URL,
   data: string,
-  options?: string | WriteFileOptions
+  options?: Encodings | WriteFileOptions,
 ): void {
   let rid = -1;
 
@@ -115,7 +116,7 @@ export function appendFileSync(
 }
 
 function validateEncoding(
-  encodingOption: string | WriteFileOptions | undefined
+  encodingOption: Encodings | WriteFileOptions | undefined,
 ): void {
   if (!encodingOption) return;
 

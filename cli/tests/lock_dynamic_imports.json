@@ -1,0 +1,6 @@
+{
+  "http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts": "c875f10de49bded1ad76f1709d68e6cf2c0cfb8e8e862542a3fcb4ab09257b99",
+  "http://127.0.0.1:4545/cli/tests/subdir/mod1.ts": "f627f1649f9853adfa096241ae2defa75e4e327cbeb6af0e82a11304b3e5c8be",
+  "http://127.0.0.1:4545/cli/tests/subdir/print_hello.ts": "fe7bbccaedb6579200a8b582f905139296402d06b1b91109d6e12c41a23125da",
+  "http://127.0.0.1:4545/cli/tests/subdir/subdir2/mod2.ts": "bad"
+}

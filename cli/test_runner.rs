@@ -93,7 +93,6 @@ pub fn render_test_file(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::test_util;
 
   #[test]
   fn test_prepare_test_modules_urls() {
@@ -161,6 +160,7 @@ mod tests {
       format!("{}/file_server_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
+      format!("{}/test.ts", root_url),
     ]
     .into_iter()
     .map(|f| Url::parse(&f).unwrap())

@@ -5,6 +5,13 @@ unitTest(function globalThisExists(): void {
   assert(globalThis != null);
 });
 
+unitTest(function noInternalGlobals(): void {
+  // globalThis.__bootstrap should not be there.
+  for (const key of Object.keys(globalThis)) {
+    assert(!key.startsWith("_"));
+  }
+});
+
 unitTest(function windowExists(): void {
   assert(window != null);
 });
@@ -47,7 +54,9 @@ unitTest(function webAssemblyExists(): void {
 
 /* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
 declare global {
+  // deno-lint-ignore no-namespace
   namespace Deno {
+    // deno-lint-ignore no-explicit-any
     var core: any;
   }
 }
@@ -58,37 +67,53 @@ unitTest(function DenoNamespaceImmutable(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (Deno as any) = 1;
-  } catch {}
+  } catch {
+    // pass
+  }
   assert(denoCopy === Deno);
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).Deno = 1;
-  } catch {}
+  } catch {
+    // pass
+  }
   assert(denoCopy === Deno);
   try {
-    delete window.Deno;
-  } catch {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno;
+  } catch {
+    // pass
+  }
   assert(denoCopy === Deno);
 
   const { readFile } = Deno;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (Deno as any).readFile = 1;
-  } catch {}
+  } catch {
+    // pass
+  }
   assert(readFile === Deno.readFile);
   try {
-    delete window.Deno.readFile;
-  } catch {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno.readFile;
+  } catch {
+    // pass
+  }
   assert(readFile === Deno.readFile);
 
   const { print } = Deno.core;
   try {
     Deno.core.print = 1;
-  } catch {}
+  } catch {
+    // pass
+  }
   assert(print === Deno.core.print);
   try {
     delete Deno.core.print;
-  } catch {}
+  } catch {
+    // pass
+  }
   assert(print === Deno.core.print);
 });
 

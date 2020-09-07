@@ -1,2 +1,2 @@
 error: Uncaught TypeError: Cannot read property 'a' of undefined
-    at file:///[WILDCARD]cli/tests/error_018_hide_long_source_js.js:2:206
+    at file:///[WILDCARD]cli/tests/error_018_hide_long_source_js.js:3:206

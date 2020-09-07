@@ -16,10 +16,13 @@ pretty-printed diff of failing assertion.
   `expected` are not equal.
 - `assertNotEquals()` - Uses the `equal` comparison and throws if the `actual`
   and `expected` are equal.
-- `assertStrictEq()` - Compares `actual` and `expected` strictly, therefore for
-  non-primitives the values must reference the same instance.
-- `assertStrContains()` - Make an assertion that `actual` contains `expected`.
+- `assertStrictEquals()` - Compares `actual` and `expected` strictly, therefore
+  for non-primitives the values must reference the same instance.
+- `assertStringContains()` - Make an assertion that `actual` contains
+  `expected`.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
+- `assertNotMatch()` - Make an assertion that `actual` not match RegExp
+  `expected`.
 - `assertArrayContains()` - Make an assertion that `actual` array contains the
   `expected` values.
 - `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,
@@ -57,20 +60,20 @@ Deno.test("example", function (): void {
 });
 ```
 
-Using `assertStrictEq()`:
+Using `assertStrictEquals()`:
 
 ```ts
 Deno.test("isStrictlyEqual", function (): void {
   const a = {};
   const b = a;
-  assertStrictEq(a, b);
+  assertStrictEquals(a, b);
 });
 
 // This test fails
 Deno.test("isNotStrictlyEqual", function (): void {
   const a = {};
   const b = {};
-  assertStrictEq(a, b);
+  assertStrictEquals(a, b);
 });
 ```
 
@@ -89,7 +92,7 @@ Deno.test("doesThrow", function (): void {
       throw new TypeError("hello world!");
     },
     TypeError,
-    "hello"
+    "hello",
   );
 });
 
@@ -108,7 +111,7 @@ Deno.test("doesThrow", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       throw new TypeError("hello world!");
-    }
+    },
   );
   await assertThrowsAsync(async (): Promise<void> => {
     throw new TypeError("hello world!");
@@ -118,12 +121,12 @@ Deno.test("doesThrow", async function (): Promise<void> {
       throw new TypeError("hello world!");
     },
     TypeError,
-    "hello"
+    "hello",
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
       return Promise.reject(new Error());
-    }
+    },
   );
 });
 
@@ -132,7 +135,7 @@ Deno.test("fails", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       console.log("Hello world");
-    }
+    },
   );
 });
 ```
@@ -213,7 +216,7 @@ runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
   // initial progress data
   if (p.state === ProgressState.BenchmarkingStart) {
     console.log(
-      `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`
+      `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`,
     );
   }
   // ...
@@ -226,7 +229,7 @@ runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
 
 Registers a benchmark that will be run once `runBenchmarks` is called.
 
-##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void): Promise<BenchmarkRunResult>`
+##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void | Promise<void>): Promise<BenchmarkRunResult>`
 
 Runs all registered benchmarks serially. Filtering can be applied by setting
 `BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular

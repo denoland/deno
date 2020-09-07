@@ -2,7 +2,7 @@
 // Ported from https://github.com/browserify/path-browserify/
 /** This module is browser compatible. */
 
-import { FormatInputPathObject } from "./_interface.ts";
+import type { FormatInputPathObject } from "./_interface.ts";
 import {
   CHAR_UPPERCASE_A,
   CHAR_LOWERCASE_A,
@@ -16,7 +16,7 @@ import {
 export function assertPath(path: string): void {
   if (typeof path !== "string") {
     throw new TypeError(
-      `Path must be a string. Received ${JSON.stringify(path)}`
+      `Path must be a string. Received ${JSON.stringify(path)}`,
     );
   }
 }
@@ -41,7 +41,7 @@ export function normalizeString(
   path: string,
   allowAboveRoot: boolean,
   separator: string,
-  isPathSeparator: (code: number) => boolean
+  isPathSeparator: (code: number) => boolean,
 ): string {
   let res = "";
   let lastSegmentLength = 0;
@@ -106,11 +106,11 @@ export function normalizeString(
 
 export function _format(
   sep: string,
-  pathObject: FormatInputPathObject
+  pathObject: FormatInputPathObject,
 ): string {
   const dir: string | undefined = pathObject.dir || pathObject.root;
-  const base: string =
-    pathObject.base || (pathObject.name || "") + (pathObject.ext || "");
+  const base: string = pathObject.base ||
+    (pathObject.name || "") + (pathObject.ext || "");
   if (!dir) return base;
   if (dir === pathObject.root) return dir + base;
   return dir + sep + base;

@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../_util/deep_assign.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
+
+class TOMLError extends Error {}
 
 class KeyValuePair {
   constructor(public key: string, public value: unknown) {}
@@ -30,12 +32,80 @@ class Parser {
     for (let i = 0; i < this.tomlLines.length; i++) {
       const s = this.tomlLines[i];
       const trimmed = s.trim();
-      if (trimmed !== "" && trimmed[0] !== "#") {
+      if (trimmed !== "") {
         out.push(s);
       }
     }
     this.tomlLines = out;
+    this._removeComments();
     this._mergeMultilines();
+  }
+
+  _removeComments(): void {
+    function isFullLineComment(line: string) {
+      return line.match(/^#/) ? true : false;
+    }
+
+    function stringStart(line: string) {
+      const m = line.match(/(?:=\s*\[?\s*)("""|'''|"|')/);
+      if (!m) {
+        return false;
+      }
+
+      // We want to know which syntax was used to open the string
+      openStringSyntax = m[1];
+      return true;
+    }
+
+    function stringEnd(line: string) {
+      // match the syntax used to open the string when searching for string close
+      // e.g. if we open with ''' we must close with a '''
+      const reg = RegExp(`(?<!(=\\s*))${openStringSyntax}(?!(.*"))`);
+      if (!line.match(reg)) {
+        return false;
+      }
+
+      openStringSyntax = "";
+      return true;
+    }
+
+    const cleaned = [];
+    let isOpenString = false;
+    let openStringSyntax = "";
+    for (let i = 0; i < this.tomlLines.length; i++) {
+      const line = this.tomlLines[i];
+
+      // stringStart and stringEnd are separate conditions to
+      // support both single-line and multi-line strings
+      if (!isOpenString && stringStart(line)) {
+        isOpenString = true;
+      }
+      if (isOpenString && stringEnd(line)) {
+        isOpenString = false;
+      }
+
+      if (!isOpenString && !isFullLineComment(line)) {
+        const out = line.split(
+          /(?<=([\,\[\]\{\}]|".*"|'.*'|\w(?!.*("|')+))\s*)#/gi,
+        );
+        cleaned.push(out[0].trim());
+      } else if (isOpenString || !isFullLineComment(line)) {
+        cleaned.push(line);
+      }
+
+      // If a single line comment doesnt end on the same line, throw error
+      if (
+        isOpenString && (openStringSyntax === "'" || openStringSyntax === '"')
+      ) {
+        throw new TOMLError(`Single-line string is not closed:\n${line}`);
+      }
+    }
+
+    if (isOpenString) {
+      throw new TOMLError(`Incomplete string until EOF`);
+    }
+
+    this.tomlLines = cleaned;
   }
 
   _mergeMultilines(): void {
@@ -110,7 +180,7 @@ class Parser {
               .join("\n")
               .replace(/"""/g, '"')
               .replace(/'''/g, `'`)
-              .replace(/\n/g, "\\n")
+              .replace(/\n/g, "\\n"),
           );
           isLiteral = false;
         } else {
@@ -122,10 +192,14 @@ class Parser {
     }
     this.tomlLines = merged;
   }
-  _unflat(keys: string[], values: object = {}, cObj: object = {}): object {
+  _unflat(
+    keys: string[],
+    values: Record<string, unknown> | unknown[] = {},
+    cObj: Record<string, unknown> | unknown[] = {},
+  ): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     if (keys.length === 0) {
-      return cObj;
+      return cObj as Record<string, unknown>;
     } else {
       if (Object.keys(cObj).length === 0) {
         cObj = values;
@@ -216,7 +290,7 @@ class Parser {
     }
 
     // If binary / octal / hex
-    const hex = /(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
+    const hex = /^(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
     if (hex && hex[0]) {
       return hex[0].trim();
     }
@@ -230,10 +304,7 @@ class Parser {
     if (invalidArr) {
       dataString = dataString.replace(/,]/g, "]");
     }
-    const m = /(?:\'|\[|{|\").*(?:\'|\]|\"|})\s*[^#]/g.exec(dataString);
-    if (m) {
-      dataString = m[0].trim();
-    }
+
     if (dataString[0] === "{" && dataString[dataString.length - 1] === "}") {
       const reg = /([a-zA-Z0-9-_\.]*) (=)/gi;
       let result;
@@ -321,7 +392,7 @@ class Parser {
           this.context.currentGroup.type === "array"
         ) {
           this.context.currentGroup.arrValues.push(
-            this.context.currentGroup.objValues
+            this.context.currentGroup.objValues,
           );
           this.context.currentGroup.objValues = {};
         }
@@ -350,7 +421,7 @@ class Parser {
     if (this.context.currentGroup) {
       if (this.context.currentGroup.type === "array") {
         this.context.currentGroup.arrValues.push(
-          this.context.currentGroup.objValues
+          this.context.currentGroup.objValues,
         );
       }
       this._groupToOutput();
@@ -371,7 +442,7 @@ class Parser {
           const shift = pathDeclaration.shift();
           if (shift) {
             k = shift.replace(/"/g, "");
-            v = this._unflat(pathDeclaration, v as object);
+            v = this._unflat(pathDeclaration, v as Record<string, unknown>);
           }
         } else {
           k = k.replace(/"/g, "");
@@ -384,7 +455,7 @@ class Parser {
       }
     }
   }
-  parse(): object {
+  parse(): Record<string, unknown> {
     this._sanitize();
     this._parseLines();
     this._cleanOutput();
@@ -406,9 +477,9 @@ function joinKeys(keys: string[]): string {
 
 class Dumper {
   maxPad = 0;
-  srcObject: object;
+  srcObject: Record<string, unknown>;
   output: string[] = [];
-  constructor(srcObjc: object) {
+  constructor(srcObjc: Record<string, unknown>) {
     this.srcObject = srcObjc;
   }
   dump(): string[] {
@@ -444,6 +515,8 @@ class Dumper {
         out.push(this._strDeclaration([prop], value.toString()));
       } else if (typeof value === "number") {
         out.push(this._numberDeclaration([prop], value));
+      } else if (typeof value === "boolean") {
+        out.push(this._boolDeclaration([prop], value));
       } else if (
         value instanceof Array &&
         this._isSimplySerializable(value[0])
@@ -477,6 +550,7 @@ class Dumper {
     return (
       typeof value === "string" ||
       typeof value === "number" ||
+      typeof value === "boolean" ||
       value instanceof RegExp ||
       value instanceof Date ||
       value instanceof Array
@@ -510,6 +584,9 @@ class Dumper {
       default:
         return `${this._declaration(keys)}${value}`;
     }
+  }
+  _boolDeclaration(keys: string[], value: boolean): string {
+    return `${this._declaration(keys)}${value}`;
   }
   _dateDeclaration(keys: string[], value: Date): string {
     function dtPad(v: string, lPad = 2): string {
@@ -559,11 +636,11 @@ class Dumper {
   }
 }
 
-export function stringify(srcObj: object): string {
+export function stringify(srcObj: Record<string, unknown>): string {
   return new Dumper(srcObj).dump().join("\n");
 }
 
-export function parse(tomlString: string): object {
+export function parse(tomlString: string): Record<string, unknown> {
   // File is potentially using EOL CRLF
   tomlString = tomlString.replace(/\r\n/g, "\n").replace(/\\\n/g, "\n");
   return new Parser(tomlString).parse();
