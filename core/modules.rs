@@ -8,10 +8,8 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -436,108 +434,6 @@ impl Modules {
       return None;
     }
     self.info.get(&id)
-  }
-
-  pub fn deps(&self, module_specifier: &ModuleSpecifier) -> Option<Deps> {
-    Deps::new(self, module_specifier)
-  }
-}
-
-/// This is a tree structure representing the dependencies of a given module.
-/// Use Modules::deps to construct it. The 'deps' member is None if this module
-/// was already seen elsewhere in the tree.
-#[derive(Debug, PartialEq)]
-pub struct Deps {
-  pub name: String,
-  pub deps: Option<Vec<Deps>>,
-  prefix: String,
-  is_last: bool,
-}
-
-impl Deps {
-  fn new(
-    modules: &Modules,
-    module_specifier: &ModuleSpecifier,
-  ) -> Option<Deps> {
-    let mut seen = HashSet::new();
-    Self::helper(&mut seen, "".to_string(), true, modules, module_specifier)
-  }
-
-  fn helper(
-    seen: &mut HashSet<String>,
-    prefix: String,
-    is_last: bool,
-    modules: &Modules,
-    module_specifier: &ModuleSpecifier,
-  ) -> Option<Deps> {
-    let name = module_specifier.to_string();
-    if seen.contains(&name) {
-      Some(Deps {
-        name,
-        prefix,
-        deps: None,
-        is_last,
-      })
-    } else {
-      let mod_id = modules.get_id(&name)?;
-      let children = modules.get_children(mod_id).unwrap();
-      seen.insert(name.to_string());
-      let child_count = children.len();
-      let deps: Vec<Deps> = children
-        .iter()
-        .enumerate()
-        .map(|(index, dep_specifier)| {
-          let new_is_last = index == child_count - 1;
-          let mut new_prefix = prefix.clone();
-          new_prefix.push(if is_last { ' ' } else { '│' });
-          new_prefix.push(' ');
-
-          Self::helper(seen, new_prefix, new_is_last, modules, dep_specifier)
-        })
-        // If any of the children are missing, return None.
-        .collect::<Option<_>>()?;
-
-      Some(Deps {
-        name,
-        prefix,
-        deps: Some(deps),
-        is_last,
-      })
-    }
-  }
-
-  pub fn to_json(&self) -> Value {
-    let children;
-    if let Some(deps) = &self.deps {
-      children = deps.iter().map(|c| c.to_json()).collect();
-    } else {
-      children = Vec::new()
-    }
-    serde_json::json!([&self.name, children])
-  }
-}
-
-impl fmt::Display for Deps {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut has_children = false;
-    if let Some(ref deps) = self.deps {
-      has_children = !deps.is_empty();
-    }
-    write!(
-      f,
-      "{}{}─{} {}",
-      self.prefix,
-      if self.is_last { "└" } else { "├" },
-      if has_children { "┬" } else { "─" },
-      self.name
-    )?;
-
-    if let Some(ref deps) = self.deps {
-      for d in deps {
-        write!(f, "\n{}", d)?;
-      }
-    }
-    Ok(())
   }
 }
 
@@ -1072,56 +968,4 @@ mod tests {
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
-
-  #[test]
-  fn empty_deps() {
-    let modules = Modules::new();
-    let specifier = ModuleSpecifier::resolve_url("file:///foo").unwrap();
-    assert!(modules.deps(&specifier).is_none());
-  }
-
-  #[test]
-  fn deps_to_json() {
-    fn dep(name: &str, deps: Option<Vec<Deps>>) -> Deps {
-      Deps {
-        name: name.to_string(),
-        deps,
-        prefix: "".to_string(),
-        is_last: false,
-      }
-    }
-    let deps = dep(
-      "a",
-      Some(vec![
-        dep("b", Some(vec![dep("b2", None)])),
-        dep("c", Some(vec![])),
-      ]),
-    );
-    assert_eq!(
-      serde_json::json!(["a", [["b", [["b2", []]]], ["c", []]]]),
-      deps.to_json()
-    );
-  }
-
-  /* TODO(bartlomieju): reenable
-  #[test]
-  fn deps() {
-    // "foo" -> "bar"
-    let mut modules = Modules::new();
-    modules.register(1, "foo");
-    modules.register(2, "bar");
-    modules.add_child(1, "bar");
-    let maybe_deps = modules.deps("foo");
-    assert!(maybe_deps.is_some());
-    let mut foo_deps = maybe_deps.unwrap();
-    assert_eq!(foo_deps.name, "foo");
-    assert!(foo_deps.deps.is_some());
-    let foo_children = foo_deps.deps.take().unwrap();
-    assert_eq!(foo_children.len(), 1);
-    let bar_deps = &foo_children[0];
-    assert_eq!(bar_deps.name, "bar");
-    assert_eq!(bar_deps.deps, Some(vec![]));
-  }
-
-  */
 }

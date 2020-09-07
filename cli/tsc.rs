@@ -570,7 +570,7 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
     allow_js: bool,
   ) -> Result<(), ErrBox> {
     let module_url = source_file.url.clone();
@@ -790,7 +790,7 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
   ) -> Result<(), ErrBox> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
     for (_, value) in module_graph.iter() {
@@ -1700,7 +1700,7 @@ mod tests {
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
-        module_graph,
+        &module_graph,
         false,
       )
       .await;
@@ -1770,7 +1770,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler.transpile(module_graph).await;
+    let result = ts_compiler.transpile(&module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;
