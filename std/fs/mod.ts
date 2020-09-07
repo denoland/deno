@@ -8,6 +8,5 @@ export * from "./exists.ts";
 export * from "./expand_glob.ts";
 export * from "./move.ts";
 export * from "./copy.ts";
-export * from "./write_json.ts";
 export * from "./walk.ts";
 export * from "./eol.ts";
