@@ -3,6 +3,7 @@
 use deno_core::js_check;
 use deno_core::JsRuntime;
 use std::path::PathBuf;
+use url::Url;
 
 pub fn init(isolate: &mut JsRuntime) {
   let files = vec![
@@ -14,7 +15,7 @@ pub fn init(isolate: &mut JsRuntime) {
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
     js_check(isolate.execute(
-      &file.to_string_lossy(),
+      Url::from_file_path(&file).unwrap().as_str(),
       &std::fs::read_to_string(&file).unwrap(),
     ));
   }
