@@ -1,14 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::BufVec;
-use crate::ErrBox;
 use crate::State;
-use crate::ZeroCopyBuf;
 use futures::Future;
-use futures::FutureExt;
 use indexmap::IndexMap;
-use serde_json::json;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::iter::once;
 use std::ops::Deref;
@@ -35,6 +30,11 @@ pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 
 impl OpTable {
   pub fn route_op(&self, op_id: OpId, state: Rc<State>, bufs: BufVec) -> Op {
+    if op_id == 0 {
+      let ops = self.get_op_catalog();
+      let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
+      return Op::Sync(buf);
+    }
     let op_fn = self
       .get_index(op_id)
       .map(|(_, op_fn)| op_fn.clone())
@@ -44,50 +44,6 @@ impl OpTable {
 
   pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
     self.keys().cloned().zip(0..).collect()
-  }
-
-  pub fn register_op_json_sync<F>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox> + 'static,
-  {
-    let base_op_fn = move |state: Rc<State>, mut bufs: BufVec| -> Op {
-      let result = serde_json::from_slice(&bufs[0])
-        .map_err(ErrBox::from)
-        .and_then(|args| op_fn(&state, args, &mut bufs[1..]));
-      let buf = json_serialize_op_result(None, result);
-      Op::Sync(buf)
-    };
-
-    self.register_op(name, base_op_fn)
-  }
-
-  pub fn register_op_json_async<F, R>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<State>, Value, BufVec) -> R + 'static,
-    R: Future<Output = Result<Value, ErrBox>> + 'static,
-  {
-    let try_dispatch_op = move |state: Rc<State>,
-                                bufs: BufVec|
-          -> Result<Op, ErrBox> {
-      let args: Value = serde_json::from_slice(&bufs[0])?;
-      let promise_id = args
-        .get("promiseId")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| ErrBox::type_error("missing or invalid `promiseId`"))?;
-      let bufs = bufs[1..].into();
-      let fut = op_fn(state.clone(), args, bufs)
-        .map(move |result| json_serialize_op_result(Some(promise_id), result));
-      Ok(Op::Async(Box::pin(fut)))
-    };
-
-    let base_op_fn = move |state: Rc<State>, bufs: BufVec| -> Op {
-      match try_dispatch_op(state.clone(), bufs) {
-        Ok(op) => op,
-        Err(err) => Op::Sync(json_serialize_op_result(None, Err(err))),
-      }
-    };
-
-    self.register_op(name, base_op_fn)
   }
 
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
@@ -102,32 +58,12 @@ impl OpTable {
 
 impl Default for OpTable {
   fn default() -> Self {
-    Self(once(("ops".to_owned(), Rc::new(op_get_op_catalog) as _)).collect())
+    Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
   }
 }
 
-fn json_serialize_op_result(
-  promise_id: Option<u64>,
-  result: Result<Value, ErrBox>,
-) -> Box<[u8]> {
-  let value = match result {
-    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
-    Err(err) => json!({
-      "promiseId": promise_id ,
-      "err": {
-        "className": "Error", // TODO(ry) self.get_error_class_name(&err),
-        "message": err.to_string(),
-      }
-    }),
-  };
-  serde_json::to_vec(&value).unwrap().into_boxed_slice()
-}
-
-fn op_get_op_catalog(state: Rc<State>, _v: BufVec) -> Op {
-  let op_table = state.borrow::<OpTable>();
-  let ops = op_table.get_op_catalog();
-  let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
-  Op::Sync(buf)
+fn dummy(_state: Rc<State>, _v: BufVec) -> Op {
+  todo!()
 }
 
 impl Deref for OpTable {

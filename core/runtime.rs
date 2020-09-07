@@ -19,15 +19,19 @@ use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use crate::BufVec;
 use crate::ErrBox;
 use crate::JsError;
 use crate::OpTable;
+use crate::ResourceTable;
 use crate::State;
+use crate::ZeroCopyBuf;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
 use futures::Future;
+use serde_json::Value;
 use std::any::Any;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -138,7 +142,7 @@ pub struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub(crate) op_table: Rc<OpTable>,
+  pub(crate) op_table: OpTable,
   pub(crate) gotham_state: Rc<State>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
@@ -339,6 +343,9 @@ impl JsRuntime {
       (isolate, None)
     };
 
+    let mut gotham_state = State::new();
+    gotham_state.put(RefCell::new(ResourceTable::default()));
+
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
@@ -349,8 +356,8 @@ impl JsRuntime {
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
-      op_table: Rc::new(crate::OpTable::default()),
-      gotham_state: Rc::new(crate::State::new()),
+      op_table: crate::OpTable::default(),
+      gotham_state: Rc::new(gotham_state),
       have_unpolled_ops: Cell::new(false),
       modules: Modules::new(),
       loader: options.loader,
@@ -403,12 +410,6 @@ impl JsRuntime {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
     state.gotham_state.clone()
-  }
-
-  pub fn op_table(&self) -> Rc<OpTable> {
-    let state_rc = Self::state(self);
-    let state = state_rc.borrow();
-    state.op_table.clone()
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
@@ -482,6 +483,62 @@ impl JsRuntime {
     snapshot
   }
 
+  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<State>, BufVec) -> Op + 'static,
+  {
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+    state.op_table.register_op(name, op_fn)
+  }
+
+  pub fn register_op_json_sync<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(&mut State, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
+      + 'static,
+  {
+    let base_op_fn = move |state: Rc<State>, mut bufs: BufVec| -> Op {
+      let mut state = state.clone();
+      let state = Rc::get_mut(&mut state).unwrap();
+      let result = serde_json::from_slice(&bufs[0])
+        .map_err(ErrBox::from)
+        .and_then(|args| op_fn(state, args, &mut bufs[1..]));
+      let buf = json_serialize_op_result(None, result);
+      Op::Sync(buf)
+    };
+
+    self.register_op(name, base_op_fn)
+  }
+
+  pub fn register_op_json_async<F, R>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<State>, Value, BufVec) -> R + 'static,
+    R: Future<Output = Result<Value, ErrBox>> + 'static,
+  {
+    let try_dispatch_op = move |state: Rc<State>,
+                                bufs: BufVec|
+          -> Result<Op, ErrBox> {
+      let args: Value = serde_json::from_slice(&bufs[0])?;
+      let promise_id = args
+        .get("promiseId")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ErrBox::type_error("missing or invalid `promiseId`"))?;
+      let bufs = bufs[1..].into();
+      let fut = op_fn(state.clone(), args, bufs)
+        .map(move |result| json_serialize_op_result(Some(promise_id), result));
+      Ok(Op::Async(Box::pin(fut)))
+    };
+
+    let base_op_fn = move |state: Rc<State>, bufs: BufVec| -> Op {
+      match try_dispatch_op(state.clone(), bufs) {
+        Ok(op) => op,
+        Err(err) => Op::Sync(json_serialize_op_result(None, Err(err))),
+      }
+    };
+
+    self.register_op(name, base_op_fn)
+  }
+
   /// Registers a callback on the isolate when the memory limits are approached.
   /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
@@ -523,6 +580,23 @@ impl JsRuntime {
         .remove_near_heap_limit_callback(cb, heap_limit);
     }
   }
+}
+
+fn json_serialize_op_result(
+  promise_id: Option<u64>,
+  result: Result<Value, ErrBox>,
+) -> Box<[u8]> {
+  let value = match result {
+    Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),
+    Err(err) => serde_json::json!({
+      "promiseId": promise_id ,
+      "err": {
+        "className": "Error", // TODO(ry) self.get_error_class_name(&err),
+        "message": err.to_string(),
+      }
+    }),
+  };
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
 
 extern "C" fn near_heap_limit_callback<F>(
@@ -1288,7 +1362,6 @@ impl JsRuntime {
 pub mod tests {
   use super::*;
   use crate::modules::ModuleSourceFuture;
-  use crate::ops::*;
   use crate::BufVec;
   use futures::future::lazy;
   use futures::FutureExt;
@@ -1411,13 +1484,12 @@ pub mod tests {
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let mut runtime = JsRuntime::new(StartupData::None, false);
-    runtime
-      .gotham_state()
-      .borrow_mut::<State>()
-      .put(TestOpRouter {
-        mode,
-        dispatch_count: dispatch_count.clone(),
-      });
+    let mut gotham_state = runtime.gotham_state();
+    let gotham_state = Rc::get_mut(&mut gotham_state).unwrap();
+    gotham_state.put(TestOpRouter {
+      mode,
+      dispatch_count: dispatch_count.clone(),
+    });
 
     js_check(runtime.execute(
       "setup.js",
@@ -1965,7 +2037,7 @@ pub mod tests {
 
     let mut runtime =
       JsRuntime::new_with_loader(loader, StartupData::None, false);
-    runtime.op_table().register_op("test", dispatcher);
+    runtime.register_op("test", dispatcher);
 
     js_check(runtime.execute(
       "setup.js",

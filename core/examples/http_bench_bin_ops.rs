@@ -5,6 +5,7 @@ use deno_core::js_check;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
+use deno_core::ResourceTable;
 use deno_core::Script;
 use deno_core::StartupData;
 use deno_core::State;
@@ -13,6 +14,7 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
 use futures::future::TryFutureExt;
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env;
 use std::fmt::Debug;
@@ -82,7 +84,7 @@ fn create_isolate() -> JsRuntime {
     filename: "http_bench_bin_ops.js",
   });
 
-  let isolate = JsRuntime::new(startup_data, false);
+  let mut isolate = JsRuntime::new(startup_data, false);
   register_op_bin_sync(&mut isolate, "listen", op_listen);
   register_op_bin_sync(&mut isolate, "close", op_close);
   register_op_bin_async(&mut isolate, "accept", op_accept);
@@ -100,7 +102,8 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let resource_table = state.borrow_mut::<ResourceTable>();
+  let mut resource_table =
+    state.borrow::<RefCell<ResourceTable>>().borrow_mut();
   let rid = resource_table.add("tcpListener", Box::new(listener));
   Ok(rid)
 }
@@ -111,7 +114,8 @@ fn op_close(
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
-  let resource_table = state.borrow_mut::<ResourceTable>();
+  let mut resource_table =
+    state.borrow::<RefCell<ResourceTable>>().borrow_mut();
   resource_table
     .close(rid)
     .map(|_| 0)
@@ -126,7 +130,8 @@ fn op_accept(
   debug!("accept rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let mut resource_table =
+      state.borrow::<RefCell<ResourceTable>>().borrow_mut();
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -147,7 +152,8 @@ fn op_read(
   debug!("read rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let mut resource_table =
+      state.borrow::<RefCell<ResourceTable>>().borrow_mut();
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -165,7 +171,8 @@ fn op_write(
   debug!("write rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = state.borrow_mut::<ResourceTable>();
+    let mut resource_table =
+      state.borrow::<RefCell<ResourceTable>>().borrow_mut();
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -194,7 +201,7 @@ fn register_op_bin_sync<F>(
     Op::Sync(buf)
   };
 
-  isolate.op_table().register_op(name, base_op_fn);
+  isolate.register_op(name, base_op_fn);
 }
 
 fn register_op_bin_async<F, R>(
@@ -228,7 +235,7 @@ fn register_op_bin_async<F, R>(
     Op::Async(fut.boxed_local())
   };
 
-  isolate.op_table().register_op(name, base_op_fn);
+  isolate.register_op(name, base_op_fn);
 }
 
 fn bad_resource_id() -> Error {
