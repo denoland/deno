@@ -6,7 +6,7 @@ pub use dispatch_minimal::MinimalOp;
 //pub mod compiler;
 //pub mod errors;
 //pub mod fetch;
-//pub mod fs;
+pub mod fs;
 pub mod fs_events;
 //pub mod idna;
 pub mod io;

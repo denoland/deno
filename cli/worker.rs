@@ -264,7 +264,7 @@ impl MainWorker {
       //      ops::errors::init(&state);
       //      ops::fetch::init(&state);
       //      ops::websocket::init(&state);
-      //ops::fs::init(&mut worker);
+      ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);
       //      ops::idna::init(&state);
       ops::io::init(&mut worker);
