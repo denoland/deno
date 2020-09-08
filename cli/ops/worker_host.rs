@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fmt_errors::JSError;
+use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
@@ -249,7 +249,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
         }
       });
 
-      if let Ok(js_error) = error.downcast::<JSError>() {
+      if let Ok(js_error) = error.downcast::<JsError>() {
         serialized_error = json!({
           "type": "terminalError",
           "error": {
@@ -271,7 +271,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
         }
       });
 
-      if let Ok(js_error) = error.downcast::<JSError>() {
+      if let Ok(js_error) = error.downcast::<JsError>() {
         serialized_error = json!({
           "type": "error",
           "error": {

@@ -373,10 +373,10 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut deno_core::CoreIsolate,
+    isolate: &mut deno_core::JsRuntime,
     host: SocketAddr,
   ) -> Box<Self> {
-    let core_state_rc = deno_core::CoreIsolate::state(isolate);
+    let core_state_rc = deno_core::JsRuntime::state(isolate);
     let core_state = core_state_rc.borrow();
 
     let scope = &mut v8::HandleScope::new(&mut **isolate);
