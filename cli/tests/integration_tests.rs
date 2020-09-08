@@ -1724,21 +1724,15 @@ itest!(fmt_check_tests_dir {
   exit_code: 1,
 });
 
-itest!(fmt_check_verbose_tests_dir {
-  args: "fmt --check -v ./",
-  output: "fmt/expected_fmt_check_verbose_tests_dir.out",
-  exit_code: 1,
-});
-
 itest!(fmt_check_formatted_files {
   args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
   output: "fmt/expected_fmt_check_formatted_files.out",
   exit_code: 0,
 });
 
-itest!(fmt_check_verbose_formatted_files {
-  args: "fmt --check --verbose fmt/formatted1.js fmt/formatted2.ts",
-  output: "fmt/expected_fmt_check_verbose_formatted_files.out",
+itest!(fmt_check_ignore {
+  args: "fmt --check --unstable --ignore=fmt/formatted1.js fmt/",
+  output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
 });
 
@@ -2284,23 +2278,9 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
-itest!(deno_lint_verbose {
-  args: "lint --unstable -v lint/file1.js lint/file2.ts lint/ignored_file.ts",
-  output: "lint/expected_verbose.out",
-  exit_code: 1,
-});
-
 itest!(deno_lint_json {
   args:
     "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
-  output: "lint/expected_json.out",
-  exit_code: 1,
-});
-
-// Confirm that `--verbose` flag with `--json` does nothing.
-itest!(deno_lint_json_verbose {
-  args:
-    "lint --unstable --json --verbose lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
   output: "lint/expected_json.out",
   exit_code: 1,
 });

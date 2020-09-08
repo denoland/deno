@@ -208,7 +208,6 @@ async fn lint_command(
   list_rules: bool,
   ignore: Vec<String>,
   json: bool,
-  verbose: bool,
 ) -> Result<(), ErrBox> {
   if !flags.unstable {
     exit_unstable("lint");
@@ -219,7 +218,7 @@ async fn lint_command(
     return Ok(());
   }
 
-  lint::lint_files(files, ignore, json, verbose).await
+  lint::lint_files(files, ignore, json).await
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
@@ -607,8 +606,7 @@ pub fn main() {
       check,
       files,
       ignore,
-      verbose,
-    } => fmt::format(files, check, ignore, verbose).boxed_local(),
+    } => fmt::format(files, check, ignore).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
@@ -626,8 +624,7 @@ pub fn main() {
       rules,
       ignore,
       json,
-      verbose,
-    } => lint_command(flags, files, rules, ignore, json, verbose).boxed_local(),
+    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {

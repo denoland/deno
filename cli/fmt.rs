@@ -33,7 +33,6 @@ pub async fn format(
   args: Vec<String>,
   check: bool,
   exclude: Vec<String>,
-  verbose: bool,
 ) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
@@ -48,16 +47,15 @@ pub async fn format(
   }
   let config = get_config();
   if check {
-    check_source_files(config, target_files, verbose).await
+    check_source_files(config, target_files).await
   } else {
-    format_source_files(config, target_files, verbose).await
+    format_source_files(config, target_files).await
   }
 }
 
 async fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
-  verbose: bool,
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
@@ -114,9 +112,7 @@ async fn check_source_files(
   let checked_files_str =
     format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
-    if verbose {
-      println!("Checked {}", checked_files_str);
-    }
+    println!("Checked {}", checked_files_str);
     Ok(())
   } else {
     let not_formatted_files_str = files_str(not_formatted_files_count);
@@ -130,7 +126,6 @@ async fn check_source_files(
 async fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
-  verbose: bool,
 ) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
@@ -176,14 +171,13 @@ async fn format_source_files(
     files_str(formatted_files_count),
   );
 
-  if verbose {
-    let checked_files_count = checked_files_count.load(Ordering::SeqCst);
-    println!(
-      "Checked {} {}",
-      checked_files_count,
-      files_str(checked_files_count)
-    );
-  }
+  let checked_files_count = checked_files_count.load(Ordering::SeqCst);
+  println!(
+    "Checked {} {}",
+    checked_files_count,
+    files_str(checked_files_count)
+  );
+
   Ok(())
 }
 

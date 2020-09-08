@@ -43,7 +43,6 @@ pub async fn lint_files(
   args: Vec<String>,
   ignore: Vec<String>,
   json: bool,
-  verbose: bool,
 ) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return lint_stdin(json);
@@ -94,10 +93,7 @@ pub async fn lint_files(
 
   let has_error = has_error.load(Ordering::Relaxed);
 
-  reporter_lock
-    .lock()
-    .unwrap()
-    .close(target_files_len, verbose);
+  reporter_lock.lock().unwrap().close(target_files_len);
 
   if has_error {
     std::process::exit(1);
@@ -182,7 +178,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
     }
   }
 
-  reporter.close(1, false);
+  reporter.close(1);
 
   if has_error {
     std::process::exit(1);
@@ -194,7 +190,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
 trait LintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>);
   fn visit_error(&mut self, file_path: &str, err: &ErrBox);
-  fn close(&mut self, check_count: usize, verbose: bool);
+  fn close(&mut self, check_count: usize);
 }
 
 #[derive(Serialize)]
@@ -239,19 +235,17 @@ impl LintReporter for PrettyLintReporter {
     eprintln!("   {}", err);
   }
 
-  fn close(&mut self, check_count: usize, verbose: bool) {
+  fn close(&mut self, check_count: usize) {
     match self.lint_count {
       1 => eprintln!("Found 1 problem"),
       n if n > 1 => eprintln!("Found {} problems", self.lint_count),
       _ => (),
     }
 
-    if verbose {
-      match check_count {
-        1 => println!("Checked 1 file"),
-        n if n > 1 => println!("Checked {} files", n),
-        _ => (),
-      }
+    match check_count {
+      1 => println!("Checked 1 file"),
+      n if n > 1 => println!("Checked {} files", n),
+      _ => (),
     }
   }
 }
@@ -323,7 +317,7 @@ impl LintReporter for JsonLintReporter {
     });
   }
 
-  fn close(&mut self, _check_count: usize, _verbose: bool) {
+  fn close(&mut self, _check_count: usize) {
     sort_diagnostics(&mut self.diagnostics);
     let json = serde_json::to_string_pretty(&self);
     eprintln!("{}", json.unwrap());

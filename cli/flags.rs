@@ -42,7 +42,6 @@ pub enum DenoSubcommand {
     check: bool,
     files: Vec<String>,
     ignore: Vec<String>,
-    verbose: bool,
   },
   Help,
   Info {
@@ -61,7 +60,6 @@ pub enum DenoSubcommand {
     ignore: Vec<String>,
     rules: bool,
     json: bool,
-    verbose: bool,
   },
   Repl,
   Run {
@@ -362,7 +360,6 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     check: matches.is_present("check"),
     files,
     ignore,
-    verbose: matches.is_present("verbose"),
   }
 }
 
@@ -645,13 +642,11 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   let rules = matches.is_present("rules");
   let json = matches.is_present("json");
-  let verbose = matches.is_present("verbose");
   flags.subcommand = DenoSubcommand::Lint {
     files,
     rules,
     ignore,
     json,
-    verbose,
   };
 }
 
@@ -1752,7 +1747,6 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
-          verbose: false,
         },
         ..Flags::default()
       }
@@ -1766,7 +1760,6 @@ mod tests {
           ignore: vec![],
           check: true,
           files: vec![],
-          verbose: false,
         },
         ..Flags::default()
       }
@@ -1780,35 +1773,6 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          verbose: false,
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec!["deno", "fmt", "--verbose"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Fmt {
-          ignore: vec![],
-          check: false,
-          files: vec![],
-          verbose: true,
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec!["deno", "fmt", "-v"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Fmt {
-          ignore: vec![],
-          check: false,
-          files: vec![],
-          verbose: true,
         },
         ..Flags::default()
       }
@@ -1832,7 +1796,6 @@ mod tests {
           rules: false,
           json: false,
           ignore: vec![],
-          verbose: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1853,7 +1816,6 @@ mod tests {
           rules: false,
           json: false,
           ignore: svec!["script_1.ts", "script_2.ts"],
-          verbose: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1869,7 +1831,6 @@ mod tests {
           rules: true,
           json: false,
           ignore: vec![],
-          verbose: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1891,51 +1852,6 @@ mod tests {
           rules: false,
           json: true,
           ignore: vec![],
-          verbose: false,
-        },
-        unstable: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "lint",
-      "--unstable",
-      "--verbose",
-      "script_1.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Lint {
-          files: vec!["script_1.ts".to_string()],
-          rules: false,
-          json: false,
-          ignore: vec![],
-          verbose: true,
-        },
-        unstable: true,
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "lint",
-      "--unstable",
-      "-v",
-      "script_1.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Lint {
-          files: vec!["script_1.ts".to_string()],
-          rules: false,
-          json: false,
-          ignore: vec![],
-          verbose: true,
         },
         unstable: true,
         ..Flags::default()
