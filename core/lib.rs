@@ -43,7 +43,6 @@ pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpState;
-pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
 pub use crate::runtime::js_check;
 pub use crate::runtime::GetErrorClassFn;
