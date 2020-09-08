@@ -702,13 +702,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
-    .arg(
-      Arg::with_name("verbose")
-        .long("verbose")
-        .short("v")
-        .help("Output how many files have been checked.")
-        .takes_value(false),
-    )
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1071,13 +1064,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .multiple(true)
         .required(false),
-    )
-    .arg(
-      Arg::with_name("verbose")
-        .long("verbose")
-        .short("v")
-        .help("Output how many files have been checked.")
-        .takes_value(false),
     )
 }
 
