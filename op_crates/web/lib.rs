@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::js_check;
-use deno_core::CoreIsolate;
+use deno_core::JsRuntime;
 use std::path::PathBuf;
 
-pub fn init(isolate: &mut CoreIsolate) {
+pub fn init(isolate: &mut JsRuntime) {
   let files = vec![
     get_path("00_dom_exception.js"),
     get_path("01_event.js"),
@@ -31,7 +31,8 @@ fn get_path(file_name: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
   use deno_core::js_check;
-  use deno_core::CoreIsolate;
+  use deno_core::BasicState;
+  use deno_core::JsRuntime;
   use deno_core::StartupData;
   use futures::future::lazy;
   use futures::future::FutureExt;
@@ -45,8 +46,9 @@ mod tests {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
-  fn setup() -> CoreIsolate {
-    let mut isolate = CoreIsolate::new(StartupData::None, false);
+  fn setup() -> JsRuntime {
+    let mut isolate =
+      JsRuntime::new(BasicState::new(), StartupData::None, false);
     crate::init(&mut isolate);
     isolate
   }
