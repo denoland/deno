@@ -187,5 +187,4 @@ unitTest({ perms: { env: true } }, function memoryInfo(): void {
   assert(info.cached >= 0);
   assert(info.swapTotal >= 0);
   assert(info.swapFree >= 0);
-  assertNotEquals(Deno.memoryInfo(), {});
 });
