@@ -179,7 +179,13 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
 });
 
 unitTest({ perms: { env: true } }, function memoryInfo(): void {
-  /* const info = Deno.memoryInfo(); */
-  /* assert(info.total >= 0); */
+  const info = Deno.memoryInfo();
+  assert(info.total >= 0);
+  assert(info.free >= 0);
+  assert(info.available >= 0);
+  assert(info.buffers >= 0);
+  assert(info.cached >= 0);
+  assert(info.swapTotal >= 0);
+  assert(info.swapFree >= 0);
   assertNotEquals(Deno.memoryInfo(), {});
 });
