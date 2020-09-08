@@ -104,10 +104,9 @@ impl Default for OpTable {
   }
 }
 
-/*
 #[test]
 fn test_optable() {
-  let op_table = OpTable::new();
+  let mut op_table = OpTable::default();
 
   let foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
   assert_eq!(foo_id, 1);
@@ -115,15 +114,15 @@ fn test_optable() {
   let bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
   assert_eq!(bar_id, 2);
 
-  let state_ = op_table.clone();
-  let foo_res = state_.route_op(foo_id, Default::default());
+  let state = Rc::new(RefCell::new(OpState::default()));
+
+  let foo_res = op_table.route_op(foo_id, state.clone(), Default::default());
   assert!(matches!(foo_res, Op::Sync(buf) if &*buf == b"oof!"));
 
-  let state_ = op_table.clone();
-  let bar_res = state_.route_op(bar_id, Default::default());
+  let bar_res = op_table.route_op(bar_id, state.clone(), Default::default());
   assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
 
-  let catalog_res = op_table.route_op(0, Default::default());
+  let catalog_res = op_table.route_op(0, state, Default::default());
   let mut catalog_entries = match catalog_res {
     Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
       .map(|map| map.into_iter().collect::<Vec<_>>())
@@ -140,4 +139,3 @@ fn test_optable() {
     ]
   )
 }
-*/

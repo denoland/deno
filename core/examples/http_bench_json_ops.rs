@@ -56,7 +56,7 @@ fn create_isolate() -> JsRuntime {
 }
 
 fn op_listen(
-  state: Rc<RefCell<OpState>>,
+  state: &mut OpState,
   _args: Value,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -64,13 +64,12 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let resource_table = &mut state.borrow_mut().resource_table;
-  let rid = resource_table.add("tcpListener", Box::new(listener));
+  let rid = state.resource_table.add("tcpListener", Box::new(listener));
   Ok(serde_json::json!({ "rid": rid }))
 }
 
 fn op_close(
-  state: Rc<RefCell<OpState>>,
+  state: &mut OpState,
   args: Value,
   _buf: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -82,10 +81,8 @@ fn op_close(
     .try_into()
     .unwrap();
   debug!("close rid={}", rid);
-
-  let resource_table = &mut state.borrow_mut().resource_table;
-
-  resource_table
+  state
+    .resource_table
     .close(rid)
     .map(|_| serde_json::json!(()))
     .ok_or_else(ErrBox::bad_resource_id)

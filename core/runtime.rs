@@ -490,25 +490,22 @@ impl JsRuntime {
 
   pub fn register_op_json_sync<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(
-        Rc<RefCell<OpState>>,
-        Value,
-        &mut [ZeroCopyBuf],
-      ) -> Result<Value, ErrBox>
+    F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
       + 'static,
   {
-    let base_op_fn =
-      move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
-        let result = serde_json::from_slice(&bufs[0])
-          .map_err(ErrBox::from)
-          .and_then(|args| op_fn(state.clone(), args, &mut bufs[1..]));
-        let buf = json_serialize_op_result(
-          None,
-          result,
-          state.borrow().get_error_class_fn,
-        );
-        Op::Sync(buf)
-      };
+    let base_op_fn = move |state: Rc<RefCell<OpState>>,
+                           mut bufs: BufVec|
+          -> Op {
+      let result = serde_json::from_slice(&bufs[0])
+        .map_err(ErrBox::from)
+        .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
+      let buf = json_serialize_op_result(
+        None,
+        result,
+        state.borrow().get_error_class_fn,
+      );
+      Op::Sync(buf)
+    };
 
     self.register_op(name, base_op_fn)
   }

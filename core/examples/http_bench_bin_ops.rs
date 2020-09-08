@@ -93,7 +93,7 @@ fn create_isolate() -> JsRuntime {
 }
 
 fn op_listen(
-  state: Rc<RefCell<OpState>>,
+  state: &mut OpState,
   _rid: u32,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
@@ -101,19 +101,18 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let resource_table = &mut state.borrow_mut().resource_table;
-  let rid = resource_table.add("tcpListener", Box::new(listener));
+  let rid = state.resource_table.add("tcpListener", Box::new(listener));
   Ok(rid)
 }
 
 fn op_close(
-  state: Rc<RefCell<OpState>>,
+  state: &mut OpState,
   rid: u32,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
-  let resource_table = &mut state.borrow_mut().resource_table;
-  resource_table
+  state
+    .resource_table
     .close(rid)
     .map(|_| 0)
     .ok_or_else(bad_resource_id)
@@ -183,8 +182,7 @@ fn register_op_bin_sync<F>(
   name: &'static str,
   op_fn: F,
 ) where
-  F: Fn(Rc<RefCell<OpState>>, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error>
-    + 'static,
+  F: Fn(&mut OpState, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
 {
   let base_op_fn = move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
     let record = Record::from(bufs[0].as_ref());
@@ -192,10 +190,11 @@ fn register_op_bin_sync<F>(
     assert!(is_sync);
 
     let zero_copy_bufs = &mut bufs[1..];
-    let result: i32 = match op_fn(state, record.rid, zero_copy_bufs) {
-      Ok(r) => r as i32,
-      Err(_) => -1,
-    };
+    let result: i32 =
+      match op_fn(&mut state.borrow_mut(), record.rid, zero_copy_bufs) {
+        Ok(r) => r as i32,
+        Err(_) => -1,
+      };
     let buf = RecordBuf::from(Record { result, ..record })[..].into();
     Op::Sync(buf)
   };
