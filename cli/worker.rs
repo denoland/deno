@@ -112,10 +112,10 @@ impl Worker {
       let global_state = state.global_state.clone();
       let op_state_rc = isolate.op_state();
       let mut op_state = op_state_rc.borrow_mut();
-      /* TODO
-      op_state.get_error_class_fn =
-        &move |errbox| JsError::create(errbox, &global_state.ts_compiler);
-      */
+      op_state.get_error_class_fn = &move |_errbox| {
+        todo!()
+        // JsError::create(errbox, &global_state.ts_compiler)
+      };
 
       op_state.put(state.clone());
     }
@@ -264,7 +264,7 @@ impl MainWorker {
       //      ops::errors::init(&state);
       //      ops::fetch::init(&state);
       //      ops::websocket::init(&state);
-      // ops::fs::init(&mut worker);
+      //ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);
       //      ops::idna::init(&state);
       ops::io::init(&mut worker);

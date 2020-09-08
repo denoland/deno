@@ -1,9 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::metrics::metrics_op;
 use crate::state::State;
-use deno_core::json_op_async;
-use deno_core::json_op_sync;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::OpState;
@@ -25,14 +22,8 @@ use std::rc::Rc;
 use tokio::sync::mpsc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  rt.register_op(
-    "op_fs_events_open",
-    metrics_op(json_op_sync(op_fs_events_open)),
-  );
-  rt.register_op(
-    "op_fs_events_poll",
-    metrics_op(json_op_async(op_fs_events_poll)),
-  );
+  super::reg_json_sync(rt, "op_fs_events_open", op_fs_events_open);
+  super::reg_json_async(rt, "op_fs_events_poll", op_fs_events_poll);
 }
 
 struct FsEventsResource {

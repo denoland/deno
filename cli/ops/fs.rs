@@ -20,11 +20,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  rt.register_op(
-    "op_open_sync",
-    crate::state::metrics(deno_core::json_op_sync(op_open_sync)),
-  );
-  s.register_op_json_sync("op_open_sync", op_open_sync);
+  rt.register_op("op_open_sync", metrics_op(json_op_sync(op_open_sync)));
   s.register_op_json_async("op_open_async", op_open_async);
 
   s.register_op_json_sync("op_seek_sync", op_seek_sync);
