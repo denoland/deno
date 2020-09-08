@@ -299,6 +299,7 @@ delete Object.prototype.__proto__;
   // it makes sense to use the same scheme here.
   const ASSETS = "asset://";
   const OUT_DIR = "deno://";
+  const CACHE = "cache:///";
   // This constant is passed to compiler settings when
   // doing incremental compiles. Contents of this
   // file are passed back to Rust and saved to $DENO_DIR.
@@ -488,7 +489,7 @@ delete Object.prototype.__proto__;
     }
 
     getCurrentDirectory() {
-      return "";
+      return CACHE;
     }
 
     getDefaultLibFileName(_options) {
@@ -1321,7 +1322,6 @@ delete Object.prototype.__proto__;
       target,
       createRuntimeCompileWriteFile(state),
     );
-
     const program = ts.createProgram({
       rootNames,
       options: host.getCompilationSettings(),
