@@ -100,7 +100,6 @@ pub enum Op {
 pub struct OpState {
   pub resource_table: crate::ResourceTable,
   pub get_error_class_fn: crate::runtime::GetErrorClassFn,
-  pub op_table: OpTable,
   gotham_state: GothamState,
 }
 
@@ -112,7 +111,6 @@ impl Default for OpState {
     OpState {
       resource_table: crate::ResourceTable::default(),
       get_error_class_fn: &|_| "Error",
-      op_table: OpTable::default(),
       gotham_state: GothamState::default(),
     }
   }
@@ -137,16 +135,6 @@ impl DerefMut for OpState {
 pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 
 impl OpTable {
-  pub fn get_op_catalog(&self) -> HashMap<String, OpId> {
-    self.0.keys().cloned().zip(0..).collect()
-  }
-
-  fn op_get_op_catalog(state: Rc<RefCell<OpState>>, _bufs: BufVec) -> Op {
-    let ops = state.borrow().op_table.get_op_catalog();
-    let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
-    Op::Sync(buf)
-  }
-
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
@@ -162,7 +150,13 @@ impl OpTable {
     state: Rc<RefCell<OpState>>,
     bufs: BufVec,
   ) -> Op {
-    if let Some(op_fn) = self.0.get_index(op_id).map(|(_, op_fn)| op_fn.clone())
+    if op_id == 0 {
+      let ops: HashMap<String, OpId> =
+        self.0.keys().cloned().zip(0..).collect();
+      let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
+      Op::Sync(buf)
+    } else if let Some(op_fn) =
+      self.0.get_index(op_id).map(|(_, op_fn)| op_fn.clone())
     {
       (op_fn)(state, bufs)
     } else {
@@ -173,47 +167,31 @@ impl OpTable {
 
 impl Default for OpTable {
   fn default() -> Self {
-    Self(
-      once(("ops".to_owned(), Rc::new(Self::op_get_op_catalog) as _)).collect(),
-    )
+    fn dummy(_state: Rc<RefCell<OpState>>, _bufs: BufVec) -> Op {
+      unreachable!()
+    }
+    Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
   }
 }
 
 #[test]
 fn op_table() {
+  let mut op_table = OpTable::default();
   let state = Rc::new(RefCell::new(OpState::default()));
 
-  let foo_id = state
-    .borrow_mut()
-    .op_table
-    .register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
+  let foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
   assert_eq!(foo_id, 1);
 
-  let bar_id = state
-    .borrow_mut()
-    .op_table
-    .register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
+  let bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
   assert_eq!(bar_id, 2);
 
-  let foo_res =
-    state
-      .borrow()
-      .op_table
-      .route_op(foo_id, state.clone(), Default::default());
+  let foo_res = op_table.route_op(foo_id, state.clone(), Default::default());
   assert!(matches!(foo_res, Op::Sync(buf) if &*buf == b"oof!"));
 
-  let bar_res =
-    state
-      .borrow()
-      .op_table
-      .route_op(bar_id, state.clone(), Default::default());
+  let bar_res = op_table.route_op(bar_id, state.clone(), Default::default());
   assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
 
-  let catalog_res =
-    state
-      .borrow()
-      .op_table
-      .route_op(0, state.clone(), Default::default());
+  let catalog_res = op_table.route_op(0, state.clone(), Default::default());
   let mut catalog_entries = match catalog_res {
     Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
       .map(|map| map.into_iter().collect::<Vec<_>>())
