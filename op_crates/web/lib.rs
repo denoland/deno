@@ -6,19 +6,20 @@ use std::path::PathBuf;
 
 pub fn init(isolate: &mut JsRuntime) {
   let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-  // This should point to "op_crates".
-  let display_root_path = manifest_dir.parent().unwrap();
   let files = vec![
     manifest_dir.join("00_dom_exception.js"),
     manifest_dir.join("01_event.js"),
     manifest_dir.join("02_abort_signal.js"),
     manifest_dir.join("08_text_encoding.js"),
   ];
+  // TODO(nayeemrmn): This reference to the repo root breaks encapsulation of
+  // the crate. Probably should be handled in `cli` somehow.
+  let display_root_path = manifest_dir.parent().unwrap().parent().unwrap();
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root_path).unwrap();
     js_check(isolate.execute(
-      display_path.to_str().unwrap(),
+      &("deno:".to_string() + display_path.to_str().unwrap()),
       &std::fs::read_to_string(&file).unwrap(),
     ));
   }
