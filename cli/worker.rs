@@ -269,7 +269,7 @@ impl MainWorker {
       ops::idna::init(&mut worker);
       ops::io::init(&mut worker);
       //      ops::plugin::init(&state);
-      //      ops::net::init(&state);
+      ops::net::init(&mut worker);
       //      ops::tls::init(&state);
       //      ops::os::init(&state);
       //      ops::permissions::init(&state);
