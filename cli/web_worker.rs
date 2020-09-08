@@ -110,9 +110,9 @@ impl WebWorker {
       has_deno_namespace,
     };
 
-    let handle = web_worker.thread_safe_handle();
-
     {
+      /*
+      let handle = web_worker.thread_safe_handle();
       ops::runtime::init(&state);
       ops::web_worker::init(
         &state,
@@ -142,6 +142,7 @@ impl WebWorker {
         ops::signal::init(&state);
         ops::tty::init(&state);
       }
+      */
     }
 
     web_worker

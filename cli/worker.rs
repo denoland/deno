@@ -91,7 +91,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: deno_core::JsRuntime,
+  pub isolate: JsRuntime,
   pub inspector: Option<Box<DenoInspector>>,
   pub state: Rc<State>,
   pub waker: AtomicWaker,
@@ -106,14 +106,16 @@ impl Worker {
     state: &Rc<State>,
   ) -> Self {
     let mut isolate =
-      deno_core::JsRuntime::new_with_loader(state.clone(), startup_data, false);
+      JsRuntime::new_with_loader(state.clone(), startup_data, false);
 
     {
       let global_state = state.global_state.clone();
       let op_state_rc = isolate.op_state();
       let mut op_state = op_state_rc.borrow_mut();
+      /* TODO
       op_state.get_error_class_fn =
         &move |errbox| JsError::create(errbox, &global_state.ts_compiler);
+      */
 
       op_state.put(state.clone());
     }
@@ -232,7 +234,7 @@ impl Future for Worker {
 }
 
 impl Deref for Worker {
-  type Target = deno_core::JsRuntime;
+  type Target = JsRuntime;
   fn deref(&self) -> &Self::Target {
     &self.isolate
   }
@@ -255,30 +257,30 @@ pub struct MainWorker(Worker);
 impl MainWorker {
   // TODO(ry) combine MainWorker::new and MainWorker::create.
   fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
-    let worker = Worker::new(name, startup_data, state);
+    let mut worker = Worker::new(name, startup_data, state);
     {
-      ops::runtime::init(&state);
-      ops::runtime_compiler::init(&state);
-      ops::errors::init(&state);
-      ops::fetch::init(&state);
-      ops::websocket::init(&state);
-      ops::fs::init(&state);
-      ops::fs_events::init(&state);
-      ops::idna::init(&state);
-      ops::io::init(&state);
-      ops::plugin::init(&state);
-      ops::net::init(&state);
-      ops::tls::init(&state);
-      ops::os::init(&state);
-      ops::permissions::init(&state);
-      ops::process::init(&state);
-      ops::random::init(&state);
-      ops::repl::init(&state);
-      ops::resources::init(&state);
-      ops::signal::init(&state);
-      ops::timers::init(&state);
-      ops::tty::init(&state);
-      ops::worker_host::init(&state);
+      //      ops::runtime::init(&state);
+      //      ops::runtime_compiler::init(&state);
+      //      ops::errors::init(&state);
+      //      ops::fetch::init(&state);
+      //      ops::websocket::init(&state);
+      // ops::fs::init(&mut worker);
+      ops::fs_events::init(&mut worker);
+      //      ops::idna::init(&state);
+      ops::io::init(&mut worker);
+      //      ops::plugin::init(&state);
+      //      ops::net::init(&state);
+      //      ops::tls::init(&state);
+      //      ops::os::init(&state);
+      //      ops::permissions::init(&state);
+      //      ops::process::init(&state);
+      //      ops::random::init(&state);
+      //      ops::repl::init(&state);
+      //      ops::resources::init(&state);
+      //      ops::signal::init(&state);
+      //      ops::timers::init(&state);
+      //      ops::tty::init(&state);
+      //      ops::worker_host::init(&state);
     }
     Self(worker)
   }
@@ -301,8 +303,8 @@ impl MainWorker {
     );
     {
       let op_state = worker.op_state();
-      let op_state = op_state.borrow_mut();
-      let mut t = op_state.resource_table;
+      let mut op_state = op_state.borrow_mut();
+      let t = &mut op_state.resource_table;
       let (stdin, stdout, stderr) = get_stdio();
       if let Some(stream) = stdin {
         t.add("stdin", Box::new(stream));
