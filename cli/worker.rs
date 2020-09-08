@@ -260,7 +260,7 @@ impl MainWorker {
     let mut worker = Worker::new(name, startup_data, state);
     {
       ops::runtime::init(&mut worker);
-      //      ops::runtime_compiler::init(&state);
+      ops::runtime_compiler::init(&mut worker);
       //      ops::errors::init(&state);
       ops::fetch::init(&mut worker);
       ops::websocket::init(&mut worker);
