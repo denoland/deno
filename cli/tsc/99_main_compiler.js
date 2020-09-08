@@ -382,13 +382,10 @@ delete Object.prototype.__proto__;
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
   function parseCompilerOptions(compilerOptions) {
-    // TODO(bartlomieju): using `/` and `/tsconfig.json` because
-    // otherwise TSC complains that some paths are relative
-    // and some are absolute
     const { options, errors } = ts.convertCompilerOptionsFromJson(
       compilerOptions,
-      "/",
-      "/tsconfig.json",
+      "",
+      "tsconfig.json",
     );
     return {
       options,
