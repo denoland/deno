@@ -878,6 +878,13 @@ delete Object.prototype.__proto__;
     7016,
   ];
 
+  const IGNORED_COMPILE_DIAGNOSTICS = [
+    // TS1208: All files must be modules when the '--isolatedModules' flag is
+    // provided.  We can ignore because we guarantuee that all files are
+    // modules.
+    1208,
+  ];
+
   const stats = [];
   let statsStart = 0;
 
@@ -1162,7 +1169,9 @@ delete Object.prototype.__proto__;
         ...program.getSemanticDiagnostics(),
       ];
       diagnostics = diagnostics.filter(
-        ({ code }) => !IGNORED_DIAGNOSTICS.includes(code),
+        ({ code }) =>
+          !IGNORED_DIAGNOSTICS.includes(code) &&
+          !IGNORED_COMPILE_DIAGNOSTICS.includes(code),
       );
 
       // We will only proceed with the emit if there are no diagnostics.
@@ -1333,7 +1342,10 @@ delete Object.prototype.__proto__;
 
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+      .filter(({ code }) =>
+        !IGNORED_DIAGNOSTICS.includes(code) &&
+        !IGNORED_COMPILE_DIAGNOSTICS.includes(code)
+      );
 
     const emitResult = program.emit();
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");

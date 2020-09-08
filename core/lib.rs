@@ -31,7 +31,6 @@ pub use crate::errors::JsError;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
-pub use crate::modules::Deps;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoadId;
 pub use crate::modules::ModuleLoader;

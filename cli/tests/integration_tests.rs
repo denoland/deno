@@ -950,6 +950,38 @@ fn bundle_import_map() {
 }
 
 #[test]
+fn info_with_compiled_source() {
+  let _g = util::http_server();
+  let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
+  let t = TempDir::new().expect("tempdir fail");
+
+  let mut deno = util::deno_cmd()
+    .env("DENO_DIR", t.path())
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(&module_path)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+
+  let output = util::deno_cmd()
+    .env("DENO_DIR", t.path())
+    .env("NO_COLOR", "1")
+    .current_dir(util::root_path())
+    .arg("info")
+    .arg(&module_path)
+    .output()
+    .expect("failed to spawn script");
+
+  let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
+  eprintln!("{}", str_output);
+  // check the output of the test.ts program.
+  assert!(str_output.contains("compiled: "));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -2287,6 +2319,12 @@ itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
+});
+
+itest!(info_recursive_modules {
+  args: "info --quiet info_recursive_imports_test.ts",
+  output: "info_recursive_imports_test.out",
+  exit_code: 0,
 });
 
 itest!(info_type_import {
