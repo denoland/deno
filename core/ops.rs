@@ -19,7 +19,7 @@ pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
 pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static;
 pub type OpId = usize;
 
-pub fn op_json_sync<F>(op_fn: F) -> Box<OpFn>
+pub fn json_op_sync<F>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
     + 'static,
@@ -34,7 +34,7 @@ where
   })
 }
 
-pub fn op_json_async<F, R>(op_fn: F) -> Box<OpFn>
+pub fn json_op_async<F, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
   R: Future<Output = Result<Value, ErrBox>> + 'static,
