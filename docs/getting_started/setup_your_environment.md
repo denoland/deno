@@ -66,7 +66,6 @@ After this add deno plugin under plugins tag in `~/.zshrc` file. for tools like
 `antigen` path will be `~/.antigen/bundles/robbyrussell/oh-my-zsh/plugins` and
 command will be `antigen bundle deno` and so on.
 
-
 Example (Powershell):
 
 ```shel
@@ -74,8 +73,8 @@ deno completions powershell > $profile
 .$profile
 ```
 
-This will be create a Powershell profile at `$HOME\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1` by default, and it will be run whenever you launch the PowerShell.
-
+This will be create a Powershell profile at `$HOME\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`
+by default, and it will be run whenever you launch the PowerShell.
 
 ### Editors and IDEs
 
