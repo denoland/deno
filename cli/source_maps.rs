@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//! This mod provides functions to remap a deno_core::deno_core::JSError based on a source map
+//! This mod provides functions to remap a deno_core::deno_core::JsError based on a source map
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
@@ -18,13 +18,13 @@ pub trait SourceMapGetter {
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-/// Apply a source map to a deno_core::JSError, returning a JSError where file
+/// Apply a source map to a deno_core::JsError, returning a JsError where file
 /// names and line/column numbers point to the location in the original source,
 /// rather than the transpiled source code.
 pub fn apply_source_map<G: SourceMapGetter>(
-  js_error: &deno_core::JSError,
+  js_error: &deno_core::JsError,
   getter: &G,
-) -> deno_core::JSError {
+) -> deno_core::JsError {
   // Note that js_error.frames has already been source mapped in
   // prepareStackTrace().
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -67,7 +67,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     _ => js_error.source_line.clone(),
   };
 
-  deno_core::JSError {
+  deno_core::JsError {
     message: js_error.message.clone(),
     source_line,
     script_resource_name,
@@ -194,7 +194,7 @@ mod tests {
 
   #[test]
   fn apply_source_map_line() {
-    let e = deno_core::JSError {
+    let e = deno_core::JsError {
       message: "TypeError: baz".to_string(),
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),

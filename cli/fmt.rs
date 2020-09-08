@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formating utilities using
-//! [`dprint`](https://github.com/dsherret/dprint).
+//! [`dprint-plugin-typescript`](https://github.com/dsherret/dprint-plugin-typescript).
 //!
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
@@ -61,7 +61,6 @@ async fn check_source_files(
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
-  let formatter = Arc::new(dprint::Formatter::new(config));
 
   // prevent threads outputting at the same time
   let output_lock = Arc::new(Mutex::new(0));
@@ -72,11 +71,11 @@ async fn check_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::SeqCst);
       let file_text = read_file_contents(&file_path)?.text;
-      let r = formatter.format_text(&file_path, &file_text);
+      let r = dprint::format_text(&file_path, &file_text, &config);
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_text {
-            not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
             match diff(&file_text, &formatted_text) {
               Ok(diff) => {
@@ -110,7 +109,7 @@ async fn check_source_files(
   .await?;
 
   let not_formatted_files_count =
-    not_formatted_files_count.load(Ordering::SeqCst);
+    not_formatted_files_count.load(Ordering::Relaxed);
   let checked_files_count = checked_files_count.load(Ordering::SeqCst);
   let checked_files_str =
     format!("{} {}", checked_files_count, files_str(checked_files_count));
@@ -135,7 +134,6 @@ async fn format_source_files(
 ) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
-  let formatter = Arc::new(dprint::Formatter::new(config));
   let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
   run_parallelized(paths, {
@@ -144,7 +142,7 @@ async fn format_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::SeqCst);
       let file_contents = read_file_contents(&file_path)?;
-      let r = formatter.format_text(&file_path, &file_contents.text);
+      let r = dprint::format_text(&file_path, &file_contents.text, &config);
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
@@ -155,7 +153,7 @@ async fn format_source_files(
                 text: formatted_text,
               },
             )?;
-            formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
             println!("{}", file_path.to_string_lossy());
           }
@@ -171,7 +169,7 @@ async fn format_source_files(
   })
   .await?;
 
-  let formatted_files_count = formatted_files_count.load(Ordering::SeqCst);
+  let formatted_files_count = formatted_files_count.load(Ordering::Relaxed);
   debug!(
     "Formatted {} {}",
     formatted_files_count,
@@ -197,10 +195,10 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   if stdin().read_to_string(&mut source).is_err() {
     return Err(ErrBox::error("Failed to read from stdin"));
   }
-  let formatter = dprint::Formatter::new(get_config());
+  let config = get_config();
 
   // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
-  match formatter.format_text(&PathBuf::from("_stdin.ts"), &source) {
+  match dprint::format_text(&PathBuf::from("_stdin.ts"), &source, &config) {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {
@@ -269,7 +267,7 @@ struct FileContents {
   had_bom: bool,
 }
 
-fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
+fn read_file_contents(file_path: &Path) -> Result<FileContents, ErrBox> {
   let file_bytes = fs::read(&file_path)?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
@@ -285,7 +283,7 @@ fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
 }
 
 fn write_file_contents(
-  file_path: &PathBuf,
+  file_path: &Path,
   file_contents: FileContents,
 ) -> Result<(), ErrBox> {
   let file_text = if file_contents.had_bom {

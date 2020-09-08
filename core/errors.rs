@@ -110,23 +110,23 @@ impl From<Box<dyn AnyError>> for ErrBox {
   }
 }
 
-/// A `JSError` represents an exception coming from V8, with stack frames and
-/// line numbers. The deno_cli crate defines another `JSError` type, which wraps
+/// A `JsError` represents an exception coming from V8, with stack frames and
+/// line numbers. The deno_cli crate defines another `JsError` type, which wraps
 /// the one defined here, that adds source map support and colorful formatting.
 #[derive(Debug, PartialEq, Clone)]
-pub struct JSError {
+pub struct JsError {
   pub message: String,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
   pub start_column: Option<i64>, // 0-based
   pub end_column: Option<i64>,   // 0-based
-  pub frames: Vec<JSStackFrame>,
+  pub frames: Vec<JsStackFrame>,
   pub formatted_frames: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct JSStackFrame {
+pub struct JsStackFrame {
   pub type_name: Option<String>,
   pub function_name: Option<String>,
   pub method_name: Option<String>,
@@ -152,7 +152,7 @@ fn get_property<'a>(
   object.get(scope, key.into())
 }
 
-impl JSError {
+impl JsError {
   pub(crate) fn create(js_error: Self) -> ErrBox {
     js_error.into()
   }
@@ -199,7 +199,7 @@ impl JSError {
         formatted_frames_v8.and_then(|a| a.try_into().ok());
 
       // Convert them into Vec<JSStack> and Vec<String> respectively.
-      let mut frames: Vec<JSStackFrame> = vec![];
+      let mut frames: Vec<JsStackFrame> = vec![];
       let mut formatted_frames: Vec<String> = vec![];
       if let (Some(frames_v8), Some(formatted_frames_v8)) =
         (frames_v8, formatted_frames_v8)
@@ -292,7 +292,7 @@ impl JSError {
               .try_into()
               .ok();
           let promise_index = promise_index.map(|n| n.value());
-          frames.push(JSStackFrame {
+          frames.push(JsStackFrame {
             type_name,
             function_name,
             method_name,
@@ -343,7 +343,7 @@ impl JSError {
   }
 }
 
-impl Error for JSError {}
+impl Error for JsError {}
 
 fn format_source_loc(
   file_name: &str,
@@ -355,7 +355,7 @@ fn format_source_loc(
   format!("{}:{}:{}", file_name, line_number, column_number)
 }
 
-impl fmt::Display for JSError {
+impl fmt::Display for JsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {

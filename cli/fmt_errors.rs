@@ -103,13 +103,13 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-/// Wrapper around deno_core::JSError which provides color to_string.
+/// Wrapper around deno_core::JsError which provides color to_string.
 #[derive(Debug)]
-pub struct JSError(deno_core::JSError);
+pub struct JsError(deno_core::JsError);
 
-impl JSError {
+impl JsError {
   pub fn create(
-    core_js_error: deno_core::JSError,
+    core_js_error: deno_core::JsError,
     source_map_getter: &impl SourceMapGetter,
   ) -> ErrBox {
     let core_js_error = apply_source_map(&core_js_error, source_map_getter);
@@ -118,14 +118,14 @@ impl JSError {
   }
 }
 
-impl Deref for JSError {
-  type Target = deno_core::JSError;
+impl Deref for JsError {
+  type Target = deno_core::JsError;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl fmt::Display for JSError {
+impl fmt::Display for JsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut formatted_frames = self.0.formatted_frames.clone();
 
@@ -170,7 +170,7 @@ impl fmt::Display for JSError {
   }
 }
 
-impl Error for JSError {}
+impl Error for JsError {}
 
 #[cfg(test)]
 mod tests {
