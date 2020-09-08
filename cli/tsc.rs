@@ -621,6 +621,8 @@ impl TsCompiler {
       "esModuleInterop": true,
       "incremental": true,
       "inlineSourceMap": true,
+      // TODO(lucacasonato): enable this by default in 1.5.0
+      "isolatedModules": unstable,
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -1252,6 +1254,8 @@ pub async fn runtime_compile(
     "allowNonTsExtensions": true,
     "checkJs": false,
     "esModuleInterop": true,
+    // TODO(lucacasonato): enable this by default in 1.5.0
+    "isolatedModules": unstable,
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
