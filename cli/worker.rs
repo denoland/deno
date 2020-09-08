@@ -259,7 +259,7 @@ impl MainWorker {
   fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
     let mut worker = Worker::new(name, startup_data, state);
     {
-      //      ops::runtime::init(&state);
+      ops::runtime::init(&mut worker);
       //      ops::runtime_compiler::init(&state);
       //      ops::errors::init(&state);
       ops::fetch::init(&mut worker);

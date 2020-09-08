@@ -20,7 +20,7 @@ mod net_unix;
 //pub mod random;
 //pub mod repl;
 //pub mod resources;
-//pub mod runtime;
+pub mod runtime;
 //pub mod runtime_compiler;
 //pub mod signal;
 //pub mod timers;
