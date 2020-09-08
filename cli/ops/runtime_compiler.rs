@@ -7,7 +7,6 @@ use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
 use serde_derive::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;

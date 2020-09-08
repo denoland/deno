@@ -4,7 +4,6 @@ use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::state::State;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use nix::sys::termios;

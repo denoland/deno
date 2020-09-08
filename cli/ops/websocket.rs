@@ -4,7 +4,6 @@ use crate::state::State;
 use core::task::Poll;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
 use futures::future::poll_fn;
 use futures::StreamExt;
 use futures::{ready, SinkExt};

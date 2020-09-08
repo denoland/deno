@@ -105,20 +105,17 @@ impl Worker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut isolate = deno_core::JsRuntime::new_with_loader(
-      state.clone(),
-      state.clone(),
-      startup_data,
-      false,
-    );
+    let mut isolate =
+      deno_core::JsRuntime::new_with_loader(state.clone(), startup_data, false);
 
     {
       let global_state = state.global_state.clone();
-      let core_state_rc = JsRuntime::state(&isolate);
-      let mut core_state = core_state_rc.borrow_mut();
-      core_state.set_js_error_create_fn(move |core_js_error| {
-        JsError::create(core_js_error, &global_state.ts_compiler)
-      });
+      let op_state_rc = isolate.op_state();
+      let mut op_state = op_state_rc.borrow_mut();
+      op_state.get_error_class_fn =
+        &move |errbox| JsError::create(errbox, &global_state.ts_compiler);
+
+      op_state.put(state.clone());
     }
 
     let inspector = {
@@ -303,7 +300,9 @@ impl MainWorker {
       &state,
     );
     {
-      let mut t = state.resource_table.borrow_mut();
+      let op_state = worker.op_state();
+      let op_state = op_state.borrow_mut();
+      let mut t = op_state.resource_table;
       let (stdin, stdout, stderr) = get_stdio();
       if let Some(stream) = stdin {
         t.add("stdin", Box::new(stream));

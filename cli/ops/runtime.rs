@@ -6,7 +6,6 @@ use crate::version;
 use crate::DenoSubcommand;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use serde_json::Value;
 use std::env;

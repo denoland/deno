@@ -5,7 +5,7 @@ use crate::http_util::{create_http_client, HttpBody};
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -13,13 +13,14 @@ use http::Method;
 use reqwest::Client;
 use serde_derive::Deserialize;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_async("op_fetch", op_fetch);
-  s.register_op_json_sync("op_create_http_client", op_create_http_client);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  rt.register_op_json_async("op_fetch", op_fetch);
+  rt.register_op_json_sync("op_create_http_client", op_create_http_client);
 }
 
 #[derive(Deserialize)]
@@ -32,7 +33,7 @@ struct FetchArgs {
 }
 
 async fn op_fetch(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   data: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -40,13 +41,14 @@ async fn op_fetch(
   let url = args.url;
 
   let client = if let Some(rid) = args.client_rid {
-    let resource_table_ = state.resource_table.borrow();
-    let r = resource_table_
+    let resource_table = &state.borrow().resource_table;
+    let r = resource_table
       .get::<HttpClientResource>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
     r.client.clone()
   } else {
-    let client_ref = state.http_client.borrow_mut();
+    let s = state.borrow();
+    let client_ref = s.borrow::<reqwest::Client>();
     client_ref.clone()
   };
 
@@ -66,7 +68,10 @@ async fn op_fetch(
     )));
   }
 
-  state.check_net_url(&url_)?;
+  state
+    .borrow()
+    .borrow::<crate::state::State>()
+    .check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
 
@@ -93,7 +98,7 @@ async fn op_fetch(
   }
 
   let body = HttpBody::from(res);
-  let rid = state.resource_table.borrow_mut().add(
+  let rid = state.borrow_mut().resource_table.add(
     "httpBody",
     Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
       Box::new(body),

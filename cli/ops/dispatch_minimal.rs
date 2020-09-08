@@ -5,7 +5,6 @@ use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpId;
-use deno_core::OpRegistry;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::iter::repeat;

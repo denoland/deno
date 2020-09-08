@@ -4,7 +4,6 @@
 
 use crate::state::State;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use idna::domain_to_ascii;
 use idna::domain_to_ascii_strict;

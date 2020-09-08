@@ -5,7 +5,6 @@ use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;

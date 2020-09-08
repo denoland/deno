@@ -3,7 +3,6 @@
 use crate::state::State;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
-use deno_core::OpRegistry;
 use futures::channel::mpsc;
 use std::rc::Rc;
 

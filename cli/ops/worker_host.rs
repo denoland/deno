@@ -13,7 +13,6 @@ use crate::worker::WorkerEvent;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use serde_derive::Deserialize;

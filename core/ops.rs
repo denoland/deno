@@ -33,6 +33,9 @@ pub struct OpState {
 }
 
 impl Default for OpState {
+  // TODO(ry) Only deno_core should be able to construct an OpState. But I don't
+  // know how to make default private. Maybe rename to
+  //   pub(crate) fn new() -> OpState
   fn default() -> OpState {
     OpState {
       resource_table: crate::ResourceTable::default(),
