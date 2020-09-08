@@ -5,8 +5,8 @@ use crate::file_fetcher::SourceFile;
 use crate::inspector::DenoInspector;
 use deno_core::v8;
 use deno_core::ErrBox;
-use futures::channel::mpsc;
 use serde::Deserialize;
+use std::collections::VecDeque;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -15,8 +15,7 @@ use std::ptr;
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-  sender: mpsc::Sender<String>,
-  receiver: mpsc::Receiver<String>,
+  response_queue: VecDeque<String>,
 }
 
 impl Deref for CoverageCollector {
@@ -47,7 +46,7 @@ impl v8::inspector::ChannelImpl for CoverageCollector {
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let message = message.unwrap().string().to_string();
-    self.sender.try_send(message).unwrap();
+    self.response_queue.push_back(message);
   }
 
   fn send_notification(
@@ -71,13 +70,12 @@ impl CoverageCollector {
         v8::inspector::StringView::empty(),
       );
 
-      let (sender, receiver) = mpsc::channel::<String>(1);
+      let response_queue = VecDeque::with_capacity(10);
 
       Self {
         v8_channel,
         v8_session,
-        sender,
-        receiver,
+        response_queue,
       }
     })
   }
@@ -86,7 +84,7 @@ impl CoverageCollector {
     let message = v8::inspector::StringView::from(message.as_bytes());
     self.v8_session.dispatch_protocol_message(message);
 
-    let response = self.receiver.try_next()?;
+    let response = self.response_queue.pop_back();
     Ok(response.unwrap())
   }
 
