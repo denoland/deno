@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::OpState;

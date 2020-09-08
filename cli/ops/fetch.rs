@@ -2,7 +2,6 @@
 
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
-use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::OpState;
@@ -19,8 +18,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  rt.register_op_json_async("op_fetch", op_fetch);
-  rt.register_op_json_sync("op_create_http_client", op_create_http_client);
+  super::reg_json_async(rt, "op_fetch", op_fetch);
+  super::reg_json_sync(rt, "op_create_http_client", op_create_http_client);
 }
 
 #[derive(Deserialize)]
@@ -133,21 +132,21 @@ struct CreateHttpClientOptions {
 }
 
 fn op_create_http_client(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
-    state.check_read(&PathBuf::from(ca_file))?;
+    let cli_state = state.borrow::<crate::state::State>();
+    cli_state.check_read(&PathBuf::from(ca_file))?;
   }
 
   let client = create_http_client(args.ca_file.as_deref()).unwrap();
 
   let rid = state
     .resource_table
-    .borrow_mut()
     .add("httpClient", Box::new(HttpClientResource::new(client)));
   Ok(json!(rid))
 }

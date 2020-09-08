@@ -262,7 +262,7 @@ impl MainWorker {
       //      ops::runtime::init(&state);
       //      ops::runtime_compiler::init(&state);
       //      ops::errors::init(&state);
-      //      ops::fetch::init(&state);
+      ops::fetch::init(&mut worker);
       //      ops::websocket::init(&state);
       ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);
