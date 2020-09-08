@@ -658,8 +658,16 @@ fn decode(
     )
   };
 
+  // If `String::new_from_utf8()` fails it most likely means that we're trying to
+  // create a string that is too big. In that case return empty string to match Chrome's
+  // behavior.
+  //
+  // See https://github.com/denoland/deno/issues/6649 for more details.
   let text_str =
-    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
+    match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+      Some(text) => text,
+      None => v8::String::empty(scope),
+    };
   rv.set(text_str.into())
 }
 

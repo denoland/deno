@@ -41,6 +41,10 @@ function main() {
 
   assert(Deno.core.decode(new Uint8Array(fixture1)) === "𝓽𝓮𝔁𝓽");
   assert(Deno.core.decode(new Uint8Array(fixture2)) === "Hello �� World");
+
+  // See https://github.com/denoland/deno/issues/6649
+  const bigString = Deno.core.decode(new Uint8Array(2 ** 29));
+  assert(bigString === "");
 }
 
 main();
