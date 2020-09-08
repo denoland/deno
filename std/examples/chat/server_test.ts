@@ -4,6 +4,9 @@ import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { delay } from "../../async/delay.ts";
+import { resolve, dirname, fromFileUrl } from "../../path/mod.ts";
+
+const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)));
 
 async function startServer(): Promise<
   Deno.Process<Deno.RunOptions & { stdout: "piped" }>
@@ -16,7 +19,7 @@ async function startServer(): Promise<
       "--allow-read",
       "server.ts",
     ],
-    cwd: "examples/chat",
+    cwd: moduleDir,
     stdout: "piped",
   });
   try {
