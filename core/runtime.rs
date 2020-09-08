@@ -493,20 +493,7 @@ impl JsRuntime {
     F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
       + 'static,
   {
-    let base_op_fn = move |state: Rc<RefCell<OpState>>,
-                           mut bufs: BufVec|
-          -> Op {
-      let result = serde_json::from_slice(&bufs[0])
-        .map_err(ErrBox::from)
-        .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
-      let buf = json_serialize_op_result(
-        None,
-        result,
-        state.borrow().get_error_class_fn,
-      );
-      Op::Sync(buf)
-    };
-
+    let base_op_fn = crate::ops::op_json_sync(op_fn);
     self.register_op(name, base_op_fn)
   }
 
@@ -515,36 +502,7 @@ impl JsRuntime {
     F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
     R: Future<Output = Result<Value, ErrBox>> + 'static,
   {
-    let try_dispatch_op = move |state: Rc<RefCell<OpState>>,
-                                bufs: BufVec|
-          -> Result<Op, ErrBox> {
-      let args: Value = serde_json::from_slice(&bufs[0])?;
-      let promise_id = args
-        .get("promiseId")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| ErrBox::type_error("missing or invalid `promiseId`"))?;
-      let bufs = bufs[1..].into();
-      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
-        json_serialize_op_result(
-          Some(promise_id),
-          result,
-          state.borrow().get_error_class_fn,
-        )
-      });
-      Ok(Op::Async(Box::pin(fut)))
-    };
-
-    let base_op_fn = move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
-      match try_dispatch_op(state.clone(), bufs) {
-        Ok(op) => op,
-        Err(err) => Op::Sync(json_serialize_op_result(
-          None,
-          Err(err),
-          state.borrow().get_error_class_fn,
-        )),
-      }
-    };
-
+    let base_op_fn = crate::ops::op_json_async(op_fn);
     self.register_op(name, base_op_fn)
   }
 
@@ -589,24 +547,6 @@ impl JsRuntime {
         .remove_near_heap_limit_callback(cb, heap_limit);
     }
   }
-}
-
-fn json_serialize_op_result(
-  promise_id: Option<u64>,
-  result: Result<Value, ErrBox>,
-  get_error_class_fn: GetErrorClassFn,
-) -> Box<[u8]> {
-  let value = match result {
-    Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),
-    Err(err) => serde_json::json!({
-      "promiseId": promise_id ,
-      "err": {
-        "className": (get_error_class_fn)(&err),
-        "message": err.to_string(),
-      }
-    }),
-  };
-  serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
 
 extern "C" fn near_heap_limit_callback<F>(

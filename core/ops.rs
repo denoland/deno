@@ -2,8 +2,11 @@
 
 use crate::gotham_state::GothamState;
 use crate::BufVec;
+use crate::ErrBox;
+use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
+use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter::once;
@@ -15,6 +18,75 @@ use std::rc::Rc;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
 pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static;
 pub type OpId = usize;
+
+pub fn op_json_sync<F>(op_fn: F) -> Box<OpFn>
+where
+  F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
+    + 'static,
+{
+  Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
+    let result = serde_json::from_slice(&bufs[0])
+      .map_err(crate::ErrBox::from)
+      .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
+    let buf =
+      json_serialize_op_result(None, result, state.borrow().get_error_class_fn);
+    Op::Sync(buf)
+  })
+}
+
+pub fn op_json_async<F, R>(op_fn: F) -> Box<OpFn>
+where
+  F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
+  R: Future<Output = Result<Value, ErrBox>> + 'static,
+{
+  let try_dispatch_op =
+    move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, ErrBox> {
+      let args: Value = serde_json::from_slice(&bufs[0])?;
+      let promise_id = args
+        .get("promiseId")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ErrBox::type_error("missing or invalid `promiseId`"))?;
+      let bufs = bufs[1..].into();
+      use crate::futures::FutureExt;
+      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
+        json_serialize_op_result(
+          Some(promise_id),
+          result,
+          state.borrow().get_error_class_fn,
+        )
+      });
+      Ok(Op::Async(Box::pin(fut)))
+    };
+
+  Box::new(move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+    match try_dispatch_op(state.clone(), bufs) {
+      Ok(op) => op,
+      Err(err) => Op::Sync(json_serialize_op_result(
+        None,
+        Err(err),
+        state.borrow().get_error_class_fn,
+      )),
+    }
+  })
+}
+
+fn json_serialize_op_result(
+  promise_id: Option<u64>,
+  result: Result<serde_json::Value, crate::ErrBox>,
+  get_error_class_fn: crate::runtime::GetErrorClassFn,
+) -> Box<[u8]> {
+  let value = match result {
+    Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),
+    Err(err) => serde_json::json!({
+      "promiseId": promise_id ,
+      "err": {
+        "className": (get_error_class_fn)(&err),
+        "message": err.to_string(),
+      }
+    }),
+  };
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
 
 pub enum Op {
   Sync(Box<[u8]>),
