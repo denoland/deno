@@ -12,8 +12,8 @@ pub fn init(isolate: &mut JsRuntime) {
     manifest_dir.join("02_abort_signal.js"),
     manifest_dir.join("08_text_encoding.js"),
   ];
-  // TODO(nayeemrmn): This reference to the repo root breaks encapsulation of
-  // the crate. Probably should be handled in `cli` somehow.
+  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
+  // workspace root.
   let display_root_path = manifest_dir.parent().unwrap().parent().unwrap();
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
