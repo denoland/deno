@@ -23,13 +23,11 @@ use crate::BufVec;
 use crate::ErrBox;
 use crate::JsError;
 use crate::OpState;
-use crate::ZeroCopyBuf;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
 use futures::Future;
-use serde_json::Value;
 use std::any::Any;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -486,24 +484,6 @@ impl JsRuntime {
     let state = state_rc.borrow_mut();
     let mut op_state = state.op_state.borrow_mut();
     op_state.op_table.register_op(name, op_fn)
-  }
-
-  pub fn register_op_json_sync<F>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
-      + 'static,
-  {
-    let base_op_fn = crate::ops::op_json_sync(op_fn);
-    self.register_op(name, base_op_fn)
-  }
-
-  pub fn register_op_json_async<F, R>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
-    R: Future<Output = Result<Value, ErrBox>> + 'static,
-  {
-    let base_op_fn = crate::ops::op_json_async(op_fn);
-    self.register_op(name, base_op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
