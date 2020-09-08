@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
 use core::task::Poll;
 use deno_core::BufVec;
 use deno_core::ErrBox;
+use deno_core::OpState;
 use futures::future::poll_fn;
 use futures::StreamExt;
 use futures::{ready, SinkExt};
@@ -11,6 +11,7 @@ use http::{Method, Request, Uri};
 use serde_derive::Deserialize;
 use serde_json::Value;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::BufReader;
 use std::rc::Rc;
@@ -25,11 +26,11 @@ use tokio_tungstenite::tungstenite::{
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_async("op_ws_create", op_ws_create);
-  s.register_op_json_async("op_ws_send", op_ws_send);
-  s.register_op_json_async("op_ws_close", op_ws_close);
-  s.register_op_json_async("op_ws_next_event", op_ws_next_event);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_async(rt, "op_ws_create", op_ws_create);
+  super::reg_json_async(rt, "op_ws_send", op_ws_send);
+  super::reg_json_async(rt, "op_ws_close", op_ws_close);
+  super::reg_json_async(rt, "op_ws_next_event", op_ws_next_event);
 }
 
 type MaybeTlsStream =
@@ -45,13 +46,17 @@ struct CreateArgs {
 }
 
 pub async fn op_ws_create(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: CreateArgs = serde_json::from_value(args)?;
-  state.check_net_url(&url::Url::parse(&args.url)?)?;
-  let ca_file = state.global_state.flags.ca_file.clone();
+  let ca_file = {
+    let state_ = state.borrow();
+    let cli_state = state_.borrow::<crate::state::State>();
+    cli_state.check_net_url(&url::Url::parse(&args.url)?)?;
+    cli_state.global_state.flags.ca_file.clone()
+  };
   let uri: Uri = args.url.parse().unwrap();
   let request = Request::builder()
     .method(Method::GET)
@@ -98,9 +103,9 @@ pub async fn op_ws_create(
   let (stream, response): (WsStream, Response) =
     client_async(request, socket).await.unwrap();
 
+  let mut state = state.borrow_mut();
   let rid = state
     .resource_table
-    .borrow_mut()
     .add("webSocketStream", Box::new(stream));
 
   let protocol = match response.headers().get("Sec-WebSocket-Protocol") {
@@ -129,7 +134,7 @@ struct SendArgs {
 }
 
 pub async fn op_ws_send(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   bufs: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -142,8 +147,9 @@ pub async fn op_ws_send(
   let rid = args.rid;
 
   poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
-    let stream = resource_table
+    let mut state = state.borrow_mut();
+    let stream = state
+      .resource_table
       .get_mut::<WsStream>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
 
@@ -170,7 +176,7 @@ struct CloseArgs {
 }
 
 pub async fn op_ws_close(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -185,8 +191,9 @@ pub async fn op_ws_close(
   })));
 
   poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
-    let stream = resource_table
+    let mut state = state.borrow_mut();
+    let stream = state
+      .resource_table
       .get_mut::<WsStream>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
 
@@ -212,14 +219,15 @@ struct NextEventArgs {
 }
 
 pub async fn op_ws_next_event(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: NextEventArgs = serde_json::from_value(args)?;
   poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
-    let stream = resource_table
+    let mut state = state.borrow_mut();
+    let stream = state
+      .resource_table
       .get_mut::<WsStream>(args.rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
     stream
@@ -247,7 +255,7 @@ pub async fn op_ws_next_event(
           Some(Ok(Message::Pong(_))) => json!({"type": "pong"}),
           Some(Err(_)) => json!({"type": "error"}),
           None => {
-            resource_table.close(args.rid).unwrap();
+            state.resource_table.close(args.rid).unwrap();
             json!({"type": "closed"})
           }
         }

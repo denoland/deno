@@ -8,7 +8,7 @@ pub use dispatch_minimal::MinimalOp;
 pub mod fetch;
 pub mod fs;
 pub mod fs_events;
-//pub mod idna;
+pub mod idna;
 pub mod io;
 //pub mod net;
 //#[cfg(unix)]
@@ -27,7 +27,7 @@ pub mod io;
 //pub mod tls;
 //pub mod tty;
 //pub mod web_worker;
-//pub mod websocket;
+pub mod websocket;
 //pub mod worker_host;
 
 use crate::metrics::metrics_op;
