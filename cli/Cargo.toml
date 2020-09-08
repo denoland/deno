@@ -29,7 +29,7 @@ winapi = "0.3.9"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.56.0" }
-deno_doc = { version = "0.1.4" }
+deno_doc = { version = "0.1.5" }
 deno_lint = { version = "0.1.28", features = ["json"] }
 
 atty = "0.2.14"
