@@ -50,7 +50,10 @@ lazy_static! {
       },
       v8::ExternalReference {
         function: get_promise_details.map_fn_to()
-      }
+      },
+      v8::ExternalReference {
+        function: get_proxy_details.map_fn_to()
+      },
     ]);
 }
 
@@ -179,6 +182,18 @@ pub fn initialize_context<'s>(
     scope,
     get_promise_details_key.into(),
     get_promise_details_val.into(),
+  );
+
+  let get_proxy_details_key =
+    v8::String::new(scope, "getProxyDetails").unwrap();
+  let get_proxy_details_tmpl =
+    v8::FunctionTemplate::new(scope, get_proxy_details);
+  let get_proxy_details_val =
+    get_proxy_details_tmpl.get_function(scope).unwrap();
+  core_val.set(
+    scope,
+    get_proxy_details_key.into(),
+    get_proxy_details_val.into(),
   );
 
   let shared_key = v8::String::new(scope, "shared").unwrap();
@@ -795,6 +810,50 @@ fn get_promise_details(
       rv.set(promise_details.into());
     }
   }
+}
+
+// Based on https://github.com/nodejs/node/blob/1e470510ff74391d7d4ec382909ea8960d2d2fbc/src/node_util.cc
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+fn get_proxy_details(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  // Return undefined if it's not a proxy.
+  let proxy = match v8::Local::<v8::Proxy>::try_from(args.get(0)) {
+    Ok(val) => val,
+    Err(_) => {
+      return;
+    }
+  };
+
+  let proxy_details = v8::Array::new(scope, 2);
+  let js_zero = v8::Integer::new(scope, 0);
+  let js_one = v8::Integer::new(scope, 1);
+  let target = proxy.get_target(scope);
+  let handler = proxy.get_handler(scope);
+  proxy_details.set(scope, js_zero.into(), target);
+  proxy_details.set(scope, js_one.into(), handler);
+  rv.set(proxy_details.into());
 }
 
 fn throw_type_error<'s>(
