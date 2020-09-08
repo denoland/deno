@@ -104,7 +104,7 @@ impl DiskCache {
         out = out.join(remaining_components);
       }
       "data" => {
-        out.push(crate::checksum::gen(&vec![url.as_str().as_bytes()]));
+        out.push(crate::checksum::gen(&[url.as_str().as_bytes()]));
       }
       scheme => {
         unimplemented!(
