@@ -67,7 +67,7 @@ async fn check_source_files(
     let not_formatted_files_count = not_formatted_files_count.clone();
     let checked_files_count = checked_files_count.clone();
     move |file_path| {
-      checked_files_count.fetch_add(1, Ordering::SeqCst);
+      checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
       let r = dprint::format_text(&file_path, &file_text, &config);
       match r {
@@ -108,7 +108,7 @@ async fn check_source_files(
 
   let not_formatted_files_count =
     not_formatted_files_count.load(Ordering::Relaxed);
-  let checked_files_count = checked_files_count.load(Ordering::SeqCst);
+  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
   let checked_files_str =
     format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
@@ -135,7 +135,7 @@ async fn format_source_files(
     let formatted_files_count = formatted_files_count.clone();
     let checked_files_count = checked_files_count.clone();
     move |file_path| {
-      checked_files_count.fetch_add(1, Ordering::SeqCst);
+      checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
       let r = dprint::format_text(&file_path, &file_contents.text, &config);
       match r {
@@ -171,7 +171,7 @@ async fn format_source_files(
     files_str(formatted_files_count),
   );
 
-  let checked_files_count = checked_files_count.load(Ordering::SeqCst);
+  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
   println!(
     "Checked {} {}",
     checked_files_count,
