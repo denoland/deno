@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
@@ -16,10 +17,10 @@ use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_signal_bind", op_signal_bind);
-  s.register_op_json_sync("op_signal_unbind", op_signal_unbind);
-  s.register_op_json_async("op_signal_poll", op_signal_poll);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_signal_bind", op_signal_bind);
+  super::reg_json_sync(rt, "op_signal_unbind", op_signal_unbind);
+  super::reg_json_async(rt, "op_signal_poll", op_signal_poll);
 }
 
 #[cfg(unix)]
@@ -41,13 +42,16 @@ struct SignalArgs {
 
 #[cfg(unix)]
 fn op_signal_bind(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.signal");
+  {
+    let cli_state = state.borrow::<crate::state::State>();
+    cli_state.check_unstable("Deno.signal");
+  }
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let rid = state.resource_table.borrow_mut().add(
+  let rid = state.resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
       signal(SignalKind::from_raw(args.signo)).expect(""),
@@ -61,18 +65,22 @@ fn op_signal_bind(
 
 #[cfg(unix)]
 async fn op_signal_poll(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.signal");
+  {
+    let state_ = state.borrow();
+    let cli_state = state_.borrow::<crate::state::State>();
+    cli_state.check_unstable("Deno.signal");
+  }
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let future = poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
+    let mut state = state.borrow_mut();
     if let Some(mut signal) =
-      resource_table.get_mut::<SignalStreamResource>(rid)
+      state.resource_table.get_mut::<SignalStreamResource>(rid)
     {
       signal.1 = Some(cx.waker().clone());
       return signal.0.poll_recv(cx);
@@ -85,15 +93,17 @@ async fn op_signal_poll(
 
 #[cfg(unix)]
 pub fn op_signal_unbind(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.signal");
-  let mut resource_table = state.resource_table.borrow_mut();
+  {
+    let cli_state = state.borrow::<crate::state::State>();
+    cli_state.check_unstable("Deno.signal");
+  }
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let resource = resource_table.get_mut::<SignalStreamResource>(rid);
+  let resource = state.resource_table.get_mut::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
       // Wakes up the pending poll if exists.
@@ -101,7 +111,8 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  resource_table
+  state
+    .resource_table
     .close(rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
   Ok(json!({}))
@@ -109,7 +120,7 @@ pub fn op_signal_unbind(
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
-  _state: &State,
+  _state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -118,7 +129,7 @@ pub fn op_signal_bind(
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
-  _state: &State,
+  _state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -127,7 +138,7 @@ fn op_signal_unbind(
 
 #[cfg(not(unix))]
 async fn op_signal_poll(
-  _state: Rc<State>,
+  _state: Rc<RefCell<OpState>>,
   _args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
