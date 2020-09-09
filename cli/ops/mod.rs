@@ -18,7 +18,7 @@ pub mod permissions;
 //pub mod plugin;
 pub mod process;
 pub mod random;
-//pub mod repl;
+pub mod repl;
 //pub mod resources;
 pub mod runtime;
 pub mod runtime_compiler;
