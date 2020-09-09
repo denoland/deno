@@ -107,19 +107,20 @@ impl Worker {
   ) -> Self {
     let mut isolate =
       JsRuntime::new_with_loader(state.clone(), startup_data, false);
-
     {
       let global_state = state.global_state.clone();
-      let op_state_rc = isolate.op_state();
-      let mut op_state = op_state_rc.borrow_mut();
-      op_state.get_error_class_fn = &move |_errbox| {
-        todo!()
-        // JsError::create(errbox, &global_state.ts_compiler)
-      };
-
+      let js_runtime_state = JsRuntime::state(&isolate);
+      let mut js_runtime_state = js_runtime_state.borrow_mut();
+      js_runtime_state.set_js_error_create_fn(move |core_js_error| {
+        JsError::create(core_js_error, &global_state.ts_compiler)
+      });
+    }
+    {
+      let op_state = isolate.op_state();
+      let mut op_state = op_state.borrow_mut();
+      op_state.get_error_class_fn = &crate::errors::get_error_class_name;
       op_state.put(state.clone());
     }
-
     let inspector = {
       let global_state = &state.global_state;
       global_state

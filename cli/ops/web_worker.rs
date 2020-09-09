@@ -3,7 +3,6 @@
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use futures::channel::mpsc;
-use std::rc::Rc;
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,
