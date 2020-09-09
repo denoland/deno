@@ -128,7 +128,7 @@ impl WebWorker {
         ops::runtime_compiler::init(&mut web_worker.worker);
         ops::fs::init(&mut web_worker.worker);
         ops::fs_events::init(&mut web_worker.worker);
-        // ops::plugin::init(&mut web_worker.worker);
+        ops::plugin::init(&mut web_worker.worker);
         ops::net::init(&mut web_worker.worker);
         ops::tls::init(&mut web_worker.worker);
         ops::os::init(&mut web_worker.worker);

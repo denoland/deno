@@ -30,6 +30,7 @@ pub enum Op {
 
 pub struct OpState {
   pub resource_table: crate::ResourceTable,
+  pub op_table: OpTable,
   pub get_error_class_fn: crate::runtime::GetErrorClassFn,
   gotham_state: GothamState,
 }
@@ -41,6 +42,7 @@ impl Default for OpState {
   fn default() -> OpState {
     OpState {
       resource_table: crate::ResourceTable::default(),
+      op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: GothamState::default(),
     }
@@ -76,22 +78,26 @@ impl OpTable {
   }
 
   pub fn route_op(
-    &self,
     op_id: OpId,
     state: Rc<RefCell<OpState>>,
     bufs: BufVec,
   ) -> Op {
     if op_id == 0 {
       let ops: HashMap<String, OpId> =
-        self.0.keys().cloned().zip(0..).collect();
+        state.borrow().op_table.0.keys().cloned().zip(0..).collect();
       let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
       Op::Sync(buf)
-    } else if let Some(op_fn) =
-      self.0.get_index(op_id).map(|(_, op_fn)| op_fn.clone())
-    {
-      (op_fn)(state, bufs)
     } else {
-      Op::NotFound
+      let op_fn = state
+        .borrow()
+        .op_table
+        .0
+        .get_index(op_id)
+        .map(|(_, op_fn)| op_fn.clone());
+      match op_fn {
+        Some(f) => (f)(state, bufs),
+        None => Op::NotFound,
+      }
     }
   }
 }
@@ -107,22 +113,24 @@ impl Default for OpTable {
 
 #[test]
 fn op_table() {
-  let mut op_table = OpTable::default();
   let state = Rc::new(RefCell::new(OpState::default()));
 
-  let foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
-  assert_eq!(foo_id, 1);
+  let foo_id;
+  let bar_id;
+  {
+    let op_table = &mut state.borrow_mut().op_table;
+    foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
+    assert_eq!(foo_id, 1);
+    bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
+    assert_eq!(bar_id, 2);
+  }
 
-  let bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
-  assert_eq!(bar_id, 2);
-
-  let foo_res = op_table.route_op(foo_id, state.clone(), Default::default());
+  let foo_res = OpTable::route_op(foo_id, state.clone(), Default::default());
   assert!(matches!(foo_res, Op::Sync(buf) if &*buf == b"oof!"));
-
-  let bar_res = op_table.route_op(bar_id, state.clone(), Default::default());
+  let bar_res = OpTable::route_op(bar_id, state.clone(), Default::default());
   assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
 
-  let catalog_res = op_table.route_op(0, state, Default::default());
+  let catalog_res = OpTable::route_op(0, state, Default::default());
   let mut catalog_entries = match catalog_res {
     Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
       .map(|map| map.into_iter().collect::<Vec<_>>())

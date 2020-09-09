@@ -138,7 +138,7 @@ pub struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub(crate) op_table: OpTable,
+  //pub(crate) op_table: OpTable,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
@@ -352,7 +352,6 @@ impl JsRuntime {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
-      op_table: OpTable::default(),
       have_unpolled_ops: Cell::new(false),
       modules: Modules::new(),
       loader: options.loader,
@@ -482,9 +481,12 @@ impl JsRuntime {
   where
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
-    let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-    state.op_table.register_op(name, op_fn)
+    Self::state(self)
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .register_op(name, op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
