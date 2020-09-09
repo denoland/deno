@@ -26,10 +26,9 @@ pub fn init(
   );
 
   // Notify host that guest worker closes.
-  let sender_ = sender.clone();
   super::reg_json_sync(rt, "op_worker_close", move |_state, _args, _bufs| {
     // Notify parent that we're finished
-    sender_.clone().close_channel();
+    sender.clone().close_channel();
     // Terminate execution of current worker
     handle.terminate();
     Ok(json!({}))

@@ -122,7 +122,7 @@ fn op_table() {
   let bar_res = op_table.route_op(bar_id, state.clone(), Default::default());
   assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
 
-  let catalog_res = op_table.route_op(0, state.clone(), Default::default());
+  let catalog_res = op_table.route_op(0, state, Default::default());
   let mut catalog_entries = match catalog_res {
     Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
       .map(|map| map.into_iter().collect::<Vec<_>>())
