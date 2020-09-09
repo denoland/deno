@@ -5,6 +5,7 @@ use crate::ops::net::ReceiveArgs;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::OpState;
+use futures::future::poll_fn;
 use serde_derive::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -12,6 +13,7 @@ use std::fs::remove_file;
 use std::os::unix;
 pub use std::path::Path;
 use std::rc::Rc;
+use std::task::Poll;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
@@ -37,14 +39,28 @@ pub(crate) async fn accept_unix(
 ) -> Result<Value, ErrBox> {
   let rid = args.rid as u32;
 
-  let (unix_stream, _socket_addr) = {
-    let mut state_ = state.borrow_mut();
-    let listener_resource = state_
+  let accept_fut = poll_fn(|cx| {
+    let mut state = state.borrow_mut();
+    let listener_resource = state
       .resource_table
       .get_mut::<UnixListenerResource>(rid)
       .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
-    listener_resource.listener.accept().await?
-  };
+    let listener = &mut listener_resource.listener;
+    use futures::StreamExt;
+    match listener.poll_next_unpin(cx) {
+      Poll::Ready(Some(stream)) => {
+        //listener_resource.untrack_task();
+        Poll::Ready(stream)
+      }
+      Poll::Ready(None) => todo!(),
+      Poll::Pending => {
+        //listener_resource.track_task(cx)?;
+        Poll::Pending
+      }
+    }
+    .map_err(ErrBox::from)
+  });
+  let unix_stream = accept_fut.await?;
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
