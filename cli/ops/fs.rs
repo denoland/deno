@@ -248,14 +248,21 @@ async fn op_seek_async(
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let (rid, seek_from) = seek_helper(args)?;
-  // TODO(ry) This is a fake async op. We need to use poll_fn,
-  // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
-  let pos = std_file_resource(&state, rid, |r| match r {
-    Ok(std_file) => std_file.seek(seek_from).map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error(
+
+  let mut resource_table = state.resource_table.borrow_mut();
+  let resource_holder = resource_table
+    .get_mut::<StreamResourceHolder>(rid)
+    .ok_or_else(ErrBox::bad_resource_id)?;
+
+  let pos = match &mut resource_holder.resource {
+    StreamResource::FsFile(Some((file, _))) => {
+      file.seek(seek_from).await.map_err(ErrBox::from)
+    }
+    _ => Err(ErrBox::type_error(
       "cannot seek on this type of resource".to_string(),
     )),
-  })?;
+  }?;
+
   Ok(json!(pos))
 }
 
