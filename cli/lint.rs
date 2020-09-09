@@ -55,6 +55,7 @@ pub async fn lint_files(
     target_files.retain(|f| !ignore_files.contains(&f));
   }
   debug!("Found {} files", target_files.len());
+  let target_files_len = target_files.len();
 
   let has_error = Arc::new(AtomicBool::new(false));
 
@@ -77,7 +78,7 @@ pub async fn lint_files(
           sort_diagnostics(&mut file_diagnostics);
           for d in file_diagnostics.iter() {
             has_error.store(true, Ordering::Relaxed);
-            reporter.visit(&d, source.split('\n').collect());
+            reporter.visit_diagnostic(&d, source.split('\n').collect());
           }
         }
         Err(err) => {
@@ -92,7 +93,7 @@ pub async fn lint_files(
 
   let has_error = has_error.load(Ordering::Relaxed);
 
-  reporter_lock.lock().unwrap().close();
+  reporter_lock.lock().unwrap().close(target_files_len);
 
   if has_error {
     std::process::exit(1);
@@ -168,7 +169,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
     Ok(diagnostics) => {
       for d in diagnostics {
         has_error = true;
-        reporter.visit(&d, source.split('\n').collect());
+        reporter.visit_diagnostic(&d, source.split('\n').collect());
       }
     }
     Err(err) => {
@@ -177,7 +178,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
     }
   }
 
-  reporter.close();
+  reporter.close(1);
 
   if has_error {
     std::process::exit(1);
@@ -187,9 +188,9 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
 }
 
 trait LintReporter {
-  fn visit(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>);
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>);
   fn visit_error(&mut self, file_path: &str, err: &ErrBox);
-  fn close(&mut self);
+  fn close(&mut self, check_count: usize);
 }
 
 #[derive(Serialize)]
@@ -209,7 +210,7 @@ impl PrettyLintReporter {
 }
 
 impl LintReporter for PrettyLintReporter {
-  fn visit(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>) {
     self.lint_count += 1;
 
     let pretty_message =
@@ -234,10 +235,16 @@ impl LintReporter for PrettyLintReporter {
     eprintln!("   {}", err);
   }
 
-  fn close(&mut self) {
+  fn close(&mut self, check_count: usize) {
     match self.lint_count {
       1 => eprintln!("Found 1 problem"),
       n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      _ => (),
+    }
+
+    match check_count {
+      1 => println!("Checked 1 file"),
+      n if n > 1 => println!("Checked {} files", n),
       _ => (),
     }
   }
@@ -299,7 +306,7 @@ impl JsonLintReporter {
 }
 
 impl LintReporter for JsonLintReporter {
-  fn visit(&mut self, d: &LintDiagnostic, _source_lines: Vec<&str>) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source_lines: Vec<&str>) {
     self.diagnostics.push(d.clone());
   }
 
@@ -310,7 +317,7 @@ impl LintReporter for JsonLintReporter {
     });
   }
 
-  fn close(&mut self) {
+  fn close(&mut self, _check_count: usize) {
     sort_diagnostics(&mut self.diagnostics);
     let json = serde_json::to_string_pretty(&self);
     eprintln!("{}", json.unwrap());

@@ -17,6 +17,7 @@ use futures::stream::FuturesUnordered;
 use futures::task;
 use futures::task::Context;
 use futures::task::Poll;
+use serde_json::Value;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -95,7 +96,7 @@ struct InspectorInfo {
 }
 
 impl InspectorInfo {
-  fn get_json_metadata(&self) -> serde_json::Value {
+  fn get_json_metadata(&self) -> Value {
     json!({
       "description": "deno",
       "devtoolsFrontendUrl": self.get_frontend_url(),
@@ -372,10 +373,10 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut deno_core::CoreIsolate,
+    isolate: &mut deno_core::JsRuntime,
     host: SocketAddr,
   ) -> Box<Self> {
-    let core_state_rc = deno_core::CoreIsolate::state(isolate);
+    let core_state_rc = deno_core::JsRuntime::state(isolate);
     let core_state = core_state_rc.borrow();
 
     let scope = &mut v8::HandleScope::new(&mut **isolate);

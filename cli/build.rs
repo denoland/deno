@@ -1,8 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 mod op_fetch_asset;
 
 use deno_core::js_check;
-use deno_core::CoreIsolate;
+use deno_core::BasicState;
+use deno_core::JsRuntime;
+use deno_core::OpRegistry;
 use deno_core::StartupData;
 use std::collections::HashMap;
 use std::env;
@@ -10,14 +13,22 @@ use std::path::Path;
 use std::path::PathBuf;
 
 fn create_snapshot(
-  mut isolate: CoreIsolate,
+  mut isolate: JsRuntime,
   snapshot_path: &Path,
-  files: Vec<String>,
+  files: Vec<PathBuf>,
 ) {
   deno_web::init(&mut isolate);
+  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
+  // workspace root.
+  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
   for file in files {
-    println!("cargo:rerun-if-changed={}", file);
-    js_check(isolate.execute(&file, &std::fs::read_to_string(&file).unwrap()));
+    println!("cargo:rerun-if-changed={}", file.display());
+    let display_path = file.strip_prefix(display_root).unwrap();
+    let display_path_str = display_path.display().to_string();
+    js_check(isolate.execute(
+      &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+      &std::fs::read_to_string(&file).unwrap(),
+    ));
   }
 
   let snapshot = isolate.snapshot();
@@ -27,17 +38,17 @@ fn create_snapshot(
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
-fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<String>) {
-  let runtime_isolate = CoreIsolate::new(StartupData::None, true);
-  create_snapshot(runtime_isolate, snapshot_path, files);
+fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
+  let state = BasicState::new();
+  let isolate = JsRuntime::new(state, StartupData::None, true);
+  create_snapshot(isolate, snapshot_path, files);
 }
 
 fn create_compiler_snapshot(
   snapshot_path: &Path,
-  files: Vec<String>,
+  files: Vec<PathBuf>,
   cwd: &Path,
 ) {
-  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs
     .insert("lib.deno.web.d.ts".to_string(), deno_web::get_declaration());
@@ -61,11 +72,15 @@ fn create_compiler_snapshot(
     "lib.deno.unstable.d.ts".to_string(),
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
-  runtime_isolate.register_op(
+
+  let state = BasicState::new();
+  state.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),
   );
-  create_snapshot(runtime_isolate, snapshot_path, files);
+
+  let isolate = JsRuntime::new(state, StartupData::None, true);
+  create_snapshot(isolate, snapshot_path, files);
 }
 
 fn ts_version() -> String {
@@ -127,15 +142,16 @@ fn main() {
   }
 }
 
-fn get_js_files(d: &str) -> Vec<String> {
+fn get_js_files(d: &str) -> Vec<PathBuf> {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let mut js_files = std::fs::read_dir(d)
     .unwrap()
     .map(|dir_entry| {
       let file = dir_entry.unwrap();
-      file.path().to_string_lossy().to_string()
+      manifest_dir.join(file.path())
     })
-    .filter(|filename| filename.ends_with(".js"))
-    .collect::<Vec<String>>();
+    .filter(|path| path.extension().unwrap_or_default() == "js")
+    .collect::<Vec<PathBuf>>();
   js_files.sort();
   js_files
 }
