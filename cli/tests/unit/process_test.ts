@@ -375,6 +375,22 @@ unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
   p.stderr.close();
 });
 
+unitTest(
+  { perms: { run: true } },
+  async function runKillAfterStatus(): Promise<void> {
+    const p = Deno.run({
+      cmd: ["python", "-c", 'print("hello")'],
+    });
+    await p.status();
+
+    assertThrows(
+      () => p.kill(Deno.Signal.SIGQUIT),
+    );
+
+    p.close();
+  },
+);
+
 unitTest(function signalNumbers(): void {
   if (Deno.build.os === "darwin") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
