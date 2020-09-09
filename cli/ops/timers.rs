@@ -1,34 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
-use std::cell::RefCell;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op(
-    "op_global_timer_stop",
-    s.stateful_json_op_sync(t, op_global_timer_stop),
-  );
-  i.register_op(
-    "op_global_timer",
-    s.stateful_json_op_async(t, op_global_timer),
-  );
-  i.register_op("op_now", s.stateful_json_op_sync(t, op_now));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_global_timer_stop", op_global_timer_stop);
+  s.register_op_json_async("op_global_timer", op_global_timer);
+  s.register_op_json_sync("op_now", op_now);
 }
 
 fn op_global_timer_stop(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -43,7 +34,6 @@ struct GlobalTimerArgs {
 
 async fn op_global_timer(
   state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -66,7 +56,6 @@ async fn op_global_timer(
 // nanoseconds are rounded on 2ms.
 fn op_now(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

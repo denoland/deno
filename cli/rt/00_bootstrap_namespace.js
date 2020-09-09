@@ -6,4 +6,4 @@
 
 // This namespace is removed during runtime bootstrapping process.
 
-globalThis.__bootstrap = {};
+globalThis.__bootstrap = globalThis.__bootstrap || {};

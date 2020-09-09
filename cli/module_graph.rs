@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::checksum;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
@@ -196,7 +197,7 @@ const SUPPORTED_MEDIA_TYPES: [MediaType; 4] = [
 
 pub type ModuleGraph = HashMap<String, ModuleGraphFile>;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportDescriptor {
   pub specifier: String,
@@ -238,6 +239,12 @@ pub struct ModuleGraphFile {
   pub type_headers: Vec<ReferenceDescriptor>,
   pub media_type: MediaType,
   pub source_code: String,
+}
+
+impl ModuleGraphFile {
+  pub fn size(&self) -> usize {
+    self.source_code.as_bytes().len()
+  }
 }
 
 type SourceFileFuture =

@@ -936,7 +936,6 @@
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function isEitherArrayBuffer(x) {
     return (
       x instanceof SharedArrayBuffer ||

@@ -8,7 +8,6 @@
 // shared library itself, which would cause segfaults when the plugin is
 // unloaded and all functions in the plugin library are unmapped from memory.
 
-pub use crate::Buf;
 pub use crate::Op;
 pub use crate::OpId;
 pub use crate::ZeroCopyBuf;

@@ -1,28 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::Value;
+
 use crate::colors;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
+use serde_json::Value;
 use std::env;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_start", s.stateful_json_op_sync(t, op_start));
-  i.register_op("op_main_module", s.stateful_json_op_sync(t, op_main_module));
-  i.register_op("op_metrics", s.stateful_json_op_sync(t, op_metrics));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_start", op_start);
+  s.register_op_json_sync("op_main_module", op_main_module);
+  s.register_op_json_sync("op_metrics", op_metrics);
 }
 
 fn op_start(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -48,7 +45,6 @@ fn op_start(
 
 fn op_main_module(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -63,7 +59,6 @@ fn op_main_module(
 
 fn op_metrics(
   state: &State,
-  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

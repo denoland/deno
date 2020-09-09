@@ -3,7 +3,8 @@ import { assertEquals, assertStringContains } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("[fs] existsFile", async function (): Promise<void> {
   assertEquals(

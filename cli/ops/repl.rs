@@ -1,26 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use crate::repl;
 use crate::repl::Repl;
 use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
-use std::cell::RefCell;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_repl_start", s.stateful_json_op_sync(t, op_repl_start));
-  i.register_op(
-    "op_repl_readline",
-    s.stateful_json_op_async(t, op_repl_readline),
-  );
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_repl_start", op_repl_start);
+  s.register_op_json_async("op_repl_readline", op_repl_readline);
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);
@@ -33,7 +28,6 @@ struct ReplStartArgs {
 
 fn op_repl_start(
   state: &State,
-  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -43,7 +37,10 @@ fn op_repl_start(
     repl::history_path(&state.global_state.dir, &args.history_file);
   let repl = repl::Repl::new(history_path);
   let resource = ReplResource(Arc::new(Mutex::new(repl)));
-  let rid = resource_table.add("repl", Box::new(resource));
+  let rid = state
+    .resource_table
+    .borrow_mut()
+    .add("repl", Box::new(resource));
   Ok(json!(rid))
 }
 
@@ -54,8 +51,7 @@ struct ReplReadlineArgs {
 }
 
 async fn op_repl_readline(
-  _state: Rc<State>,
-  resource_table: Rc<RefCell<ResourceTable>>,
+  state: Rc<State>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -63,7 +59,7 @@ async fn op_repl_readline(
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
-  let resource_table = resource_table.borrow();
+  let resource_table = state.resource_table.borrow();
   let resource = resource_table
     .get::<ReplResource>(rid)
     .ok_or_else(ErrBox::bad_resource_id)?;

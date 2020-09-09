@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -1015,6 +1016,10 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
 Print result as JSON:
   deno lint --unstable --json
 
+Read from stdin:
+  cat file.ts | deno lint --unstable -
+  cat file.ts | deno lint --unstable --json -
+
 List available rules:
   deno lint --unstable --rules
 
@@ -1027,7 +1032,7 @@ rule name:
 Names of rules to ignore must be specified after ignore comment.
 
 ESLint ignore comments are also supported:
-  // eslint-ignore-next-line @typescrit-eslint/no-explicit-any no-empty
+  // eslint-disable-next-line @typescrit-eslint/no-explicit-any no-empty
 
 Ignore linting a file by adding an ignore comment at the top of the file:
   // deno-lint-ignore-file
