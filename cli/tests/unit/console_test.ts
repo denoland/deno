@@ -1367,3 +1367,50 @@ unitTest(function inspectIterableLimit(): void {
     `Map { "a" => 1, "b" => 2, ... 1 more items }`,
   );
 });
+
+unitTest(function inspectProxy(): void {
+  assertEquals(
+    Deno.inspect(
+      new Proxy([1, 2, 3], { get(): void {} }),
+    ),
+    "[ 1, 2, 3 ]",
+  );
+  assertEquals(
+    Deno.inspect(
+      new Proxy({ key: "value" }, { get(): void {} }),
+    ),
+    `{ key: "value" }`,
+  );
+  assertEquals(
+    Deno.inspect(new Proxy([1, 2, 3], { get(): void {} }), { showProxy: true }),
+    "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
+  );
+  assertEquals(
+    Deno.inspect(
+      new Proxy({ a: 1 }, {
+        set(): boolean {
+          return false;
+        },
+      }),
+      { showProxy: true },
+    ),
+    "Proxy [ { a: 1 }, { set: [Function: set] } ]",
+  );
+  assertEquals(
+    Deno.inspect(
+      new Proxy([1, 2, 3, 4, 5, 6, 7], { get(): void {} }),
+      { showProxy: true },
+    ),
+    `Proxy [ [
+    1, 2, 3, 4,
+    5, 6, 7
+  ], { get: [Function: get] } ]`,
+  );
+  assertEquals(
+    Deno.inspect(
+      new Proxy(function fn() {}, { get(): void {} }),
+      { showProxy: true },
+    ),
+    "Proxy [ [Function: fn], { get: [Function: get] } ]",
+  );
+});
