@@ -77,7 +77,7 @@
         offset = 0xf0;
       } else {
         throw TypeError(
-          `Code point out of range: \\x${codePoint.toString(16)}`
+          `Code point out of range: \\x${codePoint.toString(16)}`,
         );
       }
 
@@ -105,7 +105,7 @@
     if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
       throw new DOMException(
         "The string to be decoded is not correctly encoded",
-        "DataDecodeError"
+        "DataDecodeError",
       );
     }
 
@@ -129,7 +129,7 @@
       if (charCode > 0xff) {
         throw new TypeError(
           "The string to be encoded contains characters " +
-            "outside of the Latin1 range."
+            "outside of the Latin1 range.",
         );
       }
       byteArray.push(charCode);
@@ -347,7 +347,6 @@
   // Single byte decoders are an array of code point lookups
   const encodingIndexes = new Map();
   // deno-fmt-ignore
-  // prettier-ignore
   encodingIndexes.set("windows-1252", [
     8364, 129, 8218, 402, 8222, 8230, 8224, 8225, 710, 
     8240, 352, 8249, 338, 141, 381, 143, 144, 
@@ -367,7 +366,7 @@
     249, 250, 251, 252, 253, 254, 255,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("ibm866", [
     1040, 1041, 1042, 1043, 1044, 1045, 1046, 1047,
     1048, 1049, 1050, 1051, 1052, 1053, 1054, 1055,
@@ -387,7 +386,7 @@
     176, 8729, 183, 8730, 8470, 164, 9632, 160,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-2", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -407,7 +406,7 @@
     345, 367, 250, 369, 252, 253, 355, 729,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-3", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -427,7 +426,7 @@
     285, 249, 250, 251, 252, 365, 349, 729,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-4", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -447,7 +446,7 @@
     248, 371, 250, 251, 252, 361, 363, 729,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-5", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -467,7 +466,7 @@
     1112, 1113, 1114, 1115, 1116, 167, 1118, 1119,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-6", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -487,7 +486,7 @@
     null, null, null, null, null, null, null, null,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-7", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -507,7 +506,7 @@
     968, 969, 970, 971, 972, 973, 974, null,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-8", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -527,7 +526,7 @@
     1512, 1513, 1514, null, null, 8206, 8207, null,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-10", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -547,7 +546,7 @@
     248, 371, 250, 251, 252, 253, 254, 312,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-13", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -567,7 +566,7 @@
     371, 322, 347, 363, 252, 380, 382, 8217,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-14", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -587,7 +586,7 @@
     248, 249, 250, 251, 252, 253, 375, 255,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-15", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -607,7 +606,7 @@
     248, 249, 250, 251, 252, 253, 254, 255,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("iso-8859-16", [
     128, 129, 130, 131, 132, 133, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -627,7 +626,7 @@
     369, 249, 250, 251, 252, 281, 539, 255,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("koi8-r", [
     9472, 9474, 9484, 9488, 9492, 9496, 9500, 9508,
     9516, 9524, 9532, 9600, 9604, 9608, 9612, 9616,
@@ -647,7 +646,7 @@
     1068, 1067, 1047, 1064, 1069, 1065, 1063, 1066,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("koi8-u", [
     9472, 9474, 9484, 9488, 9492, 9496, 9500, 9508,
     9516, 9524, 9532, 9600, 9604, 9608, 9612, 9616,
@@ -667,7 +666,7 @@
     1068, 1067, 1047, 1064, 1069, 1065, 1063, 1066,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("macintosh", [
     196, 197, 199, 201, 209, 214, 220, 225,
     224, 226, 228, 227, 229, 231, 233, 232,
@@ -687,7 +686,7 @@
     175, 728, 729, 730, 184, 733, 731, 711,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-874", [
     8364, 129, 130, 131, 132, 8230, 134, 135,
     136, 137, 138, 139, 140, 141, 142, 143,
@@ -707,7 +706,7 @@
     3672, 3673, 3674, 3675, null, null, null, null,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1250", [
     8364, 129, 8218, 131, 8222, 8230, 8224, 8225,
     136, 8240, 352, 8249, 346, 356, 381, 377,
@@ -727,7 +726,7 @@
     345, 367, 250, 369, 252, 253, 355, 729,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1251", [
     1026, 1027, 8218, 1107, 8222, 8230, 8224, 8225,
     8364, 8240, 1033, 8249, 1034, 1036, 1035, 1039,
@@ -747,7 +746,7 @@
     1096, 1097, 1098, 1099, 1100, 1101, 1102, 1103,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1253", [
     8364, 129, 8218, 402, 8222, 8230, 8224, 8225,
     136, 8240, 138, 8249, 140, 141, 142, 143,
@@ -767,7 +766,7 @@
     968, 969, 970, 971, 972, 973, 974, null,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1254", [
     8364, 129, 8218, 402, 8222, 8230, 8224, 8225,
     710, 8240, 352, 8249, 338, 141, 142, 143,
@@ -787,7 +786,7 @@
     248, 249, 250, 251, 252, 305, 351, 255,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1255", [
     8364, 129, 8218, 402, 8222, 8230, 8224, 8225,
     710, 8240, 138, 8249, 140, 141, 142, 143,
@@ -807,7 +806,7 @@
     1512, 1513, 1514, null, null, 8206, 8207, null,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1256", [
     8364, 1662, 8218, 402, 8222, 8230, 8224, 8225,
     710, 8240, 1657, 8249, 338, 1670, 1688, 1672,
@@ -827,7 +826,7 @@
     1617, 249, 1618, 251, 252, 8206, 8207, 1746,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1257", [
     8364, 129, 8218, 131, 8222, 8230, 8224, 8225,
     136, 8240, 138, 8249, 140, 168, 711, 184,
@@ -847,7 +846,7 @@
     371, 322, 347, 363, 252, 380, 382, 729,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("windows-1258", [
     8364, 129, 8218, 402, 8222, 8230, 8224, 8225,
     710, 8240, 138, 8249, 338, 141, 142, 143,
@@ -867,7 +866,7 @@
     248, 249, 250, 251, 252, 432, 8363, 255,
   ]);
 
-  // prettier-ignore
+  // deno-fmt-ignore
   encodingIndexes.set("x-mac-cyrillic", [
     1040, 1041, 1042, 1043, 1044, 1045, 1046, 1047,
     1048, 1049, 1050, 1051, 1052, 1053, 1054, 1055,
@@ -966,7 +965,7 @@
       const encoding = encodings.get(label);
       if (!encoding) {
         throw new RangeError(
-          `The encoding label provided ('${label}') is invalid.`
+          `The encoding label provided ('${label}') is invalid.`,
         );
       }
       if (!decoders.has(encoding) && encoding !== "utf-8") {
@@ -994,11 +993,11 @@
         bytes = new Uint8Array(
           input.buffer,
           input.byteOffset,
-          input.byteLength
+          input.byteLength,
         );
       } else {
         throw new TypeError(
-          "Provided input is not of type ArrayBuffer or ArrayBufferView"
+          "Provided input is not of type ArrayBuffer or ArrayBufferView",
         );
       }
 
@@ -1148,7 +1147,7 @@
       if (state === 12 || (state !== 0 && (input[i] & 0xc0) !== 0x80)) {
         if (fatal) {
           throw new TypeError(
-            `Decoder error. Invalid byte in sequence at position ${i} in data.`
+            `Decoder error. Invalid byte in sequence at position ${i} in data.`,
           );
         }
         outBuffer[outIndex++] = 0xfffd; // Replacement character
@@ -1160,7 +1159,7 @@
       }
 
       // deno-fmt-ignore
-      // prettier-ignore
+      // deno-fmt-ignore
       type = [
          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -1171,12 +1170,11 @@
          8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
         10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3, 11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8
       ][input[i]];
-      codepoint =
-        state !== 0
-          ? (input[i] & 0x3f) | (codepoint << 6)
-          : (0xff >> type) & input[i];
+      codepoint = state !== 0
+        ? (input[i] & 0x3f) | (codepoint << 6)
+        : (0xff >> type) & input[i];
       // deno-fmt-ignore
-      // prettier-ignore
+      // deno-fmt-ignore
       state = [
          0,12,24,36,60,96,84,12,12,12,48,72, 12,12,12,12,12,12,12,12,12,12,12,12,
         12, 0,12,12,12,12,12, 0,12, 0,12,12, 12,24,12,12,12,12,12,24,12,24,12,12,
@@ -1219,7 +1217,7 @@
     // Final flush of buffer
     outString += String.fromCharCode.apply(
       null,
-      outBuffer.subarray(0, outIndex)
+      outBuffer.subarray(0, outIndex),
     );
 
     return outString;
@@ -1286,8 +1284,7 @@
 
     let i;
     for (i = 0; i < len; i += 4) {
-      tmp =
-        (revLookup[b64.charCodeAt(i)] << 18) |
+      tmp = (revLookup[b64.charCodeAt(i)] << 18) |
         (revLookup[b64.charCodeAt(i + 1)] << 12) |
         (revLookup[b64.charCodeAt(i + 2)] << 6) |
         revLookup[b64.charCodeAt(i + 3)];
@@ -1297,15 +1294,13 @@
     }
 
     if (placeHoldersLen === 2) {
-      tmp =
-        (revLookup[b64.charCodeAt(i)] << 2) |
+      tmp = (revLookup[b64.charCodeAt(i)] << 2) |
         (revLookup[b64.charCodeAt(i + 1)] >> 4);
       arr[curByte++] = tmp & 0xff;
     }
 
     if (placeHoldersLen === 1) {
-      tmp =
-        (revLookup[b64.charCodeAt(i)] << 10) |
+      tmp = (revLookup[b64.charCodeAt(i)] << 10) |
         (revLookup[b64.charCodeAt(i + 1)] << 4) |
         (revLookup[b64.charCodeAt(i + 2)] >> 2);
       arr[curByte++] = (tmp >> 8) & 0xff;
@@ -1328,8 +1323,7 @@
     let tmp;
     const output = [];
     for (let i = start; i < end; i += 3) {
-      tmp =
-        ((uint8[i] << 16) & 0xff0000) +
+      tmp = ((uint8[i] << 16) & 0xff0000) +
         ((uint8[i + 1] << 8) & 0xff00) +
         (uint8[i + 2] & 0xff);
       output.push(tripletToBase64(tmp));
@@ -1350,8 +1344,8 @@
         encodeChunk(
           uint8,
           i,
-          i + maxChunkLength > len2 ? len2 : i + maxChunkLength
-        )
+          i + maxChunkLength > len2 ? len2 : i + maxChunkLength,
+        ),
       );
     }
 
@@ -1365,7 +1359,7 @@
         lookup[tmp >> 10] +
           lookup[(tmp >> 4) & 0x3f] +
           lookup[(tmp << 2) & 0x3f] +
-          "="
+          "=",
       );
     }
 

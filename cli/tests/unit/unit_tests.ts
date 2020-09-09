@@ -64,7 +64,6 @@ import "./streams_writable_test.ts";
 import "./symlink_test.ts";
 import "./sync_test.ts";
 import "./text_encoding_test.ts";
-import "./single_byte_encoding_test.ts";
 import "./testing_test.ts";
 import "./timers_test.ts";
 import "./tls_test.ts";
