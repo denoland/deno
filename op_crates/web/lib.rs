@@ -84,13 +84,14 @@ mod tests {
     run_in_task(|mut cx| {
       let mut isolate = setup();
       let result = isolate.execute("foo.js", "new Event()");
-      if let Err(e) = result {
+      if let Err(error) = result {
+        let error_string = error.to_string();
         // Test that the script specifier is a URL: `deno:<repo-relative path>`.
         #[cfg(unix)]
-        assert!(e.to_string().starts_with("deno:op_crates/web/01_event.js"));
+        assert!(error_string.starts_with("deno:op_crates/web/01_event.js"));
         #[cfg(windows)]
-        assert!(e.to_string().starts_with("deno:op_crates\\web\\01_event.js"));
-        assert!(e.to_string().contains("Uncaught TypeError"));
+        assert!(error_string.starts_with("deno:op_crates\\web\\01_event.js"));
+        assert!(error_string.contains("Uncaught TypeError"));
       } else {
         unreachable!();
       }
