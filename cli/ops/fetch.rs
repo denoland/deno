@@ -40,14 +40,16 @@ async fn op_fetch(
   let url = args.url;
 
   let client = if let Some(rid) = args.client_rid {
-    let resource_table = &state.borrow().resource_table;
-    let r = resource_table
+    let state = state.borrow();
+    let r = state
+      .resource_table
       .get::<HttpClientResource>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
     r.client.clone()
   } else {
     let s = state.borrow();
-    let client_ref = s.borrow::<reqwest::Client>();
+    let state = s.borrow::<crate::state::RcState>();
+    let client_ref = state.http_client.borrow();
     client_ref.clone()
   };
 
