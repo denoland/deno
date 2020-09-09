@@ -15,7 +15,7 @@ jobs:
         config:
           - os: macos-10.15
             kind: test_release
-          - os: windows-latest-xl
+          - os: windows-2019
             kind: test_release
           - os: ubuntu-latest-xl
             kind: test_release
