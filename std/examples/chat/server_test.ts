@@ -2,7 +2,6 @@
 import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
-import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { delay } from "../../async/delay.ts";
 import { resolve, dirname, fromFileUrl } from "../../path/mod.ts";
 
@@ -57,18 +56,25 @@ Deno.test({
   name: "[examples/chat] GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();
-    let ws: WebSocket | undefined;
+    let ws: WebSocket;
     try {
-      ws = await connectWebSocket("http://127.0.0.1:8080/ws");
-      const it = ws[Symbol.asyncIterator]();
-
-      assertEquals((await it.next()).value, "Connected: [1]");
-      ws.send("Hello");
-      assertEquals((await it.next()).value, "[1]: Hello");
+      ws = new WebSocket("ws://127.0.0.1:8080/ws");
+      await new Promise((resolve) => {
+        ws.onmessage = ((message) => {
+          assertEquals(message.data, "Connected: [1]");
+          ws.onmessage = ((message) => {
+            assertEquals(message.data, "[1]: Hello");
+            ws.close();
+            resolve();
+          });
+          ws.send("Hello");
+        });
+      });
+    } catch (err) {
+      console.log(err);
     } finally {
       server.close();
       server.stdout.close();
-      ws!.conn.close();
     }
   },
 });
