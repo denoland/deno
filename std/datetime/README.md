@@ -4,7 +4,9 @@ Simple helper to help parse date strings into `Date`, with additional functions.
 
 ## Usage
 
-The following symbols from [unicode LDML](http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table) are supported:
+The following symbols from
+[unicode LDML](http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table)
+are supported:
 
 - `yyyy` - numeric year
 - `yy` - 2-digit year
@@ -13,8 +15,10 @@ The following symbols from [unicode LDML](http://www.unicode.org/reports/tr35/tr
 - `d` - numeric day
 - `dd` - 2-digit day
 
-- `H` - numeric hour
-- `HH` - 2-digit hour
+- `H` - numeric hour (0-23 hours)
+- `HH` - 2-digit hour (00-23 hours)
+- `h` - numeric hour (1-12 hours)
+- `hh` - 2-digit hour (01-12 hours)
 - `m` - numeric minute
 - `mm` - 2-digit minute
 - `s` - numeric second
@@ -39,7 +43,7 @@ parse("20-01-2019", "dd-MM-yyyy") // output : new Date(2019, 0, 20)
 parse("2019-01-20", "yyyy-MM-dd") // output : new Date(2019, 0, 20)
 parse("2019-01-20", "dd.MM.yyyy") // output : new Date(2019, 0, 20)
 parse("01-20-2019 16:34", "MM-dd-yyyy HH:mm") // output : new Date(2019, 0, 20, 16, 34)
-parse("01-20-2019 04:34 PM", "MM-dd-yyyy HH:mm a") // output : new Date(2019, 0, 20, 16, 34)
+parse("01-20-2019 04:34 PM", "MM-dd-yyyy hh:mm a") // output : new Date(2019, 0, 20, 16, 34)
 parse("16:34 01-20-2019", "HH:mm MM-dd-yyyy") // output : new Date(2019, 0, 20, 16, 34)
 parse("01-20-2019 16:34:23.123", "MM-dd-yyyy HH:mm:ss.SSS") // output : new Date(2019, 0, 20, 16, 34, 23, 123)
 ...
@@ -56,7 +60,7 @@ format(new Date(2019, 0, 20), "dd-MM-yyyy") // output : "20-01-2019"
 format(new Date(2019, 0, 20), "yyyy-MM-dd") // output : "2019-01-20"
 format(new Date(2019, 0, 20), "dd.MM.yyyy") // output : "2019-01-20"
 format(new Date(2019, 0, 20, 16, 34), "MM-dd-yyyy HH:mm") // output : "01-20-2019 16:34"
-format(new Date(2019, 0, 20, 16, 34), "MM-dd-yyyy HH:mm a") // output : "01-20-2019 04:34 PM"
+format(new Date(2019, 0, 20, 16, 34), "MM-dd-yyyy hh:mm a") // output : "01-20-2019 04:34 PM"
 format(new Date(2019, 0, 20, 16, 34), "HH:mm MM-dd-yyyy") // output : "16:34 01-20-2019"
 format(new Date(2019, 0, 20, 16, 34, 23, 123), "MM-dd-yyyy HH:mm:ss.SSS") // output : "01-20-2019 16:34:23.123"
 format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd") // output : "today: 2019-01-20"
