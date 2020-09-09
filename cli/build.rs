@@ -18,13 +18,12 @@ fn create_snapshot(
   files: Vec<PathBuf>,
 ) {
   deno_web::init(&mut isolate);
-  let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
-  let display_root_path = manifest_dir.parent().unwrap();
+  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
-    let display_path = file.strip_prefix(display_root_path).unwrap();
+    let display_path = file.strip_prefix(display_root).unwrap();
     js_check(isolate.execute(
       &("deno:".to_string() + display_path.to_str().unwrap()),
       &std::fs::read_to_string(&file).unwrap(),
