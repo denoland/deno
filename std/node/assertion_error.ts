@@ -378,11 +378,20 @@ export function createErrDiff(
   return `${msg}${skipped ? skippedMsg : ""}\n${res}${other}${end}${indicator}`;
 }
 
+export interface AssertionErrorDetailsDescriptor {
+  message: string;
+  actual: unknown;
+  expected: unknown;
+  operator: string;
+  stack: Error;
+}
+
 export interface AssertionErrorConstructorOptions {
   message?: string;
   actual?: unknown;
   expected?: unknown;
   operator?: string;
+  details?: AssertionErrorDetailsDescriptor[];
   // eslint-disable-next-line @typescript-eslint/ban-types
   stackStartFn?: Function;
   // Compatibility with older versions.
@@ -406,6 +415,7 @@ export class AssertionError extends Error {
       message,
       operator,
       stackStartFn,
+      details,
       // Compatibility with older versions.
       stackStartFunction,
     } = options;
@@ -529,9 +539,23 @@ export class AssertionError extends Error {
     });
     this.code = "ERR_ASSERTION";
 
-    this.actual = actual;
-    this.expected = expected;
-    this.operator = operator;
+    if (details) {
+      this.actual = undefined;
+      this.expected = undefined;
+      this.operator = undefined;
+
+      for (let i = 0; i < details.length; i++) {
+        this["message " + i] = details[i].message;
+        this["actual " + i] = details[i].actual;
+        this["expected " + i] = details[i].expected;
+        this["operator " + i] = details[i].operator;
+        this["stack trace " + i] = details[i].stack;
+      }
+    } else {
+      this.actual = actual;
+      this.expected = expected;
+      this.operator = operator;
+    }
 
     Error.captureStackTrace(this, stackStartFn || stackStartFunction);
     // Create error message including the error code in the name.
