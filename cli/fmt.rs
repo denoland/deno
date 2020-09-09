@@ -58,13 +58,16 @@ async fn check_source_files(
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let checked_files_count = Arc::new(AtomicUsize::new(0));
 
   // prevent threads outputting at the same time
   let output_lock = Arc::new(Mutex::new(0));
 
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
+    let checked_files_count = checked_files_count.clone();
     move |file_path| {
+      checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
       let r = dprint::format_text(&file_path, &file_text, &config);
       match r {
@@ -105,13 +108,17 @@ async fn check_source_files(
 
   let not_formatted_files_count =
     not_formatted_files_count.load(Ordering::Relaxed);
+  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
+  let checked_files_str =
+    format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
+    println!("Checked {}", checked_files_str);
     Ok(())
   } else {
+    let not_formatted_files_str = files_str(not_formatted_files_count);
     Err(ErrBox::error(format!(
-      "Found {} not formatted {}",
-      not_formatted_files_count,
-      files_str(not_formatted_files_count),
+      "Found {} not formatted {} in {}",
+      not_formatted_files_count, not_formatted_files_str, checked_files_str,
     )))
   }
 }
@@ -121,11 +128,14 @@ async fn format_source_files(
   paths: Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let checked_files_count = Arc::new(AtomicUsize::new(0));
   let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
   run_parallelized(paths, {
     let formatted_files_count = formatted_files_count.clone();
+    let checked_files_count = checked_files_count.clone();
     move |file_path| {
+      checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
       let r = dprint::format_text(&file_path, &file_contents.text, &config);
       match r {
@@ -160,6 +170,14 @@ async fn format_source_files(
     formatted_files_count,
     files_str(formatted_files_count),
   );
+
+  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
+  println!(
+    "Checked {} {}",
+    checked_files_count,
+    files_str(checked_files_count)
+  );
+
   Ok(())
 }
 

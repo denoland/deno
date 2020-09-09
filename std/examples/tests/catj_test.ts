@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertStrictEquals } from "../../testing/asserts.ts";
+import { resolve, dirname, fromFileUrl } from "../../path/mod.ts";
+
+const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)), "..");
 
 Deno.test("[examples/catj] print an array", async () => {
   const decoder = new TextDecoder();
@@ -80,7 +83,7 @@ function catj(
 ): Deno.Process<Deno.RunOptions & { stdin: "piped"; stdout: "piped" }> {
   return Deno.run({
     cmd: [Deno.execPath(), "run", "--allow-read", "catj.ts", ...files],
-    cwd: "examples",
+    cwd: moduleDir,
     stdin: "piped",
     stdout: "piped",
     env: { NO_COLOR: "true" },

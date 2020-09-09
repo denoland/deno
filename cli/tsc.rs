@@ -57,7 +57,7 @@ use std::sync::Mutex;
 use std::task::Poll;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
-use swc_ecma_dep_graph as dep_graph;
+use swc_ecmascript::dep_graph;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -1103,6 +1103,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      if module_specifier.as_url().scheme() == "deno" {
+        return None;
+      }
       return match self.get_source_map_file(&module_specifier) {
         Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
@@ -1848,11 +1851,11 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ 
-          "compilerOptions": { 
-            // force .js file compilation by Deno 
-            "checkJs": true 
-          } 
+        r#"{
+          "compilerOptions": {
+            // force .js file compilation by Deno
+            "checkJs": true
+          }
         }"#,
         true,
       ),
