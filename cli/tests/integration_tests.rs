@@ -1811,6 +1811,12 @@ itest!(error_008_checkjs {
   output: "error_008_checkjs.js.out",
 });
 
+itest!(error_009_op_crates_error {
+  args: "run error_009_op_crates_error.js",
+  output: "error_009_op_crates_error.js.out",
+  exit_code: 1,
+});
+
 itest!(error_011_bad_module_specifier {
   args: "run --reload error_011_bad_module_specifier.ts",
   exit_code: 1,

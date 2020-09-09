@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "deno_core",
  "futures",
