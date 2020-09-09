@@ -80,6 +80,27 @@ mod tests {
   }
 
   #[test]
+  fn test_event_error() {
+    run_in_task(|mut cx| {
+      let mut isolate = setup();
+      let result = isolate.execute("foo.js", "new Event()");
+      if let Err(e) = result {
+        // Test that the script specifier is a URL: `deno:<repo-relative path>`.
+        #[cfg(unix)]
+        assert!(e.to_string().starts_with("deno:op_crates/web/01_event.js"));
+        #[cfg(windows)]
+        assert!(e.to_string().starts_with("deno:op_crates\\web\\01_event.js"));
+        assert!(e.to_string().contains("Uncaught TypeError"));
+      } else {
+        unreachable!();
+      }
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
   fn test_event_target() {
     run_in_task(|mut cx| {
       let mut isolate = setup();
