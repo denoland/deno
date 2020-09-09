@@ -346,12 +346,21 @@ async fn op_fsync_async(
   state.check_unstable("Deno.fsync");
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  std_file_resource(&state, rid, |r| match r {
-    Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error(
-      "cannot sync this type of resource".to_string(),
+
+  let mut resource_table = state.resource_table.borrow_mut();
+  let resource_holder = resource_table
+    .get_mut::<StreamResourceHolder>(rid)
+    .ok_or_else(ErrBox::bad_resource_id)?;
+
+  match &mut resource_holder.resource {
+    StreamResource::FsFile(Some((file, _))) => {
+      file.sync_all().await.map_err(ErrBox::from)
+    }
+    _ => Err(ErrBox::type_error(
+      "cannot sync on this type of resource".to_string(),
     )),
-  })?;
+  }?;
+
   Ok(json!({}))
 }
 
