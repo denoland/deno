@@ -2,21 +2,18 @@
 
 //! https://url.spec.whatwg.org/#idna
 
-use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
-use idna::{domain_to_ascii, domain_to_ascii_strict};
+use idna::domain_to_ascii;
+use idna::domain_to_ascii_strict;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-  i.register_op(
-    "op_domain_to_ascii",
-    s.stateful_json_op_sync(t, op_domain_to_ascii),
-  );
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_domain_to_ascii", op_domain_to_ascii);
 }
 
 #[derive(Deserialize)]
@@ -28,7 +25,6 @@ struct DomainToAscii {
 
 fn op_domain_to_ascii(
   _state: &State,
-  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {

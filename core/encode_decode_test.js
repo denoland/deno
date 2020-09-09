@@ -41,6 +41,17 @@ function main() {
 
   assert(Deno.core.decode(new Uint8Array(fixture1)) === "𝓽𝓮𝔁𝓽");
   assert(Deno.core.decode(new Uint8Array(fixture2)) === "Hello �� World");
+
+  // See https://github.com/denoland/deno/issues/6649
+  let thrown = false;
+  try {
+    Deno.core.decode(new Uint8Array(2 ** 29));
+  } catch (e) {
+    thrown = true;
+    assert(e instanceof RangeError);
+    assert(e.message === "string too long");
+  }
+  assert(thrown);
 }
 
 main();

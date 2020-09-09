@@ -1077,7 +1077,7 @@ declare namespace Deno {
    * Deno.chmodSync("/path/to/file", 0o666);
    * ```
    *
-   * For a full description, see [chmod](#chmod)
+   * For a full description, see [chmod](#Deno.chmod)
    *
    * NOTE: This API currently throws on Windows
    *
@@ -1952,6 +1952,8 @@ declare namespace Deno {
     compact?: boolean;
     /** The maximum number of iterable entries to print. Defaults to 100. */
     iterableLimit?: number;
+    /** Show a Proxy's target and handler. Defaults to false. */
+    showProxy?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

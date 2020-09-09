@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -1731,7 +1732,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: false,
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
         },
         ..Flags::default()
       }

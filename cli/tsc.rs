@@ -7,7 +7,7 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::fmt_errors::JSError;
+use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
@@ -55,10 +55,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
+use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
-use swc_common::Span;
-use swc_ecmascript::visit::Node;
-use swc_ecmascript::visit::Visit;
+use swc_ecmascript::dep_graph;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -140,14 +139,13 @@ impl CompilerWorker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, state);
+    let worker = Worker::new(name, startup_data, state);
     let response = Arc::new(Mutex::new(None));
     {
-      let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::compiler::init(isolate, &state, response.clone());
+      ops::runtime::init(&state);
+      ops::errors::init(&state);
+      ops::timers::init(&state);
+      ops::compiler::init(&state, response.clone());
     }
 
     Self { worker, response }
@@ -186,18 +184,24 @@ impl Future for CompilerWorker {
 }
 
 lazy_static! {
+  /// Matches the `@deno-types` pragma.
   static ref DENO_TYPES_RE: Regex =
-    Regex::new(r"^\s*@deno-types\s?=\s?(\S+)\s*(.*)\s*$").unwrap();
-  // These regexes were adapted from TypeScript
-  // https://github.com/microsoft/TypeScript/blob/87fd1827f2f2f3dafa76c14f13b9defc69481766/src/compiler/parser.ts#L8780-L8781
-  static ref XML_COMMENT_START_RE: Regex =
-    Regex::new(r"^/\s*<(\S+)\s.*?/>").unwrap();
+    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
+      .unwrap();
+  /// Matches a `/// <reference ... />` comment reference.
+  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
+    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
+  /// Matches a path reference, which adds a dependency to a module
   static ref PATH_REFERENCE_RE: Regex =
-    Regex::new(r#"(\spath\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
+  /// Matches a types reference, which for JavaScript files indicates the
+  /// location of types to use when type checking a program that includes it as
+  /// a dependency.
   static ref TYPES_REFERENCE_RE: Regex =
-    Regex::new(r#"(\stypes\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+  /// Matches a lib reference.
   static ref LIB_REFERENCE_RE: Regex =
-    Regex::new(r#"(\slib\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\slib\s*=\s*["']([^"']*)["']"#).unwrap();
 }
 
 fn warn_ignored_options(
@@ -566,7 +570,7 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
     allow_js: bool,
   ) -> Result<(), ErrBox> {
     let module_url = source_file.url.clone();
@@ -617,6 +621,8 @@ impl TsCompiler {
       "esModuleInterop": true,
       "incremental": true,
       "inlineSourceMap": true,
+      // TODO(lucacasonato): enable this by default in 1.5.0
+      "isolatedModules": unstable,
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -786,7 +792,7 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
   ) -> Result<(), ErrBox> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
     for (_, value) in module_graph.iter() {
@@ -1097,6 +1103,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      if module_specifier.as_url().scheme() == "deno" {
+        return None;
+      }
       return match self.get_source_map_file(&module_specifier) {
         Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
@@ -1187,9 +1196,9 @@ async fn create_runtime_module_graph(
 }
 
 /// Because TS compiler can raise runtime error, we need to
-/// manually convert formatted JSError into and ErrBox.
+/// manually convert formatted JsError into and ErrBox.
 fn js_error_to_errbox(error: ErrBox) -> ErrBox {
-  match error.downcast::<JSError>() {
+  match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
       ErrBox::error(msg)
@@ -1248,6 +1257,8 @@ pub async fn runtime_compile(
     "allowNonTsExtensions": true,
     "checkJs": false,
     "esModuleInterop": true,
+    // TODO(lucacasonato): enable this by default in 1.5.0
+    "isolatedModules": unstable,
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
@@ -1432,124 +1443,9 @@ pub async fn runtime_transpile(
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_errbox)?;
-  let v = serde_json::from_str::<serde_json::Value>(&json_str)
+  let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum DependencyKind {
-  Import,
-  DynamicImport,
-  Export,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct DependencyDescriptor {
-  span: Span,
-  specifier: String,
-  kind: DependencyKind,
-}
-
-struct DependencyVisitor {
-  dependencies: Vec<DependencyDescriptor>,
-}
-
-impl Visit for DependencyVisitor {
-  fn visit_import_decl(
-    &mut self,
-    import_decl: &swc_ecmascript::ast::ImportDecl,
-    _parent: &dyn Node,
-  ) {
-    let src_str = import_decl.src.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Import,
-      span: import_decl.span,
-    });
-  }
-
-  fn visit_named_export(
-    &mut self,
-    named_export: &swc_ecmascript::ast::NamedExport,
-    _parent: &dyn Node,
-  ) {
-    if let Some(src) = &named_export.src {
-      let src_str = src.value.to_string();
-      self.dependencies.push(DependencyDescriptor {
-        specifier: src_str,
-        kind: DependencyKind::Export,
-        span: named_export.span,
-      });
-    }
-  }
-
-  fn visit_export_all(
-    &mut self,
-    export_all: &swc_ecmascript::ast::ExportAll,
-    _parent: &dyn Node,
-  ) {
-    let src_str = export_all.src.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Export,
-      span: export_all.span,
-    });
-  }
-
-  fn visit_ts_import_type(
-    &mut self,
-    ts_import_type: &swc_ecmascript::ast::TsImportType,
-    _parent: &dyn Node,
-  ) {
-    // TODO(bartlomieju): possibly add separate DependencyKind
-    let src_str = ts_import_type.arg.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Import,
-      span: ts_import_type.arg.span,
-    });
-  }
-
-  fn visit_call_expr(
-    &mut self,
-    call_expr: &swc_ecmascript::ast::CallExpr,
-    parent: &dyn Node,
-  ) {
-    use swc_ecmascript::ast::Expr::*;
-    use swc_ecmascript::ast::ExprOrSuper::*;
-
-    swc_ecmascript::visit::visit_call_expr(self, call_expr, parent);
-    let boxed_expr = match call_expr.callee.clone() {
-      Super(_) => return,
-      Expr(boxed) => boxed,
-    };
-
-    match &*boxed_expr {
-      Ident(ident) => {
-        if &ident.sym.to_string() != "import" {
-          return;
-        }
-      }
-      _ => return,
-    };
-
-    if let Some(arg) = call_expr.args.get(0) {
-      match &*arg.expr {
-        Lit(lit) => {
-          if let swc_ecmascript::ast::Lit::Str(str_) = lit {
-            let src_str = str_.value.to_string();
-            self.dependencies.push(DependencyDescriptor {
-              specifier: src_str,
-              kind: DependencyKind::DynamicImport,
-              span: call_expr.span,
-            });
-          }
-        }
-        _ => return,
-      }
-    }
-  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1587,39 +1483,39 @@ pub fn pre_process_file(
   let parser = AstParser::default();
   let parse_result = parser.parse_module(file_name, media_type, source_code);
   let module = parse_result?;
-  let mut collector = DependencyVisitor {
-    dependencies: vec![],
-  };
-  let module_span = module.span;
-  collector.visit_module(&module, &module);
 
-  let dependency_descriptors = collector.dependencies;
+  let dependency_descriptors = dep_graph::analyze_dependencies(
+    &module,
+    &parser.source_map,
+    &parser.comments,
+  );
 
   // for each import check if there's relevant @deno-types directive
   let imports = dependency_descriptors
     .iter()
+    .filter(|desc| desc.kind != dep_graph::DependencyKind::Require)
     .filter(|desc| {
       if analyze_dynamic_imports {
         return true;
       }
-
-      desc.kind != DependencyKind::DynamicImport
+      !desc.is_dynamic
     })
     .map(|desc| {
-      let location = parser.get_span_location(desc.span);
-      let deno_types = get_deno_types(&parser, desc.span);
+      let deno_types = get_deno_types(&desc.leading_comments);
       ImportDesc {
         specifier: desc.specifier.to_string(),
         deno_types,
-        location: location.into(),
+        location: Location {
+          filename: file_name.to_string(),
+          col: desc.col,
+          line: desc.line,
+        },
       }
     })
     .collect();
 
   // analyze comment from beginning of the file and find TS directives
-  let comments = parser
-    .comments
-    .with_leading(module_span.lo(), |cmts| cmts.to_vec());
+  let comments = parser.get_span_comments(module.span);
 
   let mut references = vec![];
   for comment in comments {
@@ -1640,9 +1536,7 @@ pub fn pre_process_file(
   Ok((imports, references))
 }
 
-fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
-  let comments = parser.get_span_comments(span);
-
+fn get_deno_types(comments: &[Comment]) -> Option<String> {
   if comments.is_empty() {
     return None;
   }
@@ -1655,17 +1549,17 @@ fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
 }
 
 fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
-  if !XML_COMMENT_START_RE.is_match(comment) {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
     return None;
   }
 
   let (kind, specifier) =
     if let Some(capture_groups) = PATH_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Path, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Path, capture_groups.get(1).unwrap())
     } else if let Some(capture_groups) = TYPES_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Types, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Types, capture_groups.get(1).unwrap())
     } else if let Some(capture_groups) = LIB_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Lib, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Lib, capture_groups.get(1).unwrap())
     } else {
       return None;
     };
@@ -1676,14 +1570,10 @@ fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
 fn parse_deno_types(comment: &str) -> Option<String> {
   if let Some(capture_groups) = DENO_TYPES_RE.captures(comment) {
     if let Some(specifier) = capture_groups.get(1) {
-      let s = specifier
-        .as_str()
-        .trim_start_matches('\"')
-        .trim_start_matches('\'')
-        .trim_end_matches('\"')
-        .trim_end_matches('\'')
-        .to_string();
-      return Some(s);
+      return Some(specifier.as_str().to_string());
+    }
+    if let Some(specifier) = capture_groups.get(2) {
+      return Some(specifier.as_str().to_string());
     }
   }
 
@@ -1731,6 +1621,10 @@ mod tests {
       ),
       Some("./a/b/c.d.ts".to_string())
     );
+    assert_eq!(
+      parse_deno_types(r#"@deno-types="https://deno.land/x/foo/index.d.ts";"#),
+      Some("https://deno.land/x/foo/index.d.ts".to_string())
+    );
   }
 
   #[test]
@@ -1751,6 +1645,7 @@ mod tests {
     assert!(
       parse_ts_reference(r#"/ <reference unknown="unknown" />"#).is_none()
     );
+    assert!(parse_ts_reference(r#"/ <asset path="./styles.css" />"#).is_none());
   }
 
   #[tokio::test]
@@ -1812,7 +1707,7 @@ mod tests {
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
-        module_graph,
+        &module_graph,
         false,
       )
       .await;
@@ -1882,7 +1777,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler.transpile(module_graph).await;
+    let result = ts_compiler.transpile(&module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;
@@ -1956,11 +1851,11 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ 
-          "compilerOptions": { 
-            // force .js file compilation by Deno 
-            "checkJs": true 
-          } 
+        r#"{
+          "compilerOptions": {
+            // force .js file compilation by Deno
+            "checkJs": true
+          }
         }"#,
         true,
       ),
