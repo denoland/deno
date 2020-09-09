@@ -42,8 +42,10 @@ async fn op_global_timer(
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
-  let state_ = state.borrow();
-  let cli_state = state_.borrow::<crate::state::RcState>();
+  let cli_state = {
+    let state = state.borrow();
+    state.borrow::<crate::state::RcState>().clone()
+  };
   let timer_fut = {
     cli_state
       .global_timer
