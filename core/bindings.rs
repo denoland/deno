@@ -658,23 +658,22 @@ fn decode(
     )
   };
 
-  // If `String::new_from_utf8()` fails it most likely means that we're trying to
-  // create a string that is too big. In that case return TypeError as a result.
+  // If `String::new_from_utf8()` returns `None`, this means that the
+  // length of the decoded string would be longer than what V8 can
+  // handle. In this case we return `RangeError`.
   //
   // For more details see:
-  // - https://github.com/denoland/deno/issues/6649
   // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
-  let text_str =
-    match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
-      Some(text) => text,
-      None => {
-        let msg = v8::String::new(scope, "Failed to decode").unwrap();
-        let exception = v8::Exception::type_error(scope, msg);
-        scope.throw_exception(exception);
-        return;
-      }
-    };
-  rv.set(text_str.into())
+  // - https://github.com/denoland/deno/issues/6649
+  // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
+  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+    Some(text) => rv.set(text.into()),
+    None => {
+      let msg = v8::String::new(scope, "string too long").unwrap();
+      let exception = v8::Exception::range_error(scope, msg);
+      scope.throw_exception(exception);
+    }
+  };
 }
 
 fn queue_microtask(

@@ -48,8 +48,8 @@ function main() {
     Deno.core.decode(new Uint8Array(2 ** 29));
   } catch (e) {
     thrown = true;
-    assert(e instanceof TypeError);
-    assert(e.message === "Failed to decode");
+    assert(e instanceof RangeError);
+    assert(e.message === "string too long");
   }
   assert(thrown);
 }
