@@ -95,7 +95,7 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
 
     let op_state_ = op_state.clone();
     let op_state = op_state.borrow();
-    let cli_state = op_state.borrow::<crate::state::State>();
+    let cli_state = op_state.borrow::<crate::state::RcState>();
     let mut metrics = cli_state.metrics.borrow_mut();
 
     use futures::future::FutureExt;
@@ -110,7 +110,7 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
         let fut = fut
           .inspect(move |buf| {
             let op_state_ = op_state_.borrow();
-            let cli_state = op_state_.borrow::<crate::state::State>();
+            let cli_state = op_state_.borrow::<crate::state::RcState>();
             let mut metrics = cli_state.metrics.borrow_mut();
             metrics.op_completed_async(buf.len());
           })
@@ -122,7 +122,7 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
         let fut = fut
           .inspect(move |buf| {
             let op_state_ = op_state_.borrow();
-            let cli_state = op_state_.borrow::<crate::state::State>();
+            let cli_state = op_state_.borrow::<crate::state::RcState>();
             let mut metrics = cli_state.metrics.borrow_mut();
             metrics.op_completed_async_unref(buf.len());
           })

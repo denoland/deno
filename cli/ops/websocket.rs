@@ -53,7 +53,7 @@ pub async fn op_ws_create(
   let args: CreateArgs = serde_json::from_value(args)?;
   let ca_file = {
     let state_ = state.borrow();
-    let cli_state = state_.borrow::<crate::state::State>();
+    let cli_state = state_.borrow::<crate::state::RcState>();
     cli_state.check_net_url(&url::Url::parse(&args.url)?)?;
     cli_state.global_state.flags.ca_file.clone()
   };

@@ -47,7 +47,7 @@ fn op_signal_bind(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::State>();
+    let cli_state = state.borrow::<crate::state::RcState>();
     cli_state.check_unstable("Deno.signal");
   }
   let args: BindSignalArgs = serde_json::from_value(args)?;
@@ -71,7 +71,7 @@ async fn op_signal_poll(
 ) -> Result<Value, ErrBox> {
   {
     let state_ = state.borrow();
-    let cli_state = state_.borrow::<crate::state::State>();
+    let cli_state = state_.borrow::<crate::state::RcState>();
     cli_state.check_unstable("Deno.signal");
   }
   let args: SignalArgs = serde_json::from_value(args)?;
@@ -98,7 +98,7 @@ pub fn op_signal_unbind(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::State>();
+    let cli_state = state.borrow::<crate::state::RcState>();
     cli_state.check_unstable("Deno.signal");
   }
   let args: SignalArgs = serde_json::from_value(args)?;

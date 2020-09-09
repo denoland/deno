@@ -69,7 +69,7 @@ async fn op_fetch(
 
   state
     .borrow()
-    .borrow::<crate::state::State>()
+    .borrow::<crate::state::RcState>()
     .check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
@@ -139,7 +139,7 @@ fn op_create_http_client(
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
-    let cli_state = state.borrow::<crate::state::State>();
+    let cli_state = state.borrow::<crate::state::RcState>();
     cli_state.check_read(&PathBuf::from(ca_file))?;
   }
 

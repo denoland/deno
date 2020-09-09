@@ -21,7 +21,7 @@ fn op_start(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let gs = &cli_state.global_state;
 
   Ok(json!({
@@ -47,7 +47,7 @@ fn op_main_module(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let main = &cli_state.main_module.to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
@@ -62,7 +62,7 @@ fn op_metrics(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let m = &cli_state.metrics.borrow();
 
   Ok(json!({

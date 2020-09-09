@@ -27,7 +27,7 @@ fn op_exec_path(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let current_exe = env::current_exe().unwrap();
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_read_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
@@ -48,7 +48,7 @@ fn op_set_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: SetEnv = serde_json::from_value(args)?;
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_env()?;
   env::set_var(args.key, args.value);
   Ok(json!({}))
@@ -59,7 +59,7 @@ fn op_env(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
   Ok(json!(v))
@@ -76,7 +76,7 @@ fn op_get_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: GetEnv = serde_json::from_value(args)?;
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_env()?;
   let r = match env::var(args.key) {
     Err(env::VarError::NotPresent) => json!([]),
@@ -96,7 +96,7 @@ fn op_delete_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: DeleteEnv = serde_json::from_value(args)?;
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_env()?;
   env::remove_var(args.key);
   Ok(json!({}))
@@ -121,7 +121,7 @@ fn op_loadavg(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_unstable("Deno.loadavg");
   cli_state.check_env()?;
   match sys_info::loadavg() {
@@ -135,7 +135,7 @@ fn op_hostname(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_unstable("Deno.hostname");
   cli_state.check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
@@ -147,7 +147,7 @@ fn op_os_release(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_unstable("Deno.osRelease");
   cli_state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());

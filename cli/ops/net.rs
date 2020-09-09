@@ -190,7 +190,7 @@ async fn op_datagram_send(
     } if transport == "udp" => {
       {
         let state_ = state.borrow();
-        let cli_state = state_.borrow::<crate::state::State>();
+        let cli_state = state_.borrow::<crate::state::RcState>();
         cli_state.check_net(&args.hostname, args.port)?;
       }
       let addr = resolve_addr(&args.hostname, args.port)?;
@@ -216,7 +216,7 @@ async fn op_datagram_send(
     } if transport == "unixpacket" => {
       let address_path = net_unix::Path::new(&args.path);
       let mut state = state.borrow_mut();
-      let cli_state = state.borrow::<crate::state::State>();
+      let cli_state = state.borrow::<crate::state::RcState>();
       cli_state.check_read(&address_path)?;
       let resource = state
         .resource_table
@@ -252,7 +252,7 @@ async fn op_connect(
     } if transport == "tcp" => {
       {
         let state_ = state.borrow();
-        let cli_state = state_.borrow::<crate::state::State>();
+        let cli_state = state_.borrow::<crate::state::RcState>();
         cli_state.check_net(&args.hostname, args.port)?;
       }
       let addr = resolve_addr(&args.hostname, args.port)?;
@@ -289,7 +289,7 @@ async fn op_connect(
       let address_path = net_unix::Path::new(&args.path);
       {
         let state_ = state.borrow();
-        let cli_state = state_.borrow::<crate::state::State>();
+        let cli_state = state_.borrow::<crate::state::RcState>();
         cli_state.check_unstable("Deno.connect");
         cli_state.check_read(&address_path)?;
       }
@@ -333,7 +333,7 @@ fn op_shutdown(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_unstable("Deno.shutdown");
 
   let args: ShutdownArgs = serde_json::from_value(args)?;
@@ -484,7 +484,7 @@ fn op_listen(
       transport_args: ArgsEnum::Ip(args),
     } => {
       {
-        let cli_state = state.borrow::<crate::state::State>();
+        let cli_state = state.borrow::<crate::state::RcState>();
         if transport == "udp" {
           cli_state.check_unstable("Deno.listenDatagram");
         }
@@ -518,7 +518,7 @@ fn op_listen(
     } if transport == "unix" || transport == "unixpacket" => {
       let address_path = net_unix::Path::new(&args.path);
       {
-        let cli_state = state.borrow::<crate::state::State>();
+        let cli_state = state.borrow::<crate::state::RcState>();
         if transport == "unix" {
           cli_state.check_unstable("Deno.listen");
         }

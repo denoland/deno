@@ -26,7 +26,7 @@ pub fn op_query_permission(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let permissions = cli_state.permissions.borrow();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -53,7 +53,7 @@ pub fn op_revoke_permission(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let mut permissions = cli_state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -80,7 +80,7 @@ pub fn op_request_permission(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let permissions = &mut cli_state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {

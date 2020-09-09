@@ -53,7 +53,7 @@ fn op_set_raw(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::State>();
+    let cli_state = state.borrow::<crate::state::RcState>();
     cli_state.check_unstable("Deno.setRaw");
   }
   let args: SetRawArgs = serde_json::from_value(args)?;
@@ -268,7 +268,7 @@ fn op_console_size(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::State>();
+    let cli_state = state.borrow::<crate::state::RcState>();
     cli_state.check_unstable("Deno.consoleSize");
   }
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;

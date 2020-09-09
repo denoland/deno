@@ -64,7 +64,7 @@ fn op_run(
 ) -> Result<Value, ErrBox> {
   let run_args: RunArgs = serde_json::from_value(args)?;
   {
-    let cli_state = state.borrow::<crate::state::State>();
+    let cli_state = state.borrow::<crate::state::RcState>();
     cli_state.check_run()?;
   }
   let args = run_args.cmd;
@@ -176,7 +176,7 @@ async fn op_run_status(
   let rid = args.rid as u32;
   {
     let state_ = state.borrow();
-    let cli_state = state_.borrow::<crate::state::State>();
+    let cli_state = state_.borrow::<crate::state::RcState>();
     cli_state.check_run()?;
   }
   let run_status = poll_fn(|cx| {
@@ -220,7 +220,7 @@ fn op_kill(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state.check_unstable("Deno.kill");
   cli_state.check_run()?;
 

@@ -184,7 +184,7 @@ fn op_create_worker(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -217,7 +217,7 @@ fn op_create_worker(
   )?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   cli_state
     .workers
     .borrow_mut()
@@ -238,7 +238,7 @@ fn op_host_terminate_worker(
 ) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let (join_handle, worker_handle) = cli_state
     .workers
     .borrow_mut()
@@ -310,7 +310,7 @@ async fn op_host_get_message(
 
   let worker_handle = {
     let state_ = state.borrow();
-    let cli_state = state_.borrow::<crate::state::State>();
+    let cli_state = state_.borrow::<crate::state::RcState>();
     let workers_table = cli_state.workers.borrow();
     let maybe_handle = workers_table.get(&id);
     if let Some(handle) = maybe_handle {
@@ -326,7 +326,7 @@ async fn op_host_get_message(
       // Terminal error means that worker should be removed from worker table.
       if let WorkerEvent::TerminalError(_) = &event {
         let state_ = state.borrow();
-        let cli_state = state_.borrow::<crate::state::State>();
+        let cli_state = state_.borrow::<crate::state::RcState>();
         if let Some((join_handle, mut worker_handle)) =
           cli_state.workers.borrow_mut().remove(&id)
         {
@@ -338,7 +338,7 @@ async fn op_host_get_message(
     }
     None => {
       let state_ = state.borrow();
-      let cli_state = state_.borrow::<crate::state::State>();
+      let cli_state = state_.borrow::<crate::state::RcState>();
       // Worker shuts down
       let mut workers = cli_state.workers.borrow_mut();
       // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
@@ -365,7 +365,7 @@ fn op_host_post_message(
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let cli_state = state.borrow::<crate::state::State>();
+  let cli_state = state.borrow::<crate::state::RcState>();
   let workers = cli_state.workers.borrow();
   let worker_handle = workers[&id].1.clone();
   worker_handle.post_message(msg)?;
