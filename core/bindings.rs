@@ -659,14 +659,20 @@ fn decode(
   };
 
   // If `String::new_from_utf8()` fails it most likely means that we're trying to
-  // create a string that is too big. In that case return empty string to match Chrome's
-  // behavior.
+  // create a string that is too big. In that case return TypeError as a result.
   //
-  // See https://github.com/denoland/deno/issues/6649 for more details.
+  // For more details see:
+  // - https://github.com/denoland/deno/issues/6649
+  // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
   let text_str =
     match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
       Some(text) => text,
-      None => v8::String::empty(scope),
+      None => {
+        let msg = v8::String::new(scope, "Failed to decode").unwrap();
+        let exception = v8::Exception::type_error(scope, msg);
+        scope.throw_exception(exception);
+        return;
+      }
     };
   rv.set(text_str.into())
 }
