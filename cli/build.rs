@@ -142,7 +142,7 @@ fn main() {
 }
 
 fn get_js_files(d: &str) -> Vec<PathBuf> {
-  let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let mut js_files = std::fs::read_dir(d)
     .unwrap()
     .map(|dir_entry| {
