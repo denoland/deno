@@ -65,7 +65,6 @@ format(new Date(2019, 0, 20, 16, 34), "HH:mm MM-dd-yyyy") // output : "16:34 01-
 format(new Date(2019, 0, 20, 16, 34, 23, 123), "MM-dd-yyyy HH:mm:ss.SSS") // output : "01-20-2019 16:34:23.123"
 format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd") // output : "today: 2019-01-20"
 
-...
 ```
 
 ### dayOfYear
