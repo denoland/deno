@@ -268,7 +268,7 @@ impl MainWorker {
       ops::fs_events::init(&mut worker);
       ops::idna::init(&mut worker);
       ops::io::init(&mut worker);
-      //      ops::plugin::init(&state);
+      // ops::plugin::init(&state);
       ops::net::init(&mut worker);
       ops::tls::init(&mut worker);
       ops::os::init(&mut worker);
