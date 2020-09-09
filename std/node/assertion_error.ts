@@ -44,33 +44,8 @@ const {
   keys: ObjectKeys,
 } = Object;
 
-// TODO: use this when we'll have Node errors ported (#5944):
-/*
-const { codes: {
-  ERR_INVALID_ARG_TYPE
-} } = require('internal/errors');
-*/
-// It will do so until then.
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L251
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L299
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L325
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L943
-class ERR_INVALID_ARG_TYPE extends TypeError {
-  code = "ERR_INVALID_ARG_TYPE";
-
-  constructor(a1: string, a2: string, a3: unknown) {
-    super(
-      `The "${a1}" argument must be of type ${a2.toLocaleLowerCase()}. Received ${typeof a3} (${a3})`,
-    );
-    const { name } = this;
-    // Add the error code to the name to include it in the stack trace.
-    this.name = `${name} [${this.code}]`;
-    // Access the stack to generate the error message including the error code from the name.
-    this.stack;
-    // Reset the name to the actual name.
-    this.name = name;
-  }
-}
+import { codes } from "./_errors.ts";
+const { ERR_INVALID_ARG_TYPE } = codes;
 
 let blue = "";
 let green = "";
