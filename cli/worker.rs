@@ -270,7 +270,7 @@ impl MainWorker {
       ops::io::init(&mut worker);
       //      ops::plugin::init(&state);
       ops::net::init(&mut worker);
-      //      ops::tls::init(&state);
+      ops::tls::init(&mut worker);
       ops::os::init(&mut worker);
       ops::permissions::init(&mut worker);
       ops::process::init(&mut worker);
