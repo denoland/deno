@@ -18,8 +18,9 @@ pub fn init(isolate: &mut JsRuntime) {
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();
+    let display_path_str = display_path.display().to_string();
     js_check(isolate.execute(
-      &("deno:".to_string() + display_path.to_str().unwrap()),
+      &("deno:".to_string() + &display_path_str.replace('\\', "/")),
       &std::fs::read_to_string(&file).unwrap(),
     ));
   }
@@ -87,10 +88,7 @@ mod tests {
       if let Err(error) = result {
         let error_string = error.to_string();
         // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-        #[cfg(unix)]
         assert!(error_string.starts_with("deno:op_crates/web/01_event.js"));
-        #[cfg(windows)]
-        assert!(error_string.starts_with("deno:op_crates\\web\\01_event.js"));
         assert!(error_string.contains("Uncaught TypeError"));
       } else {
         unreachable!();

@@ -24,8 +24,9 @@ fn create_snapshot(
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();
+    let display_path_str = display_path.display().to_string();
     js_check(isolate.execute(
-      &("deno:".to_string() + display_path.to_str().unwrap()),
+      &("deno:".to_string() + &display_path_str.replace('\\', "/")),
       &std::fs::read_to_string(&file).unwrap(),
     ));
   }
