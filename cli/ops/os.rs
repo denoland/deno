@@ -7,7 +7,6 @@ use serde_derive::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
-use std::rc::Rc;
 use url::Url;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {

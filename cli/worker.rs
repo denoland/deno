@@ -272,7 +272,7 @@ impl MainWorker {
       ops::net::init(&mut worker);
       //      ops::tls::init(&state);
       ops::os::init(&mut worker);
-      //      ops::permissions::init(&state);
+      ops::permissions::init(&mut worker);
       //      ops::process::init(&state);
       //      ops::random::init(&state);
       //      ops::repl::init(&state);

@@ -14,7 +14,7 @@ pub mod net;
 #[cfg(unix)]
 mod net_unix;
 pub mod os;
-//pub mod permissions;
+pub mod permissions;
 //pub mod plugin;
 //pub mod process;
 //pub mod random;
