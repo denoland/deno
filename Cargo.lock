@@ -428,7 +428,6 @@ dependencies = [
  "serde_json",
  "sourcemap",
  "swc_common",
- "swc_ecma_dep_graph",
  "swc_ecmascript",
  "sys-info",
  "tempfile",
@@ -466,9 +465,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09c0c17b826a68cc4ef4eb4d9a46f12d20d9f1f97b0109dbfdc45172adc19a51"
+checksum = "dc65cff38f291c38eeeb5ab46acd2d8f9ef66b8fe7e88af37c49b80353789f60"
 dependencies = [
  "futures",
  "lazy_static",
@@ -483,9 +482,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.1.28"
+version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5283c646efd6ccdb3376aedf0ce2ee6bf4623f929252251dfe032f4796885aa"
+checksum = "b4163bad03364c85793edf50e1f57c409d25d1484a2605e5d25481626a571bd0"
 dependencies = [
  "lazy_static",
  "log",
@@ -569,9 +568,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab0711bfaae1add9468220fb775addcf50b3bdbe5a85c1266f5d324206131080"
+checksum = "3cd4877d65ac075587221b7e72f86f16647db268641f77ab13a76da0906d711f"
 dependencies = [
  "dprint-core",
  "serde",
@@ -1466,6 +1465,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
+name = "phf"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3dfb61232e34fcb633f43d12c58f83c1df82962dcdfa565a4e866ffc17dafe12"
+dependencies = [
+ "phf_macros",
+ "phf_shared",
+ "proc-macro-hack",
+]
+
+[[package]]
 name = "phf_generator"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1473,6 +1483,20 @@ checksum = "17367f0cc86f2d25802b2c26ee58a7b23faeccf78a396094c13dced0d0182526"
 dependencies = [
  "phf_shared",
  "rand 0.7.3",
+]
+
+[[package]]
+name = "phf_macros"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f6fde18ff429ffc8fe78e2bf7f8b7a5a5a6e2a8b58bc5a9ac69198bbda9189c"
+dependencies = [
+ "phf_generator",
+ "phf_shared",
+ "proc-macro-hack",
+ "proc-macro2 1.0.20",
+ "quote 1.0.7",
+ "syn 1.0.39",
 ]
 
 [[package]]
@@ -2292,9 +2316,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms"
-version = "0.23.1"
+version = "0.23.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "736d4951d3476824c9a04a82c31ed2a99195e668d40c1938110d2782130aadee"
+checksum = "a4685c51a3cd944e2610a8f48387a71005caec333c04700e4fac4e8b71f6a849"
 dependencies = [
  "Inflector",
  "arrayvec",
@@ -2307,6 +2331,7 @@ dependencies = [
  "log",
  "once_cell",
  "ordered-float",
+ "phf",
  "regex",
  "retain_mut",
  "scoped-tls",
@@ -2366,12 +2391,13 @@ dependencies = [
 
 [[package]]
 name = "swc_ecmascript"
-version = "0.7.0"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "357e213aac6934a3eb6592fc9a12ef1b6ce96ae7d2cf22d142eb827c94b26644"
+checksum = "98805f69402e0f8c22695c0288873c95d8a00b903f824f918a76eabfef8b6ccc"
 dependencies = [
  "swc_ecma_ast",
  "swc_ecma_codegen",
+ "swc_ecma_dep_graph",
  "swc_ecma_parser",
  "swc_ecma_transforms",
  "swc_ecma_utils",

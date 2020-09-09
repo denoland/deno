@@ -673,9 +673,22 @@ fn decode(
     )
   };
 
-  let text_str =
-    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
-  rv.set(text_str.into())
+  // If `String::new_from_utf8()` returns `None`, this means that the
+  // length of the decoded string would be longer than what V8 can
+  // handle. In this case we return `RangeError`.
+  //
+  // For more details see:
+  // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
+  // - https://github.com/denoland/deno/issues/6649
+  // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
+  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+    Some(text) => rv.set(text.into()),
+    None => {
+      let msg = v8::String::new(scope, "string too long").unwrap();
+      let exception = v8::Exception::range_error(scope, msg);
+      scope.throw_exception(exception);
+    }
+  };
 }
 
 fn queue_microtask(

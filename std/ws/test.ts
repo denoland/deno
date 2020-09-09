@@ -5,7 +5,6 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import * as bytes from "../bytes/mod.ts";
 import {
   acceptable,
-  connectWebSocket,
   createSecAccept,
   createSecKey,
   handshake,
@@ -193,17 +192,6 @@ Deno.test("[ws] acceptable should return false when headers invalid", () => {
     false,
   );
 });
-
-Deno.test(
-  "[ws] connectWebSocket should throw invalid scheme of url",
-  async (): Promise<void> => {
-    await assertThrowsAsync(
-      async (): Promise<void> => {
-        await connectWebSocket("file://hoge/hoge");
-      },
-    );
-  },
-);
 
 Deno.test("[ws] write and read masked frame", async () => {
   const mask = new Uint8Array([0, 1, 2, 3]);
