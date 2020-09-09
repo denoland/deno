@@ -52,6 +52,7 @@ For more detail, run `deno lint --help`.
 - `no-extra-non-null-assertion`
 - `no-extra-semi`
 - `no-func-assign`
+- `no-inner-declarations`
 - `no-inferrable-types`
 - `no-invalid-regexp`
 - `no-irregular-whitespace`
@@ -59,7 +60,7 @@ For more detail, run `deno lint --help`.
 - `no-mixed-spaces-and-tabs`
 - `no-namespace`
 - `no-new-symbol`
-- `no-obj-call`
+- `no-obj-calls`
 - `no-octal`
 - `no-prototype-builtins`
 - `no-regex-spaces`
@@ -68,7 +69,7 @@ For more detail, run `deno lint --help`.
 - `no-shadow-restricted-names`
 - `no-this-alias`
 - `no-this-before-super`
-- `no-unexpected-multiline`
+- `no-unreachable`
 - `no-unsafe-finally`
 - `no-unsafe-negation`
 - `no-unused-labels`
