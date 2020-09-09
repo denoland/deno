@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.3.3 / 2020.09.04
+
+- feat(unstable): Add Deno.futime and Deno.futimeSync (#7266)
+- feat(unstable): Allow deno lint to read from stdin (#7263)
+- fix: Don't expose globalThis.__bootstrap (#7344)
+- fix: Handle bad redirects more gracefully (#7342)
+- fix: Handling of + character in URLSearchParams (#7314)
+- fix: Regex for TS refereces and deno-types (#7333)
+- fix: Set maximum size of thread pool to 31 (#7290)
+- fix: Support missing features in --no-check (#7289)
+- fix: Use millisecond precision for Deno.futime and Deno.utime (#7299)
+- fix: Use upstream type definitions for WebAssembly (#7216)
+- refactor: Compiler config in Rust (#7228)
+- refactor: Support env_logger / RUST_LOG (#7142)
+- refactor: Support multiline diagnostics in linter (#7303)
+- refactor: Use dependency analyzer from SWC (#7334)
+- upgrade: rust 1.46.0 (#7251)
+- upgrade: swc, deno_doc, deno_lint, dprint (#7276, #7332)
+
+Changes in std version 0.68.0:
+
+- refactor(std/uuid): remove dependency on isString from std/node (#7273)
+
 ### 1.3.2 / 2020.08.29
 
 - fix(cli): revert "never type check deno info #6978" (#7199)

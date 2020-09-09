@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -1031,7 +1032,7 @@ rule name:
 Names of rules to ignore must be specified after ignore comment.
 
 ESLint ignore comments are also supported:
-  // eslint-ignore-next-line @typescrit-eslint/no-explicit-any no-empty
+  // eslint-disable-next-line @typescrit-eslint/no-explicit-any no-empty
 
 Ignore linting a file by adding an ignore comment at the top of the file:
   // deno-lint-ignore-file
@@ -1731,7 +1732,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: false,
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
         },
         ..Flags::default()
       }

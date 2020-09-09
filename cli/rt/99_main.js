@@ -1,7 +1,6 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete Object.prototype.__proto__;
 
 ((window) => {
@@ -31,6 +30,7 @@ delete Object.prototype.__proto__;
   const progressEvent = window.__bootstrap.progressEvent;
   const fileReader = window.__bootstrap.fileReader;
   const formData = window.__bootstrap.formData;
+  const webSocket = window.__bootstrap.webSocket;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
@@ -81,7 +81,7 @@ delete Object.prototype.__proto__;
 
   let isClosing = false;
   async function workerMessageRecvCallback(data) {
-    const msgEvent = new worker.MessageEvent("message", {
+    const msgEvent = new MessageEvent("message", {
       cancelable: false,
       data,
     });
@@ -233,10 +233,13 @@ delete Object.prototype.__proto__;
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
+    CloseEvent: util.nonEnumerable(CloseEvent),
+    MessageEvent: util.nonEnumerable(MessageEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
     Headers: util.nonEnumerable(headers.Headers),
     FormData: util.nonEnumerable(formData.FormData),
+    WebSocket: util.nonEnumerable(webSocket.WebSocket),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     Request: util.nonEnumerable(request.Request),
     Response: util.nonEnumerable(fetch.Response),
@@ -292,9 +295,9 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -360,9 +363,9 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -412,7 +415,6 @@ delete Object.prototype.__proto__;
         workerRuntime: bootstrapWorkerRuntime,
       },
       configurable: true,
-      writable: true,
     },
   });
 })(this);

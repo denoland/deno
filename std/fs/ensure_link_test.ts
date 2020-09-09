@@ -8,7 +8,8 @@ import {
 import * as path from "../path/mod.ts";
 import { ensureLink, ensureLinkSync } from "./ensure_link.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("ensureLinkIfItNotExist", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "ensure_link_1");

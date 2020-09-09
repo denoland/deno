@@ -14,7 +14,6 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete Object.prototype.__proto__;
 
 ((window) => {
@@ -300,6 +299,7 @@ delete Object.prototype.__proto__;
   // it makes sense to use the same scheme here.
   const ASSETS = "asset://";
   const OUT_DIR = "deno://";
+  const CACHE = "cache:///";
   // This constant is passed to compiler settings when
   // doing incremental compiles. Contents of this
   // file are passed back to Rust and saved to $DENO_DIR.
@@ -383,13 +383,10 @@ delete Object.prototype.__proto__;
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
   function parseCompilerOptions(compilerOptions) {
-    // TODO(bartlomieju): using `/` and `/tsconfig.json` because
-    // otherwise TSC complains that some paths are relative
-    // and some are absolute
     const { options, errors } = ts.convertCompilerOptionsFromJson(
       compilerOptions,
-      "/",
-      "/tsconfig.json",
+      "",
+      "tsconfig.json",
     );
     return {
       options,
@@ -492,7 +489,7 @@ delete Object.prototype.__proto__;
     }
 
     getCurrentDirectory() {
-      return "";
+      return CACHE;
     }
 
     getDefaultLibFileName(_options) {
@@ -879,6 +876,13 @@ delete Object.prototype.__proto__;
     7016,
   ];
 
+  const IGNORED_COMPILE_DIAGNOSTICS = [
+    // TS1208: All files must be modules when the '--isolatedModules' flag is
+    // provided.  We can ignore because we guarantuee that all files are
+    // modules.
+    1208,
+  ];
+
   const stats = [];
   let statsStart = 0;
 
@@ -1163,7 +1167,9 @@ delete Object.prototype.__proto__;
         ...program.getSemanticDiagnostics(),
       ];
       diagnostics = diagnostics.filter(
-        ({ code }) => !IGNORED_DIAGNOSTICS.includes(code),
+        ({ code }) =>
+          !IGNORED_DIAGNOSTICS.includes(code) &&
+          !IGNORED_COMPILE_DIAGNOSTICS.includes(code),
       );
 
       // We will only proceed with the emit if there are no diagnostics.
@@ -1325,7 +1331,6 @@ delete Object.prototype.__proto__;
       target,
       createRuntimeCompileWriteFile(state),
     );
-
     const program = ts.createProgram({
       rootNames,
       options: host.getCompilationSettings(),
@@ -1334,7 +1339,10 @@ delete Object.prototype.__proto__;
 
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+      .filter(({ code }) =>
+        !IGNORED_DIAGNOSTICS.includes(code) &&
+        !IGNORED_COMPILE_DIAGNOSTICS.includes(code)
+      );
 
     const emitResult = program.emit();
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
@@ -1528,7 +1536,7 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("TypeError", TypeError);
     core.registerErrorClass("Other", Error);
     core.registerErrorClass("Busy", errors.Busy);
-    globalThis.__bootstrap = undefined;
+    delete globalThis.__bootstrap;
     runtimeStart("TS");
   }
 
