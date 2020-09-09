@@ -154,6 +154,7 @@
     trailingComma: false,
     compact: true,
     iterableLimit: 100,
+    showProxy: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -400,6 +401,13 @@
     level,
     inspectOptions,
   ) {
+    const proxyDetails = Deno.core.getProxyDetails(value);
+    if (proxyDetails != null) {
+      return inspectOptions.showProxy
+        ? inspectProxy(proxyDetails, ctx, level, inspectOptions)
+        : inspectValue(proxyDetails[0], ctx, level, inspectOptions);
+    }
+
     switch (typeof value) {
       case "string":
         return value;
@@ -657,7 +665,16 @@
     return `Promise { ${str} }`;
   }
 
-  // TODO: Proxy
+  function inspectProxy(
+    targetAndHandler,
+    ctx,
+    level,
+    inspectOptions,
+  ) {
+    return `Proxy ${
+      inspectArray(targetAndHandler, ctx, level, inspectOptions)
+    }`;
+  }
 
   function inspectRawObject(
     value,

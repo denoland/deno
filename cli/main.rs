@@ -40,6 +40,7 @@ mod global_timer;
 pub mod http_cache;
 mod http_util;
 mod import_map;
+mod info;
 mod inspector;
 pub mod installer;
 mod js;
@@ -76,12 +77,9 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::permissions::Permissions;
-use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
-use deno_core::Deps;
 use deno_core::ErrBox;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
@@ -151,114 +149,6 @@ fn print_cache_info(
   }
 }
 
-struct FileInfoOutput<'a> {
-  local: &'a str,
-  file_type: &'a str,
-  compiled: Option<String>,
-  map: Option<String>,
-  deps: Option<Deps>,
-}
-
-// TODO(bartlomieju): this function de facto repeats
-// whole compilation stack. Can this be done better somehow?
-async fn print_file_info(
-  worker: &MainWorker,
-  module_specifier: ModuleSpecifier,
-  json: bool,
-) -> Result<(), ErrBox> {
-  let global_state = worker.state.global_state.clone();
-
-  let out = global_state
-    .file_fetcher
-    .fetch_source_file(&module_specifier, None, Permissions::allow_all())
-    .await?;
-
-  let mut output = FileInfoOutput {
-    local: out.filename.to_str().unwrap(),
-    file_type: msg::enum_name_media_type(out.media_type),
-    compiled: None,
-    map: None,
-    deps: None,
-  };
-
-  let module_specifier_ = module_specifier.clone();
-
-  global_state
-    .prepare_module_load(
-      module_specifier_.clone(),
-      None,
-      TargetLib::Main,
-      Permissions::allow_all(),
-      false,
-      global_state.maybe_import_map.clone(),
-    )
-    .await?;
-  global_state
-    .clone()
-    .fetch_compiled_module(module_specifier_, None)
-    .await?;
-
-  if out.media_type == msg::MediaType::TypeScript
-    || (out.media_type == msg::MediaType::JavaScript
-      && global_state.ts_compiler.compile_js)
-  {
-    let compiled_source_file = global_state
-      .ts_compiler
-      .get_compiled_source_file(&out.url)
-      .unwrap();
-    output.compiled =
-      compiled_source_file.filename.to_str().map(|s| s.to_owned());
-  }
-
-  if let Ok(source_map) = global_state
-    .clone()
-    .ts_compiler
-    .get_source_map_file(&module_specifier)
-  {
-    output.map = source_map.filename.to_str().map(|s| s.to_owned());
-  }
-  let es_state_rc = JsRuntime::state(&worker.isolate);
-  let es_state = es_state_rc.borrow();
-
-  if let Some(deps) = es_state.modules.deps(&module_specifier) {
-    output.deps = Some(deps);
-  }
-
-  if json {
-    let output = json!({
-      "local": output.local,
-      "fileType": output.file_type,
-      "compiled": output.compiled,
-      "map": output.map,
-      "deps": output.deps.map(|x| x.to_json())
-    });
-    write_json_to_stdout(&output)
-  } else {
-    println!("{} {}", colors::bold("local:"), output.local);
-    println!("{} {}", colors::bold("type:"), output.file_type);
-    if let Some(compiled) = output.compiled {
-      println!("{} {}", colors::bold("compiled:"), compiled);
-    }
-    if let Some(map) = output.map {
-      println!("{} {}", colors::bold("map:"), map);
-    }
-    if let Some(deps) = output.deps {
-      println!("{}{}", colors::bold("deps:\n"), deps.name);
-      if let Some(ref depsdeps) = deps.deps {
-        for d in depsdeps {
-          println!("{}", d);
-        }
-      }
-    } else {
-      println!(
-        "{} cannot retrieve full dependency graph",
-        colors::bold("deps:"),
-      );
-    }
-    Ok(())
-  }
-}
-
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
     "{}\n{}\n{}\n{}",
@@ -289,9 +179,15 @@ async fn info_command(
     print_cache_info(&global_state, json)
   } else {
     let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-    let mut worker = MainWorker::create(&global_state, main_module.clone())?;
-    worker.preload_module(&main_module).await?;
-    print_file_info(&worker, main_module.clone(), json).await
+    let info =
+      info::ModuleDepInfo::new(&global_state, main_module.clone()).await?;
+
+    if json {
+      write_json_to_stdout(&json!(info))
+    } else {
+      print!("{}", info);
+      Ok(())
+    }
   }
 }
 
@@ -414,45 +310,12 @@ async fn bundle_command(
       "{} {:?} ({})",
       colors::green("Emit"),
       out_file_,
-      colors::gray(&human_size(output_len as f64))
+      colors::gray(&info::human_size(output_len as f64))
     );
   } else {
     println!("{}", output);
   }
   Ok(())
-}
-
-fn human_size(bytse: f64) -> String {
-  let negative = if bytse.is_sign_positive() { "" } else { "-" };
-  let bytse = bytse.abs();
-  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  if bytse < 1_f64 {
-    return format!("{}{} {}", negative, bytse, "Bytes");
-  }
-  let delimiter = 1024_f64;
-  let exponent = std::cmp::min(
-    (bytse.ln() / delimiter.ln()).floor() as i32,
-    (units.len() - 1) as i32,
-  );
-  let pretty_bytes = format!("{:.2}", bytse / delimiter.powi(exponent))
-    .parse::<f64>()
-    .unwrap()
-    * 1_f64;
-  let unit = units[exponent as usize];
-  format!("{}{} {}", negative, pretty_bytes, unit)
-}
-
-#[test]
-fn human_size_test() {
-  assert_eq!(human_size(16_f64), "16 Bytes");
-  assert_eq!(human_size((16 * 1024) as f64), "16 KB");
-  assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16 TB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16 PB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16 EB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16 ZB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16 YB");
 }
 
 async fn doc_command(

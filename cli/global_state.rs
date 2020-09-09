@@ -160,11 +160,11 @@ impl GlobalState {
 
     if should_compile {
       if self.flags.no_check {
-        self.ts_compiler.transpile(module_graph).await?;
+        self.ts_compiler.transpile(&module_graph).await?;
       } else {
         self
           .ts_compiler
-          .compile(self, &out, target_lib, permissions, module_graph, allow_js)
+          .compile(self, &out, target_lib, permissions, &module_graph, allow_js)
           .await?;
       }
     }

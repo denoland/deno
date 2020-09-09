@@ -21,7 +21,7 @@ path = "./bench/main.rs"
 
 [build-dependencies]
 deno_core = { path = "../core", version = "0.56.0" }
-deno_web = { path = "../op_crates/web", version = "0.7.0" }
+deno_web = { path = "../op_crates/web", version = "0.7.1" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
@@ -29,7 +29,7 @@ winapi = "0.3.9"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.56.0" }
-deno_doc = { version = "0.1.4" }
+deno_doc = { version = "0.1.5" }
 deno_lint = { version = "0.1.28", features = ["json"] }
 
 atty = "0.2.14"
@@ -40,7 +40,7 @@ clap = "2.33.2"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.23"
-dprint-plugin-typescript = "0.30.3"
+dprint-plugin-typescript = "0.31.0"
 futures = "0.3.5"
 filetime = "0.2.12"
 http = "0.2.1"

@@ -567,7 +567,7 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
     allow_js: bool,
   ) -> Result<(), ErrBox> {
     let module_url = source_file.url.clone();
@@ -618,6 +618,8 @@ impl TsCompiler {
       "esModuleInterop": true,
       "incremental": true,
       "inlineSourceMap": true,
+      // TODO(lucacasonato): enable this by default in 1.5.0
+      "isolatedModules": unstable,
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -787,7 +789,7 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
   ) -> Result<(), ErrBox> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
     for (_, value) in module_graph.iter() {
@@ -1098,6 +1100,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      if module_specifier.as_url().scheme() == "deno" {
+        return None;
+      }
       return match self.get_source_map_file(&module_specifier) {
         Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
@@ -1249,6 +1254,8 @@ pub async fn runtime_compile(
     "allowNonTsExtensions": true,
     "checkJs": false,
     "esModuleInterop": true,
+    // TODO(lucacasonato): enable this by default in 1.5.0
+    "isolatedModules": unstable,
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
@@ -1697,7 +1704,7 @@ mod tests {
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
-        module_graph,
+        &module_graph,
         false,
       )
       .await;
@@ -1767,7 +1774,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler.transpile(module_graph).await;
+    let result = ts_compiler.transpile(&module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;
@@ -1841,11 +1848,11 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ 
-          "compilerOptions": { 
-            // force .js file compilation by Deno 
-            "checkJs": true 
-          } 
+        r#"{
+          "compilerOptions": {
+            // force .js file compilation by Deno
+            "checkJs": true
+          }
         }"#,
         true,
       ),
