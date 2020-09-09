@@ -58,12 +58,14 @@ async fn op_repl_readline(
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
-  let state = state.borrow();
-  let resource = state
-    .resource_table
-    .get::<ReplResource>(rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
-  let repl = resource.0.clone();
+  let repl = {
+    let state = state.borrow();
+    let resource = state
+      .resource_table
+      .get::<ReplResource>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    resource.0.clone()
+  };
   tokio::task::spawn_blocking(move || {
     let line = repl.lock().unwrap().readline(&prompt)?;
     Ok(json!(line))
