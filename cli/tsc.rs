@@ -57,7 +57,7 @@ use std::sync::Mutex;
 use std::task::Poll;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
-use swc_ecma_dep_graph as dep_graph;
+use swc_ecmascript::dep_graph;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
