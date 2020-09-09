@@ -25,10 +25,10 @@ pub mod runtime_compiler;
 pub mod signal;
 pub mod timers;
 pub mod tls;
-//pub mod tty;
+pub mod tty;
 //pub mod web_worker;
 pub mod websocket;
-//pub mod worker_host;
+pub mod worker_host;
 
 use crate::metrics::metrics_op;
 use deno_core::json_op_async;

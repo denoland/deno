@@ -2,14 +2,13 @@
 
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::state::State;
 use deno_core::ErrBox;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use nix::sys::termios;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
-use std::rc::Rc;
 
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
@@ -19,6 +18,7 @@ use winapi::um::wincon;
 const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
   | wincon::ENABLE_ECHO_INPUT
   | wincon::ENABLE_PROCESSED_INPUT;
+
 #[cfg(windows)]
 fn get_windows_handle(
   f: &std::fs::File,
@@ -35,10 +35,10 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_set_raw", op_set_raw);
-  s.register_op_json_sync("op_isatty", op_isatty);
-  s.register_op_json_sync("op_console_size", op_console_size);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_set_raw", op_set_raw);
+  super::reg_json_sync(rt, "op_isatty", op_isatty);
+  super::reg_json_sync(rt, "op_console_size", op_console_size);
 }
 
 #[derive(Deserialize)]
@@ -48,11 +48,14 @@ struct SetRawArgs {
 }
 
 fn op_set_raw(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.setRaw");
+  {
+    let cli_state = state.borrow::<crate::state::State>();
+    cli_state.check_unstable("Deno.setRaw");
+  }
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let is_raw = args.mode;
@@ -68,8 +71,8 @@ fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let mut resource_table = state.resource_table.borrow_mut();
-    let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
+    let resource_holder =
+      state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(ErrBox::bad_resource_id());
     }
@@ -134,8 +137,8 @@ fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let mut resource_table = state.resource_table.borrow_mut();
-    let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
+    let resource_holder =
+      state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(ErrBox::bad_resource_id());
     }
@@ -216,7 +219,7 @@ struct IsattyArgs {
 }
 
 fn op_isatty(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -260,11 +263,14 @@ struct ConsoleSize {
 }
 
 fn op_console_size(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.consoleSize");
+  {
+    let cli_state = state.borrow::<crate::state::State>();
+    cli_state.check_unstable("Deno.consoleSize");
+  }
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 

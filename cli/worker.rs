@@ -279,8 +279,8 @@ impl MainWorker {
       ops::resources::init(&mut worker);
       ops::signal::init(&mut worker);
       ops::timers::init(&mut worker);
-      //      ops::tty::init(&state);
-      //      ops::worker_host::init(&state);
+      ops::tty::init(&mut worker);
+      ops::worker_host::init(&mut worker);
     }
     Self(worker)
   }
