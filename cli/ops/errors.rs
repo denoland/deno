@@ -3,17 +3,16 @@
 use crate::diagnostics::Diagnostic;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
-use crate::state::State;
 use deno_core::ErrBox;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_derive::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::rc::Rc;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_apply_source_map", op_apply_source_map);
-  s.register_op_json_sync("op_format_diagnostic", op_format_diagnostic);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_apply_source_map", op_apply_source_map);
+  super::reg_json_sync(rt, "op_format_diagnostic", op_format_diagnostic);
 }
 
 #[derive(Deserialize)]
@@ -25,20 +24,21 @@ struct ApplySourceMap {
 }
 
 fn op_apply_source_map(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
+  let cli_state = state.borrow::<crate::state::State>();
   let (orig_file_name, orig_line_number, orig_column_number) =
     get_orig_position(
       args.file_name,
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      &state.global_state.ts_compiler,
+      &cli_state.global_state.ts_compiler,
     );
 
   Ok(json!({
@@ -49,7 +49,7 @@ fn op_apply_source_map(
 }
 
 fn op_format_diagnostic(
-  _state: &State,
+  _state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
