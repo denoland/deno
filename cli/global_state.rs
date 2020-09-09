@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
@@ -95,7 +96,7 @@ impl GlobalState {
   }
 
   /// This function is called when new module load is
-  /// initialized by the EsIsolate. Its resposibility is to collect
+  /// initialized by the JsRuntime. Its resposibility is to collect
   /// all dependencies and if it is required then also perform TS typecheck
   /// and traspilation.
   pub async fn prepare_module_load(
@@ -159,11 +160,11 @@ impl GlobalState {
 
     if should_compile {
       if self.flags.no_check {
-        self.ts_compiler.transpile(module_graph).await?;
+        self.ts_compiler.transpile(&module_graph).await?;
       } else {
         self
           .ts_compiler
-          .compile(self, &out, target_lib, permissions, module_graph, allow_js)
+          .compile(self, &out, target_lib, permissions, &module_graph, allow_js)
           .await?;
       }
     }
@@ -179,7 +180,7 @@ impl GlobalState {
   }
 
   // TODO(bartlomieju): this method doesn't need to be async anymore
-  /// This method is used after `prepare_module_load` finishes and EsIsolate
+  /// This method is used after `prepare_module_load` finishes and JsRuntime
   /// starts loading source and executing source code. This method shouldn't
   /// perform any IO (besides $DENO_DIR) and only operate on sources collected
   /// during `prepare_module_load`.

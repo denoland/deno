@@ -7,7 +7,7 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::fmt_errors::JSError;
+use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
@@ -139,14 +139,13 @@ impl CompilerWorker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, state);
+    let worker = Worker::new(name, startup_data, state);
     let response = Arc::new(Mutex::new(None));
     {
-      let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::compiler::init(isolate, &state, response.clone());
+      ops::runtime::init(&state);
+      ops::errors::init(&state);
+      ops::timers::init(&state);
+      ops::compiler::init(&state, response.clone());
     }
 
     Self { worker, response }
@@ -571,7 +570,7 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
     allow_js: bool,
   ) -> Result<(), ErrBox> {
     let module_url = source_file.url.clone();
@@ -622,6 +621,8 @@ impl TsCompiler {
       "esModuleInterop": true,
       "incremental": true,
       "inlineSourceMap": true,
+      // TODO(lucacasonato): enable this by default in 1.5.0
+      "isolatedModules": unstable,
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -791,7 +792,7 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
   ) -> Result<(), ErrBox> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
     for (_, value) in module_graph.iter() {
@@ -1192,9 +1193,9 @@ async fn create_runtime_module_graph(
 }
 
 /// Because TS compiler can raise runtime error, we need to
-/// manually convert formatted JSError into and ErrBox.
+/// manually convert formatted JsError into and ErrBox.
 fn js_error_to_errbox(error: ErrBox) -> ErrBox {
-  match error.downcast::<JSError>() {
+  match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
       ErrBox::error(msg)
@@ -1253,6 +1254,8 @@ pub async fn runtime_compile(
     "allowNonTsExtensions": true,
     "checkJs": false,
     "esModuleInterop": true,
+    // TODO(lucacasonato): enable this by default in 1.5.0
+    "isolatedModules": unstable,
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
@@ -1437,7 +1440,7 @@ pub async fn runtime_transpile(
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_errbox)?;
-  let v = serde_json::from_str::<serde_json::Value>(&json_str)
+  let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
 }
@@ -1701,7 +1704,7 @@ mod tests {
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
-        module_graph,
+        &module_graph,
         false,
       )
       .await;
@@ -1771,7 +1774,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler.transpile(module_graph).await;
+    let result = ts_compiler.transpile(&module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;
