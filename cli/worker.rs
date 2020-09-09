@@ -276,7 +276,7 @@ impl MainWorker {
       ops::process::init(&mut worker);
       ops::random::init(&mut worker);
       ops::repl::init(&mut worker);
-      //      ops::resources::init(&state);
+      ops::resources::init(&mut worker);
       //      ops::signal::init(&state);
       //      ops::timers::init(&state);
       //      ops::tty::init(&state);
