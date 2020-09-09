@@ -116,6 +116,10 @@ impl<S: OpRegistry> OpTable<S> {
     self.keys().cloned().zip(0..).collect()
   }
 
+  pub fn unregister_op(&mut self, name: &str) {
+    drop(self.0.remove(name));
+  }
+
   fn op_get_op_catalog(state: Rc<S>, _bufs: BufVec) -> Op {
     let ops = state.get_op_catalog();
     let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();

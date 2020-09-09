@@ -117,6 +117,11 @@ Before: ${preStr}
 After: ${postStr}`,
     );
   }
+
+  const ops = Deno.core.ops();
+  if (ops["testSync"] || ops["testAsync"] || ops["testWrapped"]) {
+    throw new Error("Expected plugin ops to be unregistered: ", ops);
+  }
 }
 
 runTestSync();

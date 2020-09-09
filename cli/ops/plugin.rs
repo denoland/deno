@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::state::State;
-use deno_core::plugin_api;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::Op;
@@ -9,15 +8,16 @@ use deno_core::OpAsyncFuture;
 use deno_core::OpId;
 use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
+use deno_core::{plugin_api, OpTable};
 use dlopen::symbor::Library;
 use futures::prelude::*;
 use serde_derive::Deserialize;
 use serde_json::Value;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
+use std::{cell::RefCell, path::PathBuf};
 
 pub fn init(s: &Rc<State>) {
   s.register_op_json_sync("op_open_plugin", op_open_plugin);
@@ -43,7 +43,7 @@ pub fn op_open_plugin(
 
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;
-  let plugin_resource = PluginResource::new(&plugin_lib);
+  let plugin_resource = PluginResource::new(&plugin_lib, &state.op_table);
 
   let rid;
   let deno_plugin_init;
@@ -60,7 +60,7 @@ pub fn op_open_plugin(
     };
   }
 
-  let mut interface = PluginInterface::new(state, &plugin_lib);
+  let mut interface = PluginInterface::new(state, &plugin_lib, rid);
   deno_plugin_init(&mut interface);
 
   Ok(json!(rid))
@@ -68,22 +68,42 @@ pub fn op_open_plugin(
 
 struct PluginResource {
   lib: Rc<Library>,
+  op_table: Rc<RefCell<OpTable<State>>>,
+  ops: Vec<String>,
 }
 
 impl PluginResource {
-  fn new(lib: &Rc<Library>) -> Self {
-    Self { lib: lib.clone() }
+  fn new(lib: &Rc<Library>, op_table: &Rc<RefCell<OpTable<State>>>) -> Self {
+    Self {
+      lib: lib.clone(),
+      op_table: op_table.clone(),
+      ops: Vec::new(),
+    }
+  }
+}
+
+impl Drop for PluginResource {
+  fn drop(&mut self) {
+    let mut table_lock = self.op_table.borrow_mut();
+    for op in &self.ops {
+      table_lock.unregister_op(&op);
+    }
   }
 }
 
 struct PluginInterface<'a> {
   state: &'a State,
   plugin_lib: &'a Rc<Library>,
+  rid: u32,
 }
 
 impl<'a> PluginInterface<'a> {
-  fn new(state: &'a State, plugin_lib: &'a Rc<Library>) -> Self {
-    Self { state, plugin_lib }
+  fn new(state: &'a State, plugin_lib: &'a Rc<Library>, rid: u32) -> Self {
+    Self {
+      state,
+      plugin_lib,
+      rid,
+    }
   }
 }
 
@@ -99,14 +119,12 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: Box<plugin_api::DispatchOpFn>,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self.state.register_op(
+    let plugin_rid = self.rid;
+    let op_rid = self.state.register_op(
       name,
       move |state: Rc<State>, mut zero_copy: BufVec| {
-        // This is a hack that ensures that dispatch_op_fn is dropped first to
-        // prevent segfaults.
-        let _ = &dispatch_op_fn;
-        let _ = &plugin_lib;
-        let mut interface = PluginInterface::new(&state, &plugin_lib);
+        let mut interface =
+          PluginInterface::new(&state, &plugin_lib, plugin_rid);
         let op = dispatch_op_fn(&mut interface, &mut zero_copy);
         match op {
           sync_op @ Op::Sync(..) => sync_op,
@@ -119,7 +137,12 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
           _ => unreachable!(),
         }
       },
-    )
+    );
+    let mut resource_table = self.state.resource_table.borrow_mut();
+    let plugin_resource =
+      resource_table.get_mut::<PluginResource>(self.rid).unwrap();
+    plugin_resource.ops.push(name.to_string());
+    op_rid
   }
 }
 

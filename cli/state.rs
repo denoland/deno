@@ -55,7 +55,7 @@ pub struct State {
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
   pub resource_table: RefCell<ResourceTable>,
-  pub op_table: RefCell<OpTable<Self>>,
+  pub op_table: Rc<RefCell<OpTable<Self>>>,
 }
 
 impl State {
