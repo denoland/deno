@@ -5,6 +5,7 @@ use crate::msg;
 use crate::ModuleSpecifier;
 use crate::Permissions;
 use deno_core::ErrBox;
+use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -19,7 +20,9 @@ pub struct ModuleDepInfo {
   compiled: Option<String>,
   map: Option<String>,
   dep_count: usize,
+  #[serde(skip_serializing)]
   deps: FileInfoDepTree,
+  files: FileInfoDepFlatGraph,
 }
 
 impl ModuleDepInfo {
@@ -27,7 +30,7 @@ impl ModuleDepInfo {
   pub async fn new(
     global_state: &Arc<GlobalState>,
     module_specifier: ModuleSpecifier,
-  ) -> Result<ModuleDepInfo, ErrBox> {
+  ) -> Result<Self, ErrBox> {
     // First load module as if it was to be executed by worker
     // including compilation step
     let mut module_graph_loader = ModuleGraphLoader::new(
@@ -60,6 +63,7 @@ impl ModuleDepInfo {
 
     let deps = FileInfoDepTree::new(&module_graph, &module_specifier);
     let dep_count = get_unique_dep_count(&module_graph) - 1;
+    let files = FileInfoDepFlatGraph::new(&deps);
 
     let info = Self {
       local: local_filename,
@@ -68,6 +72,7 @@ impl ModuleDepInfo {
       map: map_filename,
       dep_count,
       deps,
+      files,
     };
 
     Ok(info)
@@ -220,6 +225,92 @@ impl FileInfoDepTree {
       total_size,
       deps,
     }
+  }
+
+  /// Flattens dependencies
+  ///
+  /// Returns flat graph structure with dependencies list per module file
+  fn flatten_to_graph(&self) -> HashMap<String, FileInfoVertex> {
+    let mut flat_graph = HashMap::new();
+    dig_out_nested_deps(&self, &mut flat_graph);
+    flat_graph
+  }
+}
+
+/// Digs out dependencies recursively from nested structure
+fn dig_out_nested_deps(
+  deps_tree: &FileInfoDepTree,
+  flat_graph: &mut HashMap<String, FileInfoVertex>,
+) -> HashSet<String> {
+  let mut shallow_nested = HashSet::new();
+  let mut deep_nested = HashSet::new();
+  deps_tree.deps.iter().for_each(|_deps_tree| {
+    shallow_nested.insert(_deps_tree.name.clone());
+    deep_nested = deep_nested
+      .union(&dig_out_nested_deps(_deps_tree, flat_graph))
+      .cloned()
+      .collect();
+  });
+  deep_nested = deep_nested.union(&shallow_nested).cloned().collect();
+  if let Some(vertex) = flat_graph.get_mut(&deps_tree.name) {
+    vertex.size = deps_tree.size;
+    vertex.total_size = deps_tree.total_size.clone();
+    vertex.deps = deep_nested.clone();
+  } else {
+    let deps = deep_nested.clone();
+    let vertex =
+      FileInfoVertex::new(deps_tree.size, deps_tree.total_size, deps);
+    flat_graph.insert(deps_tree.name.clone(), vertex);
+  }
+  deep_nested
+}
+
+/// Flat graph vertex with all its unique dependencies
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileInfoVertex {
+  size: usize,
+  total_size: Option<usize>,
+  deps: HashSet<String>,
+}
+
+impl FileInfoVertex {
+  /// Creates single module vertex
+  fn new(
+    size: usize,
+    total_size: Option<usize>,
+    deps: HashSet<String>,
+  ) -> Self {
+    Self {
+      size,
+      total_size,
+      deps,
+    }
+  }
+}
+
+struct FileInfoDepFlatGraph(HashMap<String, FileInfoVertex>);
+
+impl FileInfoDepFlatGraph {
+  /// Creates flat graf of module dependencies where each greph vertex holds all its unique dependencies
+  ///
+  /// Graph is created by flattening tree like dependencies structure
+  fn new(deps: &FileInfoDepTree) -> Self {
+    let inner = deps.flatten_to_graph();
+    Self(inner)
+  }
+}
+
+impl Serialize for FileInfoDepFlatGraph {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut map = serializer.serialize_map(Some(self.0.len()))?;
+    for (k, v) in &self.0 {
+      map.serialize_entry(&k.to_string(), &v)?;
+    }
+    map.end()
   }
 }
 
