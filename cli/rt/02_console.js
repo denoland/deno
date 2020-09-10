@@ -1022,7 +1022,7 @@
   }
 
   function parseCss(cssString) {
-    const style = {
+    const css = {
       backgroundColor: null,
       color: null,
       fontWeight: null,
@@ -1076,95 +1076,91 @@
       if (key == "background-color") {
         const color = parseCssColor(value);
         if (color != null) {
-          style.backgroundColor = color;
+          css.backgroundColor = color;
         }
       } else if (key == "color") {
         const color = parseCssColor(value);
         if (color != null) {
-          style.color = color;
+          css.color = color;
         }
       } else if (key == "font-weight") {
         if (["normal", "bold"].includes(value)) {
-          style.fontWeight = value;
+          css.fontWeight = value;
         }
       } else if (key == "font-style") {
         if (["normal", "italic", "oblique", "oblique 14deg"].includes(value)) {
-          style.fontStyle = value;
+          css.fontStyle = value;
         }
       } else if (key == "text-decoration-line") {
-        style.textDecorationLine = [];
+        css.textDecorationLine = [];
         for (const lineType of value.split(/\s+/g)) {
           if (["line-through", "overline", "underline"].includes(lineType)) {
-            style.textDecorationLine.push(lineType);
+            css.textDecorationLine.push(lineType);
           }
         }
       } else if (key == "text-decoration-color") {
         const color = parseCssColor(value);
         if (color != null) {
-          style.textDecorationColor = color;
+          css.textDecorationColor = color;
         }
       } else if (key == "text-decoration") {
-        style.textDecorationColor = null;
-        style.textDecorationLine = [];
+        css.textDecorationColor = null;
+        css.textDecorationLine = [];
         for (const arg of value.split(/\s+/g)) {
           const maybeColor = parseCssColor(arg);
           if (maybeColor != null) {
-            style.textDecorationColor = maybeColor;
+            css.textDecorationColor = maybeColor;
           } else if (["line-through", "overline", "underline"].includes(arg)) {
-            style.textDecorationLine.push(arg);
+            css.textDecorationLine.push(arg);
           }
         }
       }
     }
 
-    return style;
+    return css;
   }
 
-  function cssToAnsi(cssString) {
-    if (globalThis.Deno?.noColor ?? true) {
-      return "";
-    }
+  function cssToAnsi(css) {
     let ansi = "";
-    const style = parseCss(cssString);
-    if (style.backgroundColor != null) {
-      const [r, g, b] = style.backgroundColor;
+    if (css.backgroundColor != null) {
+      const [r, g, b] = css.backgroundColor;
       ansi += `\x1b[48;2;${r};${g};${b}m`;
     } else {
       ansi += "\x1b[49m";
     }
-    if (style.color != null) {
-      const [r, g, b] = style.color;
+    if (css.color != null) {
+      const [r, g, b] = css.color;
       ansi += `\x1b[38;2;${r};${g};${b}m`;
     } else {
       ansi += "\x1b[39m";
     }
-    if (style.fontWeight == "bold") {
+    if (css.fontWeight == "bold") {
       ansi += `\x1b[1m`;
     } else {
       ansi += "\x1b[22m";
     }
-    if (["italic", "oblique"].includes(style.fontStyle)) {
+    if (["italic", "oblique"].includes(css.fontStyle)) {
       ansi += `\x1b[3m`;
     } else {
       ansi += "\x1b[23m";
     }
-    if (style.textDecorationColor != null) {
-      const [r, g, b] = style.textDecorationColor;
+    if (css.textDecorationColor != null) {
+      const [r, g, b] = css.textDecorationColor;
       ansi += `\x1b[58;2;${r};${g};${b}m`;
     } else {
       ansi += "\x1b[59m";
     }
-    if (style.textDecorationLine.includes("line-through")) {
+    if (css.textDecorationLine.includes("line-through")) {
       ansi += "\x1b[9m";
     } else {
       ansi += "\x1b[29m";
     }
-    if (style.textDecorationLine.includes("overline")) {
+    if (css.textDecorationLine.includes("overline")) {
       ansi += "\x1b[53m";
     } else {
       ansi += "\x1b[55m";
     }
-    if (style.textDecorationLine.includes("underline")) {
+    if (css.textDecorationLine.includes("underline")) {
       ansi += "\x1b[4m";
     } else {
       ansi += "\x1b[24m";
@@ -1173,6 +1169,7 @@
   }
 
   function inspectArgs(args, inspectOptions = {}) {
+    const noColor = globalThis.Deno?.noColor ?? true;
     const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
     const first = args[0];
     let a = 0;
@@ -1219,7 +1216,8 @@
                 rInspectOptions,
               );
             } else if (char == "c") {
-              formattedArg = cssToAnsi(args[a++]);
+              const value = args[a++];
+              formattedArg = noColor ? "" : cssToAnsi(parseCss(value));
               if (formattedArg != "") {
                 usedStyle = true;
               }
@@ -1539,6 +1537,7 @@
   // Expose these fields to internalObject for tests.
   exposeForTest("Console", Console);
   exposeForTest("inspectArgs", inspectArgs);
+  exposeForTest("cssToAnsi", cssToAnsi);
 
   window.__bootstrap.console = {
     CSI,
