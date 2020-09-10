@@ -103,12 +103,12 @@ pub struct Worker {
 impl Worker {
   pub fn new(
     name: String,
-    maybe_snapshot: Option<Snapshot>,
+    startup_snapshot: Option<Snapshot>,
     state: &Rc<State>,
   ) -> Self {
     let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(state.clone()),
-      startup_snapshot: maybe_snapshot,
+      startup_snapshot,
       ..Default::default()
     });
     {
@@ -263,10 +263,10 @@ impl MainWorker {
   // TODO(ry) combine MainWorker::new and MainWorker::create.
   fn new(
     name: String,
-    maybe_snapshot: Option<Snapshot>,
+    startup_snapshot: Option<Snapshot>,
     state: &Rc<State>,
   ) -> Self {
-    let mut worker = Worker::new(name, maybe_snapshot, state);
+    let mut worker = Worker::new(name, startup_snapshot, state);
     {
       ops::runtime::init(&mut worker);
       ops::runtime_compiler::init(&mut worker);

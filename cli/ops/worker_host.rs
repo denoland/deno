@@ -2,7 +2,6 @@
 
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
-use crate::js;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
@@ -48,12 +47,7 @@ fn create_web_worker(
     specifier,
   )?;
 
-  let mut worker = WebWorker::new(
-    name.clone(),
-    Some(js::deno_isolate_init()),
-    &cli_state,
-    has_deno_namespace,
-  );
+  let mut worker = WebWorker::new(name.clone(), &cli_state, has_deno_namespace);
 
   if has_deno_namespace {
     let state = worker.isolate.op_state();
