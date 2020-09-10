@@ -46,7 +46,12 @@ fn create_isolate() -> JsRuntime {
   runtime.register_op("accept", deno_core::json_op_async(op_accept));
   runtime.register_op("read", deno_core::json_op_async(op_read));
   runtime.register_op("write", deno_core::json_op_async(op_write));
-  runtime.execute("http_bench_json_ops.js", include_str!("http_bench_json_ops.js")).unwrap();
+  runtime
+    .execute(
+      "http_bench_json_ops.js",
+      include_str!("http_bench_json_ops.js"),
+    )
+    .unwrap();
   runtime
 }
 

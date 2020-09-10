@@ -47,9 +47,7 @@ fn cli_snapshot() {
 #[test]
 fn compiler_snapshot() {
   let mut isolate = deno_core::JsRuntime::new(
-    Some(deno_core::Snapshot::Static(
-      COMPILER_SNAPSHOT,
-    )),
+    Some(deno_core::Snapshot::Static(COMPILER_SNAPSHOT)),
     false,
   );
   deno_core::js_check(isolate.execute(

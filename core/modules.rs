@@ -618,8 +618,7 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, None, false);
+    let mut runtime = JsRuntime::new_with_loader(loader, None, false);
     let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
@@ -681,8 +680,7 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, None, false);
+    let mut runtime = JsRuntime::new_with_loader(loader, None, false);
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
@@ -755,8 +753,7 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, None, false);
+    let mut runtime = JsRuntime::new_with_loader(loader, None, false);
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
@@ -820,8 +817,7 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
-      let mut runtime =
-        JsRuntime::new_with_loader(loader, None, false);
+      let mut runtime = JsRuntime::new_with_loader(loader, None, false);
       let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
       let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
 
@@ -866,8 +862,7 @@ mod tests {
   fn loader_disappears_after_error() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
-      let mut runtime =
-        JsRuntime::new_with_loader(loader, None, false);
+      let mut runtime = JsRuntime::new_with_loader(loader, None, false);
       let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
@@ -895,8 +890,7 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, None, false);
+    let mut runtime = JsRuntime::new_with_loader(loader, None, false);
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.

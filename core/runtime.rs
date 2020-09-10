@@ -1785,8 +1785,7 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime =
-      JsRuntime::with_heap_limits(None, heap_limits);
+    let mut runtime = JsRuntime::with_heap_limits(None, heap_limits);
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
@@ -1829,8 +1828,7 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime =
-      JsRuntime::with_heap_limits(None, heap_limits);
+    let mut runtime = JsRuntime::with_heap_limits(None, heap_limits);
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());
@@ -1912,8 +1910,7 @@ pub mod tests {
       Op::Async(futures::future::ready(buf).boxed())
     };
 
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, None, false);
+    let mut runtime = JsRuntime::new_with_loader(loader, None, false);
     runtime.register_op("test", dispatcher);
 
     js_check(runtime.execute(
@@ -2008,8 +2005,7 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut runtime =
-        JsRuntime::new_with_loader(loader, None, false);
+      let mut runtime = JsRuntime::new_with_loader(loader, None, false);
 
       js_check(runtime.execute(
         "file:///dyn_import2.js",
@@ -2086,8 +2082,7 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut runtime =
-        JsRuntime::new_with_loader(loader, None, false);
+      let mut runtime = JsRuntime::new_with_loader(loader, None, false);
 
       // Dynamically import mod_b
       js_check(runtime.execute(
@@ -2127,8 +2122,7 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime =
-        JsRuntime::new_with_loader(loader, None, false);
+      let mut runtime = JsRuntime::new_with_loader(loader, None, false);
       js_check(runtime.execute(
         "file:///dyn_import3.js",
         r#"
@@ -2179,8 +2173,7 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, None, true);
+    let mut runtime = JsRuntime::new_with_loader(loader, None, true);
 
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();

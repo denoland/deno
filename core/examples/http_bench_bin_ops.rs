@@ -82,7 +82,12 @@ fn create_isolate() -> JsRuntime {
   register_op_bin_async(&mut isolate, "accept", op_accept);
   register_op_bin_async(&mut isolate, "read", op_read);
   register_op_bin_async(&mut isolate, "write", op_write);
-  isolate.execute("http_bench_bin_ops.js", include_str!("http_bench_bin_ops.js")).unwrap();
+  isolate
+    .execute(
+      "http_bench_bin_ops.js",
+      include_str!("http_bench_bin_ops.js"),
+    )
+    .unwrap();
   isolate
 }
 

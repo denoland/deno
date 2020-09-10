@@ -3,9 +3,9 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
+use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use crate::js;
 use crate::state::State;
 use deno_core::ErrBox;
 use deno_core::JsRuntime;
@@ -257,7 +257,11 @@ pub struct MainWorker(Worker);
 
 impl MainWorker {
   // TODO(ry) combine MainWorker::new and MainWorker::create.
-  fn new(name: String, maybe_snapshot: Option<Snapshot>, state: &Rc<State>) -> Self {
+  fn new(
+    name: String,
+    maybe_snapshot: Option<Snapshot>,
+    state: &Rc<State>,
+  ) -> Self {
     let mut worker = Worker::new(name, maybe_snapshot, state);
     {
       ops::runtime::init(&mut worker);
@@ -357,8 +361,7 @@ mod tests {
       State::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -385,8 +388,7 @@ mod tests {
       State::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
