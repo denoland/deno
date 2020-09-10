@@ -1,38 +1,41 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
+
 use crate::state::State;
-use deno_core::CoreIsolate;
+use deno_core::ErrBox;
+use deno_core::OpRegistry;
 use deno_core::ZeroCopyBuf;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::rc::Rc;
 use url::Url;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_exit", s.stateful_json_op(op_exit));
-  i.register_op("op_env", s.stateful_json_op(op_env));
-  i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
-  i.register_op("op_set_env", s.stateful_json_op(op_set_env));
-  i.register_op("op_get_env", s.stateful_json_op(op_get_env));
-  i.register_op("op_delete_env", s.stateful_json_op(op_delete_env));
-  i.register_op("op_hostname", s.stateful_json_op(op_hostname));
-  i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
-  i.register_op("op_os_release", s.stateful_json_op(op_os_release));
+pub fn init(s: &Rc<State>) {
+  s.register_op_json_sync("op_exit", op_exit);
+  s.register_op_json_sync("op_env", op_env);
+  s.register_op_json_sync("op_exec_path", op_exec_path);
+  s.register_op_json_sync("op_set_env", op_set_env);
+  s.register_op_json_sync("op_get_env", op_get_env);
+  s.register_op_json_sync("op_delete_env", op_delete_env);
+  s.register_op_json_sync("op_hostname", op_hostname);
+  s.register_op_json_sync("op_loadavg", op_loadavg);
+  s.register_op_json_sync("op_os_release", op_os_release);
+  s.register_op_json_sync("op_system_memory_info", op_system_memory_info);
 }
 
 fn op_exec_path(
-  state: &Rc<State>,
+  state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   let current_exe = env::current_exe().unwrap();
   state.check_read_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
   let path = exe_url.to_file_path().unwrap();
-  Ok(JsonOp::Sync(json!(path)))
+  Ok(json!(path))
 }
 
 #[derive(Deserialize)]
@@ -42,24 +45,24 @@ struct SetEnv {
 }
 
 fn op_set_env(
-  state: &Rc<State>,
+  state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.check_env()?;
   env::set_var(args.key, args.value);
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }
 
 fn op_env(
-  state: &Rc<State>,
+  state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   state.check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
-  Ok(JsonOp::Sync(json!(v)))
+  Ok(json!(v))
 }
 
 #[derive(Deserialize)]
@@ -68,17 +71,17 @@ struct GetEnv {
 }
 
 fn op_get_env(
-  state: &Rc<State>,
+  state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.check_env()?;
   let r = match env::var(args.key) {
     Err(env::VarError::NotPresent) => json!([]),
     v => json!([v?]),
   };
-  Ok(JsonOp::Sync(r))
+  Ok(r)
 }
 
 #[derive(Deserialize)]
@@ -87,14 +90,14 @@ struct DeleteEnv {
 }
 
 fn op_delete_env(
-  state: &Rc<State>,
+  state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   let args: DeleteEnv = serde_json::from_value(args)?;
   state.check_env()?;
   env::remove_var(args.key);
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]
@@ -103,49 +106,66 @@ struct Exit {
 }
 
 fn op_exit(
-  _s: &Rc<State>,
+  _state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
 }
 
 fn op_loadavg(
-  state: &Rc<State>,
+  state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.loadavg");
   state.check_env()?;
   match sys_info::loadavg() {
-    Ok(loadavg) => Ok(JsonOp::Sync(json!([
-      loadavg.one,
-      loadavg.five,
-      loadavg.fifteen
-    ]))),
-    Err(_) => Ok(JsonOp::Sync(json!([0f64, 0f64, 0f64]))),
+    Ok(loadavg) => Ok(json!([loadavg.one, loadavg.five, loadavg.fifteen])),
+    Err(_) => Ok(json!([0f64, 0f64, 0f64])),
   }
 }
 
 fn op_hostname(
-  state: &Rc<State>,
+  state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.hostname");
   state.check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
-  Ok(JsonOp::Sync(json!(hostname)))
+  Ok(json!(hostname))
 }
 
 fn op_os_release(
-  state: &Rc<State>,
+  state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.osRelease");
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
-  Ok(JsonOp::Sync(json!(release)))
+  Ok(json!(release))
+}
+
+fn op_system_memory_info(
+  state: &State,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.systemMemoryInfo");
+  state.check_env()?;
+  match sys_info::mem_info() {
+    Ok(info) => Ok(json!({
+      "total": info.total,
+      "free": info.free,
+      "available": info.avail,
+      "buffers": info.buffers,
+      "cached": info.cached,
+      "swapTotal": info.swap_total,
+      "swapFree": info.swap_free
+    })),
+    Err(_) => Ok(json!({})),
+  }
 }

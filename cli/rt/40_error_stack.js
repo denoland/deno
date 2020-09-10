@@ -240,7 +240,7 @@
     });
     for (const callSite of mappedCallSites) {
       error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-      const isInternal = callSite.getFileName()?.startsWith("$deno$") ?? false;
+      const isInternal = callSite.getFileName()?.startsWith("deno:") ?? false;
       error.__formattedFrames.push(callSiteToString(callSite, isInternal));
     }
     Object.freeze(error.__callSiteEvals);

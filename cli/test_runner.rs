@@ -160,6 +160,7 @@ mod tests {
       format!("{}/file_server_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
+      format!("{}/test.ts", root_url),
     ]
     .into_iter()
     .map(|f| Url::parse(&f).unwrap())

@@ -81,9 +81,9 @@ Deno.test(
 
     for (const value of values) {
       // eslint-disable-next-line require-await
-      async function asyncFn(): Promise<typeof value> {
+      const asyncFn = async (): Promise<typeof value> => {
         return value;
-      }
+      };
       const cbAsyncFn = callbackify(asyncFn);
       testQueue.enqueue((done) => {
         cbAsyncFn((err: unknown, ret: unknown) => {
@@ -93,9 +93,9 @@ Deno.test(
         });
       });
 
-      function promiseFn(): Promise<typeof value> {
+      const promiseFn = (): Promise<typeof value> => {
         return Promise.resolve(value);
-      }
+      };
       const cbPromiseFn = callbackify(promiseFn);
       testQueue.enqueue((done) => {
         cbPromiseFn((err: unknown, ret: unknown) => {
@@ -106,7 +106,7 @@ Deno.test(
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      function thenableFn(): PromiseLike<any> {
+      const thenableFn = (): PromiseLike<any> => {
         return {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           then(onfulfilled): PromiseLike<any> {
@@ -115,7 +115,7 @@ Deno.test(
             return this;
           },
         };
-      }
+      };
       const cbThenableFn = callbackify(thenableFn);
       testQueue.enqueue((done) => {
         cbThenableFn((err: unknown, ret: unknown) => {
@@ -137,9 +137,9 @@ Deno.test(
 
     for (const value of values) {
       // eslint-disable-next-line require-await
-      async function asyncFn(): Promise<never> {
+      const asyncFn = async (): Promise<never> => {
         return Promise.reject(value);
-      }
+      };
       const cbAsyncFn = callbackify(asyncFn);
       assertStrictEquals(cbAsyncFn.length, 1);
       assertStrictEquals(cbAsyncFn.name, "asyncFnCallbackified");
@@ -166,9 +166,9 @@ Deno.test(
         });
       });
 
-      function promiseFn(): Promise<never> {
+      const promiseFn = (): Promise<never> => {
         return Promise.reject(value);
-      }
+      };
       const obj = {};
       Object.defineProperty(promiseFn, "name", {
         value: obj,
@@ -202,7 +202,7 @@ Deno.test(
         });
       });
 
-      function thenableFn(): PromiseLike<never> {
+      const thenableFn = (): PromiseLike<never> => {
         return {
           then(onfulfilled, onrejected): PromiseLike<never> {
             assert(onrejected);
@@ -210,7 +210,7 @@ Deno.test(
             return this;
           },
         };
-      }
+      };
 
       const cbThenableFn = callbackify(thenableFn);
       testQueue.enqueue((done) => {
@@ -246,10 +246,10 @@ Deno.test("callbackify passes arguments to the original", async () => {
 
   for (const value of values) {
     // eslint-disable-next-line require-await
-    async function asyncFn(arg: typeof value): Promise<typeof value> {
+    const asyncFn = async (arg: typeof value): Promise<typeof value> => {
       assertStrictEquals(arg, value);
       return arg;
-    }
+    };
 
     const cbAsyncFn = callbackify(asyncFn);
     assertStrictEquals(cbAsyncFn.length, 2);
@@ -263,10 +263,10 @@ Deno.test("callbackify passes arguments to the original", async () => {
       });
     });
 
-    function promiseFn<T>(arg: typeof value): Promise<typeof value> {
+    const promiseFn = <T>(arg: typeof value): Promise<typeof value> => {
       assertStrictEquals(arg, value);
       return Promise.resolve(arg);
-    }
+    };
     const obj = {};
     Object.defineProperty(promiseFn, "length", {
       value: obj,
