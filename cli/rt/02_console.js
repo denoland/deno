@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const exposeForTest = window.__bootstrap.internals.exposeForTest;
   const {
     stripColor,
@@ -392,7 +393,7 @@
     level,
     inspectOptions,
   ) {
-    const proxyDetails = Deno.core.getProxyDetails(value);
+    const proxyDetails = core.getProxyDetails(value);
     if (proxyDetails != null) {
       return inspectOptions.showProxy
         ? inspectProxy(proxyDetails, ctx, level, inspectOptions)
@@ -630,7 +631,7 @@
     level,
     inspectOptions,
   ) {
-    const [state, result] = Deno.core.getPromiseDetails(value);
+    const [state, result] = core.getPromiseDetails(value);
 
     if (state === PromiseState.Pending) {
       return `Promise { ${cyan("<pending>")} }`;
