@@ -8,10 +8,10 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-mod basic_state;
 mod bindings;
 mod errors;
 mod flags;
+mod gotham_state;
 mod module_specifier;
 mod modules;
 mod normalize_path;
@@ -24,7 +24,6 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
-pub use crate::basic_state::BasicState;
 pub use crate::errors::AnyError;
 pub use crate::errors::ErrBox;
 pub use crate::errors::JsError;
@@ -38,12 +37,13 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
+pub use crate::ops::json_op_async;
+pub use crate::ops::json_op_sync;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
-pub use crate::ops::OpRegistry;
-pub use crate::ops::OpRouter;
+pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
 pub use crate::runtime::js_check;

@@ -103,6 +103,7 @@ __bootstrap.denoNsUnstable = {
   loadavg: __bootstrap.os.loadavg,
   hostname: __bootstrap.os.hostname,
   osRelease: __bootstrap.os.osRelease,
+  systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
   applySourceMap: __bootstrap.errorStack.opApplySourceMap,
   formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
   shutdown: __bootstrap.net.shutdown,

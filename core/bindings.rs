@@ -6,6 +6,7 @@ use crate::JsRuntime;
 use crate::JsRuntimeState;
 use crate::Op;
 use crate::OpId;
+use crate::OpTable;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rusty_v8 as v8;
@@ -426,8 +427,7 @@ fn send<'s>(
     }
   };
 
-  let op_router = state.op_router.clone();
-  let op = op_router.route_op(op_id, bufs);
+  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
   assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(buf) if !buf.is_empty() => {
