@@ -623,6 +623,7 @@ impl TsCompiler {
       "inlineSourceMap": true,
       // TODO(lucacasonato): enable this by default in 1.5.0
       "isolatedModules": unstable,
+      "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -1259,6 +1260,7 @@ pub async fn runtime_compile(
     "esModuleInterop": true,
     // TODO(lucacasonato): enable this by default in 1.5.0
     "isolatedModules": unstable,
+    "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
