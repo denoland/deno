@@ -146,12 +146,12 @@ fn open_helper(
 
   let options = args.options;
   if options.read {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_read(&path)?;
   }
 
   if options.write || options.append {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_write(&path)?;
   }
 
@@ -273,7 +273,7 @@ fn op_fdatasync_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_unstable("Deno.fdatasync");
   }
   let args: FdatasyncArgs = serde_json::from_value(args)?;
@@ -292,13 +292,11 @@ async fn op_fdatasync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  let mut state = state.borrow_mut();
-  let cli_state = state.borrow::<crate::state::RcState>();
-  cli_state.check_unstable("Deno.fdatasync");
+  super::cli_state2(&state).check_unstable("Deno.fdatasync");
 
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  std_file_resource(&mut state, rid, |r| match r {
+  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(ErrBox::from),
     Err(_) => Err(ErrBox::type_error(
       "cannot sync this type of resource".to_string(),
@@ -319,7 +317,7 @@ fn op_fsync_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_unstable("Deno.fsync");
   }
   let args: FsyncArgs = serde_json::from_value(args)?;
@@ -338,13 +336,11 @@ async fn op_fsync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  let mut state = state.borrow_mut();
-  let cli_state = state.borrow::<crate::state::RcState>();
-  cli_state.check_unstable("Deno.fsync");
+  super::cli_state2(&state).check_unstable("Deno.fsync");
 
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  std_file_resource(&mut state, rid, |r| match r {
+  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
     Err(_) => Err(ErrBox::type_error(
       "cannot sync this type of resource".to_string(),
@@ -365,7 +361,7 @@ fn op_fstat_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_unstable("Deno.fstat");
   }
   let args: FstatArgs = serde_json::from_value(args)?;
@@ -384,18 +380,17 @@ async fn op_fstat_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  let mut state = state.borrow_mut();
-  let cli_state = state.borrow::<crate::state::RcState>();
-  cli_state.check_unstable("Deno.fstat");
+  super::cli_state2(&state).check_unstable("Deno.fstat");
 
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let metadata = std_file_resource(&mut state, rid, |r| match r {
-    Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::type_error(
-      "cannot stat this type of resource".to_string(),
-    )),
-  })?;
+  let metadata =
+    std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
+      Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
+      Err(_) => Err(ErrBox::type_error(
+        "cannot stat this type of resource".to_string(),
+      )),
+    })?;
   Ok(get_stat_json(metadata).unwrap())
 }
 
@@ -410,7 +405,7 @@ fn op_umask(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_unstable("Deno.umask");
   }
   let args: UmaskArgs = serde_json::from_value(args)?;
@@ -452,7 +447,7 @@ fn op_chdir(
 ) -> Result<Value, ErrBox> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read(&d)?;
   set_current_dir(&d)?;
   Ok(json!({}))
@@ -474,7 +469,7 @@ fn op_mkdir_sync(
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_write(&path)?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
@@ -496,11 +491,9 @@ async fn op_mkdir_async(
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_write(&path)?;
-  }
+
+  super::cli_state2(&state).check_write(&path)?;
+
   tokio::task::spawn_blocking(move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     let mut builder = std::fs::DirBuilder::new();
@@ -533,7 +526,7 @@ fn op_chmod_sync(
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_write(&path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
   #[cfg(unix)]
@@ -560,11 +553,9 @@ async fn op_chmod_async(
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_write(&path)?;
-  }
+
+  super::cli_state2(&state).check_write(&path)?;
+
   tokio::task::spawn_blocking(move || {
     debug!("op_chmod_async {} {:o}", path.display(), mode);
     #[cfg(unix)]
@@ -601,7 +592,7 @@ fn op_chown_sync(
 ) -> Result<Value, ErrBox> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_write(&path)?;
   debug!(
     "op_chown_sync {} {:?} {:?}",
@@ -631,11 +622,9 @@ async fn op_chown_async(
 ) -> Result<Value, ErrBox> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_write(&path)?;
-  }
+
+  super::cli_state2(&state).check_write(&path)?;
+
   tokio::task::spawn_blocking(move || {
     debug!(
       "op_chown_async {} {:?} {:?}",
@@ -675,7 +664,7 @@ fn op_remove_sync(
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_write(&path)?;
 
   #[cfg(not(unix))]
@@ -719,11 +708,7 @@ async fn op_remove_async(
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_write(&path)?;
-  }
+  super::cli_state2(&state).check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
     #[cfg(not(unix))]
@@ -777,7 +762,7 @@ fn op_copy_file_sync(
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read(&from)?;
   cli_state.check_write(&to)?;
 
@@ -803,12 +788,9 @@ async fn op_copy_file_async(
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_read(&from)?;
-    cli_state.check_write(&to)?;
-  }
+  let cli_state = super::cli_state2(&state);
+  cli_state.check_read(&from)?;
+  cli_state.check_write(&to)?;
 
   debug!("op_copy_file_async {} {}", from.display(), to.display());
   tokio::task::spawn_blocking(move || {
@@ -900,7 +882,7 @@ fn op_stat_sync(
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
@@ -919,11 +901,9 @@ async fn op_stat_async(
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_read(&path)?;
-  }
+
+  super::cli_state2(&state).check_read(&path)?;
+
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
     let metadata = if lstat {
@@ -951,7 +931,7 @@ fn op_realpath_sync(
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read(&path)?;
   if path.is_relative() {
     cli_state.check_read_blind(&current_dir()?, "CWD")?;
@@ -977,13 +957,10 @@ async fn op_realpath_async(
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_read(&path)?;
-    if path.is_relative() {
-      cli_state.check_read_blind(&current_dir()?, "CWD")?;
-    }
+  let cli_state = super::cli_state2(&state);
+  cli_state.check_read(&path)?;
+  if path.is_relative() {
+    cli_state.check_read_blind(&current_dir()?, "CWD")?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -1016,7 +993,7 @@ fn op_read_dir_sync(
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read(&path)?;
 
   debug!("op_read_dir_sync {}", path.display());
@@ -1048,11 +1025,7 @@ async fn op_read_dir_async(
 ) -> Result<Value, ErrBox> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_read(&path)?;
-  }
+  super::cli_state2(&state).check_read(&path)?;
   tokio::task::spawn_blocking(move || {
     debug!("op_read_dir_async {}", path.display());
     let entries: Vec<_> = std::fs::read_dir(path)?
@@ -1095,7 +1068,7 @@ fn op_rename_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read(&oldpath)?;
   cli_state.check_write(&oldpath)?;
   cli_state.check_write(&newpath)?;
@@ -1113,8 +1086,7 @@ async fn op_rename_async(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
   {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state2(&state);
     cli_state.check_read(&oldpath)?;
     cli_state.check_write(&oldpath)?;
     cli_state.check_write(&newpath)?;
@@ -1144,7 +1116,7 @@ fn op_link_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1163,8 +1135,7 @@ async fn op_link_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  let state = state.borrow();
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state2(&state);
   cli_state.check_unstable("Deno.link");
 
   let args: LinkArgs = serde_json::from_value(args)?;
@@ -1204,7 +1175,7 @@ fn op_symlink_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1256,9 +1227,9 @@ async fn op_symlink_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  let state = state.borrow();
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state2(&state);
   cli_state.check_unstable("Deno.symlink");
+
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1318,7 +1289,7 @@ fn op_read_link_sync(
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read(&path)?;
 
   debug!("op_read_link_value {}", path.display());
@@ -1334,11 +1305,7 @@ async fn op_read_link_async(
 ) -> Result<Value, ErrBox> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_read(&path)?;
-  }
+  super::cli_state2(&state).check_read(&path)?;
   tokio::task::spawn_blocking(move || {
     debug!("op_read_link_async {}", path.display());
     let target = std::fs::read_link(&path)?.into_os_string();
@@ -1362,7 +1329,7 @@ fn op_ftruncate_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_unstable("Deno.ftruncate");
   }
   let args: FtruncateArgs = serde_json::from_value(args)?;
@@ -1380,13 +1347,11 @@ async fn op_ftruncate_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  let mut state = state.borrow_mut();
-  let cli_state = state.borrow::<crate::state::RcState>();
-  cli_state.check_unstable("Deno.ftruncate");
+  super::cli_state2(&state).check_unstable("Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
-  std_file_resource(&mut state, rid, |r| match r {
+  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
     Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
     Err(_) => Err(ErrBox::type_error("cannot truncate this type of resource")),
   })?;
@@ -1409,7 +1374,7 @@ fn op_truncate_sync(
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_write(&path)?;
 
   debug!("op_truncate_sync {} {}", path.display(), len);
@@ -1426,11 +1391,7 @@ async fn op_truncate_async(
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
-  {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_write(&path)?;
-  }
+  super::cli_state2(&state).check_write(&path)?;
   tokio::task::spawn_blocking(move || {
     debug!("op_truncate_async {} {}", path.display(), len);
     let f = std::fs::OpenOptions::new().write(true).open(&path)?;
@@ -1505,7 +1466,7 @@ fn op_make_temp_dir_sync(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1534,8 +1495,7 @@ async fn op_make_temp_dir_async(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
-    let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state2(&state);
     cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
@@ -1568,7 +1528,7 @@ fn op_make_temp_file_sync(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1598,7 +1558,7 @@ async fn op_make_temp_file_async(
   let suffix = args.suffix.map(String::from);
   {
     let state = state.borrow();
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(&state);
     cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
@@ -1634,7 +1594,7 @@ fn op_futime_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_unstable("Deno.futimeSync");
   }
   let args: FutimeArgs = serde_json::from_value(args)?;
@@ -1661,7 +1621,7 @@ async fn op_futime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let mut state = state.borrow_mut();
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(&state);
   cli_state.check_unstable("Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1694,7 +1654,7 @@ fn op_utime_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1713,7 +1673,7 @@ async fn op_utime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   let state = state.borrow();
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(&state);
   cli_state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1737,7 +1697,7 @@ fn op_cwd(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let path = current_dir()?;
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(json!(path_str))

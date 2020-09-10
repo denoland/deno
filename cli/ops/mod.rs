@@ -58,3 +58,14 @@ where
 {
   rt.register_op(name, metrics_op(json_op_sync(op_fn)));
 }
+
+/// Helper for extracting the commonly used state. Used for sync ops.
+pub fn cli_state(state: &OpState) -> Rc<crate::state::State> {
+  state.borrow::<Rc<crate::state::State>>().clone()
+}
+
+/// Helper for extracting the commonly used state. Used for async ops.
+pub fn cli_state2(state: &Rc<RefCell<OpState>>) -> Rc<crate::state::State> {
+  let state = state.borrow();
+  state.borrow::<Rc<crate::state::State>>().clone()
+}

@@ -31,14 +31,13 @@ fn op_apply_source_map(
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
-  let cli_state = state.borrow::<crate::state::RcState>();
   let (orig_file_name, orig_line_number, orig_column_number) =
     get_orig_position(
       args.file_name,
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      &cli_state.global_state.ts_compiler,
+      &super::cli_state(state).global_state.ts_compiler,
     );
 
   Ok(json!({

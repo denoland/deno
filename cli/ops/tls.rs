@@ -69,8 +69,7 @@ async fn op_start_tls(
     domain.push_str("localhost");
   }
   {
-    let state_ = state.borrow();
-    let cli_state = state_.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state2(&state);
     cli_state.check_unstable("Deno.startTls");
     cli_state.check_net(&domain, 0)?;
     if let Some(path) = cert_file.clone() {
@@ -141,8 +140,7 @@ async fn op_connect_tls(
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   {
-    let state_ = state.borrow();
-    let cli_state = state_.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state2(&state);
     cli_state.check_net(&args.hostname, args.port)?;
     if let Some(path) = cert_file.clone() {
       cli_state.check_read(Path::new(&path))?;
@@ -317,7 +315,7 @@ fn op_listen_tls(
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
-    let cli_state = state.borrow::<crate::state::RcState>();
+    let cli_state = super::cli_state(state);
     cli_state.check_net(&args.hostname, args.port)?;
     cli_state.check_read(Path::new(&cert_file))?;
     cli_state.check_read(Path::new(&key_file))?;
