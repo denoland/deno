@@ -77,18 +77,16 @@ pub enum Snapshot {
 
 /// Represents data used to initialize an isolate at startup, either
 /// in the form of a binary snapshot or a JavaScript source file.
-pub enum StartupData<'a> {
-  Script(Script<'a>),
+pub enum StartupData {
   Snapshot(Snapshot),
   None,
 }
 
-impl StartupData<'_> {
-  fn into_options(self) -> (Option<OwnedScript>, Option<Snapshot>) {
+impl StartupData {
+  fn into_options(self) -> Option<Snapshot> {
     match self {
-      Self::Script(script) => (Some(script.into()), None),
-      Self::Snapshot(snapshot) => (None, Some(snapshot)),
-      Self::None => (None, None),
+      Self::Snapshot(snapshot) => Some(snapshot),
+      Self::None => None,
     }
   }
 }
@@ -121,7 +119,6 @@ pub struct JsRuntime {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   needs_init: bool,
-  startup_script: Option<OwnedScript>,
   allocations: IsolateAllocations,
 }
 
@@ -221,7 +218,6 @@ pub struct HeapLimits {
 
 pub(crate) struct IsolateOptions {
   loader: Rc<dyn ModuleLoader>,
-  startup_script: Option<OwnedScript>,
   startup_snapshot: Option<Snapshot>,
   will_snapshot: bool,
   heap_limits: Option<HeapLimits>,
@@ -231,10 +227,9 @@ impl JsRuntime {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let startup_snapshot = startup_data.into_options();
     let options = IsolateOptions {
       loader: Rc::new(NoopModuleLoader),
-      startup_script,
       startup_snapshot,
       will_snapshot,
       heap_limits: None,
@@ -250,10 +245,9 @@ impl JsRuntime {
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let startup_snapshot = startup_data.into_options();
     let options = IsolateOptions {
       loader,
-      startup_script,
       startup_snapshot,
       will_snapshot,
       heap_limits: None,
@@ -272,10 +266,9 @@ impl JsRuntime {
     startup_data: StartupData,
     heap_limits: HeapLimits,
   ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let startup_snapshot = startup_data.into_options();
     let options = IsolateOptions {
       loader: Rc::new(NoopModuleLoader),
-      startup_script,
       startup_snapshot,
       will_snapshot: false,
       heap_limits: Some(heap_limits),
@@ -366,7 +359,6 @@ impl JsRuntime {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       needs_init: true,
-      startup_script: options.startup_script,
       allocations: IsolateAllocations::default(),
     }
   }
@@ -393,10 +385,6 @@ impl JsRuntime {
     if self.needs_init {
       self.needs_init = false;
       js_check(self.execute("core.js", include_str!("core.js")));
-      // Maybe execute the startup script.
-      if let Some(s) = self.startup_script.take() {
-        self.execute(&s.filename, &s.source).unwrap()
-      }
     }
   }
 

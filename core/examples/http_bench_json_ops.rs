@@ -42,16 +42,13 @@ impl log::Log for Logger {
 }
 
 fn create_isolate() -> JsRuntime {
-  let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench_json_ops.js"),
-    filename: "http_bench_json_ops.js",
-  });
   let mut runtime = JsRuntime::new(startup_data, false);
   runtime.register_op("listen", deno_core::json_op_sync(op_listen));
   runtime.register_op("close", deno_core::json_op_sync(op_close));
   runtime.register_op("accept", deno_core::json_op_async(op_accept));
   runtime.register_op("read", deno_core::json_op_async(op_read));
   runtime.register_op("write", deno_core::json_op_async(op_write));
+  isolate.execute("http_bench_json_ops.js", include_str!("http_bench_json_ops.js")).unwrap();
   runtime
 }
 
