@@ -19,6 +19,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_hostname", op_hostname);
   super::reg_json_sync(rt, "op_loadavg", op_loadavg);
   super::reg_json_sync(rt, "op_os_release", op_os_release);
+  super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
 }
 
 fn op_exec_path(
@@ -152,4 +153,26 @@ fn op_os_release(
   cli_state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(json!(release))
+}
+
+fn op_system_memory_info(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
+  let cli_state = state.borrow::<crate::state::RcState>();
+  cli_state.check_unstable("Deno.systemMemoryInfo");
+  cli_state.check_env()?;
+  match sys_info::mem_info() {
+    Ok(info) => Ok(json!({
+      "total": info.total,
+      "free": info.free,
+      "available": info.avail,
+      "buffers": info.buffers,
+      "cached": info.cached,
+      "swapTotal": info.swap_total,
+      "swapFree": info.swap_free
+    })),
+    Err(_) => Ok(json!({})),
+  }
 }

@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const exposeForTest = window.__bootstrap.internals.exposeForTest;
   const {
     stripColor,
@@ -162,15 +163,6 @@
   const LINE_BREAKING_LENGTH = 80;
   const MIN_GROUP_LENGTH = 6;
   const STR_ABBREVIATE_SIZE = 100;
-  // Char codes
-  const CHAR_PERCENT = 37; /* % */
-  const CHAR_LOWERCASE_S = 115; /* s */
-  const CHAR_LOWERCASE_D = 100; /* d */
-  const CHAR_LOWERCASE_I = 105; /* i */
-  const CHAR_LOWERCASE_F = 102; /* f */
-  const CHAR_LOWERCASE_O = 111; /* o */
-  const CHAR_UPPERCASE_O = 79; /* O */
-  const CHAR_LOWERCASE_C = 99; /* c */
 
   const PROMISE_STRING_BASE_LENGTH = 12;
 
@@ -401,7 +393,7 @@
     level,
     inspectOptions,
   ) {
-    const proxyDetails = Deno.core.getProxyDetails(value);
+    const proxyDetails = core.getProxyDetails(value);
     if (proxyDetails != null) {
       return inspectOptions.showProxy
         ? inspectProxy(proxyDetails, ctx, level, inspectOptions)
@@ -639,7 +631,7 @@
     level,
     inspectOptions,
   ) {
-    const [state, result] = Deno.core.getPromiseDetails(value);
+    const [state, result] = core.getPromiseDetails(value);
 
     if (state === PromiseState.Pending) {
       return `Promise { ${cyan("<pending>")} }`;
@@ -810,116 +802,459 @@
     }
   }
 
-  function inspectArgs(
-    args,
-    inspectOptions = {},
-  ) {
-    const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
-    const first = args[0];
-    let a = 0;
-    let str = "";
-    let join = "";
+  const colorKeywords = new Map([
+    ["black", "#000000"],
+    ["silver", "#c0c0c0"],
+    ["gray", "#808080"],
+    ["white", "#ffffff"],
+    ["maroon", "#800000"],
+    ["red", "#ff0000"],
+    ["purple", "#800080"],
+    ["fuchsia", "#ff00ff"],
+    ["green", "#008000"],
+    ["lime", "#00ff00"],
+    ["olive", "#808000"],
+    ["yellow", "#ffff00"],
+    ["navy", "#000080"],
+    ["blue", "#0000ff"],
+    ["teal", "#008080"],
+    ["aqua", "#00ffff"],
+    ["orange", "#ffa500"],
+    ["aliceblue", "#f0f8ff"],
+    ["antiquewhite", "#faebd7"],
+    ["aquamarine", "#7fffd4"],
+    ["azure", "#f0ffff"],
+    ["beige", "#f5f5dc"],
+    ["bisque", "#ffe4c4"],
+    ["blanchedalmond", "#ffebcd"],
+    ["blueviolet", "#8a2be2"],
+    ["brown", "#a52a2a"],
+    ["burlywood", "#deb887"],
+    ["cadetblue", "#5f9ea0"],
+    ["chartreuse", "#7fff00"],
+    ["chocolate", "#d2691e"],
+    ["coral", "#ff7f50"],
+    ["cornflowerblue", "#6495ed"],
+    ["cornsilk", "#fff8dc"],
+    ["crimson", "#dc143c"],
+    ["cyan", "#00ffff"],
+    ["darkblue", "#00008b"],
+    ["darkcyan", "#008b8b"],
+    ["darkgoldenrod", "#b8860b"],
+    ["darkgray", "#a9a9a9"],
+    ["darkgreen", "#006400"],
+    ["darkgrey", "#a9a9a9"],
+    ["darkkhaki", "#bdb76b"],
+    ["darkmagenta", "#8b008b"],
+    ["darkolivegreen", "#556b2f"],
+    ["darkorange", "#ff8c00"],
+    ["darkorchid", "#9932cc"],
+    ["darkred", "#8b0000"],
+    ["darksalmon", "#e9967a"],
+    ["darkseagreen", "#8fbc8f"],
+    ["darkslateblue", "#483d8b"],
+    ["darkslategray", "#2f4f4f"],
+    ["darkslategrey", "#2f4f4f"],
+    ["darkturquoise", "#00ced1"],
+    ["darkviolet", "#9400d3"],
+    ["deeppink", "#ff1493"],
+    ["deepskyblue", "#00bfff"],
+    ["dimgray", "#696969"],
+    ["dimgrey", "#696969"],
+    ["dodgerblue", "#1e90ff"],
+    ["firebrick", "#b22222"],
+    ["floralwhite", "#fffaf0"],
+    ["forestgreen", "#228b22"],
+    ["gainsboro", "#dcdcdc"],
+    ["ghostwhite", "#f8f8ff"],
+    ["gold", "#ffd700"],
+    ["goldenrod", "#daa520"],
+    ["greenyellow", "#adff2f"],
+    ["grey", "#808080"],
+    ["honeydew", "#f0fff0"],
+    ["hotpink", "#ff69b4"],
+    ["indianred", "#cd5c5c"],
+    ["indigo", "#4b0082"],
+    ["ivory", "#fffff0"],
+    ["khaki", "#f0e68c"],
+    ["lavender", "#e6e6fa"],
+    ["lavenderblush", "#fff0f5"],
+    ["lawngreen", "#7cfc00"],
+    ["lemonchiffon", "#fffacd"],
+    ["lightblue", "#add8e6"],
+    ["lightcoral", "#f08080"],
+    ["lightcyan", "#e0ffff"],
+    ["lightgoldenrodyellow", "#fafad2"],
+    ["lightgray", "#d3d3d3"],
+    ["lightgreen", "#90ee90"],
+    ["lightgrey", "#d3d3d3"],
+    ["lightpink", "#ffb6c1"],
+    ["lightsalmon", "#ffa07a"],
+    ["lightseagreen", "#20b2aa"],
+    ["lightskyblue", "#87cefa"],
+    ["lightslategray", "#778899"],
+    ["lightslategrey", "#778899"],
+    ["lightsteelblue", "#b0c4de"],
+    ["lightyellow", "#ffffe0"],
+    ["limegreen", "#32cd32"],
+    ["linen", "#faf0e6"],
+    ["magenta", "#ff00ff"],
+    ["mediumaquamarine", "#66cdaa"],
+    ["mediumblue", "#0000cd"],
+    ["mediumorchid", "#ba55d3"],
+    ["mediumpurple", "#9370db"],
+    ["mediumseagreen", "#3cb371"],
+    ["mediumslateblue", "#7b68ee"],
+    ["mediumspringgreen", "#00fa9a"],
+    ["mediumturquoise", "#48d1cc"],
+    ["mediumvioletred", "#c71585"],
+    ["midnightblue", "#191970"],
+    ["mintcream", "#f5fffa"],
+    ["mistyrose", "#ffe4e1"],
+    ["moccasin", "#ffe4b5"],
+    ["navajowhite", "#ffdead"],
+    ["oldlace", "#fdf5e6"],
+    ["olivedrab", "#6b8e23"],
+    ["orangered", "#ff4500"],
+    ["orchid", "#da70d6"],
+    ["palegoldenrod", "#eee8aa"],
+    ["palegreen", "#98fb98"],
+    ["paleturquoise", "#afeeee"],
+    ["palevioletred", "#db7093"],
+    ["papayawhip", "#ffefd5"],
+    ["peachpuff", "#ffdab9"],
+    ["peru", "#cd853f"],
+    ["pink", "#ffc0cb"],
+    ["plum", "#dda0dd"],
+    ["powderblue", "#b0e0e6"],
+    ["rosybrown", "#bc8f8f"],
+    ["royalblue", "#4169e1"],
+    ["saddlebrown", "#8b4513"],
+    ["salmon", "#fa8072"],
+    ["sandybrown", "#f4a460"],
+    ["seagreen", "#2e8b57"],
+    ["seashell", "#fff5ee"],
+    ["sienna", "#a0522d"],
+    ["skyblue", "#87ceeb"],
+    ["slateblue", "#6a5acd"],
+    ["slategray", "#708090"],
+    ["slategrey", "#708090"],
+    ["snow", "#fffafa"],
+    ["springgreen", "#00ff7f"],
+    ["steelblue", "#4682b4"],
+    ["tan", "#d2b48c"],
+    ["thistle", "#d8bfd8"],
+    ["tomato", "#ff6347"],
+    ["turquoise", "#40e0d0"],
+    ["violet", "#ee82ee"],
+    ["wheat", "#f5deb3"],
+    ["whitesmoke", "#f5f5f5"],
+    ["yellowgreen", "#9acd32"],
+    ["rebeccapurple", "#663399"],
+  ]);
 
-    if (typeof first === "string") {
-      let tempStr;
-      let lastPos = 0;
+  function parseCssColor(colorString) {
+    if (colorKeywords.has(colorString)) {
+      colorString = colorKeywords.get(colorString);
+    }
+    // deno-fmt-ignore
+    const hashMatch = colorString.match(/^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
+    if (hashMatch != null) {
+      return [
+        Number(`0x${hashMatch[1]}`),
+        Number(`0x${hashMatch[2]}`),
+        Number(`0x${hashMatch[3]}`),
+      ];
+    }
+    // deno-fmt-ignore
+    const smallHashMatch = colorString.match(/^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
+    if (smallHashMatch != null) {
+      return [
+        Number(`0x${smallHashMatch[1]}0`),
+        Number(`0x${smallHashMatch[2]}0`),
+        Number(`0x${smallHashMatch[3]}0`),
+      ];
+    }
+    // deno-fmt-ignore
+    const rgbMatch = colorString.match(/^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+    if (rgbMatch != null) {
+      return [
+        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[1])))),
+        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[2])))),
+        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[3])))),
+      ];
+    }
+    // deno-fmt-ignore
+    const hslMatch = colorString.match(/^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+    if (hslMatch != null) {
+      // https://www.rapidtables.com/convert/color/hsl-to-rgb.html
+      let h = Number(hslMatch[1]) % 360;
+      if (h < 0) {
+        h += 360;
+      }
+      const s = Math.max(0, Math.min(100, Number(hslMatch[2]))) / 100;
+      const l = Math.max(0, Math.min(100, Number(hslMatch[3]))) / 100;
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const m = l - c / 2;
+      let r_;
+      let g_;
+      let b_;
+      if (h < 60) {
+        [r_, g_, b_] = [c, x, 0];
+      } else if (h < 120) {
+        [r_, g_, b_] = [x, c, 0];
+      } else if (h < 180) {
+        [r_, g_, b_] = [0, c, x];
+      } else if (h < 240) {
+        [r_, g_, b_] = [0, x, c];
+      } else if (h < 300) {
+        [r_, g_, b_] = [x, 0, c];
+      } else {
+        [r_, g_, b_] = [c, 0, x];
+      }
+      return [
+        Math.round((r_ + m) * 255),
+        Math.round((g_ + m) * 255),
+        Math.round((b_ + m) * 255),
+      ];
+    }
+    return null;
+  }
 
-      for (let i = 0; i < first.length - 1; i++) {
-        if (first.charCodeAt(i) === CHAR_PERCENT) {
-          const nextChar = first.charCodeAt(++i);
-          if (a + 1 !== args.length) {
-            switch (nextChar) {
-              case CHAR_LOWERCASE_S:
-                // format as a string
-                tempStr = String(args[++a]);
-                break;
-              case CHAR_LOWERCASE_D:
-              case CHAR_LOWERCASE_I:
-                // format as an integer
-                const tempInteger = args[++a];
-                if (typeof tempInteger === "bigint") {
-                  tempStr = `${tempInteger}n`;
-                } else if (typeof tempInteger === "symbol") {
-                  tempStr = "NaN";
-                } else {
-                  tempStr = `${parseInt(String(tempInteger), 10)}`;
-                }
-                break;
-              case CHAR_LOWERCASE_F:
-                // format as a floating point value
-                const tempFloat = args[++a];
-                if (typeof tempFloat === "symbol") {
-                  tempStr = "NaN";
-                } else {
-                  tempStr = `${parseFloat(String(tempFloat))}`;
-                }
-                break;
-              case CHAR_LOWERCASE_O:
-              case CHAR_UPPERCASE_O:
-                // format as an object
-                tempStr = inspectValue(
-                  args[++a],
-                  new Set(),
-                  0,
-                  rInspectOptions,
-                );
-                break;
-              case CHAR_PERCENT:
-                str += first.slice(lastPos, i);
-                lastPos = i + 1;
-                continue;
-              case CHAR_LOWERCASE_C:
-                // TODO: applies CSS style rules to the output string as specified
-                continue;
-              default:
-                // any other character is not a correct placeholder
-                continue;
-            }
+  function parseCss(cssString) {
+    const css = {
+      backgroundColor: null,
+      color: null,
+      fontWeight: null,
+      fontStyle: null,
+      textDecorationColor: null,
+      textDecorationLine: [],
+    };
 
-            if (lastPos !== i - 1) {
-              str += first.slice(lastPos, i - 1);
-            }
+    const rawEntries = [];
+    let inValue = false;
+    let currentKey = null;
+    let parenthesesDepth = 0;
+    currentPart = "";
+    for (let i = 0; i < cssString.length; i++) {
+      const c = cssString[i];
+      if (c == "(") {
+        parenthesesDepth++;
+      } else if (parenthesesDepth > 0) {
+        if (c == ")") {
+          parenthesesDepth--;
+        }
+      } else if (inValue) {
+        if (c == ";") {
+          const value = currentPart.trim();
+          if (value != "") {
+            rawEntries.push([currentKey, value]);
+          }
+          currentKey = null;
+          currentPart = "";
+          inValue = false;
+          continue;
+        }
+      } else if (c == ":") {
+        currentKey = currentPart.trim();
+        currentPart = "";
+        inValue = true;
+        continue;
+      }
+      currentPart += c;
+    }
+    if (inValue && parenthesesDepth == 0) {
+      const value = currentPart.trim();
+      if (value != "") {
+        rawEntries.push([currentKey, value]);
+      }
+      currentKey = null;
+      currentPart = "";
+    }
 
-            str += tempStr;
-            lastPos = i + 1;
-          } else if (nextChar === CHAR_PERCENT) {
-            str += first.slice(lastPos, i);
-            lastPos = i + 1;
+    for (const [key, value] of rawEntries) {
+      if (key == "background-color") {
+        const color = parseCssColor(value);
+        if (color != null) {
+          css.backgroundColor = color;
+        }
+      } else if (key == "color") {
+        const color = parseCssColor(value);
+        if (color != null) {
+          css.color = color;
+        }
+      } else if (key == "font-weight") {
+        if (["normal", "bold"].includes(value)) {
+          css.fontWeight = value;
+        }
+      } else if (key == "font-style") {
+        if (["normal", "italic", "oblique", "oblique 14deg"].includes(value)) {
+          css.fontStyle = value;
+        }
+      } else if (key == "text-decoration-line") {
+        css.textDecorationLine = [];
+        for (const lineType of value.split(/\s+/g)) {
+          if (["line-through", "overline", "underline"].includes(lineType)) {
+            css.textDecorationLine.push(lineType);
           }
         }
-      }
-
-      if (lastPos !== 0) {
-        a++;
-        join = " ";
-        if (lastPos < first.length) {
-          str += first.slice(lastPos);
+      } else if (key == "text-decoration-color") {
+        const color = parseCssColor(value);
+        if (color != null) {
+          css.textDecorationColor = color;
+        }
+      } else if (key == "text-decoration") {
+        css.textDecorationColor = null;
+        css.textDecorationLine = [];
+        for (const arg of value.split(/\s+/g)) {
+          const maybeColor = parseCssColor(arg);
+          if (maybeColor != null) {
+            css.textDecorationColor = maybeColor;
+          } else if (["line-through", "overline", "underline"].includes(arg)) {
+            css.textDecorationLine.push(arg);
+          }
         }
       }
     }
 
-    while (a < args.length) {
-      const value = args[a];
-      str += join;
-      if (typeof value === "string") {
-        str += value;
-      } else {
-        // use default maximum depth for null or undefined argument
-        str += inspectValue(value, new Set(), 0, rInspectOptions);
-      }
-      join = " ";
+    return css;
+  }
+
+  function cssToAnsi(css) {
+    let ansi = "";
+    if (css.backgroundColor != null) {
+      const [r, g, b] = css.backgroundColor;
+      ansi += `\x1b[48;2;${r};${g};${b}m`;
+    } else {
+      ansi += "\x1b[49m";
+    }
+    if (css.color != null) {
+      const [r, g, b] = css.color;
+      ansi += `\x1b[38;2;${r};${g};${b}m`;
+    } else {
+      ansi += "\x1b[39m";
+    }
+    if (css.fontWeight == "bold") {
+      ansi += `\x1b[1m`;
+    } else {
+      ansi += "\x1b[22m";
+    }
+    if (["italic", "oblique"].includes(css.fontStyle)) {
+      ansi += `\x1b[3m`;
+    } else {
+      ansi += "\x1b[23m";
+    }
+    if (css.textDecorationColor != null) {
+      const [r, g, b] = css.textDecorationColor;
+      ansi += `\x1b[58;2;${r};${g};${b}m`;
+    } else {
+      ansi += "\x1b[59m";
+    }
+    if (css.textDecorationLine.includes("line-through")) {
+      ansi += "\x1b[9m";
+    } else {
+      ansi += "\x1b[29m";
+    }
+    if (css.textDecorationLine.includes("overline")) {
+      ansi += "\x1b[53m";
+    } else {
+      ansi += "\x1b[55m";
+    }
+    if (css.textDecorationLine.includes("underline")) {
+      ansi += "\x1b[4m";
+    } else {
+      ansi += "\x1b[24m";
+    }
+    return ansi;
+  }
+
+  function inspectArgs(args, inspectOptions = {}) {
+    const noColor = globalThis.Deno?.noColor ?? true;
+    const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
+    const first = args[0];
+    let a = 0;
+    let string = "";
+
+    if (typeof first == "string" && args.length > 1) {
       a++;
+      // Index of the first not-yet-appended character. Use this so we only
+      // have to append to `string` when a substitution occurs / at the end.
+      let appendedChars = 0;
+      let usedStyle = false;
+      for (let i = 0; i < first.length - 1; i++) {
+        if (first[i] == "%") {
+          const char = first[++i];
+          if (a < args.length) {
+            let formattedArg = null;
+            if (char == "s") {
+              // Format as a string.
+              formattedArg = String(args[a++]);
+            } else if (["d", "i"].includes(char)) {
+              // Format as an integer.
+              const value = args[a++];
+              if (typeof value == "bigint") {
+                formattedArg = `${value}n`;
+              } else if (typeof value == "number") {
+                formattedArg = `${parseInt(String(value))}`;
+              } else {
+                formattedArg = "NaN";
+              }
+            } else if (char == "f") {
+              // Format as a floating point value.
+              const value = args[a++];
+              if (typeof value == "number") {
+                formattedArg = `${value}`;
+              } else {
+                formattedArg = "NaN";
+              }
+            } else if (["O", "o"].includes(char)) {
+              // Format as an object.
+              formattedArg = inspectValue(
+                args[a++],
+                new Set(),
+                0,
+                rInspectOptions,
+              );
+            } else if (char == "c") {
+              const value = args[a++];
+              formattedArg = noColor ? "" : cssToAnsi(parseCss(value));
+              if (formattedArg != "") {
+                usedStyle = true;
+              }
+            }
+
+            if (formattedArg != null) {
+              string += first.slice(appendedChars, i - 1) + formattedArg;
+              appendedChars = i + 1;
+            }
+          }
+          if (char == "%") {
+            string += first.slice(appendedChars, i - 1) + "%";
+            appendedChars = i + 1;
+          }
+        }
+      }
+      string += first.slice(appendedChars);
+      if (usedStyle) {
+        string += "\x1b[0m";
+      }
+    }
+
+    for (; a < args.length; a++) {
+      if (a > 0) {
+        string += " ";
+      }
+      // Use default maximum depth for null or undefined arguments.
+      string += inspectValue(args[a], new Set(), 0, rInspectOptions);
     }
 
     if (rInspectOptions.indentLevel > 0) {
       const groupIndent = DEFAULT_INDENT.repeat(rInspectOptions.indentLevel);
-      if (str.indexOf("\n") !== -1) {
-        str = str.replace(/\n/g, `\n${groupIndent}`);
-      }
-      str = groupIndent + str;
+      string = groupIndent + string.replaceAll("\n", `\n${groupIndent}`);
     }
 
-    return str;
+    return string;
   }
 
   const countMap = new Map();
@@ -1202,7 +1537,10 @@
 
   // Expose these fields to internalObject for tests.
   exposeForTest("Console", Console);
+  exposeForTest("cssToAnsi", cssToAnsi);
   exposeForTest("inspectArgs", inspectArgs);
+  exposeForTest("parseCss", parseCss);
+  exposeForTest("parseCssColor", parseCssColor);
 
   window.__bootstrap.console = {
     CSI,
