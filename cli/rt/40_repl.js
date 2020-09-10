@@ -80,7 +80,11 @@
     return true;
   }
 
-  async function replLoop() {
+  async function replLoop(cwd, imports) {
+    for ([name, url] of imports) {
+      globalThis[name] = await import(new URL(url, `file://${cwd}/`));
+    }
+
     const { console } = globalThis;
 
     const historyFile = "deno_history.txt";

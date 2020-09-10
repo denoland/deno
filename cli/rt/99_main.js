@@ -329,8 +329,9 @@ delete Object.prototype.__proto__;
     util.log("cwd", cwd);
     util.log("args", args);
 
-    if (repl) {
-      replLoop();
+    if (repl.enabled) {
+      util.log("repl imports", repl.imports);
+      replLoop(cwd, repl.imports);
     }
   }
 

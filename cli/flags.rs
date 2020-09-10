@@ -61,7 +61,9 @@ pub enum DenoSubcommand {
     rules: bool,
     json: bool,
   },
-  Repl,
+  Repl {
+    imports: Vec<(String, String)>,
+  },
   Run {
     script: String,
   },
@@ -85,7 +87,7 @@ pub enum DenoSubcommand {
 
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
-    DenoSubcommand::Repl
+    DenoSubcommand::Repl { imports: vec![] }
   }
 }
 
@@ -442,7 +444,6 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false);
-  flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
   flags.allow_run = true;
@@ -450,6 +451,16 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = true;
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
+  let imports = matches
+    .values_of("import")
+    .unwrap_or_default()
+    .map(|raw| {
+      let parts: Vec<&str> = raw.splitn(2, '=').collect();
+      assert_eq!(parts.len(), 2, "Malformed import got past clap validation");
+      (String::from(parts[0]), String::from(parts[1]))
+    })
+    .collect();
+  flags.subcommand = DenoSubcommand::Repl { imports };
 }
 
 fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -723,6 +734,25 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("repl"), false)
     .about("Read Eval Print Loop")
+    .arg(
+      Arg::with_name("import")
+        .long("import")
+        .short("i")
+        .value_name("NAME=URL")
+        .takes_value(true)
+        .use_delimiter(true)
+        .multiple(true)
+        .validator(|s| {
+          if s.contains('=') {
+            Ok(())
+          } else {
+            Err(String::from(
+              "Imports must be specified like 'example=https://example.com/mod.ts'"
+            ))
+          }
+        })
+        .help("Modules to preload for use in the REPL")
+    )
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -2165,7 +2195,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Repl,
+        subcommand: DenoSubcommand::Repl { imports: vec![] },
         allow_net: true,
         allow_env: true,
         allow_run: true,
@@ -2185,7 +2215,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Repl,
+        subcommand: DenoSubcommand::Repl { imports: vec![] },
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,

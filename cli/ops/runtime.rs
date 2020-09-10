@@ -24,8 +24,17 @@ fn op_start(
 ) -> Result<Value, AnyError> {
   let gs = &super::cli_state(state).global_state;
 
+  let repl = match gs.flags.subcommand {
+    DenoSubcommand::Repl { ref imports } => json!({
+      "enabled": true,
+      "imports": imports.clone(),
+    }),
+    _ => json!({
+      "enabled": false,
+    }),
+  };
+
   Ok(json!({
-    // TODO(bartlomieju): `cwd` field is not used in JS, remove?
     "args": gs.flags.argv.clone(),
     "cwd": &env::current_dir().unwrap(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
@@ -33,7 +42,7 @@ fn op_start(
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "ppid": ppid(),
-    "repl": gs.flags.subcommand == DenoSubcommand::Repl,
+    "repl": repl,
     "target": env!("TARGET"),
     "tsVersion": version::TYPESCRIPT,
     "unstableFlag": gs.flags.unstable,
