@@ -106,7 +106,7 @@ impl Worker {
     maybe_snapshot: Option<Snapshot>,
     state: &Rc<State>,
   ) -> Self {
-    let mut isolate = JsRuntime::new_o(RuntimeOptions {
+    let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(state.clone()),
       startup_snapshot: maybe_snapshot,
       ..Default::default()

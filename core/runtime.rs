@@ -181,6 +181,9 @@ pub struct HeapLimits {
 pub struct RuntimeOptions {
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
   pub startup_snapshot: Option<Snapshot>,
+  /// Prepare runtime to take snapshot of loaded code.
+  ///
+  /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
   /// This is useful for controlling memory usage of scripts.
   ///
@@ -192,29 +195,7 @@ pub struct RuntimeOptions {
 }
 
 impl JsRuntime {
-  /// startup_data defines the snapshot or script used at startup to initialize
-  /// the isolate.
-  pub fn new(
-    loader: Option<Rc<dyn ModuleLoader>>,
-    startup_snapshot: Option<Snapshot>,
-    will_snapshot: bool,
-    heap_limits: Option<HeapLimits>,
-  ) -> Self {
-    let options = RuntimeOptions {
-      module_loader: loader,
-      startup_snapshot,
-      will_snapshot,
-      heap_limits,
-    };
-
-    Self::from_options(options)
-  }
-
-  pub fn new_o(options: RuntimeOptions) -> Self {
-    Self::from_options(options)
-  }
-
-  fn from_options(options: RuntimeOptions) -> Self {
+  pub fn new(options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
@@ -1342,7 +1323,7 @@ pub mod tests {
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let mut runtime = JsRuntime::new_o(Default::default());
+    let mut runtime = JsRuntime::new(Default::default());
     let op_state = runtime.op_state();
     op_state.borrow_mut().put(TestState {
       mode,
@@ -1713,7 +1694,7 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut runtime = JsRuntime::new_o(Default::default());
+    let mut runtime = JsRuntime::new(Default::default());
     let src = "hocuspocus(";
     let r = runtime.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1738,7 +1719,7 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new_o(RuntimeOptions {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         will_snapshot: true,
         ..Default::default()
       });
@@ -1747,7 +1728,7 @@ pub mod tests {
     };
 
     let snapshot = Snapshot::JustCreated(snapshot);
-    let mut runtime2 = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(snapshot),
       ..Default::default()
     });
@@ -1757,7 +1738,7 @@ pub mod tests {
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new_o(RuntimeOptions {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         will_snapshot: true,
         ..Default::default()
       });
@@ -1767,7 +1748,7 @@ pub mod tests {
     };
 
     let snapshot = Snapshot::Boxed(snapshot);
-    let mut runtime2 = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(snapshot),
       ..Default::default()
     });
@@ -1780,7 +1761,7 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       heap_limits: Some(heap_limits),
       ..Default::default()
     });
@@ -1811,7 +1792,7 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_remove() {
-    let mut runtime = JsRuntime::new_o(Default::default());
+    let mut runtime = JsRuntime::new(Default::default());
 
     runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1826,7 +1807,7 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       heap_limits: Some(heap_limits),
       ..Default::default()
     });
@@ -1911,7 +1892,7 @@ pub mod tests {
       Op::Async(futures::future::ready(buf).boxed())
     };
 
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
     });
@@ -2009,7 +1990,7 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut runtime = JsRuntime::new_o(RuntimeOptions {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(loader),
         ..Default::default()
       });
@@ -2089,7 +2070,7 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new_o(RuntimeOptions {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(loader),
         ..Default::default()
       });
@@ -2132,7 +2113,7 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new_o(RuntimeOptions {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(loader),
         ..Default::default()
       });
@@ -2186,7 +2167,7 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       will_snapshot: true,
       ..Default::default()

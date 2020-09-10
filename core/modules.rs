@@ -619,7 +619,7 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
     });
@@ -684,7 +684,7 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
     });
@@ -760,7 +760,7 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
     });
@@ -827,7 +827,7 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
-      let mut runtime = JsRuntime::new_o(RuntimeOptions {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(loader),
         ..Default::default()
       });
@@ -875,7 +875,7 @@ mod tests {
   fn loader_disappears_after_error() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new_o(RuntimeOptions {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(loader),
         ..Default::default()
       });
@@ -906,7 +906,7 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_o(RuntimeOptions {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
     });

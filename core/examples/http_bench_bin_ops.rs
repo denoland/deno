@@ -76,7 +76,7 @@ impl From<Record> for RecordBuf {
 }
 
 fn create_isolate() -> JsRuntime {
-  let mut isolate = JsRuntime::new_o(Default::default());
+  let mut isolate = JsRuntime::new(Default::default());
   register_op_bin_sync(&mut isolate, "listen", op_listen);
   register_op_bin_sync(&mut isolate, "close", op_close);
   register_op_bin_async(&mut isolate, "accept", op_accept);

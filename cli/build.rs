@@ -37,7 +37,7 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let isolate = JsRuntime::new_o(RuntimeOptions {
+  let isolate = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     ..Default::default()
   });
@@ -73,7 +73,7 @@ fn create_compiler_snapshot(
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
 
-  let mut isolate = JsRuntime::new_o(RuntimeOptions {
+  let mut isolate = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     ..Default::default()
   });

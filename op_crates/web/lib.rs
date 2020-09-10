@@ -47,7 +47,7 @@ mod tests {
   }
 
   fn setup() -> JsRuntime {
-    let mut isolate = JsRuntime::new_o(Default::default());
+    let mut isolate = JsRuntime::new(Default::default());
     crate::init(&mut isolate);
     isolate
   }
