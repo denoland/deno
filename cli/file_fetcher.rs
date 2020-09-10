@@ -427,13 +427,13 @@ impl SourceFileFetcher {
       &fake_filepath,
       headers
         .get("content-type")
-        .map(|e| e.first().map(|f| f.as_str()))
-        .unwrap_or(None),
+        .and_then(|e| e.first())
+        .map(|e| e.as_str()),
     );
     let types_header = headers
       .get("x-typescript-types")
-      .map(|e| e.first().map(|f| f.to_string()))
-      .unwrap_or(None);
+      .and_then(|e| e.first())
+      .map(|e| e.to_string());
     Ok(Some(SourceFile {
       url: module_url.clone(),
       filename: cache_filename,
@@ -499,8 +499,8 @@ impl SourceFileFetcher {
     let module_etag = match self.http_cache.get(&module_url) {
       Ok((_, headers)) => headers
         .get("etag")
-        .map(|e| e.first().map(|f| f.to_string()))
-        .unwrap_or(None),
+        .and_then(|e| e.first())
+        .map(|e| e.to_string()),
       Err(_) => None,
     };
     let permissions = permissions.clone();
@@ -547,8 +547,8 @@ impl SourceFileFetcher {
 
           let types_header = headers
             .get("x-typescript-types")
-            .map(|e| e.first().map(|f| f.to_string()))
-            .unwrap_or(None);
+            .and_then(|e| e.first())
+            .map(|e| e.to_string());
 
           let source_file = SourceFile {
             url: module_url.clone(),
