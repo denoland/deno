@@ -425,14 +425,15 @@ impl SourceFileFetcher {
     let fake_filepath = PathBuf::from(module_url.path());
     let (media_type, charset) = map_content_type(
       &fake_filepath,
-      headers.get("content-type").map(|e| match e.first() {
-        Some(e) => e.as_str(),
-        None => "",
-      }),
+      headers
+        .get("content-type")
+        .map(|e| e.first().map(|f| f.as_str()))
+        .unwrap_or(None),
     );
     let types_header = headers
       .get("x-typescript-types")
-      .map(|e| e.first().unwrap_or(&String::new()).to_string());
+      .map(|e| e.first().map(|f| f.to_string()))
+      .unwrap_or(None);
     Ok(Some(SourceFile {
       url: module_url.clone(),
       filename: cache_filename,
@@ -498,7 +499,8 @@ impl SourceFileFetcher {
     let module_etag = match self.http_cache.get(&module_url) {
       Ok((_, headers)) => headers
         .get("etag")
-        .map(|e| e.first().unwrap_or(&String::new()).to_string()),
+        .map(|e| e.first().map(|f| f.to_string()))
+        .unwrap_or(None),
       Err(_) => None,
     };
     let permissions = permissions.clone();
@@ -545,7 +547,8 @@ impl SourceFileFetcher {
 
           let types_header = headers
             .get("x-typescript-types")
-            .map(|e| e.first().unwrap_or(&String::new()).to_string());
+            .map(|e| e.first().map(|f| f.to_string()))
+            .unwrap_or(None);
 
           let source_file = SourceFile {
             url: module_url.clone(),
