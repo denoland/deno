@@ -252,15 +252,16 @@ fn main() {
     .build()
     .unwrap();
 
-  runtime
-    .enter(|| {
-      isolate.execute(
+  let future = async move {
+    isolate
+      .execute(
         "http_bench_bin_ops.js",
         include_str!("http_bench_bin_ops.js"),
       )
-    })
-    .unwrap();
-  js_check(runtime.block_on(isolate));
+      .unwrap();
+    isolate.await
+  };
+  js_check(runtime.block_on(future));
 }
 
 #[test]

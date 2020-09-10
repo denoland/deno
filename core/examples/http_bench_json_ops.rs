@@ -183,13 +183,15 @@ fn main() {
     .enable_all()
     .build()
     .unwrap();
-  runtime
-    .enter(|| {
-      isolate.execute(
+
+  let future = async move {
+    isolate
+      .execute(
         "http_bench_json_ops.js",
         include_str!("http_bench_json_ops.js"),
       )
-    })
-    .unwrap();
-  js_check(runtime.block_on(isolate));
+      .unwrap();
+    isolate.await
+  };
+  js_check(runtime.block_on(future));
 }
