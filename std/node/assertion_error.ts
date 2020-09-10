@@ -84,9 +84,6 @@ export function copyError(source: Error): Error {
   return target;
 }
 
-// TODO(schwarzkopfb): create/find issue to suggest the following properties to be added to `Deno.inspect()` opts:
-// `customInspect`, `customInspect`, `showHidden`, `showProxy` and `getters` (and probably more)
-// Ref: https://nodejs.org/dist/latest-v14.x/docs/api/util.html#util_util_inspect_object_options
 export function inspectValue(val: unknown): string {
   // The util.inspect default values could be changed. This makes sure the
   // error messages contain the necessary information nevertheless.
@@ -94,16 +91,16 @@ export function inspectValue(val: unknown): string {
     val,
     {
       compact: false,
-      // customInspect: false,
+      customInspect: false,
       depth: 1000,
-      // maxArrayLength: Infinity,
+      maxArrayLength: Infinity,
       // Assert compares only enumerable properties (with a few exceptions).
-      // showHidden: false,
+      showHidden: false,
       // Assert does not detect proxies currently.
-      // showProxy: false,
+      showProxy: false,
       sorted: true,
       // Inspect getters as we also check them when comparing entries.
-      // getters: true,
+      getters: true,
     },
   );
 }
