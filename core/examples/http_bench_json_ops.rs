@@ -6,8 +6,6 @@ use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::JsRuntime;
 use deno_core::OpState;
-use deno_core::Script;
-use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::Future;
@@ -42,13 +40,13 @@ impl log::Log for Logger {
 }
 
 fn create_isolate() -> JsRuntime {
-  let mut runtime = JsRuntime::new(startup_data, false);
+  let mut runtime = JsRuntime::new(None, false);
   runtime.register_op("listen", deno_core::json_op_sync(op_listen));
   runtime.register_op("close", deno_core::json_op_sync(op_close));
   runtime.register_op("accept", deno_core::json_op_async(op_accept));
   runtime.register_op("read", deno_core::json_op_async(op_read));
   runtime.register_op("write", deno_core::json_op_async(op_write));
-  isolate.execute("http_bench_json_ops.js", include_str!("http_bench_json_ops.js")).unwrap();
+  runtime.execute("http_bench_json_ops.js", include_str!("http_bench_json_ops.js")).unwrap();
   runtime
 }
 

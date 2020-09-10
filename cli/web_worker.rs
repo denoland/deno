@@ -7,7 +7,7 @@ use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::v8;
 use deno_core::ErrBox;
-use deno_core::StartupData;
+use deno_core::Snapshot;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -85,11 +85,11 @@ pub struct WebWorker {
 impl WebWorker {
   pub fn new(
     name: String,
-    startup_data: StartupData,
+    maybe_snapshot: Option<Snapshot>,
     state: &Rc<State>,
     has_deno_namespace: bool,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, &state);
+    let mut worker = Worker::new(name, maybe_snapshot, &state);
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
@@ -240,7 +240,7 @@ impl Future for WebWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::startup_data;
+  use crate::js;
   use crate::state::State;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
@@ -249,7 +249,7 @@ mod tests {
     let state = State::mock("./hello.js");
     let mut worker = WebWorker::new(
       "TEST".to_string(),
-      startup_data::deno_isolate_init(),
+      Some(js::deno_isolate_init()),
       &state,
       false,
     );

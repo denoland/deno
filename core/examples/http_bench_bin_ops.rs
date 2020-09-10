@@ -6,8 +6,6 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpState;
-use deno_core::Script;
-use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -78,7 +76,7 @@ impl From<Record> for RecordBuf {
 }
 
 fn create_isolate() -> JsRuntime {
-  let mut isolate = JsRuntime::new(startup_data, false);
+  let mut isolate = JsRuntime::new(None, false);
   register_op_bin_sync(&mut isolate, "listen", op_listen);
   register_op_bin_sync(&mut isolate, "close", op_close);
   register_op_bin_async(&mut isolate, "accept", op_accept);

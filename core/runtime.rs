@@ -46,32 +46,10 @@ use std::task::Poll;
 
 type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Box<[u8]>)>>>;
 
-/// Stores a script used to initialize a Isolate
-pub struct Script<'a> {
-  pub source: &'a str,
-  pub filename: &'a str,
-}
-
 pub enum Snapshot {
   Static(&'static [u8]),
   JustCreated(v8::StartupData),
   Boxed(Box<[u8]>),
-}
-
-/// Represents data used to initialize an isolate at startup, either
-/// in the form of a binary snapshot or a JavaScript source file.
-pub enum StartupData {
-  Snapshot(Snapshot),
-  None,
-}
-
-impl StartupData {
-  fn into_options(self) -> Option<Snapshot> {
-    match self {
-      Self::Snapshot(snapshot) => Some(snapshot),
-      Self::None => None,
-    }
-  }
 }
 
 type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
@@ -209,11 +187,10 @@ pub(crate) struct IsolateOptions {
 impl JsRuntime {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
-    let startup_snapshot = startup_data.into_options();
+  pub fn new(maybe_snapshot: Option<Snapshot>, will_snapshot: bool) -> Self {
     let options = IsolateOptions {
       loader: Rc::new(NoopModuleLoader),
-      startup_snapshot,
+      startup_snapshot: maybe_snapshot,
       will_snapshot,
       heap_limits: None,
     };
@@ -225,13 +202,12 @@ impl JsRuntime {
   /// Create new isolate that can load and execute ESModules.
   pub fn new_with_loader(
     loader: Rc<dyn ModuleLoader>,
-    startup_data: StartupData,
+    maybe_snapshot: Option<Snapshot>,
     will_snapshot: bool,
   ) -> Self {
-    let startup_snapshot = startup_data.into_options();
     let options = IsolateOptions {
       loader,
-      startup_snapshot,
+      startup_snapshot: maybe_snapshot,
       will_snapshot,
       heap_limits: None,
     };
@@ -246,13 +222,12 @@ impl JsRuntime {
   /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
   /// to prevent v8 from crashing when reaching the upper limit.
   pub fn with_heap_limits(
-    startup_data: StartupData,
+    maybe_snapshot: Option<Snapshot>,
     heap_limits: HeapLimits,
   ) -> Self {
-    let startup_snapshot = startup_data.into_options();
     let options = IsolateOptions {
       loader: Rc::new(NoopModuleLoader),
-      startup_snapshot,
+      startup_snapshot: maybe_snapshot,
       will_snapshot: false,
       heap_limits: Some(heap_limits),
     };
@@ -1384,7 +1359,7 @@ pub mod tests {
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let mut runtime = JsRuntime::new(StartupData::None, false);
+    let mut runtime = JsRuntime::new(None, false);
     let op_state = runtime.op_state();
     op_state.borrow_mut().put(TestState {
       mode,
@@ -1755,7 +1730,7 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut runtime = JsRuntime::new(StartupData::None, false);
+    let mut runtime = JsRuntime::new(None, false);
     let src = "hocuspocus(";
     let r = runtime.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1780,27 +1755,27 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(StartupData::None, true);
+      let mut runtime = JsRuntime::new(None, true);
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       runtime.snapshot()
     };
 
-    let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut runtime2 = JsRuntime::new(startup_data, false);
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(Some(snapshot), false);
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(StartupData::None, true);
+      let mut runtime = JsRuntime::new(None, true);
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
-    let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut runtime2 = JsRuntime::new(startup_data, false);
+    let snapshot = Snapshot::Boxed(snapshot);
+    let mut runtime2 = JsRuntime::new(Some(snapshot), false);
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1811,7 +1786,7 @@ pub mod tests {
       max: 20 * 1024, // 20 kB
     };
     let mut runtime =
-      JsRuntime::with_heap_limits(StartupData::None, heap_limits);
+      JsRuntime::with_heap_limits(None, heap_limits);
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
@@ -1839,7 +1814,7 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_remove() {
-    let mut runtime = JsRuntime::new(StartupData::None, false);
+    let mut runtime = JsRuntime::new(None, false);
 
     runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1855,7 +1830,7 @@ pub mod tests {
       max: 20 * 1024, // 20 kB
     };
     let mut runtime =
-      JsRuntime::with_heap_limits(StartupData::None, heap_limits);
+      JsRuntime::with_heap_limits(None, heap_limits);
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());
@@ -1938,7 +1913,7 @@ pub mod tests {
     };
 
     let mut runtime =
-      JsRuntime::new_with_loader(loader, StartupData::None, false);
+      JsRuntime::new_with_loader(loader, None, false);
     runtime.register_op("test", dispatcher);
 
     js_check(runtime.execute(
@@ -2034,7 +2009,7 @@ pub mod tests {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
       let mut runtime =
-        JsRuntime::new_with_loader(loader, StartupData::None, false);
+        JsRuntime::new_with_loader(loader, None, false);
 
       js_check(runtime.execute(
         "file:///dyn_import2.js",
@@ -2112,7 +2087,7 @@ pub mod tests {
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
       let mut runtime =
-        JsRuntime::new_with_loader(loader, StartupData::None, false);
+        JsRuntime::new_with_loader(loader, None, false);
 
       // Dynamically import mod_b
       js_check(runtime.execute(
@@ -2153,7 +2128,7 @@ pub mod tests {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
       let mut runtime =
-        JsRuntime::new_with_loader(loader, StartupData::None, false);
+        JsRuntime::new_with_loader(loader, None, false);
       js_check(runtime.execute(
         "file:///dyn_import3.js",
         r#"
@@ -2205,7 +2180,7 @@ pub mod tests {
 
     let loader = std::rc::Rc::new(ModsLoader::default());
     let mut runtime =
-      JsRuntime::new_with_loader(loader, StartupData::None, true);
+      JsRuntime::new_with_loader(loader, None, true);
 
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();
