@@ -32,7 +32,6 @@ use std::any::Any;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::From;
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
@@ -51,22 +50,6 @@ type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Box<[u8]>)>>>;
 pub struct Script<'a> {
   pub source: &'a str,
   pub filename: &'a str,
-}
-
-// TODO(ry) It's ugly that we have both Script and OwnedScript. Ideally we
-// wouldn't expose such twiddly complexity.
-struct OwnedScript {
-  pub source: String,
-  pub filename: String,
-}
-
-impl From<Script<'_>> for OwnedScript {
-  fn from(s: Script) -> OwnedScript {
-    OwnedScript {
-      source: s.source.to_string(),
-      filename: s.filename.to_string(),
-    }
-  }
 }
 
 pub enum Snapshot {
