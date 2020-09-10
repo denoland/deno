@@ -319,53 +319,37 @@ class Printf {
     switch (this.verb) {
       case "t":
         return this.pad(arg.toString());
-        break;
       case "b":
         return this.fmtNumber(arg as number, 2);
-        break;
       case "c":
         return this.fmtNumberCodePoint(arg as number);
-        break;
       case "d":
         return this.fmtNumber(arg as number, 10);
-        break;
       case "o":
         return this.fmtNumber(arg as number, 8);
-        break;
       case "x":
         return this.fmtHex(arg);
-        break;
       case "X":
         return this.fmtHex(arg, true);
-        break;
       case "e":
         return this.fmtFloatE(arg as number);
-        break;
       case "E":
         return this.fmtFloatE(arg as number, true);
-        break;
       case "f":
       case "F":
         return this.fmtFloatF(arg as number);
-        break;
       case "g":
         return this.fmtFloatG(arg as number);
-        break;
       case "G":
         return this.fmtFloatG(arg as number, true);
-        break;
       case "s":
         return this.fmtString(arg as string);
-        break;
       case "T":
         return this.fmtString(typeof arg);
-        break;
       case "v":
         return this.fmtV(arg);
-        break;
       case "j":
         return this.fmtJ(arg);
-        break;
       default:
         return `%!(BAD VERB '${this.verb}')`;
     }

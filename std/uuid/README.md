@@ -1,6 +1,6 @@
 # UUID
 
-Support for version 1, 3, 4, and 5 UUIDs.
+Support for version 1, 4, and 5 UUIDs.
 
 ## Usage
 

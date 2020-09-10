@@ -273,11 +273,6 @@ grault",
 }
 
 #[test]
-fn benchmark_test() {
-  util::run_python_script("tools/benchmark_test.py")
-}
-
-#[test]
 fn deno_dir_test() {
   use std::fs::remove_dir_all;
   let _g = util::http_server();
@@ -955,6 +950,38 @@ fn bundle_import_map() {
 }
 
 #[test]
+fn info_with_compiled_source() {
+  let _g = util::http_server();
+  let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
+  let t = TempDir::new().expect("tempdir fail");
+
+  let mut deno = util::deno_cmd()
+    .env("DENO_DIR", t.path())
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(&module_path)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+
+  let output = util::deno_cmd()
+    .env("DENO_DIR", t.path())
+    .env("NO_COLOR", "1")
+    .current_dir(util::root_path())
+    .arg("info")
+    .arg(&module_path)
+    .output()
+    .expect("failed to spawn script");
+
+  let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
+  eprintln!("{}", str_output);
+  // check the output of the test.ts program.
+  assert!(str_output.contains("compiled: "));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -1446,9 +1473,8 @@ itest!(_030_eval_ts {
 });
 
 itest!(_031_info_no_check {
-  args: "info 031_info_no_check.ts",
+  args: "info --no-check 031_info_no_check.ts",
   output: "031_info_no_check.out",
-  http_server: true,
 });
 
 itest!(_033_import_map {
@@ -1544,10 +1570,7 @@ itest!(_048_media_types_jsx {
   http_server: true,
 });
 
-// TODO(nayeemrmn): This hits an SWC type-stripping bug:
-// `error: Unterminated regexp literal at http://localhost:4545/cli/tests/subdir/mt_video_vdn_tsx.t2.tsx:4:19`
-// Re-enable once fixed.
-itest_ignore!(_049_info_flag_script_jsx {
+itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
@@ -1697,8 +1720,20 @@ itest!(bundle {
 
 itest!(fmt_check_tests_dir {
   args: "fmt --check ./",
-  output: "fmt_check_tests_dir.out",
+  output: "fmt/expected_fmt_check_tests_dir.out",
   exit_code: 1,
+});
+
+itest!(fmt_check_formatted_files {
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  output: "fmt/expected_fmt_check_formatted_files.out",
+  exit_code: 0,
+});
+
+itest!(fmt_check_ignore {
+  args: "fmt --check --unstable --ignore=fmt/formatted1.js fmt/",
+  output: "fmt/expected_fmt_check_ignore.out",
+  exit_code: 0,
 });
 
 itest!(fmt_stdin {
@@ -1786,6 +1821,12 @@ itest!(error_008_checkjs {
   args: "run --reload error_008_checkjs.js",
   exit_code: 1,
   output: "error_008_checkjs.js.out",
+});
+
+itest!(error_009_op_crates_error {
+  args: "run error_009_op_crates_error.js",
+  output: "error_009_op_crates_error.js.out",
+  exit_code: 1,
 });
 
 itest!(error_011_bad_module_specifier {
@@ -2262,6 +2303,20 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(deno_lint_from_stdin {
+  args: "lint --unstable -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_from_stdin_json {
+  args: "lint --unstable --json -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin_json.out",
+  exit_code: 1,
+});
+
 itest!(deno_doc_builtin {
   args: "doc",
   output: "deno_doc_builtin.out",
@@ -2282,6 +2337,17 @@ itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
+});
+
+itest!(info_recursive_modules {
+  args: "info --quiet info_recursive_imports_test.ts",
+  output: "info_recursive_imports_test.out",
+  exit_code: 0,
+});
+
+itest!(info_type_import {
+  args: "info info_type_import.ts",
+  output: "info_type_import.out",
 });
 
 #[test]
@@ -3195,6 +3261,27 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 }
 
 #[test]
+fn websocket() {
+  let _g = util::http_server();
+
+  let script = util::tests_path().join("websocket_test.ts");
+  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
+}
+
+#[test]
 fn exec_path() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -3303,7 +3390,6 @@ fn should_not_panic_on_undefined_home_environment_variable() {
     .arg("run")
     .arg("cli/tests/echo.ts")
     .env_remove("HOME")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3318,7 +3404,6 @@ fn should_not_panic_on_undefined_deno_dir_environment_variable() {
     .arg("run")
     .arg("cli/tests/echo.ts")
     .env_remove("DENO_DIR")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -3335,10 +3420,39 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
     .arg("cli/tests/echo.ts")
     .env_remove("DENO_DIR")
     .env_remove("HOME")
-    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
+}
+
+#[test]
+fn rust_log() {
+  // Without RUST_LOG the stderr is empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+
+  // With RUST_LOG the stderr is not empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .env("RUST_LOG", "debug")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(!output.stderr.is_empty());
 }

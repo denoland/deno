@@ -40,7 +40,7 @@ Example (zsh without framework):
 
 ```shell
 mkdir ~/.zsh # create a folder to save your completions. it can be anywhere
-deno completions zsh > .zsh/_deno
+deno completions zsh > ~/.zsh/_deno
 ```
 
 then add this to your `.zshrc`
@@ -65,6 +65,17 @@ deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
 After this add deno plugin under plugins tag in `~/.zshrc` file. for tools like
 `antigen` path will be `~/.antigen/bundles/robbyrussell/oh-my-zsh/plugins` and
 command will be `antigen bundle deno` and so on.
+
+Example (Powershell):
+
+```shel
+deno completions powershell > $profile
+.$profile
+```
+
+This will be create a Powershell profile at
+`$HOME\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1` by default,
+and it will be run whenever you launch the PowerShell.
 
 ### Editors and IDEs
 

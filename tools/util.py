@@ -361,20 +361,6 @@ def extract_max_latency_in_milliseconds(pattern, string):
         return num * 1000
 
 
-def parse_wrk_output(output):
-    stats = {}
-    stats['req_per_sec'] = None
-    stats['max_latency'] = None
-    for line in output.split("\n"):
-        if stats['req_per_sec'] is None:
-            stats['req_per_sec'] = extract_number(r'Requests/sec:\s+(\d+)',
-                                                  line)
-        if stats['max_latency'] is None:
-            stats['max_latency'] = extract_max_latency_in_milliseconds(
-                r'\s+99%(?:\s+(\d+.\d+)([a-z]+))', line)
-    return stats
-
-
 def platform():
     return {"linux2": "linux", "darwin": "mac", "win32": "win"}[sys.platform]
 

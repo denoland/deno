@@ -85,7 +85,7 @@
       const enc = new TextEncoder();
       return enc.encode(bodySource.toString()).buffer;
     } else if (!bodySource) {
-      return null;
+      return new ArrayBuffer(0);
     }
     throw new Error(
       `Body type not implemented: ${bodySource.constructor.name}`,

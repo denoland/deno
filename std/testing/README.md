@@ -21,6 +21,8 @@ pretty-printed diff of failing assertion.
 - `assertStringContains()` - Make an assertion that `actual` contains
   `expected`.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
+- `assertNotMatch()` - Make an assertion that `actual` not match RegExp
+  `expected`.
 - `assertArrayContains()` - Make an assertion that `actual` array contains the
   `expected` values.
 - `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,

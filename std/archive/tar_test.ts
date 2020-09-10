@@ -10,10 +10,12 @@
  */
 import { assertEquals, assert } from "../testing/asserts.ts";
 
-import { resolve } from "../path/mod.ts";
+import { resolve, dirname, fromFileUrl } from "../path/mod.ts";
 import { Tar, Untar } from "./tar.ts";
 
-const filePath = resolve("archive", "testdata", "example.txt");
+const moduleDir = dirname(fromFileUrl(import.meta.url));
+const testdataDir = resolve(moduleDir, "testdata");
+const filePath = resolve(testdataDir, "example.txt");
 
 interface TestEntry {
   name: string;
@@ -192,7 +194,7 @@ Deno.test(
       },
     ];
 
-    const outputFile = resolve("archive", "testdata", "test.tar");
+    const outputFile = resolve(testdataDir, "test.tar");
 
     const tar = await createTar(entries);
     const file = await Deno.open(outputFile, { create: true, write: true });
@@ -227,7 +229,7 @@ Deno.test("untarAsyncIteratorFromFileReader", async function (): Promise<void> {
     },
   ];
 
-  const outputFile = resolve("archive", "testdata", "test.tar");
+  const outputFile = resolve(testdataDir, "test.tar");
 
   const tar = await createTar(entries);
   const file = await Deno.open(outputFile, { create: true, write: true });
@@ -303,7 +305,7 @@ Deno.test(
 );
 
 Deno.test("untarLinuxGeneratedTar", async function (): Promise<void> {
-  const filePath = resolve("archive", "testdata", "deno.tar");
+  const filePath = resolve(testdataDir, "deno.tar");
   const file = await Deno.open(filePath, { read: true });
 
   const expectedEntries = [
@@ -405,12 +407,12 @@ Deno.test("directoryEntryType", async function (): Promise<void> {
     type: "directory",
   });
 
-  const filePath = resolve("archive", "testdata");
+  const filePath = resolve(testdataDir);
   tar.append("archive/testdata/", {
     filePath,
   });
 
-  const outputFile = resolve("archive", "testdata", "directory_type_test.tar");
+  const outputFile = resolve(testdataDir, "directory_type_test.tar");
   const file = await Deno.open(outputFile, { create: true, write: true });
   await Deno.copy(tar.getReader(), file);
   await file.close();
