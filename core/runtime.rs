@@ -177,8 +177,8 @@ pub struct HeapLimits {
   pub max: usize,
 }
 
-pub(crate) struct IsolateOptions {
-  loader: Rc<dyn ModuleLoader>,
+pub struct RuntimeOptions {
+  loader: Option<Rc<dyn ModuleLoader>>,
   startup_snapshot: Option<Snapshot>,
   will_snapshot: bool,
   heap_limits: Option<HeapLimits>,
@@ -188,8 +188,8 @@ impl JsRuntime {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(maybe_snapshot: Option<Snapshot>, will_snapshot: bool) -> Self {
-    let options = IsolateOptions {
-      loader: Rc::new(NoopModuleLoader),
+    let options = RuntimeOptions {
+      loader: None,
       startup_snapshot: maybe_snapshot,
       will_snapshot,
       heap_limits: None,
@@ -205,8 +205,8 @@ impl JsRuntime {
     maybe_snapshot: Option<Snapshot>,
     will_snapshot: bool,
   ) -> Self {
-    let options = IsolateOptions {
-      loader,
+    let options = RuntimeOptions {
+      loader: Some(loader),
       startup_snapshot: maybe_snapshot,
       will_snapshot,
       heap_limits: None,
@@ -225,8 +225,8 @@ impl JsRuntime {
     maybe_snapshot: Option<Snapshot>,
     heap_limits: HeapLimits,
   ) -> Self {
-    let options = IsolateOptions {
-      loader: Rc::new(NoopModuleLoader),
+    let options = RuntimeOptions {
+      loader: None,
       startup_snapshot: maybe_snapshot,
       will_snapshot: false,
       heap_limits: Some(heap_limits),
@@ -235,7 +235,7 @@ impl JsRuntime {
     Self::from_options(options)
   }
 
-  fn from_options(options: IsolateOptions) -> Self {
+  fn from_options(options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
@@ -290,6 +290,8 @@ impl JsRuntime {
       (isolate, None)
     };
 
+    let loader = options.loader.unwrap_or_else(|| Rc::new(NoopModuleLoader));
+
     let op_state = OpState::default();
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
@@ -305,7 +307,7 @@ impl JsRuntime {
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: Cell::new(false),
       modules: Modules::new(),
-      loader: options.loader,
+      loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
