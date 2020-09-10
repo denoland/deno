@@ -83,12 +83,6 @@ fn create_isolate() -> JsRuntime {
   register_op_bin_async(&mut isolate, "read", op_read);
   register_op_bin_async(&mut isolate, "write", op_write);
   isolate
-    .execute(
-      "http_bench_bin_ops.js",
-      include_str!("http_bench_bin_ops.js"),
-    )
-    .unwrap();
-  isolate
 }
 
 fn op_listen(
@@ -251,11 +245,20 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let isolate = create_isolate();
+  let mut isolate = create_isolate();
   let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
     .build()
+    .unwrap();
+
+  runtime
+    .enter(|| {
+      isolate.execute(
+        "http_bench_bin_ops.js",
+        include_str!("http_bench_bin_ops.js"),
+      )
+    })
     .unwrap();
   js_check(runtime.block_on(isolate));
 }

@@ -47,12 +47,6 @@ fn create_isolate() -> JsRuntime {
   runtime.register_op("read", deno_core::json_op_async(op_read));
   runtime.register_op("write", deno_core::json_op_async(op_write));
   runtime
-    .execute(
-      "http_bench_json_ops.js",
-      include_str!("http_bench_json_ops.js"),
-    )
-    .unwrap();
-  runtime
 }
 
 fn op_listen(
@@ -183,11 +177,19 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let isolate = create_isolate();
+  let mut isolate = create_isolate();
   let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
     .build()
+    .unwrap();
+  runtime
+    .enter(|| {
+      isolate.execute(
+        "http_bench_json_ops.js",
+        include_str!("http_bench_json_ops.js"),
+      )
+    })
     .unwrap();
   js_check(runtime.block_on(isolate));
 }
