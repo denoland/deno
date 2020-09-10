@@ -1536,8 +1536,10 @@
 
   // Expose these fields to internalObject for tests.
   exposeForTest("Console", Console);
-  exposeForTest("inspectArgs", inspectArgs);
   exposeForTest("cssToAnsi", cssToAnsi);
+  exposeForTest("inspectArgs", inspectArgs);
+  exposeForTest("parseCss", parseCss);
+  exposeForTest("parseCssColor", parseCssColor);
 
   window.__bootstrap.console = {
     CSI,

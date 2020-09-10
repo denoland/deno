@@ -16,6 +16,8 @@ const {
   Console,
   cssToAnsi: cssToAnsi_,
   inspectArgs,
+  parseCss: parseCss_,
+  parseCssColor: parseCssColor_,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -40,6 +42,14 @@ const DEFAULT_CSS: Css = {
   textDecorationColor: null,
   textDecorationLine: [],
 };
+
+function parseCss(cssString: string): Css {
+  return parseCss_(cssString);
+}
+
+function parseCssColor(colorString: string): Css {
+  return parseCssColor_(colorString);
+}
 
 /** ANSI-fy the CSS, replace "\x1b" with "_". */
 function cssToAnsiEsc(css: Css): string {
@@ -825,6 +835,79 @@ unitTest(function consoleTestWithStyleSpecifier(): void {
   assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
   assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
   assertEquals(stripColor(stringify("%cfoo%cbar", "", "color: red")), "foobar");
+});
+
+unitTest(function consoleParseCssColor(): void {
+  assertEquals(parseCssColor("black"), [0, 0, 0]);
+  assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
+  assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
+  assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
+  assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
+  assertEquals(parseCssColor("#18d"), [16, 128, 208]);
+  assertEquals(parseCssColor("#18D"), [16, 128, 208]);
+  assertEquals(parseCssColor("rgb(100, 200, 50)"), [100, 200, 50]);
+  assertEquals(parseCssColor("rgb(+100.3, -200, .5)"), [100, 0, 1]);
+  assertEquals(parseCssColor("hsl(75, 60%, 40%)"), [133, 163, 41]);
+
+  assertEquals(parseCssColor("rgb(100,200,50)"), [100, 200, 50]);
+  assertEquals(
+    parseCssColor("rgb( \t\n100 \t\n, \t\n200 \t\n, \t\n50 \t\n)"),
+    [100, 200, 50],
+  );
+});
+
+unitTest(function consoleParseCss(): void {
+  assertEquals(
+    parseCss("background-color: red"),
+    { ...DEFAULT_CSS, backgroundColor: [255, 0, 0] },
+  );
+  assertEquals(parseCss("color: blue"), { ...DEFAULT_CSS, color: [0, 0, 255] });
+  assertEquals(
+    parseCss("font-weight: bold"),
+    { ...DEFAULT_CSS, fontWeight: "bold" },
+  );
+  assertEquals(
+    parseCss("font-style: italic"),
+    { ...DEFAULT_CSS, fontStyle: "italic" },
+  );
+  assertEquals(
+    parseCss("font-style: oblique"),
+    { ...DEFAULT_CSS, fontStyle: "oblique" },
+  );
+  assertEquals(
+    parseCss("text-decoration-color: green"),
+    { ...DEFAULT_CSS, textDecorationColor: [0, 128, 0] },
+  );
+  assertEquals(
+    parseCss("text-decoration-line: underline overline line-through"),
+    {
+      ...DEFAULT_CSS,
+      textDecorationLine: ["underline", "overline", "line-through"],
+    },
+  );
+  assertEquals(
+    parseCss("text-decoration: yellow underline"),
+    {
+      ...DEFAULT_CSS,
+      textDecorationColor: [255, 255, 0],
+      textDecorationLine: ["underline"],
+    },
+  );
+
+  assertEquals(
+    parseCss("color:red;font-weight:bold;"),
+    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+  );
+  assertEquals(
+    parseCss(
+      " \t\ncolor \t\n: \t\nred \t\n; \t\nfont-weight \t\n: \t\nbold \t\n; \t\n",
+    ),
+    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+  );
+  assertEquals(
+    parseCss("color: red; font-weight: bold, font-style: italic"),
+    { ...DEFAULT_CSS, color: [255, 0, 0] },
+  );
 });
 
 unitTest(function consoleCssToAnsi(): void {
