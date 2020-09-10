@@ -138,7 +138,7 @@ declare namespace Deno {
    * This is similar to the `free` command in Linux
    *
    * ```ts
-   * console.log(Deno.memoryInfo());
+   * console.log(Deno.systemMemoryInfo());
    * ```
    *
    * Requires `allow-env` permission.
