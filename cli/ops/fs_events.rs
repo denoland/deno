@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use notify::event::Event as NotifyEvent;
@@ -15,14 +14,15 @@ use notify::Watcher;
 use serde::Serialize;
 use serde_derive::Deserialize;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_fs_events_open", op_fs_events_open);
-  s.register_op_json_async("op_fs_events_poll", op_fs_events_poll);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_fs_events_open", op_fs_events_open);
+  super::reg_json_async(rt, "op_fs_events_poll", op_fs_events_poll);
 }
 
 struct FsEventsResource {
@@ -64,7 +64,7 @@ impl From<NotifyEvent> for FsEvent {
 }
 
 fn op_fs_events_open(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -90,19 +90,16 @@ fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    state.check_read(&PathBuf::from(path))?;
+    super::cli_state(state).check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
-  let rid = state
-    .resource_table
-    .borrow_mut()
-    .add("fsEvents", Box::new(resource));
+  let rid = state.resource_table.add("fsEvents", Box::new(resource));
   Ok(json!(rid))
 }
 
 async fn op_fs_events_poll(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -112,8 +109,9 @@ async fn op_fs_events_poll(
   }
   let PollArgs { rid } = serde_json::from_value(args)?;
   poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
-    let watcher = resource_table
+    let mut state = state.borrow_mut();
+    let watcher = state
+      .resource_table
       .get_mut::<FsEventsResource>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
     watcher

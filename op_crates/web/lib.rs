@@ -33,7 +33,6 @@ pub fn get_declaration() -> PathBuf {
 #[cfg(test)]
 mod tests {
   use deno_core::js_check;
-  use deno_core::BasicState;
   use deno_core::JsRuntime;
   use deno_core::StartupData;
   use futures::future::lazy;
@@ -49,8 +48,7 @@ mod tests {
   }
 
   fn setup() -> JsRuntime {
-    let mut isolate =
-      JsRuntime::new(BasicState::new(), StartupData::None, false);
+    let mut isolate = JsRuntime::new(StartupData::None, false);
     crate::init(&mut isolate);
     isolate
   }

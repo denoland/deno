@@ -1,18 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_derive::Deserialize;
 use serde_json::Value;
 use std::path::Path;
-use std::rc::Rc;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_query_permission", op_query_permission);
-  s.register_op_json_sync("op_revoke_permission", op_revoke_permission);
-  s.register_op_json_sync("op_request_permission", op_request_permission);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_query_permission", op_query_permission);
+  super::reg_json_sync(rt, "op_revoke_permission", op_revoke_permission);
+  super::reg_json_sync(rt, "op_request_permission", op_request_permission);
 }
 
 #[derive(Deserialize)]
@@ -23,12 +21,13 @@ struct PermissionArgs {
 }
 
 pub fn op_query_permission(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let permissions = state.permissions.borrow();
+  let cli_state = super::cli_state(state);
+  let permissions = cli_state.permissions.borrow();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.query_read(&path.as_deref().map(Path::new)),
@@ -49,12 +48,13 @@ pub fn op_query_permission(
 }
 
 pub fn op_revoke_permission(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut permissions = state.permissions.borrow_mut();
+  let cli_state = super::cli_state(state);
+  let mut permissions = cli_state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.revoke_read(&path.as_deref().map(Path::new)),
@@ -75,12 +75,13 @@ pub fn op_revoke_permission(
 }
 
 pub fn op_request_permission(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let permissions = &mut state.permissions.borrow_mut();
+  let cli_state = super::cli_state(state);
+  let permissions = &mut cli_state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.request_read(&path.as_deref().map(Path::new)),
