@@ -4,6 +4,7 @@ mod op_fetch_asset;
 
 use deno_core::js_check;
 use deno_core::JsRuntime;
+use deno_core::RuntimeOptions;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -36,7 +37,10 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let isolate = JsRuntime::new(None, true);
+  let isolate = JsRuntime::new_o(RuntimeOptions {
+    will_snapshot: true,
+    ..Default::default()
+  });
   create_snapshot(isolate, snapshot_path, files);
 }
 
@@ -69,7 +73,10 @@ fn create_compiler_snapshot(
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
 
-  let mut isolate = JsRuntime::new(None, true);
+  let mut isolate = JsRuntime::new_o(RuntimeOptions {
+    will_snapshot: true,
+    ..Default::default()
+  });
   isolate.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),

@@ -11,6 +11,7 @@ use deno_core::ErrBox;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
+use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
@@ -105,8 +106,11 @@ impl Worker {
     maybe_snapshot: Option<Snapshot>,
     state: &Rc<State>,
   ) -> Self {
-    let mut isolate =
-      JsRuntime::new_with_loader(state.clone(), maybe_snapshot, false);
+    let mut isolate = JsRuntime::new_o(RuntimeOptions {
+      module_loader: Some(state.clone()),
+      startup_snapshot: maybe_snapshot,
+      ..Default::default()
+    });
     {
       let global_state = state.global_state.clone();
       let js_runtime_state = JsRuntime::state(&isolate);

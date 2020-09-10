@@ -40,7 +40,7 @@ impl log::Log for Logger {
 }
 
 fn create_isolate() -> JsRuntime {
-  let mut runtime = JsRuntime::new(None, false);
+  let mut runtime = JsRuntime::new_o(Default::default());
   runtime.register_op("listen", deno_core::json_op_sync(op_listen));
   runtime.register_op("close", deno_core::json_op_sync(op_close));
   runtime.register_op("accept", deno_core::json_op_async(op_accept));

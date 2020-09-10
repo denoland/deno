@@ -29,10 +29,10 @@ pub fn compiler_isolate_init() -> Snapshot {
 
 #[test]
 fn cli_snapshot() {
-  let mut isolate = deno_core::JsRuntime::new(
-    Some(deno_core::Snapshot::Static(CLI_SNAPSHOT)),
-    false,
-  );
+  let mut isolate = deno_core::JsRuntime::new_o(deno_core::RuntimeOptions {
+    startup_snapshot: Some(deno_core::Snapshot::Static(CLI_SNAPSHOT)),
+    ..Default::default()
+  });
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
@@ -46,10 +46,10 @@ fn cli_snapshot() {
 
 #[test]
 fn compiler_snapshot() {
-  let mut isolate = deno_core::JsRuntime::new(
-    Some(deno_core::Snapshot::Static(COMPILER_SNAPSHOT)),
-    false,
-  );
+  let mut isolate = deno_core::JsRuntime::new_o(deno_core::RuntimeOptions {
+    startup_snapshot: Some(deno_core::Snapshot::Static(COMPILER_SNAPSHOT)),
+    ..Default::default()
+  });
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
