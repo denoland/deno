@@ -15,8 +15,8 @@
     return sendSync("op_os_release");
   }
 
-  function memoryInfo() {
-    return sendSync("op_memory_info");
+  function systemMemoryInfo() {
+    return sendSync("op_system_memory_info");
   }
 
   function exit(code = 0) {
@@ -54,7 +54,7 @@
     execPath,
     exit,
     osRelease,
-    memoryInfo,
+    systemMemoryInfo,
     hostname,
     loadavg,
   };

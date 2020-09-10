@@ -132,7 +132,10 @@ declare namespace Deno {
 
   /** **Unstable** new API. yet to be vetted. 
    *
-   * Returns the release version of the Operating System.
+   * Displays the total amount of free and used physical and swap memory in the
+   * system, as well as the buffers and caches used by the kernel.
+   * 
+   * This is similar to the `free` command in Linux
    *
    * ```ts
    * console.log(Deno.memoryInfo());
@@ -141,17 +144,26 @@ declare namespace Deno {
    * Requires `allow-env` permission.
    *
    */
-  export function memoryInfo(): MemoryInfo;
+  export function systemMemoryInfo(): SystemMemoryInfo;
 
-  export interface MemoryInfo {
-    /** Total physical memory. */
+  export interface SystemMemoryInfo {
+    /** Total installed memory */
     total: number;
+    /** Unused memory */
     free: number;
+    /** Estimation of how much memory is available  for  starting  new
+     * applications, without  swapping. Unlike the data provided by the cache or
+     * free fields, this field takes into account page cache and also that not
+     * all reclaimable memory slabs will be reclaimed due to items being in use
+     */
     available: number;
+    /** Memory used by kernel buffers */
     buffers: number;
+    /** Memory  used  by  the  page  cache  and  slabs */
     cached: number;
-    /** Total swap memory. */
+    /** Total swap memory */
     swapTotal: number;
+    /** Unused swap memory */
     swapFree: number;
   }
 

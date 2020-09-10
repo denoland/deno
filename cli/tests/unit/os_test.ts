@@ -178,8 +178,8 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { env: true } }, function memoryInfo(): void {
-  const info = Deno.memoryInfo();
+unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
+  const info = Deno.systemMemoryInfo();
   assert(info.total >= 0);
   assert(info.free >= 0);
   assert(info.available >= 0);

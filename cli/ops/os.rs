@@ -21,7 +21,7 @@ pub fn init(s: &Rc<State>) {
   s.register_op_json_sync("op_hostname", op_hostname);
   s.register_op_json_sync("op_loadavg", op_loadavg);
   s.register_op_json_sync("op_os_release", op_os_release);
-  s.register_op_json_sync("op_memory_info", op_memory_info);
+  s.register_op_json_sync("op_system_memory_info", op_system_memory_info);
 }
 
 fn op_exec_path(
@@ -149,12 +149,12 @@ fn op_os_release(
   Ok(json!(release))
 }
 
-fn op_memory_info(
+fn op_system_memory_info(
   state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.memoryInfo");
+  state.check_unstable("Deno.systemMemoryInfo");
   state.check_env()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(json!({
