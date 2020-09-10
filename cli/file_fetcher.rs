@@ -401,8 +401,7 @@ impl SourceFileFetcher {
     };
 
     let (mut source_file, headers) = result;
-    if let Some(redirect_to) = headers.get("location") {
-      let redirect_to = redirect_to.first().unwrap();
+    if let Some(redirect_to) = headers.get("location").and_then(|e| e.first()) {
       let redirect_url = match Url::parse(redirect_to) {
         Ok(redirect_url) => redirect_url,
         Err(url::ParseError::RelativeUrlWithoutBase) => {
@@ -539,10 +538,10 @@ impl SourceFileFetcher {
           let fake_filepath = PathBuf::from(module_url.path());
           let (media_type, charset) = map_content_type(
             &fake_filepath,
-            headers.get("content-type").map(|e| match e.first() {
-              Some(e) => e.as_str(),
-              None => "",
-            }),
+            headers
+              .get("content-type")
+              .and_then(|e| e.first())
+              .map(|e| e.as_str()),
           );
 
           let types_header = headers
