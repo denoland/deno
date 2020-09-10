@@ -21,7 +21,7 @@ const DEFAULT_INSPECT_OPTIONS = {
 inspect.defaultOptions = DEFAULT_INSPECT_OPTIONS;
 inspect.custom = Deno.customInspect;
 
-// TODO: make it in-line with Node's implementation
+// TODO(schwarzkopfb): make it in-line with Node's implementation
 // Ref: https://nodejs.org/dist/latest-v14.x/docs/api/util.html#util_util_inspect_object_options
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function inspect(object: unknown, ...opts: any): string {
