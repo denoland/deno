@@ -179,12 +179,23 @@ pub struct HeapLimits {
 
 #[derive(Default)]
 pub struct RuntimeOptions {
+  /// Implementation of `ModuleLoader` which will be
+  /// called when V8 requests to load ES modules.
+  ///
+  /// If not provided runtime will error if code being
+  /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
+
+  /// V8 snapshot that should be loaded on startup.
+  ///
+  /// Currently can't be used with `will_snapshot`.
   pub startup_snapshot: Option<Snapshot>,
+
   /// Prepare runtime to take snapshot of loaded code.
   ///
   /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
+
   /// This is useful for controlling memory usage of scripts.
   ///
   /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
