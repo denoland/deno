@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
 use log::Level;
+use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -1267,7 +1268,10 @@ fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+  flags.ca_file = matches
+    .value_of("cert")
+    .map(ToOwned::to_owned)
+    .or_else(|| env::var("DENO_CERT").ok());
 }
 
 fn unstable_arg<'a, 'b>() -> Arg<'a, 'b> {
