@@ -23,7 +23,7 @@ fn op_global_timer_stop(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.global_timer.borrow_mut().cancel();
   Ok(json!({}))
 }
@@ -42,12 +42,8 @@ async fn op_global_timer(
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
-  let cli_state = {
-    let state = state.borrow();
-    state.borrow::<crate::state::RcState>().clone()
-  };
   let timer_fut = {
-    cli_state
+    super::cli_state2(&state)
       .global_timer
       .borrow_mut()
       .new_timeout(deadline)
@@ -66,7 +62,7 @@ fn op_now(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   let seconds = cli_state.start_time.elapsed().as_secs();
   let mut subsec_nanos = cli_state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds

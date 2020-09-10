@@ -39,7 +39,7 @@ pub fn op_open_plugin(
   let args: OpenPluginArgs = serde_json::from_value(args)?;
   let filename = PathBuf::from(&args.filename);
 
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.openPlugin");
   cli_state.check_plugin(&filename)?;
 

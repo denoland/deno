@@ -71,8 +71,7 @@ async fn op_transpile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, ErrBox> {
-  let state = state.borrow();
-  let cli_state = state.borrow::<crate::state::RcState>();
+  let cli_state = super::cli_state2(&state);
   cli_state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   let global_state = cli_state.global_state.clone();

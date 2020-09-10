@@ -181,6 +181,7 @@ async fn op_datagram_send(
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let zero_copy = zero_copy[0].clone();
+  let cli_state = super::cli_state2(&state);
 
   match serde_json::from_value(args)? {
     SendArgs {
@@ -188,11 +189,7 @@ async fn op_datagram_send(
       transport,
       transport_args: ArgsEnum::Ip(args),
     } if transport == "udp" => {
-      {
-        let state_ = state.borrow();
-        let cli_state = state_.borrow::<crate::state::RcState>();
-        cli_state.check_net(&args.hostname, args.port)?;
-      }
+      cli_state.check_net(&args.hostname, args.port)?;
       let addr = resolve_addr(&args.hostname, args.port)?;
       poll_fn(move |cx| {
         let mut state = state.borrow_mut();
@@ -215,9 +212,8 @@ async fn op_datagram_send(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unixpacket" => {
       let address_path = net_unix::Path::new(&args.path);
-      let mut state = state.borrow_mut();
-      let cli_state = state.borrow::<crate::state::RcState>();
       cli_state.check_read(&address_path)?;
+      let mut state = state.borrow_mut();
       let resource = state
         .resource_table
         .get_mut::<net_unix::UnixDatagramResource>(rid as u32)
@@ -245,16 +241,13 @@ async fn op_connect(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
+  let cli_state = super::cli_state2(&state);
   match serde_json::from_value(args)? {
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
     } if transport == "tcp" => {
-      {
-        let state_ = state.borrow();
-        let cli_state = state_.borrow::<crate::state::RcState>();
-        cli_state.check_net(&args.hostname, args.port)?;
-      }
+      cli_state.check_net(&args.hostname, args.port)?;
       let addr = resolve_addr(&args.hostname, args.port)?;
       let tcp_stream = TcpStream::connect(&addr).await?;
       let local_addr = tcp_stream.local_addr()?;
@@ -287,12 +280,8 @@ async fn op_connect(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" => {
       let address_path = net_unix::Path::new(&args.path);
-      {
-        let state_ = state.borrow();
-        let cli_state = state_.borrow::<crate::state::RcState>();
-        cli_state.check_unstable("Deno.connect");
-        cli_state.check_read(&address_path)?;
-      }
+      cli_state.check_unstable("Deno.connect");
+      cli_state.check_read(&address_path)?;
       let path = args.path;
       let unix_stream =
         net_unix::UnixStream::connect(net_unix::Path::new(&path)).await?;
@@ -333,8 +322,7 @@ fn op_shutdown(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let cli_state = state.borrow::<crate::state::RcState>();
-  cli_state.check_unstable("Deno.shutdown");
+  super::cli_state(state).check_unstable("Deno.shutdown");
 
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
@@ -478,13 +466,13 @@ fn op_listen(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
+  let cli_state = super::cli_state(state);
   match serde_json::from_value(args)? {
     ListenArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
     } => {
       {
-        let cli_state = state.borrow::<crate::state::RcState>();
         if transport == "udp" {
           cli_state.check_unstable("Deno.listenDatagram");
         }
@@ -518,7 +506,6 @@ fn op_listen(
     } if transport == "unix" || transport == "unixpacket" => {
       let address_path = net_unix::Path::new(&args.path);
       {
-        let cli_state = state.borrow::<crate::state::RcState>();
         if transport == "unix" {
           cli_state.check_unstable("Deno.listen");
         }

@@ -28,8 +28,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-pub type RcState = Rc<State>;
-
 // TODO(ry) Rename to CliState to avoid confusion with other states.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {

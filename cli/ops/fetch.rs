@@ -47,9 +47,8 @@ async fn op_fetch(
       .ok_or_else(ErrBox::bad_resource_id)?;
     r.client.clone()
   } else {
-    let s = state.borrow();
-    let state = s.borrow::<crate::state::RcState>();
-    let client_ref = state.http_client.borrow();
+    let cli_state = super::cli_state2(&state);
+    let client_ref = cli_state.http_client.borrow();
     client_ref.clone()
   };
 

@@ -17,8 +17,7 @@ fn op_get_random_values(
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1);
-  let cli_state = state.borrow::<crate::state::RcState>();
-
+  let cli_state = super::cli_state(state);
   if let Some(seeded_rng) = &cli_state.seeded_rng {
     seeded_rng.borrow_mut().fill(&mut *zero_copy[0]);
   } else {

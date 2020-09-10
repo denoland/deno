@@ -90,8 +90,7 @@ fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    let cli_state = state.borrow::<crate::state::RcState>();
-    cli_state.check_read(&PathBuf::from(path))?;
+    super::cli_state(state).check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
