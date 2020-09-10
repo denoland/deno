@@ -21,7 +21,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO: change this when `Deno.consoleSize()` will be stable
+// TODO(schwarzkopfb): change this when `Deno.consoleSize()` will be stable
 interface DenoUnstable {
   consoleSize?(rid: number): { columns: number };
 }
@@ -32,7 +32,7 @@ function getConsoleWidth(): number {
 import { inspect } from "./util.ts";
 import { stripColor as removeColors } from "../fmt/colors.ts";
 
-// TODO: we should implement Node's concept of "primordials"
+// TODO(schwarzkopfb): we should implement Node's concept of "primordials"
 // Ref: https://github.com/denoland/deno/issues/6040#issuecomment-637305828
 const MathMax = Math.max;
 const { Error } = globalThis;
@@ -84,7 +84,7 @@ export function copyError(source: Error): Error {
   return target;
 }
 
-// TODO: create/find issue to suggest the following properties to be added to `Deno.inspect()` opts:
+// TODO(schwarzkopfb): create/find issue to suggest the following properties to be added to `Deno.inspect()` opts:
 // `customInspect`, `customInspect`, `showHidden`, `showProxy` and `getters` (and probably more)
 // Ref: https://nodejs.org/dist/latest-v14.x/docs/api/util.html#util_util_inspect_object_options
 export function inspectValue(val: unknown): string {
@@ -206,7 +206,6 @@ export function createErrDiff(
     const actualLines = actualInspected.split("\n");
 
     // Only remove lines in case it makes sense to collapse those.
-    // TODO: Accept env to always show the full error.
     if (actualLines.length > 50) {
       actualLines[46] = `${blue}...${white}`;
       while (actualLines.length > 47) {
@@ -399,7 +398,7 @@ export class AssertionError extends Error {
       expected,
     } = options;
 
-    // TODO: `stackTraceLimit` should be added to `ErrorConstructor` in
+    // TODO(schwarzkopfb): `stackTraceLimit` should be added to `ErrorConstructor` in
     // cli/dts/lib.deno.shared_globals.d.ts
     const limit = (Error as ErrorWithStackTraceLimit).stackTraceLimit;
     (Error as ErrorWithStackTraceLimit).stackTraceLimit = 0;
@@ -457,7 +456,6 @@ export class AssertionError extends Error {
         }
 
         // Only remove lines in case it makes sense to collapse those.
-        // TODO: Accept env to always show the full error.
         if (res.length > 50) {
           res[46] = `${blue}...${white}`;
           while (res.length > 47) {
