@@ -993,6 +993,7 @@ fn run_watch() {
     .arg("run")
     .arg("--watch")
     .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1007,6 +1008,9 @@ fn run_watch() {
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux. 
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   // Change content of the file
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
