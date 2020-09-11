@@ -950,46 +950,6 @@ fn bundle_import_map() {
 }
 
 #[test]
-fn data_import() {
-  let status = util::deno_cmd()
-    .current_dir(util::tests_path())
-    .arg("test")
-    .arg("--unstable")
-    .arg("--reload")
-    .arg("data_import_test.js")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
-fn data_import_invalid() {
-  let (_, err) = util::run_and_collect_output(
-    false,
-    "run --unstable --reload data_import_invalid.js",
-    None,
-    None,
-    false,
-  );
-  assert!(err.contains("Malformed data url, missing comma"));
-}
-
-#[test]
-fn data_import_origin_upgrade() {
-  let (_, err) = util::run_and_collect_output(
-    false,
-    "run --unstable --reload data_import_origin_upgrade.js",
-    None,
-    None,
-    false,
-  );
-  assert!(err.contains(
-    "Modules loaded with data: are not allowed to import other modules"
-  ));
-}
-
 fn info_with_compiled_source() {
   let _g = util::http_server();
   let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
@@ -2370,6 +2330,23 @@ itest!(info_recursive_modules {
 itest!(info_type_import {
   args: "info info_type_import.ts",
   output: "info_type_import.out",
+});
+
+itest!(data_import {
+  args: "test --reload --unstable data_import_test.js",
+  output: "data_import_test.out",
+});
+
+itest!(data_import_invalid {
+  args: "test --reload --unstable data_import_invalid.js",
+  output: "data_import_invalid.out",
+  exit_code: 1,
+});
+
+itest!(data_import_origin_upgrade {
+  args: "test --reload --unstable data_import_origin_upgrade.js",
+  output: "data_import_origin_upgrade.out",
+  exit_code: 1,
 });
 
 #[test]

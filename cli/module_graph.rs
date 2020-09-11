@@ -64,7 +64,7 @@ fn validate_no_downgrade(
       "data" => {
         let e = ErrBox::new(
           "PermissionDenied",
-          "Modules loaded with data: are not allowed to import other modules",
+          "Modules loaded using data URL are not allowed to import other modules",
         );
         return Err(err_with_location(e, maybe_location));
       }

@@ -568,9 +568,11 @@ fn extract_data_url(url: &Url) -> Result<SourceFile, ErrBox> {
   let mut part_iterator = url_content.splitn(2, ',');
 
   let media_type_str = part_iterator.next().unwrap();
-  let data = part_iterator
-    .next()
-    .expect("Malformed data url, missing comma");
+  let data = if let Some(d) = part_iterator.next() {
+    d
+  } else {
+    return Err(ErrBox::new("URIError", "Malformed data url, missing comma"));
+  };
 
   let filename = PathBuf::new();
   let (media_type, charset) = map_content_type(&filename, Some(media_type_str));
