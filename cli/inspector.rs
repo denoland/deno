@@ -137,9 +137,27 @@ async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
 ) {
-  // TODO: `inspector_map` in an Rc<RefCell<T>> instead. This is currently not
-  // possible because warp requires all filters to implement Send, which should
-  // not be necessary because we are using a single-threaded runtime.
+  // When the main thread shuts down, The Rust stdlib will call `WSACleanup()`,
+  // which shuts down the network stack. This thread will still be
+  // running at that time (because it never exits), but all attempts at network
+  // I/O will fail with a `WSANOTINITIALIZED` error, which causes a panic.
+  // To prevent this from happening, Winsock is initialized another time here;
+  // this increases Winsock's internal reference count, so it won't shut
+  // itself down when the main thread calls `WSACleanup()` upon exit.
+  // TODO: When the last `Inspector` instance is dropped, make it signal the
+  // server thread so it exits cleanly, then join it with the main thread.
+  #[cfg(windows)]
+  unsafe {
+    use winapi::um::winsock2::{WSAStartup, WSADATA};
+    let mut wsa_data = MaybeUninit::<WSADATA>::zeroed();
+    let r = WSAStartup(0x202 /* Winsock 2.2 */, wsa_data.as_mut_ptr());
+    assert_eq!(r, 0);
+  }
+
+  // TODO: put the `inspector_map` in an `Rc<RefCell<_>>` instead. This is
+  // currently not possible because warp requires all filters to implement
+  // `Send`, which should not be necessary because we are using the
+  // single-threaded Tokio runtime.
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(Mutex::new(inspector_map));
 

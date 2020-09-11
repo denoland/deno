@@ -2,11 +2,10 @@
 extern crate log;
 
 use deno_core::js_check;
-use deno_core::BasicState;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::Script;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
@@ -14,6 +13,7 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
 use futures::future::TryFutureExt;
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env;
 use std::fmt::Debug;
@@ -78,23 +78,22 @@ impl From<Record> for RecordBuf {
 }
 
 fn create_isolate() -> JsRuntime {
-  let state = BasicState::new();
-  register_op_bin_sync(&state, "listen", op_listen);
-  register_op_bin_sync(&state, "close", op_close);
-  register_op_bin_async(&state, "accept", op_accept);
-  register_op_bin_async(&state, "read", op_read);
-  register_op_bin_async(&state, "write", op_write);
-
   let startup_data = StartupData::Script(Script {
     source: include_str!("http_bench_bin_ops.js"),
     filename: "http_bench_bin_ops.js",
   });
 
-  JsRuntime::new(state, startup_data, false)
+  let mut isolate = JsRuntime::new(startup_data, false);
+  register_op_bin_sync(&mut isolate, "listen", op_listen);
+  register_op_bin_sync(&mut isolate, "close", op_close);
+  register_op_bin_async(&mut isolate, "accept", op_accept);
+  register_op_bin_async(&mut isolate, "read", op_read);
+  register_op_bin_async(&mut isolate, "write", op_write);
+  isolate
 }
 
 fn op_listen(
-  state: &BasicState,
+  state: &mut OpState,
   _rid: u32,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
@@ -102,36 +101,33 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let rid = state
-    .resource_table
-    .borrow_mut()
-    .add("tcpListener", Box::new(listener));
+  let rid = state.resource_table.add("tcpListener", Box::new(listener));
   Ok(rid)
 }
 
 fn op_close(
-  state: &BasicState,
+  state: &mut OpState,
   rid: u32,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
   state
     .resource_table
-    .borrow_mut()
     .close(rid)
     .map(|_| 0)
     .ok_or_else(bad_resource_id)
 }
 
-fn op_accept(
-  state: Rc<BasicState>,
+async fn op_accept(
+  state: Rc<RefCell<OpState>>,
   rid: u32,
   _bufs: BufVec,
-) -> impl TryFuture<Ok = u32, Error = Error> {
+) -> Result<u32, Error> {
   debug!("accept rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let resource_table = &mut state.borrow_mut().resource_table;
+
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -139,10 +135,11 @@ fn op_accept(
       resource_table.add("tcpStream", Box::new(stream))
     })
   })
+  .await
 }
 
 fn op_read(
-  state: Rc<BasicState>,
+  state: Rc<RefCell<OpState>>,
   rid: u32,
   bufs: BufVec,
 ) -> impl TryFuture<Ok = usize, Error = Error> {
@@ -152,7 +149,8 @@ fn op_read(
   debug!("read rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let resource_table = &mut state.borrow_mut().resource_table;
+
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -161,7 +159,7 @@ fn op_read(
 }
 
 fn op_write(
-  state: Rc<BasicState>,
+  state: Rc<RefCell<OpState>>,
   rid: u32,
   bufs: BufVec,
 ) -> impl TryFuture<Ok = usize, Error = Error> {
@@ -170,7 +168,8 @@ fn op_write(
   debug!("write rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let resource_table = &mut state.borrow_mut().resource_table;
+
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -178,35 +177,42 @@ fn op_write(
   })
 }
 
-fn register_op_bin_sync<F>(state: &BasicState, name: &'static str, op_fn: F)
-where
-  F: Fn(&BasicState, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
+fn register_op_bin_sync<F>(
+  isolate: &mut JsRuntime,
+  name: &'static str,
+  op_fn: F,
+) where
+  F: Fn(&mut OpState, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
 {
-  let base_op_fn = move |state: Rc<BasicState>, mut bufs: BufVec| -> Op {
+  let base_op_fn = move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
     let record = Record::from(bufs[0].as_ref());
     let is_sync = record.promise_id == 0;
     assert!(is_sync);
 
     let zero_copy_bufs = &mut bufs[1..];
-    let result: i32 = match op_fn(&state, record.rid, zero_copy_bufs) {
-      Ok(r) => r as i32,
-      Err(_) => -1,
-    };
+    let result: i32 =
+      match op_fn(&mut state.borrow_mut(), record.rid, zero_copy_bufs) {
+        Ok(r) => r as i32,
+        Err(_) => -1,
+      };
     let buf = RecordBuf::from(Record { result, ..record })[..].into();
     Op::Sync(buf)
   };
 
-  state.register_op(name, base_op_fn);
+  isolate.register_op(name, base_op_fn);
 }
 
-fn register_op_bin_async<F, R>(state: &BasicState, name: &'static str, op_fn: F)
-where
-  F: Fn(Rc<BasicState>, u32, BufVec) -> R + Copy + 'static,
+fn register_op_bin_async<F, R>(
+  isolate: &mut JsRuntime,
+  name: &'static str,
+  op_fn: F,
+) where
+  F: Fn(Rc<RefCell<OpState>>, u32, BufVec) -> R + Copy + 'static,
   R: TryFuture,
   R::Ok: TryInto<i32>,
   <R::Ok as TryInto<i32>>::Error: Debug,
 {
-  let base_op_fn = move |state: Rc<BasicState>, bufs: BufVec| -> Op {
+  let base_op_fn = move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
     let mut bufs_iter = bufs.into_iter();
     let record_buf = bufs_iter.next().unwrap();
     let zero_copy_bufs = bufs_iter.collect::<BufVec>();
@@ -227,7 +233,7 @@ where
     Op::Async(fut.boxed_local())
   };
 
-  state.register_op(name, base_op_fn);
+  isolate.register_op(name, base_op_fn);
 }
 
 fn bad_resource_id() -> Error {

@@ -1,29 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_json::Value;
 use std::env;
-use std::rc::Rc;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_start", op_start);
-  s.register_op_json_sync("op_main_module", op_main_module);
-  s.register_op_json_sync("op_metrics", op_metrics);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_start", op_start);
+  super::reg_json_sync(rt, "op_main_module", op_main_module);
+  super::reg_json_sync(rt, "op_metrics", op_metrics);
 }
 
 fn op_start(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let gs = &state.global_state;
+  let gs = &super::cli_state(state).global_state;
 
   Ok(json!({
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
@@ -44,25 +42,27 @@ fn op_start(
 }
 
 fn op_main_module(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let main = &state.main_module.to_string();
+  let cli_state = super::cli_state(state);
+  let main = &cli_state.main_module.to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
-    state.check_read_blind(&main_path, "main_module")?;
+    cli_state.check_read_blind(&main_path, "main_module")?;
   }
   Ok(json!(&main))
 }
 
 fn op_metrics(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let m = &state.metrics.borrow();
+  let cli_state = super::cli_state(state);
+  let m = &cli_state.metrics.borrow();
 
   Ok(json!({
     "opsDispatched": m.ops_dispatched,
