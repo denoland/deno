@@ -38,14 +38,23 @@ where
     select! {
       _ = file_watcher(watch_paths) => {
           is_file_changed = true;
-          println!("File change detected! Restarting!");
+          info!(
+            "{} File change detected! Restarting!",
+            colors::intense_blue("Watcher")
+          );
         },
       _ = func => { },
     };
     if !is_file_changed {
-      println!("Process terminated! Restarting on file change...");
+      info!(
+        "{} Process terminated! Restarting on file change...",
+        colors::intense_blue("Watcher")
+      );
       file_watcher(watch_paths).await?;
-      println!("File change detected! Restarting!");
+      info!(
+        "{} File change detected! Restarting!",
+        colors::intense_blue("Watcher")
+      );
     }
   }
 }
