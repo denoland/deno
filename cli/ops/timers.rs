@@ -1,29 +1,30 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use serde_derive::Deserialize;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_global_timer_stop", op_global_timer_stop);
-  s.register_op_json_async("op_global_timer", op_global_timer);
-  s.register_op_json_sync("op_now", op_now);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
+  super::reg_json_async(rt, "op_global_timer", op_global_timer);
+  super::reg_json_sync(rt, "op_now", op_now);
 }
 
 fn op_global_timer_stop(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  state.global_timer.borrow_mut().cancel();
+  let cli_state = super::cli_state(state);
+  cli_state.global_timer.borrow_mut().cancel();
   Ok(json!({}))
 }
 
@@ -33,7 +34,7 @@ struct GlobalTimerArgs {
 }
 
 async fn op_global_timer(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -41,11 +42,13 @@ async fn op_global_timer(
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
-  let timer_fut = state
-    .global_timer
-    .borrow_mut()
-    .new_timeout(deadline)
-    .boxed_local();
+  let timer_fut = {
+    super::cli_state2(&state)
+      .global_timer
+      .borrow_mut()
+      .new_timeout(deadline)
+      .boxed_local()
+  };
   let _ = timer_fut.await;
   Ok(json!({}))
 }
@@ -55,18 +58,19 @@ async fn op_global_timer(
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 fn op_now(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let seconds = state.start_time.elapsed().as_secs();
-  let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
+  let cli_state = super::cli_state(state);
+  let seconds = cli_state.start_time.elapsed().as_secs();
+  let mut subsec_nanos = cli_state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if state.check_hrtime().is_err() {
+  if cli_state.check_hrtime().is_err() {
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 

@@ -7,6 +7,9 @@ import {
   assertStringContains,
   assert,
 } from "../../testing/asserts.ts";
+import { resolve, dirname, fromFileUrl } from "../../path/mod.ts";
+
+const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)), "..");
 
 Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];
@@ -26,7 +29,7 @@ Deno.test("xevalDelimiter", async function (): Promise<void> {
   assertEquals(chunks, ["!MAD", "ADAM!"]);
 });
 
-const xevalPath = "examples/xeval.ts";
+const xevalPath = "xeval.ts";
 
 Deno.test({
   name: "xevalCliReplvar",
@@ -39,6 +42,7 @@ Deno.test({
         "--replvar=abc",
         "console.log(abc)",
       ],
+      cwd: moduleDir,
       stdin: "piped",
       stdout: "piped",
       stderr: "null",
@@ -55,6 +59,7 @@ Deno.test({
 Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
   const p = Deno.run({
     cmd: [Deno.execPath(), "run", xevalPath, "("],
+    cwd: moduleDir,
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

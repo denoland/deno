@@ -76,6 +76,24 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Deno.compile() - pass outDir in compiler options",
+  async fn() {
+    const [diagnostics, actual] = await Deno.compile(
+      "src/foo.ts",
+      {
+        "src/foo.ts": "console.log('Hello world')",
+      },
+      {
+        outDir: "./lib",
+      },
+    );
+    assert(diagnostics == null);
+    assert(actual);
+    assertEquals(Object.keys(actual), ["lib/foo.js.map", "lib/foo.js"]);
+  },
+});
+
+Deno.test({
   name: "Deno.compile() - properly handles .d.ts files",
   async fn() {
     const [diagnostics, actual] = await Deno.compile(

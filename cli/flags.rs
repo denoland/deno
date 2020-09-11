@@ -1757,7 +1757,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: false,
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
         },
         ..Flags::default()
       }

@@ -1720,8 +1720,20 @@ itest!(bundle {
 
 itest!(fmt_check_tests_dir {
   args: "fmt --check ./",
-  output: "fmt_check_tests_dir.out",
+  output: "fmt/expected_fmt_check_tests_dir.out",
   exit_code: 1,
+});
+
+itest!(fmt_check_formatted_files {
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  output: "fmt/expected_fmt_check_formatted_files.out",
+  exit_code: 0,
+});
+
+itest!(fmt_check_ignore {
+  args: "fmt --check --unstable --ignore=fmt/formatted1.js fmt/",
+  output: "fmt/expected_fmt_check_ignore.out",
+  exit_code: 0,
 });
 
 itest!(fmt_stdin {
@@ -1809,6 +1821,12 @@ itest!(error_008_checkjs {
   args: "run --reload error_008_checkjs.js",
   exit_code: 1,
   output: "error_008_checkjs.js.out",
+});
+
+itest!(error_009_op_crates_error {
+  args: "run error_009_op_crates_error.js",
+  output: "error_009_op_crates_error.js.out",
+  exit_code: 1,
 });
 
 itest!(error_011_bad_module_specifier {

@@ -57,7 +57,7 @@ use std::sync::Mutex;
 use std::task::Poll;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
-use swc_ecma_dep_graph as dep_graph;
+use swc_ecmascript::dep_graph;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -139,15 +139,12 @@ impl CompilerWorker {
     startup_data: StartupData,
     state: &Rc<State>,
   ) -> Self {
-    let worker = Worker::new(name, startup_data, state);
+    let mut worker = Worker::new(name, startup_data, state);
     let response = Arc::new(Mutex::new(None));
-    {
-      ops::runtime::init(&state);
-      ops::errors::init(&state);
-      ops::timers::init(&state);
-      ops::compiler::init(&state, response.clone());
-    }
-
+    ops::runtime::init(&mut worker);
+    ops::errors::init(&mut worker);
+    ops::timers::init(&mut worker);
+    ops::compiler::init(&mut worker, response.clone());
     Self { worker, response }
   }
 
@@ -621,6 +618,8 @@ impl TsCompiler {
       "esModuleInterop": true,
       "incremental": true,
       "inlineSourceMap": true,
+      // TODO(lucacasonato): enable this by default in 1.5.0
+      "isolatedModules": unstable,
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -1101,6 +1100,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      if module_specifier.as_url().scheme() == "deno" {
+        return None;
+      }
       return match self.get_source_map_file(&module_specifier) {
         Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
@@ -1252,6 +1254,8 @@ pub async fn runtime_compile(
     "allowNonTsExtensions": true,
     "checkJs": false,
     "esModuleInterop": true,
+    // TODO(lucacasonato): enable this by default in 1.5.0
+    "isolatedModules": unstable,
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
@@ -1844,11 +1848,11 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ 
-          "compilerOptions": { 
-            // force .js file compilation by Deno 
-            "checkJs": true 
-          } 
+        r#"{
+          "compilerOptions": {
+            // force .js file compilation by Deno
+            "checkJs": true
+          }
         }"#,
         true,
       ),

@@ -102,7 +102,7 @@ impl WebWorker {
       terminate_tx,
     };
 
-    let web_worker = Self {
+    let mut web_worker = Self {
       worker,
       event_loop_idle: false,
       terminate_rx,
@@ -110,37 +110,33 @@ impl WebWorker {
       has_deno_namespace,
     };
 
-    let handle = web_worker.thread_safe_handle();
-
     {
-      ops::runtime::init(&state);
-      ops::web_worker::init(
-        &state,
-        &web_worker.worker.internal_channels.sender,
-        handle,
-      );
-      ops::worker_host::init(&state);
-      ops::idna::init(&state);
-      ops::io::init(&state);
-      ops::resources::init(&state);
-      ops::errors::init(&state);
-      ops::timers::init(&state);
-      ops::fetch::init(&state);
-      ops::websocket::init(&state);
+      ops::runtime::init(&mut web_worker.worker);
+      let sender = web_worker.worker.internal_channels.sender.clone();
+      let handle = web_worker.thread_safe_handle();
+      ops::web_worker::init(&mut web_worker.worker, sender, handle);
+      ops::worker_host::init(&mut web_worker.worker);
+      ops::idna::init(&mut web_worker.worker);
+      ops::io::init(&mut web_worker.worker);
+      ops::resources::init(&mut web_worker.worker);
+      ops::errors::init(&mut web_worker.worker);
+      ops::timers::init(&mut web_worker.worker);
+      ops::fetch::init(&mut web_worker.worker);
+      ops::websocket::init(&mut web_worker.worker);
 
       if has_deno_namespace {
-        ops::runtime_compiler::init(&state);
-        ops::fs::init(&state);
-        ops::fs_events::init(&state);
-        ops::plugin::init(&state);
-        ops::net::init(&state);
-        ops::tls::init(&state);
-        ops::os::init(&state);
-        ops::permissions::init(&state);
-        ops::process::init(&state);
-        ops::random::init(&state);
-        ops::signal::init(&state);
-        ops::tty::init(&state);
+        ops::runtime_compiler::init(&mut web_worker.worker);
+        ops::fs::init(&mut web_worker.worker);
+        ops::fs_events::init(&mut web_worker.worker);
+        ops::plugin::init(&mut web_worker.worker);
+        ops::net::init(&mut web_worker.worker);
+        ops::tls::init(&mut web_worker.worker);
+        ops::os::init(&mut web_worker.worker);
+        ops::permissions::init(&mut web_worker.worker);
+        ops::process::init(&mut web_worker.worker);
+        ops::random::init(&mut web_worker.worker);
+        ops::signal::init(&mut web_worker.worker);
+        ops::tty::init(&mut web_worker.worker);
       }
     }
 

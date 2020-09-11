@@ -2,17 +2,17 @@
 extern crate log;
 
 use deno_core::js_check;
-use deno_core::BasicState;
 use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::JsRuntime;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::Script;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::Future;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env;
 use std::net::SocketAddr;
@@ -42,23 +42,21 @@ impl log::Log for Logger {
 }
 
 fn create_isolate() -> JsRuntime {
-  let state = BasicState::new();
-  state.register_op_json_sync("listen", op_listen);
-  state.register_op_json_sync("close", op_close);
-  state.register_op_json_async("accept", op_accept);
-  state.register_op_json_async("read", op_read);
-  state.register_op_json_async("write", op_write);
-
   let startup_data = StartupData::Script(Script {
     source: include_str!("http_bench_json_ops.js"),
     filename: "http_bench_json_ops.js",
   });
-
-  JsRuntime::new(state, startup_data, false)
+  let mut runtime = JsRuntime::new(startup_data, false);
+  runtime.register_op("listen", deno_core::json_op_sync(op_listen));
+  runtime.register_op("close", deno_core::json_op_sync(op_close));
+  runtime.register_op("accept", deno_core::json_op_async(op_accept));
+  runtime.register_op("read", deno_core::json_op_async(op_read));
+  runtime.register_op("write", deno_core::json_op_async(op_write));
+  runtime
 }
 
 fn op_listen(
-  state: &BasicState,
+  state: &mut OpState,
   _args: Value,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -66,15 +64,12 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let rid = state
-    .resource_table
-    .borrow_mut()
-    .add("tcpListener", Box::new(listener));
+  let rid = state.resource_table.add("tcpListener", Box::new(listener));
   Ok(serde_json::json!({ "rid": rid }))
 }
 
 fn op_close(
-  state: &BasicState,
+  state: &mut OpState,
   args: Value,
   _buf: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
@@ -86,17 +81,15 @@ fn op_close(
     .try_into()
     .unwrap();
   debug!("close rid={}", rid);
-
   state
     .resource_table
-    .borrow_mut()
     .close(rid)
     .map(|_| serde_json::json!(()))
     .ok_or_else(ErrBox::bad_resource_id)
 }
 
 fn op_accept(
-  state: Rc<BasicState>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
 ) -> impl Future<Output = Result<Value, ErrBox>> {
@@ -110,7 +103,8 @@ fn op_accept(
   debug!("accept rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let resource_table = &mut state.borrow_mut().resource_table;
+
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
@@ -122,7 +116,7 @@ fn op_accept(
 }
 
 fn op_read(
-  state: Rc<BasicState>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   mut bufs: BufVec,
 ) -> impl Future<Output = Result<Value, ErrBox>> {
@@ -138,7 +132,8 @@ fn op_read(
   debug!("read rid={}", rid);
 
   poll_fn(move |cx| -> Poll<Result<Value, ErrBox>> {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let resource_table = &mut state.borrow_mut().resource_table;
+
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
@@ -149,7 +144,7 @@ fn op_read(
 }
 
 fn op_write(
-  state: Rc<BasicState>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   bufs: BufVec,
 ) -> impl Future<Output = Result<Value, ErrBox>> {
@@ -165,7 +160,8 @@ fn op_write(
   debug!("write rid={}", rid);
 
   poll_fn(move |cx| {
-    let resource_table = &mut state.resource_table.borrow_mut();
+    let resource_table = &mut state.borrow_mut().resource_table;
+
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;

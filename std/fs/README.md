@@ -118,30 +118,6 @@ copySync("./foo", "./existingFolder", { overwrite: true });
 // Will overwrite existingFolder
 ```
 
-### writeJson
-
-Writes an object to a JSON file.
-
-#### WriteJsonOptions
-
-- replacer : An array of strings and numbers that acts as a approved list for
-  selecting the object properties that will be stringified.
-- space : Adds indentation, white space, and line break characters to the
-  return-value JSON text to make it easier to read.
-
-You can also specify options from `Deno.WriteFileOptions` to configure how the
-file is written.
-
-```ts
-import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";
-
-writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
-writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
-
-// appends to the file instead of rewriting
-writeJsonSync("./target.dat", { foo: "bar" }, { append: true });
-```
-
 ### walk
 
 Iterate all files in a directory recursively.
