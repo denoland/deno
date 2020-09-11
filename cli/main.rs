@@ -72,7 +72,6 @@ pub mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
-use crate::coverage::ScriptCoverage;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -552,61 +551,16 @@ async fn test_command(
     let script_coverage = coverage_collector.take_precise_coverage().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverage = script_coverage
-      .into_iter()
-      .filter(|e| {
-        if let Ok(url) = Url::parse(&e.url) {
-          if url == test_file_url {
-            return false;
-          }
+    let filtered_coverage = coverage::filter_script_coverages(
+      script_coverage,
+      test_file_url,
+      test_modules,
+    );
 
-          for test_module_url in &test_modules {
-            if &url == test_module_url {
-              return false;
-            }
-          }
-
-          if let Ok(path) = url.to_file_path() {
-            for test_module_url in &test_modules {
-              if let Ok(test_module_path) = test_module_url.to_file_path() {
-                if path.starts_with(test_module_path.parent().unwrap()) {
-                  return true;
-                }
-              }
-            }
-          }
-        }
-
-        false
-      })
-      .collect::<Vec<ScriptCoverage>>();
-
-    // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
-    println!("test coverage:");
-
-    let mut pretty_coverage_reporter = PrettyCoverageReporter::new();
-    for script_coverage in filtered_coverage {
-      let module_specifier =
-        ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
-
-      let maybe_source_file = global_state
-        .ts_compiler
-        .get_compiled_source_file(&module_specifier.as_url())
-        .or_else(|_| {
-          global_state
-            .file_fetcher
-            .fetch_cached_source_file(
-              &module_specifier,
-              Permissions::allow_all(),
-            )
-            .ok_or_else(|| ErrBox::error("unable to fetch source file"))
-        })
-        .ok();
-
-      if let Some(source_file) = maybe_source_file {
-        pretty_coverage_reporter.visit(&script_coverage, &source_file);
-      }
-    }
+    let pretty_coverage_reporter =
+      PrettyCoverageReporter::new(global_state, filtered_coverage);
+    let report = pretty_coverage_reporter.get_report();
+    print!("{}", report)
   }
 
   Ok(())

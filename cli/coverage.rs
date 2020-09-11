@@ -2,15 +2,20 @@
 
 use crate::colors;
 use crate::file_fetcher::SourceFile;
+use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
+use crate::permissions::Permissions;
 use deno_core::v8;
 use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr;
+use std::sync::Arc;
+use url::Url;
 
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,
@@ -170,18 +175,67 @@ struct TakePreciseCoverageResponse {
   result: TakePreciseCoverageResult,
 }
 
-pub struct PrettyCoverageReporter {}
+pub struct PrettyCoverageReporter {
+  coverages: Vec<ScriptCoverage>,
+  global_state: Arc<GlobalState>,
+}
 
+// TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
 impl PrettyCoverageReporter {
-  pub fn new() -> PrettyCoverageReporter {
-    PrettyCoverageReporter {}
+  pub fn new(
+    global_state: Arc<GlobalState>,
+    coverages: Vec<ScriptCoverage>,
+  ) -> PrettyCoverageReporter {
+    PrettyCoverageReporter {
+      global_state,
+      coverages,
+    }
   }
 
-  pub fn visit(
-    &mut self,
+  pub fn get_report(&self) -> String {
+    let mut report = String::from("test coverage:\n");
+
+    for script_coverage in &self.coverages {
+      if let Some(script_report) = self.get_script_report(script_coverage) {
+        report.push_str(&format!("{}\n", script_report))
+      }
+    }
+
+    report
+  }
+
+  fn get_source_file_for_script(
+    &self,
     script_coverage: &ScriptCoverage,
-    source_file: &SourceFile,
-  ) {
+  ) -> Option<SourceFile> {
+    let module_specifier =
+      ModuleSpecifier::resolve_url_or_path(&script_coverage.url).ok()?;
+
+    let maybe_source_file = self
+      .global_state
+      .ts_compiler
+      .get_compiled_source_file(&module_specifier.as_url())
+      .or_else(|_| {
+        self
+          .global_state
+          .file_fetcher
+          .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
+          .ok_or_else(|| ErrBox::error("unable to fetch source file"))
+      })
+      .ok();
+
+    maybe_source_file
+  }
+
+  fn get_script_report(
+    &self,
+    script_coverage: &ScriptCoverage,
+  ) -> Option<String> {
+    let source_file = match self.get_source_file_for_script(script_coverage) {
+      Some(sf) => sf,
+      None => return None,
+    };
+
     let mut total_lines = 0;
     let mut covered_lines = 0;
 
@@ -218,25 +272,27 @@ impl PrettyCoverageReporter {
     let line_ratio = covered_lines as f32 / total_lines as f32;
     let line_coverage = format!("{:.3}%", line_ratio * 100.0);
 
-    if line_ratio >= 0.9 {
-      println!(
+    let line = if line_ratio >= 0.9 {
+      format!(
         "{} {}",
         source_file.url.to_string(),
         colors::green(&line_coverage)
-      );
+      )
     } else if line_ratio >= 0.75 {
-      println!(
+      format!(
         "{} {}",
         source_file.url.to_string(),
         colors::yellow(&line_coverage)
-      );
+      )
     } else {
-      println!(
+      format!(
         "{} {}",
         source_file.url.to_string(),
         colors::red(&line_coverage)
-      );
-    }
+      )
+    };
+
+    Some(line)
   }
 }
 
@@ -245,4 +301,39 @@ fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
   let p = Box::into_raw(b) as *mut T;
   unsafe { ptr::write(p, new_fn(p)) };
   unsafe { Box::from_raw(p) }
+}
+
+pub fn filter_script_coverages(
+  coverages: Vec<ScriptCoverage>,
+  test_file_url: Url,
+  test_modules: Vec<Url>,
+) -> Vec<ScriptCoverage> {
+  coverages
+    .into_iter()
+    .filter(|e| {
+      if let Ok(url) = Url::parse(&e.url) {
+        if url == test_file_url {
+          return false;
+        }
+
+        for test_module_url in &test_modules {
+          if &url == test_module_url {
+            return false;
+          }
+        }
+
+        if let Ok(path) = url.to_file_path() {
+          for test_module_url in &test_modules {
+            if let Ok(test_module_path) = test_module_url.to_file_path() {
+              if path.starts_with(test_module_path.parent().unwrap()) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+
+      false
+    })
+    .collect::<Vec<ScriptCoverage>>()
 }
