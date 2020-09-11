@@ -992,6 +992,7 @@ fn run_watch() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("--watch")
+    .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())

@@ -1414,6 +1414,7 @@ fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
+    .requires("unstable")
     .long("watch")
     .help("Watch for file changes and restart process automatically")
     .long_help(
@@ -1575,7 +1576,13 @@ mod tests {
 
   #[test]
   fn run_watch() {
-    let r = flags_from_vec_safe(svec!["deno", "run", "--watch", "script.ts"]);
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--unstable",
+      "--watch",
+      "script.ts"
+    ]);
     let flags = r.unwrap();
     assert_eq!(
       flags,
@@ -1584,6 +1591,7 @@ mod tests {
           script: "script.ts".to_string(),
         },
         watch: true,
+        unstable: true,
         ..Flags::default()
       }
     );
