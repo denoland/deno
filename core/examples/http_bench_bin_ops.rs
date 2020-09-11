@@ -6,8 +6,6 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpState;
-use deno_core::Script;
-use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -78,12 +76,7 @@ impl From<Record> for RecordBuf {
 }
 
 fn create_isolate() -> JsRuntime {
-  let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench_bin_ops.js"),
-    filename: "http_bench_bin_ops.js",
-  });
-
-  let mut isolate = JsRuntime::new(startup_data, false);
+  let mut isolate = JsRuntime::new(Default::default());
   register_op_bin_sync(&mut isolate, "listen", op_listen);
   register_op_bin_sync(&mut isolate, "close", op_close);
   register_op_bin_async(&mut isolate, "accept", op_accept);
@@ -252,13 +245,23 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let isolate = create_isolate();
+  let mut isolate = create_isolate();
   let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
     .build()
     .unwrap();
-  js_check(runtime.block_on(isolate));
+
+  let future = async move {
+    isolate
+      .execute(
+        "http_bench_bin_ops.js",
+        include_str!("http_bench_bin_ops.js"),
+      )
+      .unwrap();
+    isolate.await
+  };
+  js_check(runtime.block_on(future));
 }
 
 #[test]

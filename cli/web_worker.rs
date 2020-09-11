@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::js;
 use crate::ops;
 use crate::state::State;
 use crate::worker::Worker;
@@ -7,7 +8,6 @@ use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::v8;
 use deno_core::ErrBox;
-use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -85,11 +85,10 @@ pub struct WebWorker {
 impl WebWorker {
   pub fn new(
     name: String,
-    startup_data: StartupData,
     state: &Rc<State>,
     has_deno_namespace: bool,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, &state);
+    let mut worker = Worker::new(name, Some(js::deno_isolate_init()), &state);
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
@@ -240,19 +239,13 @@ impl Future for WebWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::startup_data;
   use crate::state::State;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
 
   fn create_test_worker() -> WebWorker {
     let state = State::mock("./hello.js");
-    let mut worker = WebWorker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      &state,
-      false,
-    );
+    let mut worker = WebWorker::new("TEST".to_string(), &state, false);
     worker
       .execute("bootstrap.workerRuntime(\"TEST\", false)")
       .unwrap();
