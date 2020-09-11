@@ -188,12 +188,10 @@ declare namespace Deno {
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
-    Log = 0,
-    Debug = 1,
-    Info = 2,
-    Error = 3,
-    Warning = 4,
-    Suggestion = 5,
+    Warning = 0,
+    Error = 1,
+    Suggestion = 2,
+    Message = 3,
   }
 
   export interface DiagnosticMessageChain {
@@ -203,37 +201,33 @@ declare namespace Deno {
     next?: DiagnosticMessageChain[];
   }
 
-  export interface DiagnosticItem {
+  export interface Diagnostic {
     /** A string message summarizing the diagnostic. */
-    message: string;
+    messageText?: string;
     /** An ordered array of further diagnostics. */
     messageChain?: DiagnosticMessageChain;
     /** Information related to the diagnostic. This is present when there is a
      * suggestion or other additional diagnostic information */
-    relatedInformation?: DiagnosticItem[];
+    relatedInformation?: Diagnostic[];
     /** The text of the source line related to the diagnostic. */
     sourceLine?: string;
-    /** The line number that is related to the diagnostic. */
-    lineNumber?: number;
-    /** The name of the script resource related to the diagnostic. */
-    scriptResourceName?: string;
-    /** The start position related to the diagnostic. */
-    startPosition?: number;
-    /** The end position related to the diagnostic. */
-    endPosition?: number;
+    source?: string;
+    /** The start position of the error. Zero based index. */
+    start?: {
+      line: number;
+      character: number;
+    };
+    /** The end position of the error.  Zero based index. */
+    end?: {
+      line: number;
+      character: number;
+    };
+    /** The filename of the resource related to the diagnostic message. */
+    fileName?: string;
     /** The category of the diagnostic. */
     category: DiagnosticCategory;
     /** A number identifier. */
     code: number;
-    /** The the start column of the sourceLine related to the diagnostic. */
-    startColumn?: number;
-    /** The end column of the sourceLine related to the diagnostic. */
-    endColumn?: number;
-  }
-
-  export interface Diagnostic {
-    /** An array of diagnostic items. */
-    items: DiagnosticItem[];
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -247,9 +241,9 @@ declare namespace Deno {
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
    * ```
    *
-   * @param items An array of diagnostic items to format
+   * @param diagnostics An array of diagnostic items to format
    */
-  export function formatDiagnostics(items: DiagnosticItem[]): string;
+  export function formatDiagnostics(diagnostics: Diagnostic[]): string;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -530,7 +524,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions,
-  ): Promise<[DiagnosticItem[] | undefined, Record<string, string>]>;
+  ): Promise<[Diagnostic[] | undefined, Record<string, string>]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -573,7 +567,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions,
-  ): Promise<[DiagnosticItem[] | undefined, string]>;
+  ): Promise<[Diagnostic[] | undefined, string]>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {

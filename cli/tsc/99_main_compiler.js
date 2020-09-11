@@ -1153,7 +1153,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
@@ -1213,7 +1213,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
