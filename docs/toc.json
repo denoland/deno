@@ -11,7 +11,8 @@
       "command_line_interface": "Command line interface",
       "permissions": "Permissions",
       "typescript": "Using TypeScript",
-      "webassembly": "Using WebAssembly"
+      "webassembly": "Using WebAssembly",
+      "debugging_your_code": "Debugging your code"
     }
   },
   "runtime": {
@@ -45,7 +46,6 @@
   "tools": {
     "name": "Tools",
     "children": {
-      "debugger": "Debugger",
       "script_installer": "Script installer",
       "formatter": "Formatter",
       "bundler": "Bundler",

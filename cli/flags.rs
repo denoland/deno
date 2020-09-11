@@ -124,6 +124,7 @@ pub struct Flags {
   pub unstable: bool,
   pub v8_flags: Option<Vec<String>>,
   pub version: bool,
+  pub watch: bool,
   pub write_allowlist: Vec<PathBuf>,
 }
 
@@ -563,6 +564,7 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.argv.push(v);
   }
 
+  flags.watch = matches.is_present("watch");
   flags.subcommand = DenoSubcommand::Run { script };
 }
 
@@ -1166,6 +1168,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
+    .arg(watch_arg())
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg())
     .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
@@ -1427,6 +1430,17 @@ fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   }
 }
 
+fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("watch")
+    .requires("unstable")
+    .long("watch")
+    .help("Watch for file changes and restart process automatically")
+    .long_help(
+      "Watch for file changes and restart process automatically.
+Only local files from entry point module graph are watched.",
+    )
+}
+
 fn no_check_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("no-check")
     .long("no-check")
@@ -1573,6 +1587,29 @@ mod tests {
           script: "script.ts".to_string(),
         },
         reload: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_watch() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--unstable",
+      "--watch",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        watch: true,
+        unstable: true,
         ..Flags::default()
       }
     );

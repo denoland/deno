@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::errors::get_error_class_name;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
@@ -10,17 +9,10 @@ use crate::metrics::Metrics;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
-use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_core::Op;
-use deno_core::OpId;
-use deno_core::OpRegistry;
-use deno_core::OpRouter;
-use deno_core::OpTable;
-use deno_core::ResourceTable;
 use futures::future::FutureExt;
 use futures::Future;
 use rand::rngs::StdRng;
@@ -36,6 +28,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
+// TODO(ry) Rename to CliState to avoid confusion with other states.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
   pub global_state: Arc<GlobalState>,
@@ -54,8 +47,6 @@ pub struct State {
   pub is_main: bool,
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
-  pub resource_table: RefCell<ResourceTable>,
-  pub op_table: RefCell<OpTable<Self>>,
 }
 
 impl State {
@@ -202,8 +193,6 @@ impl State {
       is_main: true,
       is_internal,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
-      resource_table: Default::default(),
-      op_table: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -232,8 +221,6 @@ impl State {
       is_main: false,
       is_internal: false,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
-      resource_table: Default::default(),
-      op_table: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -329,80 +316,5 @@ impl State {
       false,
     )
     .unwrap()
-  }
-}
-
-impl OpRouter for State {
-  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    // TODOs:
-    // * The 'bytes' metrics seem pretty useless, especially now that the
-    //   distinction between 'control' and 'data' buffers has become blurry.
-    // * Tracking completion of async ops currently makes us put the boxed
-    //   future into _another_ box. Keeping some counters may not be expensive
-    //   in itself, but adding a heap allocation for every metric seems bad.
-    let mut buf_len_iter = bufs.iter().map(|buf| buf.len());
-    let bytes_sent_control = buf_len_iter.next().unwrap_or(0);
-    let bytes_sent_data = buf_len_iter.sum();
-
-    let op_fn = self
-      .op_table
-      .borrow()
-      .get_index(op_id)
-      .map(|(_, op_fn)| op_fn.clone())
-      .unwrap();
-
-    let self_ = self.clone();
-    let op = (op_fn)(self_, bufs);
-
-    let self_ = self.clone();
-    let mut metrics = self_.metrics.borrow_mut();
-    match op {
-      Op::Sync(buf) => {
-        metrics.op_sync(bytes_sent_control, bytes_sent_data, buf.len());
-        Op::Sync(buf)
-      }
-      Op::Async(fut) => {
-        metrics.op_dispatched_async(bytes_sent_control, bytes_sent_data);
-        let fut = fut
-          .inspect(move |buf| {
-            self.metrics.borrow_mut().op_completed_async(buf.len());
-          })
-          .boxed_local();
-        Op::Async(fut)
-      }
-      Op::AsyncUnref(fut) => {
-        metrics.op_dispatched_async_unref(bytes_sent_control, bytes_sent_data);
-        let fut = fut
-          .inspect(move |buf| {
-            self
-              .metrics
-              .borrow_mut()
-              .op_completed_async_unref(buf.len());
-          })
-          .boxed_local();
-        Op::AsyncUnref(fut)
-      }
-      other => other,
-    }
-  }
-}
-
-impl OpRegistry for State {
-  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId> {
-    self.op_table.borrow().get_op_catalog()
-  }
-
-  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
-  {
-    let mut op_table = self.op_table.borrow_mut();
-    let (op_id, prev) = op_table.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(prev.is_none());
-    op_id
-  }
-
-  fn get_error_class_name(&self, err: &ErrBox) -> &'static str {
-    get_error_class_name(err)
   }
 }

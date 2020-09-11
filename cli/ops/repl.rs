@@ -2,20 +2,20 @@
 
 use crate::repl;
 use crate::repl::Repl;
-use crate::state::State;
 use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_derive::Deserialize;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_repl_start", op_repl_start);
-  s.register_op_json_async("op_repl_readline", op_repl_readline);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_repl_start", op_repl_start);
+  super::reg_json_async(rt, "op_repl_readline", op_repl_readline);
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);
@@ -27,20 +27,19 @@ struct ReplStartArgs {
 }
 
 fn op_repl_start(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
   debug!("op_repl_start {}", args.history_file);
-  let history_path =
-    repl::history_path(&state.global_state.dir, &args.history_file);
+  let history_path = {
+    let cli_state = super::cli_state(state);
+    repl::history_path(&cli_state.global_state.dir, &args.history_file)
+  };
   let repl = repl::Repl::new(history_path);
   let resource = ReplResource(Arc::new(Mutex::new(repl)));
-  let rid = state
-    .resource_table
-    .borrow_mut()
-    .add("repl", Box::new(resource));
+  let rid = state.resource_table.add("repl", Box::new(resource));
   Ok(json!(rid))
 }
 
@@ -51,7 +50,7 @@ struct ReplReadlineArgs {
 }
 
 async fn op_repl_readline(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
@@ -59,12 +58,14 @@ async fn op_repl_readline(
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
-  let resource_table = state.resource_table.borrow();
-  let resource = resource_table
-    .get::<ReplResource>(rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
-  let repl = resource.0.clone();
-  drop(resource_table);
+  let repl = {
+    let state = state.borrow();
+    let resource = state
+      .resource_table
+      .get::<ReplResource>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    resource.0.clone()
+  };
   tokio::task::spawn_blocking(move || {
     let line = repl.lock().unwrap().readline(&prompt)?;
     Ok(json!(line))
