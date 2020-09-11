@@ -994,23 +994,27 @@ fn run_watch() {
     .arg("--watch")
     .arg(&file_to_watch)
     .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
     .spawn()
     .expect("failed to spawn script");
 
   let stdout = child.stdout.as_mut().unwrap();
   let mut stdout_lines =
     std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  assert!(stdout_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
 
   // Change content of the file
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
 
-  assert!(stdout_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  assert!(stdout_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
 
   child.kill().unwrap();
   drop(t);

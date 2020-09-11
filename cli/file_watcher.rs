@@ -4,6 +4,7 @@ use futures::stream::StreamExt;
 use futures::Future;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
+use notify::Config;
 use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
@@ -71,6 +72,8 @@ pub async fn file_watcher(paths: &[PathBuf]) -> Result<(), deno_core::ErrBox> {
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
     })?;
+
+  watcher.configure(Config::PreciseEvents(true)).unwrap();
 
   for path in paths {
     watcher.watch(path, RecursiveMode::NonRecursive)?;
