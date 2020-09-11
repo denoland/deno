@@ -51,7 +51,7 @@
       "subprocess": "Creating a subprocess",
       "os_signals": "OS Signals",
       "file_system_events": "File system events",
-      "testing_if_main": "Checking if file is main"
+      "module_metadata": "Module metadata"
     }
   },
   "testing": {
