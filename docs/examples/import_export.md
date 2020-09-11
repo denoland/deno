@@ -1,12 +1,16 @@
 # Import and Export Modules
-  
+
 ## Concepts
 
-* [import](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import) allows you to include and use modules held elsewhere, on your local file system or remotely.
-* Imports are URLs or file system paths
-* [export](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export) allows you to specify which parts of your module are accessible to users who import your module
+- [import](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import)
+  allows you to include and use modules held elsewhere, on your local file
+  system or remotely.
+- Imports are URLs or file system paths
+- [export](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
+  allows you to specify which parts of your module are accessible to users who
+  import your module
 
-## Overview 
+## Overview
 
 Deno by default standardizes the way modules are imported in both JavaScript and
 TypeScript using the ECMAScript 6 `import/export` standard.
@@ -93,9 +97,9 @@ console.log(totalCost(45, 27, 1.15));
 
 ## Export
 
-In the local import example above the `add` and `multiply` functions are imported from a
-locally stored arithmetic module. To make this possible the functions stored in
-the arithmetic module must be exported.
+In the local import example above the `add` and `multiply` functions are
+imported from a locally stored arithmetic module. To make this possible the
+functions stored in the arithmetic module must be exported.
 
 To do this just add the keyword `export` to the beginning of the function
 signature as is shown below.
@@ -117,4 +121,3 @@ All functions, classes, constants and variables which need to be accessible
 inside external modules must be exported. Either by prepending them with the
 `export` keyword or including them in an export statement at the bottom of the
 file.
-

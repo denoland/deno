@@ -1,11 +1,13 @@
 # Managing Dependencies
 
 ## Concepts
-* Deno uses versioned URLs for dependency management
-* One convention places all these dependent URLs into a local `deps.ts` file.
-Functionality is then exported out of `deps.ts` for use by local modules.
-* Continuing this convention, dev only dependencies can be kept in a `dev_deps.ts` file.
-* See also [Linking to external code](../linking_to_external_code.md)
+
+- Deno uses versioned URLs for dependency management
+- One convention places all these dependent URLs into a local `deps.ts` file.
+  Functionality is then exported out of `deps.ts` for use by local modules.
+- Continuing this convention, dev only dependencies can be kept in a
+  `dev_deps.ts` file.
+- See also [Linking to external code](../linking_to_external_code.md)
 
 ## Overview
 

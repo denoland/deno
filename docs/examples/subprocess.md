@@ -1,11 +1,15 @@
 # Creating a subprocess
 
 ## Concepts
-* Deno is capable of spawning a subprocess via [Deno.run](https://doc.deno.land/builtin/stable#Deno.run)
-* `--allow-run` permission is required to spawn a subprocess
-* Spawned subprocesses do not run in a security sandbox
-* Communicate with the subprocess via the [stdin](https://doc.deno.land/builtin/stable#Deno.stdin), [stdout](https://doc.deno.land/builtin/stable#Deno.stdout) and [stderr](https://doc.deno.land/builtin/stable#Deno.stderr) streams
 
+- Deno is capable of spawning a subprocess via
+  [Deno.run](https://doc.deno.land/builtin/stable#Deno.run)
+- `--allow-run` permission is required to spawn a subprocess
+- Spawned subprocesses do not run in a security sandbox
+- Communicate with the subprocess via the
+  [stdin](https://doc.deno.land/builtin/stable#Deno.stdin),
+  [stdout](https://doc.deno.land/builtin/stable#Deno.stdout) and
+  [stderr](https://doc.deno.land/builtin/stable#Deno.stderr) streams
 
 ## Simple example
 
@@ -33,15 +37,16 @@ hello
 ```
 
 ## Security
-The `--allow-run` permission is required for creation of a subprocess.  Be aware
-that subprocesses are not run in a Deno sandbox and therefore have the same permissions
-as if you were to run the command from the command line yourself.
+
+The `--allow-run` permission is required for creation of a subprocess. Be aware
+that subprocesses are not run in a Deno sandbox and therefore have the same
+permissions as if you were to run the command from the command line yourself.
 
 ## Communicating with subprocesses
 
-By default when you use `Deno.run()` the subprocess inherits `stdin`, `stdout` and
-`stderr` of the parent process. If you want to communicate with started subprocess
-you can use `"piped"` option.
+By default when you use `Deno.run()` the subprocess inherits `stdin`, `stdout`
+and `stderr` of the parent process. If you want to communicate with started
+subprocess you can use `"piped"` option.
 
 ```ts
 /**

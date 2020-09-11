@@ -1,9 +1,11 @@
 # Hello World
 
 ## Concepts
-* Deno can run JavaScript or TypeScript out of the box with no additional tools or config required
 
-## Overview 
+- Deno can run JavaScript or TypeScript out of the box with no additional tools
+  or config required
+
+## Overview
 
 Deno is a secure runtime for both JavaScript and TypeScript. As the hello world
 examples below highlight the same functionality can be created in JavaScript or

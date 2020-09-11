@@ -1,11 +1,20 @@
 # Read and Write Files
 
 ## Concepts
-* Deno's runtime API provides the [Deno.readTextFile](https://doc.deno.land/builtin/stable#Deno.readTextFile) and [Deno.writeTextFile](https://doc.deno.land/builtin/stable#Deno.writeTextFile)
-asynchronous functions for reading and writing entire text files
-* Like many of Deno's APIs, synchronous alternatives are also available.  See [Deno.readTextFileSync](https://doc.deno.land/builtin/stable#Deno.readTextFileSync) and [Deno.writeTextFileSync](https://doc.deno.land/builtin/stable#Deno.writeTextFileSync)
-* Deno's [standard library]() provides additional functionality for file system access, for example reading and writing JSON
-* Use `--allow-read` and `--allow-write` permissions to gain access to the file system
+
+- Deno's runtime API provides the
+  [Deno.readTextFile](https://doc.deno.land/builtin/stable#Deno.readTextFile)
+  and
+  [Deno.writeTextFile](https://doc.deno.land/builtin/stable#Deno.writeTextFile)
+  asynchronous functions for reading and writing entire text files
+- Like many of Deno's APIs, synchronous alternatives are also available. See
+  [Deno.readTextFileSync](https://doc.deno.land/builtin/stable#Deno.readTextFileSync)
+  and
+  [Deno.writeTextFileSync](https://doc.deno.land/builtin/stable#Deno.writeTextFileSync)
+- Deno's [standard library]() provides additional functionality for file system
+  access, for example reading and writing JSON
+- Use `--allow-read` and `--allow-write` permissions to gain access to the file
+  system
 
 ## Overview
 
@@ -15,9 +24,9 @@ Deno provides a number of ways to do this via the
 [Deno runtime API](https://doc.deno.land/builtin/stable).
 
 As highlighted in the [Fetch Data example](./fetch_data) Deno restricts access
-to Input / Output by default for security reasons. Therefore when interacting with the
-filesystem the `--allow-read` and `--allow-write` flags must be used with the
-`deno run` command.
+to Input / Output by default for security reasons. Therefore when interacting
+with the filesystem the `--allow-read` and `--allow-write` flags must be used
+with the `deno run` command.
 
 ## Reading a text file
 
