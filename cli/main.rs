@@ -478,6 +478,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), ErrBox> {
     global_state.file_fetcher.clone(),
     global_state.maybe_import_map.clone(),
     Permissions::allow_all(),
+    flags.unstable,
     false,
     false,
   );
