@@ -528,15 +528,10 @@ async fn test_command(
     .save_source_file_in_cache(&main_module, source_file);
 
   let mut maybe_coverage_collector = if coverage {
-    let inspector = match worker.inspector.as_mut() {
-      Some(inspector) => inspector,
-      None => {
-        return Err(
-          // TODO(caspervonb) this should be implicit when the cover flag is provided.
-          ErrBox::error("coverage option requires --inspect flag"),
-        );
-      }
-    };
+    let inspector = worker
+      .inspector
+      .as_mut()
+      .expect("Inspector is not created.");
 
     let mut coverage_collector = CoverageCollector::new(&mut **inspector);
     coverage_collector.start_collecting().await?;

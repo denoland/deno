@@ -574,6 +574,12 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
   let coverage = matches.is_present("coverage");
+
+  // Coverage implies `--inspect`
+  if coverage {
+    flags.inspect = Some("127.0.0.1:9229".parse::<SocketAddr>().unwrap());
+  }
+
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
@@ -1210,7 +1216,8 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("coverage")
         .takes_value(false)
         .requires("unstable")
-        .requires("inspect")
+        .conflicts_with("inspect")
+        .conflicts_with("inspect-brk")
         .help("Collect coverage information"),
     )
     .arg(
@@ -2889,6 +2896,33 @@ mod tests {
           include: Some(svec!["dir1"]),
           coverage: false,
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_coverage() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "test",
+      "--unstable",
+      "--coverage",
+      "dir1"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          allow_none: false,
+          quiet: false,
+          filter: None,
+          include: Some(svec!["dir1"]),
+          coverage: true,
+        },
+        inspect: Some("127.0.0.1:9229".parse::<SocketAddr>().unwrap()),
+        unstable: true,
         ..Flags::default()
       }
     );

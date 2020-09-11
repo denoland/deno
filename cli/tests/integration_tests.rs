@@ -2279,7 +2279,7 @@ itest!(proto_exploit {
 });
 
 itest!(deno_test_coverage {
-  args: "test --inspect --coverage --unstable test_coverage.ts",
+  args: "test --coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
   exit_code: 0,
 });
