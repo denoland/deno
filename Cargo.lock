@@ -417,6 +417,7 @@ dependencies = [
  "nix",
  "notify",
  "os_pipe",
+ "percent-encoding",
  "rand 0.7.3",
  "regex",
  "reqwest",

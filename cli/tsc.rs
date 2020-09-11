@@ -679,6 +679,7 @@ impl TsCompiler {
       self.file_fetcher.clone(),
       global_state.maybe_import_map.clone(),
       permissions.clone(),
+      global_state.flags.unstable,
       false,
       true,
     );
@@ -1157,6 +1158,7 @@ async fn create_runtime_module_graph(
     global_state.file_fetcher.clone(),
     None,
     permissions,
+    global_state.flags.unstable,
     false,
     false,
   );
@@ -1676,6 +1678,7 @@ mod tests {
       file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      mock_state.flags.unstable,
       false,
       false,
     );
@@ -1752,6 +1755,7 @@ mod tests {
       file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      mock_state.flags.unstable,
       false,
       false,
     );

@@ -2,4 +2,5 @@ error: Uncaught TypeError: Unsupported scheme "xxx" for module "xxx:". Supported
     "http",
     "https",
     "file",
+    "data",
 ]

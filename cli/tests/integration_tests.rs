@@ -2394,6 +2394,23 @@ itest!(info_type_import {
   output: "info_type_import.out",
 });
 
+itest!(data_import {
+  args: "test --reload --unstable data_import_test.js",
+  output: "data_import_test.out",
+});
+
+itest!(data_import_invalid {
+  args: "test --reload --unstable data_import_invalid.js",
+  output: "data_import_invalid.out",
+  exit_code: 1,
+});
+
+itest!(data_import_origin_upgrade {
+  args: "test --reload --unstable data_import_origin_upgrade.js",
+  output: "data_import_origin_upgrade.out",
+  exit_code: 1,
+});
+
 #[test]
 fn cafile_env_fetch() {
   use url::Url;

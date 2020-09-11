@@ -1,0 +1,2 @@
+error: Modules loaded using data URL are not allowed to import other modules
+Imported from [WILDCARD]

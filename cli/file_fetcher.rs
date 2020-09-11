@@ -100,7 +100,7 @@ impl SourceFileCache {
   }
 }
 
-const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
+const SUPPORTED_URL_SCHEMES: [&str; 4] = ["http", "https", "file", "data"];
 
 #[derive(Clone)]
 pub struct SourceFileFetcher {
@@ -278,11 +278,16 @@ impl SourceFileFetcher {
   ) -> Result<Option<SourceFile>, ErrBox> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
+    let is_data_url = url_scheme == "data";
     SourceFileFetcher::check_if_supported_scheme(&module_url)?;
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
       return self.fetch_local_file(&module_url, permissions).map(Some);
+    }
+
+    if is_data_url {
+      return extract_data_url(module_url).map(Some);
     }
 
     self.fetch_cached_remote_source(&module_url, 10)
@@ -309,11 +314,16 @@ impl SourceFileFetcher {
   ) -> Result<SourceFile, ErrBox> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
+    let is_data_url = url_scheme == "data";
     SourceFileFetcher::check_if_supported_scheme(&module_url)?;
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
       return self.fetch_local_file(&module_url, permissions);
+    }
+
+    if is_data_url {
+      return extract_data_url(module_url);
     }
 
     // The file is remote, fail if `no_remote` is true.
@@ -550,6 +560,36 @@ impl SourceFileFetcher {
 
     f.boxed_local()
   }
+}
+
+fn extract_data_url(url: &Url) -> Result<SourceFile, ErrBox> {
+  assert_eq!(url.scheme(), "data");
+  let url_content = &url.as_str()[5..];
+  let mut part_iterator = url_content.splitn(2, ',');
+
+  let media_type_str = part_iterator.next().unwrap();
+  let data = if let Some(d) = part_iterator.next() {
+    d
+  } else {
+    return Err(ErrBox::new("URIError", "Malformed data url, missing comma"));
+  };
+
+  let filename = PathBuf::new();
+  let (media_type, charset) = map_content_type(&filename, Some(media_type_str));
+  let is_base64 = media_type_str.rsplit(';').any(|v| v == "base64");
+  let bytes = if is_base64 {
+    base64::decode(data)?
+  } else {
+    percent_encoding::percent_decode_str(data).collect::<Vec<u8>>()
+  };
+
+  Ok(SourceFile {
+    url: url.clone(),
+    filename,
+    types_header: None,
+    media_type,
+    source_code: TextDocument::new(bytes, charset),
+  })
 }
 
 pub fn map_file_extension(path: &Path) -> msg::MediaType {
