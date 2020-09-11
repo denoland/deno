@@ -1711,6 +1711,12 @@ itest!(_064_permissions_revoke_global {
   output: "064_permissions_revoke_global.ts.out",
 });
 
+itest!(_065_import_map_info {
+  args:
+    "info --quiet --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
+  output: "065_import_map_info.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
