@@ -1416,6 +1416,10 @@ fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
     .long("watch")
     .help("Watch for file changes and restart process automatically")
+    .long_help(
+      "Watch for file changes and restart process automatically.
+Only local files from entry point module graph are watched.",
+    )
 }
 
 fn no_check_arg<'a, 'b>() -> Arg<'a, 'b> {
