@@ -1009,7 +1009,7 @@ fn run_watch() {
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
 
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux. 
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   // Change content of the file
