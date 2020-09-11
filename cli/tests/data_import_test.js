@@ -1,6 +1,5 @@
 import { assertEquals } from "../../std/testing/asserts.ts";
 
-// TODO(SyrupThinker) Import causes TS error
 // export const value = 'Successful import'; export default value;
 import data1 from "data:application/javascript;base64,ZXhwb3J0IGNvbnN0IHZhbHVlID0gJ1N1Y2Nlc3NmdWwgaW1wb3J0JzsgZXhwb3J0IGRlZmF1bHQgdmFsdWU7";
 
@@ -24,7 +23,6 @@ Deno.test("dynamic percent-encoding data url import", async () => {
   assertEquals(data3.value, 42);
 });
 
-// TODO(SyrupThinker) Test causes TS error
 Deno.test("dynamic base64 typescript data url import", async () => {
   const data2 = await import(
     // export const leet: number = 1337;
