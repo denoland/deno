@@ -2,7 +2,6 @@
   The following options were ignored:
     module, target
 error: TS2532 [ERROR]: Object is possibly 'undefined'.
-
 if (map.get("bar").foo) {
     ~~~~~~~~~~~~~~
     at [WILDCARD]tests/config.ts:3:5
