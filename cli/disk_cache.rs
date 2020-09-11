@@ -103,6 +103,9 @@ impl DiskCache {
 
         out = out.join(remaining_components);
       }
+      "data" => {
+        out.push(crate::checksum::gen(&[url.as_str().as_bytes()]));
+      }
       scheme => {
         unimplemented!(
           "Don't know how to create cache name for scheme: {}",

@@ -982,6 +982,50 @@ fn info_with_compiled_source() {
 }
 
 #[test]
+fn run_watch() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "console.log('Hello world');")
+    .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Change content of the file
+  std::fs::write(&file_to_watch, "console.log('Hello world2');")
+    .expect("error writing file");
+
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("Hello world2"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -1720,8 +1764,20 @@ itest!(bundle {
 
 itest!(fmt_check_tests_dir {
   args: "fmt --check ./",
-  output: "fmt_check_tests_dir.out",
+  output: "fmt/expected_fmt_check_tests_dir.out",
   exit_code: 1,
+});
+
+itest!(fmt_check_formatted_files {
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  output: "fmt/expected_fmt_check_formatted_files.out",
+  exit_code: 0,
+});
+
+itest!(fmt_check_ignore {
+  args: "fmt --check --unstable --ignore=fmt/formatted1.js fmt/",
+  output: "fmt/expected_fmt_check_ignore.out",
+  exit_code: 0,
 });
 
 itest!(fmt_stdin {
@@ -1809,6 +1865,12 @@ itest!(error_008_checkjs {
   args: "run --reload error_008_checkjs.js",
   exit_code: 1,
   output: "error_008_checkjs.js.out",
+});
+
+itest!(error_009_op_crates_error {
+  args: "run error_009_op_crates_error.js",
+  output: "error_009_op_crates_error.js.out",
+  exit_code: 1,
 });
 
 itest!(error_011_bad_module_specifier {
@@ -2330,6 +2392,23 @@ itest!(info_recursive_modules {
 itest!(info_type_import {
   args: "info info_type_import.ts",
   output: "info_type_import.out",
+});
+
+itest!(data_import {
+  args: "test --reload --unstable data_import_test.js",
+  output: "data_import_test.out",
+});
+
+itest!(data_import_invalid {
+  args: "test --reload --unstable data_import_invalid.js",
+  output: "data_import_invalid.out",
+  exit_code: 1,
+});
+
+itest!(data_import_origin_upgrade {
+  args: "test --reload --unstable data_import_origin_upgrade.js",
+  output: "data_import_origin_upgrade.out",
+  exit_code: 1,
 });
 
 #[test]

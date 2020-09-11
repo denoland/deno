@@ -9,6 +9,7 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
+use crate::js;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
@@ -16,7 +17,6 @@ use crate::msg::MediaType;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-use crate::startup_data;
 use crate::state::State;
 use crate::swc_util;
 use crate::swc_util::AstParser;
@@ -28,7 +28,6 @@ use crate::worker::Worker;
 use core::task::Context;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::StartupData;
 use futures::future::Future;
 use futures::future::FutureExt;
 use log::debug;
@@ -57,7 +56,7 @@ use std::sync::Mutex;
 use std::task::Poll;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
-use swc_ecma_dep_graph as dep_graph;
+use swc_ecmascript::dep_graph;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -134,20 +133,14 @@ pub struct CompilerWorker {
 }
 
 impl CompilerWorker {
-  pub fn new(
-    name: String,
-    startup_data: StartupData,
-    state: &Rc<State>,
-  ) -> Self {
-    let worker = Worker::new(name, startup_data, state);
+  pub fn new(name: String, state: &Rc<State>) -> Self {
+    let mut worker =
+      Worker::new(name, Some(js::compiler_isolate_init()), state);
     let response = Arc::new(Mutex::new(None));
-    {
-      ops::runtime::init(&state);
-      ops::errors::init(&state);
-      ops::timers::init(&state);
-      ops::compiler::init(&state, response.clone());
-    }
-
+    ops::runtime::init(&mut worker);
+    ops::errors::init(&mut worker);
+    ops::timers::init(&mut worker);
+    ops::compiler::init(&mut worker, response.clone());
     Self { worker, response }
   }
 
@@ -235,11 +228,7 @@ fn create_compiler_worker(
   // Count how many times we start the compiler worker.
   global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
-  let mut worker = CompilerWorker::new(
-    "TS".to_string(),
-    startup_data::compiler_isolate_init(),
-    &worker_state,
-  );
+  let mut worker = CompilerWorker::new("TS".to_string(), &worker_state);
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
     .unwrap();
@@ -623,6 +612,7 @@ impl TsCompiler {
       "inlineSourceMap": true,
       // TODO(lucacasonato): enable this by default in 1.5.0
       "isolatedModules": unstable,
+      "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -689,6 +679,7 @@ impl TsCompiler {
       self.file_fetcher.clone(),
       global_state.maybe_import_map.clone(),
       permissions.clone(),
+      global_state.flags.unstable,
       false,
       true,
     );
@@ -1103,6 +1094,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      if module_specifier.as_url().scheme() == "deno" {
+        return None;
+      }
       return match self.get_source_map_file(&module_specifier) {
         Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
@@ -1164,6 +1158,7 @@ async fn create_runtime_module_graph(
     global_state.file_fetcher.clone(),
     None,
     permissions,
+    global_state.flags.unstable,
     false,
     false,
   );
@@ -1256,6 +1251,7 @@ pub async fn runtime_compile(
     "esModuleInterop": true,
     // TODO(lucacasonato): enable this by default in 1.5.0
     "isolatedModules": unstable,
+    "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
@@ -1682,6 +1678,7 @@ mod tests {
       file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      mock_state.flags.unstable,
       false,
       false,
     );
@@ -1758,6 +1755,7 @@ mod tests {
       file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      mock_state.flags.unstable,
       false,
       false,
     );
@@ -1848,11 +1846,11 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ 
-          "compilerOptions": { 
-            // force .js file compilation by Deno 
-            "checkJs": true 
-          } 
+        r#"{
+          "compilerOptions": {
+            // force .js file compilation by Deno
+            "checkJs": true
+          }
         }"#,
         true,
       ),

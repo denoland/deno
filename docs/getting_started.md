@@ -10,3 +10,4 @@ In this chapter we'll discuss:
 - [Understanding permissions](./getting_started/permissions.md)
 - [Using Deno with TypeScript](./getting_started/typescript.md)
 - [Using WebAssembly](./getting_started/webassembly.md)
+- [Debugging your code](./getting_started/debugging_your_code.md)

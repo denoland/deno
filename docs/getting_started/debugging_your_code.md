@@ -1,4 +1,4 @@
-## Debugger
+## Debugging your code
 
 Deno supports the [V8 Inspector Protocol](https://v8.dev/docs/inspector).
 
