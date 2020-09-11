@@ -254,7 +254,7 @@ fn dig_out_nested_deps(
   deep_nested = deep_nested.union(&shallow_nested).cloned().collect();
   if let Some(vertex) = flat_graph.get_mut(&deps_tree.name) {
     vertex.size = deps_tree.size;
-    vertex.total_size = deps_tree.total_size.clone();
+    vertex.total_size = deps_tree.total_size;
     vertex.deps = deep_nested.clone();
   } else {
     let deps = deep_nested.clone();
