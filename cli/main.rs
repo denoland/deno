@@ -471,12 +471,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), ErrBox> {
   Ok(())
 }
 
-async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
-  // Read script content from stdin
-  if script == "-" {
-    return run_from_stdin(flags).await;
-  }
-
+async fn run_with_watch(flags: Flags, script: String) -> Result<(), ErrBox> {
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let global_state = GlobalState::new(flags.clone())?;
 
@@ -498,7 +493,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
     .map(|url| url.to_file_path().unwrap())
     .collect();
 
-  // TODO(bartlomieju): setup file watcher
+  // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func(&paths_to_watch, move || {
     // FIXME(bartlomieju): GlobalState must be created on each restart - otherwise file fetcher
     // will use cached source files
@@ -516,6 +511,27 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
     .boxed_local()
   })
   .await
+}
+
+async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
+  // Read script content from stdin
+  if script == "-" {
+    return run_from_stdin(flags).await;
+  }
+
+  if flags.watch {
+    return run_with_watch(flags, script).await;
+  }
+
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
+  let global_state = GlobalState::new(flags.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  debug!("main_module {}", main_module);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  Ok(())
 }
 
 async fn test_command(
