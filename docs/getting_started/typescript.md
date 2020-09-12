@@ -34,7 +34,7 @@ To export a type in a different file use
 TypeScript compiler option to `true`, and the `importsNotUsedAsValues` to
 `error`. You can see an example `tsconfig.json` with this option
 [in the standard library](https://github.com/denoland/deno/blob/master/std/tsconfig_test.json).
-These settings will be enabled by default in Deno 1.5. They are already the
+These settings will be enabled by default in the future. They are already the
 default in Deno 1.4 or above when using `--unstable`.
 
 Because there is no type information when using `--no-check`, `const enum` is
