@@ -99,7 +99,12 @@ pub async fn op_ws_create(
   };
 
   let (stream, response): (WsStream, Response) =
-    client_async(request, socket).await?;
+    client_async(request, socket).await.map_err(|err| {
+      ErrBox::type_error(format!(
+        "failed to connect to WebSocket: {}",
+        err.to_string()
+      ))
+    })?;
 
   let mut state = state.borrow_mut();
   let rid = state

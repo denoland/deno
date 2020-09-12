@@ -1489,7 +1489,7 @@ interface WebSocket extends EventTarget {
    */
   readonly extensions: string;
   onclose: ((this: WebSocket, ev: CloseEvent) => any) | null;
-  onerror: ((this: WebSocket, ev: Event) => any) | null;
+  onerror: ((this: WebSocket, ev: Event | ErrorEvent) => any) | null;
   onmessage: ((this: WebSocket, ev: MessageEvent) => any) | null;
   onopen: ((this: WebSocket, ev: Event) => any) | null;
   /**
