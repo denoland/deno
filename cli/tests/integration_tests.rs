@@ -403,7 +403,9 @@ fn fmt_stdin_error() {
 }
 
 // Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
 #[test]
+#[ignore]
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
@@ -423,7 +425,9 @@ fn upgrade_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
 #[test]
+#[ignore]
 fn upgrade_with_space_in_path() {
   let temp_dir = tempfile::Builder::new()
     .prefix("directory with spaces")
@@ -473,7 +477,9 @@ fn upgrade_with_version_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
 #[test]
+#[ignore]
 fn upgrade_with_out_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
