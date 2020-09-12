@@ -223,7 +223,7 @@ async fn lint_command(
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let main_module =
-    ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
+    ModuleSpecifier::resolve_url_or_path("./$deno$cache.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
 
@@ -245,7 +245,7 @@ async fn eval_command(
 ) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
-    ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
+    ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
@@ -430,7 +430,7 @@ async fn doc_command(
 
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
-    ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
+    ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = MainWorker::create(&global_state, main_module)?;
   loop {
@@ -441,7 +441,7 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
 async fn run_from_stdin(flags: Flags) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let main_module =
-    ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap();
+    ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker =
     MainWorker::create(&global_state.clone(), main_module.clone())?;
 

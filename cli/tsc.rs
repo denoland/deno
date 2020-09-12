@@ -216,10 +216,8 @@ fn create_compiler_worker(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
-  // TODO(bartlomieju): these $deno$ specifiers should be unified for all subcommands
-  // like 'eval', 'repl'
   let entry_point =
-    ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
+    ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
   let worker_state =
     State::new(&global_state, Some(permissions), entry_point, None, true)
       .expect("Unable to create worker state");
