@@ -280,7 +280,7 @@ impl Diagnostic {
     if let (Some(source_line), Some(start), Some(end)) =
       (&self.source_line, &self.start, &self.end)
     {
-      if !source_line.is_empty() || source_line.len() <= MAX_SOURCE_LINE_LENGTH
+      if !source_line.is_empty() && source_line.len() <= MAX_SOURCE_LINE_LENGTH
       {
         write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
         let length = if start.line == end.line {
