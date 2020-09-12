@@ -207,14 +207,13 @@ deno test --failfast
 
 ## Test coverage
 
-Deno will automatically determine test coverage for your code if you
-specify the `--coverage` flag when starting `deno test`. Coverage is
-determined on a line by line basis, and is acquired directly from the
-JavaScript runtime (V8). Because of this, this coverage is very accurate.
+Deno will automatically determine test coverage for your code if you specify the
+`--coverage` flag when starting `deno test`. Coverage is determined on a line by
+line basis, and is acquired directly from the JavaScript runtime (V8). Because
+of this, this coverage is very accurate.
 
-When all tests are done running a summary of coverage per file is
-printed to stdout. In the future there will be support for `lcov` output
-too.
+When all tests are done running a summary of coverage per file is printed to
+stdout. In the future there will be support for `lcov` output too.
 
 ```
 $ git clone git@github.com:denosaurs/deno_brotli.git && cd deno_brotli

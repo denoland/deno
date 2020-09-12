@@ -27,5 +27,5 @@ function add(x: number, y: number): number
 
 Use the `--json` flag to output the documentation in JSON format. This JSON
 format is consumed by the
-[deno doc website](https://github.com/denoland/doc_website) and is used to generate
-module documentation.
+[deno doc website](https://github.com/denoland/doc_website) and is used to
+generate module documentation.
