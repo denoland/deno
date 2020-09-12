@@ -37,6 +37,24 @@
   "standard_library": {
     "name": "Standard library"
   },
+  "examples": {
+    "name": "Examples",
+    "children": {
+      "hello_world": "Hello World",
+      "import_export": "Import and Export Modules",
+      "manage_dependencies": "Manage Dependencies",
+      "fetch_data": "Fetch Data",
+      "read_write_files": "Read and Write Files",
+      "unix_cat": "Unix cat program",
+      "http_server": "HTTP web server",
+      "file_server": "File server",
+      "tcp_echo": "TCP echo server",
+      "subprocess": "Creating a subprocess",
+      "os_signals": "OS Signals",
+      "file_system_events": "File system events",
+      "module_metadata": "Module metadata"
+    }
+  },
   "testing": {
     "name": "Testing",
     "children": {
@@ -64,23 +82,6 @@
       "development_tools": "Development tools",
       "style_guide": "Style guide",
       "architecture": "Architecture"
-    }
-  },
-  "examples": {
-    "name": "Examples",
-    "children": {
-      "hello_world": "Hello World",
-      "import_export": "Import and Export Modules",
-      "manage_dependencies": "Manage Dependencies",
-      "fetch_data": "Fetch Data",
-      "read_write_files": "Read and Write Files",
-      "unix_cat": "Unix cat program",
-      "file_server": "File server",
-      "tcp_echo": "TCP echo server",
-      "subprocess": "Creating a subprocess",
-      "os_signals": "OS Signals",
-      "file_system_events": "File system events",
-      "testing_if_main": "Checking if file is main"
     }
   }
 }
