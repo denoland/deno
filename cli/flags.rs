@@ -478,7 +478,6 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
   let json = matches.is_present("json");
-  no_check_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Info {
     file: matches.value_of("file").map(|f| f.to_string()),
     json,
@@ -874,7 +873,8 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
-    .arg(no_check_arg())
+    // TODO(lucacasonato): remove for 2.0
+    .arg(no_check_arg().hidden(true))
     .arg(unstable_arg())
     .arg(
       Arg::with_name("json")
