@@ -118,7 +118,6 @@ impl GlobalState {
       self.file_fetcher.clone(),
       maybe_import_map,
       permissions.clone(),
-      self.flags.unstable,
       is_dyn_import,
       false,
     );

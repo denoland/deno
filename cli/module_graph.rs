@@ -7,7 +7,6 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::permissions::Permissions;
-use crate::state::exit_unstable;
 use crate::swc_util::Location;
 use crate::tsc::pre_process_file;
 use crate::tsc::ImportDesc;
@@ -45,31 +44,20 @@ fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
 }
 
 /// Disallow http:// imports from modules loaded over https://
-/// Disallow any imports from modules loaded with data:
 fn validate_no_downgrade(
   module_specifier: &ModuleSpecifier,
   maybe_referrer: Option<&ModuleSpecifier>,
   maybe_location: Option<&Location>,
 ) -> Result<(), ErrBox> {
   if let Some(referrer) = maybe_referrer.as_ref() {
-    match referrer.as_url().scheme() {
-      "https" => {
-        if let "http" = module_specifier.as_url().scheme() {
-          let e = ErrBox::new("PermissionDenied",
-                              "Modules loaded over https:// are not allowed to import modules over http://"
-          );
-          return Err(err_with_location(e, maybe_location));
-        };
-      }
-      "data" => {
-        let e = ErrBox::new(
-          "PermissionDenied",
-          "Modules loaded using data URL are not allowed to import other modules",
+    if let "https" = referrer.as_url().scheme() {
+      if let "http" = module_specifier.as_url().scheme() {
+        let e = ErrBox::new("PermissionDenied",
+          "Modules loaded over https:// are not allowed to import modules over http://"
         );
         return Err(err_with_location(e, maybe_location));
-      }
-      _ => {}
-    }
+      };
+    };
   };
 
   Ok(())
@@ -87,7 +75,7 @@ fn validate_no_file_from_remote(
       "http" | "https" => {
         let specifier_url = module_specifier.as_url();
         match specifier_url.scheme() {
-          "http" | "https" | "data" => {}
+          "http" | "https" => {}
           _ => {
             let e = ErrBox::new(
               "PermissionDenied",
@@ -269,7 +257,6 @@ pub struct ModuleGraphLoader {
   pending_downloads: FuturesUnordered<SourceFileFuture>,
   has_downloaded: HashSet<ModuleSpecifier>,
   graph: ModuleGraph,
-  is_unstable: bool,
   is_dyn_import: bool,
   analyze_dynamic_imports: bool,
 }
@@ -279,7 +266,6 @@ impl ModuleGraphLoader {
     file_fetcher: SourceFileFetcher,
     maybe_import_map: Option<ImportMap>,
     permissions: Permissions,
-    is_unstable: bool,
     is_dyn_import: bool,
     analyze_dynamic_imports: bool,
   ) -> Self {
@@ -290,7 +276,6 @@ impl ModuleGraphLoader {
       pending_downloads: FuturesUnordered::new(),
       has_downloaded: HashSet::new(),
       graph: ModuleGraph::new(),
-      is_unstable,
       is_dyn_import,
       analyze_dynamic_imports,
     }
@@ -418,10 +403,6 @@ impl ModuleGraphLoader {
   ) -> Result<(), ErrBox> {
     if self.has_downloaded.contains(&module_specifier) {
       return Ok(());
-    }
-
-    if !self.is_unstable && module_specifier.as_url().scheme() == "data" {
-      exit_unstable("data imports");
     }
 
     validate_no_downgrade(
@@ -619,7 +600,6 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
-      global_state.flags.unstable,
       false,
       false,
     );
@@ -893,7 +873,7 @@ fn test_pre_process_file() {
   let source = r#"
 // This comment is placed to make sure that directives are parsed
 // even when they start on non-first line
-
+  
 /// <reference lib="dom" />
 /// <reference types="./type_reference.d.ts" />
 /// <reference path="./type_reference/dep.ts" />
@@ -908,7 +888,7 @@ import * as qat from "./type_definitions/qat.ts";
 
 console.log(foo);
 console.log(fizz);
-console.log(qat.qat);
+console.log(qat.qat);  
 "#;
 
   let (imports, references) =
