@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::diagnostics::Diagnostic;
+use crate::diagnostics::Diagnostics;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::ErrBox;
@@ -52,6 +52,6 @@ fn op_format_diagnostic(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
-  let diagnostic = serde_json::from_value::<Diagnostic>(args)?;
+  let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
 }
