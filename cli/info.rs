@@ -34,7 +34,6 @@ impl ModuleDepInfo {
       global_state.file_fetcher.clone(),
       global_state.maybe_import_map.clone(),
       Permissions::allow_all(),
-      global_state.flags.unstable,
       false,
       true,
     );
