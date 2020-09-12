@@ -444,7 +444,9 @@ fn upgrade_with_space_in_path() {
 }
 
 // Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
 #[test]
+#[ignore]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");

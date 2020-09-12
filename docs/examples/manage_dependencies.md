@@ -1,5 +1,16 @@
 # Managing Dependencies
 
+## Concepts
+
+- Deno uses URLs for dependency management
+- One convention places all these dependent URLs into a local `deps.ts` file.
+  Functionality is then exported out of `deps.ts` for use by local modules.
+- Continuing this convention, dev only dependencies can be kept in a
+  `dev_deps.ts` file.
+- See also [Linking to external code](../linking_to_external_code.md)
+
+## Overview
+
 In Deno there is no concept of a package manager as external modules are
 imported directly into local modules. This raises the question of how to manage
 remote dependencies without a package manager. In big projects with many
@@ -11,15 +22,17 @@ file. All required remote dependencies are referenced in this file and the
 required methods and classes are re-exported. The dependent local modules then
 reference the `deps.ts` rather than the remote dependencies.
 
-This enables easy updates to modules across a large codebase and solves the
-'package manager problem', if it ever existed. Dev dependencies can also be
-managed in a separate `dev_deps.ts` file.
+With all dependencies centralized in `deps.ts`, managing these becomes easier.
+Dev dependencies can also be managed in a separate `dev_deps.ts` file, allowing
+clean separation between dev only and production dependencies.
 
-**deps.ts example**
+## Example
 
 ```ts
 /**
- * deps.ts re-exports the required methods from the remote Ramda module.
+ * deps.ts 
+ * 
+ * This module re-exports the required methods from the dependant remote Ramda module.
  **/
 export {
   add,
@@ -32,9 +45,13 @@ In this example the same functionality is created as is the case in the
 of the Ramda module being referenced directly it is referenced by proxy using a
 local `deps.ts` module.
 
-**Command:** `deno run dependencies.ts`
+**Command:** `deno run example.ts`
 
 ```ts
+/**
+ * example.ts
+ */
+
 import {
   add,
   multiply,
