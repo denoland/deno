@@ -159,7 +159,7 @@ Deno.test("websocket error", async () => {
   ws.onopen = () => fail();
   ws.onerror = (err): void => {
     assert(err instanceof ErrorEvent);
-    assertEquals(err.message, "InvalidData: received corrupt message")
+    assertEquals(err.message, "InvalidData: received corrupt message");
     promise1.resolve();
   };
   await promise1;

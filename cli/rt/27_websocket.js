@@ -101,7 +101,10 @@
           this.dispatchEvent(closeEvent);
         }
       }).catch((err) => {
-        const event = new ErrorEvent("error", { error: err, message: err.toString() });
+        const event = new ErrorEvent(
+          "error",
+          { error: err, message: err.toString() },
+        );
         event.target = this;
         this.onerror?.(event);
         this.dispatchEvent(event);
