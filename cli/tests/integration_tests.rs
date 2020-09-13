@@ -37,7 +37,23 @@ fn std_lint() {
   let status = util::deno_cmd()
     .arg("lint")
     .arg("--unstable")
+    .arg(format!(
+      "--ignore={}",
+      util::root_path().join("std/node/tests").to_string_lossy()
+    ))
     .arg(util::root_path().join("std"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn unit_test_lint() {
+  let status = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
     .arg(util::root_path().join("cli/tests/unit"))
     .spawn()
     .unwrap()
