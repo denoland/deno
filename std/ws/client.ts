@@ -1,8 +1,8 @@
 export type Payload =
-  | { type: "open", data: Event }
-  | { type: "message", data: MessageEvent }
-  | { type: "close", data: CloseEvent }
-  | { type: "error", data: Event | ErrorEvent };
+  | { type: "open"; data: Event }
+  | { type: "message"; data: MessageEvent }
+  | { type: "close"; data: CloseEvent }
+  | { type: "error"; data: Event | ErrorEvent };
 
 export class AsyncWebSocket extends WebSocket {
   #readable: ReadableStream<Payload>;
@@ -10,38 +10,38 @@ export class AsyncWebSocket extends WebSocket {
   constructor(url: string, protocols?: string | string[]) {
     super(url, protocols);
 
-    const {readable, writable} = new TransformStream<Payload, Payload>();
+    const { readable, writable } = new TransformStream<Payload, Payload>();
     this.#readable = readable;
     const writer = writable.getWriter();
 
-    super.onopen = (e) => {
+    this.addEventListener("open", (e) => {
       writer.write({
         type: "open",
         data: e,
       });
-    };
-    super.onmessage = (e) => {
+    });
+    this.addEventListener("message", (e) => {
       writer.write({
         type: "message",
         data: e,
       });
-    };
-    super.onclose = async (e) => {
+    });
+    this.addEventListener("close", async (e) => {
       await writer.write({
         type: "close",
         data: e,
       });
       await writer.close();
-    };
-    super.onerror = (e) => {
+    });
+    this.addEventListener("error", (e) => {
       writer.write({
         type: "error",
         data: e,
       });
-    };
+    });
   }
 
-  async* [Symbol.asyncIterator]() {
+  async *[Symbol.asyncIterator]() {
     yield* this.#readable.getIterator();
   }
 }
