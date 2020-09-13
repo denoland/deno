@@ -5,21 +5,18 @@
   "map": null,
   "depCount": 3,
   "files": {
+    "file://[WILDCARD]005_more_imports.ts": {
+      "size": 211,
+      "totalSize": 757,
+      "deps": [
+        "file://[WILDCARD]/subdir/mod1.ts"
+      ]
+    },
     "file://[WILDCARD]/subdir/mod1.ts": {
       "size": 320,
       "totalSize": 546,
       "deps": [
-        "file://[WILDCARD]/subdir/subdir2/mod2.ts",
-        "file://[WILDCARD]/subdir/print_hello.ts"
-      ]
-    },
-    "file://[WILDCARD]/005_more_imports.ts": {
-      "size": 211,
-      "totalSize": 757,
-      "deps": [
-        "file://[WILDCARD]/subdir/print_hello.ts",
-        "file://[WILDCARD]/subdir/subdir2/mod2.ts",
-        "file://[WILDCARD]/subdir/mod1.ts"
+        "file://[WILDCARD]/subdir/subdir2/mod2.ts"
       ]
     },
     "file://[WILDCARD]/subdir/print_hello.ts": {
