@@ -19,6 +19,10 @@
     return sendSync("op_system_memory_info");
   }
 
+  function systemCpuNum() {
+    return sendSync("op_system_cpu_num")[0];
+  }
+
   function exit(code = 0) {
     sendSync("op_exit", { code });
     throw new Error("Code not reachable");
@@ -55,6 +59,7 @@
     exit,
     osRelease,
     systemMemoryInfo,
+    systemCpuNum,
     hostname,
     loadavg,
   };

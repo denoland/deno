@@ -188,3 +188,8 @@ unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
   assert(info.swapTotal >= 0);
   assert(info.swapFree >= 0);
 });
+
+unitTest({ perms: { env: true } }, function systemCpuNum(): void {
+  const num = Deno.systemCpuNum();
+  assert(num >= 0);
+});

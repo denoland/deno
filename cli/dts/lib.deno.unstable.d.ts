@@ -130,11 +130,11 @@ declare namespace Deno {
    */
   export function osRelease(): string;
 
-  /** **Unstable** new API. yet to be vetted. 
+  /** **Unstable** new API. yet to be vetted.
    *
    * Displays the total amount of free and used physical and swap memory in the
    * system, as well as the buffers and caches used by the kernel.
-   * 
+   *
    * This is similar to the `free` command in Linux
    *
    * ```ts
@@ -166,6 +166,19 @@ declare namespace Deno {
     /** Unused swap memory */
     swapFree: number;
   }
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the total number of logical cpus in the system
+   *
+   * ```ts
+   * console.log(Deno.systemCpuNum());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   */
+  export function systemCpuNum(): number;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
