@@ -436,15 +436,27 @@ export default class Context {
 
         switch (id) {
           case CLOCKID_REALTIME:
-            memoryView.setBigUint64(resolutionOffset, clock_res_realtime(), true);
+            memoryView.setBigUint64(
+              resolutionOffset,
+              clock_res_realtime(),
+              true,
+            );
             break;
 
           case CLOCKID_MONOTONIC:
-            memoryView.setBigUint64(resolutionOffset, clock_res_monotonic(), true);
+            memoryView.setBigUint64(
+              resolutionOffset,
+              clock_res_monotonic(),
+              true,
+            );
             break;
 
           case CLOCKID_PROCESS_CPUTIME_ID:
-            memoryView.setBigUint64(resolutionOffset, clock_res_process(), true);
+            memoryView.setBigUint64(
+              resolutionOffset,
+              clock_res_process(),
+              true,
+            );
             break;
 
           case CLOCKID_THREAD_CPUTIME_ID:
@@ -1044,10 +1056,18 @@ export default class Context {
           ? Deno.statSync(path)
           : Deno.lstatSync(path);
 
-        memoryView.setBigUint64(bufferOffset, BigInt(info.dev ? info.dev : 0), true);
+        memoryView.setBigUint64(
+          bufferOffset,
+          BigInt(info.dev ? info.dev : 0),
+          true,
+        );
         bufferOffset += 8;
 
-        memoryView.setBigUint64(bufferOffset, BigInt(info.ino ? info.ino : 0), true);
+        memoryView.setBigUint64(
+          bufferOffset,
+          BigInt(info.ino ? info.ino : 0),
+          true,
+        );
         bufferOffset += 8;
 
         switch (true) {
@@ -1485,7 +1505,11 @@ export default class Context {
         bufferOffset: number,
         bufferLength: number,
       ): number => {
-        const buffer = new Uint8Array(this.memory.buffer, bufferOffset, bufferLength);
+        const buffer = new Uint8Array(
+          this.memory.buffer,
+          bufferOffset,
+          bufferLength,
+        );
         crypto.getRandomValues(buffer);
 
         return ERRNO_SUCCESS;
