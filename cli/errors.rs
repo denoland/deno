@@ -3,11 +3,11 @@
 //! There are many types of errors in Deno:
 //! - ErrBox: a generic boxed object. This is the super type of all
 //!   errors handled in Rust.
-//! - JSError: a container for the error message and stack trace for exceptions
+//! - JsError: a container for the error message and stack trace for exceptions
 //!   thrown in JavaScript code. We use this to pretty-print stack traces.
 //! - Diagnostic: these are errors that originate in TypeScript's compiler.
-//!   They're similar to JSError, in that they have line numbers.
-//!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime
+//!   They're similar to JsError, in that they have line numbers.
+//!   But Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
 use crate::import_map::ImportMapError;
@@ -156,19 +156,21 @@ fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
 fn get_nix_error_class(error: &nix::Error) -> &'static str {
   use nix::errno::Errno::*;
   match error {
-    nix::Error::Sys(EPERM) => "PermissionDenied",
+    nix::Error::Sys(ECHILD) => "NotFound",
     nix::Error::Sys(EINVAL) => "TypeError",
     nix::Error::Sys(ENOENT) => "NotFound",
     nix::Error::Sys(ENOTTY) => "BadResource",
-    nix::Error::Sys(UnknownErrno) => unreachable!(),
-    nix::Error::Sys(_) => unreachable!(),
+    nix::Error::Sys(EPERM) => "PermissionDenied",
+    nix::Error::Sys(ESRCH) => "NotFound",
+    nix::Error::Sys(UnknownErrno) => "Error",
+    nix::Error::Sys(_) => "Error",
     nix::Error::InvalidPath => "TypeError",
     nix::Error::InvalidUtf8 => "InvalidData",
     nix::Error::UnsupportedOperation => unreachable!(),
   }
 }
 
-pub fn get_error_class(e: &ErrBox) -> &'static str {
+pub(crate) fn get_error_class_name(e: &ErrBox) -> &'static str {
   use ErrBox::*;
   match e {
     Simple { class, .. } => Some(*class),

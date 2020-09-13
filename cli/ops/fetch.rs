@@ -1,30 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
+
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
-use crate::state::State;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use reqwest::Client;
+use serde_derive::Deserialize;
+use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_fetch", s.stateful_json_op_async(t, op_fetch));
-  i.register_op(
-    "op_create_http_client",
-    s.stateful_json_op_sync(t, op_create_http_client),
-  );
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_async(rt, "op_fetch", op_fetch);
+  super::reg_json_sync(rt, "op_create_http_client", op_create_http_client);
 }
 
 #[derive(Deserialize)]
@@ -37,23 +32,23 @@ struct FetchArgs {
 }
 
 async fn op_fetch(
-  state: Rc<State>,
-  resource_table: Rc<RefCell<ResourceTable>>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   data: BufVec,
 ) -> Result<Value, ErrBox> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
-  let resource_table2 = resource_table.clone();
 
   let client = if let Some(rid) = args.client_rid {
-    let resource_table_ = resource_table.borrow();
-    let r = resource_table_
+    let state = state.borrow();
+    let r = state
+      .resource_table
       .get::<HttpClientResource>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
     r.client.clone()
   } else {
-    let client_ref = state.http_client.borrow_mut();
+    let cli_state = super::cli_state2(&state);
+    let client_ref = cli_state.http_client.borrow();
     client_ref.clone()
   };
 
@@ -73,7 +68,7 @@ async fn op_fetch(
     )));
   }
 
-  state.check_net_url(&url_)?;
+  super::cli_state2(&state).check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
 
@@ -100,8 +95,7 @@ async fn op_fetch(
   }
 
   let body = HttpBody::from(res);
-  let mut resource_table = resource_table2.borrow_mut();
-  let rid = resource_table.add(
+  let rid = state.borrow_mut().resource_table.add(
     "httpBody",
     Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
       Box::new(body),
@@ -136,20 +130,20 @@ struct CreateHttpClientOptions {
 }
 
 fn op_create_http_client(
-  state: &State,
-  resource_table: &mut ResourceTable,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
-    state.check_read(&PathBuf::from(ca_file))?;
+    super::cli_state(state).check_read(&PathBuf::from(ca_file))?;
   }
 
   let client = create_http_client(args.ca_file.as_deref()).unwrap();
 
-  let rid =
-    resource_table.add("httpClient", Box::new(HttpClientResource::new(client)));
+  let rid = state
+    .resource_table
+    .add("httpClient", Box::new(HttpClientResource::new(client)));
   Ok(json!(rid))
 }

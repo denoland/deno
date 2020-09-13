@@ -1,32 +1,24 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::Value;
-use crate::state::State;
-use deno_core::CoreIsolate;
+
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;
-use std::rc::Rc;
+use serde_json::Value;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op(
-    "op_get_random_values",
-    s.stateful_json_op_sync(t, op_get_random_values),
-  );
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_get_random_values", op_get_random_values);
 }
 
 fn op_get_random_values(
-  state: &State,
-  _resource_table: &mut ResourceTable,
+  state: &mut OpState,
   _args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   assert_eq!(zero_copy.len(), 1);
-
-  if let Some(seeded_rng) = &state.seeded_rng {
+  let cli_state = super::cli_state(state);
+  if let Some(seeded_rng) = &cli_state.seeded_rng {
     seeded_rng.borrow_mut().fill(&mut *zero_copy[0]);
   } else {
     let mut rng = thread_rng();

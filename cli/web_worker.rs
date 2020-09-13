@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use crate::js;
 use crate::ops;
 use crate::state::State;
 use crate::worker::Worker;
@@ -6,7 +8,6 @@ use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::v8;
 use deno_core::ErrBox;
-use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -84,11 +85,10 @@ pub struct WebWorker {
 impl WebWorker {
   pub fn new(
     name: String,
-    startup_data: StartupData,
     state: &Rc<State>,
     has_deno_namespace: bool,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, &state);
+    let mut worker = Worker::new(name, Some(js::deno_isolate_init()), &state);
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
@@ -109,38 +109,33 @@ impl WebWorker {
       has_deno_namespace,
     };
 
-    let handle = web_worker.thread_safe_handle();
-
     {
-      let isolate = &mut web_worker.worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::web_worker::init(
-        isolate,
-        &state,
-        &web_worker.worker.internal_channels.sender,
-        handle,
-      );
-      ops::worker_host::init(isolate, &state);
-      ops::idna::init(isolate, &state);
-      ops::io::init(isolate, &state);
-      ops::resources::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::fetch::init(isolate, &state);
+      ops::runtime::init(&mut web_worker.worker);
+      let sender = web_worker.worker.internal_channels.sender.clone();
+      let handle = web_worker.thread_safe_handle();
+      ops::web_worker::init(&mut web_worker.worker, sender, handle);
+      ops::worker_host::init(&mut web_worker.worker);
+      ops::idna::init(&mut web_worker.worker);
+      ops::io::init(&mut web_worker.worker);
+      ops::resources::init(&mut web_worker.worker);
+      ops::errors::init(&mut web_worker.worker);
+      ops::timers::init(&mut web_worker.worker);
+      ops::fetch::init(&mut web_worker.worker);
+      ops::websocket::init(&mut web_worker.worker);
 
       if has_deno_namespace {
-        ops::runtime_compiler::init(isolate, &state);
-        ops::fs::init(isolate, &state);
-        ops::fs_events::init(isolate, &state);
-        ops::plugin::init(isolate, &state);
-        ops::net::init(isolate, &state);
-        ops::tls::init(isolate, &state);
-        ops::os::init(isolate, &state);
-        ops::permissions::init(isolate, &state);
-        ops::process::init(isolate, &state);
-        ops::random::init(isolate, &state);
-        ops::signal::init(isolate, &state);
-        ops::tty::init(isolate, &state);
+        ops::runtime_compiler::init(&mut web_worker.worker);
+        ops::fs::init(&mut web_worker.worker);
+        ops::fs_events::init(&mut web_worker.worker);
+        ops::plugin::init(&mut web_worker.worker);
+        ops::net::init(&mut web_worker.worker);
+        ops::tls::init(&mut web_worker.worker);
+        ops::os::init(&mut web_worker.worker);
+        ops::permissions::init(&mut web_worker.worker);
+        ops::process::init(&mut web_worker.worker);
+        ops::random::init(&mut web_worker.worker);
+        ops::signal::init(&mut web_worker.worker);
+        ops::tty::init(&mut web_worker.worker);
       }
     }
 
@@ -244,19 +239,13 @@ impl Future for WebWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::startup_data;
   use crate::state::State;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
 
   fn create_test_worker() -> WebWorker {
     let state = State::mock("./hello.js");
-    let mut worker = WebWorker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      &state,
-      false,
-    );
+    let mut worker = WebWorker::new("TEST".to_string(), &state, false);
     worker
       .execute("bootstrap.workerRuntime(\"TEST\", false)")
       .unwrap();

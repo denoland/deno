@@ -1,11 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertStrictEquals } from "../../testing/asserts.ts";
+import { resolve, dirname, fromFileUrl } from "../../path/mod.ts";
+
+const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)), "..");
 
 Deno.test("[examples/colors] print a colored text", async () => {
   const decoder = new TextDecoder();
   const process = Deno.run({
     cmd: [Deno.execPath(), "run", "colors.ts"],
-    cwd: "examples",
+    cwd: moduleDir,
     stdout: "piped",
   });
   try {

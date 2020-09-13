@@ -1,14 +1,15 @@
+use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
-use crate::state::State;
-use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
+use crate::metrics::metrics_op;
+use deno_core::BufVec;
 use deno_core::ErrBox;
-use deno_core::ResourceTable;
-use deno_core::ZeroCopyBuf;
+use deno_core::JsRuntime;
+use deno_core::OpState;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::ready;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -85,9 +86,9 @@ lazy_static! {
   };
 }
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_read", s.stateful_minimal_op2(op_read));
-  i.register_op("op_write", s.stateful_minimal_op2(op_write));
+pub fn init(rt: &mut JsRuntime) {
+  rt.register_op("op_read", metrics_op(minimal_op(op_read)));
+  rt.register_op("op_write", metrics_op(minimal_op(op_write)));
 }
 
 pub fn get_stdio() -> (
@@ -236,11 +237,10 @@ impl DenoAsyncRead for StreamResource {
 }
 
 pub fn op_read(
-  isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
+  state: Rc<RefCell<OpState>>,
   is_sync: bool,
   rid: i32,
-  zero_copy: &mut [ZeroCopyBuf],
+  mut zero_copy: BufVec,
 ) -> MinimalOp {
   debug!("read rid={}", rid);
   match zero_copy.len() {
@@ -248,13 +248,11 @@ pub fn op_read(
     1 => {}
     _ => panic!("Invalid number of arguments"),
   }
-  let resource_table = isolate_state.resource_table.clone();
 
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Read;
           std_file
@@ -271,8 +269,9 @@ pub fn op_read(
     let mut zero_copy = zero_copy[0].clone();
     MinimalOp::Async(
       poll_fn(move |cx| {
-        let mut resource_table = resource_table.borrow_mut();
-        let resource_holder = resource_table
+        let mut state = state.borrow_mut();
+        let resource_holder = state
+          .resource_table
           .get_mut::<StreamResourceHolder>(rid as u32)
           .ok_or_else(ErrBox::bad_resource_id)?;
 
@@ -358,11 +357,10 @@ impl DenoAsyncWrite for StreamResource {
 }
 
 pub fn op_write(
-  isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
+  state: Rc<RefCell<OpState>>,
   is_sync: bool,
   rid: i32,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: BufVec,
 ) -> MinimalOp {
   debug!("write rid={}", rid);
   match zero_copy.len() {
@@ -374,8 +372,7 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = isolate_state.resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
           std_file
@@ -390,12 +387,12 @@ pub fn op_write(
     })
   } else {
     let zero_copy = zero_copy[0].clone();
-    let resource_table = isolate_state.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {
-          let mut resource_table = resource_table.borrow_mut();
-          let resource_holder = resource_table
+          let mut state = state.borrow_mut();
+          let resource_holder = state
+            .resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(ErrBox::bad_resource_id)?;
           resource_holder.resource.poll_write(cx, &zero_copy)
@@ -407,8 +404,9 @@ pub fn op_write(
         // Figure out why it's needed and preferably remove it.
         // https://github.com/denoland/deno/issues/3565
         poll_fn(|cx| {
-          let mut resource_table = resource_table.borrow_mut();
-          let resource_holder = resource_table
+          let mut state = state.borrow_mut();
+          let resource_holder = state
+            .resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(ErrBox::bad_resource_id)?;
           resource_holder.resource.poll_flush(cx)
@@ -430,7 +428,7 @@ pub fn op_write(
 ///
 /// Returns ErrorKind::Busy if the resource is being used by another op.
 pub fn std_file_resource<F, T>(
-  resource_table: &mut ResourceTable,
+  state: &mut OpState,
   rid: u32,
   mut f: F,
 ) -> Result<T, ErrBox>
@@ -439,7 +437,7 @@ where
     FnMut(Result<&mut std::fs::File, &mut StreamResource>) -> Result<T, ErrBox>,
 {
   // First we look up the rid in the resource table.
-  let mut r = resource_table.get_mut::<StreamResourceHolder>(rid);
+  let mut r = state.resource_table.get_mut::<StreamResourceHolder>(rid);
   if let Some(ref mut resource_holder) = r {
     // Sync write only works for FsFile. It doesn't make sense to do this
     // for non-blocking sockets. So we error out if not FsFile.
