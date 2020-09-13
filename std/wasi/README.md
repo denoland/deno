@@ -55,7 +55,7 @@ This module provides an implementation of the WebAssembly System Interface
 ## Usage
 
 ```typescript
-import Context from "https://deno.land/std/wasi/snapshot_preview1.ts";
+import Context from "https://deno.land/std@0.68.0/wasi/snapshot_preview1.ts";
 
 const context = new Context({
   args: Deno.args,
