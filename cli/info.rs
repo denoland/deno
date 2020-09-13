@@ -263,7 +263,7 @@ impl FileInfoDepFlatGraph {
         let total_size = traverse_calc_size(module_name, module_graph);
         let mut deps = Vec::new();
         module_graph_file.imports.iter().for_each(|import| {
-          deps.push(import.resolved_specifier.to_string().clone());
+          deps.push(import.resolved_specifier.to_string());
         });
         inner.insert(
           module_name.clone(),
@@ -289,7 +289,7 @@ impl Serialize for FileInfoDepFlatGraph {
 ///
 /// Traverse down the module graph tree in recursive way to calculate total size of a given module
 fn traverse_calc_size(
-  module_name: &String,
+  module_name: &str,
   module_graph: &ModuleGraph,
 ) -> Option<usize> {
   let mut total_size = None;
