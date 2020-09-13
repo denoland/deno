@@ -26,7 +26,10 @@ Ensures that the directory exists. If the directory structure does not exist, it
 is created. Like mkdir -p.
 
 ```ts
-import { ensureDir, ensureDirSync } from "https://deno.land/std@0.68.0/fs/mod.ts";
+import {
+  ensureDir,
+  ensureDirSync,
+} from "https://deno.land/std@0.68.0/fs/mod.ts";
 
 ensureDir("./bar"); // returns a promise
 ensureDirSync("./ensureDirSync"); // void
@@ -39,7 +42,10 @@ directories that do not exist, these directories are created. If the file
 already exists, it is **NOT MODIFIED**.
 
 ```ts
-import { ensureFile, ensureFileSync } from "https://deno.land/std@0.68.0/fs/mod.ts";
+import {
+  ensureFile,
+  ensureFileSync,
+} from "https://deno.land/std@0.68.0/fs/mod.ts";
 
 ensureFile("./folder/targetFile.dat"); // returns promise
 ensureFileSync("./folder/targetFile.dat"); // void
