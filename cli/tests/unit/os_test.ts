@@ -193,3 +193,8 @@ unitTest({ perms: { env: true } }, function systemCpuNum(): void {
   const num = Deno.systemCpuNum();
   assert(num >= 0);
 });
+
+unitTest({ perms: { env: true } }, function systemCpuSpeed(): void {
+  const speed = Deno.systemCpuSpeed();
+  assert(speed >= 0);
+});

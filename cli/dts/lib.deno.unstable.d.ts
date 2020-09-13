@@ -180,6 +180,19 @@ declare namespace Deno {
    */
   export function systemCpuNum(): number;
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the cpu speed in MHz
+   *
+   * ```ts
+   * console.log(Deno.systemCpuSpeed());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   */
+  export function systemCpuSpeed(): number;
+
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initialize a plugin.

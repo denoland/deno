@@ -21,6 +21,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_os_release", op_os_release);
   super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
   super::reg_json_sync(rt, "op_system_cpu_num", op_system_cpu_num);
+  super::reg_json_sync(rt, "op_system_cpu_speed", op_system_cpu_speed);
 }
 
 fn op_exec_path(
@@ -187,6 +188,20 @@ fn op_system_cpu_num(
   cli_state.check_unstable("Deno.systemCpuNum");
   cli_state.check_env()?;
   match sys_info::cpu_num() {
+    Ok(num) => Ok(json!([num])),
+    Err(_) => Ok(json!({})),
+  }
+}
+
+fn op_system_cpu_speed(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
+  let cli_state = super::cli_state(state);
+  cli_state.check_unstable("Deno.systemCpuSpeed");
+  cli_state.check_env()?;
+  match sys_info::cpu_speed() {
     Ok(num) => Ok(json!([num])),
     Err(_) => Ok(json!({})),
   }
