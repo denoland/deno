@@ -296,17 +296,14 @@ fn traverse_calc_size(
   if let Some(module_graph_file) = module_graph.get(module_name) {
     total_size = Some(module_graph_file.size());
     for _module_name in module_graph_file.imports.iter() {
-      if let Some(_size) = traverse_calc_size(
+      total_size = if let Some(_size) = traverse_calc_size(
         &_module_name.resolved_specifier.to_string(),
         module_graph,
       ) {
-        match total_size {
-          Some(_total_size) => {
-            total_size = Some(_total_size + _size);
-          }
-          None => unreachable!(),
-        }
-      }
+        Some(total_size.unwrap() + _size)
+      } else {
+        unreachable!();
+      };
     }
   }
   total_size
