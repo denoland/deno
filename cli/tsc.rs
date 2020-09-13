@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::diagnostics::Diagnostic;
-use crate::diagnostics::DiagnosticItem;
+use crate::diagnostics::Diagnostics;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -216,10 +215,8 @@ fn create_compiler_worker(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
-  // TODO(bartlomieju): these $deno$ specifiers should be unified for all subcommands
-  // like 'eval', 'repl'
   let entry_point =
-    ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
+    ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
   let worker_state =
     State::new(&global_state, Some(permissions), entry_point, None, true)
       .expect("Unable to create worker state");
@@ -398,7 +395,7 @@ struct EmittedSource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BundleResponse {
-  diagnostics: Diagnostic,
+  diagnostics: Diagnostics,
   bundle_output: Option<String>,
   stats: Option<Vec<Stat>>,
 }
@@ -406,7 +403,7 @@ struct BundleResponse {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompileResponse {
-  diagnostics: Diagnostic,
+  diagnostics: Diagnostics,
   emit_map: HashMap<String, EmittedSource>,
   build_info: Option<String>,
   stats: Option<Vec<Stat>>,
@@ -427,14 +424,14 @@ struct TranspileTsOptions {
 #[serde(rename_all = "camelCase")]
 #[allow(unused)]
 struct RuntimeBundleResponse {
-  diagnostics: Vec<DiagnosticItem>,
+  diagnostics: Diagnostics,
   output: String,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeCompileResponse {
-  diagnostics: Vec<DiagnosticItem>,
+  diagnostics: Diagnostics,
   emit_map: HashMap<String, EmittedSource>,
 }
 
@@ -649,7 +646,7 @@ impl TsCompiler {
 
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
-    if !compile_response.diagnostics.items.is_empty() {
+    if !compile_response.diagnostics.0.is_empty() {
       return Err(ErrBox::error(compile_response.diagnostics.to_string()));
     }
 
@@ -771,7 +768,7 @@ impl TsCompiler {
 
     maybe_log_stats(bundle_response.stats);
 
-    if !bundle_response.diagnostics.items.is_empty() {
+    if !bundle_response.diagnostics.0.is_empty() {
       return Err(ErrBox::error(bundle_response.diagnostics.to_string()));
     }
 
@@ -1289,7 +1286,7 @@ pub async fn runtime_compile(
 
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
-  if response.diagnostics.is_empty() && sources.is_none() {
+  if response.diagnostics.0.is_empty() && sources.is_none() {
     compiler.cache_emitted_files(response.emit_map)?;
   }
 

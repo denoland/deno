@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
+  assert,
   assertEquals,
   assertThrows,
   createResolvable,
@@ -135,18 +136,33 @@ Deno.test("echo string", async () => {
 });
 
 Deno.test("echo string tls", async () => {
-  const promise = createResolvable();
+  const promise1 = createResolvable();
+  const promise2 = createResolvable();
   const ws = new WebSocket("wss://localhost:4243");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send("foo");
   ws.onmessage = (e): void => {
     assertEquals(e.data, "foo");
     ws.close();
+    promise1.resolve();
   };
   ws.onclose = (): void => {
-    promise.resolve();
+    promise2.resolve();
   };
-  await promise;
+  await promise1;
+  await promise2;
+});
+
+Deno.test("websocket error", async () => {
+  const promise1 = createResolvable();
+  const ws = new WebSocket("wss://localhost:4242");
+  ws.onopen = () => fail();
+  ws.onerror = (err): void => {
+    assert(err instanceof ErrorEvent);
+    assertEquals(err.message, "InvalidData: received corrupt message");
+    promise1.resolve();
+  };
+  await promise1;
 });
 
 Deno.test("echo blob with binaryType blob", async () => {

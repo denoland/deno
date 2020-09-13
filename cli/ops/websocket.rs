@@ -56,13 +56,12 @@ pub async fn op_ws_create(
     cli_state.check_net_url(&url::Url::parse(&args.url)?)?;
     cli_state.global_state.flags.ca_file.clone()
   };
-  let uri: Uri = args.url.parse().unwrap();
+  let uri: Uri = args.url.parse()?;
   let request = Request::builder()
     .method(Method::GET)
     .uri(&uri)
     .header("Sec-WebSocket-Protocol", args.protocols)
-    .body(())
-    .unwrap();
+    .body(())?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,
@@ -100,7 +99,12 @@ pub async fn op_ws_create(
   };
 
   let (stream, response): (WsStream, Response) =
-    client_async(request, socket).await.unwrap();
+    client_async(request, socket).await.map_err(|err| {
+      ErrBox::type_error(format!(
+        "failed to connect to WebSocket: {}",
+        err.to_string()
+      ))
+    })?;
 
   let mut state = state.borrow_mut();
   let rid = state
