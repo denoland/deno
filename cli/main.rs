@@ -24,6 +24,7 @@ extern crate url;
 
 mod checksum;
 pub mod colors;
+mod coverage;
 pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
@@ -69,6 +70,8 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
+use crate::coverage::CoverageCollector;
+use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -540,6 +543,7 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  coverage: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -557,15 +561,19 @@ async fn test_command(
   let test_file_path = cwd.join(".deno.test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file =
-    test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
+  let test_file = test_runner::render_test_file(
+    test_modules.clone(),
+    fail_fast,
+    quiet,
+    filter,
+  );
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
-    url: test_file_url,
+    url: test_file_url.clone(),
     types_header: None,
     media_type: MediaType::TypeScript,
     source_code: TextDocument::new(
@@ -578,11 +586,45 @@ async fn test_command(
   global_state
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
+
+  let mut maybe_coverage_collector = if coverage {
+    let inspector = worker
+      .inspector
+      .as_mut()
+      .expect("Inspector is not created.");
+
+    let mut coverage_collector = CoverageCollector::new(&mut **inspector);
+    coverage_collector.start_collecting().await?;
+
+    Some(coverage_collector)
+  } else {
+    None
+  };
+
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  (&mut *worker).await?;
+
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    let script_coverage = coverage_collector.take_precise_coverage().await?;
+    coverage_collector.stop_collecting().await?;
+
+    let filtered_coverage = coverage::filter_script_coverages(
+      script_coverage,
+      test_file_url,
+      test_modules,
+    );
+
+    let pretty_coverage_reporter =
+      PrettyCoverageReporter::new(global_state, filtered_coverage);
+    let report = pretty_coverage_reporter.get_report();
+    print!("{}", report)
+  }
+
+  Ok(())
 }
 
 pub fn main() {
@@ -694,8 +736,11 @@ pub fn main() {
       include,
       allow_none,
       filter,
-    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
-      .boxed_local(),
+      coverage,
+    } => test_command(
+      flags, include, fail_fast, quiet, allow_none, filter, coverage,
+    )
+    .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
