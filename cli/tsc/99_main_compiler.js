@@ -24,262 +24,62 @@ delete Object.prototype.__proto__;
   const errorStack = window.__bootstrap.errorStack;
   const errors = window.__bootstrap.errors.errors;
 
-  function opNow() {
-    const res = dispatchJson.sendSync("op_now");
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
-  }
-
-  const DiagnosticCategory = {
-    0: "Log",
-    1: "Debug",
-    2: "Info",
-    3: "Error",
-    4: "Warning",
-    5: "Suggestion",
-
-    Log: 0,
-    Debug: 1,
-    Info: 2,
-    Error: 3,
-    Warning: 4,
-    Suggestion: 5,
-  };
-
-  const unstableDenoGlobalProperties = [
-    "CompilerOptions",
-    "DatagramConn",
-    "Diagnostic",
-    "DiagnosticCategory",
-    "DiagnosticItem",
-    "DiagnosticMessageChain",
-    "EnvPermissionDescriptor",
-    "HrtimePermissionDescriptor",
-    "HttpClient",
-    "LinuxSignal",
-    "Location",
-    "MacOSSignal",
-    "NetPermissionDescriptor",
-    "PermissionDescriptor",
-    "PermissionName",
-    "PermissionState",
-    "PermissionStatus",
-    "Permissions",
-    "PluginPermissionDescriptor",
-    "ReadPermissionDescriptor",
-    "RunPermissionDescriptor",
-    "ShutdownMode",
-    "Signal",
-    "SignalStream",
-    "StartTlsOptions",
-    "SymlinkOptions",
-    "TranspileOnlyResult",
-    "UnixConnectOptions",
-    "UnixListenOptions",
-    "WritePermissionDescriptor",
-    "applySourceMap",
-    "bundle",
-    "compile",
-    "connect",
-    "consoleSize",
-    "createHttpClient",
-    "fdatasync",
-    "fdatasyncSync",
-    "formatDiagnostics",
-    "futime",
-    "futimeSync",
-    "fstat",
-    "fstatSync",
-    "fsync",
-    "fsyncSync",
-    "ftruncate",
-    "ftruncateSync",
-    "hostname",
-    "kill",
-    "link",
-    "linkSync",
-    "listen",
-    "listenDatagram",
-    "loadavg",
-    "mainModule",
-    "openPlugin",
-    "osRelease",
-    "permissions",
-    "ppid",
-    "setRaw",
-    "shutdown",
-    "signal",
-    "signals",
-    "startTls",
-    "symlink",
-    "symlinkSync",
-    "transpileOnly",
-    "umask",
-    "utime",
-    "utimeSync",
-  ];
-
-  function transformMessageText(messageText, code) {
-    switch (code) {
-      case 2339: {
-        const property = messageText
-          .replace(/^Property '/, "")
-          .replace(/' does not exist on type 'typeof Deno'\./, "");
-
-        if (
-          messageText.endsWith("on type 'typeof Deno'.") &&
-          unstableDenoGlobalProperties.includes(property)
-        ) {
-          return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
-        }
-        break;
-      }
-      case 2551: {
-        const suggestionMessagePattern = / Did you mean '(.+)'\?$/;
-        const property = messageText
-          .replace(/^Property '/, "")
-          .replace(/' does not exist on type 'typeof Deno'\./, "")
-          .replace(suggestionMessagePattern, "");
-        const suggestion = messageText.match(suggestionMessagePattern);
-        const replacedMessageText = messageText.replace(
-          suggestionMessagePattern,
-          "",
-        );
-        if (suggestion && unstableDenoGlobalProperties.includes(property)) {
-          const suggestedProperty = suggestion[1];
-          return `${replacedMessageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestedProperty}'?`;
-        }
-        break;
-      }
+  /**
+   * @param {import("../dts/typescript").DiagnosticRelatedInformation} diagnostic
+   */
+  function fromRelatedInformation({
+    start,
+    length,
+    file,
+    messageText: msgText,
+    ...ri
+  }) {
+    let messageText;
+    let messageChain;
+    if (typeof msgText === "object") {
+      messageChain = msgText;
+    } else {
+      messageText = msgText;
     }
-
-    return messageText;
-  }
-
-  function fromDiagnosticCategory(category) {
-    switch (category) {
-      case ts.DiagnosticCategory.Error:
-        return DiagnosticCategory.Error;
-      case ts.DiagnosticCategory.Message:
-        return DiagnosticCategory.Info;
-      case ts.DiagnosticCategory.Suggestion:
-        return DiagnosticCategory.Suggestion;
-      case ts.DiagnosticCategory.Warning:
-        return DiagnosticCategory.Warning;
-      default:
-        throw new Error(
-          `Unexpected DiagnosticCategory: "${category}"/"${
-            ts.DiagnosticCategory[category]
-          }"`,
-        );
-    }
-  }
-
-  function getSourceInformation(sourceFile, start, length) {
-    const scriptResourceName = sourceFile.fileName;
-    const {
-      line: lineNumber,
-      character: startColumn,
-    } = sourceFile.getLineAndCharacterOfPosition(start);
-    const endPosition = sourceFile.getLineAndCharacterOfPosition(
-      start + length,
-    );
-    const endColumn = lineNumber === endPosition.line
-      ? endPosition.character
-      : startColumn;
-    const lastLineInFile = sourceFile.getLineAndCharacterOfPosition(
-      sourceFile.text.length,
-    ).line;
-    const lineStart = sourceFile.getPositionOfLineAndCharacter(lineNumber, 0);
-    const lineEnd = lineNumber < lastLineInFile
-      ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
-      : sourceFile.text.length;
-    const sourceLine = sourceFile.text
-      .slice(lineStart, lineEnd)
-      .replace(/\s+$/g, "")
-      .replace("\t", " ");
-    return {
-      sourceLine,
-      lineNumber,
-      scriptResourceName,
-      startColumn,
-      endColumn,
-    };
-  }
-
-  function fromDiagnosticMessageChain(messageChain) {
-    if (!messageChain) {
-      return undefined;
-    }
-
-    return messageChain.map(({ messageText, code, category, next }) => {
-      const message = transformMessageText(messageText, code);
+    if (start !== undefined && length !== undefined && file) {
+      const startPos = file.getLineAndCharacterOfPosition(start);
+      const sourceLine = file.getFullText().split("\n")[startPos.line];
+      const fileName = file.fileName;
       return {
-        message,
-        code,
-        category: fromDiagnosticCategory(category),
-        next: fromDiagnosticMessageChain(next),
+        start: startPos,
+        end: file.getLineAndCharacterOfPosition(start + length),
+        fileName,
+        messageChain,
+        messageText,
+        sourceLine,
+        ...ri,
       };
+    } else {
+      return {
+        messageChain,
+        messageText,
+        ...ri,
+      };
+    }
+  }
+
+  /**
+   * @param {import("../dts/typescript").Diagnostic[]} diagnostics 
+   */
+  function fromTypeScriptDiagnostic(diagnostics) {
+    return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
+      const value = fromRelatedInformation(diag);
+      value.relatedInformation = ri
+        ? ri.map(fromRelatedInformation)
+        : undefined;
+      value.source = source;
+      return value;
     });
   }
 
-  function parseDiagnostic(item) {
-    const {
-      messageText,
-      category: sourceCategory,
-      code,
-      file,
-      start: startPosition,
-      length,
-    } = item;
-    const sourceInfo = file && startPosition && length
-      ? getSourceInformation(file, startPosition, length)
-      : undefined;
-    const endPosition = startPosition && length
-      ? startPosition + length
-      : undefined;
-    const category = fromDiagnosticCategory(sourceCategory);
-
-    let message;
-    let messageChain;
-    if (typeof messageText === "string") {
-      message = transformMessageText(messageText, code);
-    } else {
-      message = transformMessageText(messageText.messageText, messageText.code);
-      messageChain = fromDiagnosticMessageChain([messageText])[0];
-    }
-
-    const base = {
-      message,
-      messageChain,
-      code,
-      category,
-      startPosition,
-      endPosition,
-    };
-
-    return sourceInfo ? { ...base, ...sourceInfo } : base;
-  }
-
-  function parseRelatedInformation(relatedInformation) {
-    const result = [];
-    for (const item of relatedInformation) {
-      result.push(parseDiagnostic(item));
-    }
-    return result;
-  }
-
-  function fromTypeScriptDiagnostic(diagnostics) {
-    const items = [];
-    for (const sourceDiagnostic of diagnostics) {
-      const item = parseDiagnostic(sourceDiagnostic);
-      if (sourceDiagnostic.relatedInformation) {
-        item.relatedInformation = parseRelatedInformation(
-          sourceDiagnostic.relatedInformation,
-        );
-      }
-      items.push(item);
-    }
-    return { items };
+  function opNow() {
+    const res = dispatchJson.sendSync("op_now");
+    return res.seconds * 1e3 + res.subsecNanos / 1e6;
   }
 
   // We really don't want to depend on JSON dispatch during snapshotting, so
@@ -1353,7 +1153,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
@@ -1413,7 +1213,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
