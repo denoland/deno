@@ -414,9 +414,12 @@ Deno.test("testingAssertDoesNotThrow", () => {
 
 Deno.test("testingAssertDoesNotThrowAsync", async () => {
   // --- pass cases ---
-  await assertDoesNotThrowAsync(async () => {
-    return;
-  });
+  await assertDoesNotThrowAsync(
+    async function () {
+      return;
+    },
+    TypeError,
+  );
   await assertDoesNotThrowAsync(
     () => {
       throw new Error("Panic! Threw Error!");
