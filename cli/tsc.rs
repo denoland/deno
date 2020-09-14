@@ -794,7 +794,10 @@ impl TsCompiler {
       );
 
       let mut entries = HashMap::default();
-      entries.insert("bundle".to_string(), FileName::Custom("bundle".into()));
+      entries.insert(
+        "bundle".into(),
+        FileName::Custom(module_specifier.to_string()),
+      );
       // TODO(kdy1): Remove expect
       let output = bundler.bundle(entries).expect("failed to bundle");
       let mut buf = vec![];
@@ -1627,7 +1630,7 @@ impl swc_bundler::Load for SwcLoader<'_> {
     &self,
     file: &FileName,
   ) -> Result<(Rc<swc_common::SourceFile>, Module), anyhow::Error> {
-    dbg!(file);
+    dbg!(file, self.module_graph);
     match file {
       FileName::Custom(name) => {
         // We use custom
