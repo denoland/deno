@@ -31,6 +31,7 @@ export function inspect(object: unknown, ...opts: any): string {
     iterableLimit: opts.maxArrayLength,
     compact: !!opts.compact,
     sorted: !!opts.sorted,
+    showProxy: !!opts.showProxy,
   });
 }
 
