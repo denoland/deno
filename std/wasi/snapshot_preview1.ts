@@ -822,12 +822,12 @@ export default class Context {
 
         const entries = Array.from(Deno.readDirSync(entry.path!));
         for (let i = Number(cookie); i < entries.length; i++) {
-          const name_data = new TextEncoder().encode(entries[i].name);
+          const nameData = new TextEncoder().encode(entries[i].name);
 
           const entryInfo = Deno.statSync(
             resolve(entry.path!, entries[i].name),
           );
-          const entryData = new Uint8Array(24 + name_data.byteLength);
+          const entryData = new Uint8Array(24 + nameData.byteLength);
           const entryView = new DataView(entryData.buffer);
 
           entryView.setBigUint64(0, BigInt(i + 1), true);
@@ -836,7 +836,7 @@ export default class Context {
             BigInt(entryInfo.ino ? entryInfo.ino : 0),
             true,
           );
-          entryView.setUint32(16, name_data.byteLength, true);
+          entryView.setUint32(16, nameData.byteLength, true);
 
           let type: number;
           switch (true) {
@@ -858,7 +858,7 @@ export default class Context {
           }
 
           entryView.setUint8(20, type);
-          entryData.set(name_data, 24);
+          entryData.set(nameData, 24);
 
           const data = entryData.slice(
             0,
