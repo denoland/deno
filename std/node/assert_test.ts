@@ -9,9 +9,9 @@ import {
   fail as denoFail,
 } from "../testing/asserts.ts";
 
-import assert from "./assert.ts";
+import AssertionError from "./assertion_error.ts";
 
-import {
+import assert, {
   ok,
   assert as assert_,
   deepStrictEqual,
@@ -21,6 +21,7 @@ import {
   match,
   throws,
   fail,
+  AssertionError as AssertionError_,
 } from "./assert.ts";
 
 Deno.test("API should be exposed", () => {
@@ -62,4 +63,9 @@ Deno.test("API should be exposed", () => {
     "`assertThrows()` should be exposed as `throws()`",
   );
   assertStrictEquals(fail, denoFail, "`fail()` should be exposed");
+  assertStrictEquals(
+    AssertionError,
+    AssertionError_,
+    "`AssertionError()` constructor should be exposed",
+  );
 });
