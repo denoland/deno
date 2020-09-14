@@ -1791,6 +1791,12 @@ itest!(fmt_check_tests_dir {
   exit_code: 1,
 });
 
+itest!(fmt_quiet_check_fmt_dir {
+  args: "fmt --check --quiet fmt/",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
 itest!(fmt_check_formatted_files {
   args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
   output: "fmt/expected_fmt_check_formatted_files.out",
