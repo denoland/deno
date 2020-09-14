@@ -2121,9 +2121,7 @@ itest!(ts_type_imports {
   exit_code: 1,
 });
 
-// Broken after V8 upgrade
-// https://github.com/denoland/deno/pull/7429
-itest_ignore!(ts_decorators {
+itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
