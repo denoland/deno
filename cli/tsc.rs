@@ -826,7 +826,7 @@ impl TsCompiler {
 
     assert!(bundle_response.bundle_output.is_some());
     let output = bundle_response.bundle_output.unwrap();
-    Ok(output)
+    Ok(bundled)
   }
 
   pub async fn transpile(
@@ -1630,7 +1630,6 @@ impl swc_bundler::Load for SwcLoader<'_> {
     &self,
     file: &FileName,
   ) -> Result<(Rc<swc_common::SourceFile>, Module), anyhow::Error> {
-    dbg!(file, self.module_graph);
     match file {
       FileName::Custom(name) => {
         // We use custom
@@ -1679,6 +1678,20 @@ impl swc_bundler::Resolve for SwcResolver<'_> {
     base: &FileName,
     module_specifier: &str,
   ) -> Result<FileName, anyhow::Error> {
+    let base = if let FileName::Custom(base) = base {
+      base
+    } else {
+      unreachable!()
+    };
+
+    if let Some(module) = self.module_graph.get(base) {
+      for import in &module.imports {
+        if import.specifier == module_specifier {
+          return Ok(FileName::Custom(import.resolved_specifier.to_string()));
+        }
+      }
+    }
+
     dbg!(base, module_specifier);
     unimplemented!()
   }
