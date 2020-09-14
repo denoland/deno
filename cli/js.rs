@@ -1,3 +1,7 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use deno_core::Snapshot;
+
 pub const TS_VERSION: &str = env!("TS_VERSION");
 
 pub static CLI_SNAPSHOT: &[u8] =
@@ -11,12 +15,24 @@ pub static SHARED_GLOBALS_LIB: &str =
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
 pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 
+pub fn deno_isolate_init() -> Snapshot {
+  debug!("Deno isolate init with snapshots.");
+  let data = CLI_SNAPSHOT;
+  Snapshot::Static(data)
+}
+
+pub fn compiler_isolate_init() -> Snapshot {
+  debug!("Deno compiler isolate init with snapshots.");
+  let data = COMPILER_SNAPSHOT;
+  Snapshot::Static(data)
+}
+
 #[test]
 fn cli_snapshot() {
-  let mut isolate = deno_core::JsRuntime::new(
-    deno_core::StartupData::Snapshot(deno_core::Snapshot::Static(CLI_SNAPSHOT)),
-    false,
-  );
+  let mut isolate = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+    startup_snapshot: Some(deno_isolate_init()),
+    ..Default::default()
+  });
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
@@ -30,12 +46,10 @@ fn cli_snapshot() {
 
 #[test]
 fn compiler_snapshot() {
-  let mut isolate = deno_core::JsRuntime::new(
-    deno_core::StartupData::Snapshot(deno_core::Snapshot::Static(
-      COMPILER_SNAPSHOT,
-    )),
-    false,
-  );
+  let mut isolate = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+    startup_snapshot: Some(compiler_isolate_init()),
+    ..Default::default()
+  });
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"

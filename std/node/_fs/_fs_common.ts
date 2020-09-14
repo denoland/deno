@@ -150,14 +150,17 @@ export function getOpenOptions(flag: string | undefined): Deno.OpenOptions {
     case "as": {
       // 'as': Open file for appending in synchronous mode. The file is created if it does not exist.
       openOptions = { create: true, append: true };
+      break;
     }
     case "as+": {
       // 'as+': Open file for reading and appending in synchronous mode. The file is created if it does not exist.
       openOptions = { create: true, read: true, append: true };
+      break;
     }
     case "rs+": {
       // 'rs+': Open file for reading and writing in synchronous mode. Instructs the operating system to bypass the local file system cache.
       openOptions = { create: true, read: true, write: true };
+      break;
     }
     default: {
       throw new Error(`Unrecognized file system flag: ${flag}`);

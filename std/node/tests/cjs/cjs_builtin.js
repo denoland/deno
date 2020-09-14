@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-undef
 /* eslint-disable */
 const fs = require("fs");
 const util = require("util");

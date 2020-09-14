@@ -3,15 +3,16 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
+use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use crate::startup_data;
 use crate::state::State;
 use deno_core::ErrBox;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
-use deno_core::StartupData;
+use deno_core::RuntimeOptions;
+use deno_core::Snapshot;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -102,11 +103,14 @@ pub struct Worker {
 impl Worker {
   pub fn new(
     name: String,
-    startup_data: StartupData,
+    startup_snapshot: Option<Snapshot>,
     state: &Rc<State>,
   ) -> Self {
-    let mut isolate =
-      JsRuntime::new_with_loader(state.clone(), startup_data, false);
+    let mut isolate = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(state.clone()),
+      startup_snapshot,
+      ..Default::default()
+    });
     {
       let global_state = state.global_state.clone();
       let js_runtime_state = JsRuntime::state(&isolate);
@@ -257,8 +261,12 @@ pub struct MainWorker(Worker);
 
 impl MainWorker {
   // TODO(ry) combine MainWorker::new and MainWorker::create.
-  fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
-    let mut worker = Worker::new(name, startup_data, state);
+  fn new(
+    name: String,
+    startup_snapshot: Option<Snapshot>,
+    state: &Rc<State>,
+  ) -> Self {
+    let mut worker = Worker::new(name, startup_snapshot, state);
     {
       ops::runtime::init(&mut worker);
       ops::runtime_compiler::init(&mut worker);
@@ -299,7 +307,7 @@ impl MainWorker {
     )?;
     let mut worker = MainWorker::new(
       "main".to_string(),
-      startup_data::deno_isolate_init(),
+      Some(js::deno_isolate_init()),
       &state,
     );
     {
@@ -340,7 +348,7 @@ mod tests {
   use super::*;
   use crate::flags;
   use crate::global_state::GlobalState;
-  use crate::startup_data;
+  use crate::js;
   use crate::tokio_util;
   use std::sync::atomic::Ordering;
 
@@ -357,8 +365,7 @@ mod tests {
       State::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -385,8 +392,7 @@ mod tests {
       State::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -422,7 +428,7 @@ mod tests {
         .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
-      startup_data::deno_isolate_init(),
+      Some(js::deno_isolate_init()),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();
@@ -442,7 +448,7 @@ mod tests {
     let state = State::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),
-      startup_data::deno_isolate_init(),
+      Some(js::deno_isolate_init()),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();

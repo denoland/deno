@@ -6,8 +6,6 @@ use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::JsRuntime;
 use deno_core::OpState;
-use deno_core::Script;
-use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::Future;
@@ -42,11 +40,7 @@ impl log::Log for Logger {
 }
 
 fn create_isolate() -> JsRuntime {
-  let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench_json_ops.js"),
-    filename: "http_bench_json_ops.js",
-  });
-  let mut runtime = JsRuntime::new(startup_data, false);
+  let mut runtime = JsRuntime::new(Default::default());
   runtime.register_op("listen", deno_core::json_op_sync(op_listen));
   runtime.register_op("close", deno_core::json_op_sync(op_close));
   runtime.register_op("accept", deno_core::json_op_async(op_accept));
@@ -183,11 +177,21 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let isolate = create_isolate();
+  let mut isolate = create_isolate();
   let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
     .build()
     .unwrap();
-  js_check(runtime.block_on(isolate));
+
+  let future = async move {
+    isolate
+      .execute(
+        "http_bench_json_ops.js",
+        include_str!("http_bench_json_ops.js"),
+      )
+      .unwrap();
+    isolate.await
+  };
+  js_check(runtime.block_on(future));
 }
