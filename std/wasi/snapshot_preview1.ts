@@ -410,7 +410,7 @@ export default class Context {
 
         switch (id) {
           case CLOCKID_REALTIME: {
-            const resolution = 1e6;
+            const resolution = BigInt(1e6);
 
             memoryView.setBigUint64(
               resolutionOffset,
@@ -423,7 +423,7 @@ export default class Context {
           case CLOCKID_MONOTONIC:
           case CLOCKID_PROCESS_CPUTIME_ID:
           case CLOCKID_THREAD_CPUTIME_ID: {
-            const resolution = 1e3;
+            const resolution = BigInt(1e3);
             memoryView.setBigUint64(resolutionOffset, resolution, true);
             break;
           }
