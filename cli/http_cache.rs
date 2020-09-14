@@ -6,7 +6,7 @@
 /// at hand.
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use serde::Serialize;
 use serde_derive::Deserialize;
 use std::fs;
@@ -81,14 +81,14 @@ pub struct Metadata {
 }
 
 impl Metadata {
-  pub fn write(&self, cache_filename: &Path) -> Result<(), ErrBox> {
+  pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
     let metadata_filename = Self::filename(cache_filename);
     let json = serde_json::to_string_pretty(self)?;
     deno_fs::write_file(&metadata_filename, json, 0o666)?;
     Ok(())
   }
 
-  pub fn read(cache_filename: &Path) -> Result<Metadata, ErrBox> {
+  pub fn read(cache_filename: &Path) -> Result<Metadata, AnyError> {
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
     let metadata: Metadata = serde_json::from_str(&metadata)?;
@@ -135,7 +135,7 @@ impl HttpCache {
   // TODO(bartlomieju): this method should check headers file
   // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
-  pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
+  pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), AnyError> {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
     let file = File::open(cache_filename)?;
@@ -144,7 +144,7 @@ impl HttpCache {
     Ok((file, metadata.headers))
   }
 
-  pub fn get_metadata(&self, url: &Url) -> Result<Metadata, ErrBox> {
+  pub fn get_metadata(&self, url: &Url) -> Result<Metadata, AnyError> {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
@@ -157,7 +157,7 @@ impl HttpCache {
     url: &Url,
     headers_map: HeadersMap,
     content: &[u8],
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let cache_filename = self.location.join(url_to_filename(url));
     // Create parent directory
     let parent_filename = cache_filename

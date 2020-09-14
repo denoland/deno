@@ -7,7 +7,7 @@ use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::state::State;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -33,8 +33,8 @@ use url::Url;
 /// worker.
 pub enum WorkerEvent {
   Message(Box<[u8]>),
-  Error(ErrBox),
-  TerminalError(ErrBox),
+  Error(AnyError),
+  TerminalError(AnyError),
 }
 
 pub struct WorkerChannelsInternal {
@@ -50,7 +50,7 @@ pub struct WorkerHandle {
 
 impl WorkerHandle {
   /// Post message to worker as a host.
-  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), ErrBox> {
+  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
     sender.try_send(buf)?;
     Ok(())
@@ -58,7 +58,7 @@ impl WorkerHandle {
 
   /// Get the event with lock.
   /// Return error if more than one listener tries to get event
-  pub async fn get_event(&self) -> Result<Option<WorkerEvent>, ErrBox> {
+  pub async fn get_event(&self) -> Result<Option<WorkerEvent>, AnyError> {
     let mut receiver = self.receiver.try_lock()?;
     Ok(receiver.next().await)
   }
@@ -149,7 +149,7 @@ impl Worker {
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
+  pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
     let path = env::current_dir().unwrap().join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.execute2(url.as_str(), js_source)
@@ -161,7 +161,7 @@ impl Worker {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.isolate.execute(js_filename, js_source)
   }
 
@@ -169,7 +169,7 @@ impl Worker {
   pub async fn preload_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     self.isolate.load_module(module_specifier, None).await
   }
 
@@ -177,7 +177,7 @@ impl Worker {
   pub async fn execute_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
     self.isolate.mod_evaluate(id)
@@ -189,7 +189,7 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
     code: String,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let id = self
       .isolate
       .load_module(module_specifier, Some(code))
@@ -226,7 +226,7 @@ impl Drop for Worker {
 }
 
 impl Future for Worker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -297,7 +297,7 @@ impl MainWorker {
   pub fn create(
     global_state: &Arc<GlobalState>,
     main_module: ModuleSpecifier,
-  ) -> Result<MainWorker, ErrBox> {
+  ) -> Result<MainWorker, AnyError> {
     let state = State::new(
       &global_state,
       None,
