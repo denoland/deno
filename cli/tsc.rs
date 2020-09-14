@@ -1497,7 +1497,7 @@ pub fn pre_process_file(
     .collect();
 
   // analyze comment from beginning of the file and find TS directives
-  let comments = module.leading_comments;
+  let comments = module.get_leading_comments();
 
   let mut references = vec![];
   for comment in comments {
@@ -1507,11 +1507,11 @@ pub fn pre_process_file(
 
     let text = comment.text.to_string();
     if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
-      let location = module.source_map.lookup_char_pos(comment.span.lo);
+      let location = module.get_location(&comment.span);
       references.push(TsReferenceDesc {
         kind,
         specifier,
-        location: location.into(),
+        location,
       });
     }
   }
