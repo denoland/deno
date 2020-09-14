@@ -86,7 +86,7 @@ pub struct JsRuntime {
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub struct JsRuntimeState {
+pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
@@ -305,6 +305,12 @@ impl JsRuntime {
     }
   }
 
+  pub fn global_context(&self) -> v8::Global<v8::Context> {
+    let state = Self::state(self);
+    let state = state.borrow();
+    state.global_context.clone().unwrap()
+  }
+
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
@@ -317,7 +323,7 @@ impl JsRuntime {
     isolate
   }
 
-  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
   }
@@ -594,16 +600,6 @@ impl Future for JsRuntime {
 }
 
 impl JsRuntimeState {
-  /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the JsError into an error. By default this callback
-  /// is set to JsError::create.
-  pub fn set_js_error_create_fn(
-    &mut self,
-    f: impl Fn(JsError) -> AnyError + 'static,
-  ) {
-    self.js_error_create_fn = Box::new(f);
-  }
-
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn module_resolve_cb(
     &mut self,
