@@ -72,7 +72,7 @@ they are stable:
 modules. It also sets supported globals.
 
 ```ts
-import { createRequire } from "https://deno.land/std@0.68.0/node/module.ts";
+import { createRequire } from "https://deno.land/std@0.69.0/node/module.ts";
 
 const require = createRequire(import.meta.url);
 // Loads native module polyfill.

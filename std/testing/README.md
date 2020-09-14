@@ -40,7 +40,7 @@ pretty-printed diff of failing assertion.
 Basic usage:
 
 ```ts
-import { assertEquals } from "https://deno.land/std@0.68.0/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@0.69.0/testing/asserts.ts";
 
 Deno.test({
   name: "testing example",
@@ -159,7 +159,7 @@ benchmarks and log the results in the commandline.
 import {
   runBenchmarks,
   bench,
-} from "https://deno.land/std@0.68.0/testing/bench.ts";
+} from "https://deno.land/std@0.69.0/testing/bench.ts";
 
 bench(function forIncrementX1e9(b): void {
   b.start();

@@ -5,18 +5,18 @@ Command line arguments parser for Deno based on minimist
 # Example
 
 ```ts
-import { parse } from "https://deno.land/std@0.68.0/flags/mod.ts";
+import { parse } from "https://deno.land/std@0.69.0/flags/mod.ts";
 
 console.dir(parse(Deno.args));
 ```
 
 ```
-$ deno run https://deno.land/std@0.68.0/examples/flags.ts -a beep -b boop
+$ deno run https://deno.land/std@0.69.0/examples/flags.ts -a beep -b boop
 { _: [], a: 'beep', b: 'boop' }
 ```
 
 ```
-$ deno run https://deno.land/std@0.68.0/examples/flags.ts -x 3 -y 4 -n5 -abc --beep=boop foo bar baz
+$ deno run https://deno.land/std@0.69.0/examples/flags.ts -x 3 -y 4 -n5 -abc --beep=boop foo bar baz
 { _: [ 'foo', 'bar', 'baz' ],
   x: 3,
   y: 4,
@@ -56,7 +56,7 @@ options can be:
   example:
   ```ts
   // $ deno run example.ts -- a arg1
-  import { parse } from "https://deno.land/std@0.68.0/flags/mod.ts";
+  import { parse } from "https://deno.land/std@0.69.0/flags/mod.ts";
   console.dir(parse(Deno.args, { "--": false }));
   // output: { _: [ "a", "arg1" ] }
   console.dir(parse(Deno.args, { "--": true }));

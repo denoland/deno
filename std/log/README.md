@@ -3,7 +3,7 @@
 ## Usage
 
 ```ts
-import * as log from "https://deno.land/std@0.68.0/log/mod.ts";
+import * as log from "https://deno.land/std@0.69.0/log/mod.ts";
 
 // Simple default logger out of the box. You can customize it
 // by overriding logger and handler named "default", or providing
