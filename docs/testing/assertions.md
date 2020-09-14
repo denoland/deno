@@ -131,7 +131,7 @@ Deno.test("Test Assert Not Match", () => {
   assertNotMatch("abcdefghi", new RegExp("jkl"));
 
   const basicUrl = new RegExp("^https?://[a-z.]+.com$");
-  assertNotMatch("https://deno.land/", basicUrl);
+  assertNotMatch("https://deno.land", basicUrl);
 });
 ```
 
