@@ -116,7 +116,8 @@ Deno.test("Test Assert Array Contains", () => {
 
 ### Regex
 
-You can assert regular expressions via `assertMatch()` and `assertNotMatch()` assertions.
+You can assert regular expressions via `assertMatch()` and `assertNotMatch()`
+assertions.
 
 ```js
 Deno.test("Test Assert Match", () => {
@@ -131,7 +132,7 @@ Deno.test("Test Assert Not Match", () => {
   assertNotMatch("abcdefghi", new RegExp("jkl"));
 
   const basicUrl = new RegExp("^https?://[a-z.]+.com$");
-  assertNotMatch("https://deno.land", basicUrl);
+  assertNotMatch("https://deno.land/", basicUrl);
 });
 ```
 
