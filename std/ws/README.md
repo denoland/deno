@@ -14,7 +14,7 @@ import {
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
   WebSocket,
-} from "https://deno.land/std/ws/mod.ts";
+} from "https://deno.land/std@0.69.0/ws/mod.ts";
 
 async function handleWs(sock: WebSocket) {
   console.log("socket connected!");
