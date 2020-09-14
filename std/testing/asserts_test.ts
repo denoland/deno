@@ -414,7 +414,7 @@ Deno.test("testingAssertDoesNotThrow", () => {
 
 Deno.test("testingAssertDoesNotThrowAsync", async () => {
   // --- pass cases ---
-  await assertDoesNotThrowAsync(async () => {
+  assertDoesNotThrowAsync(async () => {
     return;
   });
   await assertDoesNotThrowAsync(
