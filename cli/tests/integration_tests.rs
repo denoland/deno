@@ -1008,8 +1008,26 @@ fn info_with_compiled_source() {
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
-  std::fs::write(&file_to_watch, "console.log('Hello world');")
-    .expect("error writing file");
+  let source_code = r#"
+window.addEventListener("unload", () => {
+  console.log("unload");
+});
+window.addEventListener("load", () => {
+  console.log("load");
+});
+console.log("hello world");
+"#;
+  let source_code2 = r#"
+window.addEventListener("unload", () => {
+  console.log("unload");
+});
+window.addEventListener("load", () => {
+  console.log("load");
+});
+console.log("hello world2");
+"#;
+
+  std::fs::write(&file_to_watch, source_code).expect("error writing file");
 
   let mut child = util::deno_cmd()
     .current_dir(util::root_path())
@@ -1030,18 +1048,21 @@ fn run_watch() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+  assert!(stdout_lines.next().unwrap().contains("hello world"));
+  assert!(stdout_lines.next().unwrap().contains("load"));
+  assert!(stdout_lines.next().unwrap().contains("unload"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   // Change content of the file
-  std::fs::write(&file_to_watch, "console.log('Hello world2');")
-    .expect("error writing file");
+  std::fs::write(&file_to_watch, source_code2).expect("error writing file");
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains("Hello world2"));
+  assert!(stdout_lines.next().unwrap().contains("hello world2"));
+  assert!(stdout_lines.next().unwrap().contains("load"));
+  assert!(stdout_lines.next().unwrap().contains("unload"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
 
   child.kill().unwrap();
