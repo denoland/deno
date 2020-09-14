@@ -41,7 +41,7 @@ fn create_web_worker(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
 ) -> Result<WebWorker, AnyError> {
-  let cli_state = crate::state::State::new_for_worker(
+  let cli_state = crate::state::CliState::new_for_worker(
     global_state,
     Some(permissions),
     specifier,

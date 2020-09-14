@@ -28,9 +28,11 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-// TODO(ry) Rename to CliState to avoid confusion with other states.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct State {
+// This is named "CliState" instead of just "State" to avoid confusion with all
+// other state structs (GlobalState, OpState, GothamState).
+// TODO(ry) Many of the items in this struct should be moved out and into
+// OpState, removing redundant RefCell wrappers if possible.
+pub struct CliState {
   pub global_state: Arc<GlobalState>,
   pub permissions: RefCell<Permissions>,
   pub main_module: ModuleSpecifier,
@@ -49,20 +51,6 @@ pub struct State {
   pub http_client: RefCell<reqwest::Client>,
 }
 
-impl State {
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  pub fn check_unstable(&self, api_name: &str) {
-    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
-    // stack trace in JS.
-    if !self.global_state.flags.unstable {
-      exit_unstable(api_name);
-    }
-  }
-}
-
 pub fn exit_unstable(api_name: &str) {
   eprintln!(
     "Unstable API '{}'. The --unstable flag must be provided.",
@@ -71,7 +59,7 @@ pub fn exit_unstable(api_name: &str) {
   std::process::exit(70);
 }
 
-impl ModuleLoader for State {
+impl ModuleLoader for CliState {
   fn resolve(
     &self,
     specifier: &str,
@@ -166,7 +154,7 @@ impl ModuleLoader for State {
   }
 }
 
-impl State {
+impl CliState {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: &Arc<GlobalState>,
@@ -176,7 +164,7 @@ impl State {
     is_internal: bool,
   ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
-    let state = State {
+    let state = CliState {
       global_state: global_state.clone(),
       main_module,
       permissions: shared_permissions
@@ -204,7 +192,7 @@ impl State {
     main_module: ModuleSpecifier,
   ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
-    let state = State {
+    let state = CliState {
       global_state: global_state.clone(),
       main_module,
       permissions: shared_permissions
@@ -308,7 +296,7 @@ impl State {
   pub fn mock(main_module: &str) -> Rc<Self> {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
-    State::new(
+    CliState::new(
       &GlobalState::mock(vec!["deno".to_string()], None),
       None,
       module_specifier,
@@ -316,5 +304,17 @@ impl State {
       false,
     )
     .unwrap()
+  }
+
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
+    // stack trace in JS.
+    if !self.global_state.flags.unstable {
+      exit_unstable(api_name);
+    }
   }
 }
