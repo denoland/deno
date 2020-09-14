@@ -25,6 +25,10 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../async/delay.ts";
 import { encode, decode } from "../encoding/utf8.ts";
 import { mockConn } from "./_mock_conn.ts";
+import { resolve, dirname, join, fromFileUrl } from "../path/mod.ts";
+
+const moduleDir = dirname(fromFileUrl(import.meta.url));
+const testdataDir = resolve(moduleDir, "testdata");
 
 interface ResponseTest {
   response: Response;
@@ -367,8 +371,9 @@ Deno.test({
         Deno.execPath(),
         "run",
         "--allow-net",
-        "http/testdata/simple_server.ts",
+        "testdata/simple_server.ts",
       ],
+      cwd: moduleDir,
       stdout: "piped",
     });
 
@@ -412,8 +417,9 @@ Deno.test({
         "run",
         "--allow-net",
         "--allow-read",
-        "http/testdata/simple_https_server.ts",
+        "testdata/simple_https_server.ts",
       ],
+      cwd: moduleDir,
       stdout: "piped",
     });
 
@@ -436,7 +442,7 @@ Deno.test({
       const conn = await Deno.connectTls({
         hostname: "localhost",
         port: 4503,
-        certFile: "http/testdata/tls/RootCA.pem",
+        certFile: join(testdataDir, "tls/RootCA.pem"),
       });
       await Deno.writeAll(
         conn,
@@ -570,8 +576,8 @@ Deno.test({
     const tlsOptions = {
       hostname: "localhost",
       port,
-      certFile: "./http/testdata/tls/localhost.crt",
-      keyFile: "./http/testdata/tls/localhost.key",
+      certFile: join(testdataDir, "tls/localhost.crt"),
+      keyFile: join(testdataDir, "tls/localhost.key"),
     };
     const server = serveTLS(tlsOptions);
     const p = iteratorReq(server);
@@ -593,7 +599,7 @@ Deno.test({
       const conn = await Deno.connectTls({
         hostname: "localhost",
         port,
-        certFile: "http/testdata/tls/RootCA.pem",
+        certFile: join(testdataDir, "tls/RootCA.pem"),
       });
 
       await Deno.writeAll(
