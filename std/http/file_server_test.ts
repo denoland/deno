@@ -275,7 +275,7 @@ Deno.test("partial TLS arguments fail", async function (): Promise<void> {
       "--host",
       "localhost",
       "--cert",
-      "./testdata/g/tls/localhost.crt",
+      "./testdata/tls/localhost.crt",
       "-p",
       `4578`,
     ],
