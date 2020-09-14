@@ -414,17 +414,17 @@ Deno.test("testingAssertDoesNotThrow", () => {
 
 Deno.test("testingAssertDoesNotThrowAsync", async () => {
   // --- pass cases ---
-  assertDoesNotThrowAsync(async () => {
+  await assertDoesNotThrowAsync(async () => {
     return;
   });
   await assertDoesNotThrowAsync(
-    async () => {
+    () => {
       throw new Error("Panic! Threw Error!");
     },
     TypeError,
   );
   await assertDoesNotThrowAsync(
-    async () => {
+    () => {
       throw new Error("Panic! Threw Error!");
     },
     Error,
@@ -435,7 +435,7 @@ Deno.test("testingAssertDoesNotThrowAsync", async () => {
   await assertThrowsAsync(
     async () => {
       await assertDoesNotThrowAsync(
-        async () => {
+        () => {
           throw new Error("Panic! Threw Error!");
         },
       );
@@ -446,7 +446,7 @@ Deno.test("testingAssertDoesNotThrowAsync", async () => {
   await assertThrowsAsync(
     async () => {
       await assertDoesNotThrowAsync(
-        async () => {
+        () => {
           throw new TypeError("Panic! Threw Error!");
         },
         Error,
@@ -458,7 +458,7 @@ Deno.test("testingAssertDoesNotThrowAsync", async () => {
   await assertThrowsAsync(
     async () => {
       await assertDoesNotThrowAsync(
-        async () => {
+        () => {
           throw new Error("Panic! Threw Error!");
         },
         Error,
@@ -473,7 +473,7 @@ Deno.test("testingAssertDoesNotThrowAsync", async () => {
   await assertThrowsAsync(
     async () => {
       await assertDoesNotThrowAsync(
-        async () => {
+        () => {
           throw "Panic!";
         },
         String,
@@ -486,7 +486,7 @@ Deno.test("testingAssertDoesNotThrowAsync", async () => {
   await assertThrowsAsync(
     async () => {
       await assertDoesNotThrowAsync(
-        async () => {
+        () => {
           throw null;
         },
       );
@@ -497,7 +497,7 @@ Deno.test("testingAssertDoesNotThrowAsync", async () => {
   await assertThrowsAsync(
     async () => {
       await assertDoesNotThrowAsync(
-        async () => {
+        () => {
           throw undefined;
         },
       );
