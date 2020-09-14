@@ -238,7 +238,7 @@ struct FileInfoVertex {
 }
 
 impl FileInfoVertex {
-  /// Creates single vertex dependency module
+  /// Creates new `FileInfoVertex` that is a single vertex dependency module
   fn new(size: usize, total_size: Option<usize>, deps: Vec<String>) -> Self {
     Self {
       size,
@@ -251,16 +251,18 @@ impl FileInfoVertex {
 struct FileInfoDepFlatGraph(HashMap<String, FileInfoVertex>);
 
 impl FileInfoDepFlatGraph {
-  /// Creates flat graf of a shallow module dependencies
+  /// Creates new `FileInfoDepFlatGraph`, flat graf of a shallow module dependencies
   ///
-  /// Each graph vertex represents unique dependency with all shallow dependencies
+  /// Each graph vertex represents unique dependency with its all shallow dependencies
   fn new(module_graph: &ModuleGraph) -> Self {
     let mut inner = HashMap::new();
     module_graph
       .iter()
       .for_each(|(module_name, module_graph_file)| {
+        let mut seen = HashSet::new();
         let size = module_graph_file.size();
-        let total_size = traverse_calc_size(module_name, module_graph);
+        let total_size =
+          traverse_calc_size(module_name, module_graph, &mut seen);
         let mut deps = Vec::new();
         module_graph_file.imports.iter().for_each(|import| {
           deps.push(import.resolved_specifier.to_string());
@@ -275,7 +277,7 @@ impl FileInfoDepFlatGraph {
 }
 
 impl Serialize for FileInfoDepFlatGraph {
-  /// Serialized structure is ordered by the key
+  /// Serializes inner hash map which is ordered by the key
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
@@ -288,22 +290,28 @@ impl Serialize for FileInfoDepFlatGraph {
 /// Calculates total size of all dependencies of a module
 ///
 /// Traverse down the module graph tree in recursive way to calculate total size of a given module
+/// Avoids to follow cyclic dependencies per single module total size calculation
 fn traverse_calc_size(
   module_name: &str,
   module_graph: &ModuleGraph,
+  seen: &mut HashSet<String>,
 ) -> Option<usize> {
   let mut total_size = None;
   if let Some(module_graph_file) = module_graph.get(module_name) {
     total_size = Some(module_graph_file.size());
     for _module_name in module_graph_file.imports.iter() {
-      total_size = if let Some(_size) = traverse_calc_size(
-        &_module_name.resolved_specifier.to_string(),
-        module_graph,
-      ) {
-        Some(total_size.unwrap() + _size)
-      } else {
-        unreachable!();
-      };
+      let never_seen = seen.insert(_module_name.resolved_specifier.to_string());
+      if never_seen {
+        total_size = if let Some(_size) = traverse_calc_size(
+          &_module_name.resolved_specifier.to_string(),
+          module_graph,
+          seen,
+        ) {
+          Some(total_size.unwrap() + _size)
+        } else {
+          unreachable!();
+        };
+      }
     }
   }
   total_size
