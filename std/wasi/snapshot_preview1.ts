@@ -200,32 +200,6 @@ const _SDFLAGS_WR = 0x0002;
 
 const PREOPENTYPE_DIR = 0;
 
-const clock_res_realtime = function (): bigint {
-  return BigInt(1e6);
-};
-
-const clock_res_monotonic = function (): bigint {
-  return BigInt(1e3);
-};
-
-const clock_res_process = clock_res_monotonic;
-const clock_res_thread = clock_res_monotonic;
-
-const clock_time_realtime = function (): bigint {
-  return BigInt(Date.now()) * BigInt(1e6);
-};
-
-const clock_time_monotonic = function (): bigint {
-  const t = performance.now();
-  const s = Math.trunc(t);
-  const ms = Math.floor((t - s) * 1e3);
-
-  return BigInt(s) * BigInt(1e9) + BigInt(ms) * BigInt(1e6);
-};
-
-const clock_time_process = clock_time_monotonic;
-const clock_time_thread = clock_time_monotonic;
-
 function syscall<T extends CallableFunction>(target: T) {
   return function (...args: unknown[]) {
     try {
@@ -435,33 +409,24 @@ export default class Context {
         const memoryView = new DataView(this.memory.buffer);
 
         switch (id) {
-          case CLOCKID_REALTIME:
+          case CLOCKID_REALTIME: {
+            const resolution = 1e6;
+
             memoryView.setBigUint64(
               resolutionOffset,
-              clock_res_realtime(),
+              resolution,
               true,
             );
             break;
+          }
 
           case CLOCKID_MONOTONIC:
-            memoryView.setBigUint64(
-              resolutionOffset,
-              clock_res_monotonic(),
-              true,
-            );
-            break;
-
           case CLOCKID_PROCESS_CPUTIME_ID:
-            memoryView.setBigUint64(
-              resolutionOffset,
-              clock_res_process(),
-              true,
-            );
+          case CLOCKID_THREAD_CPUTIME_ID: {
+            const resolution = 1e3;
+            memoryView.setBigUint64(resolutionOffset, resolution, true);
             break;
-
-          case CLOCKID_THREAD_CPUTIME_ID:
-            memoryView.setBigUint64(resolutionOffset, clock_res_thread(), true);
-            break;
+          }
 
           default:
             return ERRNO_INVAL;
@@ -478,21 +443,24 @@ export default class Context {
         const memoryView = new DataView(this.memory.buffer);
 
         switch (id) {
-          case CLOCKID_REALTIME:
-            memoryView.setBigUint64(timeOffset, clock_time_realtime(), true);
+          case CLOCKID_REALTIME: {
+            const time = BigInt(Date.now()) * BigInt(1e6);
+            memoryView.setBigUint64(timeOffset, time, true);
             break;
+          }
 
           case CLOCKID_MONOTONIC:
-            memoryView.setBigUint64(timeOffset, clock_time_monotonic(), true);
-            break;
-
           case CLOCKID_PROCESS_CPUTIME_ID:
-            memoryView.setBigUint64(timeOffset, clock_time_process(), true);
-            break;
+          case CLOCKID_THREAD_CPUTIME_ID: {
+            const t = performance.now();
+            const s = Math.trunc(t);
+            const ms = Math.floor((t - s) * 1e3);
 
-          case CLOCKID_THREAD_CPUTIME_ID:
-            memoryView.setBigUint64(timeOffset, clock_time_thread(), true);
+            const time = BigInt(s) * BigInt(1e9) + BigInt(ms) * BigInt(1e6);
+
+            memoryView.setBigUint64(timeOffset, time, true);
             break;
+          }
 
           default:
             return ERRNO_INVAL;
