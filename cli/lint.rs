@@ -6,13 +6,12 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
+use crate::ast;
 use crate::colors;
-use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
 use crate::msg;
-use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -131,8 +130,8 @@ fn lint_file(
 ) -> Result<(Vec<LintDiagnostic>, String), ErrBox> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
-  let media_type = map_file_extension(&file_path);
-  let syntax = swc_util::get_syntax_for_media_type(media_type);
+  let media_type = msg::MediaType::from(&file_path);
+  let syntax = ast::get_syntax(&media_type);
 
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
@@ -158,7 +157,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
   };
   let mut reporter = create_reporter(reporter_kind);
   let lint_rules = rules::get_recommended_rules();
-  let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
+  let syntax = ast::get_syntax(&msg::MediaType::TypeScript);
   let mut linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";

@@ -10,8 +10,8 @@
 //!   But Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+use crate::ast::DiagnosticBuffer;
 use crate::import_map::ImportMapError;
-use crate::swc_util::SwcDiagnosticBuffer;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
@@ -144,7 +144,7 @@ fn get_serde_json_error_class(
   }
 }
 
-fn get_swc_diagnostic_class(_: &SwcDiagnosticBuffer) -> &'static str {
+fn get_diagnostic_class(_: &DiagnosticBuffer) -> &'static str {
   "SyntaxError"
 }
 
@@ -211,8 +211,8 @@ pub(crate) fn get_error_class_name(e: &ErrBox) -> &'static str {
       .map(get_serde_json_error_class)
   })
   .or_else(|| {
-    e.downcast_ref::<SwcDiagnosticBuffer>()
-      .map(get_swc_diagnostic_class)
+    e.downcast_ref::<DiagnosticBuffer>()
+      .map(get_diagnostic_class)
   })
   .or_else(|| {
     e.downcast_ref::<url::ParseError>()

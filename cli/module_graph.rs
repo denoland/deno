@@ -1,13 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast::Location;
 use crate::checksum;
-use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::permissions::Permissions;
-use crate::swc_util::Location;
 use crate::tsc::pre_process_file;
 use crate::tsc::ImportDesc;
 use crate::tsc::TsReferenceDesc;
@@ -24,7 +23,6 @@ use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::pin::Pin;
 
 // TODO(bartlomieju): it'd be great if this function returned
@@ -348,7 +346,7 @@ impl ModuleGraphLoader {
 
     let (raw_imports, raw_references) = pre_process_file(
       &module_specifier.to_string(),
-      map_file_extension(&PathBuf::from(&specifier)),
+      MediaType::from(&specifier),
       &source_code,
       self.analyze_dynamic_imports,
     )?;
@@ -380,7 +378,7 @@ impl ModuleGraphLoader {
         url: specifier.to_string(),
         redirect: None,
         version_hash: "".to_string(),
-        media_type: map_file_extension(&PathBuf::from(specifier.clone())),
+        media_type: MediaType::from(&specifier),
         filename: specifier,
         source_code,
         imports,
@@ -931,6 +929,8 @@ console.log(qat.qat);
   // According to TS docs (https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html)
   // directives that are not at the top of the file are ignored, so only
   // 3 references should be captured instead of 4.
+  let file_specifier =
+    ModuleSpecifier::resolve_url_or_path("some/file.ts").unwrap();
   assert_eq!(
     references,
     vec![
@@ -938,7 +938,7 @@ console.log(qat.qat);
         specifier: "dom".to_string(),
         kind: TsReferenceKind::Lib,
         location: Location {
-          filename: "some/file.ts".to_string(),
+          filename: file_specifier.to_string(),
           line: 5,
           col: 0,
         },
@@ -947,7 +947,7 @@ console.log(qat.qat);
         specifier: "./type_reference.d.ts".to_string(),
         kind: TsReferenceKind::Types,
         location: Location {
-          filename: "some/file.ts".to_string(),
+          filename: file_specifier.to_string(),
           line: 6,
           col: 0,
         },
@@ -956,7 +956,7 @@ console.log(qat.qat);
         specifier: "./type_reference/dep.ts".to_string(),
         kind: TsReferenceKind::Path,
         location: Location {
-          filename: "some/file.ts".to_string(),
+          filename: file_specifier.to_string(),
           line: 7,
           col: 0,
         },

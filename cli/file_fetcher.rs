@@ -552,23 +552,6 @@ impl SourceFileFetcher {
   }
 }
 
-pub fn map_file_extension(path: &Path) -> msg::MediaType {
-  match path.extension() {
-    None => msg::MediaType::Unknown,
-    Some(os_str) => match os_str.to_str() {
-      Some("ts") => msg::MediaType::TypeScript,
-      Some("tsx") => msg::MediaType::TSX,
-      Some("js") => msg::MediaType::JavaScript,
-      Some("jsx") => msg::MediaType::JSX,
-      Some("mjs") => msg::MediaType::JavaScript,
-      Some("cjs") => msg::MediaType::JavaScript,
-      Some("json") => msg::MediaType::Json,
-      Some("wasm") => msg::MediaType::Wasm,
-      _ => msg::MediaType::Unknown,
-    },
-  }
-}
-
 // convert a ContentType string into a enumerated MediaType + optional charset
 fn map_content_type(
   path: &Path,
@@ -600,7 +583,7 @@ fn map_content_type(
         "application/json" | "text/json" => msg::MediaType::Json,
         "application/wasm" => msg::MediaType::Wasm,
         // Handle plain and possibly webassembly
-        "text/plain" | "application/octet-stream" => map_file_extension(path),
+        "text/plain" | "application/octet-stream" => msg::MediaType::from(path),
         _ => {
           debug!("unknown content type: {}", content_type);
           msg::MediaType::Unknown
@@ -614,7 +597,7 @@ fn map_content_type(
 
       (media_type, charset)
     }
-    None => (map_file_extension(path), None),
+    None => (msg::MediaType::from(path), None),
   }
 }
 
@@ -1601,50 +1584,6 @@ mod tests {
       .unwrap(),
     )
     .await;
-  }
-
-  #[test]
-  fn test_map_file_extension() {
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.ts")),
-      msg::MediaType::TypeScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.tsx")),
-      msg::MediaType::TSX
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.d.ts")),
-      msg::MediaType::TypeScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.js")),
-      msg::MediaType::JavaScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.jsx")),
-      msg::MediaType::JSX
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.json")),
-      msg::MediaType::Json
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.wasm")),
-      msg::MediaType::Wasm
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.cjs")),
-      msg::MediaType::JavaScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.txt")),
-      msg::MediaType::Unknown
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar")),
-      msg::MediaType::Unknown
-    );
   }
 
   #[test]
