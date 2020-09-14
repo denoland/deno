@@ -22,6 +22,7 @@ extern crate serde_derive;
 extern crate tokio;
 extern crate url;
 
+mod ast;
 mod checksum;
 pub mod colors;
 mod coverage;
@@ -59,7 +60,6 @@ pub mod resolve_addr;
 pub mod signal;
 pub mod source_maps;
 pub mod state;
-mod swc_util;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
@@ -72,7 +72,6 @@ pub mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
-use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
@@ -376,7 +375,7 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
-    let syntax = swc_util::get_syntax_for_dts();
+    let syntax = ast::get_syntax(&msg::MediaType::Dts);
     doc_parser.parse_source(
       "lib.deno.d.ts",
       syntax,
@@ -384,12 +383,8 @@ async fn doc_command(
     )
   } else {
     let path = PathBuf::from(&source_file);
-    let syntax = if path.ends_with("d.ts") {
-      swc_util::get_syntax_for_dts()
-    } else {
-      let media_type = map_file_extension(&path);
-      swc_util::get_syntax_for_media_type(media_type)
-    };
+    let media_type = MediaType::from(&path);
+    let syntax = ast::get_syntax(&media_type);
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
     doc_parser

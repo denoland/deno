@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast::parse;
+use crate::ast::Location;
+use crate::ast::TranspileOptions;
 use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::disk_cache::DiskCache;
@@ -17,10 +20,6 @@ use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::state::State;
-use crate::swc_util;
-use crate::swc_util::AstParser;
-use crate::swc_util::Location;
-use crate::swc_util::SwcDiagnosticBuffer;
 use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
@@ -819,20 +818,20 @@ impl TsCompiler {
     let compiler_options: TranspileTsOptions =
       serde_json::from_value(compiler_options)?;
 
-    let transpile_options = swc_util::EmitTranspileOptions {
+    let transpile_options = TranspileOptions {
       emit_metadata: compiler_options.emit_decorator_metadata,
       inline_source_map: true,
       jsx_factory: compiler_options.jsx_factory,
       jsx_fragment_factory: compiler_options.jsx_fragment_factory,
       transform_jsx: compiler_options.jsx == "react",
     };
+    let media_type = MediaType::TypeScript;
     for source_file in source_files {
-      let (stripped_source, _maybe_source_map) = swc_util::transpile(
-        &source_file.file_name,
-        MediaType::TypeScript,
-        &source_file.source_code,
-        &transpile_options,
-      )?;
+      let specifier =
+        ModuleSpecifier::resolve_url_or_path(&source_file.file_name)?;
+      let parsed_module =
+        parse(&specifier, &source_file.source_code, &media_type)?;
+      let (stripped_source, _) = parsed_module.transpile(&transpile_options)?;
 
       // TODO(bartlomieju): this is superfluous, just to make caching function happy
       let emitted_filename = PathBuf::from(&source_file.file_name)
@@ -1467,16 +1466,11 @@ pub fn pre_process_file(
   media_type: MediaType,
   source_code: &str,
   analyze_dynamic_imports: bool,
-) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), SwcDiagnosticBuffer> {
-  let parser = AstParser::default();
-  let parse_result = parser.parse_module(file_name, media_type, source_code);
-  let module = parse_result?;
+) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), ErrBox> {
+  let specifier = ModuleSpecifier::resolve_url_or_path(file_name)?;
+  let module = parse(&specifier, source_code, &media_type)?;
 
-  let dependency_descriptors = dep_graph::analyze_dependencies(
-    &module,
-    &parser.source_map,
-    &parser.comments,
-  );
+  let dependency_descriptors = module.analyze_dependencies();
 
   // for each import check if there's relevant @deno-types directive
   let imports = dependency_descriptors
@@ -1503,7 +1497,7 @@ pub fn pre_process_file(
     .collect();
 
   // analyze comment from beginning of the file and find TS directives
-  let comments = parser.get_span_comments(module.span);
+  let comments = module.get_leading_comments();
 
   let mut references = vec![];
   for comment in comments {
@@ -1513,11 +1507,11 @@ pub fn pre_process_file(
 
     let text = comment.text.to_string();
     if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
-      let location = parser.get_span_location(comment.span);
+      let location = module.get_location(&comment.span);
       references.push(TsReferenceDesc {
         kind,
         specifier,
-        location: location.into(),
+        location,
       });
     }
   }
