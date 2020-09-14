@@ -1,10 +1,25 @@
-## Run subprocess
+# Creating a subprocess
 
-[API Reference](https://doc.deno.land/https/github.com/denoland/deno/releases/latest/download/lib.deno.d.ts#Deno.run)
+## Concepts
 
-Example:
+- Deno is capable of spawning a subprocess via
+  [Deno.run](https://doc.deno.land/builtin/stable#Deno.run)
+- `--allow-run` permission is required to spawn a subprocess
+- Spawned subprocesses do not run in a security sandbox
+- Communicate with the subprocess via the
+  [stdin](https://doc.deno.land/builtin/stable#Deno.stdin),
+  [stdout](https://doc.deno.land/builtin/stable#Deno.stdout) and
+  [stderr](https://doc.deno.land/builtin/stable#Deno.stderr) streams
+
+## Simple example
+
+This example is the equivalent of running `'echo hello'` from the command line.
 
 ```ts
+/**
+ * subprocess_simple.ts
+ */
+
 // create subprocess
 const p = Deno.run({
   cmd: ["echo", "hello"],
@@ -21,16 +36,22 @@ $ deno run --allow-run ./subprocess_simple.ts
 hello
 ```
 
-Here a function is assigned to `window.onload`. This function is called after
-the main script is loaded. This is the same as
-[onload](https://developer.mozilla.org/en-US/docs/Web/API/GlobalEventHandlers/onload)
-of the browsers, and it can be used as the main entrypoint.
+## Security
 
-By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
-`stderr` of parent process. If you want to communicate with started subprocess
-you can use `"piped"` option.
+The `--allow-run` permission is required for creation of a subprocess. Be aware
+that subprocesses are not run in a Deno sandbox and therefore have the same
+permissions as if you were to run the command from the command line yourself.
+
+## Communicating with subprocesses
+
+By default when you use `Deno.run()` the subprocess inherits `stdin`, `stdout`
+and `stderr` of the parent process. If you want to communicate with started
+subprocess you can use `"piped"` option.
 
 ```ts
+/**
+ * subprocess.ts
+ */
 const fileNames = Deno.args;
 
 const p = Deno.run({

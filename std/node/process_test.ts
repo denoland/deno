@@ -1,3 +1,5 @@
+// deno-lint-ignore-file no-undef
+
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import * as all from "./process.ts";

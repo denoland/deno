@@ -204,3 +204,29 @@ failure, you can specify the `--failfast` flag when running the suite.
 ```shell
 deno test --failfast
 ```
+
+## Test coverage
+
+Deno will automatically determine test coverage for your code if you specify the
+`--coverage` flag when starting `deno test`. Coverage is determined on a line by
+line basis, and is acquired directly from the JavaScript runtime (V8). Because
+of this, this coverage is very accurate.
+
+When all tests are done running a summary of coverage per file is printed to
+stdout. In the future there will be support for `lcov` output too.
+
+```
+$ git clone git@github.com:denosaurs/deno_brotli.git && cd deno_brotli
+$ deno test --coverage --unstable
+Debugger listening on ws://127.0.0.1:9229/ws/5a593019-d185-478b-a928-ebc33e5834be
+Check file:///home/deno/deno_brotli/.deno.test.ts
+running 2 tests
+test compress ... ok (26ms)
+test decompress ... ok (13ms)
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out (40ms)
+
+test coverage:
+file:///home/deno/deno_brotli/mod.ts 100.000%
+file:///home/deno/deno_brotli/wasm.js 100.000%
+```

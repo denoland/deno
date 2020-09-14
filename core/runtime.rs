@@ -19,9 +19,10 @@ use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use crate::BufVec;
 use crate::ErrBox;
 use crate::JsError;
-use crate::OpRouter;
+use crate::OpState;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
@@ -31,7 +32,6 @@ use std::any::Any;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::From;
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
@@ -46,55 +46,15 @@ use std::task::Poll;
 
 type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Box<[u8]>)>>>;
 
-/// Stores a script used to initialize a Isolate
-pub struct Script<'a> {
-  pub source: &'a str,
-  pub filename: &'a str,
-}
-
-// TODO(ry) It's ugly that we have both Script and OwnedScript. Ideally we
-// wouldn't expose such twiddly complexity.
-struct OwnedScript {
-  pub source: String,
-  pub filename: String,
-}
-
-impl From<Script<'_>> for OwnedScript {
-  fn from(s: Script) -> OwnedScript {
-    OwnedScript {
-      source: s.source.to_string(),
-      filename: s.filename.to_string(),
-    }
-  }
-}
-
 pub enum Snapshot {
   Static(&'static [u8]),
   JustCreated(v8::StartupData),
   Boxed(Box<[u8]>),
 }
 
-/// Represents data used to initialize an isolate at startup, either
-/// in the form of a binary snapshot or a JavaScript source file.
-pub enum StartupData<'a> {
-  Script(Script<'a>),
-  Snapshot(Snapshot),
-  None,
-}
-
-impl StartupData<'_> {
-  fn into_options(self) -> (Option<OwnedScript>, Option<Snapshot>) {
-    match self {
-      Self::Script(script) => (Some(script.into()), None),
-      Self::Snapshot(snapshot) => (None, Some(snapshot)),
-      Self::None => (None, None),
-    }
-  }
-}
-
 type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
 
-pub type GetErrorClassFn = dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e ErrBox) -> &'static str;
 
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
@@ -120,7 +80,6 @@ pub struct JsRuntime {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   needs_init: bool,
-  startup_script: Option<OwnedScript>,
   allocations: IsolateAllocations,
 }
 
@@ -137,7 +96,8 @@ pub struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub(crate) op_router: Rc<dyn OpRouter>,
+  //pub(crate) op_table: OpTable,
+  pub(crate) op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
@@ -217,56 +177,24 @@ pub struct HeapLimits {
   pub max: usize,
 }
 
-pub(crate) struct IsolateOptions {
-  loader: Rc<dyn ModuleLoader>,
-  op_router: Rc<dyn OpRouter>,
-  startup_script: Option<OwnedScript>,
-  startup_snapshot: Option<Snapshot>,
-  will_snapshot: bool,
-  heap_limits: Option<HeapLimits>,
-}
+#[derive(Default)]
+pub struct RuntimeOptions {
+  /// Implementation of `ModuleLoader` which will be
+  /// called when V8 requests to load ES modules.
+  ///
+  /// If not provided runtime will error if code being
+  /// executed tries to load modules.
+  pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-impl JsRuntime {
-  /// startup_data defines the snapshot or script used at startup to initialize
-  /// the isolate.
-  pub fn new(
-    op_router: Rc<dyn OpRouter>,
-    startup_data: StartupData,
-    will_snapshot: bool,
-  ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
-    let options = IsolateOptions {
-      loader: Rc::new(NoopModuleLoader),
-      op_router,
-      startup_script,
-      startup_snapshot,
-      will_snapshot,
-      heap_limits: None,
-    };
+  /// V8 snapshot that should be loaded on startup.
+  ///
+  /// Currently can't be used with `will_snapshot`.
+  pub startup_snapshot: Option<Snapshot>,
 
-    Self::from_options(options)
-  }
-
-  // TODO(bartlomieju): add `new_with_loader_and_heap_limits` function?
-  /// Create new isolate that can load and execute ESModules.
-  pub fn new_with_loader(
-    loader: Rc<dyn ModuleLoader>,
-    op_router: Rc<dyn OpRouter>,
-    startup_data: StartupData,
-    will_snapshot: bool,
-  ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
-    let options = IsolateOptions {
-      loader,
-      op_router,
-      startup_script,
-      startup_snapshot,
-      will_snapshot,
-      heap_limits: None,
-    };
-
-    Self::from_options(options)
-  }
+  /// Prepare runtime to take snapshot of loaded code.
+  ///
+  /// Currently can't be used with `startup_snapshot`.
+  pub will_snapshot: bool,
 
   /// This is useful for controlling memory usage of scripts.
   ///
@@ -274,25 +202,11 @@ impl JsRuntime {
   ///
   /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
   /// to prevent v8 from crashing when reaching the upper limit.
-  pub fn with_heap_limits(
-    op_router: Rc<dyn OpRouter>,
-    startup_data: StartupData,
-    heap_limits: HeapLimits,
-  ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
-    let options = IsolateOptions {
-      loader: Rc::new(NoopModuleLoader),
-      op_router,
-      startup_script,
-      startup_snapshot,
-      will_snapshot: false,
-      heap_limits: Some(heap_limits),
-    };
+  pub heap_limits: Option<HeapLimits>,
+}
 
-    Self::from_options(options)
-  }
-
-  fn from_options(options: IsolateOptions) -> Self {
+impl JsRuntime {
+  pub fn new(options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
@@ -347,6 +261,12 @@ impl JsRuntime {
       (isolate, None)
     };
 
+    let loader = options
+      .module_loader
+      .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+
+    let op_state = OpState::default();
+
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
@@ -357,10 +277,10 @@ impl JsRuntime {
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
+      op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: Cell::new(false),
-      op_router: options.op_router,
       modules: Modules::new(),
-      loader: options.loader,
+      loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
@@ -372,7 +292,6 @@ impl JsRuntime {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       needs_init: true,
-      startup_script: options.startup_script,
       allocations: IsolateAllocations::default(),
     }
   }
@@ -399,11 +318,13 @@ impl JsRuntime {
     if self.needs_init {
       self.needs_init = false;
       js_check(self.execute("core.js", include_str!("core.js")));
-      // Maybe execute the startup script.
-      if let Some(s) = self.startup_script.take() {
-        self.execute(&s.filename, &s.source).unwrap()
-      }
     }
+  }
+
+  pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
+    state.op_state.clone()
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
@@ -475,6 +396,18 @@ impl JsRuntime {
     self.has_snapshotted = true;
 
     snapshot
+  }
+
+  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
+  {
+    Self::state(self)
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .register_op(name, op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
@@ -1283,8 +1216,6 @@ impl JsRuntime {
 pub mod tests {
   use super::*;
   use crate::modules::ModuleSourceFuture;
-  use crate::ops::*;
-  use crate::BasicState;
   use crate::BufVec;
   use futures::future::lazy;
   use futures::FutureExt;
@@ -1328,89 +1259,89 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  struct TestOpRouter {
+  struct TestState {
     mode: Mode,
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  impl OpRouter for TestOpRouter {
-    fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-      if op_id != 1 {
-        return Op::NotFound;
+  fn dispatch(op_state: Rc<RefCell<OpState>>, bufs: BufVec) -> Op {
+    let op_state_ = op_state.borrow();
+    let test_state = op_state_.borrow::<TestState>();
+    test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
+    match test_state.mode {
+      Mode::Async => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
       }
-      self.dispatch_count.fetch_add(1, Ordering::Relaxed);
-      match self.mode {
-        Mode::Async => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::AsyncUnref => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let fut = async {
-            // This future never finish.
-            futures::future::pending::<()>().await;
-            vec![43u8].into_boxed_slice()
-          };
-          Op::AsyncUnref(fut.boxed())
-        }
-        Mode::AsyncZeroCopy(count) => {
-          assert_eq!(bufs.len(), count as usize);
-          bufs.iter().enumerate().for_each(|(idx, buf)| {
-            assert_eq!(buf.len(), 1);
-            assert_eq!(idx, buf[0] as usize);
-          });
+      Mode::AsyncUnref => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let fut = async {
+          // This future never finish.
+          futures::future::pending::<()>().await;
+          vec![43u8].into_boxed_slice()
+        };
+        Op::AsyncUnref(fut.boxed())
+      }
+      Mode::AsyncZeroCopy(count) => {
+        assert_eq!(bufs.len(), count as usize);
+        bufs.iter().enumerate().for_each(|(idx, buf)| {
+          assert_eq!(buf.len(), 1);
+          assert_eq!(idx, buf[0] as usize);
+        });
 
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::OverflowReqSync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowResSync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 99;
-          let buf = vec.into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowReqAsync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::OverflowResAsync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 4;
-          let buf = vec.into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      }
+      Mode::OverflowReqSync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Sync(buf)
+      }
+      Mode::OverflowResSync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let mut vec = Vec::<u8>::new();
+        vec.resize(100 * 1024 * 1024, 0);
+        vec[0] = 99;
+        let buf = vec.into_boxed_slice();
+        Op::Sync(buf)
+      }
+      Mode::OverflowReqAsync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      }
+      Mode::OverflowResAsync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let mut vec = Vec::<u8>::new();
+        vec.resize(100 * 1024 * 1024, 0);
+        vec[0] = 4;
+        let buf = vec.into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
       }
     }
   }
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let test_state = Rc::new(TestOpRouter {
+    let mut runtime = JsRuntime::new(Default::default());
+    let op_state = runtime.op_state();
+    op_state.borrow_mut().put(TestState {
       mode,
       dispatch_count: dispatch_count.clone(),
     });
-    let mut runtime = JsRuntime::new(test_state, StartupData::None, false);
+
+    runtime.register_op("test", dispatch);
 
     js_check(runtime.execute(
       "setup.js",
@@ -1774,8 +1705,7 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut runtime =
-      JsRuntime::new(BasicState::new(), StartupData::None, false);
+    let mut runtime = JsRuntime::new(Default::default());
     let src = "hocuspocus(";
     let r = runtime.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1800,29 +1730,39 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut runtime =
-        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       runtime.snapshot()
     };
 
-    let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut runtime =
-        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
-    let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    let snapshot = Snapshot::Boxed(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1832,11 +1772,10 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::with_heap_limits(
-      BasicState::new(),
-      StartupData::None,
-      heap_limits,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      heap_limits: Some(heap_limits),
+      ..Default::default()
+    });
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
@@ -1864,8 +1803,7 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_remove() {
-    let mut runtime =
-      JsRuntime::new(BasicState::new(), StartupData::None, false);
+    let mut runtime = JsRuntime::new(Default::default());
 
     runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1880,11 +1818,10 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::with_heap_limits(
-      BasicState::new(),
-      StartupData::None,
-      heap_limits,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      heap_limits: Some(heap_limits),
+      ..Default::default()
+    });
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());
@@ -1952,13 +1889,12 @@ pub mod tests {
     }
 
     let loader = Rc::new(ModsLoader::default());
-    let state = BasicState::new();
 
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state: Rc<BasicState>, bufs: BufVec| -> Op {
+    let dispatcher = move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(bufs.len(), 1);
       assert_eq!(bufs[0].len(), 1);
@@ -1966,10 +1902,12 @@ pub mod tests {
       let buf = [43u8, 0, 0, 0][..].into();
       Op::Async(futures::future::ready(buf).boxed())
     };
-    state.register_op("test", dispatcher);
 
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, state, StartupData::None, false);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    runtime.register_op("test", dispatcher);
 
     js_check(runtime.execute(
       "setup.js",
@@ -2063,12 +2001,10 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
 
       js_check(runtime.execute(
         "file:///dyn_import2.js",
@@ -2145,12 +2081,10 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
 
       // Dynamically import mod_b
       js_check(runtime.execute(
@@ -2190,12 +2124,10 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
       js_check(runtime.execute(
         "file:///dyn_import3.js",
         r#"
@@ -2246,12 +2178,11 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new_with_loader(
-      loader,
-      BasicState::new(),
-      StartupData::None,
-      true,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      will_snapshot: true,
+      ..Default::default()
+    });
 
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();
