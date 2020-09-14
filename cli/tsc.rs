@@ -53,9 +53,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
-use swc_common::comments::Comment;
-use swc_common::comments::CommentKind;
-use swc_ecmascript::dep_graph;
+use swc_common::{comments::Comment, FilePathMapping};
+use swc_common::{comments::CommentKind, FileName};
+use swc_ecmascript::{
+  codegen::text_writer::JsWriter, codegen::text_writer::WriteJs, dep_graph,
+};
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -763,6 +765,43 @@ impl TsCompiler {
 
     let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
+    let bundled = {
+      let cm = Rc::new(swc_common::SourceMap::new(FilePathMapping::empty()));
+      let loader = SwcLoader {};
+      let resolver = SwcResolver {};
+      let globals = swc_common::Globals::new();
+      let bundler = swc_bundler::Bundler::new(
+        &globals,
+        cm.clone(),
+        loader,
+        resolver,
+        swc_bundler::Config {
+          require: false,
+          // TODO(kdy1): Change this to false
+          disable_inliner: true,
+          external_modules: vec![],
+        },
+      );
+
+      let mut entries = HashMap::default();
+      entries.insert("bundle".to_string(), FileName::Custom("bundle".into()));
+      // TODO(kdy1): Remove expect
+      let output = bundler.bundle(entries).expect("failed to bundle");
+      let mut buf = vec![];
+      {
+        let mut emitter = swc_ecmascript::codegen::Emitter {
+          cfg: swc_ecmascript::codegen::Config { minify: false },
+          cm: cm.clone(),
+          comments: None,
+          wr: Box::new(JsWriter::new(cm.clone(), "\n", &mut buf, None)),
+        };
+
+        // Cannnot happen
+        emitter.emit_module(&output[0].module).unwrap();
+      }
+
+      String::from_utf8(buf).expect("codegen should generate utf-8 output")
+    };
 
     let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
 
@@ -1567,6 +1606,14 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 
   None
 }
+
+struct SwcLoader {}
+
+impl swc_bundler::Load for SwcLoader {}
+
+struct SwcResolver {}
+
+impl swc_bundler::Resolve for SwcResolver {}
 
 #[cfg(test)]
 mod tests {
