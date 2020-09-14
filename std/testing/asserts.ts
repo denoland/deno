@@ -535,7 +535,7 @@ export async function assertThrowsAsync<T = void>(
 
 function compareThrownErrorAndOptions(
   isAsync: boolean,
-  // eslint-disable-next-line @typescrit-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   e: any,
   ErrorClass?: Constructor,
   msgIncludes = "",
