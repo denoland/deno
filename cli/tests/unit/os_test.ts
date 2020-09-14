@@ -62,7 +62,7 @@ unitTest(
       )`;
       const proc = Deno.run({
         cmd: [Deno.execPath(), "eval", src],
-        env: inputEnv,
+        env: { ...inputEnv, NO_COLOR: "1" },
         stdout: "piped",
       });
       const status = await proc.status();

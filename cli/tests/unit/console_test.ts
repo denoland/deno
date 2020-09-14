@@ -1417,73 +1417,73 @@ unitTest(function consoleTrace(): void {
 
 unitTest(function inspectSorted(): void {
   assertEquals(
-    Deno.inspect({ b: 2, a: 1 }, { sorted: true }),
+    stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
     "{ a: 1, b: 2 }",
   );
   assertEquals(
-    Deno.inspect(new Set(["b", "a"]), { sorted: true }),
+    stripColor(Deno.inspect(new Set(["b", "a"]), { sorted: true })),
     `Set { "a", "b" }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Map([
         ["b", 2],
         ["a", 1],
       ]),
       { sorted: true },
-    ),
+    )),
     `Map { "a" => 1, "b" => 2 }`,
   );
 });
 
 unitTest(function inspectTrailingComma(): void {
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       [
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       ],
       { trailingComma: true },
-    ),
+    )),
     `[
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 ]`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       {
         aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1,
         bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2,
       },
       { trailingComma: true },
-    ),
+    )),
     `{
   aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1,
   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2,
 }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Set([
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       ]),
       { trailingComma: true },
-    ),
+    )),
     `Set {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Map([
         ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1],
         ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 2],
       ]),
       { trailingComma: true },
-    ),
+    )),
     `Map {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" => 1,
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" => 2,
@@ -1493,7 +1493,7 @@ unitTest(function inspectTrailingComma(): void {
 
 unitTest(function inspectCompact(): void {
   assertEquals(
-    Deno.inspect({ a: 1, b: 2 }, { compact: false }),
+    stripColor(Deno.inspect({ a: 1, b: 2 }, { compact: false })),
     `{
   a: 1,
   b: 2
@@ -1503,69 +1503,72 @@ unitTest(function inspectCompact(): void {
 
 unitTest(function inspectIterableLimit(): void {
   assertEquals(
-    Deno.inspect(["a", "b", "c"], { iterableLimit: 2 }),
+    stripColor(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
     `[ "a", "b", ... 1 more items ]`,
   );
   assertEquals(
-    Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 }),
+    stripColor(Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 })),
     `Set { "a", "b", ... 1 more items }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Map([
         ["a", 1],
         ["b", 2],
         ["c", 3],
       ]),
       { iterableLimit: 2 },
-    ),
+    )),
     `Map { "a" => 1, "b" => 2, ... 1 more items }`,
   );
 });
 
 unitTest(function inspectProxy(): void {
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy([1, 2, 3], { get(): void {} }),
-    ),
+    )),
     "[ 1, 2, 3 ]",
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy({ key: "value" }, { get(): void {} }),
-    ),
+    )),
     `{ key: "value" }`,
   );
   assertEquals(
-    Deno.inspect(new Proxy([1, 2, 3], { get(): void {} }), { showProxy: true }),
+    stripColor(Deno.inspect(
+      new Proxy([1, 2, 3], { get(): void {} }),
+      { showProxy: true },
+    )),
     "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy({ a: 1 }, {
         set(): boolean {
           return false;
         },
       }),
       { showProxy: true },
-    ),
+    )),
     "Proxy [ { a: 1 }, { set: [Function: set] } ]",
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy([1, 2, 3, 4, 5, 6, 7], { get(): void {} }),
       { showProxy: true },
-    ),
+    )),
     `Proxy [ [
     1, 2, 3, 4,
     5, 6, 7
   ], { get: [Function: get] } ]`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy(function fn() {}, { get(): void {} }),
       { showProxy: true },
-    ),
+    )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
   );
 });
