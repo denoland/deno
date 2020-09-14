@@ -31,6 +31,7 @@ delete Object.prototype.__proto__;
   const fileReader = window.__bootstrap.fileReader;
   const formData = window.__bootstrap.formData;
   const webSocket = window.__bootstrap.webSocket;
+  const webStorage = window.__bootstrap.webStorage;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
@@ -277,6 +278,8 @@ delete Object.prototype.__proto__;
     onunload: util.writable(null),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
+    localStorage: util.nonEnumerable(webStorage.localStorage),
+    sessionStorage: util.nonEnumerable(webStorage.sessionStorage),
   };
 
   const workerRuntimeGlobalProperties = {

@@ -273,6 +273,7 @@ impl MainWorker {
       ops::errors::init(&mut worker);
       ops::fetch::init(&mut worker);
       ops::websocket::init(&mut worker);
+      ops::webstorage::init(&mut worker);
       ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);
       ops::idna::init(&mut worker);
