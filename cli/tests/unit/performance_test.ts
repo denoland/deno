@@ -3,6 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
+  assertThrows,
   createResolvable,
 } from "./test_util.ts";
 
@@ -63,4 +64,20 @@ unitTest(function performanceMeasure() {
       resolve();
     }, 100);
   });
+});
+
+unitTest(function performanceIllegalConstructor() {
+  assertThrows(() => new Performance(), TypeError, "Illegal constructor.");
+});
+
+unitTest(function performanceEntryIllegalConstructor() {
+  assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor.");
+});
+
+unitTest(function performanceMeasureIllegalConstructor() {
+  assertThrows(
+    () => new PerformanceMeasure(),
+    TypeError,
+    "Illegal constructor.",
+  );
 });

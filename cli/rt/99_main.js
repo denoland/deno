@@ -235,7 +235,7 @@ delete Object.prototype.__proto__;
     crypto: util.readOnly(crypto),
     dispatchEvent: util.readOnly(EventTarget.prototype.dispatchEvent),
     fetch: util.writable(fetch.fetch),
-    performance: util.writable(new performance.Performance()),
+    performance: util.writable(performance.performance),
     removeEventListener: util.readOnly(
       EventTarget.prototype.removeEventListener,
     ),
