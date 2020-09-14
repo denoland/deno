@@ -47,7 +47,7 @@ type Result<V> = result::Result<V, ErrBox>;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Location {
   pub filename: String,
   pub line: usize,
@@ -204,11 +204,22 @@ impl Default for TranspileOptions {
 
 /// A logical structure to hold the value of a parsed module for further
 /// processing.
+#[derive(Clone)]
 pub struct ParsedModule {
   comments: SingleThreadedComments,
   leading_comments: Vec<Comment>,
   module: Module,
   source_map: Rc<SourceMap>,
+}
+
+impl fmt::Debug for ParsedModule {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("ParsedModule")
+      .field("comments", &self.comments)
+      .field("leading_comments", &self.leading_comments)
+      .field("module", &self.module)
+      .finish()
+  }
 }
 
 impl ParsedModule {
