@@ -349,8 +349,8 @@ pub fn human_size(bytse: f64) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::ast::Location;
   use crate::module_graph::ImportDescriptor;
-  use crate::swc_util::Location;
   use crate::MediaType;
 
   #[test]
