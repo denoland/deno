@@ -58,7 +58,7 @@ pub fn url_to_filename(url: &Url) -> PathBuf {
 
   let mut rest_str = url.path().to_string();
   if let Some(query) = url.query() {
-    rest_str.push_str("?");
+    rest_str.push('?');
     rest_str.push_str(query);
   }
   // NOTE: fragment is omitted on purpose - it's not taken into
