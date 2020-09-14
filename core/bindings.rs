@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ErrBox;
-use crate::JsError;
+use crate::error::AnyError;
+use crate::error::JsError;
 use crate::JsRuntime;
 use crate::JsRuntimeState;
 use crate::Op;
@@ -396,8 +396,8 @@ fn send<'s>(
   let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-    .map_err(ErrBox::from)
-    .and_then(|l| OpId::try_from(l.value()).map_err(ErrBox::from))
+    .map_err(AnyError::from)
+    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
   {
     Ok(op_id) => op_id,
     Err(err) => {

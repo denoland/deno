@@ -3,7 +3,8 @@
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use deno_core::error::JsError as CoreJsError;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
@@ -105,13 +106,13 @@ fn format_maybe_source_line(
 
 /// Wrapper around deno_core::JsError which provides color to_string.
 #[derive(Debug)]
-pub struct JsError(deno_core::JsError);
+pub struct JsError(CoreJsError);
 
 impl JsError {
   pub fn create(
-    core_js_error: deno_core::JsError,
+    core_js_error: CoreJsError,
     source_map_getter: &impl SourceMapGetter,
-  ) -> ErrBox {
+  ) -> AnyError {
     let core_js_error = apply_source_map(&core_js_error, source_map_getter);
     let js_error = Self(core_js_error);
     js_error.into()
@@ -119,7 +120,7 @@ impl JsError {
 }
 
 impl Deref for JsError {
-  type Target = deno_core::JsError;
+  type Target = CoreJsError;
   fn deref(&self) -> &Self::Target {
     &self.0
   }

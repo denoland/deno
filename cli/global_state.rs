@@ -15,7 +15,7 @@ use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::env;
 use std::sync::atomic::AtomicUsize;
@@ -41,7 +41,7 @@ pub struct GlobalState {
 }
 
 impl GlobalState {
-  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, ErrBox> {
+  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -107,7 +107,7 @@ impl GlobalState {
     permissions: Permissions,
     is_dyn_import: bool,
     maybe_import_map: Option<ImportMap>,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let module_specifier = module_specifier.clone();
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -188,7 +188,7 @@ impl GlobalState {
     &self,
     module_specifier: ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Result<CompiledModule, ErrBox> {
+  ) -> Result<CompiledModule, AnyError> {
     let module_specifier = module_specifier.clone();
 
     let out = self

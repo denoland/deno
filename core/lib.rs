@@ -9,7 +9,7 @@ extern crate lazy_static;
 extern crate log;
 
 mod bindings;
-mod errors;
+pub mod error;
 mod flags;
 mod gotham_state;
 mod module_specifier;
@@ -24,9 +24,6 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
-pub use crate::errors::AnyError;
-pub use crate::errors::ErrBox;
-pub use crate::errors::JsError;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;

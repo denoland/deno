@@ -2,8 +2,11 @@
 
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::resolve_addr::resolve_addr;
+use deno_core::error::bad_resource;
+use deno_core::error::bad_resource_id;
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -59,7 +62,7 @@ async fn op_start_tls(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
@@ -80,7 +83,7 @@ async fn op_start_tls(
     let mut state_ = state.borrow_mut();
     match state_.resource_table.remove::<StreamResourceHolder>(rid) {
       Some(resource) => *resource,
-      None => return Err(ErrBox::bad_resource_id()),
+      None => return Err(bad_resource_id()),
     }
   };
 
@@ -128,7 +131,7 @@ async fn op_start_tls(
         }
     }))
   } else {
-    Err(ErrBox::bad_resource_id())
+    Err(bad_resource_id())
   }
 }
 
@@ -136,7 +139,7 @@ async fn op_connect_tls(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   {
@@ -192,31 +195,31 @@ async fn op_connect_tls(
   }))
 }
 
-fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
+fn load_certs(path: &str) -> Result<Vec<Certificate>, AnyError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
 
   let certs = certs(reader)
-    .map_err(|_| ErrBox::new("InvalidData", "Unable to decode certificate"))?;
+    .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
 
   if certs.is_empty() {
-    let e = ErrBox::new("InvalidData", "No certificates found in cert file");
+    let e = custom_error("InvalidData", "No certificates found in cert file");
     return Err(e);
   }
 
   Ok(certs)
 }
 
-fn key_decode_err() -> ErrBox {
-  ErrBox::new("InvalidData", "Unable to decode key")
+fn key_decode_err() -> AnyError {
+  custom_error("InvalidData", "Unable to decode key")
 }
 
-fn key_not_found_err() -> ErrBox {
-  ErrBox::new("InvalidData", "No keys found in key file")
+fn key_not_found_err() -> AnyError {
+  custom_error("InvalidData", "No keys found in key file")
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
@@ -224,14 +227,14 @@ fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
-fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+fn load_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
   let path = path.to_string();
   let mut keys = load_rsa_keys(&path)?;
 
@@ -265,13 +268,13 @@ impl TlsListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), AnyError> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      return Err(ErrBox::new("Busy", "Another accept task is ongoing"));
+      return Err(custom_error("Busy", "Another accept task is ongoing"));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -308,7 +311,7 @@ fn op_listen_tls(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
@@ -359,7 +362,7 @@ async fn op_accept_tls(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let accept_fut = poll_fn(|cx| {
@@ -367,9 +370,9 @@ async fn op_accept_tls(
     let listener_resource = state
       .resource_table
       .get_mut::<TlsListenerResource>(rid)
-      .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
+      .ok_or_else(|| bad_resource("Listener has been closed"))?;
     let listener = &mut listener_resource.listener;
-    match listener.poll_accept(cx).map_err(ErrBox::from) {
+    match listener.poll_accept(cx).map_err(AnyError::from) {
       Poll::Ready(Ok((stream, addr))) => {
         listener_resource.untrack_task();
         Poll::Ready(Ok((stream, addr)))
@@ -392,7 +395,7 @@ async fn op_accept_tls(
     let resource = state_
       .resource_table
       .get::<TlsListenerResource>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)
+      .ok_or_else(bad_resource_id)
       .expect("Can't find tls listener");
     resource.tls_acceptor.clone()
   };

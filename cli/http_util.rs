@@ -2,7 +2,8 @@
 
 use crate::version;
 use bytes::Bytes;
-use deno_core::ErrBox;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::IF_NONE_MATCH;
@@ -26,7 +27,7 @@ use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
+pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
@@ -46,7 +47,7 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
 
   builder
     .build()
-    .map_err(|_| ErrBox::error("Unable to build http client"))
+    .map_err(|_| generic_error("Unable to build http client"))
 }
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
@@ -96,7 +97,7 @@ pub async fn fetch_once(
   client: Client,
   url: &Url,
   cached_etag: Option<String>,
-) -> Result<FetchOnceResult, ErrBox> {
+) -> Result<FetchOnceResult, AnyError> {
   let url = url.clone();
 
   let mut request = client.get(url.clone());
@@ -140,7 +141,7 @@ pub async fn fetch_once(
       let new_url = resolve_url_from_location(&url, location_string);
       return Ok(FetchOnceResult::Redirect(new_url, headers_));
     } else {
-      return Err(ErrBox::error(format!(
+      return Err(generic_error(format!(
         "Redirection from '{}' did not provide location header",
         url
       )));
@@ -150,7 +151,7 @@ pub async fn fetch_once(
   if response.status().is_client_error() || response.status().is_server_error()
   {
     let err =
-      ErrBox::error(format!("Import '{}' failed: {}", &url, response.status()));
+      generic_error(format!("Import '{}' failed: {}", &url, response.status()));
     return Err(err);
   }
 

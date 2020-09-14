@@ -3,8 +3,10 @@
 use rusty_v8 as v8;
 
 use crate::bindings;
-use crate::errors::attach_handle_to_error;
-use crate::errors::ErrWithV8Handle;
+use crate::error::attach_handle_to_error;
+use crate::error::AnyError;
+use crate::error::ErrWithV8Handle;
+use crate::error::JsError;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -20,8 +22,6 @@ use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::BufVec;
-use crate::ErrBox;
-use crate::JsError;
 use crate::OpState;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -52,9 +52,10 @@ pub enum Snapshot {
   Boxed(Box<[u8]>),
 }
 
-type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
+type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
 
-pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+pub type GetErrorClassFn =
+  &'static dyn for<'e> Fn(&'e AnyError) -> &'static str;
 
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
@@ -329,14 +330,15 @@ impl JsRuntime {
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
+  /// used.
   pub fn execute(
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.shared_init();
 
     let state_rc = Self::state(self);
@@ -376,9 +378,10 @@ impl JsRuntime {
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
+  /// used.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
     let state = Self::state(self);
@@ -466,7 +469,7 @@ where
 }
 
 impl Future for JsRuntime {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let runtime = self.get_mut();
@@ -590,7 +593,7 @@ impl JsRuntimeState {
   /// is set to JsError::create.
   pub fn set_js_error_create_fn(
     &mut self,
-    f: impl Fn(JsError) -> ErrBox + 'static,
+    f: impl Fn(JsError) -> AnyError + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
   }
@@ -633,7 +636,7 @@ impl JsRuntimeState {
 fn async_op_response<'s>(
   scope: &mut v8::HandleScope<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
   let js_recv_cb = JsRuntime::state(scope)
@@ -662,7 +665,9 @@ fn async_op_response<'s>(
   }
 }
 
-fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
+fn drain_macrotasks<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> Result<(), AnyError> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
 
@@ -699,7 +704,7 @@ fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
-) -> Result<T, ErrBox> {
+) -> Result<T, AnyError> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
   let is_terminating_exception =
@@ -738,7 +743,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 fn check_promise_exceptions<'s>(
   scope: &mut v8::HandleScope<'s>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -752,7 +757,7 @@ fn check_promise_exceptions<'s>(
   }
 }
 
-pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
+pub fn js_check<T>(r: Result<T, AnyError>) -> T {
   if let Err(e) = r {
     panic!(e.to_string());
   }
@@ -782,7 +787,7 @@ impl JsRuntime {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self);
     let scope = &mut v8::HandleScope::with_context(
       &mut **self,
@@ -831,10 +836,11 @@ impl JsRuntime {
 
   /// Instantiates a ES module
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
-  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
+  /// used.
+  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
     let scope = &mut v8::HandleScope::with_context(
@@ -867,10 +873,11 @@ impl JsRuntime {
 
   /// Evaluates an already instantiated ES module.
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
-  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
+  /// used.
+  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     self.shared_init();
 
     let state_rc = Self::state(self);
@@ -939,8 +946,8 @@ impl JsRuntime {
   fn dyn_import_error(
     &mut self,
     id: ModuleLoadId,
-    err: ErrBox,
-  ) -> Result<(), ErrBox> {
+    err: AnyError,
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
 
     let scope = &mut v8::HandleScope::with_context(
@@ -973,7 +980,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleLoadId,
     mod_id: ModuleId,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
@@ -1010,7 +1017,7 @@ impl JsRuntime {
   fn prepare_dyn_imports(
     &mut self,
     cx: &mut Context,
-  ) -> Poll<Result<(), ErrBox>> {
+  ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
 
     loop {
@@ -1041,7 +1048,10 @@ impl JsRuntime {
     }
   }
 
-  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
     loop {
       let poll_result = {
@@ -1100,7 +1110,7 @@ impl JsRuntime {
     &mut self,
     info: ModuleSource,
     load: &mut RecursiveModuleLoad,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let ModuleSource {
       code,
       module_url_specified,
@@ -1189,7 +1199,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     self.shared_init();
     let loader = {
       let state_rc = Self::state(self);
@@ -1870,7 +1880,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
@@ -1979,7 +1989,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
@@ -2038,7 +2048,7 @@ pub mod tests {
       specifier: &str,
       referrer: &str,
       _is_main: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
+    ) -> Result<ModuleSpecifier, AnyError> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
       assert!(c < 4);
       assert_eq!(specifier, "./b.js");
@@ -2068,7 +2078,7 @@ pub mod tests {
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
       self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
       async { Ok(()) }.boxed_local()
     }
@@ -2160,7 +2170,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();

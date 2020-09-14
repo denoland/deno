@@ -8,8 +8,8 @@ use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -40,7 +40,7 @@ fn create_web_worker(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
-) -> Result<WebWorker, ErrBox> {
+) -> Result<WebWorker, AnyError> {
   let cli_state = crate::state::State::new_for_worker(
     global_state,
     Some(permissions),
@@ -84,10 +84,10 @@ fn run_worker_thread(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
-) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
+) -> Result<(JoinHandle<()>, WebWorkerHandle), AnyError> {
   let global_state = global_state.clone();
   let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
+    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
 
   let builder =
     std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
@@ -177,7 +177,7 @@ fn op_create_worker(
   state: &mut OpState,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
@@ -229,7 +229,7 @@ fn op_host_terminate_worker(
   state: &mut OpState,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let cli_state = super::cli_state(state);
@@ -298,7 +298,7 @@ async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let cli_state = super::cli_state2(&state);
@@ -347,7 +347,7 @@ fn op_host_post_message(
   state: &mut OpState,
   args: Value,
   data: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;

@@ -1,18 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
-//! - ErrBox: a generic boxed object. This is the super type of all
-//!   errors handled in Rust.
+//! - AnyError: a generic wrapper that can encapsulate any type of error.
 //! - JsError: a container for the error message and stack trace for exceptions
 //!   thrown in JavaScript code. We use this to pretty-print stack traces.
 //! - Diagnostic: these are errors that originate in TypeScript's compiler.
-//!   They're similar to JsError, in that they have line numbers.
-//!   But Diagnostics are compile-time type errors, whereas JsErrors are runtime
+//!   They're similar to JsError, in that they have line numbers. But
+//!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
 use crate::ast::DiagnosticBuffer;
 use crate::import_map::ImportMapError;
-use deno_core::ErrBox;
+use deno_core::error::get_custom_error_class;
+use deno_core::error::AnyError;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
 use std::env;
@@ -170,63 +170,59 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
-pub(crate) fn get_error_class_name(e: &ErrBox) -> &'static str {
-  use ErrBox::*;
-  match e {
-    Simple { class, .. } => Some(*class),
-    _ => None,
-  }
-  .or_else(|| {
-    e.downcast_ref::<dlopen::Error>()
-      .map(get_dlopen_error_class)
-  })
-  .or_else(|| {
-    e.downcast_ref::<env::VarError>()
-      .map(get_env_var_error_class)
-  })
-  .or_else(|| {
-    e.downcast_ref::<ImportMapError>()
-      .map(get_import_map_error_class)
-  })
-  .or_else(|| e.downcast_ref::<io::Error>().map(get_io_error_class))
-  .or_else(|| {
-    e.downcast_ref::<ModuleResolutionError>()
-      .map(get_module_resolution_error_class)
-  })
-  .or_else(|| {
-    e.downcast_ref::<notify::Error>()
-      .map(get_notify_error_class)
-  })
-  .or_else(|| {
-    e.downcast_ref::<ReadlineError>()
-      .map(get_readline_error_class)
-  })
-  .or_else(|| {
-    e.downcast_ref::<reqwest::Error>()
-      .map(get_request_error_class)
-  })
-  .or_else(|| e.downcast_ref::<regex::Error>().map(get_regex_error_class))
-  .or_else(|| {
-    e.downcast_ref::<serde_json::error::Error>()
-      .map(get_serde_json_error_class)
-  })
-  .or_else(|| {
-    e.downcast_ref::<DiagnosticBuffer>()
-      .map(get_diagnostic_class)
-  })
-  .or_else(|| {
-    e.downcast_ref::<url::ParseError>()
-      .map(get_url_parse_error_class)
-  })
-  .or_else(|| {
-    #[cfg(unix)]
-    let maybe_get_nix_error_class =
-      || e.downcast_ref::<nix::Error>().map(get_nix_error_class);
-    #[cfg(not(unix))]
-    let maybe_get_nix_error_class = || Option::<&'static str>::None;
-    (maybe_get_nix_error_class)()
-  })
-  .unwrap_or_else(|| {
-    panic!("ErrBox '{}' contains boxed error of unknown type", e);
-  })
+pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
+  get_custom_error_class(e)
+    .or_else(|| {
+      e.downcast_ref::<dlopen::Error>()
+        .map(get_dlopen_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<env::VarError>()
+        .map(get_env_var_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<ImportMapError>()
+        .map(get_import_map_error_class)
+    })
+    .or_else(|| e.downcast_ref::<io::Error>().map(get_io_error_class))
+    .or_else(|| {
+      e.downcast_ref::<ModuleResolutionError>()
+        .map(get_module_resolution_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<notify::Error>()
+        .map(get_notify_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<ReadlineError>()
+        .map(get_readline_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<reqwest::Error>()
+        .map(get_request_error_class)
+    })
+    .or_else(|| e.downcast_ref::<regex::Error>().map(get_regex_error_class))
+    .or_else(|| {
+      e.downcast_ref::<serde_json::error::Error>()
+        .map(get_serde_json_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<DiagnosticBuffer>()
+        .map(get_diagnostic_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<url::ParseError>()
+        .map(get_url_parse_error_class)
+    })
+    .or_else(|| {
+      #[cfg(unix)]
+      let maybe_get_nix_error_class =
+        || e.downcast_ref::<nix::Error>().map(get_nix_error_class);
+      #[cfg(not(unix))]
+      let maybe_get_nix_error_class = || Option::<&'static str>::None;
+      (maybe_get_nix_error_class)()
+    })
+    .unwrap_or_else(|| {
+      panic!("Error '{}' contains boxed error of unknown type", e);
+    })
 }

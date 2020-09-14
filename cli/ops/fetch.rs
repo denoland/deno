@@ -1,9 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{StreamResource, StreamResourceHolder};
-use crate::http_util::{create_http_client, HttpBody};
+use super::io::StreamResource;
+use super::io::StreamResourceHolder;
+use crate::http_util::create_http_client;
+use crate::http_util::HttpBody;
+use deno_core::error::bad_resource_id;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
@@ -35,7 +39,7 @@ async fn op_fetch(
   state: Rc<RefCell<OpState>>,
   args: Value,
   data: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
@@ -44,7 +48,7 @@ async fn op_fetch(
     let r = state
       .resource_table
       .get::<HttpClientResource>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
     r.client.clone()
   } else {
     let cli_state = super::cli_state2(&state);
@@ -62,10 +66,7 @@ async fn op_fetch(
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(ErrBox::type_error(format!(
-      "scheme '{}' not supported",
-      scheme
-    )));
+    return Err(type_error(format!("scheme '{}' not supported", scheme)));
   }
 
   super::cli_state2(&state).check_net_url(&url_)?;
@@ -133,7 +134,7 @@ fn op_create_http_client(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {

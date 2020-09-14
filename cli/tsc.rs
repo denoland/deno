@@ -24,7 +24,8 @@ use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
 use core::task::Context;
-use deno_core::ErrBox;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use futures::future::Future;
 use futures::future::FutureExt;
@@ -166,7 +167,7 @@ impl DerefMut for CompilerWorker {
 }
 
 impl Future for CompilerWorker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -252,7 +253,7 @@ pub struct CompilerConfig {
 
 impl CompilerConfig {
   /// Take the passed flag and resolve the file name relative to the cwd.
-  pub fn load(maybe_config_path: Option<String>) -> Result<Self, ErrBox> {
+  pub fn load(maybe_config_path: Option<String>) -> Result<Self, AnyError> {
     if maybe_config_path.is_none() {
       return Ok(Self {
         path: Some(PathBuf::new()),
@@ -439,7 +440,7 @@ impl TsCompiler {
     file_fetcher: SourceFileFetcher,
     flags: Flags,
     disk_cache: DiskCache,
-  ) -> Result<Self, ErrBox> {
+  ) -> Result<Self, AnyError> {
     let config = CompilerConfig::load(flags.config_path.clone())?;
     let use_disk_cache = !flags.reload;
 
@@ -495,7 +496,7 @@ impl TsCompiler {
     &self,
     url: &Url,
     build_info: &Option<String>,
-  ) -> Result<bool, ErrBox> {
+  ) -> Result<bool, AnyError> {
     if let Some(build_info_str) = build_info.as_ref() {
       let build_inf_json: Value = serde_json::from_str(build_info_str)?;
       let program_val = build_inf_json["program"].as_object().unwrap();
@@ -557,7 +558,7 @@ impl TsCompiler {
     permissions: Permissions,
     module_graph: &ModuleGraph,
     allow_js: bool,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let module_url = source_file.url.clone();
     let build_info_key = self
       .disk_cache
@@ -646,7 +647,7 @@ impl TsCompiler {
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
     if !compile_response.diagnostics.0.is_empty() {
-      return Err(ErrBox::error(compile_response.diagnostics.to_string()));
+      return Err(generic_error(compile_response.diagnostics.to_string()));
     }
 
     maybe_log_stats(compile_response.stats);
@@ -664,7 +665,7 @@ impl TsCompiler {
     &self,
     global_state: &Arc<GlobalState>,
     module_specifier: ModuleSpecifier,
-  ) -> Result<String, ErrBox> {
+  ) -> Result<String, AnyError> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
       module_specifier.to_string()
@@ -768,7 +769,7 @@ impl TsCompiler {
     maybe_log_stats(bundle_response.stats);
 
     if !bundle_response.diagnostics.0.is_empty() {
-      return Err(ErrBox::error(bundle_response.diagnostics.to_string()));
+      return Err(generic_error(bundle_response.diagnostics.to_string()));
     }
 
     assert!(bundle_response.bundle_output.is_some());
@@ -779,7 +780,7 @@ impl TsCompiler {
   pub async fn transpile(
     &self,
     module_graph: &ModuleGraph,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
     for (_, value) in module_graph.iter() {
       let url = Url::parse(&value.url).expect("Filename is not a valid url");
@@ -919,7 +920,7 @@ impl TsCompiler {
   pub fn get_compiled_module(
     &self,
     module_url: &Url,
-  ) -> Result<CompiledModule, ErrBox> {
+  ) -> Result<CompiledModule, AnyError> {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
@@ -936,7 +937,7 @@ impl TsCompiler {
   pub fn get_compiled_source_file(
     &self,
     module_url: &Url,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(&module_url, "js");
@@ -993,7 +994,7 @@ impl TsCompiler {
   pub fn get_source_map_file(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
@@ -1133,7 +1134,7 @@ async fn execute_in_same_thread(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
   req: String,
-) -> Result<String, ErrBox> {
+) -> Result<String, AnyError> {
   let mut worker = create_compiler_worker(&global_state, permissions);
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
   worker.execute2("<compiler>", &script)?;
@@ -1147,7 +1148,7 @@ async fn create_runtime_module_graph(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   type_files: Vec<String>,
-) -> Result<(Vec<String>, ModuleGraph), ErrBox> {
+) -> Result<(Vec<String>, ModuleGraph), AnyError> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
@@ -1181,13 +1182,11 @@ async fn create_runtime_module_graph(
   Ok((root_names, module_graph_loader.get_graph()))
 }
 
-/// Because TS compiler can raise runtime error, we need to
-/// manually convert formatted JsError into and ErrBox.
-fn js_error_to_errbox(error: ErrBox) -> ErrBox {
+fn js_error_to_errbox(error: AnyError) -> AnyError {
   match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
-      ErrBox::error(msg)
+      generic_error(msg)
     }
     Err(error) => error,
   }
@@ -1200,7 +1199,7 @@ pub async fn runtime_compile(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let mut user_options = if let Some(options) = maybe_options {
     tsc_config::parse_raw_config(options)?
   } else {
@@ -1302,7 +1301,7 @@ pub async fn runtime_bundle(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let mut user_options = if let Some(options) = maybe_options {
     tsc_config::parse_raw_config(options)?
   } else {
@@ -1404,7 +1403,7 @@ pub async fn runtime_transpile(
   permissions: Permissions,
   sources: &HashMap<String, String>,
   maybe_options: &Option<String>,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let user_options = if let Some(options) = maybe_options {
     tsc_config::parse_raw_config(options)?
   } else {
@@ -1466,7 +1465,7 @@ pub fn pre_process_file(
   media_type: MediaType,
   source_code: &str,
   analyze_dynamic_imports: bool,
-) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), ErrBox> {
+) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), AnyError> {
   let specifier = ModuleSpecifier::resolve_url_or_path(file_name)?;
   let module = parse(&specifier, source_code, &media_type)?;
 

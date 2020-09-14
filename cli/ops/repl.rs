@@ -2,8 +2,9 @@
 
 use crate::repl;
 use crate::repl::Repl;
+use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_derive::Deserialize;
@@ -30,7 +31,7 @@ fn op_repl_start(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
   debug!("op_repl_start {}", args.history_file);
   let history_path = {
@@ -53,7 +54,7 @@ async fn op_repl_readline(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: ReplReadlineArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let prompt = args.prompt;
@@ -63,7 +64,7 @@ async fn op_repl_readline(
     let resource = state
       .resource_table
       .get::<ReplResource>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
     resource.0.clone()
   };
   tokio::task::spawn_blocking(move || {

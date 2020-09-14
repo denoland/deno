@@ -8,7 +8,10 @@ use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::permissions::Permissions;
 use crate::text_encoding;
-use deno_core::ErrBox;
+use deno_core::error::custom_error;
+use deno_core::error::generic_error;
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use log::info;
@@ -122,7 +125,7 @@ impl SourceFileFetcher {
     no_remote: bool,
     cached_only: bool,
     ca_file: Option<&str>,
-  ) -> Result<Self, ErrBox> {
+  ) -> Result<Self, AnyError> {
     let file_fetcher = Self {
       http_cache,
       source_file_cache: SourceFileCache::default(),
@@ -136,9 +139,9 @@ impl SourceFileFetcher {
     Ok(file_fetcher)
   }
 
-  pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
+  pub fn check_if_supported_scheme(url: &Url) -> Result<(), AnyError> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
-      return Err(ErrBox::error(format!(
+      return Err(generic_error(format!(
         "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
         url.scheme(),
         url,
@@ -179,7 +182,7 @@ impl SourceFileFetcher {
   /// Save a given source file into cache.
   /// Allows injection of files that normally would not present
   /// in filesystem.
-  /// This is useful when e.g. TS compiler retrieves a custom file
+  /// This is useful when e.g. TS compiler retrieves a custom_error file
   /// under a dummy specifier.
   pub fn save_source_file_in_cache(
     &self,
@@ -194,7 +197,7 @@ impl SourceFileFetcher {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     permissions: Permissions,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let module_url = specifier.as_url().to_owned();
     debug!(
       "fetch_source_file specifier: {} maybe_referrer: {:#?}",
@@ -256,13 +259,13 @@ impl SourceFileFetcher {
             r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
             module_url, referrer_suffix
           );
-          ErrBox::new("NotFound", msg)
+          custom_error("NotFound", msg)
         } else if is_not_found {
           let msg = format!(
             r#"Cannot resolve module "{}"{}"#,
             module_url, referrer_suffix
           );
-          ErrBox::new("NotFound", msg)
+          custom_error("NotFound", msg)
         } else {
           err
         };
@@ -275,7 +278,7 @@ impl SourceFileFetcher {
     &self,
     module_url: &Url,
     permissions: &Permissions,
-  ) -> Result<Option<SourceFile>, ErrBox> {
+  ) -> Result<Option<SourceFile>, AnyError> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
     SourceFileFetcher::check_if_supported_scheme(&module_url)?;
@@ -306,7 +309,7 @@ impl SourceFileFetcher {
     no_remote: bool,
     cached_only: bool,
     permissions: &Permissions,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
     SourceFileFetcher::check_if_supported_scheme(&module_url)?;
@@ -345,10 +348,10 @@ impl SourceFileFetcher {
     &self,
     module_url: &Url,
     permissions: &Permissions,
-  ) -> Result<SourceFile, ErrBox> {
-    let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::new("URIError", "File URL contains invalid path")
-    })?;
+  ) -> Result<SourceFile, AnyError> {
+    let filepath = module_url
+      .to_file_path()
+      .map_err(|()| uri_error("File URL contains invalid path"))?;
 
     permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
@@ -382,9 +385,9 @@ impl SourceFileFetcher {
     &self,
     module_url: &Url,
     redirect_limit: i64,
-  ) -> Result<Option<SourceFile>, ErrBox> {
+  ) -> Result<Option<SourceFile>, AnyError> {
     if redirect_limit < 0 {
-      return Err(ErrBox::new("Http", "too many redirects"));
+      return Err(custom_error("Http", "too many redirects"));
     }
 
     let result = self.http_cache.get(&module_url);
@@ -447,9 +450,9 @@ impl SourceFileFetcher {
     cached_only: bool,
     redirect_limit: i64,
     permissions: &Permissions,
-  ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<SourceFile, AnyError>>>> {
     if redirect_limit < 0 {
-      let e = ErrBox::new("Http", "too many redirects");
+      let e = custom_error("Http", "too many redirects");
       return futures::future::err(e).boxed_local();
     }
 
@@ -481,7 +484,7 @@ impl SourceFileFetcher {
         "Cannot find remote file '{}' in cache, --cached-only is specified",
         module_url
       );
-      return futures::future::err(ErrBox::new("NotFound", message))
+      return futures::future::err(custom_error("NotFound", message))
         .boxed_local();
     }
 
