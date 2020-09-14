@@ -24,6 +24,7 @@ use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
 use crate::{colors, module_graph::ModuleGraphFile};
+use anyhow::bail;
 use core::task::Context;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -53,9 +54,15 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
-use swc_common::{comments::Comment, FilePathMapping};
-use swc_common::{comments::CommentKind, FileName};
-use swc_ecmascript::{codegen::text_writer::JsWriter, dep_graph};
+use swc_common::comments::Comment;
+use swc_common::comments::CommentKind;
+use swc_common::input::StringInput;
+use swc_common::FileName;
+use swc_common::FilePathMapping;
+use swc_ecmascript::{
+  ast::Module, codegen::text_writer::JsWriter, dep_graph, parser::lexer::Lexer,
+  parser::JscTarget, parser::Parser, parser::Syntax,
+};
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -770,7 +777,6 @@ impl TsCompiler {
         module_graph: &module_graph,
       };
       let resolver = SwcResolver {
-        cm: cm.clone(),
         module_graph: &module_graph,
       };
       let globals = swc_common::Globals::new();
@@ -1620,17 +1626,47 @@ impl swc_bundler::Load for SwcLoader<'_> {
   fn load(
     &self,
     file: &FileName,
-  ) -> Result<
-    (Rc<swc_common::SourceFile>, swc_ecmascript::ast::Module),
-    anyhow::Error,
-  > {
+  ) -> Result<(Rc<swc_common::SourceFile>, Module), anyhow::Error> {
     dbg!(file);
-    unimplemented!()
+    match file {
+      FileName::Custom(name) => {
+        // We use custom
+        if let Some(module) = self.module_graph.get(name) {
+          let fm = self.cm.new_source_file(
+            FileName::Custom(name.into()),
+            module.source_code.clone(),
+          );
+
+          let lexer = Lexer::new(
+            Syntax::Typescript(Default::default()),
+            JscTarget::Es2020,
+            StringInput::from(&*fm),
+            None,
+          );
+          let mut p = Parser::new_from(lexer);
+
+          let result = p.parse_module();
+          let module = match result {
+            Ok(v) => v,
+            Err(err) => {
+              bail!("Parsing failed: {:?}", err);
+            }
+          };
+
+          Ok((fm, module))
+        } else {
+          bail!("swc_bundler requested non-existant file {:?}", file)
+        }
+      }
+      _ => unreachable!(
+        "swc_bundler requested parsing of non-string named file {:?}",
+        file
+      ),
+    }
   }
 }
 
 struct SwcResolver<'a> {
-  cm: Rc<swc_common::SourceMap>,
   module_graph: &'a HashMap<String, ModuleGraphFile>,
 }
 
