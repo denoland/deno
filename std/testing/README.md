@@ -36,12 +36,12 @@ pretty-printed diff of failing assertion.
   an optional string.
 - `assertDoesNotThrow()` - Expects the passed `fn` not to throw. If `fn` throw,
   this function does. Also compares any errors thrown to an optional expected
-  `Error` class and checks that the error `.message` does not includes an optional
+  `Error` class and checks that the error `.message` does not include an optional
   string.
 - `assertDoesNotThrowAsync()` - Expects the passed `fn` to be async and not to throw (or
   not to return a `Promise` that rejects). If the `fn` does not throw or reject, this
   function will throw asynchronously. Also compares any errors thrown to an
-  optional expected `Error` class and checks that the error `.message` does not includes
+  optional expected `Error` class and checks that the error `.message` does not include
   an optional string.
 - `unimplemented()` - Use this to stub out methods that will throw when invoked
 - `unreachable()` - Used to assert unreachable code
