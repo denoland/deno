@@ -664,7 +664,7 @@ pub fn main() {
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {
-      target.push_str(":");
+      target.push(':');
       target.push_str(&line_no.to_string());
     }
     if record.level() >= Level::Info {
