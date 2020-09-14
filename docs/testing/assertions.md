@@ -24,6 +24,8 @@ The assertions module provides nine assertions:
 - `assertNotMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertThrows(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
 - `assertThrowsAsync(fn: () => Promise<void>, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Promise<Error>`
+- `assertDoesNotThrow(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
+- `assertDoesNotThrowAsync(fn: () => Promise<void>, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Promise<Error>`
 
 ### Assert
 
@@ -185,6 +187,29 @@ Deno.test("Test Assert Throws Async", () => {
     },
     Error,
     "Panic! Reject Error",
+  );
+});
+```
+
+Also in addition to the above, there are two ways to assert that a function does not throw `Error`,
+`assertDoesNotThrow()` and `assertDoesNotThrowAsync()`.
+
+```js
+Deno.test("Test Assert Does Not Throws", () => {
+  assertDoesNotThrow(
+    () => {
+      return;
+    },
+  );
+});
+
+Deno.test("Test Assert Does Not Throws Async", () => {
+  assertDoesNotThrowAsync(
+    () => {
+      return new Promise(() => {
+        return;
+      });
+    },
   );
 });
 ```

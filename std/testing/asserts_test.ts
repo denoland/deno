@@ -12,6 +12,8 @@ import {
   assertNotStrictEquals,
   assertThrows,
   assertThrowsAsync,
+  assertDoesNotThrow,
+  assertDoesNotThrowAsync,
   AssertionError,
   equal,
   fail,
@@ -322,6 +324,187 @@ Deno.test("testingAssertThrowsAsyncWithReturnType", () => {
   assertThrowsAsync(() => {
     throw new Error();
   });
+});
+
+Deno.test("testingAssertDoesNotThrow", () => {
+  // --- pass cases ---
+  assertDoesNotThrow(() => {
+    return;
+  });
+  assertDoesNotThrow(
+    () => {
+      throw new Error("Panic! Threw Error!");
+    },
+    TypeError,
+  );
+  assertDoesNotThrow(
+    () => {
+      throw new Error("Panic! Threw Error!");
+    },
+    Error,
+    "Fail",
+  );
+
+  // --- fail cases : valid error object ---
+  assertThrows(
+    () => {
+      assertDoesNotThrow(() => {
+        throw new Error("Panic! Threw Error!");
+      });
+    },
+    Error,
+    "Expected function not to throw",
+  );
+  assertThrows(
+    () => {
+      assertDoesNotThrow(() => {
+        throw new TypeError("Panic! Threw Error!");
+      }, Error);
+    },
+    AssertionError,
+    'Expected error not to be instance of "Error", but was "TypeError"',
+  );
+  assertThrows(
+    () => {
+      assertDoesNotThrow(
+        () => {
+          throw new Error("Panic! Threw Error!");
+        },
+        Error,
+        "Panic",
+      );
+    },
+    AssertionError,
+    'Expected error message not to include "Panic", but got "Panic! Threw Error!".',
+  );
+
+  // --- fail cases : non-error object ---
+  assertThrows(
+    () => {
+      assertDoesNotThrow(
+        () => {
+          throw "Panic!";
+        },
+        String,
+        "Panic!",
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown.",
+  );
+  assertThrows(
+    () => {
+      assertDoesNotThrow(() => {
+        throw null;
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown.",
+  );
+  assertThrows(
+    () => {
+      assertDoesNotThrow(() => {
+        throw undefined;
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown.",
+  );
+});
+
+Deno.test("testingAssertDoesNotThrowAsync", async () => {
+  // --- pass cases ---
+  await assertDoesNotThrowAsync(async () => {
+    return;
+  });
+  await assertDoesNotThrowAsync(
+    async () => {
+      throw new Error("Panic! Threw Error!");
+    },
+    TypeError,
+  );
+  await assertDoesNotThrowAsync(
+    async () => {
+      throw new Error("Panic! Threw Error!");
+    },
+    Error,
+    "Fail",
+  );
+
+  // --- fail cases : valid error object ---
+  await assertThrowsAsync(
+    async () => {
+      await assertDoesNotThrowAsync(
+        async () => {
+          throw new Error("Panic! Threw Error!");
+        },
+      );
+    },
+    Error,
+    "Expected function not to throw",
+  );
+  await assertThrowsAsync(
+    async () => {
+      await assertDoesNotThrowAsync(
+        async () => {
+          throw new TypeError("Panic! Threw Error!");
+        },
+        Error,
+      );
+    },
+    AssertionError,
+    'Expected error not to be instance of "Error", but was "TypeError"',
+  );
+  await assertThrowsAsync(
+    async () => {
+      await assertDoesNotThrowAsync(
+        async () => {
+          throw new Error("Panic! Threw Error!");
+        },
+        Error,
+        "Panic",
+      );
+    },
+    AssertionError,
+    'Expected error message not to include "Panic", but got "Panic! Threw Error!".',
+  );
+
+  // --- fail cases : non-error object ---
+  await assertThrowsAsync(
+    async () => {
+      await assertDoesNotThrowAsync(
+        async () => {
+          throw "Panic!";
+        },
+        String,
+        "Panic!",
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected.",
+  );
+  await assertThrowsAsync(
+    async () => {
+      await assertDoesNotThrowAsync(
+        async () => {
+          throw null;
+        },
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected.",
+  );
+  await assertThrowsAsync(
+    async () => {
+      await assertDoesNotThrowAsync(
+        async () => {
+          throw undefined;
+        },
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected.",
+  );
 });
 
 const createHeader = (): string[] => [

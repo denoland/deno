@@ -34,6 +34,15 @@ pretty-printed diff of failing assertion.
   function will throw asynchronously. Also compares any errors thrown to an
   optional expected `Error` class and checks that the error `.message` includes
   an optional string.
+- `assertDoesNotThrow()` - Expects the passed `fn` not to throw. If `fn` throw,
+  this function does. Also compares any errors thrown to an optional expected
+  `Error` class and checks that the error `.message` does not includes an optional
+  string.
+- `assertDoesNotThrowAsync()` - Expects the passed `fn` to be async and not to throw (or
+  not to return a `Promise` that rejects). If the `fn` does not throw or reject, this
+  function will throw asynchronously. Also compares any errors thrown to an
+  optional expected `Error` class and checks that the error `.message` does not includes
+  an optional string.
 - `unimplemented()` - Use this to stub out methods that will throw when invoked
 - `unreachable()` - Used to assert unreachable code
 
@@ -135,6 +144,69 @@ Deno.test("fails", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       console.log("Hello world");
+    },
+  );
+});
+```
+
+Using `assertDoesNotThrow()`:
+
+```ts
+Deno.test("doesNotThrow", function (): void {
+  assertDoesNotThrow((): void => {
+    return;
+  });
+  assertDoesNotThrow((): void => {
+    throw new Error("hello world!");
+  }, TypeError);
+  assertDoesNotThrow(
+    (): void => {
+      throw new TypeError("hello world!");
+    },
+    TypeError,
+    "bye",
+  );
+});
+
+// This test will not pass
+Deno.test("fails", function (): void {
+  assertDoesNotThrow((): void => {
+    throw new TypeError("hello world!");
+  });
+});
+```
+
+Using `assertDoesNotThrowAsync()`:
+
+```ts
+Deno.test("doesNotThrow", async function (): Promise<void> {
+  await assertDoesNotThrowAsync(
+    async (): Promise<void> => {
+      return;
+    },
+  );
+  await assertDoesNotThrowAsync(async (): Promise<void> => {
+    throw new Error("hello world!");
+  }, TypeError);
+  await assertDoesNotThrowAsync(
+    async (): Promise<void> => {
+      throw new Error("hello world!");
+    },
+    TypeError,
+    "bye",
+  );
+});
+
+// This test will not pass
+Deno.test("fails", async function (): Promise<void> {
+  await assertDoesNotThrowAsync(
+    async (): Promise<void> => {
+      throw new TypeError("hello world!");
+    },
+  );
+  await assertDoesNotThrowAsync(
+    async (): Promise<void> => {
+      return Promise.reject(new Error());
     },
   );
 });

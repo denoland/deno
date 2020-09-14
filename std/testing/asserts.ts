@@ -303,7 +303,7 @@ export function assertStrictEquals(
 }
 
 /**
- * Make an assertion that `actual` and `expected` are not strictly equal.  
+ * Make an assertion that `actual` and `expected` are not strictly equal.
  * If the values are strictly equal then throw.
  * ```ts
  * assertNotStrictEquals(1, 1)
@@ -529,6 +529,95 @@ export async function assertThrowsAsync<T = void>(
   if (!doesThrow) {
     msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
     throw new AssertionError(msg);
+  }
+  return error;
+}
+
+function compareThrownErrorAndOptions(
+  isAsync: boolean,
+  // eslint-disable-next-line no-explicit-any
+  e: any,
+  ErrorClass?: Constructor,
+  msgIncludes = "",
+  msg?: string,
+) {
+  if (e instanceof Error === false) {
+    throw new AssertionError(
+      `A non-Error object was thrown${isAsync ? " or rejected" : ""}.`,
+    );
+  }
+  if (!ErrorClass) {
+    msg = `Expected function not to throw${msg ? `: ${msg}` : "."}`;
+    throw new AssertionError(msg);
+  }
+  if (!(e instanceof ErrorClass)) {
+    return e;
+  }
+  if (!msgIncludes) {
+    msg =
+      `Expected error not to be instance of "${ErrorClass.name}", but was "${e.constructor.name}"${
+        msg ? `: ${msg}` : "."
+      }`;
+    throw new AssertionError(msg);
+  }
+  if (stripColor(e.message).includes(stripColor(msgIncludes))) {
+    msg =
+      `Expected error message not to include "${msgIncludes}", but got "${e.message}"${
+        msg ? `: ${msg}` : "."
+      }`;
+    throw new AssertionError(msg);
+  }
+  return e;
+}
+
+/**
+ * Executes a function, expecting it not to throw. If not, then throws.
+ * An error class not specified and a string that does not included in the
+ * error message can also be asserted.
+ */
+export function assertDoesNotThrow<T = void>(
+  fn: () => T,
+  ErrorClass?: Constructor,
+  msgIncludes = "",
+  msg?: string,
+): Error {
+  let error = null;
+  try {
+    fn();
+  } catch (e) {
+    error = compareThrownErrorAndOptions(
+      false,
+      e,
+      ErrorClass,
+      msgIncludes,
+      msg,
+    );
+  }
+  return error;
+}
+
+/**
+ * Executes a function which returns a promise, expecting it to throw or reject.
+ * If it does not, then it throws.  An error class and a string that should not be
+ * included in the error message can also be asserted.
+ */
+export async function assertDoesNotThrowAsync<T = void>(
+  fn: () => Promise<T>,
+  ErrorClass?: Constructor,
+  msgIncludes = "",
+  msg?: string,
+): Promise<Error> {
+  let error = null;
+  try {
+    await fn();
+  } catch (e) {
+    error = compareThrownErrorAndOptions(
+      true,
+      e,
+      ErrorClass,
+      msgIncludes,
+      msg,
+    );
   }
   return error;
 }
