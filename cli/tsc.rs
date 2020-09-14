@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
@@ -24,6 +23,7 @@ use crate::swc_util::SwcDiagnosticBuffer;
 use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
+use crate::{colors, module_graph::ModuleGraphFile};
 use core::task::Context;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -55,9 +55,7 @@ use std::sync::Mutex;
 use std::task::Poll;
 use swc_common::{comments::Comment, FilePathMapping};
 use swc_common::{comments::CommentKind, FileName};
-use swc_ecmascript::{
-  codegen::text_writer::JsWriter, codegen::text_writer::WriteJs, dep_graph,
-};
+use swc_ecmascript::{codegen::text_writer::JsWriter, dep_graph};
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -708,7 +706,7 @@ impl TsCompiler {
       g.write()?;
     }
     let module_graph_json =
-      serde_json::to_value(module_graph).expect("Failed to serialize data");
+      serde_json::to_value(&module_graph).expect("Failed to serialize data");
 
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
@@ -767,8 +765,14 @@ impl TsCompiler {
       execute_in_same_thread(global_state, permissions, req_msg).await?;
     let bundled = {
       let cm = Rc::new(swc_common::SourceMap::new(FilePathMapping::empty()));
-      let loader = SwcLoader {};
-      let resolver = SwcResolver {};
+      let loader = SwcLoader {
+        cm: cm.clone(),
+        module_graph: &module_graph,
+      };
+      let resolver = SwcResolver {
+        cm: cm.clone(),
+        module_graph: &module_graph,
+      };
       let globals = swc_common::Globals::new();
       let bundler = swc_bundler::Bundler::new(
         &globals,
@@ -1607,13 +1611,39 @@ fn parse_deno_types(comment: &str) -> Option<String> {
   None
 }
 
-struct SwcLoader {}
+struct SwcLoader<'a> {
+  cm: Rc<swc_common::SourceMap>,
+  module_graph: &'a HashMap<String, ModuleGraphFile>,
+}
 
-impl swc_bundler::Load for SwcLoader {}
+impl swc_bundler::Load for SwcLoader<'_> {
+  fn load(
+    &self,
+    file: &FileName,
+  ) -> Result<
+    (Rc<swc_common::SourceFile>, swc_ecmascript::ast::Module),
+    anyhow::Error,
+  > {
+    dbg!(file);
+    unimplemented!()
+  }
+}
 
-struct SwcResolver {}
+struct SwcResolver<'a> {
+  cm: Rc<swc_common::SourceMap>,
+  module_graph: &'a HashMap<String, ModuleGraphFile>,
+}
 
-impl swc_bundler::Resolve for SwcResolver {}
+impl swc_bundler::Resolve for SwcResolver<'_> {
+  fn resolve(
+    &self,
+    base: &FileName,
+    module_specifier: &str,
+  ) -> Result<FileName, anyhow::Error> {
+    dbg!(base, module_specifier);
+    unimplemented!()
+  }
+}
 
 #[cfg(test)]
 mod tests {

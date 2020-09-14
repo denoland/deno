@@ -32,6 +32,7 @@ deno_core = { path = "../core", version = "0.57.0" }
 deno_doc = "0.1.9"
 deno_lint = { version = "0.2.0", features = ["json"] }
 
+anyhow = "1.0.32"
 atty = "0.2.14"
 base64 = "0.12.3"
 bytes = "0.5.6"

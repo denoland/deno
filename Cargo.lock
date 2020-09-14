@@ -410,6 +410,7 @@ dependencies = [
 name = "deno"
 version = "1.4.0"
 dependencies = [
+ "anyhow",
  "atty",
  "base64 0.12.3",
  "byteorder",
