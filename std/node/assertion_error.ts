@@ -50,7 +50,7 @@ const { ERR_INVALID_ARG_TYPE } = codes;
 let blue = "";
 let green = "";
 let red = "";
-let white = "";
+let defaultColor = "";
 
 const kReadableOperator: { [key: string]: string } = {
   deepStrictEqual: "Expected values to be strictly deep-equal:",
@@ -204,7 +204,7 @@ export function createErrDiff(
 
     // Only remove lines in case it makes sense to collapse those.
     if (actualLines.length > 50) {
-      actualLines[46] = `${blue}...${white}`;
+      actualLines[46] = `${blue}...${defaultColor}`;
       while (actualLines.length > 47) {
         actualLines.pop();
       }
@@ -216,7 +216,7 @@ export function createErrDiff(
   // There were at least five identical lines at the end. Mark a couple of
   // skipped.
   if (i >= 5) {
-    end = `\n${blue}...${white}${end}`;
+    end = `\n${blue}...${defaultColor}${end}`;
     skipped = true;
   }
   if (other !== "") {
@@ -227,15 +227,15 @@ export function createErrDiff(
   let printedLines = 0;
   let identical = 0;
   const msg = kReadableOperator[operator] +
-    `\n${green}+ actual${white} ${red}- expected${white}`;
-  const skippedMsg = ` ${blue}...${white} Lines skipped`;
+    `\n${green}+ actual${defaultColor} ${red}- expected${defaultColor}`;
+  const skippedMsg = ` ${blue}...${defaultColor} Lines skipped`;
 
   let lines = actualLines;
-  let plusMinus = `${green}+${white}`;
+  let plusMinus = `${green}+${defaultColor}`;
   let maxLength = expectedLines.length;
   if (actualLines.length < maxLines) {
     lines = expectedLines;
-    plusMinus = `${red}-${white}`;
+    plusMinus = `${red}-${defaultColor}`;
     maxLength = actualLines.length;
   }
 
@@ -250,7 +250,7 @@ export function createErrDiff(
               res += `\n  ${lines[i - 3]}`;
               printedLines++;
             } else {
-              res += `\n${blue}...${white}`;
+              res += `\n${blue}...${defaultColor}`;
               skipped = true;
             }
           }
@@ -307,7 +307,7 @@ export function createErrDiff(
                 res += `\n  ${actualLines[i - 3]}`;
                 printedLines++;
               } else {
-                res += `\n${blue}...${white}`;
+                res += `\n${blue}...${defaultColor}`;
                 skipped = true;
               }
             }
@@ -321,8 +321,8 @@ export function createErrDiff(
         identical = 0;
         // Add the actual line to the result and cache the expected diverging
         // line so consecutive diverging lines show up as +++--- and not +-+-+-.
-        res += `\n${green}+${white} ${actualLine}`;
-        other += `\n${red}-${white} ${expectedLine}`;
+        res += `\n${green}+${defaultColor} ${actualLine}`;
+        other += `\n${red}-${defaultColor} ${expectedLine}`;
         printedLines += 2;
         // Lines are identical
       } else {
@@ -341,8 +341,8 @@ export function createErrDiff(
     }
     // Inspected object to big (Show ~50 rows max)
     if (printedLines > 50 && i < maxLines - 2) {
-      return `${msg}${skippedMsg}\n${res}\n${blue}...${white}${other}\n` +
-        `${blue}...${white}`;
+      return `${msg}${skippedMsg}\n${res}\n${blue}...${defaultColor}${other}\n` +
+        `${blue}...${defaultColor}`;
     }
   }
 
@@ -409,12 +409,12 @@ export class AssertionError extends Error {
         if (Deno.noColor) {
           blue = "";
           green = "";
-          white = "";
+          defaultColor = "";
           red = "";
         } else {
           blue = "\u001b[34m";
           green = "\u001b[32m";
-          white = "\u001b[39m";
+          defaultColor = "\u001b[39m";
           red = "\u001b[31m";
         }
       }
@@ -454,7 +454,7 @@ export class AssertionError extends Error {
 
         // Only remove lines in case it makes sense to collapse those.
         if (res.length > 50) {
-          res[46] = `${blue}...${white}`;
+          res[46] = `${blue}...${defaultColor}`;
           while (res.length > 47) {
             res.pop();
           }
