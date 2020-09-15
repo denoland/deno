@@ -11,7 +11,7 @@ use crate::colors;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::msg;
+use crate::media_type::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_lint::diagnostic::LintDiagnostic;
@@ -131,7 +131,7 @@ fn lint_file(
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
-  let media_type = msg::MediaType::from(&file_path);
+  let media_type = MediaType::from(&file_path);
   let syntax = ast::get_syntax(&media_type);
 
   let lint_rules = rules::get_recommended_rules();
@@ -158,7 +158,7 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
   };
   let mut reporter = create_reporter(reporter_kind);
   let lint_rules = rules::get_recommended_rules();
-  let syntax = ast::get_syntax(&msg::MediaType::TypeScript);
+  let syntax = ast::get_syntax(&MediaType::TypeScript);
   let mut linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";

@@ -5,7 +5,7 @@ use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
-use crate::msg;
+use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::text_encoding;
 use deno_core::error::custom_error;
@@ -79,7 +79,7 @@ pub struct SourceFile {
   pub url: Url,
   pub filename: PathBuf,
   pub types_header: Option<String>,
-  pub media_type: msg::MediaType,
+  pub media_type: MediaType,
   pub source_code: TextDocument,
 }
 
@@ -573,7 +573,7 @@ impl SourceFileFetcher {
 fn map_content_type(
   path: &Path,
   content_type: Option<&str>,
-) -> (msg::MediaType, Option<String>) {
+) -> (MediaType, Option<String>) {
   match content_type {
     Some(content_type) => {
       // Sometimes there is additional data after the media type in
@@ -587,7 +587,7 @@ fn map_content_type(
         | "video/vnd.dlna.mpeg-tts"
         | "video/mp2t"
         | "application/x-typescript" => {
-          map_js_like_extension(path, msg::MediaType::TypeScript)
+          map_js_like_extension(path, MediaType::TypeScript)
         }
         "application/javascript"
         | "text/javascript"
@@ -595,15 +595,15 @@ fn map_content_type(
         | "text/ecmascript"
         | "application/x-javascript"
         | "application/node" => {
-          map_js_like_extension(path, msg::MediaType::JavaScript)
+          map_js_like_extension(path, MediaType::JavaScript)
         }
-        "application/json" | "text/json" => msg::MediaType::Json,
-        "application/wasm" => msg::MediaType::Wasm,
+        "application/json" | "text/json" => MediaType::Json,
+        "application/wasm" => MediaType::Wasm,
         // Handle plain and possibly webassembly
-        "text/plain" | "application/octet-stream" => msg::MediaType::from(path),
+        "text/plain" | "application/octet-stream" => MediaType::from(path),
         _ => {
           debug!("unknown content type: {}", content_type);
-          msg::MediaType::Unknown
+          MediaType::Unknown
         }
       };
 
@@ -614,20 +614,17 @@ fn map_content_type(
 
       (media_type, charset)
     }
-    None => (msg::MediaType::from(path), None),
+    None => (MediaType::from(path), None),
   }
 }
 
-fn map_js_like_extension(
-  path: &Path,
-  default: msg::MediaType,
-) -> msg::MediaType {
+fn map_js_like_extension(path: &Path, default: MediaType) -> MediaType {
   match path.extension() {
     None => default,
     Some(os_str) => match os_str.to_str() {
       None => default,
-      Some("jsx") => msg::MediaType::JSX,
-      Some("tsx") => msg::MediaType::TSX,
+      Some("jsx") => MediaType::JSX,
+      Some("tsx") => MediaType::TSX,
       Some(_) => default,
     },
   }
@@ -816,7 +813,7 @@ mod tests {
       r.source_code.bytes,
       &b"export { printHello } from \"./print_hello.ts\";\n"[..]
     );
-    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(r.media_type), &MediaType::TypeScript);
 
     let mut metadata =
       crate::http_cache::Metadata::read(&cache_filename).unwrap();
@@ -847,7 +844,7 @@ mod tests {
     );
     // If get_source_file does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
-    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(&(r2.media_type), &MediaType::JavaScript);
     let (_, headers) = fetcher_2.http_cache.get(&module_url_1).unwrap();
 
     assert_eq!(
@@ -886,7 +883,7 @@ mod tests {
     );
     // If get_source_file does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
-    assert_eq!(&(r3.media_type), &msg::MediaType::Json);
+    assert_eq!(&(r3.media_type), &MediaType::Json);
     let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
     assert_eq!(
       metadata
@@ -916,7 +913,7 @@ mod tests {
     let expected4 = &b"export { printHello } from \"./print_hello.ts\";\n"[..];
     assert_eq!(r4.source_code.bytes, expected4);
     // Resolved back to TypeScript
-    assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(r4.media_type), &MediaType::TypeScript);
   }
 
   #[tokio::test]
@@ -943,7 +940,7 @@ mod tests {
     let r = result.unwrap();
     let expected = b"export const loaded = true;\n";
     assert_eq!(r.source_code.bytes, expected);
-    assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(&(r.media_type), &MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(
       headers
@@ -982,7 +979,7 @@ mod tests {
     // If get_source_file does not call remote, this should be TypeScript
     // as we modified before! (we do not overwrite .headers.json due to no http
     // fetch)
-    assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(r2.media_type), &MediaType::TypeScript);
     let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
     assert_eq!(
       metadata
@@ -1013,7 +1010,7 @@ mod tests {
     assert_eq!(r3.source_code.bytes, expected3);
     // Now the old .headers.json file should be overwritten back to JavaScript!
     // (due to http fetch)
-    assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(&(r3.media_type), &MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(
       headers
@@ -1429,7 +1426,7 @@ mod tests {
     assert!(result.is_ok());
     let r = result.unwrap();
     assert_eq!(r.source_code.bytes, b"export const loaded = true;\n");
-    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(r.media_type), &MediaType::TypeScript);
 
     // Modify .metadata.json, make sure read from local
     let cache_filename = fetcher.http_cache.get_cache_filename(&module_url);
@@ -1448,7 +1445,7 @@ mod tests {
     let r2 = result2.unwrap().unwrap();
     assert_eq!(r2.source_code.bytes, b"export const loaded = true;\n");
     // Not MediaType::TypeScript due to .headers.json modification
-    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(&(r2.media_type), &MediaType::JavaScript);
   }
 
   #[tokio::test]
@@ -1469,7 +1466,7 @@ mod tests {
     assert!(result.is_ok());
     let r = result.unwrap();
     assert_eq!(r.source_code.bytes, b"export const loaded = true;\n");
-    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(r.media_type), &MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(
       headers
@@ -1501,7 +1498,7 @@ mod tests {
     assert!(result.is_ok());
     let r2 = result.unwrap();
     assert_eq!(r2.source_code.bytes, b"export const loaded = true;\n");
-    assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(&(r2.media_type), &MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(
       headers
@@ -1533,7 +1530,7 @@ mod tests {
     assert!(result.is_ok());
     let r3 = result.unwrap();
     assert_eq!(r3.source_code.bytes, b"export const loaded = true;\n");
-    assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(r3.media_type), &MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(
       headers
@@ -1682,43 +1679,43 @@ mod tests {
     // Extension only
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), None).0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.tsx"), None).0,
-      msg::MediaType::TSX
+      MediaType::TSX
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.d.ts"), None).0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.js"), None).0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.txt"), None).0,
-      msg::MediaType::Unknown
+      MediaType::Unknown
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.jsx"), None).0,
-      msg::MediaType::JSX
+      MediaType::JSX
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.json"), None).0,
-      msg::MediaType::Json
+      MediaType::Json
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.wasm"), None).0,
-      msg::MediaType::Wasm
+      MediaType::Wasm
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.cjs"), None).0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), None).0,
-      msg::MediaType::Unknown
+      MediaType::Unknown
     );
   }
 
@@ -1727,61 +1724,61 @@ mod tests {
     // Media Type
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/typescript")).0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/typescript")).0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("video/vnd.dlna.mpeg-tts")).0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("video/mp2t")).0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/x-typescript"))
         .0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/javascript")).0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/javascript")).0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/ecmascript")).0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/ecmascript")).0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/x-javascript"))
         .0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/json")).0,
-      msg::MediaType::Json
+      MediaType::Json
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/node")).0,
-      msg::MediaType::JavaScript
+      MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/json")).0,
-      msg::MediaType::Json
+      MediaType::Json
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/json; charset=utf-8 ")),
-      (msg::MediaType::Json, Some("utf-8".to_owned()))
+      (MediaType::Json, Some("utf-8".to_owned()))
     );
   }
 
@@ -1789,11 +1786,11 @@ mod tests {
   fn test_map_file_extension_media_type_with_extension() {
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), Some("text/plain")).0,
-      msg::MediaType::TypeScript
+      MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")).0,
-      msg::MediaType::Unknown
+      MediaType::Unknown
     );
     assert_eq!(
       map_content_type(
@@ -1801,7 +1798,7 @@ mod tests {
         Some("application/typescript"),
       )
       .0,
-      msg::MediaType::TSX
+      MediaType::TSX
     );
     assert_eq!(
       map_content_type(
@@ -1809,7 +1806,7 @@ mod tests {
         Some("application/javascript"),
       )
       .0,
-      msg::MediaType::TSX
+      MediaType::TSX
     );
     assert_eq!(
       map_content_type(
@@ -1817,7 +1814,7 @@ mod tests {
         Some("application/x-typescript"),
       )
       .0,
-      msg::MediaType::TSX
+      MediaType::TSX
     );
     assert_eq!(
       map_content_type(
@@ -1825,11 +1822,11 @@ mod tests {
         Some("video/vnd.dlna.mpeg-tts"),
       )
       .0,
-      msg::MediaType::TSX
+      MediaType::TSX
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.tsx"), Some("video/mp2t")).0,
-      msg::MediaType::TSX
+      MediaType::TSX
     );
     assert_eq!(
       map_content_type(
@@ -1837,7 +1834,7 @@ mod tests {
         Some("application/javascript"),
       )
       .0,
-      msg::MediaType::JSX
+      MediaType::JSX
     );
     assert_eq!(
       map_content_type(
@@ -1845,7 +1842,7 @@ mod tests {
         Some("application/x-typescript"),
       )
       .0,
-      msg::MediaType::JSX
+      MediaType::JSX
     );
     assert_eq!(
       map_content_type(
@@ -1853,11 +1850,11 @@ mod tests {
         Some("application/ecmascript"),
       )
       .0,
-      msg::MediaType::JSX
+      MediaType::JSX
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.jsx"), Some("text/ecmascript")).0,
-      msg::MediaType::JSX
+      MediaType::JSX
     );
     assert_eq!(
       map_content_type(
@@ -1865,7 +1862,7 @@ mod tests {
         Some("application/x-javascript"),
       )
       .0,
-      msg::MediaType::JSX
+      MediaType::JSX
     );
   }
 
@@ -1896,7 +1893,7 @@ mod tests {
     assert!(source.is_ok());
     let source = source.unwrap();
     assert_eq!(source.source_code.bytes, b"console.log('etag')");
-    assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(source.media_type), &MediaType::TypeScript);
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(
@@ -1951,7 +1948,7 @@ mod tests {
     assert!(source.is_ok());
     let source = source.unwrap();
     assert_eq!(source.source_code.bytes, b"export const foo = 'foo';");
-    assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
+    assert_eq!(&(source.media_type), &MediaType::JavaScript);
     assert_eq!(
       source.types_header,
       Some("./xTypeScriptTypes.d.ts".to_string())
@@ -2023,7 +2020,7 @@ mod tests {
     assert_eq!(&source.source_code.charset.to_lowercase()[..], charset);
     let text = &source.source_code.to_str().unwrap();
     assert_eq!(text, expected_content);
-    assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
+    assert_eq!(&(source.media_type), &MediaType::TypeScript);
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(

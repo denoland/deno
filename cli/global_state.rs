@@ -6,10 +6,9 @@ use crate::flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
+use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
-use crate::msg;
-use crate::msg::MediaType;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -202,10 +201,8 @@ impl GlobalState {
 
     // Check if we need to compile files
     let was_compiled = match out.media_type {
-      msg::MediaType::TypeScript
-      | msg::MediaType::TSX
-      | msg::MediaType::JSX => true,
-      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+      MediaType::TypeScript | MediaType::TSX | MediaType::JSX => true,
+      MediaType::JavaScript => self.ts_compiler.compile_js,
       _ => false,
     };
 
@@ -288,10 +285,8 @@ fn needs_compilation(
   module_graph_files: &[&ModuleGraphFile],
 ) -> bool {
   let mut needs_compilation = match media_type {
-    msg::MediaType::TypeScript | msg::MediaType::TSX | msg::MediaType::JSX => {
-      true
-    }
-    msg::MediaType::JavaScript => compile_js,
+    MediaType::TypeScript | MediaType::TSX | MediaType::JSX => true,
+    MediaType::JavaScript => compile_js,
     _ => false,
   };
 
