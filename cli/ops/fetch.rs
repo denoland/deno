@@ -114,14 +114,12 @@ async fn op_fetch(
     ))),
   );
 
-  let json_res = json!({
+  Ok(json!({
     "bodyRid": rid,
     "status": status.as_u16(),
     "statusText": status.canonical_reason().unwrap_or(""),
     "headers": res_headers
-  });
-
-  Ok(json_res)
+  }))
 }
 
 struct HttpClientResource {
