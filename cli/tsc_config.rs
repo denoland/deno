@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use jsonc_parser::JsonValue;
 use serde::Deserialize;
 use serde_json::Value;
@@ -139,7 +139,7 @@ struct TSConfigJson {
   type_acquisition: Option<Value>,
 }
 
-pub fn parse_raw_config(config_text: &str) -> Result<Value, ErrBox> {
+pub fn parse_raw_config(config_text: &str) -> Result<Value, AnyError> {
   assert!(!config_text.is_empty());
   let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
   Ok(jsonc_to_serde(jsonc))
@@ -149,7 +149,7 @@ pub fn parse_raw_config(config_text: &str) -> Result<Value, ErrBox> {
 /// The result also contains any options that were ignored.
 pub fn parse_config(
   config_text: &str,
-) -> Result<(Value, Option<IgnoredCompilerOptions>), ErrBox> {
+) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   assert!(!config_text.is_empty());
   let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
   let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;

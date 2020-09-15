@@ -13,7 +13,9 @@ use crate::tsc::TsReferenceDesc;
 use crate::tsc::TsReferenceKind;
 use crate::tsc::AVAILABLE_LIBS;
 use crate::version;
-use deno_core::ErrBox;
+use deno_core::error::custom_error;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -28,14 +30,17 @@ use std::pin::Pin;
 // TODO(bartlomieju): it'd be great if this function returned
 // more structured data and possibly format the same as TS diagnostics.
 /// Decorate error with location of import that caused the error.
-fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
+fn err_with_location(
+  e: AnyError,
+  maybe_location: Option<&Location>,
+) -> AnyError {
   if let Some(location) = maybe_location {
     let location_str = format!(
       "\nImported from \"{}:{}\"",
       location.filename, location.line
     );
     let err_str = e.to_string();
-    ErrBox::error(format!("{}{}", err_str, location_str))
+    generic_error(format!("{}{}", err_str, location_str))
   } else {
     e
   }
@@ -46,11 +51,11 @@ fn validate_no_downgrade(
   module_specifier: &ModuleSpecifier,
   maybe_referrer: Option<&ModuleSpecifier>,
   maybe_location: Option<&Location>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
-        let e = ErrBox::new("PermissionDenied",
+        let e = custom_error("PermissionDenied",
           "Modules loaded over https:// are not allowed to import modules over http://"
         );
         return Err(err_with_location(e, maybe_location));
@@ -66,7 +71,7 @@ fn validate_no_file_from_remote(
   module_specifier: &ModuleSpecifier,
   maybe_referrer: Option<&ModuleSpecifier>,
   maybe_location: Option<&Location>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   if let Some(referrer) = maybe_referrer.as_ref() {
     let referrer_url = referrer.as_url();
     match referrer_url.scheme() {
@@ -75,7 +80,7 @@ fn validate_no_file_from_remote(
         match specifier_url.scheme() {
           "http" | "https" => {}
           _ => {
-            let e = ErrBox::new(
+            let e = custom_error(
               "PermissionDenied",
               "Remote modules are not allowed to statically import local \
               modules. Use dynamic import instead.",
@@ -98,7 +103,7 @@ fn resolve_imports_and_references(
   maybe_import_map: Option<&ImportMap>,
   import_descs: Vec<ImportDesc>,
   ref_descs: Vec<TsReferenceDesc>,
-) -> Result<(Vec<ImportDescriptor>, Vec<ReferenceDescriptor>), ErrBox> {
+) -> Result<(Vec<ImportDescriptor>, Vec<ReferenceDescriptor>), AnyError> {
   let mut imports = vec![];
   let mut references = vec![];
 
@@ -245,8 +250,9 @@ impl ModuleGraphFile {
   }
 }
 
-type SourceFileFuture =
-  Pin<Box<dyn Future<Output = Result<(ModuleSpecifier, SourceFile), ErrBox>>>>;
+type SourceFileFuture = Pin<
+  Box<dyn Future<Output = Result<(ModuleSpecifier, SourceFile), AnyError>>>,
+>;
 
 pub struct ModuleGraphLoader {
   permissions: Permissions,
@@ -289,7 +295,7 @@ impl ModuleGraphLoader {
     &mut self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.download_module(specifier.clone(), maybe_referrer, None)?;
 
     loop {
@@ -311,7 +317,7 @@ impl ModuleGraphLoader {
     &mut self,
     _root_name: &str,
     source_map: &HashMap<String, String>,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     for (spec, source_code) in source_map.iter() {
       self.visit_memory_module(spec.to_string(), source_code.to_string())?;
     }
@@ -328,7 +334,7 @@ impl ModuleGraphLoader {
     &mut self,
     specifier: String,
     source_code: String,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let mut referenced_files = vec![];
     let mut lib_directives = vec![];
     let mut types_directives = vec![];
@@ -398,7 +404,7 @@ impl ModuleGraphLoader {
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     maybe_location: Option<Location>,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     if self.has_downloaded.contains(&module_specifier) {
       return Ok(());
     }
@@ -441,7 +447,7 @@ impl ModuleGraphLoader {
     &mut self,
     module_specifier: &ModuleSpecifier,
     source_file: SourceFile,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let mut imports = vec![];
     let mut referenced_files = vec![];
     let mut lib_directives = vec![];
@@ -592,7 +598,7 @@ mod tests {
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleGraph, ErrBox> {
+  ) -> Result<ModuleGraph, AnyError> {
     let global_state = GlobalState::new(Default::default()).unwrap();
     let mut graph_loader = ModuleGraphLoader::new(
       global_state.file_fetcher.clone(),

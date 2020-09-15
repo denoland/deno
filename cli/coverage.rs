@@ -5,8 +5,9 @@ use crate::file_fetcher::SourceFile;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::permissions::Permissions;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_core::v8;
-use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use std::collections::VecDeque;
@@ -85,7 +86,7 @@ impl CoverageCollector {
     })
   }
 
-  async fn dispatch(&mut self, message: String) -> Result<String, ErrBox> {
+  async fn dispatch(&mut self, message: String) -> Result<String, AnyError> {
     let message = v8::inspector::StringView::from(message.as_bytes());
     self.v8_session.dispatch_protocol_message(message);
 
@@ -93,7 +94,7 @@ impl CoverageCollector {
     Ok(response.unwrap())
   }
 
-  pub async fn start_collecting(&mut self) -> Result<(), ErrBox> {
+  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self
       .dispatch(r#"{"id":1,"method":"Runtime.enable"}"#.into())
       .await?;
@@ -110,7 +111,7 @@ impl CoverageCollector {
 
   pub async fn take_precise_coverage(
     &mut self,
-  ) -> Result<Vec<ScriptCoverage>, ErrBox> {
+  ) -> Result<Vec<ScriptCoverage>, AnyError> {
     let response = self
       .dispatch(r#"{"id":4,"method":"Profiler.takePreciseCoverage" }"#.into())
       .await?;
@@ -121,7 +122,7 @@ impl CoverageCollector {
     Ok(coverage_result.result.result)
   }
 
-  pub async fn stop_collecting(&mut self) -> Result<(), ErrBox> {
+  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
     self
       .dispatch(r#"{"id":5,"method":"Profiler.stopPreciseCoverage"}"#.into())
       .await?;
@@ -220,7 +221,7 @@ impl PrettyCoverageReporter {
           .global_state
           .file_fetcher
           .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
-          .ok_or_else(|| ErrBox::error("unable to fetch source file"))
+          .ok_or_else(|| generic_error("unable to fetch source file"))
       })
       .ok();
 

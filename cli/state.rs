@@ -9,7 +9,7 @@ use crate::metrics::Metrics;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -77,7 +77,7 @@ impl ModuleLoader for State {
     specifier: &str,
     referrer: &str,
     is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
@@ -127,7 +127,7 @@ impl ModuleLoader for State {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     let module_specifier = module_specifier.clone();
     let target_lib = self.target_lib.clone();
     let maybe_import_map = self.import_map.clone();
@@ -174,7 +174,7 @@ impl State {
     main_module: ModuleSpecifier,
     maybe_import_map: Option<ImportMap>,
     is_internal: bool,
-  ) -> Result<Rc<Self>, ErrBox> {
+  ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
     let state = State {
       global_state: global_state.clone(),
@@ -202,7 +202,7 @@ impl State {
     global_state: &Arc<GlobalState>,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
-  ) -> Result<Rc<Self>, ErrBox> {
+  ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
     let state = State {
       global_state: global_state.clone(),
@@ -226,7 +226,7 @@ impl State {
   }
 
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_read(path)
   }
 
@@ -237,49 +237,49 @@ impl State {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.permissions.borrow().check_read_blind(path, display)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), ErrBox> {
+  pub fn check_env(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), AnyError> {
     self.permissions.borrow().check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
     self.permissions.borrow().check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), ErrBox> {
+  pub fn check_run(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_run()
   }
 
   #[inline]
-  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
+  pub fn check_hrtime(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_hrtime()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let u = module_specifier.as_url();
     // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
     // statement that is actually reachable...

@@ -2,8 +2,9 @@
 
 use rusty_v8 as v8;
 
+use crate::error::generic_error;
+use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
-use crate::ErrBox;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -48,8 +49,9 @@ pub struct ModuleSource {
 }
 
 pub type PrepareLoadFuture =
-  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, ErrBox>)>;
-pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, AnyError>)>;
+pub type ModuleSourceFuture =
+  dyn Future<Output = Result<ModuleSource, AnyError>>;
 
 pub trait ModuleLoader {
   /// Returns an absolute URL.
@@ -64,7 +66,7 @@ pub trait ModuleLoader {
     specifier: &str,
     referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox>;
+  ) -> Result<ModuleSpecifier, AnyError>;
 
   /// Given ModuleSpecifier, load its source code.
   ///
@@ -91,7 +93,7 @@ pub trait ModuleLoader {
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     async { Ok(()) }.boxed_local()
   }
 }
@@ -106,8 +108,8 @@ impl ModuleLoader for NoopModuleLoader {
     _specifier: &str,
     _referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox> {
-    Err(ErrBox::error("Module loading is not supported"))
+  ) -> Result<ModuleSpecifier, AnyError> {
+    Err(generic_error("Module loading is not supported"))
   }
 
   fn load(
@@ -116,7 +118,7 @@ impl ModuleLoader for NoopModuleLoader {
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async { Err(ErrBox::error("Module loading is not supported")) }
+    async { Err(generic_error("Module loading is not supported")) }
       .boxed_local()
   }
 }
@@ -188,7 +190,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, ErrBox>) {
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         let spec = match self.loader.resolve(specifier, ".", true) {
@@ -223,7 +225,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  fn add_root(&mut self) -> Result<(), ErrBox> {
+  fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         self.loader.resolve(specifier, ".", true)?
@@ -273,7 +275,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<ModuleSource, ErrBox>;
+  type Item = Result<ModuleSource, AnyError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -518,7 +520,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Output = Result<ModuleSource, ErrBox>;
+    type Output = Result<ModuleSource, AnyError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
       let inner = self.get_mut();
@@ -549,7 +551,7 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
+    ) -> Result<ModuleSpecifier, AnyError> {
       let referrer = if referrer == "." {
         "file:///"
       } else {
