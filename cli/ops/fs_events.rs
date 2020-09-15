@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -28,7 +29,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 struct FsEventsResource {
   #[allow(unused)]
   watcher: RecommendedWatcher,
-  receiver: mpsc::Receiver<Result<FsEvent, ErrBox>>,
+  receiver: mpsc::Receiver<Result<FsEvent, AnyError>>,
 }
 
 /// Represents a file system event.
@@ -67,18 +68,18 @@ fn op_fs_events_open(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   #[derive(Deserialize)]
   struct OpenArgs {
     recursive: bool,
     paths: Vec<String>,
   }
   let args: OpenArgs = serde_json::from_value(args)?;
-  let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
+  let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
+      let res2 = res.map(FsEvent::from).map_err(AnyError::from);
       let mut sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
@@ -102,7 +103,7 @@ async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   #[derive(Deserialize)]
   struct PollArgs {
     rid: u32,
@@ -113,7 +114,7 @@ async fn op_fs_events_poll(
     let watcher = state
       .resource_table
       .get_mut::<FsEventsResource>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
     watcher
       .receiver
       .poll_recv(cx)

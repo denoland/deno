@@ -2,7 +2,7 @@
 
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
@@ -34,7 +34,7 @@ fn is_supported(p: &Path) -> bool {
 pub fn prepare_test_modules_urls(
   include: Vec<String>,
   root_path: &PathBuf,
-) -> Result<Vec<Url>, ErrBox> {
+) -> Result<Vec<Url>, AnyError> {
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
 

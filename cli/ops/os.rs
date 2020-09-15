@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_derive::Deserialize;
@@ -26,7 +26,7 @@ fn op_exec_path(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let current_exe = env::current_exe().unwrap();
   let cli_state = super::cli_state(state);
   cli_state.check_read_blind(&current_exe, "exec_path")?;
@@ -47,7 +47,7 @@ fn op_set_env(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: SetEnv = serde_json::from_value(args)?;
   let cli_state = super::cli_state(state);
   cli_state.check_env()?;
@@ -59,7 +59,7 @@ fn op_env(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   cli_state.check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
@@ -75,7 +75,7 @@ fn op_get_env(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: GetEnv = serde_json::from_value(args)?;
   let cli_state = super::cli_state(state);
   cli_state.check_env()?;
@@ -95,7 +95,7 @@ fn op_delete_env(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: DeleteEnv = serde_json::from_value(args)?;
   let cli_state = super::cli_state(state);
   cli_state.check_env()?;
@@ -112,7 +112,7 @@ fn op_exit(
   _state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
 }
@@ -121,7 +121,7 @@ fn op_loadavg(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.loadavg");
   cli_state.check_env()?;
@@ -135,7 +135,7 @@ fn op_hostname(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.hostname");
   cli_state.check_env()?;
@@ -147,7 +147,7 @@ fn op_os_release(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.osRelease");
   cli_state.check_env()?;
@@ -159,7 +159,7 @@ fn op_system_memory_info(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.systemMemoryInfo");
   cli_state.check_env()?;

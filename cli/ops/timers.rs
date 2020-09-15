@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -22,7 +22,7 @@ fn op_global_timer_stop(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   cli_state.global_timer.borrow_mut().cancel();
   Ok(json!({}))
@@ -37,7 +37,7 @@ async fn op_global_timer(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
@@ -61,7 +61,7 @@ fn op_now(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   let seconds = cli_state.start_time.elapsed().as_secs();
   let mut subsec_nanos = cli_state.start_time.elapsed().subsec_nanos();

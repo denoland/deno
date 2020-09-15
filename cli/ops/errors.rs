@@ -3,7 +3,7 @@
 use crate::diagnostics::Diagnostics;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_derive::Deserialize;
@@ -27,7 +27,7 @@ fn op_apply_source_map(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -51,7 +51,7 @@ fn op_format_diagnostic(
   _state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
 }
