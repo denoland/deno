@@ -1,29 +1,56 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::StreamResource;
-use super::io::StreamResourceHolder;
-use crate::http_util::create_http_client;
-use crate::http_util::HttpBody;
+// use super::io::StreamResource;
+// use super::io::StreamResourceHolder;
+// use crate::http_util::HttpBody;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use http::header::HeaderName;
-use http::header::HeaderValue;
-use http::Method;
+use reqwest::header::HeaderName;
+use reqwest::header::HeaderValue;
 use reqwest::Client;
-use serde_derive::Deserialize;
-use serde_json::Value;
+use reqwest::Method;
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+pub fn init_js(rt: &mut deno_core::JsRuntime) {
+  use deno_core::js_check;
+  use std::path::Path;
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  let files = vec![
+    manifest_dir.join("src/01_web_util.js"),
+    manifest_dir.join("src/11_streams.js"),
+    manifest_dir.join("src/20_blob.js"),
+    manifest_dir.join("src/23_multipart.js"),
+    manifest_dir.join("src/26_fetch.js"),
+  ];
+  let display_root = manifest_dir.parent().unwrap().parent().unwrap();
+  for file in files {
+    println!("cargo:rerun-if-changed={}", file.display());
+    let display_path = file.strip_prefix(display_root).unwrap();
+    let display_path_str = display_path.display().to_string();
+    js_check(rt.execute(
+      &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+      &std::fs::read_to_string(&file).unwrap(),
+    ));
+  }
+}
+
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_fetch", op_fetch);
-  super::reg_json_sync(rt, "op_create_http_client", op_create_http_client);
+  rt.register_op("op_fetch", deno_core::json_op_async(op_fetch));
+  rt.register_op(
+    "op_create_http_client",
+    deno_core::json_op_sync(op_create_http_client),
+  );
 }
 
 #[derive(Deserialize)]
@@ -69,7 +96,7 @@ async fn op_fetch(
     return Err(type_error(format!("scheme '{}' not supported", scheme)));
   }
 
-  super::cli_state2(&state).check_net_url(&url_)?;
+  // TODO super::cli_state2(&state).check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
 
@@ -84,17 +111,18 @@ async fn op_fetch(
     let v = HeaderValue::from_str(&value).unwrap();
     request = request.header(name, v);
   }
-  debug!("Before fetch {}", url);
+  //debug!("Before fetch {}", url);
 
   let res = request.send().await?;
 
-  debug!("Fetch response {}", url);
+  // debug!("Fetch response {}", url);
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
     res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
   }
 
+  /*
   let body = HttpBody::from(res);
   let rid = state.borrow_mut().resource_table.add(
     "httpBody",
@@ -102,6 +130,8 @@ async fn op_fetch(
       Box::new(body),
     ))),
   );
+  */
+  let rid = 123;
 
   Ok(json!({
     "bodyRid": rid,
@@ -136,7 +166,8 @@ fn op_create_http_client(
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
-    super::cli_state(state).check_read(&PathBuf::from(ca_file))?;
+    todo!()
+    // super::cli_state(state).check_read(&PathBuf::from(ca_file))?;
   }
 
   let client = create_http_client(args.ca_file.as_deref()).unwrap();
@@ -145,4 +176,8 @@ fn op_create_http_client(
     .resource_table
     .add("httpClient", Box::new(HttpClientResource::new(client)));
   Ok(json!(rid))
+}
+
+fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
+  todo!()
 }

@@ -273,7 +273,7 @@ impl MainWorker {
       ops::runtime::init(&mut worker);
       ops::runtime_compiler::init(&mut worker);
       ops::errors::init(&mut worker);
-      ops::fetch::init(&mut worker);
+      deno_fetch::init(&mut worker);
       ops::websocket::init(&mut worker);
       ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);

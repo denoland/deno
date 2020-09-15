@@ -1,23 +1,24 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { notImplemented } = window.__bootstrap.util;
   const { getHeaderValueParams, isTypedArray } = window.__bootstrap.webUtil;
   const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
-  const { read } = window.__bootstrap.io;
-  const { close } = window.__bootstrap.resources;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  // const { read } = window.__bootstrap.io;
   const Body = window.__bootstrap.body;
   const { ReadableStream } = window.__bootstrap.streams;
   const { MultipartBuilder } = window.__bootstrap.multipart;
   const { Headers } = window.__bootstrap.headers;
+
+  function close(rid) {
+    Deno.core.jsonOpSync("op_close", { rid });
+  }
 
   function createHttpClient(options) {
     return new HttpClient(opCreateHttpClient(options));
   }
 
   function opCreateHttpClient(args) {
-    return sendSync("op_create_http_client", args);
+    return Deno.core.jsonOpSync("op_create_http_client", args);
   }
 
   class HttpClient {
@@ -35,7 +36,7 @@
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
     }
 
-    return sendAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+    return Deno.core.jsonOpAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
   }
 
   const NULL_BODY_STATUS = [101, 204, 205, 304];
@@ -252,7 +253,7 @@
             contentType = multipartBuilder.getContentType();
           } else {
             // TODO: ReadableStream
-            notImplemented();
+            throw Error("not implemented");
           }
           if (contentType && !headers.has("content-type")) {
             headers.set("content-type", contentType);
@@ -295,6 +296,8 @@
       } else {
         responseBody = new ReadableStream({
           async pull(controller) {
+            throw Error("not implemented");
+            /*
             try {
               const b = new Uint8Array(1024 * 32);
               const result = await read(fetchResponse.bodyRid, b);
@@ -309,6 +312,7 @@
               controller.close();
               close(fetchResponse.bodyRid);
             }
+            */
           },
           cancel() {
             // When reader.cancel() is called

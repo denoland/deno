@@ -10,8 +10,17 @@
   /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
 
   const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
-  const { assert, AssertionError } = window.__bootstrap.util;
-  const { customInspect, inspect } = window.__bootstrap.console;
+
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  function assert(c) {
+    if (!c) throw Error("assert");
+  }
 
   const sym = {
     abortAlgorithm: Symbol("abortAlgorithm"),
@@ -164,12 +173,6 @@
       readableByteStreamControllerCallPullIfNeeded(this);
       return promise;
     }
-
-    [customInspect]() {
-      return `${this.constructor.name} { byobRequest: ${
-        String(this.byobRequest)
-      }, desiredSize: ${String(this.desiredSize)} }`;
-    }
   }
 
   class ReadableStreamDefaultController {
@@ -244,12 +247,6 @@
       readableStreamDefaultControllerCallPullIfNeeded(this);
       return pendingPromise;
     }
-
-    [customInspect]() {
-      return `${this.constructor.name} { desiredSize: ${
-        String(this.desiredSize)
-      } }`;
-    }
   }
 
   class ReadableStreamDefaultReader {
@@ -311,10 +308,6 @@
         throw new TypeError("Cannot release lock with pending read requests.");
       }
       readableStreamReaderGenericRelease(this);
-    }
-
-    [customInspect]() {
-      return `${this.constructor.name} { closed: Promise }`;
     }
   }
 
@@ -541,10 +534,6 @@
       return readableStreamTee(this, false);
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} { locked: ${String(this.locked)} }`;
-    }
-
     [Symbol.asyncIterator](
       options = {},
     ) {
@@ -634,12 +623,6 @@
       }
       return this[sym.writable];
     }
-
-    [customInspect]() {
-      return `${this.constructor.name} {\n  readable: ${
-        inspect(this.readable)
-      }\n  writable: ${inspect(this.writable)}\n}`;
-    }
   }
 
   class TransformStreamDefaultController {
@@ -681,12 +664,6 @@
       }
       transformStreamDefaultControllerTerminate(this);
     }
-
-    [customInspect]() {
-      return `${this.constructor.name} { desiredSize: ${
-        String(this.desiredSize)
-      } }`;
-    }
   }
 
   class WritableStreamDefaultController {
@@ -715,10 +692,6 @@
 
     [sym.errorSteps]() {
       resetQueue(this);
-    }
-
-    [customInspect]() {
-      return `${this.constructor.name} { }`;
     }
   }
 
@@ -849,12 +822,6 @@
       }
       return writableStreamDefaultWriterWrite(this, chunk);
     }
-
-    [customInspect]() {
-      return `${this.constructor.name} { closed: Promise, desiredSize: ${
-        String(this.desiredSize)
-      }, ready: Promise }`;
-    }
   }
 
   class WritableStream {
@@ -920,10 +887,6 @@
         throw new TypeError("Invalid WritableStream.");
       }
       return acquireWritableStreamDefaultWriter(this);
-    }
-
-    [customInspect]() {
-      return `${this.constructor.name} { locked: ${String(this.locked)} }`;
     }
   }
 

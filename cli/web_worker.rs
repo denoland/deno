@@ -120,7 +120,7 @@ impl WebWorker {
       ops::resources::init(&mut web_worker.worker);
       ops::errors::init(&mut web_worker.worker);
       ops::timers::init(&mut web_worker.worker);
-      ops::fetch::init(&mut web_worker.worker);
+      deno_fetch::init(&mut web_worker.worker);
       ops::websocket::init(&mut web_worker.worker);
 
       if has_deno_namespace {

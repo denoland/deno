@@ -1,0 +1,11 @@
+[package]
+name = "deno_fetch"
+version = "0.1.0"
+authors = ["the deno authors"]
+edition = "2018"
+
+[dependencies]
+reqwest = { version = "0.10.8", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
+deno_core = { path = "../../core", version = "0.57.0" }
+serde = { version = "1.0.116", features = ["derive"] }
+url = "2.1.1"

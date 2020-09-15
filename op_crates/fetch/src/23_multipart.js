@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { Buffer } = window.__bootstrap.buffer;
+  // const { Buffer } = window.__bootstrap.buffer;
   const { bytesSymbol, Blob } = window.__bootstrap.blob;
   const { DomFile } = window.__bootstrap.domFile;
   const { getHeaderValueParams } = window.__bootstrap.webUtil;
@@ -10,6 +10,12 @@
   const encoder = new TextEncoder();
   const CR = "\r".charCodeAt(0);
   const LF = "\n".charCodeAt(0);
+
+  class Buffer {
+    writeSync() {
+      throw Error("todo");
+    }
+  }
 
   class MultipartBuilder {
     constructor(formData, boundary) {
