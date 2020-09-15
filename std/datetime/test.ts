@@ -284,9 +284,9 @@ Deno.test({
     const birth = new Date("1998/2/23 10:10:10");
     const old = new Date("1998/2/23 11:11:11");
     difference = datetime.difference(birth, old, {
-      units: ["miliseconds", "minutes", "seconds", "hours"],
+      units: ["milliseconds", "minutes", "seconds", "hours"],
     });
-    assertEquals(difference.miliseconds, 3661000);
+    assertEquals(difference.milliseconds, 3661000);
     assertEquals(difference.seconds, 3661);
     assertEquals(difference.minutes, 61);
     assertEquals(difference.hours, 1);
