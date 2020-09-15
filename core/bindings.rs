@@ -2,8 +2,8 @@
 
 use crate::error::AnyError;
 use crate::error::JsError;
+use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
-use crate::JsRuntimeState;
 use crate::Op;
 use crate::OpId;
 use crate::OpTable;

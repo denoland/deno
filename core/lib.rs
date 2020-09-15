@@ -45,7 +45,6 @@ pub use crate::runtime::js_check;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::HeapLimits;
 pub use crate::runtime::JsRuntime;
-pub use crate::runtime::JsRuntimeState;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
 pub use crate::zero_copy_buf::BufVec;
