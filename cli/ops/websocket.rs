@@ -195,7 +195,8 @@ pub async fn op_ws_close(
     },
   })));
 
-  poll_fn(move |cx| {
+  eprintln!("rust before closed");
+  let r = poll_fn(move |cx| {
     let mut state = state.borrow_mut();
     let stream = state
       .resource_table
@@ -204,16 +205,23 @@ pub async fn op_ws_close(
 
     // TODO(ry) Handle errors below instead of unwrap.
     // Need to map `TungsteniteError` to `AnyError`.
+    eprintln!("rust before ready");
     ready!(stream.poll_ready_unpin(cx)).unwrap();
+    eprintln!("rust after ready");
     if let Some(msg) = maybe_msg.take() {
       stream.start_send_unpin(msg).unwrap();
     }
+    eprintln!("rust before flush");
     ready!(stream.poll_flush_unpin(cx)).unwrap();
+    eprintln!("rust after flush");
     ready!(stream.poll_close_unpin(cx)).unwrap();
+    eprintln!("rust after close unpin");
 
     Poll::Ready(Ok(json!({})))
   })
-  .await
+  .await;
+  eprintln!("rust after closed");
+  r
 }
 
 #[derive(Deserialize)]
@@ -228,7 +236,8 @@ pub async fn op_ws_next_event(
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
   let args: NextEventArgs = serde_json::from_value(args)?;
-  poll_fn(move |cx| {
+  eprintln!("rust ws next event");
+  let r = poll_fn(move |cx| {
     let mut state = state.borrow_mut();
     let stream = state
       .resource_table
@@ -266,5 +275,7 @@ pub async fn op_ws_next_event(
       })
       .map(Ok)
   })
-  .await
+  .await;
+  eprintln!("rust ws next event done");
+  r
 }

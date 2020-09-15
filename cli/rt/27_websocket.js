@@ -69,9 +69,13 @@
 
               const event = new CloseEvent("close");
               event.target = this;
+              Deno.core.print("before onclose in ws\n", true);
               this.onclose?.(event);
+              Deno.core.print("after onclose in ws\n", true);
               this.dispatchEvent(event);
+              Deno.core.print("before close in ws\n", true);
               close(this.#rid);
+              Deno.core.print("after close1 in ws\n", true);
             });
 
             const event = new Event("error");
@@ -97,8 +101,11 @@
 
           const closeEvent = new CloseEvent("close");
           closeEvent.target = this;
+          Deno.core.print("before onclose in ws\n", true);
           this.onclose?.(closeEvent);
+          Deno.core.print("after onclose in ws\n", true);
           this.dispatchEvent(closeEvent);
+          Deno.core.print("after onclose event in ws\n", true);
         }
       }).catch((err) => {
         const event = new ErrorEvent(
@@ -240,9 +247,12 @@
             reason,
           });
           event.target = this;
+          Deno.core.print("before onclose in ws\n", true);
           this.onclose?.(event);
+          Deno.core.print("after onclose in ws\n", true);
           this.dispatchEvent(event);
           close(this.#rid);
+          Deno.core.print("after close2 in ws\n", true);
         });
       }
     }
@@ -280,7 +290,9 @@
             reason: message.reason,
           });
           event.target = this;
+          Deno.core.print("before onclose in ws\n", true);
           this.onclose?.(event);
+          Deno.core.print("after onclose in ws\n", true);
           this.dispatchEvent(event);
         } else if (message.type === "error") {
           const event = new Event("error");
