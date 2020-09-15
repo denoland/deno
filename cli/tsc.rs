@@ -19,7 +19,7 @@ use crate::msg::MediaType;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-use crate::state::State;
+use crate::state::CliState;
 use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
@@ -132,7 +132,7 @@ pub struct CompilerWorker {
 }
 
 impl CompilerWorker {
-  pub fn new(name: String, state: &Rc<State>) -> Self {
+  pub fn new(name: String, state: &Rc<CliState>) -> Self {
     let mut worker =
       Worker::new(name, Some(js::compiler_isolate_init()), state);
     let response = Arc::new(Mutex::new(None));
@@ -218,7 +218,7 @@ fn create_compiler_worker(
   let entry_point =
     ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
   let worker_state =
-    State::new(&global_state, Some(permissions), entry_point, None, true)
+    CliState::new(&global_state, Some(permissions), entry_point, None, true)
       .expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
