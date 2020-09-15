@@ -30,12 +30,12 @@ fn get_or_create_http_client(state: &Rc<RefCell<OpState>>) -> reqwest::Client {
   let cli_state = super::cli_state2(state);
   let mut state_ = state.borrow_mut();
   if let Some(client) = state_.try_borrow::<reqwest::Client>() {
-    return client.clone();
+    client.clone()
   } else {
     let ca_file = cli_state.global_state.flags.ca_file.as_deref();
     let client = create_http_client(ca_file).unwrap();
     state_.put(client.clone());
-    return client.clone();
+    client
   }
 }
 
