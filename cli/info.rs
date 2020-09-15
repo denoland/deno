@@ -4,9 +4,8 @@ use crate::module_graph::{ModuleGraph, ModuleGraphFile, ModuleGraphLoader};
 use crate::msg;
 use crate::ModuleSpecifier;
 use crate::Permissions;
-use deno_core::ErrBox;
-use serde::ser::Serializer;
 use deno_core::error::AnyError;
+use serde::ser::Serializer;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -32,7 +31,7 @@ impl ModuleDepInfo {
   pub async fn new(
     global_state: &Arc<GlobalState>,
     module_specifier: ModuleSpecifier,
-  ) -> Result<Self, ErrBox> {
+  ) -> Result<Self, AnyError> {
     // First load module as if it was to be executed by worker
     // including compilation step
     let mut module_graph_loader = ModuleGraphLoader::new(
