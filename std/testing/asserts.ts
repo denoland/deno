@@ -21,13 +21,13 @@ export class AssertionError extends Error {
 
 export function _format(v: unknown): string {
   let string = globalThis.Deno
-    ? Deno.inspect(v, {
+    ? stripColor(Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
       trailingComma: true,
       compact: false,
       iterableLimit: Infinity,
-    })
+    }))
     : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
@@ -38,11 +38,11 @@ export function _format(v: unknown): string {
 function createColor(diffType: DiffType): (s: string) => string {
   switch (diffType) {
     case DiffType.added:
-      return (s: string): string => green(bold(stripColor(s)));
+      return (s: string): string => green(bold(s));
     case DiffType.removed:
-      return (s: string): string => red(bold(stripColor(s)));
+      return (s: string): string => red(bold(s));
     default:
-      return (s: string): string => white(stripColor(s));
+      return (s: string): string => white(s);
   }
 }
 
