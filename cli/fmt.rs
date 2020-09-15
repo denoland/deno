@@ -77,28 +77,28 @@ async fn check_source_files(
             let _g = output_lock.lock().unwrap();
             match diff(&file_text, &formatted_text) {
               Ok(diff) => {
-                println!();
-                println!(
+                info!("");
+                info!(
                   "{} {}:",
                   colors::bold("from"),
                   file_path.display().to_string()
                 );
-                println!("{}", diff);
+                info!("{}", diff);
               }
               Err(e) => {
-                eprintln!(
+                error!(
                   "Error generating diff: {}",
                   file_path.to_string_lossy()
                 );
-                eprintln!("   {}", e);
+                error!("   {}", e);
               }
             }
           }
         }
         Err(e) => {
           let _g = output_lock.lock().unwrap();
-          eprintln!("Error checking: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          error!("Error checking: {}", file_path.to_string_lossy());
+          error!("   {}", e);
         }
       }
       Ok(())
@@ -112,7 +112,7 @@ async fn check_source_files(
   let checked_files_str =
     format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
-    println!("Checked {}", checked_files_str);
+    info!("Checked {}", checked_files_str);
     Ok(())
   } else {
     let not_formatted_files_str = files_str(not_formatted_files_count);
@@ -150,13 +150,13 @@ async fn format_source_files(
             )?;
             formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
-            println!("{}", file_path.to_string_lossy());
+            info!("{}", file_path.to_string_lossy());
           }
         }
         Err(e) => {
           let _g = output_lock.lock().unwrap();
-          eprintln!("Error formatting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          error!("Error formatting: {}", file_path.to_string_lossy());
+          error!("   {}", e);
         }
       }
       Ok(())
@@ -172,7 +172,7 @@ async fn format_source_files(
   );
 
   let checked_files_count = checked_files_count.load(Ordering::Relaxed);
-  println!(
+  info!(
     "Checked {} {}",
     checked_files_count,
     files_str(checked_files_count)
@@ -196,7 +196,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {
-          println!("Not formatted stdin");
+          info!("Not formatted stdin");
         }
       } else {
         stdout().write_all(formatted_text.as_bytes())?;
