@@ -42,7 +42,7 @@ function createColor(diffType: DiffType): (s: string) => string {
     case DiffType.removed:
       return (s: string): string => red(bold(s));
     default:
-      return (s: string): string => white(s);
+      return white;
   }
 }
 
