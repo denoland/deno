@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
@@ -15,7 +15,7 @@ fn op_get_random_values(
   state: &mut OpState,
   _args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   assert_eq!(zero_copy.len(), 1);
   let cli_state = super::cli_state(state);
   if let Some(seeded_rng) = &cli_state.seeded_rng {

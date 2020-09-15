@@ -3,7 +3,7 @@
 use crate::colors;
 use crate::version;
 use crate::DenoSubcommand;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -20,7 +20,7 @@ fn op_start(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let gs = &super::cli_state(state).global_state;
 
   Ok(json!({
@@ -45,7 +45,7 @@ fn op_main_module(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   let main = &cli_state.main_module.to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
@@ -60,7 +60,7 @@ fn op_metrics(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   let m = &cli_state.metrics.borrow();
 

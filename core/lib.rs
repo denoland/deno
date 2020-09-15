@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#[macro_use]
-extern crate downcast_rs;
 extern crate futures;
 #[macro_use]
 extern crate lazy_static;
@@ -9,7 +7,7 @@ extern crate lazy_static;
 extern crate log;
 
 mod bindings;
-mod errors;
+pub mod error;
 mod flags;
 mod gotham_state;
 mod module_specifier;
@@ -24,9 +22,6 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
-pub use crate::errors::AnyError;
-pub use crate::errors::ErrBox;
-pub use crate::errors::JsError;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
@@ -50,7 +45,6 @@ pub use crate::runtime::js_check;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::HeapLimits;
 pub use crate::runtime::JsRuntime;
-pub use crate::runtime::JsRuntimeState;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
 pub use crate::zero_copy_buf::BufVec;

@@ -209,8 +209,11 @@ deno test --failfast
 
 Deno will automatically determine test coverage for your code if you specify the
 `--coverage` flag when starting `deno test`. Coverage is determined on a line by
-line basis, and is acquired directly from the JavaScript runtime (V8). Because
-of this, this coverage is very accurate.
+line basis for modules that share the parent directory with at-least one test
+module that is being executed.
+
+This coverage information is acquired directly from the JavaScript runtime (V8).
+Because of this, the coverage reports are very accurate.
 
 When all tests are done running a summary of coverage per file is printed to
 stdout. In the future there will be support for `lcov` output too.

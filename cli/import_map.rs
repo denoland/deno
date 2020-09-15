@@ -1,4 +1,4 @@
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
 use serde_json::Map;
@@ -46,7 +46,7 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn load(file_path: &str) -> Result<Self, ErrBox> {
+  pub fn load(file_path: &str) -> Result<Self, AnyError> {
     let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
     let resolved_path = std::env::current_dir().unwrap().join(file_path);
     debug!(
@@ -67,7 +67,7 @@ impl ImportMap {
       )
     })?;
     // The URL of the import map is the base URL for its values.
-    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::from)
+    ImportMap::from_json(&file_url, &json_string).map_err(AnyError::from)
   }
 
   pub fn from_json(

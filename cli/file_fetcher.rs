@@ -8,7 +8,10 @@ use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::permissions::Permissions;
 use crate::text_encoding;
-use deno_core::ErrBox;
+use deno_core::error::custom_error;
+use deno_core::error::generic_error;
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use log::info;
@@ -122,7 +125,7 @@ impl SourceFileFetcher {
     no_remote: bool,
     cached_only: bool,
     ca_file: Option<&str>,
-  ) -> Result<Self, ErrBox> {
+  ) -> Result<Self, AnyError> {
     let file_fetcher = Self {
       http_cache,
       source_file_cache: SourceFileCache::default(),
@@ -136,9 +139,9 @@ impl SourceFileFetcher {
     Ok(file_fetcher)
   }
 
-  pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
+  pub fn check_if_supported_scheme(url: &Url) -> Result<(), AnyError> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
-      return Err(ErrBox::error(format!(
+      return Err(generic_error(format!(
         "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
         url.scheme(),
         url,
@@ -179,7 +182,7 @@ impl SourceFileFetcher {
   /// Save a given source file into cache.
   /// Allows injection of files that normally would not present
   /// in filesystem.
-  /// This is useful when e.g. TS compiler retrieves a custom file
+  /// This is useful when e.g. TS compiler retrieves a custom_error file
   /// under a dummy specifier.
   pub fn save_source_file_in_cache(
     &self,
@@ -194,7 +197,7 @@ impl SourceFileFetcher {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     permissions: Permissions,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let module_url = specifier.as_url().to_owned();
     debug!(
       "fetch_source_file specifier: {} maybe_referrer: {:#?}",
@@ -256,13 +259,13 @@ impl SourceFileFetcher {
             r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
             module_url, referrer_suffix
           );
-          ErrBox::new("NotFound", msg)
+          custom_error("NotFound", msg)
         } else if is_not_found {
           let msg = format!(
             r#"Cannot resolve module "{}"{}"#,
             module_url, referrer_suffix
           );
-          ErrBox::new("NotFound", msg)
+          custom_error("NotFound", msg)
         } else {
           err
         };
@@ -275,7 +278,7 @@ impl SourceFileFetcher {
     &self,
     module_url: &Url,
     permissions: &Permissions,
-  ) -> Result<Option<SourceFile>, ErrBox> {
+  ) -> Result<Option<SourceFile>, AnyError> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
     SourceFileFetcher::check_if_supported_scheme(&module_url)?;
@@ -306,7 +309,7 @@ impl SourceFileFetcher {
     no_remote: bool,
     cached_only: bool,
     permissions: &Permissions,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
     SourceFileFetcher::check_if_supported_scheme(&module_url)?;
@@ -345,10 +348,10 @@ impl SourceFileFetcher {
     &self,
     module_url: &Url,
     permissions: &Permissions,
-  ) -> Result<SourceFile, ErrBox> {
-    let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::new("URIError", "File URL contains invalid path")
-    })?;
+  ) -> Result<SourceFile, AnyError> {
+    let filepath = module_url
+      .to_file_path()
+      .map_err(|()| uri_error("File URL contains invalid path"))?;
 
     permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
@@ -382,9 +385,9 @@ impl SourceFileFetcher {
     &self,
     module_url: &Url,
     redirect_limit: i64,
-  ) -> Result<Option<SourceFile>, ErrBox> {
+  ) -> Result<Option<SourceFile>, AnyError> {
     if redirect_limit < 0 {
-      return Err(ErrBox::new("Http", "too many redirects"));
+      return Err(custom_error("Http", "too many redirects"));
     }
 
     let result = self.http_cache.get(&module_url);
@@ -401,7 +404,7 @@ impl SourceFileFetcher {
     };
 
     let (mut source_file, headers) = result;
-    if let Some(redirect_to) = headers.get("location") {
+    if let Some(redirect_to) = headers.get("location").and_then(|e| e.first()) {
       let redirect_url = match Url::parse(redirect_to) {
         Ok(redirect_url) => redirect_url,
         Err(url::ParseError::RelativeUrlWithoutBase) => {
@@ -424,9 +427,15 @@ impl SourceFileFetcher {
     let fake_filepath = PathBuf::from(module_url.path());
     let (media_type, charset) = map_content_type(
       &fake_filepath,
-      headers.get("content-type").map(|e| e.as_str()),
+      headers
+        .get("content-type")
+        .and_then(|e| e.first())
+        .map(|e| e.as_str()),
     );
-    let types_header = headers.get("x-typescript-types").map(|e| e.to_string());
+    let types_header = headers
+      .get("x-typescript-types")
+      .and_then(|e| e.first())
+      .map(|e| e.to_string());
     Ok(Some(SourceFile {
       url: module_url.clone(),
       filename: cache_filename,
@@ -447,9 +456,9 @@ impl SourceFileFetcher {
     cached_only: bool,
     redirect_limit: i64,
     permissions: &Permissions,
-  ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<SourceFile, AnyError>>>> {
     if redirect_limit < 0 {
-      let e = ErrBox::new("Http", "too many redirects");
+      let e = custom_error("Http", "too many redirects");
       return futures::future::err(e).boxed_local();
     }
 
@@ -481,7 +490,7 @@ impl SourceFileFetcher {
         "Cannot find remote file '{}' in cache, --cached-only is specified",
         module_url
       );
-      return futures::future::err(ErrBox::new("NotFound", message))
+      return futures::future::err(custom_error("NotFound", message))
         .boxed_local();
     }
 
@@ -490,7 +499,10 @@ impl SourceFileFetcher {
     let dir = self.clone();
     let module_url = module_url.clone();
     let module_etag = match self.http_cache.get(&module_url) {
-      Ok((_, headers)) => headers.get("etag").map(String::from),
+      Ok((_, headers)) => headers
+        .get("etag")
+        .and_then(|e| e.first())
+        .map(|e| e.to_string()),
       Err(_) => None,
     };
     let permissions = permissions.clone();
@@ -529,11 +541,16 @@ impl SourceFileFetcher {
           let fake_filepath = PathBuf::from(module_url.path());
           let (media_type, charset) = map_content_type(
             &fake_filepath,
-            headers.get("content-type").map(String::as_str),
+            headers
+              .get("content-type")
+              .and_then(|e| e.first())
+              .map(|e| e.as_str()),
           );
 
-          let types_header =
-            headers.get("x-typescript-types").map(String::to_string);
+          let types_header = headers
+            .get("x-typescript-types")
+            .and_then(|e| e.first())
+            .map(|e| e.to_string());
 
           let source_file = SourceFile {
             url: module_url.clone(),
@@ -549,23 +566,6 @@ impl SourceFileFetcher {
     };
 
     f.boxed_local()
-  }
-}
-
-pub fn map_file_extension(path: &Path) -> msg::MediaType {
-  match path.extension() {
-    None => msg::MediaType::Unknown,
-    Some(os_str) => match os_str.to_str() {
-      Some("ts") => msg::MediaType::TypeScript,
-      Some("tsx") => msg::MediaType::TSX,
-      Some("js") => msg::MediaType::JavaScript,
-      Some("jsx") => msg::MediaType::JSX,
-      Some("mjs") => msg::MediaType::JavaScript,
-      Some("cjs") => msg::MediaType::JavaScript,
-      Some("json") => msg::MediaType::Json,
-      Some("wasm") => msg::MediaType::Wasm,
-      _ => msg::MediaType::Unknown,
-    },
   }
 }
 
@@ -600,7 +600,7 @@ fn map_content_type(
         "application/json" | "text/json" => msg::MediaType::Json,
         "application/wasm" => msg::MediaType::Wasm,
         // Handle plain and possibly webassembly
-        "text/plain" | "application/octet-stream" => map_file_extension(path),
+        "text/plain" | "application/octet-stream" => msg::MediaType::from(path),
         _ => {
           debug!("unknown content type: {}", content_type);
           msg::MediaType::Unknown
@@ -614,7 +614,7 @@ fn map_content_type(
 
       (media_type, charset)
     }
-    None => (map_file_extension(path), None),
+    None => (msg::MediaType::from(path), None),
   }
 }
 
@@ -825,7 +825,9 @@ mod tests {
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "text/javascript".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(Vec::new)
+      .push("text/javascript".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher_1
@@ -848,13 +850,23 @@ mod tests {
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher_2.http_cache.get(&module_url_1).unwrap();
 
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
+      "text/javascript"
+    );
 
     // Modify .headers.json again, but the other way around
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "application/json".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(Vec::new)
+      .push("application/json".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result3 = fetcher_2
@@ -877,7 +889,13 @@ mod tests {
     assert_eq!(&(r3.media_type), &msg::MediaType::Json);
     let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
     assert_eq!(
-      metadata.headers.get("content-type").unwrap(),
+      metadata
+        .headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
       "application/json"
     );
 
@@ -927,7 +945,15 @@ mod tests {
     assert_eq!(r.source_code.bytes, expected);
     assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
+      "text/javascript"
+    );
 
     // Modify .headers.json
     let mut metadata =
@@ -935,7 +961,9 @@ mod tests {
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "text/typescript".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(Vec::new)
+      .push("text/typescript".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher
@@ -957,7 +985,13 @@ mod tests {
     assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
     let metadata = crate::http_cache::Metadata::read(&cache_filename).unwrap();
     assert_eq!(
-      metadata.headers.get("content-type").unwrap(),
+      metadata
+        .headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
       "text/typescript"
     );
 
@@ -981,7 +1015,15 @@ mod tests {
     // (due to http fetch)
     assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
+      "text/javascript"
+    );
   }
 
   #[tokio::test]
@@ -1067,7 +1109,7 @@ mod tests {
     assert_eq!(fs::read_to_string(&redirect_source_filename).unwrap(), "");
     let (_, headers) = fetcher.http_cache.get(&redirect_module_url).unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.get("location").unwrap().first().unwrap().as_str(),
       "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
     );
     // The target of redirection is downloaded instead.
@@ -1120,10 +1162,16 @@ mod tests {
     assert_eq!(fs::read_to_string(&redirect_path).unwrap(), "");
 
     let (_, headers) = fetcher.http_cache.get(&double_redirect_url).unwrap();
-    assert_eq!(headers.get("location").unwrap(), &redirect_url.to_string());
+    assert_eq!(
+      headers.get("location").unwrap().first().unwrap(),
+      &redirect_url.to_string()
+    );
 
     let (_, headers) = fetcher.http_cache.get(&redirect_url).unwrap();
-    assert_eq!(headers.get("location").unwrap(), &target_url.to_string());
+    assert_eq!(
+      headers.get("location").unwrap().first().unwrap(),
+      &target_url.to_string()
+    );
 
     // The target of redirection is downloaded instead.
     assert_eq!(
@@ -1276,7 +1324,7 @@ mod tests {
     assert_eq!(fs::read_to_string(&redirect_source_filename).unwrap(), "");
     let (_, headers) = fetcher.http_cache.get(&redirect_module_url).unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.get("location").unwrap().first().unwrap().as_str(),
       "/cli/tests/subdir/redirects/redirect1.js"
     );
     // The target of redirection is downloaded instead.
@@ -1390,7 +1438,9 @@ mod tests {
     metadata.headers = HashMap::new();
     metadata
       .headers
-      .insert("content-type".to_string(), "text/javascript".to_string());
+      .entry("content-type".to_string())
+      .or_insert_with(Vec::new)
+      .push("text/javascript".to_string());
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher.fetch_cached_remote_source(&module_url, 1);
@@ -1421,7 +1471,15 @@ mod tests {
     assert_eq!(r.source_code.bytes, b"export const loaded = true;\n");
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
+    assert_eq!(
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
+      "text/typescript"
+    );
   }
 
   #[tokio::test]
@@ -1445,7 +1503,15 @@ mod tests {
     assert_eq!(r2.source_code.bytes, b"export const loaded = true;\n");
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    assert_eq!(
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
+      "text/javascript"
+    );
   }
 
   #[tokio::test]
@@ -1469,7 +1535,15 @@ mod tests {
     assert_eq!(r3.source_code.bytes, b"export const loaded = true;\n");
     assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
+    assert_eq!(
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
+      "text/typescript"
+    );
   }
 
   #[tokio::test]
@@ -1601,50 +1675,6 @@ mod tests {
       .unwrap(),
     )
     .await;
-  }
-
-  #[test]
-  fn test_map_file_extension() {
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.ts")),
-      msg::MediaType::TypeScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.tsx")),
-      msg::MediaType::TSX
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.d.ts")),
-      msg::MediaType::TypeScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.js")),
-      msg::MediaType::JavaScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.jsx")),
-      msg::MediaType::JSX
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.json")),
-      msg::MediaType::Json
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.wasm")),
-      msg::MediaType::Wasm
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.cjs")),
-      msg::MediaType::JavaScript
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar.txt")),
-      msg::MediaType::Unknown
-    );
-    assert_eq!(
-      map_file_extension(Path::new("foo/bar")),
-      msg::MediaType::Unknown
-    );
   }
 
   #[test]
@@ -1869,7 +1899,10 @@ mod tests {
     assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
-    assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
+    assert_eq!(
+      headers.get("etag").unwrap().first().unwrap().as_str(),
+      "33a64df551425fcc55e"
+    );
 
     let metadata_path = crate::http_cache::Metadata::filename(
       &fetcher.http_cache.get_cache_filename(&module_url),
@@ -1994,7 +2027,12 @@ mod tests {
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(
-      headers.get("content-type").unwrap(),
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
       &format!("application/typescript;charset={}", charset)
     );
   }

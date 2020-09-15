@@ -13,11 +13,10 @@ use tempfile::TempDir;
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let std_path = util::root_path().join("std");
-  let std_config = std_path.join("tsconfig_test.json");
+  let std_config = util::root_path().join("std/tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
-    .current_dir(std_path) // TODO(ry) change this to root_path
+    .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
@@ -25,6 +24,7 @@ fn std_tests() {
     .arg("--config")
     .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
+    .arg("std/")
     .spawn()
     .unwrap()
     .wait()
@@ -2127,9 +2127,7 @@ itest!(ts_type_imports {
   exit_code: 1,
 });
 
-// Broken after V8 upgrade
-// https://github.com/denoland/deno/pull/7429
-itest_ignore!(ts_decorators {
+itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });

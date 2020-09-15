@@ -2,8 +2,10 @@
 
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
 use crate::signal::kill;
+use deno_core::error::bad_resource_id;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -23,19 +25,22 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_kill", op_kill);
 }
 
-fn clone_file(state: &mut OpState, rid: u32) -> Result<std::fs::File, ErrBox> {
+fn clone_file(
+  state: &mut OpState,
+  rid: u32,
+) -> Result<std::fs::File, AnyError> {
   std_file_resource(state, rid, move |r| match r {
-    Ok(std_file) => std_file.try_clone().map_err(ErrBox::from),
-    Err(_) => Err(ErrBox::bad_resource_id()),
+    Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
+    Err(_) => Err(bad_resource_id()),
   })
 }
 
-fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, ErrBox> {
+fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
   match s {
     "inherit" => Ok(std::process::Stdio::inherit()),
     "piped" => Ok(std::process::Stdio::piped()),
     "null" => Ok(std::process::Stdio::null()),
-    _ => Err(ErrBox::type_error("Invalid resource for stdio")),
+    _ => Err(type_error("Invalid resource for stdio")),
   }
 }
 
@@ -61,7 +66,7 @@ fn op_run(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
   super::cli_state(state).check_run()?;
 
@@ -169,7 +174,7 @@ async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
@@ -180,9 +185,9 @@ async fn op_run_status(
     let child_resource = state
       .resource_table
       .get_mut::<ChildResource>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
     let child = &mut child_resource.child;
-    child.poll_unpin(cx).map_err(ErrBox::from)
+    child.poll_unpin(cx).map_err(AnyError::from)
   })
   .await?;
 
@@ -215,7 +220,7 @@ fn op_kill(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
   cli_state.check_unstable("Deno.kill");
   cli_state.check_run()?;
