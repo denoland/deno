@@ -10,16 +10,4 @@ export function isNil(val: string): boolean {
   return val === NIL_UUID;
 }
 
-const NOT_IMPLEMENTED = {
-  generate(): never {
-    throw new Error("Not implemented");
-  },
-  validate(): never {
-    throw new Error("Not implemented");
-  },
-};
-
-// TODO Implement
-export const v3 = NOT_IMPLEMENTED;
-
 export { v1, v4, v5 };
