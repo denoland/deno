@@ -180,6 +180,11 @@ pub struct HeapLimits {
 
 #[derive(Default)]
 pub struct RuntimeOptions {
+  /// Allows a callback to be set whenever a V8 exception is made. This allows
+  /// the caller to wrap the JsError into an error. By default this callback
+  /// is set to `JsError::create()`.
+  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
@@ -266,6 +271,9 @@ impl JsRuntime {
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
+    let js_error_create_fn = options
+      .js_error_create_fn
+      .unwrap_or_else(|| Box::new(JsError::create));
     let op_state = OpState::default();
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
@@ -274,7 +282,7 @@ impl JsRuntime {
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
-      js_error_create_fn: Box::new(JsError::create),
+      js_error_create_fn,
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -332,8 +340,7 @@ impl JsRuntime {
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
-  /// used.
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn execute(
     &mut self,
     js_filename: &str,
@@ -380,8 +387,7 @@ impl JsRuntime {
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
-  /// used.
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
     let state = Self::state(self);
@@ -838,8 +844,7 @@ impl JsRuntime {
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
-  /// used.
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
@@ -875,8 +880,7 @@ impl JsRuntime {
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `JsRuntime::set_js_error_create_fn()` has been
-  /// used.
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     self.shared_init();
 

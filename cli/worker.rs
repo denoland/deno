@@ -106,19 +106,16 @@ impl Worker {
     startup_snapshot: Option<Snapshot>,
     state: &Rc<CliState>,
   ) -> Self {
+    let global_state = state.global_state.clone();
+
     let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(state.clone()),
       startup_snapshot,
+      js_error_create_fn: Some(Box::new(move |core_js_error| {
+        JsError::create(core_js_error, &global_state.ts_compiler)
+      })),
       ..Default::default()
     });
-    {
-      let global_state = state.global_state.clone();
-      let js_runtime_state = JsRuntime::state(&isolate);
-      let mut js_runtime_state = js_runtime_state.borrow_mut();
-      js_runtime_state.set_js_error_create_fn(move |core_js_error| {
-        JsError::create(core_js_error, &global_state.ts_compiler)
-      });
-    }
     {
       let op_state = isolate.op_state();
       let mut op_state = op_state.borrow_mut();
