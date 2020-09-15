@@ -1,7 +1,6 @@
 use crate::colors;
 use crate::global_state::GlobalState;
 use crate::module_graph::{ModuleGraph, ModuleGraphFile, ModuleGraphLoader};
-use crate::msg;
 use crate::ModuleSpecifier;
 use crate::Permissions;
 use deno_core::error::AnyError;
@@ -56,7 +55,8 @@ impl ModuleDepInfo {
       .get_source_map_file(&module_specifier)
       .ok()
       .map(|file| file.filename.to_string_lossy().to_string());
-    let file_type = msg::enum_name_media_type(out.media_type).to_string();
+    let file_type =
+      crate::media_type::enum_name_media_type(out.media_type).to_string();
 
     let deps = FileInfoDepTree::new(&module_graph, &module_specifier);
     let dep_count = get_unique_dep_count(&module_graph) - 1;
@@ -350,8 +350,8 @@ pub fn human_size(bytse: f64) -> String {
 mod test {
   use super::*;
   use crate::ast::Location;
+  use crate::media_type::MediaType;
   use crate::module_graph::ImportDescriptor;
-  use crate::MediaType;
 
   #[test]
   fn human_size_test() {

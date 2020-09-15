@@ -5,7 +5,7 @@ use crate::checksum;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
-use crate::msg::MediaType;
+use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::tsc::pre_process_file;
 use crate::tsc::ImportDesc;

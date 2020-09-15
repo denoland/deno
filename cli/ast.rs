@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::msg::MediaType;
+use crate::media_type::MediaType;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
