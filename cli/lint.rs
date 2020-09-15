@@ -105,9 +105,9 @@ pub async fn lint_files(
 pub fn print_rules_list() {
   let lint_rules = rules::get_recommended_rules();
 
-  println!("Available rules:");
+  info!("Available rules:");
   for rule in lint_rules {
-    println!(" - {}", rule.code());
+    info!(" - {}", rule.code());
   }
 }
 
@@ -227,24 +227,24 @@ impl LintReporter for PrettyLintReporter {
       ),
     );
 
-    eprintln!("{}\n", message);
+    error!("{}\n", message);
   }
 
   fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
-    eprintln!("Error linting: {}", file_path);
-    eprintln!("   {}", err);
+    error!("Error linting: {}", file_path);
+    error!("   {}", err);
   }
 
   fn close(&mut self, check_count: usize) {
     match self.lint_count {
-      1 => eprintln!("Found 1 problem"),
-      n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      1 => info!("Found 1 problem"),
+      n if n > 1 => info!("Found {} problems", self.lint_count),
       _ => (),
     }
 
     match check_count {
-      1 => println!("Checked 1 file"),
-      n if n > 1 => println!("Checked {} files", n),
+      1 => info!("Checked 1 file"),
+      n if n > 1 => info!("Checked {} files", n),
       _ => (),
     }
   }
@@ -320,7 +320,7 @@ impl LintReporter for JsonLintReporter {
   fn close(&mut self, _check_count: usize) {
     sort_diagnostics(&mut self.diagnostics);
     let json = serde_json::to_string_pretty(&self);
-    eprintln!("{}", json.unwrap());
+    error!("{}", json.unwrap());
   }
 }
 
