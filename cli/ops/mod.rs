@@ -60,12 +60,12 @@ where
 }
 
 /// Helper for extracting the commonly used state. Used for sync ops.
-pub fn cli_state(state: &OpState) -> Rc<crate::state::State> {
-  state.borrow::<Rc<crate::state::State>>().clone()
+pub fn cli_state(state: &OpState) -> Rc<crate::state::CliState> {
+  state.borrow::<Rc<crate::state::CliState>>().clone()
 }
 
 /// Helper for extracting the commonly used state. Used for async ops.
-pub fn cli_state2(state: &Rc<RefCell<OpState>>) -> Rc<crate::state::State> {
+pub fn cli_state2(state: &Rc<RefCell<OpState>>) -> Rc<crate::state::CliState> {
   let state = state.borrow();
-  state.borrow::<Rc<crate::state::State>>().clone()
+  state.borrow::<Rc<crate::state::CliState>>().clone()
 }

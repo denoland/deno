@@ -6,7 +6,7 @@ use crate::inspector::DenoInspector;
 use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use crate::state::State;
+use crate::state::CliState;
 use deno_core::error::AnyError;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
@@ -94,7 +94,7 @@ pub struct Worker {
   pub name: String,
   pub isolate: JsRuntime,
   pub inspector: Option<Box<DenoInspector>>,
-  pub state: Rc<State>,
+  pub state: Rc<CliState>,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
@@ -104,7 +104,7 @@ impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
-    state: &Rc<State>,
+    state: &Rc<CliState>,
   ) -> Self {
     let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(state.clone()),
@@ -264,7 +264,7 @@ impl MainWorker {
   fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
-    state: &Rc<State>,
+    state: &Rc<CliState>,
   ) -> Self {
     let mut worker = Worker::new(name, startup_snapshot, state);
     {
@@ -298,7 +298,7 @@ impl MainWorker {
     global_state: &Arc<GlobalState>,
     main_module: ModuleSpecifier,
   ) -> Result<MainWorker, AnyError> {
-    let state = State::new(
+    let state = CliState::new(
       &global_state,
       None,
       main_module,
@@ -362,7 +362,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new("TEST".to_string(), None, &state);
@@ -389,7 +389,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new("TEST".to_string(), None, &state);
@@ -424,7 +424,7 @@ mod tests {
     };
     let global_state = GlobalState::new(flags).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
@@ -445,7 +445,7 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let state = State::mock("./hello.js");
+    let state = CliState::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
