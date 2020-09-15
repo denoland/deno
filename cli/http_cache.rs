@@ -215,11 +215,14 @@ mod tests {
     let cache = HttpCache::new(dir.path());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
-    headers.insert(
-      "content-type".to_string(),
-      "application/javascript".to_string(),
-    );
-    headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
+    headers
+      .entry("content-type".to_string())
+      .or_insert_with(Vec::new)
+      .push("application/javascript".to_string());
+    headers
+      .entry("etag".to_string())
+      .or_insert_with(Vec::new)
+      .push("as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
     eprintln!("result {:?}", r);
@@ -231,10 +234,18 @@ mod tests {
     file.read_to_string(&mut content).unwrap();
     assert_eq!(content, "Hello world");
     assert_eq!(
-      headers.get("content-type").unwrap(),
+      headers
+        .get("content-type")
+        .unwrap()
+        .first()
+        .unwrap()
+        .as_str(),
       "application/javascript"
     );
-    assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
+    assert_eq!(
+      headers.get("etag").unwrap().first().unwrap().as_str(),
+      "as5625rqdsfb"
+    );
     assert_eq!(headers.get("foobar"), None);
   }
 
