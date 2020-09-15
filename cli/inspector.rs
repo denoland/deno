@@ -394,9 +394,7 @@ impl DenoInspector {
     isolate: &mut deno_core::JsRuntime,
     host: SocketAddr,
   ) -> Box<Self> {
-    let core_state_rc = deno_core::JsRuntime::state(isolate);
-    let core_state = core_state_rc.borrow();
-
+    let context = isolate.global_context();
     let scope = &mut v8::HandleScope::new(&mut **isolate);
 
     let (new_websocket_tx, new_websocket_rx) =
@@ -434,11 +432,7 @@ impl DenoInspector {
     });
 
     // Tell the inspector about the global context.
-    let context = core_state
-      .global_context
-      .as_ref()
-      .map(|context| v8::Local::new(scope, context))
-      .unwrap();
+    let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
