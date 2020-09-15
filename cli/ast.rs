@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::msg::MediaType;
-
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
 use std::fmt;
@@ -43,11 +42,11 @@ use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
 
-type Result<V> = result::Result<V, ErrBox>;
+type Result<V> = result::Result<V, AnyError>;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Location {
   pub filename: String,
   pub line: usize,
@@ -204,11 +203,22 @@ impl Default for TranspileOptions {
 
 /// A logical structure to hold the value of a parsed module for further
 /// processing.
+#[derive(Clone)]
 pub struct ParsedModule {
   comments: SingleThreadedComments,
   leading_comments: Vec<Comment>,
   module: Module,
   source_map: Rc<SourceMap>,
+}
+
+impl fmt::Debug for ParsedModule {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("ParsedModule")
+      .field("comments", &self.comments)
+      .field("leading_comments", &self.leading_comments)
+      .field("module", &self.module)
+      .finish()
+  }
 }
 
 impl ParsedModule {
@@ -346,9 +356,9 @@ pub fn parse(
     let mut diagnostic = err.into_diagnostic(&handler);
     diagnostic.emit();
 
-    ErrBox::from(DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
+    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
       sm.lookup_char_pos(span.lo)
-    }))
+    })
   })?;
   let leading_comments =
     comments.with_leading(module.span.lo, |comments| comments.to_vec());

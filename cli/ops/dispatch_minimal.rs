@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::OpFn;
 use deno_core::OpState;
@@ -15,8 +15,8 @@ use std::rc::Rc;
 use std::slice;
 
 pub enum MinimalOp {
-  Sync(Result<i32, ErrBox>),
-  Async(Pin<Box<dyn Future<Output = Result<i32, ErrBox>>>>),
+  Sync(Result<i32, AnyError>),
+  Async(Pin<Box<dyn Future<Output = Result<i32, AnyError>>>>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -144,14 +144,14 @@ where
     let mut record = match parse_min_record(&record_buf) {
       Some(r) => r,
       None => {
-        let error = ErrBox::type_error("Unparsable control buffer");
-        let error_class = (state.borrow().get_error_class_fn)(&error);
+        let error_class = b"TypeError";
+        let error_message = b"Unparsable control buffer";
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
           error_len: error_class.len() as i32,
-          error_class: error_class.as_bytes(),
-          error_message: error.to_string().as_bytes().to_owned(),
+          error_class,
+          error_message: error_message[..].to_owned(),
         };
         return Op::Sync(error_record.into());
       }

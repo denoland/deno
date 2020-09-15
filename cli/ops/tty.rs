@@ -1,15 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::io::std_file_resource;
-use super::io::{StreamResource, StreamResourceHolder};
-use deno_core::ErrBox;
+use super::io::StreamResource;
+use super::io::StreamResourceHolder;
+use deno_core::error::bad_resource_id;
+use deno_core::error::last_os_error;
+use deno_core::error::resource_unavailable;
+use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-#[cfg(unix)]
-use nix::sys::termios;
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
+use serde_derive::Serialize;
 use serde_json::Value;
 
+#[cfg(unix)]
+use deno_core::error::not_supported;
+#[cfg(unix)]
+use nix::sys::termios;
+
+#[cfg(windows)]
+use deno_core::error::custom_error;
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
@@ -22,15 +32,15 @@ const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
 #[cfg(windows)]
 fn get_windows_handle(
   f: &std::fs::File,
-) -> Result<std::os::windows::io::RawHandle, ErrBox> {
+) -> Result<std::os::windows::io::RawHandle, AnyError> {
   use std::os::windows::io::AsRawHandle;
   use winapi::um::handleapi;
 
   let handle = f.as_raw_handle();
   if handle == handleapi::INVALID_HANDLE_VALUE {
-    return Err(ErrBox::last_os_error());
+    return Err(last_os_error());
   } else if handle.is_null() {
-    return Err(ErrBox::new("ReferenceError", "null handle"));
+    return Err(custom_error("ReferenceError", "null handle"));
   }
   Ok(handle)
 }
@@ -51,7 +61,7 @@ fn op_set_raw(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   super::cli_state(state).check_unstable("Deno.setRaw");
 
   let args: SetRawArgs = serde_json::from_value(args)?;
@@ -72,7 +82,7 @@ fn op_set_raw(
     let resource_holder =
       state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
-      return Err(ErrBox::bad_resource_id());
+      return Err(bad_resource_id());
     }
     let resource_holder = resource_holder.unwrap();
 
@@ -97,28 +107,28 @@ fn op_set_raw(
               // some operation is in-flight.
               resource_holder.resource =
                 StreamResource::FsFile(Some((tokio_file, metadata)));
-              return Err(ErrBox::resource_unavailable());
+              return Err(resource_unavailable());
             }
           }
         } else {
-          return Err(ErrBox::resource_unavailable());
+          return Err(resource_unavailable());
         }
       }
       _ => {
-        return Err(ErrBox::bad_resource_id());
+        return Err(bad_resource_id());
       }
     };
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(ErrBox::last_os_error());
+      return Err(last_os_error());
     } else if handle.is_null() {
-      return Err(ErrBox::new("ReferenceError", "null handle"));
+      return Err(custom_error("ReferenceError", "null handle"));
     }
     let mut original_mode: DWORD = 0;
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
       == FALSE
     {
-      return Err(ErrBox::last_os_error());
+      return Err(last_os_error());
     }
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK
@@ -126,7 +136,7 @@ fn op_set_raw(
       original_mode | RAW_MODE_MASK
     };
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(ErrBox::last_os_error());
+      return Err(last_os_error());
     }
 
     Ok(json!({}))
@@ -138,7 +148,7 @@ fn op_set_raw(
     let resource_holder =
       state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
-      return Err(ErrBox::bad_resource_id());
+      return Err(bad_resource_id());
     }
 
     if is_raw {
@@ -150,11 +160,9 @@ fn op_set_raw(
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
-          StreamResource::FsFile(None) => {
-            return Err(ErrBox::resource_unavailable())
-          }
+          StreamResource::FsFile(None) => return Err(resource_unavailable()),
           _ => {
-            return Err(ErrBox::not_supported());
+            return Err(not_supported());
           }
         };
 
@@ -195,10 +203,10 @@ fn op_set_raw(
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
           StreamResource::FsFile(None) => {
-            return Err(ErrBox::resource_unavailable());
+            return Err(resource_unavailable());
           }
           _ => {
-            return Err(ErrBox::bad_resource_id());
+            return Err(bad_resource_id());
           }
         };
 
@@ -220,7 +228,7 @@ fn op_isatty(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
@@ -264,7 +272,7 @@ fn op_console_size(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   super::cli_state(state).check_unstable("Deno.consoleSize");
 
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
@@ -286,7 +294,7 @@ fn op_console_size(
             &mut bufinfo,
           ) == 0
           {
-            return Err(ErrBox::last_os_error());
+            return Err(last_os_error());
           }
 
           Ok(ConsoleSize {
@@ -304,7 +312,7 @@ fn op_console_size(
         unsafe {
           let mut size: libc::winsize = std::mem::zeroed();
           if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-            return Err(ErrBox::last_os_error());
+            return Err(last_os_error());
           }
 
           // TODO (caspervonb) return a tuple instead
@@ -315,7 +323,7 @@ fn op_console_size(
         }
       }
     }
-    Err(_) => Err(ErrBox::bad_resource_id()),
+    Err(_) => Err(bad_resource_id()),
   })?;
 
   Ok(json!(size))

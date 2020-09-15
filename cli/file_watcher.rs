@@ -1,5 +1,5 @@
 use crate::colors;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use futures::stream::StreamExt;
 use futures::Future;
 use notify::event::Event as NotifyEvent;
@@ -15,8 +15,7 @@ use tokio::select;
 use tokio::sync::mpsc;
 
 // TODO(bartlomieju): rename
-type WatchFuture =
-  Pin<Box<dyn Future<Output = std::result::Result<(), deno_core::ErrBox>>>>;
+type WatchFuture = Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
 
 async fn error_handler(watch_future: WatchFuture) {
   let result = watch_future.await;
@@ -29,7 +28,7 @@ async fn error_handler(watch_future: WatchFuture) {
 pub async fn watch_func<F>(
   watch_paths: &[PathBuf],
   closure: F,
-) -> Result<(), ErrBox>
+) -> Result<(), AnyError>
 where
   F: Fn() -> WatchFuture,
 {
@@ -60,13 +59,14 @@ where
   }
 }
 
-pub async fn file_watcher(paths: &[PathBuf]) -> Result<(), deno_core::ErrBox> {
-  let (sender, mut receiver) = mpsc::channel::<Result<NotifyEvent, ErrBox>>(16);
+pub async fn file_watcher(paths: &[PathBuf]) -> Result<(), AnyError> {
+  let (sender, mut receiver) =
+    mpsc::channel::<Result<NotifyEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map_err(ErrBox::from);
+      let res2 = res.map_err(AnyError::from);
       let mut sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.

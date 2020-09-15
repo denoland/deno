@@ -6,8 +6,8 @@ use crate::state::State;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
+use deno_core::error::AnyError;
 use deno_core::v8;
-use deno_core::ErrBox;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -164,7 +164,7 @@ impl DerefMut for WebWorker {
 }
 
 impl Future for WebWorker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();

@@ -1,8 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use core::task::Poll;
+use deno_core::error::bad_resource_id;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use futures::future::poll_fn;
 use futures::StreamExt;
@@ -19,9 +21,10 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
+use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, Error, Message,
+  protocol::CloseFrame, Message,
 };
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
@@ -49,7 +52,7 @@ pub async fn op_ws_create(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: CreateArgs = serde_json::from_value(args)?;
   let ca_file = {
     let cli_state = super::cli_state2(&state);
@@ -70,7 +73,7 @@ pub async fn op_ws_create(
   });
   let addr = format!("{}:{}", domain, port);
   let try_socket = TcpStream::connect(addr).await;
-  let tcp_socket = match try_socket.map_err(Error::Io) {
+  let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
     Ok(socket) => socket,
     Err(_) => return Ok(json!({"success": false})),
   };
@@ -100,7 +103,7 @@ pub async fn op_ws_create(
 
   let (stream, response): (WsStream, Response) =
     client_async(request, socket).await.map_err(|err| {
-      ErrBox::type_error(format!(
+      type_error(format!(
         "failed to connect to WebSocket: {}",
         err.to_string()
       ))
@@ -140,7 +143,7 @@ pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   args: Value,
   bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: SendArgs = serde_json::from_value(args)?;
 
   let mut maybe_msg = Some(match args.text {
@@ -154,11 +157,10 @@ pub async fn op_ws_send(
     let stream = state
       .resource_table
       .get_mut::<WsStream>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
-    // Need to map tungstenite::error::Error to ErrBox.
-
+    // Need to map `TungsteniteError` to `AnyError`.
     ready!(stream.poll_ready_unpin(cx)).unwrap();
     if let Some(msg) = maybe_msg.take() {
       stream.start_send_unpin(msg).unwrap();
@@ -182,7 +184,7 @@ pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: CloseArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let mut maybe_msg = Some(Message::Close(args.code.map(|c| CloseFrame {
@@ -198,11 +200,10 @@ pub async fn op_ws_close(
     let stream = state
       .resource_table
       .get_mut::<WsStream>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
-    // Need to map tungstenite::error::Error to ErrBox.
-
+    // Need to map `TungsteniteError` to `AnyError`.
     ready!(stream.poll_ready_unpin(cx)).unwrap();
     if let Some(msg) = maybe_msg.take() {
       stream.start_send_unpin(msg).unwrap();
@@ -225,14 +226,14 @@ pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: NextEventArgs = serde_json::from_value(args)?;
   poll_fn(move |cx| {
     let mut state = state.borrow_mut();
     let stream = state
       .resource_table
       .get_mut::<WsStream>(args.rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
     stream
       .poll_next_unpin(cx)
       .map(|val| {

@@ -4,8 +4,8 @@ use crate::futures::FutureExt;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use serde_derive::Deserialize;
 use serde_json::Value;
@@ -31,7 +31,7 @@ async fn op_compile(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _data: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state2(&state);
   cli_state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
@@ -70,7 +70,7 @@ async fn op_transpile(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _data: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let cli_state = super::cli_state2(&state);
   cli_state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;

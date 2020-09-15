@@ -2,7 +2,8 @@
 
 //! https://url.spec.whatwg.org/#idna
 
-use deno_core::ErrBox;
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
 use idna::domain_to_ascii;
 use idna::domain_to_ascii_strict;
@@ -24,7 +25,7 @@ fn op_domain_to_ascii(
   _state: &mut deno_core::OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: DomainToAscii = serde_json::from_value(args)?;
   if args.be_strict {
     domain_to_ascii_strict(args.domain.as_str())
@@ -33,7 +34,7 @@ fn op_domain_to_ascii(
   }
   .map_err(|err| {
     let message = format!("Invalid IDNA encoded domain name: {:?}", err);
-    ErrBox::new("URIError", message)
+    uri_error(message)
   })
   .map(|domain| json!(domain))
 }

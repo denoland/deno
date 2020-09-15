@@ -12,7 +12,8 @@ use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
 use crate::msg;
-use deno_core::ErrBox;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
@@ -42,7 +43,7 @@ pub async fn lint_files(
   args: Vec<String>,
   ignore: Vec<String>,
   json: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   if args.len() == 1 && args[0] == "-" {
     return lint_stdin(json);
   }
@@ -127,7 +128,7 @@ fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
 
 fn lint_file(
   file_path: PathBuf,
-) -> Result<(Vec<LintDiagnostic>, String), ErrBox> {
+) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = msg::MediaType::from(&file_path);
@@ -144,10 +145,10 @@ fn lint_file(
 /// Lint stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
-fn lint_stdin(json: bool) -> Result<(), ErrBox> {
+fn lint_stdin(json: bool) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(ErrBox::error("Failed to read from stdin"));
+    return Err(generic_error("Failed to read from stdin"));
   }
 
   let reporter_kind = if json {
@@ -188,7 +189,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
 
 trait LintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>);
-  fn visit_error(&mut self, file_path: &str, err: &ErrBox);
+  fn visit_error(&mut self, file_path: &str, err: &AnyError);
   fn close(&mut self, check_count: usize);
 }
 
@@ -229,7 +230,7 @@ impl LintReporter for PrettyLintReporter {
     eprintln!("{}\n", message);
   }
 
-  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     eprintln!("Error linting: {}", file_path);
     eprintln!("   {}", err);
   }
@@ -309,7 +310,7 @@ impl LintReporter for JsonLintReporter {
     self.diagnostics.push(d.clone());
   }
 
-  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     self.errors.push(LintError {
       file_path: file_path.to_string(),
       message: err.to_string(),
