@@ -2367,8 +2367,7 @@ itest!(deno_lint {
 });
 
 itest!(deno_lint_quiet {
-  args:
-    "lint --unstable --quiet lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args: "lint --unstable --quiet lint/file1.js",
   output: "lint/expected_quiet.out",
   exit_code: 1,
 });

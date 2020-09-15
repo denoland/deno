@@ -8,8 +8,3 @@ while (false) {}
               ^^
     at [WILDCARD]/lint/file1.js:2:14
 
-(no-empty) Empty block statement
-} catch (e) {}
-            ^^
-    at [WILDCARD]/lint/file2.ts:3:12
-
