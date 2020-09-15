@@ -2366,6 +2366,13 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_quiet {
+  args:
+    "lint --unstable --quiet lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected_quiet.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_json {
   args:
     "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
