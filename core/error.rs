@@ -381,7 +381,7 @@ pub(crate) fn attach_handle_to_error(
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
 // values of type v8::Global<T>.
-pub struct ErrWithV8Handle {
+pub(crate) struct ErrWithV8Handle {
   err: AnyError,
   handle: v8::Global<v8::Value>,
 }
