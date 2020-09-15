@@ -11,7 +11,6 @@
 
 use crate::ast::DiagnosticBuffer;
 use crate::import_map::ImportMapError;
-use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
@@ -171,7 +170,7 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
 }
 
 pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
-  get_custom_error_class(e)
+  deno_core::error::get_custom_error_class(e)
     .or_else(|| {
       e.downcast_ref::<dlopen::Error>()
         .map(get_dlopen_error_class)
