@@ -6,6 +6,41 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.0 / 2020.09.13
+
+- feat: Implement WebSocket API (#7051, #7437)
+- feat(console): print proxy details (#7139)
+- feat(console): support CSS styling with "%c" (#7357)
+- feat(core): Add JSON ops (#7336)
+- feat(fmt, lint): show number of checked files (#7312)
+- feat(info): Dependency count and sizes (#6786, #7439)
+- feat(install): bundle before installation (#5276)
+- feat(op_crates/web): Add all single byte encodings to TextDecoder (#6178)
+- feat(unstable): Add Deno.systemMemoryInfo() (#7350)
+- feat(unstable): deno run --watch (#7382)
+- feat(unstable): deno test --coverage (#6901)
+- feat(unstable): enable importsNotUsedAsValues by default (#7413)
+- feat(unstable): enable isolatedModules by default (#7327)
+- fix: Empty Response body returns 0-byte array (#7387)
+- fix: panic on process.kill() after run (#7405)
+- fix: colors mismatch (#7367)
+- fix: compiler config resolution using relative paths (#7392)
+- fix(core): panic on big string allocation (#7395)
+- fix(op_crates/web): Use "deno:" URLs for internal script specifiers (#7383)
+- refactor: Improve placeholder module names (#7430)
+- refactor: improve tsc diagnostics (#7420)
+- refactor(core): merge CoreIsolate and EsIsolate into JsRuntime (#7370, #7373,
+  #7415)
+- refactor(core): Use gotham-like state for ops (#7385)
+- upgrade: deno_doc, deno_lint, dprint, swc (#7381, #7391, #7402, #7434)
+- upgrade: rusty_v8 0.10.0 / V8 8.7.75 (#7429)
+
+Changes in std version 0.69.0:
+
+- BREAKING(std/fs): remove writeJson and writeJsonSync (#7256)
+- BREAKING(std/fs): remove readJson and readJsonSync (#7255)
+- BREAKING(std/ws): remove connect method (#7403)
+
 ### 1.3.3 / 2020.09.04
 
 - feat(unstable): Add Deno.futime and Deno.futimeSync (#7266)

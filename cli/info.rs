@@ -6,6 +6,7 @@ use crate::ModuleSpecifier;
 use crate::Permissions;
 use deno_core::ErrBox;
 use serde::ser::Serializer;
+use deno_core::error::AnyError;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -405,8 +406,8 @@ pub fn human_size(bytse: f64) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::ast::Location;
   use crate::module_graph::ImportDescriptor;
-  use crate::swc_util::Location;
   use crate::MediaType;
 
   #[test]

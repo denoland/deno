@@ -11,7 +11,8 @@ use crate::colors;
 use crate::diff::diff;
 use crate::fs::files_in_subtree;
 use crate::text_encoding;
-use deno_core::ErrBox;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
@@ -33,7 +34,7 @@ pub async fn format(
   args: Vec<String>,
   check: bool,
   exclude: Vec<String>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
@@ -56,15 +57,18 @@ pub async fn format(
 async fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let checked_files_count = Arc::new(AtomicUsize::new(0));
 
   // prevent threads outputting at the same time
   let output_lock = Arc::new(Mutex::new(0));
 
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
+    let checked_files_count = checked_files_count.clone();
     move |file_path| {
+      checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
       let r = dprint::format_text(&file_path, &file_text, &config);
       match r {
@@ -105,13 +109,17 @@ async fn check_source_files(
 
   let not_formatted_files_count =
     not_formatted_files_count.load(Ordering::Relaxed);
+  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
+  let checked_files_str =
+    format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
+    println!("Checked {}", checked_files_str);
     Ok(())
   } else {
-    Err(ErrBox::error(format!(
-      "Found {} not formatted {}",
-      not_formatted_files_count,
-      files_str(not_formatted_files_count),
+    let not_formatted_files_str = files_str(not_formatted_files_count);
+    Err(generic_error(format!(
+      "Found {} not formatted {} in {}",
+      not_formatted_files_count, not_formatted_files_str, checked_files_str,
     )))
   }
 }
@@ -119,13 +127,16 @@ async fn check_source_files(
 async fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let checked_files_count = Arc::new(AtomicUsize::new(0));
   let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
   run_parallelized(paths, {
     let formatted_files_count = formatted_files_count.clone();
+    let checked_files_count = checked_files_count.clone();
     move |file_path| {
+      checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
       let r = dprint::format_text(&file_path, &file_contents.text, &config);
       match r {
@@ -160,16 +171,24 @@ async fn format_source_files(
     formatted_files_count,
     files_str(formatted_files_count),
   );
+
+  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
+  println!(
+    "Checked {} {}",
+    checked_files_count,
+    files_str(checked_files_count)
+  );
+
   Ok(())
 }
 
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--check` flag.
-fn format_stdin(check: bool) -> Result<(), ErrBox> {
+fn format_stdin(check: bool) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(ErrBox::error("Failed to read from stdin"));
+    return Err(generic_error("Failed to read from stdin"));
   }
   let config = get_config();
 
@@ -185,7 +204,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
       }
     }
     Err(e) => {
-      return Err(ErrBox::error(e));
+      return Err(generic_error(e));
     }
   }
   Ok(())
@@ -243,7 +262,7 @@ struct FileContents {
   had_bom: bool,
 }
 
-fn read_file_contents(file_path: &Path) -> Result<FileContents, ErrBox> {
+fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(&file_path)?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
@@ -261,7 +280,7 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, ErrBox> {
 fn write_file_contents(
   file_path: &Path,
   file_contents: FileContents,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let file_text = if file_contents.had_bom {
     // add back the BOM
     format!("{}{}", BOM_CHAR, file_contents.text)
@@ -275,9 +294,9 @@ fn write_file_contents(
 pub async fn run_parallelized<F>(
   file_paths: Vec<PathBuf>,
   f: F,
-) -> Result<(), ErrBox>
+) -> Result<(), AnyError>
 where
-  F: FnOnce(PathBuf) -> Result<(), ErrBox> + Send + 'static + Clone,
+  F: FnOnce(PathBuf) -> Result<(), AnyError> + Send + 'static + Clone,
 {
   let handles = file_paths.iter().map(|file_path| {
     let f = f.clone();

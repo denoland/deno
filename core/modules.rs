@@ -2,8 +2,9 @@
 
 use rusty_v8 as v8;
 
+use crate::error::generic_error;
+use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
-use crate::ErrBox;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -48,8 +49,9 @@ pub struct ModuleSource {
 }
 
 pub type PrepareLoadFuture =
-  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, ErrBox>)>;
-pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, AnyError>)>;
+pub type ModuleSourceFuture =
+  dyn Future<Output = Result<ModuleSource, AnyError>>;
 
 pub trait ModuleLoader {
   /// Returns an absolute URL.
@@ -64,7 +66,7 @@ pub trait ModuleLoader {
     specifier: &str,
     referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox>;
+  ) -> Result<ModuleSpecifier, AnyError>;
 
   /// Given ModuleSpecifier, load its source code.
   ///
@@ -91,7 +93,7 @@ pub trait ModuleLoader {
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     async { Ok(()) }.boxed_local()
   }
 }
@@ -106,8 +108,8 @@ impl ModuleLoader for NoopModuleLoader {
     _specifier: &str,
     _referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox> {
-    Err(ErrBox::error("Module loading is not supported"))
+  ) -> Result<ModuleSpecifier, AnyError> {
+    Err(generic_error("Module loading is not supported"))
   }
 
   fn load(
@@ -116,7 +118,7 @@ impl ModuleLoader for NoopModuleLoader {
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async { Err(ErrBox::error("Module loading is not supported")) }
+    async { Err(generic_error("Module loading is not supported")) }
       .boxed_local()
   }
 }
@@ -188,7 +190,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, ErrBox>) {
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         let spec = match self.loader.resolve(specifier, ".", true) {
@@ -223,7 +225,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  fn add_root(&mut self) -> Result<(), ErrBox> {
+  fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         self.loader.resolve(specifier, ".", true)?
@@ -273,7 +275,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<ModuleSource, ErrBox>;
+  type Item = Result<ModuleSource, AnyError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -361,6 +363,7 @@ impl ModuleNameMap {
   }
 
   /// Check if a name is an alias to another module.
+  #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
     let cond = self.inner.get(name);
     matches!(cond, Some(SymbolicModule::Alias(_)))
@@ -425,6 +428,7 @@ impl Modules {
     self.by_name.alias(name.to_owned(), target.to_owned());
   }
 
+  #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
     self.by_name.is_alias(name)
   }
@@ -441,9 +445,8 @@ impl Modules {
 mod tests {
   use super::*;
   use crate::js_check;
-  use crate::BasicState;
   use crate::JsRuntime;
-  use crate::StartupData;
+  use crate::RuntimeOptions;
   use futures::future::FutureExt;
   use std::error::Error;
   use std::fmt;
@@ -519,7 +522,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Output = Result<ModuleSource, ErrBox>;
+    type Output = Result<ModuleSource, AnyError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
       let inner = self.get_mut();
@@ -550,7 +553,7 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
+    ) -> Result<ModuleSpecifier, AnyError> {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -620,12 +623,10 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_with_loader(
-      loader,
-      BasicState::new(),
-      StartupData::None,
-      false,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
     let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
@@ -687,12 +688,10 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_with_loader(
-      loader,
-      BasicState::new(),
-      StartupData::None,
-      false,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
@@ -765,12 +764,10 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_with_loader(
-      loader,
-      BasicState::new(),
-      StartupData::None,
-      false,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
@@ -834,12 +831,10 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
       let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
       let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
 
@@ -884,12 +879,10 @@ mod tests {
   fn loader_disappears_after_error() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
       let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
@@ -917,12 +910,10 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut runtime = JsRuntime::new_with_loader(
-      loader,
-      BasicState::new(),
-      StartupData::None,
-      false,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.

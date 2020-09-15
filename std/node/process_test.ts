@@ -1,3 +1,5 @@
+// deno-lint-ignore-file no-undef
+
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import * as all from "./process.ts";
@@ -30,6 +32,8 @@ Deno.test({
   fn() {
     assertEquals(process.cwd(), Deno.cwd());
 
+    const currentDir = Deno.cwd(); // to unchange current directory after this test
+
     const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
     process.chdir(path.resolve(moduleDir, ".."));
 
@@ -38,6 +42,7 @@ Deno.test({
     assert(process.cwd().match(/\Wnode$/));
     process.chdir("..");
     assert(process.cwd().match(/\Wstd$/));
+    process.chdir(currentDir); // to unchange current directory after this test
   },
 });
 

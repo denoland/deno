@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::errors::get_error_class_name;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
@@ -10,17 +9,10 @@ use crate::metrics::Metrics;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
-use deno_core::BufVec;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_core::Op;
-use deno_core::OpId;
-use deno_core::OpRegistry;
-use deno_core::OpRouter;
-use deno_core::OpTable;
-use deno_core::ResourceTable;
 use futures::future::FutureExt;
 use futures::Future;
 use rand::rngs::StdRng;
@@ -36,8 +28,11 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct State {
+// This is named "CliState" instead of just "State" to avoid confusion with all
+// other state structs (GlobalState, OpState, GothamState).
+// TODO(ry) Many of the items in this struct should be moved out and into
+// OpState, removing redundant RefCell wrappers if possible.
+pub struct CliState {
   pub global_state: Arc<GlobalState>,
   pub permissions: RefCell<Permissions>,
   pub main_module: ModuleSpecifier,
@@ -54,22 +49,6 @@ pub struct State {
   pub is_main: bool,
   pub is_internal: bool,
   pub http_client: RefCell<reqwest::Client>,
-  pub resource_table: RefCell<ResourceTable>,
-  pub op_table: RefCell<OpTable<Self>>,
-}
-
-impl State {
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  pub fn check_unstable(&self, api_name: &str) {
-    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
-    // stack trace in JS.
-    if !self.global_state.flags.unstable {
-      exit_unstable(api_name);
-    }
-  }
 }
 
 pub fn exit_unstable(api_name: &str) {
@@ -80,13 +59,13 @@ pub fn exit_unstable(api_name: &str) {
   std::process::exit(70);
 }
 
-impl ModuleLoader for State {
+impl ModuleLoader for CliState {
   fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
@@ -136,7 +115,7 @@ impl ModuleLoader for State {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     let module_specifier = module_specifier.clone();
     let target_lib = self.target_lib.clone();
     let maybe_import_map = self.import_map.clone();
@@ -175,7 +154,7 @@ impl ModuleLoader for State {
   }
 }
 
-impl State {
+impl CliState {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: &Arc<GlobalState>,
@@ -183,9 +162,9 @@ impl State {
     main_module: ModuleSpecifier,
     maybe_import_map: Option<ImportMap>,
     is_internal: bool,
-  ) -> Result<Rc<Self>, ErrBox> {
+  ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
-    let state = State {
+    let state = CliState {
       global_state: global_state.clone(),
       main_module,
       permissions: shared_permissions
@@ -202,8 +181,6 @@ impl State {
       is_main: true,
       is_internal,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
-      resource_table: Default::default(),
-      op_table: Default::default(),
     };
     Ok(Rc::new(state))
   }
@@ -213,9 +190,9 @@ impl State {
     global_state: &Arc<GlobalState>,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
-  ) -> Result<Rc<Self>, ErrBox> {
+  ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
-    let state = State {
+    let state = CliState {
       global_state: global_state.clone(),
       main_module,
       permissions: shared_permissions
@@ -232,14 +209,12 @@ impl State {
       is_main: false,
       is_internal: false,
       http_client: create_http_client(fl.ca_file.as_deref())?.into(),
-      resource_table: Default::default(),
-      op_table: Default::default(),
     };
     Ok(Rc::new(state))
   }
 
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_read(path)
   }
 
@@ -250,49 +225,49 @@ impl State {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.permissions.borrow().check_read_blind(path, display)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), ErrBox> {
+  pub fn check_env(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), AnyError> {
     self.permissions.borrow().check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
     self.permissions.borrow().check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), ErrBox> {
+  pub fn check_run(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_run()
   }
 
   #[inline]
-  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
+  pub fn check_hrtime(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_hrtime()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let u = module_specifier.as_url();
     // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
     // statement that is actually reachable...
@@ -321,7 +296,7 @@ impl State {
   pub fn mock(main_module: &str) -> Rc<Self> {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
-    State::new(
+    CliState::new(
       &GlobalState::mock(vec!["deno".to_string()], None),
       None,
       module_specifier,
@@ -330,79 +305,16 @@ impl State {
     )
     .unwrap()
   }
-}
 
-impl OpRouter for State {
-  fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-    // TODOs:
-    // * The 'bytes' metrics seem pretty useless, especially now that the
-    //   distinction between 'control' and 'data' buffers has become blurry.
-    // * Tracking completion of async ops currently makes us put the boxed
-    //   future into _another_ box. Keeping some counters may not be expensive
-    //   in itself, but adding a heap allocation for every metric seems bad.
-    let mut buf_len_iter = bufs.iter().map(|buf| buf.len());
-    let bytes_sent_control = buf_len_iter.next().unwrap_or(0);
-    let bytes_sent_data = buf_len_iter.sum();
-
-    let op_fn = self
-      .op_table
-      .borrow()
-      .get_index(op_id)
-      .map(|(_, op_fn)| op_fn.clone())
-      .unwrap();
-
-    let self_ = self.clone();
-    let op = (op_fn)(self_, bufs);
-
-    let self_ = self.clone();
-    let mut metrics = self_.metrics.borrow_mut();
-    match op {
-      Op::Sync(buf) => {
-        metrics.op_sync(bytes_sent_control, bytes_sent_data, buf.len());
-        Op::Sync(buf)
-      }
-      Op::Async(fut) => {
-        metrics.op_dispatched_async(bytes_sent_control, bytes_sent_data);
-        let fut = fut
-          .inspect(move |buf| {
-            self.metrics.borrow_mut().op_completed_async(buf.len());
-          })
-          .boxed_local();
-        Op::Async(fut)
-      }
-      Op::AsyncUnref(fut) => {
-        metrics.op_dispatched_async_unref(bytes_sent_control, bytes_sent_data);
-        let fut = fut
-          .inspect(move |buf| {
-            self
-              .metrics
-              .borrow_mut()
-              .op_completed_async_unref(buf.len());
-          })
-          .boxed_local();
-        Op::AsyncUnref(fut)
-      }
-      other => other,
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
+    // stack trace in JS.
+    if !self.global_state.flags.unstable {
+      exit_unstable(api_name);
     }
-  }
-}
-
-impl OpRegistry for State {
-  fn get_op_catalog(self: Rc<Self>) -> HashMap<String, OpId> {
-    self.op_table.borrow().get_op_catalog()
-  }
-
-  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
-  {
-    let mut op_table = self.op_table.borrow_mut();
-    let (op_id, prev) = op_table.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(prev.is_none());
-    op_id
-  }
-
-  fn get_error_class_name(&self, err: &ErrBox) -> &'static str {
-    get_error_class_name(err)
   }
 }

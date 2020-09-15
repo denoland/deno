@@ -3,15 +3,16 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
+use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use crate::startup_data;
-use crate::state::State;
-use deno_core::ErrBox;
+use crate::state::CliState;
+use deno_core::error::AnyError;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
-use deno_core::StartupData;
+use deno_core::RuntimeOptions;
+use deno_core::Snapshot;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -32,8 +33,8 @@ use url::Url;
 /// worker.
 pub enum WorkerEvent {
   Message(Box<[u8]>),
-  Error(ErrBox),
-  TerminalError(ErrBox),
+  Error(AnyError),
+  TerminalError(AnyError),
 }
 
 pub struct WorkerChannelsInternal {
@@ -49,7 +50,7 @@ pub struct WorkerHandle {
 
 impl WorkerHandle {
   /// Post message to worker as a host.
-  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), ErrBox> {
+  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
     sender.try_send(buf)?;
     Ok(())
@@ -57,7 +58,7 @@ impl WorkerHandle {
 
   /// Get the event with lock.
   /// Return error if more than one listener tries to get event
-  pub async fn get_event(&self) -> Result<Option<WorkerEvent>, ErrBox> {
+  pub async fn get_event(&self) -> Result<Option<WorkerEvent>, AnyError> {
     let mut receiver = self.receiver.try_lock()?;
     Ok(receiver.next().await)
   }
@@ -91,9 +92,9 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: deno_core::JsRuntime,
+  pub isolate: JsRuntime,
   pub inspector: Option<Box<DenoInspector>>,
-  pub state: Rc<State>,
+  pub state: Rc<CliState>,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
@@ -102,25 +103,25 @@ pub struct Worker {
 impl Worker {
   pub fn new(
     name: String,
-    startup_data: StartupData,
-    state: &Rc<State>,
+    startup_snapshot: Option<Snapshot>,
+    state: &Rc<CliState>,
   ) -> Self {
-    let mut isolate = deno_core::JsRuntime::new_with_loader(
-      state.clone(),
-      state.clone(),
-      startup_data,
-      false,
-    );
+    let global_state = state.global_state.clone();
 
-    {
-      let global_state = state.global_state.clone();
-      let core_state_rc = JsRuntime::state(&isolate);
-      let mut core_state = core_state_rc.borrow_mut();
-      core_state.set_js_error_create_fn(move |core_js_error| {
+    let mut isolate = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(state.clone()),
+      startup_snapshot,
+      js_error_create_fn: Some(Box::new(move |core_js_error| {
         JsError::create(core_js_error, &global_state.ts_compiler)
-      });
+      })),
+      ..Default::default()
+    });
+    {
+      let op_state = isolate.op_state();
+      let mut op_state = op_state.borrow_mut();
+      op_state.get_error_class_fn = &crate::errors::get_error_class_name;
+      op_state.put(state.clone());
     }
-
     let inspector = {
       let global_state = &state.global_state;
       global_state
@@ -145,7 +146,7 @@ impl Worker {
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
+  pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
     let path = env::current_dir().unwrap().join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.execute2(url.as_str(), js_source)
@@ -157,7 +158,7 @@ impl Worker {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.isolate.execute(js_filename, js_source)
   }
 
@@ -165,7 +166,7 @@ impl Worker {
   pub async fn preload_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     self.isolate.load_module(module_specifier, None).await
   }
 
@@ -173,7 +174,7 @@ impl Worker {
   pub async fn execute_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
     self.isolate.mod_evaluate(id)
@@ -185,7 +186,7 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
     code: String,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let id = self
       .isolate
       .load_module(module_specifier, Some(code))
@@ -222,7 +223,7 @@ impl Drop for Worker {
 }
 
 impl Future for Worker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -235,7 +236,7 @@ impl Future for Worker {
 }
 
 impl Deref for Worker {
-  type Target = deno_core::JsRuntime;
+  type Target = JsRuntime;
   fn deref(&self) -> &Self::Target {
     &self.isolate
   }
@@ -257,31 +258,35 @@ pub struct MainWorker(Worker);
 
 impl MainWorker {
   // TODO(ry) combine MainWorker::new and MainWorker::create.
-  fn new(name: String, startup_data: StartupData, state: &Rc<State>) -> Self {
-    let worker = Worker::new(name, startup_data, state);
+  fn new(
+    name: String,
+    startup_snapshot: Option<Snapshot>,
+    state: &Rc<CliState>,
+  ) -> Self {
+    let mut worker = Worker::new(name, startup_snapshot, state);
     {
-      ops::runtime::init(&state);
-      ops::runtime_compiler::init(&state);
-      ops::errors::init(&state);
-      ops::fetch::init(&state);
-      ops::websocket::init(&state);
-      ops::fs::init(&state);
-      ops::fs_events::init(&state);
-      ops::idna::init(&state);
-      ops::io::init(&state);
-      ops::plugin::init(&state);
-      ops::net::init(&state);
-      ops::tls::init(&state);
-      ops::os::init(&state);
-      ops::permissions::init(&state);
-      ops::process::init(&state);
-      ops::random::init(&state);
-      ops::repl::init(&state);
-      ops::resources::init(&state);
-      ops::signal::init(&state);
-      ops::timers::init(&state);
-      ops::tty::init(&state);
-      ops::worker_host::init(&state);
+      ops::runtime::init(&mut worker);
+      ops::runtime_compiler::init(&mut worker);
+      ops::errors::init(&mut worker);
+      ops::fetch::init(&mut worker);
+      ops::websocket::init(&mut worker);
+      ops::fs::init(&mut worker);
+      ops::fs_events::init(&mut worker);
+      ops::idna::init(&mut worker);
+      ops::io::init(&mut worker);
+      ops::plugin::init(&mut worker);
+      ops::net::init(&mut worker);
+      ops::tls::init(&mut worker);
+      ops::os::init(&mut worker);
+      ops::permissions::init(&mut worker);
+      ops::process::init(&mut worker);
+      ops::random::init(&mut worker);
+      ops::repl::init(&mut worker);
+      ops::resources::init(&mut worker);
+      ops::signal::init(&mut worker);
+      ops::timers::init(&mut worker);
+      ops::tty::init(&mut worker);
+      ops::worker_host::init(&mut worker);
     }
     Self(worker)
   }
@@ -289,8 +294,8 @@ impl MainWorker {
   pub fn create(
     global_state: &Arc<GlobalState>,
     main_module: ModuleSpecifier,
-  ) -> Result<MainWorker, ErrBox> {
-    let state = State::new(
+  ) -> Result<MainWorker, AnyError> {
+    let state = CliState::new(
       &global_state,
       None,
       main_module,
@@ -299,11 +304,13 @@ impl MainWorker {
     )?;
     let mut worker = MainWorker::new(
       "main".to_string(),
-      startup_data::deno_isolate_init(),
+      Some(js::deno_isolate_init()),
       &state,
     );
     {
-      let mut t = state.resource_table.borrow_mut();
+      let op_state = worker.op_state();
+      let mut op_state = op_state.borrow_mut();
+      let t = &mut op_state.resource_table;
       let (stdin, stdout, stderr) = get_stdio();
       if let Some(stream) = stdin {
         t.add("stdin", Box::new(stream));
@@ -338,7 +345,7 @@ mod tests {
   use super::*;
   use crate::flags;
   use crate::global_state::GlobalState;
-  use crate::startup_data;
+  use crate::js;
   use crate::tokio_util;
   use std::sync::atomic::Ordering;
 
@@ -352,11 +359,10 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -380,11 +386,10 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
-      let mut worker =
-        MainWorker::new("TEST".to_string(), StartupData::None, &state);
+      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -416,11 +421,11 @@ mod tests {
     };
     let global_state = GlobalState::new(flags).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
-      startup_data::deno_isolate_init(),
+      Some(js::deno_isolate_init()),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();
@@ -437,10 +442,10 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let state = State::mock("./hello.js");
+    let state = CliState::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),
-      startup_data::deno_isolate_init(),
+      Some(js::deno_isolate_init()),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();

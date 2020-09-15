@@ -106,7 +106,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
         let split = s.split('\n').enumerate();
         for (i, s) in split {
           if i > 0 {
-            orig.push_str("\n");
+            orig.push('\n');
           }
           orig.push_str(&fmt_rem_text_highlight(s));
         }
@@ -116,7 +116,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
         let split = s.split('\n').enumerate();
         for (i, s) in split {
           if i > 0 {
-            edit.push_str("\n");
+            edit.push('\n');
           }
           edit.push_str(&fmt_add_text_highlight(s));
         }

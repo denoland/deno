@@ -1,17 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#[macro_use]
-extern crate downcast_rs;
 extern crate futures;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-mod basic_state;
 mod bindings;
-mod errors;
+pub mod error;
 mod flags;
+mod gotham_state;
 mod module_specifier;
 mod modules;
 mod normalize_path;
@@ -24,10 +22,6 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
-pub use crate::basic_state::BasicState;
-pub use crate::errors::AnyError;
-pub use crate::errors::ErrBox;
-pub use crate::errors::JsError;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
@@ -38,22 +32,21 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
+pub use crate::ops::json_op_async;
+pub use crate::ops::json_op_sync;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
-pub use crate::ops::OpRegistry;
-pub use crate::ops::OpRouter;
+pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
 pub use crate::runtime::js_check;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::HeapLimits;
 pub use crate::runtime::JsRuntime;
-pub use crate::runtime::JsRuntimeState;
-pub use crate::runtime::Script;
+pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
-pub use crate::runtime::StartupData;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 pub use serde_json;

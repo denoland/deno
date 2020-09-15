@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
-use deno_core::ErrBox;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -47,7 +47,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   file.write_all(data.as_ref())
 }
 
-pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
+pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
