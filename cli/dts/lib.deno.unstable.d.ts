@@ -236,7 +236,7 @@ declare namespace Deno {
    * user friendly format.
    *
    * ```ts
-   * const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
+   * const {diagnostics, emitMap} = Deno.compile("file_with_compile_issues.ts");
    * console.table(diagnostics);  // Prints raw diagnostic data
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
    * ```
@@ -500,9 +500,15 @@ declare namespace Deno {
    * the module name will be used to determine the media type of the module.
    *
    * ```ts
-   * const [ maybeDiagnostics1, output1 ] = await Deno.compile("foo.ts");
+   * const { 
+   *   diagnostics: maybeDiagnostics1, 
+   *   emitMap: output1 
+   * } = await Deno.compile("foo.ts");
    *
-   * const [ maybeDiagnostics2, output2 ] = await Deno.compile("/foo.ts", {
+   * const { 
+   *   diagnostics: maybeDiagnostics2, 
+   *   emitMap: output2
+   * } = await Deno.compile("/foo.ts", {
    *   "/foo.ts": `export * from "./bar.ts";`,
    *   "/bar.ts": `export const bar = "bar";`
    * });
@@ -524,7 +530,10 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions,
-  ): Promise<[Diagnostic[] | undefined, Record<string, string>]>;
+  ): Promise<{
+      diagnostics: Diagnostic[] | undefined, 
+      emitMap: Record<string, string>
+  }>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -567,7 +576,10 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions,
-  ): Promise<[Diagnostic[] | undefined, string]>;
+  ): Promise<{
+    diagnostics: Diagnostic[] | undefined, 
+    output: string
+  }>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {

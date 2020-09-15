@@ -5,6 +5,8 @@ use crate::colors;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
 use std::error::Error;
 use std::fmt;
 
@@ -160,6 +162,21 @@ impl<'de> Deserialize<'de> for DiagnosticCategory {
   }
 }
 
+impl Serialize for DiagnosticCategory {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value = match self {
+      DiagnosticCategory::Warning => 0,
+      DiagnosticCategory::Error => 1,
+      DiagnosticCategory::Suggestion => 2,
+      DiagnosticCategory::Message => 3,
+    };
+    Serialize::serialize(&value, serializer)
+  }
+}
+
 impl From<i64> for DiagnosticCategory {
   fn from(value: i64) -> Self {
     match value {
@@ -172,7 +189,7 @@ impl From<i64> for DiagnosticCategory {
   }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
   message_text: String,
@@ -199,14 +216,14 @@ impl DiagnosticMessageChain {
   }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
   pub line: u64,
   pub character: u64,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
   category: DiagnosticCategory,
@@ -356,6 +373,15 @@ impl<'de> Deserialize<'de> for Diagnostics {
   {
     let items: Vec<Diagnostic> = Deserialize::deserialize(deserializer)?;
     Ok(Diagnostics(items))
+  }
+}
+
+impl Serialize for Diagnostics {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.0, serializer)
   }
 }
 

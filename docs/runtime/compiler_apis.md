@@ -31,7 +31,7 @@ the keys are the output filenames and the values are the content.
 An example of providing sources:
 
 ```ts
-const [diagnostics, emitMap] = await Deno.compile("/foo.ts", {
+const { diagnostics, emitMap } = await Deno.compile("/foo.ts", {
   "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
   "/bar.ts": `export const bar = "bar";\n`,
 });
@@ -47,7 +47,7 @@ When not supplying resources, you can use local or remote modules, just like you
 could do on the command line. So you could do something like this:
 
 ```ts
-const [diagnostics, emitMap] = await Deno.compile(
+const { diagnostics, emitMap } = await Deno.compile(
   "https://deno.land/std@$STD_VERSION/examples/welcome.ts",
 );
 ```
@@ -144,7 +144,7 @@ that is destined for the browser, you would want to use the TypeScript `"dom"`
 library:
 
 ```ts
-const [errors, emitted] = await Deno.compile(
+const { diagnostics, emitMap } = await Deno.compile(
   "main.ts",
   {
     "main.ts": `document.getElementById("foo");\n`,
@@ -184,7 +184,7 @@ So to add the Deno namespace to a compilation, you would include the `deno.ns`
 lib in the array. For example:
 
 ```ts
-const [errors, emitted] = await Deno.compile(
+const { diagnostics, emitMap } = await Deno.compile(
   "main.ts",
   {
     "main.ts": `document.getElementById("foo");\n`,
@@ -215,7 +215,7 @@ document.getElementById("foo");
 It would compile without errors like this:
 
 ```ts
-const [errors, emitted] = await Deno.compile("./main.ts", undefined, {
+const { diagnostics, emitMap } = await Deno.compile("./main.ts", undefined, {
   lib: ["esnext"],
 });
 ```

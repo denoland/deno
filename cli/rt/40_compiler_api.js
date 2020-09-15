@@ -35,7 +35,6 @@
     return opTranspile(payload);
   }
 
-  // TODO(bartlomieju): change return type to interface?
   async function compile(
     rootName,
     sources,
@@ -52,22 +51,20 @@
       sources: !!sources,
       options,
     });
-    const result = await opCompile(payload);
-    util.assert(result.emitMap);
-    const maybeDiagnostics = result.diagnostics.length === 0
-      ? undefined
-      : result.diagnostics;
+    const { diagnostics, emitMap } = await opCompile(payload);
+    util.assert(emitMap);
 
-    const emitMap = {};
-
-    for (const [key, emittedSource] of Object.entries(result.emitMap)) {
-      emitMap[key] = emittedSource.contents;
+    const processedEmitMap = {};
+    for (const [key, emittedSource] of Object.entries(emitMap)) {
+      processedEmitMap[key] = emittedSource.contents;
     }
 
-    return [maybeDiagnostics, emitMap];
+    return {
+      diagnostics: diagnostics.length === 0 ? undefined : diagnostics,
+      emitMap: processedEmitMap,
+    };
   }
 
-  // TODO(bartlomieju): change return type to interface?
   async function bundle(
     rootName,
     sources,
@@ -84,12 +81,12 @@
       sources: !!sources,
       options,
     });
-    const result = await opCompile(payload);
-    util.assert(result.output);
-    const maybeDiagnostics = result.diagnostics.length === 0
-      ? undefined
-      : result.diagnostics;
-    return [maybeDiagnostics, result.output];
+    const { diagnostics, output } = await opCompile(payload);
+    util.assert(output);
+    return {
+      diagnostics: diagnostics.length === 0 ? undefined : diagnostics,
+      emitMap: processedEmitMap,
+    };
   }
 
   window.__bootstrap.compilerApi = {

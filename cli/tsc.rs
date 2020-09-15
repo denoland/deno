@@ -385,11 +385,11 @@ struct Stat {
   value: f64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct EmittedSource {
-  filename: String,
-  contents: String,
+pub struct EmittedSource {
+  pub filename: String,
+  pub contents: String,
 }
 
 #[derive(Deserialize)]
@@ -419,20 +419,18 @@ struct TranspileTsOptions {
   jsx_fragment_factory: String,
 }
 
-// TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(unused)]
-struct RuntimeBundleResponse {
-  diagnostics: Diagnostics,
-  output: String,
+pub struct RuntimeBundleResponse {
+  pub diagnostics: Diagnostics,
+  pub output: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RuntimeCompileResponse {
-  diagnostics: Diagnostics,
-  emit_map: HashMap<String, EmittedSource>,
+pub struct RuntimeCompileResponse {
+  pub diagnostics: Diagnostics,
+  pub emit_map: HashMap<String, EmittedSource>,
 }
 
 impl TsCompiler {
@@ -655,7 +653,7 @@ impl TsCompiler {
     if let Some(build_info) = compile_response.build_info {
       self.cache_build_info(&module_url, build_info)?;
     }
-    self.cache_emitted_files(compile_response.emit_map)?;
+    self.cache_emitted_files(&compile_response.emit_map)?;
     Ok(())
   }
 
@@ -847,7 +845,7 @@ impl TsCompiler {
       emit_map.insert(emitted_filename, emitted_source);
     }
 
-    self.cache_emitted_files(emit_map)?;
+    self.cache_emitted_files(&emit_map)?;
     Ok(())
   }
 
@@ -886,7 +884,7 @@ impl TsCompiler {
 
   fn cache_emitted_files(
     &self,
-    emit_map: HashMap<String, EmittedSource>,
+    emit_map: &HashMap<String, EmittedSource>,
   ) -> std::io::Result<()> {
     for (emitted_name, source) in emit_map.iter() {
       let specifier = ModuleSpecifier::resolve_url(&source.filename)
@@ -1199,7 +1197,7 @@ pub async fn runtime_compile(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, AnyError> {
+) -> Result<RuntimeCompileResponse, AnyError> {
   let mut user_options = if let Some(options) = maybe_options {
     tsc_config::parse_raw_config(options)?
   } else {
@@ -1285,13 +1283,10 @@ pub async fn runtime_compile(
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
   if response.diagnostics.0.is_empty() && sources.is_none() {
-    compiler.cache_emitted_files(response.emit_map)?;
+    compiler.cache_emitted_files(&response.emit_map)?;
   }
 
-  // We're returning `Ok()` instead of `Err()` because it's not runtime
-  // error if there were diagnostics produced; we want to let user handle
-  // diagnostics in the runtime.
-  Ok(serde_json::from_str::<Value>(&json_str).unwrap())
+  Ok(response)
 }
 
 /// This function is used by `Deno.bundle()` API.
@@ -1301,7 +1296,7 @@ pub async fn runtime_bundle(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, AnyError> {
+) -> Result<RuntimeBundleResponse, AnyError> {
   let mut user_options = if let Some(options) = maybe_options {
     tsc_config::parse_raw_config(options)?
   } else {
@@ -1390,11 +1385,8 @@ pub async fn runtime_bundle(
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_errbox)?;
-  let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
-  // We're returning `Ok()` instead of `Err()` because it's not runtime
-  // error if there were diagnostics produced; we want to let user handle
-  // diagnostics in the runtime.
-  Ok(serde_json::from_str::<Value>(&json_str).unwrap())
+  let response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
+  Ok(response)
 }
 
 /// This function is used by `Deno.transpileOnly()` API.

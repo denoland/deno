@@ -1,4 +1,4 @@
-const [errors, program] = await Deno.compile(
+const { diagnostics, emitMap } = await Deno.compile(
   "main.ts",
   {
     "main.ts": `document.getElementById("foo");`,
@@ -8,5 +8,5 @@ const [errors, program] = await Deno.compile(
   },
 );
 
-console.log(errors);
-console.log(Object.keys(program));
+console.log(diagnostics);
+console.log(Object.keys(emitMap));

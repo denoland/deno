@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::futures::FutureExt;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
@@ -37,27 +36,29 @@ async fn op_compile(
   let args: CompileArgs = serde_json::from_value(args)?;
   let global_state = cli_state.global_state.clone();
   let permissions = cli_state.permissions.borrow().clone();
-  let fut = if args.bundle {
-    runtime_bundle(
+  let response = if args.bundle {
+    let r = runtime_bundle(
       &global_state,
       permissions,
       &args.root_name,
       &args.sources,
       &args.options,
     )
-    .boxed_local()
+    .await?;
+    serde_json::to_value(r)?
   } else {
-    runtime_compile(
+    let r = runtime_compile(
       &global_state,
       permissions,
       &args.root_name,
       &args.sources,
       &args.options,
     )
-    .boxed_local()
+    .await?;
+    serde_json::to_value(r)?
   };
-  let result = fut.await?;
-  Ok(result)
+
+  Ok(response)
 }
 
 #[derive(Deserialize, Debug)]
