@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::ErrBox;
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde_derive::Deserialize;
@@ -24,7 +25,7 @@ pub fn op_query_permission(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let cli_state = super::cli_state(state);
   let permissions = cli_state.permissions.borrow();
@@ -38,7 +39,7 @@ pub fn op_query_permission(
     "plugin" => permissions.query_plugin(),
     "hrtime" => permissions.query_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))
@@ -51,7 +52,7 @@ pub fn op_revoke_permission(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let cli_state = super::cli_state(state);
   let mut permissions = cli_state.permissions.borrow_mut();
@@ -65,7 +66,7 @@ pub fn op_revoke_permission(
     "plugin" => permissions.revoke_plugin(),
     "hrtime" => permissions.revoke_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))
@@ -78,7 +79,7 @@ pub fn op_request_permission(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let cli_state = super::cli_state(state);
   let permissions = &mut cli_state.permissions.borrow_mut();
@@ -92,7 +93,7 @@ pub fn op_request_permission(
     "plugin" => permissions.request_plugin(),
     "hrtime" => permissions.request_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))

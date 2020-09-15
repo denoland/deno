@@ -10,7 +10,9 @@ extern crate semver_parser;
 use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
-use crate::ErrBox;
+use crate::AnyError;
+use deno_core::error::custom_error;
+
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
 use semver_parser::version::parse as semver_parse;
@@ -35,7 +37,7 @@ const ARCHIVE_NAME: &str = "deno-x86_64-apple-darwin.zip";
 #[cfg(target_os = "linux")]
 const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
 
-async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
+async fn get_latest_version(client: &Client) -> Result<Version, AnyError> {
   println!("Checking for latest version");
   let body = client
     .get(Url::parse(
@@ -57,7 +59,7 @@ pub async fn upgrade_command(
   version: Option<String>,
   output: Option<PathBuf>,
   ca_file: Option<String>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let mut client_builder = Client::builder().redirect(Policy::none());
 
   // If we have been provided a CA Certificate, add it into the HTTP client
@@ -132,7 +134,7 @@ fn download_package(
   url: &Url,
   client: Client,
   version: &Version,
-) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ErrBox>>>> {
+) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, AnyError>>>> {
   println!("downloading {}", url);
   let url = url.clone();
   let version = version.clone();
@@ -160,21 +162,21 @@ fn download_package(
   fut.boxed_local()
 }
 
-fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
+fn compose_url_to_exec(version: &Version) -> Result<Url, AnyError> {
   let s = format!(
     "https://github.com/denoland/deno/releases/download/v{}/{}",
     version, ARCHIVE_NAME
   );
-  Url::parse(&s).map_err(ErrBox::from)
+  Url::parse(&s).map_err(AnyError::from)
 }
 
-fn find_version(text: &str) -> Result<String, ErrBox> {
+fn find_version(text: &str) -> Result<String, AnyError> {
   let re = Regex::new(r#"v([^\?]+)?""#)?;
   if let Some(_mat) = re.find(text) {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
   }
-  Err(ErrBox::new("NotFound", "Cannot read latest tag version"))
+  Err(custom_error("NotFound", "Cannot read latest tag version"))
 }
 
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
@@ -260,7 +262,7 @@ fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
 fn check_exe(
   exe_path: &Path,
   expected_version: &Version,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())

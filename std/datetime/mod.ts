@@ -133,7 +133,7 @@ export function isLeap(year: Date | number): boolean {
 }
 
 export type Unit =
-  | "miliseconds"
+  | "milliseconds"
   | "seconds"
   | "minutes"
   | "hours"
@@ -167,7 +167,7 @@ export function difference(
   options?: DifferenceOptions,
 ): DifferenceFormat {
   const uniqueUnits = options?.units ? [...new Set(options?.units)] : [
-    "miliseconds",
+    "milliseconds",
     "seconds",
     "minutes",
     "hours",
@@ -186,8 +186,8 @@ export function difference(
 
   for (const uniqueUnit of uniqueUnits) {
     switch (uniqueUnit) {
-      case "miliseconds":
-        differences.miliseconds = differenceInMs;
+      case "milliseconds":
+        differences.milliseconds = differenceInMs;
         break;
       case "seconds":
         differences.seconds = Math.floor(differenceInMs / SECOND);

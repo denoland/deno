@@ -6,8 +6,8 @@ use crate::inspector::DenoInspector;
 use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use crate::state::State;
-use deno_core::ErrBox;
+use crate::state::CliState;
+use deno_core::error::AnyError;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -33,8 +33,8 @@ use url::Url;
 /// worker.
 pub enum WorkerEvent {
   Message(Box<[u8]>),
-  Error(ErrBox),
-  TerminalError(ErrBox),
+  Error(AnyError),
+  TerminalError(AnyError),
 }
 
 pub struct WorkerChannelsInternal {
@@ -50,7 +50,7 @@ pub struct WorkerHandle {
 
 impl WorkerHandle {
   /// Post message to worker as a host.
-  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), ErrBox> {
+  pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
     sender.try_send(buf)?;
     Ok(())
@@ -58,7 +58,7 @@ impl WorkerHandle {
 
   /// Get the event with lock.
   /// Return error if more than one listener tries to get event
-  pub async fn get_event(&self) -> Result<Option<WorkerEvent>, ErrBox> {
+  pub async fn get_event(&self) -> Result<Option<WorkerEvent>, AnyError> {
     let mut receiver = self.receiver.try_lock()?;
     Ok(receiver.next().await)
   }
@@ -94,7 +94,7 @@ pub struct Worker {
   pub name: String,
   pub isolate: JsRuntime,
   pub inspector: Option<Box<DenoInspector>>,
-  pub state: Rc<State>,
+  pub state: Rc<CliState>,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
@@ -104,21 +104,18 @@ impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
-    state: &Rc<State>,
+    state: &Rc<CliState>,
   ) -> Self {
+    let global_state = state.global_state.clone();
+
     let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(state.clone()),
       startup_snapshot,
+      js_error_create_fn: Some(Box::new(move |core_js_error| {
+        JsError::create(core_js_error, &global_state.ts_compiler)
+      })),
       ..Default::default()
     });
-    {
-      let global_state = state.global_state.clone();
-      let js_runtime_state = JsRuntime::state(&isolate);
-      let mut js_runtime_state = js_runtime_state.borrow_mut();
-      js_runtime_state.set_js_error_create_fn(move |core_js_error| {
-        JsError::create(core_js_error, &global_state.ts_compiler)
-      });
-    }
     {
       let op_state = isolate.op_state();
       let mut op_state = op_state.borrow_mut();
@@ -149,7 +146,7 @@ impl Worker {
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
+  pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
     let path = env::current_dir().unwrap().join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.execute2(url.as_str(), js_source)
@@ -161,7 +158,7 @@ impl Worker {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.isolate.execute(js_filename, js_source)
   }
 
@@ -169,7 +166,7 @@ impl Worker {
   pub async fn preload_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     self.isolate.load_module(module_specifier, None).await
   }
 
@@ -177,7 +174,7 @@ impl Worker {
   pub async fn execute_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
     self.isolate.mod_evaluate(id)
@@ -189,7 +186,7 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
     code: String,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let id = self
       .isolate
       .load_module(module_specifier, Some(code))
@@ -226,7 +223,7 @@ impl Drop for Worker {
 }
 
 impl Future for Worker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -264,7 +261,7 @@ impl MainWorker {
   fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
-    state: &Rc<State>,
+    state: &Rc<CliState>,
   ) -> Self {
     let mut worker = Worker::new(name, startup_snapshot, state);
     {
@@ -297,8 +294,8 @@ impl MainWorker {
   pub fn create(
     global_state: &Arc<GlobalState>,
     main_module: ModuleSpecifier,
-  ) -> Result<MainWorker, ErrBox> {
-    let state = State::new(
+  ) -> Result<MainWorker, AnyError> {
+    let state = CliState::new(
       &global_state,
       None,
       main_module,
@@ -362,7 +359,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new("TEST".to_string(), None, &state);
@@ -389,7 +386,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new("TEST".to_string(), None, &state);
@@ -424,7 +421,7 @@ mod tests {
     };
     let global_state = GlobalState::new(flags).unwrap();
     let state =
-      State::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None, false)
         .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
@@ -445,7 +442,7 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let state = State::mock("./hello.js");
+    let state = CliState::mock("./hello.js");
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
