@@ -38,11 +38,11 @@ export function _format(v: unknown): string {
 function createColor(diffType: DiffType): (s: string) => string {
   switch (diffType) {
     case DiffType.added:
-      return (s: string): string => green(bold(s));
+      return (s: string): string => green(bold(stripColor(s)));
     case DiffType.removed:
-      return (s: string): string => red(bold(s));
+      return (s: string): string => red(bold(stripColor(s)));
     default:
-      return white;
+      return (s: string): string => white(stripColor(s));
   }
 }
 
@@ -303,7 +303,7 @@ export function assertStrictEquals(
 }
 
 /**
- * Make an assertion that `actual` and `expected` are not strictly equal.  
+ * Make an assertion that `actual` and `expected` are not strictly equal.
  * If the values are strictly equal then throw.
  * ```ts
  * assertNotStrictEquals(1, 1)
