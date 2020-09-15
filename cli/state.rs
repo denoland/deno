@@ -3,7 +3,6 @@
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
-use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::permissions::Permissions;
@@ -48,7 +47,6 @@ pub struct CliState {
   pub target_lib: TargetLib,
   pub is_main: bool,
   pub is_internal: bool,
-  pub http_client: RefCell<reqwest::Client>,
 }
 
 pub fn exit_unstable(api_name: &str) {
@@ -180,7 +178,6 @@ impl CliState {
       target_lib: TargetLib::Main,
       is_main: true,
       is_internal,
-      http_client: create_http_client(fl.ca_file.as_deref())?.into(),
     };
     Ok(Rc::new(state))
   }
@@ -208,7 +205,6 @@ impl CliState {
       target_lib: TargetLib::Worker,
       is_main: false,
       is_internal: false,
-      http_client: create_http_client(fl.ca_file.as_deref())?.into(),
     };
     Ok(Rc::new(state))
   }

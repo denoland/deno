@@ -107,12 +107,13 @@ impl Worker {
     state: &Rc<CliState>,
   ) -> Self {
     let global_state = state.global_state.clone();
+    let global_state_ = global_state.clone();
 
     let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(state.clone()),
       startup_snapshot,
       js_error_create_fn: Some(Box::new(move |core_js_error| {
-        JsError::create(core_js_error, &global_state.ts_compiler)
+        JsError::create(core_js_error, &global_state_.ts_compiler)
       })),
       ..Default::default()
     });
@@ -121,6 +122,10 @@ impl Worker {
       let mut op_state = op_state.borrow_mut();
       op_state.get_error_class_fn = &crate::errors::get_error_class_name;
       op_state.put(state.clone());
+
+      let ca_file = global_state.flags.ca_file.as_deref();
+      let client = crate::http_util::create_http_client(ca_file).unwrap();
+      op_state.put(client);
     }
     let inspector = {
       let global_state = &state.global_state;
