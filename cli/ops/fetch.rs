@@ -26,19 +26,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_create_http_client", op_create_http_client);
 }
 
-fn get_or_create_http_client(state: &Rc<RefCell<OpState>>) -> reqwest::Client {
-  let cli_state = super::cli_state2(state);
-  let mut state_ = state.borrow_mut();
-  if let Some(client) = state_.try_borrow::<reqwest::Client>() {
-    client.clone()
-  } else {
-    let ca_file = cli_state.global_state.flags.ca_file.as_deref();
-    let client = create_http_client(ca_file).unwrap();
-    state_.put(client.clone());
-    client
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FetchArgs {
@@ -64,7 +51,9 @@ async fn op_fetch(
       .ok_or_else(bad_resource_id)?;
     r.client.clone()
   } else {
-    get_or_create_http_client(&state)
+    let state_ = state.borrow();
+    let client = state_.borrow::<reqwest::Client>();
+    client.clone()
   };
 
   let method = match args.method {
