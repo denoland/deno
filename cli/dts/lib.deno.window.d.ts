@@ -15,6 +15,9 @@ declare class Window extends EventTarget {
   onunload: ((this: Window, ev: Event) => any) | null;
   close: () => void;
   readonly closed: boolean;
+  alert: (message?: string) => void;
+  confirm: (message?: string) => boolean;
+  prompt: (message?: string, defaultValue?: string) => string;
   Deno: typeof Deno;
 }
 
