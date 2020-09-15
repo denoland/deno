@@ -9,7 +9,7 @@ use crate::metrics::Metrics;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -28,9 +28,11 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-// TODO(ry) Rename to CliState to avoid confusion with other states.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct State {
+// This is named "CliState" instead of just "State" to avoid confusion with all
+// other state structs (GlobalState, OpState, GothamState).
+// TODO(ry) Many of the items in this struct should be moved out and into
+// OpState, removing redundant RefCell wrappers if possible.
+pub struct CliState {
   pub global_state: Arc<GlobalState>,
   pub permissions: RefCell<Permissions>,
   pub main_module: ModuleSpecifier,
@@ -49,20 +51,6 @@ pub struct State {
   pub http_client: RefCell<reqwest::Client>,
 }
 
-impl State {
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  pub fn check_unstable(&self, api_name: &str) {
-    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
-    // stack trace in JS.
-    if !self.global_state.flags.unstable {
-      exit_unstable(api_name);
-    }
-  }
-}
-
 pub fn exit_unstable(api_name: &str) {
   eprintln!(
     "Unstable API '{}'. The --unstable flag must be provided.",
@@ -71,13 +59,13 @@ pub fn exit_unstable(api_name: &str) {
   std::process::exit(70);
 }
 
-impl ModuleLoader for State {
+impl ModuleLoader for CliState {
   fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
@@ -127,7 +115,7 @@ impl ModuleLoader for State {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     let module_specifier = module_specifier.clone();
     let target_lib = self.target_lib.clone();
     let maybe_import_map = self.import_map.clone();
@@ -166,7 +154,7 @@ impl ModuleLoader for State {
   }
 }
 
-impl State {
+impl CliState {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: &Arc<GlobalState>,
@@ -174,9 +162,9 @@ impl State {
     main_module: ModuleSpecifier,
     maybe_import_map: Option<ImportMap>,
     is_internal: bool,
-  ) -> Result<Rc<Self>, ErrBox> {
+  ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
-    let state = State {
+    let state = CliState {
       global_state: global_state.clone(),
       main_module,
       permissions: shared_permissions
@@ -202,9 +190,9 @@ impl State {
     global_state: &Arc<GlobalState>,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
-  ) -> Result<Rc<Self>, ErrBox> {
+  ) -> Result<Rc<Self>, AnyError> {
     let fl = &global_state.flags;
-    let state = State {
+    let state = CliState {
       global_state: global_state.clone(),
       main_module,
       permissions: shared_permissions
@@ -226,7 +214,7 @@ impl State {
   }
 
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_read(path)
   }
 
@@ -237,49 +225,49 @@ impl State {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.permissions.borrow().check_read_blind(path, display)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+  pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), ErrBox> {
+  pub fn check_env(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), AnyError> {
     self.permissions.borrow().check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
     self.permissions.borrow().check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), ErrBox> {
+  pub fn check_run(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_run()
   }
 
   #[inline]
-  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
+  pub fn check_hrtime(&self) -> Result<(), AnyError> {
     self.permissions.borrow().check_hrtime()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), AnyError> {
     self.permissions.borrow().check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let u = module_specifier.as_url();
     // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
     // statement that is actually reachable...
@@ -308,7 +296,7 @@ impl State {
   pub fn mock(main_module: &str) -> Rc<Self> {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
-    State::new(
+    CliState::new(
       &GlobalState::mock(vec!["deno".to_string()], None),
       None,
       module_specifier,
@@ -316,5 +304,17 @@ impl State {
       false,
     )
     .unwrap()
+  }
+
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
+    // stack trace in JS.
+    if !self.global_state.flags.unstable {
+      exit_unstable(api_name);
+    }
   }
 }

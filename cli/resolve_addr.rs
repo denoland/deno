@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 
 /// Resolve network address. Returns a future.
-pub fn resolve_addr(hostname: &str, port: u16) -> Result<SocketAddr, ErrBox> {
+pub fn resolve_addr(hostname: &str, port: u16) -> Result<SocketAddr, AnyError> {
   // Default to localhost if given just the port. Example: ":80"
   let addr: &str = if !hostname.is_empty() {
     &hostname

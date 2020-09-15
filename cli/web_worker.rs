@@ -2,12 +2,12 @@
 
 use crate::js;
 use crate::ops;
-use crate::state::State;
+use crate::state::CliState;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
+use deno_core::error::AnyError;
 use deno_core::v8;
-use deno_core::ErrBox;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -85,7 +85,7 @@ pub struct WebWorker {
 impl WebWorker {
   pub fn new(
     name: String,
-    state: &Rc<State>,
+    state: &Rc<CliState>,
     has_deno_namespace: bool,
   ) -> Self {
     let mut worker = Worker::new(name, Some(js::deno_isolate_init()), &state);
@@ -164,7 +164,7 @@ impl DerefMut for WebWorker {
 }
 
 impl Future for WebWorker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -239,12 +239,12 @@ impl Future for WebWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::state::State;
+  use crate::state::CliState;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
 
   fn create_test_worker() -> WebWorker {
-    let state = State::mock("./hello.js");
+    let state = CliState::mock("./hello.js");
     let mut worker = WebWorker::new("TEST".to_string(), &state, false);
     worker
       .execute("bootstrap.workerRuntime(\"TEST\", false)")

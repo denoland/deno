@@ -6,7 +6,6 @@
 // Resources may or may not correspond to a real operating system file
 // descriptor (hence the different name).
 
-use downcast_rs::Downcast;
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -16,7 +15,7 @@ pub type ResourceId = u32;
 
 /// These store Deno's file descriptors. These are not necessarily the operating
 /// system ones.
-type ResourceMap = HashMap<ResourceId, (String, Box<dyn Resource>)>;
+type ResourceMap = HashMap<ResourceId, (String, Box<dyn Any>)>;
 
 #[derive(Default)]
 pub struct ResourceTable {
@@ -29,20 +28,14 @@ impl ResourceTable {
     self.map.contains_key(&rid)
   }
 
-  pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<&T> {
-    if let Some((_name, resource)) = self.map.get(&rid) {
-      return resource.downcast_ref::<T>();
-    }
-
-    None
+  pub fn get<T: Any>(&self, rid: ResourceId) -> Option<&T> {
+    let (_, resource) = self.map.get(&rid)?;
+    resource.downcast_ref::<T>()
   }
 
-  pub fn get_mut<T: Resource>(&mut self, rid: ResourceId) -> Option<&mut T> {
-    if let Some((_name, resource)) = self.map.get_mut(&rid) {
-      return resource.downcast_mut::<T>();
-    }
-
-    None
+  pub fn get_mut<T: Any>(&mut self, rid: ResourceId) -> Option<&mut T> {
+    let (_, resource) = self.map.get_mut(&rid)?;
+    resource.downcast_mut::<T>()
   }
 
   // TODO: resource id allocation should probably be randomized for security.
@@ -52,7 +45,7 @@ impl ResourceTable {
     next_rid as ResourceId
   }
 
-  pub fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
+  pub fn add(&mut self, name: &str, resource: Box<dyn Any>) -> ResourceId {
     let rid = self.next_rid();
     let r = self.map.insert(rid, (name.to_string(), resource));
     assert!(r.is_none());
@@ -73,7 +66,7 @@ impl ResourceTable {
     self.map.remove(&rid).map(|(_name, _resource)| ())
   }
 
-  pub fn remove<T: Resource>(&mut self, rid: ResourceId) -> Option<Box<T>> {
+  pub fn remove<T: Any>(&mut self, rid: ResourceId) -> Option<Box<T>> {
     if let Some((_name, resource)) = self.map.remove(&rid) {
       let res = match resource.downcast::<T>() {
         Ok(res) => Some(res),
@@ -84,15 +77,6 @@ impl ResourceTable {
     None
   }
 }
-
-/// Abstract type representing resource in Deno.
-///
-/// The only thing it does is implementing `Downcast` trait
-/// that allows to cast resource to concrete type in `TableResource::get`
-/// and `TableResource::get_mut` methods.
-pub trait Resource: Downcast + Any {}
-impl<T> Resource for T where T: Downcast + Any {}
-impl_downcast!(Resource);
 
 #[cfg(test)]
 mod tests {

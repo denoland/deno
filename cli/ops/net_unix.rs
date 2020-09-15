@@ -2,8 +2,9 @@ use crate::ops::io::StreamResource;
 use crate::ops::io::StreamResourceHolder;
 use crate::ops::net::AcceptArgs;
 use crate::ops::net::ReceiveArgs;
+use deno_core::error::bad_resource;
+use deno_core::error::AnyError;
 use deno_core::BufVec;
-use deno_core::ErrBox;
 use deno_core::OpState;
 use futures::future::poll_fn;
 use serde_derive::Deserialize;
@@ -11,7 +12,7 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::fs::remove_file;
 use std::os::unix;
-pub use std::path::Path;
+use std::path::Path;
 use std::rc::Rc;
 use std::task::Poll;
 use tokio::net::UnixDatagram;
@@ -36,7 +37,7 @@ pub(crate) async fn accept_unix(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
   _bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let rid = args.rid as u32;
 
   let accept_fut = poll_fn(|cx| {
@@ -44,7 +45,7 @@ pub(crate) async fn accept_unix(
     let listener_resource = state
       .resource_table
       .get_mut::<UnixListenerResource>(rid)
-      .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
+      .ok_or_else(|| bad_resource("Listener has been closed"))?;
     let listener = &mut listener_resource.listener;
     use futures::StreamExt;
     match listener.poll_next_unpin(cx) {
@@ -58,7 +59,7 @@ pub(crate) async fn accept_unix(
         Poll::Pending
       }
     }
-    .map_err(ErrBox::from)
+    .map_err(AnyError::from)
   });
   let unix_stream = accept_fut.await?;
 
@@ -88,7 +89,7 @@ pub(crate) async fn receive_unix_packet(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
   bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
 
   let rid = args.rid as u32;
@@ -98,7 +99,7 @@ pub(crate) async fn receive_unix_packet(
   let resource = state
     .resource_table
     .get_mut::<UnixDatagramResource>(rid)
-    .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
+    .ok_or_else(|| bad_resource("Socket has been closed"))?;
   let (size, remote_addr) = resource.socket.recv_from(&mut buf).await?;
   Ok(json!({
     "size": size,
@@ -112,7 +113,7 @@ pub(crate) async fn receive_unix_packet(
 pub fn listen_unix(
   state: &mut OpState,
   addr: &Path,
-) -> Result<(u32, unix::net::SocketAddr), ErrBox> {
+) -> Result<(u32, unix::net::SocketAddr), AnyError> {
   if addr.exists() {
     remove_file(&addr).unwrap();
   }
@@ -129,7 +130,7 @@ pub fn listen_unix(
 pub fn listen_unix_packet(
   state: &mut OpState,
   addr: &Path,
-) -> Result<(u32, unix::net::SocketAddr), ErrBox> {
+) -> Result<(u32, unix::net::SocketAddr), AnyError> {
   if addr.exists() {
     remove_file(&addr).unwrap();
   }

@@ -2033,8 +2033,9 @@ itest!(exit_error42 {
 });
 
 itest!(https_import {
-  args: "run --quiet --reload https_import.ts",
+  args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
   output: "https_import.ts.out",
+  http_server: true,
 });
 
 itest!(if_main {
@@ -2120,9 +2121,7 @@ itest!(ts_type_imports {
   exit_code: 1,
 });
 
-// Broken after V8 upgrade
-// https://github.com/denoland/deno/pull/7429
-itest_ignore!(ts_decorators {
+itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
