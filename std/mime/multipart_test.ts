@@ -19,7 +19,9 @@ const e = new TextEncoder();
 const boundary = "--abcde";
 const dashBoundary = e.encode("--" + boundary);
 const nlDashBoundary = e.encode("\r\n--" + boundary);
-const testdataDir = path.resolve("mime", "testdata");
+
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("multipartScanUntilBoundary1", function (): void {
   const data = `--${boundary}`;
@@ -92,7 +94,7 @@ Deno.test("multipartMultipartWriter", async function (): Promise<void> {
   const mw = new MultipartWriter(buf);
   await mw.writeField("foo", "foo");
   await mw.writeField("bar", "bar");
-  const f = await Deno.open(path.resolve("./mime/testdata/sample.txt"), {
+  const f = await Deno.open(path.join(testdataDir, "sample.txt"), {
     read: true,
   });
   await mw.writeFile("file", "sample.txt", f);
@@ -175,7 +177,7 @@ Deno.test("multipartMultipartWriter3", async function (): Promise<void> {
 Deno.test({
   name: "[mime/multipart] readForm() basic",
   async fn() {
-    const o = await Deno.open(path.resolve("./mime/testdata/sample.txt"));
+    const o = await Deno.open(path.join(testdataDir, "sample.txt"));
     const mr = new MultipartReader(
       o,
       "--------------------------434049563556637648550474",
@@ -247,7 +249,7 @@ Deno.test({
 Deno.test({
   name: "[mime/multipart] removeAll() should remove all tempfiles",
   async fn() {
-    const o = await Deno.open(path.resolve("./mime/testdata/sample.txt"));
+    const o = await Deno.open(path.join(testdataDir, "sample.txt"));
     const mr = new MultipartReader(
       o,
       "--------------------------434049563556637648550474",
@@ -274,7 +276,7 @@ Deno.test({
 Deno.test({
   name: "[mime/multipart] entries()",
   async fn() {
-    const o = await Deno.open(path.resolve("./mime/testdata/sample.txt"));
+    const o = await Deno.open(path.join(testdataDir, "sample.txt"));
     const mr = new MultipartReader(
       o,
       "--------------------------434049563556637648550474",

@@ -16,9 +16,9 @@ import { queue } from "./collections.ts";
 
 ### `--no-check` option
 
-When using `deno run`, `deno test`, `deno cache`, `deno info`, or `deno bundle`
-you can specify the `--no-check` flag to disable TypeScript type checking. This
-can significantly reduce the time that program startup takes. This can be very
+When using `deno run`, `deno test`, `deno cache`, or `deno bundle` you can
+specify the `--no-check` flag to disable TypeScript type checking. This can
+significantly reduce the time that program startup takes. This can be very
 useful when type checking is provided by your editor and you want startup time
 to be as fast as possible (for example when restarting the program automatically
 with a file watcher).
@@ -31,9 +31,11 @@ To export a type in a different file use
 `export type { AnInterface } from "./mod.ts";`. To import a type use
 `import type { AnInterface } from "./mod.ts";`. You can check that you are using
 `import type` and `export type` where necessary by setting the `isolatedModules`
-TypeScript compiler option to `true`. You can see an example `tsconfig.json`
-with this option
+TypeScript compiler option to `true`, and the `importsNotUsedAsValues` to
+`error`. You can see an example `tsconfig.json` with this option
 [in the standard library](https://github.com/denoland/deno/blob/master/std/tsconfig_test.json).
+These settings will be enabled by default in the future. They are already the
+default in Deno 1.4 or above when using `--unstable`.
 
 Because there is no type information when using `--no-check`, `const enum` is
 not supported because it is type-directed. `--no-check` also does not support

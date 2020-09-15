@@ -3,8 +3,10 @@
 use rusty_v8 as v8;
 
 use crate::bindings;
-use crate::errors::attach_handle_to_error;
-use crate::errors::ErrWithV8Handle;
+use crate::error::attach_handle_to_error;
+use crate::error::AnyError;
+use crate::error::ErrWithV8Handle;
+use crate::error::JsError;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -19,9 +21,8 @@ use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
-use crate::ErrBox;
-use crate::JsError;
-use crate::OpRouter;
+use crate::BufVec;
+use crate::OpState;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
@@ -31,7 +32,6 @@ use std::any::Any;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::From;
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
@@ -46,55 +46,16 @@ use std::task::Poll;
 
 type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Box<[u8]>)>>>;
 
-/// Stores a script used to initialize a Isolate
-pub struct Script<'a> {
-  pub source: &'a str,
-  pub filename: &'a str,
-}
-
-// TODO(ry) It's ugly that we have both Script and OwnedScript. Ideally we
-// wouldn't expose such twiddly complexity.
-struct OwnedScript {
-  pub source: String,
-  pub filename: String,
-}
-
-impl From<Script<'_>> for OwnedScript {
-  fn from(s: Script) -> OwnedScript {
-    OwnedScript {
-      source: s.source.to_string(),
-      filename: s.filename.to_string(),
-    }
-  }
-}
-
 pub enum Snapshot {
   Static(&'static [u8]),
   JustCreated(v8::StartupData),
   Boxed(Box<[u8]>),
 }
 
-/// Represents data used to initialize an isolate at startup, either
-/// in the form of a binary snapshot or a JavaScript source file.
-pub enum StartupData<'a> {
-  Script(Script<'a>),
-  Snapshot(Snapshot),
-  None,
-}
+type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
 
-impl StartupData<'_> {
-  fn into_options(self) -> (Option<OwnedScript>, Option<Snapshot>) {
-    match self {
-      Self::Script(script) => (Some(script.into()), None),
-      Self::Snapshot(snapshot) => (None, Some(snapshot)),
-      Self::None => (None, None),
-    }
-  }
-}
-
-type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
-
-pub type GetErrorClassFn = dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+pub type GetErrorClassFn =
+  &'static dyn for<'e> Fn(&'e AnyError) -> &'static str;
 
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
@@ -120,13 +81,12 @@ pub struct JsRuntime {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   needs_init: bool,
-  startup_script: Option<OwnedScript>,
   allocations: IsolateAllocations,
 }
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub struct JsRuntimeState {
+pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
@@ -137,7 +97,8 @@ pub struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
-  pub(crate) op_router: Rc<dyn OpRouter>,
+  //pub(crate) op_table: OpTable,
+  pub(crate) op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
@@ -217,56 +178,29 @@ pub struct HeapLimits {
   pub max: usize,
 }
 
-pub(crate) struct IsolateOptions {
-  loader: Rc<dyn ModuleLoader>,
-  op_router: Rc<dyn OpRouter>,
-  startup_script: Option<OwnedScript>,
-  startup_snapshot: Option<Snapshot>,
-  will_snapshot: bool,
-  heap_limits: Option<HeapLimits>,
-}
+#[derive(Default)]
+pub struct RuntimeOptions {
+  /// Allows a callback to be set whenever a V8 exception is made. This allows
+  /// the caller to wrap the JsError into an error. By default this callback
+  /// is set to `JsError::create()`.
+  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
 
-impl JsRuntime {
-  /// startup_data defines the snapshot or script used at startup to initialize
-  /// the isolate.
-  pub fn new(
-    op_router: Rc<dyn OpRouter>,
-    startup_data: StartupData,
-    will_snapshot: bool,
-  ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
-    let options = IsolateOptions {
-      loader: Rc::new(NoopModuleLoader),
-      op_router,
-      startup_script,
-      startup_snapshot,
-      will_snapshot,
-      heap_limits: None,
-    };
+  /// Implementation of `ModuleLoader` which will be
+  /// called when V8 requests to load ES modules.
+  ///
+  /// If not provided runtime will error if code being
+  /// executed tries to load modules.
+  pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-    Self::from_options(options)
-  }
+  /// V8 snapshot that should be loaded on startup.
+  ///
+  /// Currently can't be used with `will_snapshot`.
+  pub startup_snapshot: Option<Snapshot>,
 
-  // TODO(bartlomieju): add `new_with_loader_and_heap_limits` function?
-  /// Create new isolate that can load and execute ESModules.
-  pub fn new_with_loader(
-    loader: Rc<dyn ModuleLoader>,
-    op_router: Rc<dyn OpRouter>,
-    startup_data: StartupData,
-    will_snapshot: bool,
-  ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
-    let options = IsolateOptions {
-      loader,
-      op_router,
-      startup_script,
-      startup_snapshot,
-      will_snapshot,
-      heap_limits: None,
-    };
-
-    Self::from_options(options)
-  }
+  /// Prepare runtime to take snapshot of loaded code.
+  ///
+  /// Currently can't be used with `startup_snapshot`.
+  pub will_snapshot: bool,
 
   /// This is useful for controlling memory usage of scripts.
   ///
@@ -274,25 +208,11 @@ impl JsRuntime {
   ///
   /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
   /// to prevent v8 from crashing when reaching the upper limit.
-  pub fn with_heap_limits(
-    op_router: Rc<dyn OpRouter>,
-    startup_data: StartupData,
-    heap_limits: HeapLimits,
-  ) -> Self {
-    let (startup_script, startup_snapshot) = startup_data.into_options();
-    let options = IsolateOptions {
-      loader: Rc::new(NoopModuleLoader),
-      op_router,
-      startup_script,
-      startup_snapshot,
-      will_snapshot: false,
-      heap_limits: Some(heap_limits),
-    };
+  pub heap_limits: Option<HeapLimits>,
+}
 
-    Self::from_options(options)
-  }
-
-  fn from_options(options: IsolateOptions) -> Self {
+impl JsRuntime {
+  pub fn new(options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
@@ -347,20 +267,29 @@ impl JsRuntime {
       (isolate, None)
     };
 
+    let loader = options
+      .module_loader
+      .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+
+    let js_error_create_fn = options
+      .js_error_create_fn
+      .unwrap_or_else(|| Box::new(JsError::create));
+    let op_state = OpState::default();
+
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
-      js_error_create_fn: Box::new(JsError::create),
+      js_error_create_fn,
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
+      op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: Cell::new(false),
-      op_router: options.op_router,
       modules: Modules::new(),
-      loader: options.loader,
+      loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
@@ -372,9 +301,14 @@ impl JsRuntime {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       needs_init: true,
-      startup_script: options.startup_script,
       allocations: IsolateAllocations::default(),
     }
+  }
+
+  pub fn global_context(&self) -> v8::Global<v8::Context> {
+    let state = Self::state(self);
+    let state = state.borrow();
+    state.global_context.clone().unwrap()
   }
 
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
@@ -389,7 +323,7 @@ impl JsRuntime {
     isolate
   }
 
-  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
   }
@@ -399,23 +333,25 @@ impl JsRuntime {
     if self.needs_init {
       self.needs_init = false;
       js_check(self.execute("core.js", include_str!("core.js")));
-      // Maybe execute the startup script.
-      if let Some(s) = self.startup_script.take() {
-        self.execute(&s.filename, &s.source).unwrap()
-      }
     }
+  }
+
+  pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
+    state.op_state.clone()
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn execute(
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.shared_init();
 
     let state_rc = Self::state(self);
@@ -455,9 +391,9 @@ impl JsRuntime {
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
     let state = Self::state(self);
@@ -475,6 +411,18 @@ impl JsRuntime {
     self.has_snapshotted = true;
 
     snapshot
+  }
+
+  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
+  {
+    Self::state(self)
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .register_op(name, op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
@@ -533,7 +481,7 @@ where
 }
 
 impl Future for JsRuntime {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let runtime = self.get_mut();
@@ -652,16 +600,6 @@ impl Future for JsRuntime {
 }
 
 impl JsRuntimeState {
-  /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the JsError into an error. By default this callback
-  /// is set to JsError::create.
-  pub fn set_js_error_create_fn(
-    &mut self,
-    f: impl Fn(JsError) -> ErrBox + 'static,
-  ) {
-    self.js_error_create_fn = Box::new(f);
-  }
-
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn module_resolve_cb(
     &mut self,
@@ -700,7 +638,7 @@ impl JsRuntimeState {
 fn async_op_response<'s>(
   scope: &mut v8::HandleScope<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
   let js_recv_cb = JsRuntime::state(scope)
@@ -729,7 +667,9 @@ fn async_op_response<'s>(
   }
 }
 
-fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
+fn drain_macrotasks<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> Result<(), AnyError> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
 
@@ -766,7 +706,7 @@ fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
-) -> Result<T, ErrBox> {
+) -> Result<T, AnyError> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
   let is_terminating_exception =
@@ -805,7 +745,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 fn check_promise_exceptions<'s>(
   scope: &mut v8::HandleScope<'s>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -819,7 +759,7 @@ fn check_promise_exceptions<'s>(
   }
 }
 
-pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
+pub fn js_check<T>(r: Result<T, AnyError>) -> T {
   if let Err(e) = r {
     panic!(e.to_string());
   }
@@ -849,7 +789,7 @@ impl JsRuntime {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self);
     let scope = &mut v8::HandleScope::with_context(
       &mut **self,
@@ -898,10 +838,10 @@ impl JsRuntime {
 
   /// Instantiates a ES module
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
-  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
     let scope = &mut v8::HandleScope::with_context(
@@ -934,10 +874,10 @@ impl JsRuntime {
 
   /// Evaluates an already instantiated ES module.
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
-  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     self.shared_init();
 
     let state_rc = Self::state(self);
@@ -1006,8 +946,8 @@ impl JsRuntime {
   fn dyn_import_error(
     &mut self,
     id: ModuleLoadId,
-    err: ErrBox,
-  ) -> Result<(), ErrBox> {
+    err: AnyError,
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
 
     let scope = &mut v8::HandleScope::with_context(
@@ -1040,7 +980,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleLoadId,
     mod_id: ModuleId,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
@@ -1077,7 +1017,7 @@ impl JsRuntime {
   fn prepare_dyn_imports(
     &mut self,
     cx: &mut Context,
-  ) -> Poll<Result<(), ErrBox>> {
+  ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
 
     loop {
@@ -1108,7 +1048,10 @@ impl JsRuntime {
     }
   }
 
-  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
     loop {
       let poll_result = {
@@ -1167,7 +1110,7 @@ impl JsRuntime {
     &mut self,
     info: ModuleSource,
     load: &mut RecursiveModuleLoad,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let ModuleSource {
       code,
       module_url_specified,
@@ -1256,7 +1199,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     self.shared_init();
     let loader = {
       let state_rc = Self::state(self);
@@ -1283,8 +1226,6 @@ impl JsRuntime {
 pub mod tests {
   use super::*;
   use crate::modules::ModuleSourceFuture;
-  use crate::ops::*;
-  use crate::BasicState;
   use crate::BufVec;
   use futures::future::lazy;
   use futures::FutureExt;
@@ -1328,89 +1269,89 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  struct TestOpRouter {
+  struct TestState {
     mode: Mode,
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  impl OpRouter for TestOpRouter {
-    fn route_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
-      if op_id != 1 {
-        return Op::NotFound;
+  fn dispatch(op_state: Rc<RefCell<OpState>>, bufs: BufVec) -> Op {
+    let op_state_ = op_state.borrow();
+    let test_state = op_state_.borrow::<TestState>();
+    test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
+    match test_state.mode {
+      Mode::Async => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
       }
-      self.dispatch_count.fetch_add(1, Ordering::Relaxed);
-      match self.mode {
-        Mode::Async => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::AsyncUnref => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let fut = async {
-            // This future never finish.
-            futures::future::pending::<()>().await;
-            vec![43u8].into_boxed_slice()
-          };
-          Op::AsyncUnref(fut.boxed())
-        }
-        Mode::AsyncZeroCopy(count) => {
-          assert_eq!(bufs.len(), count as usize);
-          bufs.iter().enumerate().for_each(|(idx, buf)| {
-            assert_eq!(buf.len(), 1);
-            assert_eq!(idx, buf[0] as usize);
-          });
+      Mode::AsyncUnref => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let fut = async {
+          // This future never finish.
+          futures::future::pending::<()>().await;
+          vec![43u8].into_boxed_slice()
+        };
+        Op::AsyncUnref(fut.boxed())
+      }
+      Mode::AsyncZeroCopy(count) => {
+        assert_eq!(bufs.len(), count as usize);
+        bufs.iter().enumerate().for_each(|(idx, buf)| {
+          assert_eq!(buf.len(), 1);
+          assert_eq!(idx, buf[0] as usize);
+        });
 
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::OverflowReqSync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowResSync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 99;
-          let buf = vec.into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowReqAsync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::OverflowResAsync => {
-          assert_eq!(bufs.len(), 1);
-          assert_eq!(bufs[0].len(), 1);
-          assert_eq!(bufs[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 4;
-          let buf = vec.into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      }
+      Mode::OverflowReqSync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Sync(buf)
+      }
+      Mode::OverflowResSync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let mut vec = Vec::<u8>::new();
+        vec.resize(100 * 1024 * 1024, 0);
+        vec[0] = 99;
+        let buf = vec.into_boxed_slice();
+        Op::Sync(buf)
+      }
+      Mode::OverflowReqAsync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
+        let buf = vec![43u8].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      }
+      Mode::OverflowResAsync => {
+        assert_eq!(bufs.len(), 1);
+        assert_eq!(bufs[0].len(), 1);
+        assert_eq!(bufs[0][0], 42);
+        let mut vec = Vec::<u8>::new();
+        vec.resize(100 * 1024 * 1024, 0);
+        vec[0] = 4;
+        let buf = vec.into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
       }
     }
   }
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let test_state = Rc::new(TestOpRouter {
+    let mut runtime = JsRuntime::new(Default::default());
+    let op_state = runtime.op_state();
+    op_state.borrow_mut().put(TestState {
       mode,
       dispatch_count: dispatch_count.clone(),
     });
-    let mut runtime = JsRuntime::new(test_state, StartupData::None, false);
+
+    runtime.register_op("test", dispatch);
 
     js_check(runtime.execute(
       "setup.js",
@@ -1774,8 +1715,7 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut runtime =
-      JsRuntime::new(BasicState::new(), StartupData::None, false);
+    let mut runtime = JsRuntime::new(Default::default());
     let src = "hocuspocus(";
     let r = runtime.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1800,29 +1740,39 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut runtime =
-        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       runtime.snapshot()
     };
 
-    let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
-    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut runtime =
-        JsRuntime::new(BasicState::new(), StartupData::None, true);
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
       js_check(runtime.execute("a.js", "a = 1 + 2"));
       let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
-    let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
-    let mut runtime2 = JsRuntime::new(BasicState::new(), startup_data, false);
+    let snapshot = Snapshot::Boxed(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
     js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 
@@ -1832,11 +1782,10 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::with_heap_limits(
-      BasicState::new(),
-      StartupData::None,
-      heap_limits,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      heap_limits: Some(heap_limits),
+      ..Default::default()
+    });
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
@@ -1864,8 +1813,7 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_remove() {
-    let mut runtime =
-      JsRuntime::new(BasicState::new(), StartupData::None, false);
+    let mut runtime = JsRuntime::new(Default::default());
 
     runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
@@ -1880,11 +1828,10 @@ pub mod tests {
       initial: 0,
       max: 20 * 1024, // 20 kB
     };
-    let mut runtime = JsRuntime::with_heap_limits(
-      BasicState::new(),
-      StartupData::None,
-      heap_limits,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      heap_limits: Some(heap_limits),
+      ..Default::default()
+    });
     let cb_handle = runtime.thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());
@@ -1933,7 +1880,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
@@ -1952,13 +1899,12 @@ pub mod tests {
     }
 
     let loader = Rc::new(ModsLoader::default());
-    let state = BasicState::new();
 
     let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state: Rc<BasicState>, bufs: BufVec| -> Op {
+    let dispatcher = move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(bufs.len(), 1);
       assert_eq!(bufs[0].len(), 1);
@@ -1966,10 +1912,12 @@ pub mod tests {
       let buf = [43u8, 0, 0, 0][..].into();
       Op::Async(futures::future::ready(buf).boxed())
     };
-    state.register_op("test", dispatcher);
 
-    let mut runtime =
-      JsRuntime::new_with_loader(loader, state, StartupData::None, false);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    runtime.register_op("test", dispatcher);
 
     js_check(runtime.execute(
       "setup.js",
@@ -2041,7 +1989,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
@@ -2063,12 +2011,10 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportErrLoader::default());
       let count = loader.count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
 
       js_check(runtime.execute(
         "file:///dyn_import2.js",
@@ -2102,7 +2048,7 @@ pub mod tests {
       specifier: &str,
       referrer: &str,
       _is_main: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
+    ) -> Result<ModuleSpecifier, AnyError> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
       assert!(c < 4);
       assert_eq!(specifier, "./b.js");
@@ -2132,7 +2078,7 @@ pub mod tests {
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
       self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
       async { Ok(()) }.boxed_local()
     }
@@ -2145,12 +2091,10 @@ pub mod tests {
       let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
 
       // Dynamically import mod_b
       js_check(runtime.execute(
@@ -2190,12 +2134,10 @@ pub mod tests {
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new_with_loader(
-        loader,
-        BasicState::new(),
-        StartupData::None,
-        false,
-      );
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
       js_check(runtime.execute(
         "file:///dyn_import3.js",
         r#"
@@ -2228,7 +2170,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
@@ -2246,12 +2188,11 @@ pub mod tests {
     }
 
     let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new_with_loader(
-      loader,
-      BasicState::new(),
-      StartupData::None,
-      true,
-    );
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      will_snapshot: true,
+      ..Default::default()
+    });
 
     let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();

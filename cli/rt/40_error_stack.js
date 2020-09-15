@@ -8,8 +8,8 @@
   const internals = window.__bootstrap.internals;
   const dispatchJson = window.__bootstrap.dispatchJson;
 
-  function opFormatDiagnostics(items) {
-    return dispatchJson.sendSync("op_format_diagnostic", { items });
+  function opFormatDiagnostics(diagnostics) {
+    return dispatchJson.sendSync("op_format_diagnostic", diagnostics);
   }
 
   function opApplySourceMap(location) {
@@ -240,7 +240,7 @@
     });
     for (const callSite of mappedCallSites) {
       error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-      const isInternal = callSite.getFileName()?.startsWith("$deno$") ?? false;
+      const isInternal = callSite.getFileName()?.startsWith("deno:") ?? false;
       error.__formattedFrames.push(callSiteToString(callSite, isInternal));
     }
     Object.freeze(error.__callSiteEvals);

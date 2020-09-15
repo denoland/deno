@@ -1,113 +1,88 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use rusty_v8 as v8;
-use std::any::Any;
-use std::any::TypeId;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::io;
 
-// The Send and Sync traits are required because deno is multithreaded and we
-// need to be able to handle errors across threads.
-pub trait AnyError: Any + Error + Send + Sync + 'static {}
-impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
+/// A generic wrapper that can encapsulate any concrete error type.
+pub type AnyError = anyhow::Error;
 
+/// Creates a new error with a caller-specified error class name and message.
+pub fn custom_error(
+  class: &'static str,
+  message: impl Into<Cow<'static, str>>,
+) -> AnyError {
+  CustomError {
+    class,
+    message: message.into(),
+  }
+  .into()
+}
+
+pub fn generic_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+  custom_error("Error", message)
+}
+
+pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+  custom_error("TypeError", message)
+}
+
+pub fn uri_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+  custom_error("URIError", message)
+}
+
+pub fn last_os_error() -> AnyError {
+  io::Error::last_os_error().into()
+}
+
+pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> AnyError {
+  custom_error("BadResource", message)
+}
+
+pub fn bad_resource_id() -> AnyError {
+  custom_error("BadResource", "Bad resource ID")
+}
+
+pub fn not_supported() -> AnyError {
+  custom_error("NotSupported", "The operation is supported")
+}
+
+pub fn resource_unavailable() -> AnyError {
+  custom_error(
+    "Busy",
+    "Resource is unavailable because it is in use by a promise",
+  )
+}
+
+/// A simple error type that lets the creator specify both the error message and
+/// the error class name. This type is private; externally it only ever appears
+/// wrapped in an `AnyError`. To retrieve the error class name from a wrapped
+/// `CustomError`, use the function `get_custom_error_class()`.
 #[derive(Debug)]
-pub enum ErrBox {
-  Simple {
-    class: &'static str,
-    message: Cow<'static, str>,
-  },
-  Boxed(Box<dyn AnyError>),
+struct CustomError {
+  class: &'static str,
+  message: Cow<'static, str>,
 }
 
-impl ErrBox {
-  pub fn new(
-    class: &'static str,
-    message: impl Into<Cow<'static, str>>,
-  ) -> Self {
-    Self::Simple {
-      class,
-      message: message.into(),
-    }
-  }
-
-  pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> Self {
-    Self::new("BadResource", message)
-  }
-
-  pub fn bad_resource_id() -> Self {
-    Self::new("BadResource", "Bad resource ID")
-  }
-
-  pub fn error(message: impl Into<Cow<'static, str>>) -> Self {
-    Self::new("Error", message)
-  }
-
-  pub fn not_supported() -> Self {
-    Self::new("NotSupported", "The operation is supported")
-  }
-
-  pub fn resource_unavailable() -> Self {
-    Self::new(
-      "Busy",
-      "Resource is unavailable because it is in use by a promise",
-    )
-  }
-
-  pub fn type_error(message: impl Into<Cow<'static, str>>) -> Self {
-    Self::new("TypeError", message)
-  }
-
-  pub fn last_os_error() -> Self {
-    Self::from(io::Error::last_os_error())
-  }
-
-  pub fn downcast<T: AnyError>(self) -> Result<T, Self> {
-    match self {
-      Self::Boxed(error) if Any::type_id(&*error) == TypeId::of::<T>() => {
-        let error = Box::into_raw(error) as *mut T;
-        let error = unsafe { Box::from_raw(error) };
-        Ok(*error)
-      }
-      other => Err(other),
-    }
-  }
-
-  pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
-    match self {
-      Self::Boxed(error) if Any::type_id(&**error) == TypeId::of::<T>() => {
-        let error = &**error as *const dyn AnyError as *const T;
-        let error = unsafe { &*error };
-        Some(error)
-      }
-      _ => None,
-    }
+impl Display for CustomError {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    f.write_str(&self.message)
   }
 }
 
-impl fmt::Display for ErrBox {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      Self::Simple { message, .. } => f.write_str(message),
-      Self::Boxed(error) => error.fmt(f),
-    }
-  }
-}
+impl Error for CustomError {}
 
-impl<T: AnyError> From<T> for ErrBox {
-  fn from(error: T) -> Self {
-    Self::Boxed(Box::new(error))
-  }
-}
-
-impl From<Box<dyn AnyError>> for ErrBox {
-  fn from(boxed: Box<dyn AnyError>) -> Self {
-    Self::Boxed(boxed)
-  }
+/// If this error was crated with `custom_error()`, return the specified error
+/// class name. In all other cases this function returns `None`.
+pub fn get_custom_error_class(error: &AnyError) -> Option<&'static str> {
+  error.downcast_ref::<CustomError>().map(|e| e.class)
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and
@@ -153,7 +128,7 @@ fn get_property<'a>(
 }
 
 impl JsError {
-  pub(crate) fn create(js_error: Self) -> ErrBox {
+  pub(crate) fn create(js_error: Self) -> AnyError {
     js_error.into()
   }
 
@@ -355,8 +330,8 @@ fn format_source_loc(
   format!("{}:{}:{}", file_name, line_number, column_number)
 }
 
-impl fmt::Display for JsError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for JsError {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {
         assert!(self.line_number.is_some());
@@ -397,9 +372,9 @@ impl fmt::Display for JsError {
 
 pub(crate) fn attach_handle_to_error(
   scope: &mut v8::Isolate,
-  err: ErrBox,
+  err: AnyError,
   handle: v8::Local<v8::Value>,
-) -> ErrBox {
+) -> AnyError {
   // TODO(bartomieju): this is a special case...
   ErrWithV8Handle::new(scope, err, handle).into()
 }
@@ -407,14 +382,14 @@ pub(crate) fn attach_handle_to_error(
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
 // values of type v8::Global<T>.
 pub struct ErrWithV8Handle {
-  err: ErrBox,
+  err: AnyError,
   handle: v8::Global<v8::Value>,
 }
 
 impl ErrWithV8Handle {
   pub fn new(
     scope: &mut v8::Isolate,
-    err: ErrBox,
+    err: AnyError,
     handle: v8::Local<v8::Value>,
   ) -> Self {
     let handle = v8::Global::new(scope, handle);
@@ -434,15 +409,15 @@ unsafe impl Sync for ErrWithV8Handle {}
 
 impl Error for ErrWithV8Handle {}
 
-impl fmt::Display for ErrWithV8Handle {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.err.fmt(f)
+impl Display for ErrWithV8Handle {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    <AnyError as Display>::fmt(&self.err, f)
   }
 }
 
-impl fmt::Debug for ErrWithV8Handle {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.err.fmt(f)
+impl Debug for ErrWithV8Handle {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    <Self as Display>::fmt(self, f)
   }
 }
 
@@ -452,15 +427,13 @@ mod tests {
 
   #[test]
   fn test_bad_resource() {
-    let err = ErrBox::bad_resource("Resource has been closed");
-    assert!(matches!(err, ErrBox::Simple { class: "BadResource", .. }));
+    let err = bad_resource("Resource has been closed");
     assert_eq!(err.to_string(), "Resource has been closed");
   }
 
   #[test]
   fn test_bad_resource_id() {
-    let err = ErrBox::bad_resource_id();
-    assert!(matches!(err, ErrBox::Simple { class: "BadResource", .. }));
+    let err = bad_resource_id();
     assert_eq!(err.to_string(), "Bad resource ID");
   }
 }

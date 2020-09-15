@@ -42,6 +42,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     None,
   ),
   (
+    "no_check_hello",
+    &["run", "--reload", "--no-check", "cli/tests/002_hello.ts"],
+    None,
+  ),
+  (
     "workers_startup",
     &["run", "--allow-read", "cli/tests/workers_startup_bench.ts"],
     None,
