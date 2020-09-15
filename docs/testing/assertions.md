@@ -12,7 +12,7 @@ Deno.test("Hello Test", () => {
 });
 ```
 
-The assertions module provides nine assertions:
+The assertions module provides 10 assertions:
 
 - `assert(expr: unknown, msg = ""): asserts expr`
 - `assertEquals(actual: unknown, expected: unknown, msg?: string): void`
@@ -21,6 +21,7 @@ The assertions module provides nine assertions:
 - `assertStringContains(actual: string, expected: string, msg?: string): void`
 - `assertArrayContains(actual: unknown[], expected: unknown[], msg?: string): void`
 - `assertMatch(actual: string, expected: RegExp, msg?: string): void`
+- `assertNotMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertThrows(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
 - `assertThrowsAsync(fn: () => Promise<void>, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Promise<Error>`
 
@@ -115,7 +116,8 @@ Deno.test("Test Assert Array Contains", () => {
 
 ### Regex
 
-You can assert regular expressions via the `assertMatch()` assertion.
+You can assert regular expressions via `assertMatch()` and `assertNotMatch()`
+assertions.
 
 ```js
 Deno.test("Test Assert Match", () => {
@@ -124,6 +126,13 @@ Deno.test("Test Assert Match", () => {
   const basicUrl = new RegExp("^https?://[a-z.]+.com$");
   assertMatch("https://www.google.com", basicUrl);
   assertMatch("http://facebook.com", basicUrl);
+});
+
+Deno.test("Test Assert Not Match", () => {
+  assertNotMatch("abcdefghi", new RegExp("jkl"));
+
+  const basicUrl = new RegExp("^https?://[a-z.]+.com$");
+  assertNotMatch("https://deno.land/", basicUrl);
 });
 ```
 
