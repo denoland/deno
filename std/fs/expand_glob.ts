@@ -175,7 +175,8 @@ export async function* expandGlob(
  *
  *      for (const file of expandGlobSync("**\/*.ts")) {
  *        console.log(file);
- *      } */
+ *      }
+ */
 export function* expandGlobSync(
   glob: string,
   {
