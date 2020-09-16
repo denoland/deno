@@ -215,7 +215,7 @@ SharedQueue Binary Layout
   let nextPromiseId = 1;
   const promiseTable = {};
 
-  function jsonOpAsync(opName, args, ...zeroCopy) {
+  function jsonOpAsync(opName, args = {}, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
     args.promiseId = nextPromiseId++;
@@ -232,7 +232,7 @@ SharedQueue Binary Layout
     return promise;
   }
 
-  function jsonOpSync(opName, args, ...zeroCopy) {
+  function jsonOpSync(opName, args = {}, ...zeroCopy) {
     const argsBuf = encodeJson(args);
     const res = dispatch(opName, argsBuf, ...zeroCopy);
     const r = decodeJson(res);
