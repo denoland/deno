@@ -187,8 +187,8 @@ async fn info_command(
     if json {
       write_json_to_stdout(&json!(info))
     } else {
-      std::io::stdout().write_all(format!("{}", info).as_bytes())?;
-      Ok(())
+      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())
+        .map_err(AnyError::from)
     }
   }
 }
