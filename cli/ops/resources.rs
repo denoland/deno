@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {

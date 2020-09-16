@@ -7,7 +7,7 @@ use deno_core::error::AnyError;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;

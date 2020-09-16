@@ -7,7 +7,7 @@ use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
 use idna::domain_to_ascii;
 use idna::domain_to_ascii_strict;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {

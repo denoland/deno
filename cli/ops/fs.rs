@@ -10,7 +10,7 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::From;
