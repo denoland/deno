@@ -6,6 +6,11 @@ unitTest(function testFnOverloading(): void {
   Deno.test("test fn overloading", (): void => {});
 });
 
+unitTest(function testOptionsOverloading(): void {
+  // just verifying that you can use this test definition syntax
+  Deno.test("test options overloading", (): void => {}, { only: true });
+});
+
 unitTest(function nameOfTestCaseCantBeEmpty(): void {
   assertThrows(
     () => {
