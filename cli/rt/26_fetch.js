@@ -1,14 +1,420 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const core = window.Deno.core;
-  const { notImplemented } = window.__bootstrap.util;
-  const { getHeaderValueParams, isTypedArray } = window.__bootstrap.webUtil;
-  const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
-  const Body = window.__bootstrap.body;
-  const { ReadableStream } = window.__bootstrap.streams;
-  const { MultipartBuilder } = window.__bootstrap.multipart;
+  const core = window.Deno.core;  
+  const { Buffer } = window.__bootstrap.buffer;
+  const { URLSearchParams } = window.__bootstrap.url;
+  const { ReadableStream, isReadableStreamDisturbed } =
+    window.__bootstrap.streams;
   const { Headers } = window.__bootstrap.headers;
+
+  function isTypedArray(x) {
+    return ArrayBuffer.isView(x) && !(x instanceof DataView);
+  }
+
+  function hasHeaderValueOf(s, value) {
+    return new RegExp(`^${value}[\t\s]*;?`).test(s);
+  }
+
+  function getHeaderValueParams(value) {
+    const params = new Map();
+    // Forced to do so for some Map constructor param mismatch
+    value
+      .split(";")
+      .slice(1)
+      .map((s) => s.trim().split("="))
+      .filter((arr) => arr.length > 1)
+      .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
+      .forEach(([k, v]) => params.set(k, v));
+    return params;
+  }
+
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const CR = "\r".charCodeAt(0);
+  const LF = "\n".charCodeAt(0);
+
+  class MultipartBuilder {
+    constructor(formData, boundary) {
+      this.formData = formData;
+      this.boundary = boundary ?? this.#createBoundary();
+      this.writer = new Buffer();
+    }
+
+    getContentType() {
+      return `multipart/form-data; boundary=${this.boundary}`;
+    }
+
+    getBody() {
+      for (const [fieldName, fieldValue] of this.formData.entries()) {
+        if (fieldValue instanceof DomFile) {
+          this.#writeFile(fieldName, fieldValue);
+        } else this.#writeField(fieldName, fieldValue);
+      }
+
+      this.writer.writeSync(encoder.encode(`\r\n--${this.boundary}--`));
+
+      return this.writer.bytes();
+    }
+
+    #createBoundary = () => {
+      return (
+        "----------" +
+        Array.from(Array(32))
+          .map(() => Math.random().toString(36)[2] || 0)
+          .join("")
+      );
+    };
+
+    #writeHeaders = (headers) => {
+      let buf = this.writer.empty() ? "" : "\r\n";
+
+      buf += `--${this.boundary}\r\n`;
+      for (const [key, value] of headers) {
+        buf += `${key}: ${value}\r\n`;
+      }
+      buf += `\r\n`;
+
+      this.writer.write(encoder.encode(buf));
+    };
+
+    #writeFileHeaders = (
+      field,
+      filename,
+      type,
+    ) => {
+      const headers = [
+        [
+          "Content-Disposition",
+          `form-data; name="${field}"; filename="${filename}"`,
+        ],
+        ["Content-Type", type || "application/octet-stream"],
+      ];
+      return this.#writeHeaders(headers);
+    };
+
+    #writeFieldHeaders = (field) => {
+      const headers = [["Content-Disposition", `form-data; name="${field}"`]];
+      return this.#writeHeaders(headers);
+    };
+
+    #writeField = (field, value) => {
+      this.#writeFieldHeaders(field);
+      this.writer.writeSync(encoder.encode(value));
+    };
+
+    #writeFile = (field, value) => {
+      this.#writeFileHeaders(field, value.name, value.type);
+      this.writer.writeSync(value[bytesSymbol]);
+    };
+  }
+
+  class MultipartParser {
+    constructor(body, boundary) {
+      if (!boundary) {
+        throw new TypeError("multipart/form-data must provide a boundary");
+      }
+
+      this.boundary = `--${boundary}`;
+      this.body = body;
+      this.boundaryChars = encoder.encode(this.boundary);
+    }
+
+    #parseHeaders = (headersText) => {
+      const headers = new Headers();
+      const rawHeaders = headersText.split("\r\n");
+      for (const rawHeader of rawHeaders) {
+        const sepIndex = rawHeader.indexOf(":");
+        if (sepIndex < 0) {
+          continue; // Skip this header
+        }
+        const key = rawHeader.slice(0, sepIndex);
+        const value = rawHeader.slice(sepIndex + 1);
+        headers.set(key, value);
+      }
+
+      return {
+        headers,
+        disposition: getHeaderValueParams(
+          headers.get("Content-Disposition") ?? "",
+        ),
+      };
+    };
+
+    parse() {
+      const formData = new FormData();
+      let headerText = "";
+      let boundaryIndex = 0;
+      let state = 0;
+      let fileStart = 0;
+
+      for (let i = 0; i < this.body.length; i++) {
+        const byte = this.body[i];
+        const prevByte = this.body[i - 1];
+        const isNewLine = byte === LF && prevByte === CR;
+
+        if (state === 1 || state === 2 || state == 3) {
+          headerText += String.fromCharCode(byte);
+        }
+        if (state === 0 && isNewLine) {
+          state = 1;
+        } else if (state === 1 && isNewLine) {
+          state = 2;
+          const headersDone = this.body[i + 1] === CR &&
+            this.body[i + 2] === LF;
+
+          if (headersDone) {
+            state = 3;
+          }
+        } else if (state === 2 && isNewLine) {
+          state = 3;
+        } else if (state === 3 && isNewLine) {
+          state = 4;
+          fileStart = i + 1;
+        } else if (state === 4) {
+          if (this.boundaryChars[boundaryIndex] !== byte) {
+            boundaryIndex = 0;
+          } else {
+            boundaryIndex++;
+          }
+
+          if (boundaryIndex >= this.boundary.length) {
+            const { headers, disposition } = this.#parseHeaders(headerText);
+            const content = this.body.subarray(
+              fileStart,
+              i - boundaryIndex - 1,
+            );
+            // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
+            const filename = disposition.get("filename");
+            const name = disposition.get("name");
+
+            state = 5;
+            // Reset
+            boundaryIndex = 0;
+            headerText = "";
+
+            if (!name) {
+              continue; // Skip, unknown name
+            }
+
+            if (filename) {
+              const blob = new Blob([content], {
+                type: headers.get("Content-Type") || "application/octet-stream",
+              });
+              formData.append(name, blob, filename);
+            } else {
+              formData.append(name, decoder.decode(content));
+            }
+          }
+        } else if (state === 5 && isNewLine) {
+          state = 1;
+        }
+      }
+
+      return formData;
+    }
+  }
+
+  function validateBodyType(owner, bodySource) {
+    if (isTypedArray(bodySource)) {
+      return true;
+    } else if (bodySource instanceof ArrayBuffer) {
+      return true;
+    } else if (typeof bodySource === "string") {
+      return true;
+    } else if (bodySource instanceof ReadableStream) {
+      return true;
+    } else if (bodySource instanceof FormData) {
+      return true;
+    } else if (bodySource instanceof URLSearchParams) {
+      return true;
+    } else if (!bodySource) {
+      return true; // null body is fine
+    }
+    throw new Error(
+      `Bad ${owner.constructor.name} body type: ${bodySource.constructor.name}`,
+    );
+  }
+
+  async function bufferFromStream(
+    stream,
+    size,
+  ) {
+    const encoder = new TextEncoder();
+    const buffer = new Buffer();
+
+    if (size) {
+      // grow to avoid unnecessary allocations & copies
+      buffer.grow(size);
+    }
+
+    while (true) {
+      const { done, value } = await stream.read();
+
+      if (done) break;
+
+      if (typeof value === "string") {
+        buffer.writeSync(encoder.encode(value));
+      } else if (value instanceof ArrayBuffer) {
+        buffer.writeSync(new Uint8Array(value));
+      } else if (value instanceof Uint8Array) {
+        buffer.writeSync(value);
+      } else if (!value) {
+        // noop for undefined
+      } else {
+        throw new Error("unhandled type on stream read");
+      }
+    }
+
+    return buffer.bytes().buffer;
+  }
+
+  function bodyToArrayBuffer(bodySource) {
+    if (isTypedArray(bodySource)) {
+      return bodySource.buffer;
+    } else if (bodySource instanceof ArrayBuffer) {
+      return bodySource;
+    } else if (typeof bodySource === "string") {
+      const enc = new TextEncoder();
+      return enc.encode(bodySource).buffer;
+    } else if (bodySource instanceof ReadableStream) {
+      throw new Error(
+        `Can't convert stream to ArrayBuffer (try bufferFromStream)`,
+      );
+    } else if (
+      bodySource instanceof FormData ||
+      bodySource instanceof URLSearchParams
+    ) {
+      const enc = new TextEncoder();
+      return enc.encode(bodySource.toString()).buffer;
+    } else if (!bodySource) {
+      return new ArrayBuffer(0);
+    }
+    throw new Error(
+      `Body type not implemented: ${bodySource.constructor.name}`,
+    );
+  }
+
+  const BodyUsedError =
+    "Failed to execute 'clone' on 'Body': body is already used";
+
+  class Body {
+    #contentType = "";
+    #size = undefined;
+
+    constructor(_bodySource, meta) {
+      validateBodyType(this, _bodySource);
+      this._bodySource = _bodySource;
+      this.#contentType = meta.contentType;
+      this.#size = meta.size;
+      this._stream = null;
+    }
+
+    get body() {
+      if (this._stream) {
+        return this._stream;
+      }
+
+      if (!this._bodySource) {
+        return null;
+      } else if (this._bodySource instanceof ReadableStream) {
+        this._stream = this._bodySource;
+      } else {
+        const buf = bodyToArrayBuffer(this._bodySource);
+        if (!(buf instanceof ArrayBuffer)) {
+          throw new Error(
+            `Expected ArrayBuffer from body`,
+          );
+        }
+
+        this._stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(buf);
+            controller.close();
+          },
+        });
+      }
+
+      return this._stream;
+    }
+
+    get bodyUsed() {
+      if (this.body && isReadableStreamDisturbed(this.body)) {
+        return true;
+      }
+      return false;
+    }
+
+    async blob() {
+      return new Blob([await this.arrayBuffer()], {
+        type: this.#contentType,
+      });
+    }
+
+    // ref: https://fetch.spec.whatwg.org/#body-mixin
+    async formData() {
+      const formData = new FormData();
+      if (hasHeaderValueOf(this.#contentType, "multipart/form-data")) {
+        const params = getHeaderValueParams(this.#contentType);
+
+        // ref: https://tools.ietf.org/html/rfc2046#section-5.1
+        const boundary = params.get("boundary");
+        const body = new Uint8Array(await this.arrayBuffer());
+        const multipartParser = new MultipartParser(body, boundary);
+
+        return multipartParser.parse();
+      } else if (
+        hasHeaderValueOf(this.#contentType, "application/x-www-form-urlencoded")
+      ) {
+        // From https://github.com/github/fetch/blob/master/fetch.js
+        // Copyright (c) 2014-2016 GitHub, Inc. MIT License
+        const body = await this.text();
+        try {
+          body
+            .trim()
+            .split("&")
+            .forEach((bytes) => {
+              if (bytes) {
+                const split = bytes.split("=");
+                const name = split.shift().replace(/\+/g, " ");
+                const value = split.join("=").replace(/\+/g, " ");
+                formData.append(
+                  decodeURIComponent(name),
+                  decodeURIComponent(value),
+                );
+              }
+            });
+        } catch (e) {
+          throw new TypeError("Invalid form urlencoded format");
+        }
+        return formData;
+      } else {
+        throw new TypeError("Invalid form data");
+      }
+    }
+
+    async text() {
+      if (typeof this._bodySource === "string") {
+        return this._bodySource;
+      }
+
+      const ab = await this.arrayBuffer();
+      const decoder = new TextDecoder("utf-8");
+      return decoder.decode(ab);
+    }
+
+    async json() {
+      const raw = await this.text();
+      return JSON.parse(raw);
+    }
+
+    arrayBuffer() {
+      if (this._bodySource instanceof ReadableStream) {
+        return bufferFromStream(this._bodySource.getReader(), this.#size);
+      }
+      return bodyToArrayBuffer(this._bodySource);
+    }
+  }
 
   function createHttpClient(options) {
     return new HttpClient(opCreateHttpClient(options));
@@ -39,8 +445,137 @@
   const NULL_BODY_STATUS = [101, 204, 205, 304];
   const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
+  function byteUpperCase(s) {
+    return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
+      return c.toUpperCase();
+    });
+  }
+
+  function normalizeMethod(m) {
+    const u = byteUpperCase(m);
+    if (
+      u === "DELETE" ||
+      u === "GET" ||
+      u === "HEAD" ||
+      u === "OPTIONS" ||
+      u === "POST" ||
+      u === "PUT"
+    ) {
+      return u;
+    }
+    return m;
+  }
+
+  class Request extends Body {
+    constructor(input, init) {
+      if (arguments.length < 1) {
+        throw TypeError("Not enough arguments");
+      }
+
+      if (!init) {
+        init = {};
+      }
+
+      let b;
+
+      // prefer body from init
+      if (init.body) {
+        b = init.body;
+      } else if (input instanceof Request && input._bodySource) {
+        if (input.bodyUsed) {
+          throw TypeError(BodyUsedError);
+        }
+        b = input._bodySource;
+      } else if (typeof input === "object" && "body" in input && input.body) {
+        if (input.bodyUsed) {
+          throw TypeError(BodyUsedError);
+        }
+        b = input.body;
+      } else {
+        b = "";
+      }
+
+      let headers;
+
+      // prefer headers from init
+      if (init.headers) {
+        headers = new Headers(init.headers);
+      } else if (input instanceof Request) {
+        headers = input.headers;
+      } else {
+        headers = new Headers();
+      }
+
+      const contentType = headers.get("content-type") || "";
+      super(b, { contentType });
+      this.headers = headers;
+
+      // readonly attribute ByteString method;
+      this.method = "GET";
+
+      // readonly attribute USVString url;
+      this.url = "";
+
+      // readonly attribute RequestCredentials credentials;
+      this.credentials = "omit";
+
+      if (input instanceof Request) {
+        if (input.bodyUsed) {
+          throw TypeError(BodyUsedError);
+        }
+        this.method = input.method;
+        this.url = input.url;
+        this.headers = new Headers(input.headers);
+        this.credentials = input.credentials;
+        this._stream = input._stream;
+      } else if (typeof input === "string") {
+        this.url = input;
+      }
+
+      if (init && "method" in init) {
+        this.method = normalizeMethod(init.method);
+      }
+
+      if (
+        init &&
+        "credentials" in init &&
+        init.credentials &&
+        ["omit", "same-origin", "include"].indexOf(init.credentials) !== -1
+      ) {
+        this.credentials = init.credentials;
+      }
+    }
+
+    clone() {
+      if (this.bodyUsed) {
+        throw TypeError(BodyUsedError);
+      }
+
+      const iterators = this.headers.entries();
+      const headersList = [];
+      for (const header of iterators) {
+        headersList.push(header);
+      }
+
+      let body2 = this._bodySource;
+
+      if (this._bodySource instanceof ReadableStream) {
+        const tees = this._bodySource.tee();
+        this._stream = this._bodySource = tees[0];
+        body2 = tees[1];
+      }
+
+      return new Request(this.url, {
+        body: body2,
+        method: this.method,
+        headers: new Headers(headersList),
+        credentials: this.credentials,
+      });
+    }
+  }
+
   const responseData = new WeakMap();
-  class Response extends Body.Body {
+  class Response extends Body {
     constructor(body = null, init) {
       init = init ?? {};
 
@@ -143,7 +678,7 @@
 
     clone() {
       if (this.bodyUsed) {
-        throw TypeError(Body.BodyUsedError);
+        throw TypeError(BodyUsedError);
       }
 
       const iterators = this.headers.entries();
@@ -236,8 +771,8 @@
           } else if (init.body instanceof URLSearchParams) {
             body = new TextEncoder().encode(init.body.toString());
             contentType = "application/x-www-form-urlencoded;charset=UTF-8";
-          } else if (init.body instanceof Blob) {
-            body = init.body[blobBytesSymbol];
+          } else if (init.body instanceof blob.Blob) {
+            body = init.body[blob.BytesSymbol];
             contentType = init.body.type;
           } else if (init.body instanceof FormData) {
             let boundary;
@@ -245,12 +780,15 @@
               const params = getHeaderValueParams("content-type");
               boundary = params.get("boundary");
             }
-            const multipartBuilder = new MultipartBuilder(init.body, boundary);
+            const multipartBuilder = new MultipartBuilder(
+              init.body,
+              boundary,
+            );
             body = multipartBuilder.getBody();
             contentType = multipartBuilder.getContentType();
           } else {
             // TODO: ReadableStream
-            notImplemented();
+            throw new Error("Not implemented");
           }
           if (contentType && !headers.has("content-type")) {
             headers.set("content-type", contentType);
@@ -384,6 +922,7 @@
 
   window.__bootstrap.fetch = {
     fetch,
+    Request,
     Response,
     HttpClient,
     createHttpClient,

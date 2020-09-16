@@ -1,21 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const blob = window.__bootstrap.blob;
-  const domFile = window.__bootstrap.domFile;
+  const { Blob, DomFile } = window.__bootstrap.blob;
   const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { requiredArguments } = window.__bootstrap.webUtil;
 
   const dataSymbol = Symbol("data");
 
   function parseFormDataValue(value, filename) {
-    if (value instanceof domFile.DomFile) {
-      return new domFile.DomFile([value], filename || value.name, {
+    if (value instanceof DomFile) {
+      return new DomFile([value], filename || value.name, {
         type: value.type,
         lastModified: value.lastModified,
       });
-    } else if (value instanceof blob.Blob) {
-      return new domFile.DomFile([value], filename || "blob", {
+    } else if (value instanceof Blob) {
+      return new DomFile([value], filename || "blob", {
         type: value.type,
       });
     } else {
