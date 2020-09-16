@@ -2403,6 +2403,19 @@ itest!(deno_lint_from_stdin_json {
   exit_code: 1,
 });
 
+itest!(deno_lint_rules {
+  args: "lint --unstable --rules",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
+});
+
+// Make sure that the rules are printed if quiet option is enabled.
+itest!(deno_lint_rules_quiet {
+  args: "lint --unstable --rules -q",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
+});
+
 itest!(deno_doc_builtin {
   args: "doc",
   output: "deno_doc_builtin.out",

@@ -105,9 +105,11 @@ pub async fn lint_files(
 pub fn print_rules_list() {
   let lint_rules = rules::get_recommended_rules();
 
-  info!("Available rules:");
+  // The rules should still be printed even if `--quiet` option is enabled,
+  // so use `println!` here instead of `info!`.
+  println!("Available rules:");
   for rule in lint_rules {
-    info!(" - {}", rule.code());
+    println!(" - {}", rule.code());
   }
 }
 
