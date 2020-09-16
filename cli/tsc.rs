@@ -59,6 +59,7 @@ use swc_common::comments::CommentKind;
 use swc_common::input::StringInput;
 use swc_common::FileName;
 use swc_common::FilePathMapping;
+use swc_ecmascript::visit::FoldWith;
 use swc_ecmascript::{
   ast::Module, codegen::text_writer::JsWriter, dep_graph, parser::lexer::Lexer,
   parser::JscTarget, parser::Parser, parser::Syntax,
@@ -795,7 +796,7 @@ impl TsCompiler {
 
       let mut entries = HashMap::default();
       entries.insert(
-        "bundle".into(),
+        "bundle".to_string(),
         FileName::Custom(module_specifier.to_string()),
       );
       // TODO(kdy1): Remove expect
@@ -1654,6 +1655,9 @@ impl swc_bundler::Load for SwcLoader<'_> {
               bail!("Parsing failed: {:?}", err);
             }
           };
+
+          let module = module
+            .fold_with(&mut swc_ecmascript::transforms::typescript::strip());
 
           Ok((fm, module))
         } else {
