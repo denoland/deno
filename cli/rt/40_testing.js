@@ -87,7 +87,6 @@ finishing test case.`;
   function test(
     t,
     fn,
-    options,
   ) {
     let testDef;
     const defaults = {
@@ -98,9 +97,6 @@ finishing test case.`;
     };
 
     if (typeof t === "string") {
-      if (!options) {
-        throw new TypeError("Missing test options");
-      }
       if (!fn || typeof fn != "function") {
         throw new TypeError("Missing test function");
       }
@@ -109,9 +105,6 @@ finishing test case.`;
       }
       testDef = { fn: fn, name: t, ...defaults };
     } else {
-      if (!t.options) {
-        throw new TypeError("Missing test options");
-      }
       if (!t.fn) {
         throw new TypeError("Missing test function");
       }
