@@ -6,6 +6,12 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.1 / 2020.09.16
+
+- fix: Revert a change that was part of the v1.4.0 release, which made
+  `deno install «script»` automatically bundle the script's dependencies.
+  This broke the `deno install` command for a large number of scripts.
+
 ### 1.4.0 / 2020.09.13
 
 - feat: Implement WebSocket API (#7051, #7437)
