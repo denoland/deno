@@ -190,7 +190,8 @@ export function createPerson(name: string, age: number): Person {
 }
 
 // mod.ts
-export { Person, createPerson } from "./my_file.ts";
+export { createPerson } from "./my_file.ts";
+export type { Person } from "./my_file.ts";
 ```
 
 ### Minimize dependencies; do not make circular imports.
