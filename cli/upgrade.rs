@@ -6,13 +6,11 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-extern crate semver_parser;
-use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
 use crate::AnyError;
 use deno_core::error::custom_error;
-
+use futures::FutureExt;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
 use semver_parser::version::parse as semver_parse;
