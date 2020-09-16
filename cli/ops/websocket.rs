@@ -4,6 +4,7 @@ use core::task::Poll;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::url;
 use deno_core::BufVec;
 use deno_core::OpState;
 use futures::future::poll_fn;

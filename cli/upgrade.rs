@@ -10,6 +10,7 @@ use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
 use crate::AnyError;
 use deno_core::error::custom_error;
+use deno_core::url::Url;
 use futures::FutureExt;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
@@ -25,7 +26,6 @@ use std::process::Command;
 use std::process::Stdio;
 use std::string::String;
 use tempfile::TempDir;
-use url::Url;
 
 // TODO(ry) Auto detect target triples for the uploaded files.
 #[cfg(windows)]

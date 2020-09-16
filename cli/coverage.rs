@@ -7,6 +7,7 @@ use crate::inspector::DenoInspector;
 use crate::permissions::Permissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use serde::Deserialize;
@@ -16,7 +17,6 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr;
 use std::sync::Arc;
-use url::Url;
 
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,

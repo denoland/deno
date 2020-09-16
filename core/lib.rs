@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-extern crate futures;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -20,7 +19,11 @@ mod runtime;
 mod shared_queue;
 mod zero_copy_buf;
 
+// Re-exports
+pub use futures;
 pub use rusty_v8 as v8;
+pub use serde_json;
+pub use url;
 
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
@@ -49,7 +52,6 @@ pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
-pub use serde_json;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

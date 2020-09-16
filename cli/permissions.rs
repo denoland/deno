@@ -6,6 +6,7 @@ use crate::fs::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::url;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::env::current_dir;
@@ -20,7 +21,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::Mutex;
-use url::Url;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
@@ -259,7 +259,7 @@ impl Permissions {
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
-    let parsed = Url::parse(url)?;
+    let parsed = url::Url::parse(url)?;
     // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
     // Note that host:port combos are parsed as scheme:path
     if parsed.host().is_none() {

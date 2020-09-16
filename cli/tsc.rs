@@ -25,6 +25,7 @@ use crate::worker::Worker;
 use core::task::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use futures::future::Future;
 use futures::future::FutureExt;
@@ -56,7 +57,6 @@ use std::task::Poll;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
 use swc_ecmascript::dep_graph;
-use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
   "deno.ns",

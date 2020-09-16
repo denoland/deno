@@ -441,7 +441,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
- "url",
  "uuid",
  "walkdir",
  "warp",
