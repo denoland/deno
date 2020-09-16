@@ -6,50 +6,36 @@
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
-  function alert(message) {
+  function alert(message = "Alert") {
     if (!isatty(stdin.rid)) {
-      throw new Error(
-        "stdin is not interactive. 'alert' needs stdin to be interactive.",
-      );
+      return;
     }
 
-    if (message) {
-      stdout.writeSync(encoder.encode(message));
-    }
+    stdout.writeSync(encoder.encode(`${message} [Enter] `));
 
     readLineFromStdinSync();
   }
 
-  function confirm(message) {
+  function confirm(message = "Confirm") {
     if (!isatty(stdin.rid)) {
-      throw new Error(
-        "stdin is not interactive. 'confirm' needs stdin to be interactive.",
-      );
+      return false;
     }
 
-    if (message) {
-      stdout.writeSync(encoder.encode(message));
-    }
-
-    stdout.writeSync(encoder.encode(" [y/N] "));
+    stdout.writeSync(encoder.encode(`${message} [y/N] `));
 
     const answer = readLineFromStdinSync();
 
     return answer === "Y" || answer === "y";
   }
 
-  function prompt(message, defaultValue = "") {
+  function prompt(message = "Prompt", defaultValue) {
+    defaultValue ??= null;
+
     if (!isatty(stdin.rid)) {
-      throw new Error(
-        "stdin is not interactive. 'prompt' needs stdin to be interactive.",
-      );
+      return defaultValue;
     }
 
-    if (message) {
-      stdout.writeSync(encoder.encode(message));
-    }
-
-    stdout.writeSync(encoder.encode(" "));
+    stdout.writeSync(encoder.encode(`${message} `));
 
     if (defaultValue) {
       stdout.writeSync(encoder.encode(`[${defaultValue}] `));
