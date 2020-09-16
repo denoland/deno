@@ -251,7 +251,7 @@ SharedQueue Binary Layout
     if (res.ok) {
       promise.resolve(res.ok);
     } else {
-      const err = (getErrorClass(res.err.className))(res.err.message);
+      const err = new (getErrorClass(res.err.className))(res.err.message);
       promise.reject(err);
     }
   }
