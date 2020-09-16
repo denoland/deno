@@ -997,4 +997,4 @@ declare function confirm(message?: string): boolean;
  * @param message
  * @param defaultValue
  */
-declare function prompt(message?: string, defaultValue?: string): string;
+declare function prompt(message?: string, defaultValue?: string): string | null;

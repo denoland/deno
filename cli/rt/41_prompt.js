@@ -32,7 +32,7 @@
     defaultValue ??= null;
 
     if (!isatty(stdin.rid)) {
-      return defaultValue;
+      return null;
     }
 
     stdout.writeSync(encoder.encode(`${message} `));

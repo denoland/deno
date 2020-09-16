@@ -17,7 +17,7 @@ declare class Window extends EventTarget {
   readonly closed: boolean;
   alert: (message?: string) => void;
   confirm: (message?: string) => boolean;
-  prompt: (message?: string, defaultValue?: string) => string;
+  prompt: (message?: string, defaultValue?: string) => string | null;
   Deno: typeof Deno;
 }
 
