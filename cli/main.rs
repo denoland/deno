@@ -1,25 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-extern crate futures;
 #[macro_use]
 extern crate serde_json;
-extern crate clap;
-extern crate deno_core;
-extern crate encoding_rs;
-extern crate indexmap;
-#[cfg(unix)]
-extern crate nix;
-extern crate rand;
-extern crate regex;
-extern crate reqwest;
-extern crate serde;
-extern crate tokio;
-extern crate url;
 
 mod ast;
 mod checksum;
