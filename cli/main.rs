@@ -66,6 +66,8 @@ use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
@@ -84,7 +86,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use upgrade::upgrade_command;
-use url::Url;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;

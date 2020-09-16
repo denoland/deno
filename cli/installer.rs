@@ -3,6 +3,7 @@
 use crate::flags::Flags;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use log::Level;
 use regex::{Regex, RegexBuilder};
 use std::env;
@@ -13,7 +14,6 @@ use std::io::Write;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use url::Url;
 
 lazy_static! {
     static ref EXEC_NAME_RE: Regex = RegexBuilder::new(
