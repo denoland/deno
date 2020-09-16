@@ -27,7 +27,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
-use url::Url;
+use deno_core::url::Url;
 
 /// Events that are sent to host from child
 /// worker.

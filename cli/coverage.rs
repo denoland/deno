@@ -16,7 +16,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr;
 use std::sync::Arc;
-use url::Url;
+use deno_core::url::Url;
 
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,

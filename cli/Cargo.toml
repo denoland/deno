@@ -41,7 +41,7 @@ dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.24"
 dprint-plugin-typescript = "0.31.3"
-futures = "0.3.5"
+futures = "0.3.5" # TODO(ry) Remove and use deno_core::futures
 filetime = "0.2.12"
 http = "0.2.1"
 idna = "0.2.0"
@@ -58,7 +58,7 @@ reqwest = { version = "0.10.8", default-features = false, features = ["rustls-tl
 ring = "0.16.15"
 rustyline = { version = "6.3.0", default-features = false }
 serde = { version = "1.0.116", features = ["derive"] }
-serde_json = { version = "1.0.57", features = [ "preserve_order" ] }
+serde_json = { version = "1.0.57", features = [ "preserve_order" ] } # TODO(ry) Remove and use deno_core::serde_json
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
 swc_common = { version = "=0.10.2", features = ["sourcemap"] }
@@ -69,7 +69,6 @@ tokio = { version = "0.2.22", features = ["full"] }
 tokio-rustls = "0.14.1"
 # Keep in-sync with warp.
 tokio-tungstenite = "0.11.0"
-url = "2.1.1"
 webpki = "0.21.3"
 webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'. 
 walkdir = "2.3.1"

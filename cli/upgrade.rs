@@ -25,7 +25,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::string::String;
 use tempfile::TempDir;
-use url::Url;
+use deno_core::url::Url;
 
 // TODO(ry) Auto detect target triples for the uploaded files.
 #[cfg(windows)]

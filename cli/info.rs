@@ -408,6 +408,7 @@ mod test {
   use crate::ast::Location;
   use crate::media_type::MediaType;
   use crate::module_graph::ImportDescriptor;
+  use deno_core::url::Url;
 
   #[test]
   fn human_size_test() {
@@ -441,9 +442,8 @@ mod test {
     imports: Vec<ModuleSpecifier>,
     redirect: Option<ModuleSpecifier>,
   ) -> (ModuleGraphFile, ModuleSpecifier) {
-    let spec = ModuleSpecifier::from(
-      url::Url::parse(&format!("http://{}", name)).unwrap(),
-    );
+    let spec =
+      ModuleSpecifier::from(Url::parse(&format!("http://{}", name)).unwrap());
     let file = ModuleGraphFile {
       filename: "name".to_string(),
       imports: imports

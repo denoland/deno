@@ -8,7 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
-use url::{Host, Url};
+use deno_core::url::{Host, Url};
 
 #[derive(Clone)]
 pub struct DiskCache {

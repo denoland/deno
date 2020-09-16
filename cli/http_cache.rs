@@ -14,7 +14,7 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-use url::Url;
+use deno_core::url::Url;
 
 /// Turn base of url (scheme, hostname, port) into a valid filename.
 /// This method replaces port part with a special string token (because

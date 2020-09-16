@@ -13,7 +13,7 @@ use std::io::Write;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use url::Url;
+use deno_core::url::Url;
 
 lazy_static! {
     static ref EXEC_NAME_RE: Regex = RegexBuilder::new(

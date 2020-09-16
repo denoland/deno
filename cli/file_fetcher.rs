@@ -12,6 +12,8 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use log::info;
@@ -27,7 +29,6 @@ use std::result::Result;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
-use url::Url;
 
 /// Structure representing a text document.
 #[derive(Debug, Clone)]

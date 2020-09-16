@@ -23,7 +23,7 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
-use url::Url;
+use deno_core::url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.

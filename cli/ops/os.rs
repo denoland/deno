@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
-use url::Url;
+use deno_core::url::Url;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_exit", op_exit);
