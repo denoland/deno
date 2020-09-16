@@ -239,19 +239,19 @@ SharedQueue Binary Layout
     if ("ok" in r) {
       return r.ok;
     } else {
-      throw r.err;
+      throw new (getErrorClass(r.err.className))(r.err.message);
     }
   }
 
   function jsonOpAsyncHandler(buf) {
     // Json Op.
-    const msg = decodeJson(buf);
-    const { ok, err, promiseId } = msg;
-    const promise = promiseTable[promiseId];
-    delete promiseTable[promiseId];
-    if (ok) {
-      promise.resolve(ok);
+    const res = decodeJson(buf);
+    const promise = promiseTable[res.promiseId];
+    delete promiseTable[res.promiseId];
+    if (res.ok) {
+      promise.resolve(res.ok);
     } else {
+      const err = (getErrorClass(res.err.className))(res.err.message);
       promise.reject(err);
     }
   }
