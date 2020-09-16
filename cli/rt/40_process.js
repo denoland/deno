@@ -1,23 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { File } = window.__bootstrap.files;
   const { close } = window.__bootstrap.resources;
   const { readAll } = window.__bootstrap.buffer;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   const { assert, pathFromURL } = window.__bootstrap.util;
 
   function opKill(pid, signo) {
-    sendSync("op_kill", { pid, signo });
+    core.jsonOpSync("op_kill", { pid, signo });
   }
 
   function opRunStatus(rid) {
-    return sendAsync("op_run_status", { rid });
+    return core.jsonOpAsync("op_run_status", { rid });
   }
 
   function opRun(request) {
     assert(request.cmd.length > 0);
-    return sendSync("op_run", request);
+    return core.jsonOpSync("op_run", request);
   }
 
   async function runStatus(rid) {

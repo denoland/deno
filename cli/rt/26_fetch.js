@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { notImplemented } = window.__bootstrap.util;
   const { getHeaderValueParams, isTypedArray } = window.__bootstrap.webUtil;
   const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
   const { read } = window.__bootstrap.io;
   const { close } = window.__bootstrap.resources;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   const Body = window.__bootstrap.body;
   const { ReadableStream } = window.__bootstrap.streams;
   const { MultipartBuilder } = window.__bootstrap.multipart;
@@ -17,7 +17,7 @@
   }
 
   function opCreateHttpClient(args) {
-    return sendSync("op_create_http_client", args);
+    return core.jsonOpSync("op_create_http_client", args);
   }
 
   class HttpClient {
@@ -35,7 +35,7 @@
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
     }
 
-    return sendAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+    return core.jsonOpAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
   }
 
   const NULL_BODY_STATUS = [101, 204, 205, 304];

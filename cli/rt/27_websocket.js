@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendAsync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
   const { close } = window.__bootstrap.resources;
   const { requiredArguments } = window.__bootstrap.webUtil;
   const CONNECTING = 0;
@@ -47,7 +47,7 @@
         );
       }
 
-      sendAsync("op_ws_create", {
+      core.jsonOpAsync("op_ws_create", {
         url: wsURL.href,
         protocols: protocols.join("; "),
       }).then((create) => {
@@ -57,7 +57,7 @@
           this.#protocol = create.protocol;
 
           if (this.#readyState === CLOSING) {
-            sendAsync("op_ws_close", {
+            core.jsonOpAsync("op_ws_close", {
               rid: this.#rid,
             }).then(() => {
               this.#readyState = CLOSED;
@@ -172,7 +172,7 @@
 
       const sendTypedArray = (ta) => {
         this.#bufferedAmount += ta.size;
-        sendAsync("op_ws_send", {
+        core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
         }, ta).then(() => {
           this.#bufferedAmount -= ta.size;
@@ -198,7 +198,7 @@
         const encoder = new TextEncoder();
         const d = encoder.encode(string);
         this.#bufferedAmount += d.size;
-        sendAsync("op_ws_send", {
+        core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
           text: string,
         }).then(() => {
@@ -228,7 +228,7 @@
       } else if (this.#readyState === OPEN) {
         this.#readyState = CLOSING;
 
-        sendAsync("op_ws_close", {
+        core.jsonOpAsync("op_ws_close", {
           rid: this.#rid,
           code,
           reason,
@@ -249,7 +249,10 @@
 
     async #eventLoop() {
       if (this.#readyState === OPEN) {
-        const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
+        const message = await core.jsonOpAsync(
+          "op_ws_next_event",
+          { rid: this.#rid },
+        );
         if (message.type === "string" || message.type === "binary") {
           let data;
 
