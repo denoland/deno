@@ -1,4 +1,5 @@
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
 use serde_json::Map;
@@ -8,7 +9,6 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::io;
-use url::Url;
 
 #[derive(Debug)]
 pub struct ImportMapError {

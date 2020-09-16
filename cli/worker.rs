@@ -8,6 +8,7 @@ use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::state::CliState;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -27,7 +28,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
-use url::Url;
 
 /// Events that are sent to host from child
 /// worker.

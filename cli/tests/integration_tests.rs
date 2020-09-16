@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use deno_core::url;
 use futures::prelude::*;
 use std::io::{BufRead, Write};
 use std::process::Command;
@@ -2421,7 +2422,7 @@ itest!(info_type_import {
 
 #[test]
 fn cafile_env_fetch() {
-  use url::Url;
+  use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
@@ -2441,7 +2442,7 @@ fn cafile_env_fetch() {
 
 #[test]
 fn cafile_fetch() {
-  use url::Url;
+  use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =

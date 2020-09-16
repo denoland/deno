@@ -4,6 +4,7 @@ use crate::version;
 use bytes::Bytes;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::IF_NONE_MATCH;
@@ -23,7 +24,6 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
-use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.

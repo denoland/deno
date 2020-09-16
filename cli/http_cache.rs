@@ -7,6 +7,7 @@
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
@@ -14,7 +15,6 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-use url::Url;
 
 /// Turn base of url (scheme, hostname, port) into a valid filename.
 /// This method replaces port part with a special string token (because
