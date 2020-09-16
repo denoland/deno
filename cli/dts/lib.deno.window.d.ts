@@ -26,4 +26,25 @@ declare var self: Window & typeof globalThis;
 declare var onload: ((this: Window, ev: Event) => any) | null;
 declare var onunload: ((this: Window, ev: Event) => any) | null;
 
+/**
+ * Shows the given message and waits for the enter key pressed.
+ * @param message
+ */
+declare function alert(message?: string): void;
+
+/**
+ * Shows the given message and waits for the answer. Returns the user's answer as boolean.
+ * @param message
+ */
+declare function confirm(message?: string): boolean;
+
+/**
+ * Shows the given message and waits for the user's input. Returns the user's input as string.
+ * If the default value is given and the user inputs the empty string, then it returns the given
+ * default value.
+ * @param message
+ * @param defaultValue
+ */
+declare function prompt(message?: string, defaultValue?: string): string | null;
+
 /* eslint-enable @typescript-eslint/no-explicit-any */
