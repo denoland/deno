@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { errors } = window.__bootstrap.errors;
   const { read, write } = window.__bootstrap.io;
   const { close } = window.__bootstrap.resources;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
 
   const ShutdownMode = {
     // See http://man7.org/linux/man-pages/man2/shutdown.2.html
@@ -18,7 +18,7 @@
   };
 
   function shutdown(rid, how) {
-    sendSync("op_shutdown", { rid, how });
+    core.jsonOpSync("op_shutdown", { rid, how });
     return Promise.resolve();
   }
 
@@ -26,15 +26,15 @@
     rid,
     transport,
   ) {
-    return sendAsync("op_accept", { rid, transport });
+    return core.jsonOpAsync("op_accept", { rid, transport });
   }
 
   function opListen(args) {
-    return sendSync("op_listen", args);
+    return core.jsonOpSync("op_listen", args);
   }
 
   function opConnect(args) {
-    return sendAsync("op_connect", args);
+    return core.jsonOpAsync("op_connect", args);
   }
 
   function opReceive(
@@ -42,11 +42,15 @@
     transport,
     zeroCopy,
   ) {
-    return sendAsync("op_datagram_receive", { rid, transport }, zeroCopy);
+    return core.jsonOpAsync(
+      "op_datagram_receive",
+      { rid, transport },
+      zeroCopy,
+    );
   }
 
   function opSend(args, zeroCopy) {
-    return sendAsync("op_datagram_send", args, zeroCopy);
+    return core.jsonOpAsync("op_datagram_send", args, zeroCopy);
   }
 
   class Conn {

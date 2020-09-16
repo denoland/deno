@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const sendSync = window.__bootstrap.dispatchJson.sendSync;
+  const core = window.Deno.core;
 
   function resources() {
-    const res = sendSync("op_resources");
+    const res = core.jsonOpSync("op_resources");
     const resources = {};
     for (const resourceTuple of res) {
       resources[resourceTuple[0]] = resourceTuple[1];
@@ -13,7 +13,7 @@
   }
 
   function close(rid) {
-    sendSync("op_close", { rid });
+    core.jsonOpSync("op_close", { rid });
   }
 
   window.__bootstrap.resources = {
