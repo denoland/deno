@@ -49,9 +49,9 @@ pub mod installer;
 mod js;
 mod lint;
 mod lockfile;
+mod media_type;
 mod metrics;
 mod module_graph;
-pub mod msg;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -77,7 +77,7 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
-use crate::msg::MediaType;
+use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
@@ -378,7 +378,7 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
-    let syntax = ast::get_syntax(&msg::MediaType::Dts);
+    let syntax = ast::get_syntax(&MediaType::Dts);
     doc_parser.parse_source(
       "lib.deno.d.ts",
       syntax,

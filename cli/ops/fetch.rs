@@ -51,9 +51,9 @@ async fn op_fetch(
       .ok_or_else(bad_resource_id)?;
     r.client.clone()
   } else {
-    let cli_state = super::cli_state2(&state);
-    let client_ref = cli_state.http_client.borrow();
-    client_ref.clone()
+    let state_ = state.borrow();
+    let client = state_.borrow::<reqwest::Client>();
+    client.clone()
   };
 
   let method = match args.method {
@@ -103,14 +103,12 @@ async fn op_fetch(
     ))),
   );
 
-  let json_res = json!({
+  Ok(json!({
     "bodyRid": rid,
     "status": status.as_u16(),
     "statusText": status.canonical_reason().unwrap_or(""),
     "headers": res_headers
-  });
-
-  Ok(json_res)
+  }))
 }
 
 struct HttpClientResource {

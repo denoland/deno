@@ -160,15 +160,15 @@ Deno.test({
     assertEquals(datetime.dayOfYear(new Date("-000001-04-01")), 91);
     assertEquals(datetime.dayOfYear(new Date("-000001-12-31")), 365);
 
-    // // 400 BC tests (leap-year)
-    assertEquals(datetime.dayOfYear(new Date("-00400-01-01")), 1);
-    assertEquals(datetime.dayOfYear(new Date("-00400-01-15")), 15);
-    assertEquals(datetime.dayOfYear(new Date("-00400-02-01")), 32);
-    assertEquals(datetime.dayOfYear(new Date("-00400-02-15")), 46);
-    assertEquals(datetime.dayOfYear(new Date("-00400-03-01")), 61);
-    assertEquals(datetime.dayOfYear(new Date("-00400-03-15")), 75);
-    assertEquals(datetime.dayOfYear(new Date("-00400-04-01")), 92);
-    assertEquals(datetime.dayOfYear(new Date("-00400-12-31")), 366);
+    // 400 BC tests (leap-year)
+    assertEquals(datetime.dayOfYear(new Date("-000400-01-01")), 1);
+    assertEquals(datetime.dayOfYear(new Date("-000400-01-15")), 15);
+    assertEquals(datetime.dayOfYear(new Date("-000400-02-01")), 32);
+    assertEquals(datetime.dayOfYear(new Date("-000400-02-15")), 46);
+    assertEquals(datetime.dayOfYear(new Date("-000400-03-01")), 61);
+    assertEquals(datetime.dayOfYear(new Date("-000400-03-15")), 75);
+    assertEquals(datetime.dayOfYear(new Date("-000400-04-01")), 92);
+    assertEquals(datetime.dayOfYear(new Date("-000400-12-31")), 366);
 
     // Special Cases
 
