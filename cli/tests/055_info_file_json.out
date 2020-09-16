@@ -4,31 +4,29 @@
   "compiled": null,
   "map": null,
   "depCount": 3,
-  "deps": {
-    "name": "file://[WILDCARD]/005_more_imports.ts",
-    "size": 211,
-    "totalSize": 757,
-    "deps": [
-      {
-        "name": "file://[WILDCARD]/subdir/mod1.ts",
-        "size": 320,
-        "totalSize": 546,
-        "deps": [
-          {
-            "name": "file://[WILDCARD]/subdir/subdir2/mod2.ts",
-            "size": 163,
-            "totalSize": 226,
-            "deps": [
-              {
-                "name": "file://[WILDCARD]/subdir/print_hello.ts",
-                "size": 63,
-                "totalSize": 63,
-                "deps": []
-              }
-            ]
-          }
-        ]
-      }
-    ]
+  "totalSize": 757,
+  "files": {
+    "file://[WILDCARD]005_more_imports.ts": {
+      "size": 211,
+      "deps": [
+        "file://[WILDCARD]/subdir/mod1.ts"
+      ]
+    },
+    "file://[WILDCARD]/subdir/mod1.ts": {
+      "size": 320,
+      "deps": [
+        "file://[WILDCARD]/subdir/subdir2/mod2.ts"
+      ]
+    },
+    "file://[WILDCARD]/subdir/print_hello.ts": {
+      "size": 63,
+      "deps": []
+    },
+    "file://[WILDCARD]/subdir/subdir2/mod2.ts": {
+      "size": 163,
+      "deps": [
+        "file://[WILDCARD]/subdir/print_hello.ts"
+      ]
+    }
   }
 }
