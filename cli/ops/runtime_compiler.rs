@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::futures::FutureExt;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::error::AnyError;
 use deno_core::BufVec;
 use deno_core::OpState;
+use futures::FutureExt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
