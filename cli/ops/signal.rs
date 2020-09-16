@@ -13,7 +13,7 @@ use deno_core::error::bad_resource_id;
 #[cfg(unix)]
 use futures::future::poll_fn;
 #[cfg(unix)]
-use serde_derive::Deserialize;
+use serde::Deserialize;
 #[cfg(unix)]
 use std::task::Waker;
 #[cfg(unix)]

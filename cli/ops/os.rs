@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;

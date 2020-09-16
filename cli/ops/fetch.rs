@@ -14,7 +14,7 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use reqwest::Client;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::From;
