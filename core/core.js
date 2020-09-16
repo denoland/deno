@@ -215,7 +215,7 @@ SharedQueue Binary Layout
   let nextPromiseId = 1;
   const promiseTable = {};
 
-  function jsonOpAsync(opName, args = {}, ...zeroCopy) {
+  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
     args.promiseId = nextPromiseId++;
@@ -229,7 +229,12 @@ SharedQueue Binary Layout
     promise.resolve = resolve;
     promise.reject = reject;
     promiseTable[args.promiseId] = promise;
-    return promise;
+    const res = await promise;
+    if ("ok" in res) {
+      return res.ok;
+    } else {
+      throw new (getErrorClass(res.err.className))(res.err.message);
+    }
   }
 
   function jsonOpSync(opName, args = {}, ...zeroCopy) {
@@ -248,12 +253,7 @@ SharedQueue Binary Layout
     const res = decodeJson(buf);
     const promise = promiseTable[res.promiseId];
     delete promiseTable[res.promiseId];
-    if (res.ok) {
-      promise.resolve(res.ok);
-    } else {
-      const err = new (getErrorClass(res.err.className))(res.err.message);
-      promise.reject(err);
-    }
+    promise.resolve(res);
   }
 
   Object.assign(window.Deno.core, {
