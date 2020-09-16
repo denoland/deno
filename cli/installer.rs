@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::flags::Flags;
-use crate::global_state::GlobalState;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::ModuleSpecifier;
 use log::Level;
 use regex::{Regex, RegexBuilder};
 use std::env;
@@ -83,18 +81,14 @@ deno {} "$@"
   Ok(())
 }
 
-async fn generate_bundle(
-  flags: Flags,
-  module_specifier: ModuleSpecifier,
-  script_path: PathBuf,
-) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
-  let source = global_state
-    .ts_compiler
-    .bundle(&global_state, module_specifier)
-    .await?;
-  let mut file = File::create(&script_path)?;
-  file.write_all(source.as_bytes())?;
+fn generate_config_file(
+  file_path: PathBuf,
+  config_file_name: String,
+) -> Result<(), io::Error> {
+  let config_file_copy_path = get_config_file_path(&file_path);
+  let cwd = std::env::current_dir().unwrap();
+  let config_file_path = cwd.join(config_file_name);
+  fs::copy(config_file_path, config_file_copy_path)?;
   Ok(())
 }
 
@@ -135,7 +129,7 @@ fn infer_name_from_url(url: &Url) -> Option<String> {
   Some(stem)
 }
 
-pub async fn install(
+pub fn install(
   flags: Flags,
   module_url: &str,
   args: Vec<String>,
@@ -159,11 +153,21 @@ pub async fn install(
     fs::create_dir_all(&installation_dir)?;
   };
 
-  let module_specifier = ModuleSpecifier::resolve_url_or_path(module_url)?;
-  let module_specifier_ = module_specifier.clone();
-  let url = module_specifier_.as_url();
+  // Check if module_url is remote
+  let module_url = if is_remote_url(module_url) {
+    Url::parse(module_url).expect("Should be valid url")
+  } else {
+    let module_path = PathBuf::from(module_url);
+    let module_path = if module_path.is_absolute() {
+      module_path
+    } else {
+      let cwd = env::current_dir().unwrap();
+      cwd.join(module_path)
+    };
+    Url::from_file_path(module_path).expect("Path should be absolute")
+  };
 
-  let name = name.or_else(|| infer_name_from_url(&url));
+  let name = name.or_else(|| infer_name_from_url(&module_url));
 
   let name = match name {
     Some(name) => name,
@@ -174,7 +178,6 @@ pub async fn install(
 
   validate_name(name.as_str())?;
   let mut file_path = installation_dir.join(&name);
-  let script_path = file_path.with_extension("js");
 
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
@@ -188,7 +191,7 @@ pub async fn install(
 
   let mut executable_args = vec!["run".to_string()];
   executable_args.extend_from_slice(&flags.to_permission_args());
-  if let Some(ca_file) = flags.ca_file.clone() {
+  if let Some(ca_file) = flags.ca_file {
     executable_args.push("--cert".to_string());
     executable_args.push(ca_file)
   }
@@ -216,11 +219,22 @@ pub async fn install(
     executable_args.push("--unstable".to_string());
   }
 
-  executable_args.push(script_path.to_string_lossy().to_string());
+  if flags.config_path.is_some() {
+    let config_file_path = get_config_file_path(&file_path);
+    let config_file_path_option = config_file_path.to_str();
+    if let Some(config_file_path_string) = config_file_path_option {
+      executable_args.push("--config".to_string());
+      executable_args.push(config_file_path_string.to_string());
+    }
+  }
+
+  executable_args.push(module_url.to_string());
   executable_args.extend_from_slice(&args);
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
-  generate_bundle(flags, module_specifier, script_path).await?;
+  if let Some(config_path) = flags.config_path {
+    generate_config_file(file_path.to_owned(), config_path)?;
+  }
 
   println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
@@ -247,6 +261,12 @@ fn is_in_path(dir: &PathBuf) -> bool {
     }
   }
   false
+}
+
+fn get_config_file_path(file_path: &PathBuf) -> PathBuf {
+  let mut config_file_copy_path = PathBuf::from(file_path);
+  config_file_copy_path.set_extension("tsconfig.json");
+  config_file_copy_path
 }
 
 #[cfg(test)]
@@ -342,10 +362,9 @@ mod tests {
     );
   }
 
-  #[tokio::test]
-  async fn install_basic() {
+  #[test]
+  fn install_basic() {
     let _guard = ENV_LOCK.lock().ok();
-    let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
     // NOTE: this test overrides environmental variables
@@ -367,7 +386,6 @@ mod tests {
       None,
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
@@ -381,8 +399,8 @@ mod tests {
     // It's annoying when shell scripts don't have NL at the end.
     assert_eq!(content.chars().last().unwrap(), '\n');
 
-    assert!(content.contains(r#""run""#));
-    assert!(content.contains(r#"echo_test.js"#));
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
     if let Some(home) = original_home {
       env::set_var("HOME", home);
     }
@@ -394,9 +412,8 @@ mod tests {
     }
   }
 
-  #[tokio::test]
-  async fn install_unstable() {
-    let _http_server_guard = test_util::http_server();
+  #[test]
+  fn install_unstable() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -412,7 +429,6 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -421,17 +437,16 @@ mod tests {
     }
 
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
 
     let content = fs::read_to_string(file_path).unwrap();
     println!("this is the file path {:?}", content);
-    assert!(content.contains(r#""run" "--unstable""#));
-    assert!(content.contains(r#"echo_test.js"#));
+    assert!(content.contains(
+      r#""run" "--unstable" "http://localhost:4545/cli/tests/echo_server.ts"#
+    ));
   }
 
-  #[tokio::test]
-  async fn install_inferred_name() {
-    let _http_server_guard = test_util::http_server();
+  #[test]
+  fn install_inferred_name() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -444,7 +459,6 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_server");
@@ -453,16 +467,13 @@ mod tests {
     }
 
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
-
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(r#""run""#));
-    assert!(content.contains(r#"echo_server.js"#));
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
   }
 
-  #[tokio::test]
-  async fn install_inferred_name_from_parent() {
-    let _http_server_guard = test_util::http_server();
+  #[test]
+  fn install_inferred_name_from_parent() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -475,7 +486,6 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("subdir");
@@ -484,17 +494,13 @@ mod tests {
     }
 
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
-
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(r#""run""#));
-    assert!(content.contains(r#"subdir.js"#));
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/subdir/main.ts""#));
   }
 
-  #[tokio::test]
-  async fn install_custom_dir_option() {
-    let _http_server_guard = test_util::http_server();
-
+  #[test]
+  fn install_custom_dir_option() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -507,7 +513,6 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -516,17 +521,14 @@ mod tests {
     }
 
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
-
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(r#""run""#));
-    assert!(content.contains(r#"echo_test.js"#));
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
   }
 
-  #[tokio::test]
-  async fn install_custom_dir_env_var() {
+  #[test]
+  fn install_custom_dir_env_var() {
     let _guard = ENV_LOCK.lock().ok();
-    let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -541,7 +543,6 @@ mod tests {
       None,
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -550,20 +551,16 @@ mod tests {
     }
 
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
-
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(r#""run""#));
-    assert!(content.contains(r#"echo_test.js"#));
-
+    assert!(content
+      .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
     if let Some(install_root) = original_install_root {
       env::set_var("DENO_INSTALL_ROOT", install_root);
     }
   }
 
-  #[tokio::test]
-  async fn install_with_flags() {
-    let _http_server_guard = test_util::http_server();
+  #[test]
+  fn install_with_flags() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -582,7 +579,6 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -591,21 +587,17 @@ mod tests {
     }
 
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
-
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(
-      r#""run" "--allow-read" "--allow-net" "--quiet" "--no-check""#
-    ));
-    assert!(content.contains(r#"echo_test.js" "--foobar""#));
+    assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "--no-check" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
   }
 
-  #[tokio::test]
-  async fn install_local_module() {
+  #[test]
+  fn install_local_module() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
-    let local_module = env::current_dir().unwrap().join("tests/echo_server.ts");
+    let local_module = env::current_dir().unwrap().join("echo_server.ts");
+    let local_module_url = Url::from_file_path(&local_module).unwrap();
     let local_module_str = local_module.to_string_lossy();
 
     install(
@@ -616,7 +608,6 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -625,14 +616,12 @@ mod tests {
     }
 
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains("echo_test.js"));
+    assert!(content.contains(&local_module_url.to_string()));
   }
 
-  #[tokio::test]
-  async fn install_force() {
-    let _http_server_guard = test_util::http_server();
+  #[test]
+  fn install_force() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -645,7 +634,6 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       false,
     )
-    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -653,21 +641,16 @@ mod tests {
       file_path = file_path.with_extension("cmd");
     }
     assert!(file_path.exists());
-    assert!(file_path.with_extension("js").exists());
 
     // No force. Install failed.
     let no_force_result = install(
-      Flags {
-        unstable: true,
-        ..Flags::default()
-      },
+      Flags::default(),
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
-    )
-    .await;
+    );
     assert!(no_force_result.is_err());
     assert!(no_force_result
       .unwrap_err()
@@ -675,24 +658,52 @@ mod tests {
       .contains("Existing installation found"));
     // Assert not modified
     let file_content = fs::read_to_string(&file_path).unwrap();
-    assert!(!file_content.contains("--unstable"));
+    assert!(file_content.contains("echo_server.ts"));
 
     // Force. Install success.
     let force_result = install(
-      Flags {
-        unstable: true,
-        ..Flags::default()
-      },
+      Flags::default(),
       "http://localhost:4545/cli/tests/cat.ts", // using a different URL
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       true,
-    )
-    .await;
+    );
     assert!(force_result.is_ok());
     // Assert modified
     let file_content_2 = fs::read_to_string(&file_path).unwrap();
-    assert!(file_content_2.contains("--unstable"));
+    assert!(file_content_2.contains("cat.ts"));
+  }
+
+  #[test]
+  fn install_with_config() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    let config_file_path = temp_dir.path().join("test_tsconfig.json");
+    let config = "{}";
+    let mut config_file = File::create(&config_file_path).unwrap();
+    let result = config_file.write_all(config.as_bytes());
+    assert!(result.is_ok());
+
+    let result = install(
+      Flags {
+        config_path: Some(config_file_path.to_string_lossy().to_string()),
+        ..Flags::default()
+      },
+      "http://localhost:4545/cli/tests/cat.ts",
+      vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
+      true,
+    );
+    eprintln!("result {:?}", result);
+    assert!(result.is_ok());
+
+    let config_file_name = "echo_test.tsconfig.json";
+
+    let file_path = bin_dir.join(config_file_name.to_string());
+    assert!(file_path.exists());
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content == "{}");
   }
 }
