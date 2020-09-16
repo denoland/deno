@@ -182,6 +182,7 @@ declare namespace Deno {
    * ```
    */
   export function test(name: string, fn: () => void | Promise<void>, options?: TestOptions): void;
+  type TestOptions = Omit<TestDefinition, "name" | "fn">;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
