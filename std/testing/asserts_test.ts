@@ -336,8 +336,10 @@ const createHeader = (): string[] => [
   "",
 ];
 
-const added: (s: string) => string = (s: string): string => green(bold(s));
-const removed: (s: string) => string = (s: string): string => red(bold(s));
+const added: (s: string) => string = (s: string): string =>
+  green(bold(stripColor(s)));
+const removed: (s: string) => string = (s: string): string =>
+  red(bold(stripColor(s)));
 
 Deno.test({
   name: "pass case",
