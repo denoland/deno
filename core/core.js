@@ -208,7 +208,7 @@ SharedQueue Binary Layout
   }
 
   function decodeJson(ui8) {
-    const s = Deno.core.decode(ui8);
+    const s = core.decode(ui8);
     return JSON.parse(s);
   }
 

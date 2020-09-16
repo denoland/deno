@@ -17,7 +17,7 @@
 delete Object.prototype.__proto__;
 
 ((window) => {
-  const core = Deno.core;
+  const core = window.Deno.core;
   const { assert, log, notImplemented } = window.__bootstrap.util;
   const util = window.__bootstrap.util;
   const errorStack = window.__bootstrap.errorStack;
@@ -1292,6 +1292,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(source) {
+    core.ops();
     // First we send an empty `Start` message to let the privileged side know we
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
