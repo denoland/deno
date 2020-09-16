@@ -430,7 +430,6 @@ dependencies = [
  "rustyline",
  "semver-parser 0.9.0",
  "serde",
- "serde_derive",
  "serde_json",
  "sourcemap",
  "swc_common",
