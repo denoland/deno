@@ -21,13 +21,13 @@ export class AssertionError extends Error {
 
 export function _format(v: unknown): string {
   let string = globalThis.Deno
-    ? Deno.inspect(v, {
+    ? stripColor(Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
       trailingComma: true,
       compact: false,
       iterableLimit: Infinity,
-    })
+    }))
     : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
@@ -303,7 +303,7 @@ export function assertStrictEquals(
 }
 
 /**
- * Make an assertion that `actual` and `expected` are not strictly equal.  
+ * Make an assertion that `actual` and `expected` are not strictly equal.
  * If the values are strictly equal then throw.
  * ```ts
  * assertNotStrictEquals(1, 1)
