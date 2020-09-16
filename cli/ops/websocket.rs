@@ -10,7 +10,7 @@ use futures::future::poll_fn;
 use futures::StreamExt;
 use futures::{ready, SinkExt};
 use http::{Method, Request, Uri};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::borrow::Cow;
 use std::cell::RefCell;

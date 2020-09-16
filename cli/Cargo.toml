@@ -58,7 +58,6 @@ reqwest = { version = "0.10.8", default-features = false, features = ["rustls-tl
 ring = "0.16.15"
 rustyline = { version = "6.3.0", default-features = false }
 serde = { version = "1.0.116", features = ["derive"] }
-serde_derive = "1.0.116"
 serde_json = { version = "1.0.57", features = [ "preserve_order" ] }
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
