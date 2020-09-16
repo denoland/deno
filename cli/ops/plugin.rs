@@ -12,7 +12,7 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::path::PathBuf;

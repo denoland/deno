@@ -7,8 +7,8 @@
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
 use deno_core::error::AnyError;
+use serde::Deserialize;
 use serde::Serialize;
-use serde_derive::Deserialize;
 use std::fs;
 use std::fs::File;
 use std::io;
