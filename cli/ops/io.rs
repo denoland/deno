@@ -30,9 +30,6 @@ use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
-#[cfg(windows)]
-extern crate winapi;
-
 lazy_static! {
   /// Due to portability issues on Windows handle to stdout is created from raw
   /// file descriptor.  The caveat of that approach is fact that when this
