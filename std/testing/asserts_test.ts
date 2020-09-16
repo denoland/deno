@@ -336,10 +336,8 @@ const createHeader = (): string[] => [
   "",
 ];
 
-const added: (s: string) => string = (s: string): string =>
-  green(bold(stripColor(s)));
-const removed: (s: string) => string = (s: string): string =>
-  red(bold(stripColor(s)));
+const added: (s: string) => string = (s: string): string => green(bold(s));
+const removed: (s: string) => string = (s: string): string => red(bold(s));
 
 Deno.test({
   name: "pass case",
@@ -453,6 +451,27 @@ Deno.test({
         ...createHeader(),
         removed(`-   ${new Date("invalid")}`),
         added(`+   ${new Date(2019, 0, 3, 4, 20, 1, 20).toISOString()}`),
+        "",
+      ].join("\n"),
+    );
+  },
+});
+
+Deno.test({
+  name: "failed with escape sequences",
+  fn(): void {
+    assertThrows(
+      (): void =>
+        assertEquals(
+          "\x1b[32mhello\x1b[39m",
+          "\x1b[32mworld\x1b[39m",
+        ),
+      AssertionError,
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   "<esc>[32mhello<esc>[39m"`),
+        added(`+   "<esc>[32mworld<esc>[39m"`),
         "",
       ].join("\n"),
     );

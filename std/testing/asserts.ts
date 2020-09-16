@@ -21,15 +21,17 @@ export class AssertionError extends Error {
 
 export function _format(v: unknown): string {
   let string = globalThis.Deno
-    ? stripColor(Deno.inspect(v, {
+    ? Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
       trailingComma: true,
       compact: false,
       iterableLimit: Infinity,
-    }))
+    })
     : String(v);
+
   if (typeof v == "string") {
+    string = string.replaceAll("\x1b", "<esc>");
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
   return string;
