@@ -59,6 +59,7 @@ const tests = [
   "testdata/wasi_proc_exit_one.wasm",
   "testdata/wasi_proc_exit_zero.wasm",
   "testdata/wasi_random_get.wasm",
+  "testdata/wasi_sched_yield.wasm",
 ];
 
 const ignore = [
