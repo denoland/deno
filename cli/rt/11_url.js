@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { getRandomValues } = window.__bootstrap.crypto;
   const { customInspect } = window.__bootstrap.console;
-  const { sendSync } = window.__bootstrap.dispatchJson;
   const { isIterable, requiredArguments } = window.__bootstrap.webUtil;
 
   /** https://url.spec.whatwg.org/#idna */
@@ -11,7 +11,7 @@
     domain,
     { beStrict = false } = {},
   ) {
-    return sendSync("op_domain_to_ascii", { domain, beStrict });
+    return core.jsonOpSync("op_domain_to_ascii", { domain, beStrict });
   }
 
   function decodeSearchParam(p) {

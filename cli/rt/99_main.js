@@ -7,7 +7,6 @@ delete Object.prototype.__proto__;
   const core = Deno.core;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
-  const dispatchJson = window.__bootstrap.dispatchJson;
   const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -129,29 +128,19 @@ delete Object.prototype.__proto__;
   }
 
   function opPostMessage(data) {
-    dispatchJson.sendSync("op_worker_post_message", {}, data);
+    core.jsonOpSync("op_worker_post_message", {}, data);
   }
 
   function opCloseWorker() {
-    dispatchJson.sendSync("op_worker_close");
+    core.jsonOpSync("op_worker_close");
   }
 
   function opStart() {
-    return dispatchJson.sendSync("op_start");
+    return core.jsonOpSync("op_start");
   }
 
   function opMainModule() {
-    return dispatchJson.sendSync("op_main_module");
-  }
-
-  function getAsyncHandler(opName) {
-    switch (opName) {
-      case "op_write":
-      case "op_read":
-        return dispatchMinimal.asyncMsgFromRust;
-      default:
-        return dispatchJson.asyncMsgFromRust;
-    }
+    return core.jsonOpSync("op_main_module");
   }
 
   // TODO(bartlomieju): temporary solution, must be fixed when moving
@@ -159,7 +148,9 @@ delete Object.prototype.__proto__;
   function initOps() {
     const opsMap = core.ops();
     for (const [name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, getAsyncHandler(name));
+      if (name === "op_write" || name === "op_read") {
+        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
+      }
     }
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
   }

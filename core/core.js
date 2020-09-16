@@ -208,14 +208,14 @@ SharedQueue Binary Layout
   }
 
   function decodeJson(ui8) {
-    const s = Deno.core.decode(ui8);
+    const s = core.decode(ui8);
     return JSON.parse(s);
   }
 
   let nextPromiseId = 1;
   const promiseTable = {};
 
-  function jsonOpAsync(opName, args, ...zeroCopy) {
+  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
     args.promiseId = nextPromiseId++;
@@ -229,31 +229,31 @@ SharedQueue Binary Layout
     promise.resolve = resolve;
     promise.reject = reject;
     promiseTable[args.promiseId] = promise;
-    return promise;
+    const res = await promise;
+    if ("ok" in res) {
+      return res.ok;
+    } else {
+      throw new (getErrorClass(res.err.className))(res.err.message);
+    }
   }
 
-  function jsonOpSync(opName, args, ...zeroCopy) {
+  function jsonOpSync(opName, args = {}, ...zeroCopy) {
     const argsBuf = encodeJson(args);
     const res = dispatch(opName, argsBuf, ...zeroCopy);
     const r = decodeJson(res);
     if ("ok" in r) {
       return r.ok;
     } else {
-      throw r.err;
+      throw new (getErrorClass(r.err.className))(r.err.message);
     }
   }
 
   function jsonOpAsyncHandler(buf) {
     // Json Op.
-    const msg = decodeJson(buf);
-    const { ok, err, promiseId } = msg;
-    const promise = promiseTable[promiseId];
-    delete promiseTable[promiseId];
-    if (ok) {
-      promise.resolve(ok);
-    } else {
-      promise.reject(err);
-    }
+    const res = decodeJson(buf);
+    const promise = promiseTable[res.promiseId];
+    delete promiseTable[res.promiseId];
+    promise.resolve(res);
   }
 
   Object.assign(window.Deno.core, {
