@@ -3549,6 +3549,7 @@ fn fmt_ignore_unexplicit_files() {
     .current_dir(util::root_path())
     .arg("fmt")
     .arg("--unstable")
+    .arg("--check")
     .arg("--ignore=cli,core,op_crates,std,third_party")
     .stderr(std::process::Stdio::piped())
     .spawn()
