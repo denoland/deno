@@ -764,6 +764,19 @@
         return String(value[customInspect]());
       } catch {}
     }
+    // This non-unique symbol is used to support op_crates, ie.
+    // in op_crates/web we don't want to depend on unique "Deno.customInspect"
+    // symbol defined in the public API. Internal only, shouldn't be used
+    // by users.
+    const nonUniqueCustomInspect = Symbol.for("Deno.customInspect");
+    if (
+      nonUniqueCustomInspect in value &&
+      typeof value[nonUniqueCustomInspect] === "function"
+    ) {
+      try {
+        return String(value[nonUniqueCustomInspect]());
+      } catch {}
+    }
     if (value instanceof Error) {
       return String(value.stack);
     } else if (Array.isArray(value)) {
