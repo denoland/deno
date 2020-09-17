@@ -145,13 +145,6 @@
     }
   }
 
-  /** An internal function which provides a function name for some generated
- * functions, so stack traces are a bit more readable.
- */
-  function setFunctionName(fn, value) {
-    Object.defineProperty(fn, "name", { value, configurable: true });
-  }
-
   window.__bootstrap.webUtil = {
     isInvalidDate,
     requiredArguments,
@@ -159,6 +152,5 @@
     hasOwnProperty,
     cloneValue,
     defineEnumerableProps,
-    setFunctionName,
   };
 })(this);
