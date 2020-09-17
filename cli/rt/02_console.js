@@ -463,7 +463,7 @@
       .replace(/\r/g, "\\r")
       .replace(/\t/g, "\\t")
       .replace(/\v/g, "\\v")
-      .replace(/\x1b/g, "\\x1b");
+      .replace(/[\x00-\x1f]/g, c => "\\x" + c.charCodeAt(0).toString(16).padStart(2, '0'));
   }
 
   // Print strings when they are inside of arrays or objects with quotes

@@ -99,13 +99,13 @@ unitTest(
     );
     assertEquals(
       stringify(
-        { "foo\b": "bar\n", "bar\r": "baz\t", "\x1b[32mqux\x1b[39m": "qux" },
+        { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
       ),
-      `{ foo\\b: "bar\\n", bar\\r: "baz\\t", \\x1b[32mqux\\x1b[39m: "qux" }`,
+      `{ foo\\b: "bar\\n", bar\\r: "baz\\t", qux\\x00: "qux\\x00" }`,
     );
     assertEquals(
-      stringify(new Set(["foo\n", "foo\r", "\x1b[32mfoo\x1b[39m"])),
-      `Set { "foo\\n", "foo\\r", "\\x1b[32mfoo\\x1b[39m" }`,
+      stringify(new Set(["foo\n", "foo\r", "foo\0"])),
+      `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
     );
   },
 );
