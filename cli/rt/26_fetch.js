@@ -5,7 +5,6 @@
   const { notImplemented } = window.__bootstrap.util;
   const { getHeaderValueParams, isTypedArray } = window.__bootstrap.webUtil;
   const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
-  const { read } = window.__bootstrap.io;
   const { close } = window.__bootstrap.resources;
   const Body = window.__bootstrap.body;
   const { ReadableStream } = window.__bootstrap.streams;
@@ -294,16 +293,18 @@
         responseBody = null;
       } else {
         responseBody = new ReadableStream({
+          type: "bytes",
           async pull(controller) {
             try {
-              const b = new Uint8Array(1024 * 32);
-              const result = await read(fetchResponse.bodyRid, b);
-              if (result === null) {
+              const rid = fetchResponse.bodyRid;
+              const result = await core.jsonOpAsync("op_fetch_read", { rid });
+              if (result.chunk == null) {
                 controller.close();
                 return close(fetchResponse.bodyRid);
               }
-
-              controller.enqueue(b.subarray(0, result));
+              // TODO(ry) This is terribly inefficient. Make this zero-copy.
+              const chunk = new Uint8Array(result.chunk);
+              controller.enqueue(chunk);
             } catch (e) {
               controller.error(e);
               controller.close();
