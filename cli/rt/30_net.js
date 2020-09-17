@@ -4,7 +4,6 @@
   const core = window.Deno.core;
   const { errors } = window.__bootstrap.errors;
   const { read, write } = window.__bootstrap.io;
-  const { close } = window.__bootstrap.resources;
 
   const ShutdownMode = {
     // See http://man7.org/linux/man-pages/man2/shutdown.2.html
@@ -88,7 +87,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
 
     // TODO(lucacasonato): make this unavailable in stable
@@ -138,7 +137,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
 
     [Symbol.asyncIterator]() {
@@ -187,7 +186,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
 
     async *[Symbol.asyncIterator]() {

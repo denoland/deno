@@ -287,7 +287,8 @@ impl MainWorker {
       ops::process::init(&mut worker);
       ops::random::init(&mut worker);
       ops::repl::init(&mut worker);
-      ops::resources::init(&mut worker);
+      ops::reg_json_sync(&mut worker, "op_close", deno_core::op_close);
+      ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
       ops::signal::init(&mut worker);
       ops::timers::init(&mut worker);
       ops::tty::init(&mut worker);

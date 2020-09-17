@@ -5,7 +5,6 @@
   const { notImplemented } = window.__bootstrap.util;
   const { getHeaderValueParams, isTypedArray } = window.__bootstrap.webUtil;
   const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
-  const { close } = window.__bootstrap.resources;
   const Body = window.__bootstrap.body;
   const { ReadableStream } = window.__bootstrap.streams;
   const { MultipartBuilder } = window.__bootstrap.multipart;
@@ -24,7 +23,7 @@
       this.rid = rid;
     }
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -290,7 +289,7 @@
       ) {
         // We won't use body of received response, so close it now
         // otherwise it will be kept in resource table.
-        close(fetchResponse.bodyRid);
+        core.close(fetchResponse.bodyRid);
         responseBody = null;
       } else {
         responseBody = new ReadableStream({
@@ -300,7 +299,7 @@
               const result = await core.jsonOpAsync("op_fetch_read", { rid });
               if (!result || !result.chunk) {
                 controller.close();
-                close(rid);
+                core.close(rid);
               } else {
                 // TODO(ry) This is terribly inefficient. Make this zero-copy.
                 const chunk = new Uint8Array(result.chunk);
@@ -309,12 +308,12 @@
             } catch (e) {
               controller.error(e);
               controller.close();
-              close(rid);
+              core.close(rid);
             }
           },
           cancel() {
             // When reader.cancel() is called
-            close(rid);
+            core.close(rid);
           },
         });
       }

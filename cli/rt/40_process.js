@@ -3,7 +3,6 @@
 ((window) => {
   const core = window.Deno.core;
   const { File } = window.__bootstrap.files;
-  const { close } = window.__bootstrap.resources;
   const { readAll } = window.__bootstrap.buffer;
   const { assert, pathFromURL } = window.__bootstrap.util;
 
@@ -78,7 +77,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
 
     kill(signo) {
