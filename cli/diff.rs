@@ -160,13 +160,13 @@ fn test_diff() {
     colors::strip_ansi_codes(
       &diff(simple_console_log_unfmt, simple_console_log_fmt).unwrap()
     ),
-    "1| -console.log('Hello World')\n1| +console.log(\"Hello World\");\n"
+    "1 | -console.log('Hello World')\n1 | +console.log(\"Hello World\");\n"
   );
 
   let line_number_unfmt = "\n\n\n\nconsole.log(\n'Hello World'\n)";
   let line_number_fmt = "console.log(\n\"Hello World\"\n);";
   assert_eq!(
     colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt).unwrap()),
-    "1| -\n2| -\n3| -\n4| -\n5| -console.log(\n1| +console.log(\n6| -'Hello World'\n2| +\"Hello World\"\n7| -)\n3| +);\n"
+    "1 | -\n2 | -\n3 | -\n4 | -\n5 | -console.log(\n1 | +console.log(\n6 | -'Hello World'\n2 | +\"Hello World\"\n7 | -)\n3 | +);\n"
   )
 }
