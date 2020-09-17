@@ -123,8 +123,8 @@ async fn op_fetch_read(
   let rid = args.rid;
 
   use futures::future::poll_fn;
+  use futures::ready;
   use futures::FutureExt;
-  use std::task::Poll;
   let f = poll_fn(move |cx| {
     let mut state = state.borrow_mut();
     let response = state
@@ -133,13 +133,11 @@ async fn op_fetch_read(
       .ok_or_else(bad_resource_id)?;
 
     let mut chunk_fut = response.chunk().boxed_local();
-    match chunk_fut.poll_unpin(cx) {
-      Poll::Ready(Ok(Some(chunk))) => {
-        Poll::Ready(Ok(json!({ "chunk": &*chunk })))
-      }
-      Poll::Ready(Ok(None)) => Poll::Ready(Ok(json!({ "chunk": null }))),
-      Poll::Ready(Err(_)) => Poll::Ready(Ok(json!({ "chunk": null }))),
-      Poll::Pending => Poll::Pending,
+    let r = ready!(chunk_fut.poll_unpin(cx))?;
+    if let Some(chunk) = r {
+      Ok(json!({ "chunk": &*chunk })).into()
+    } else {
+      Ok(json!({ "chunk": null })).into()
     }
   });
   f.await
