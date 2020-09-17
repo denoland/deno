@@ -9,6 +9,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -53,17 +54,14 @@ pub fn init(isolate: &mut JsRuntime) {
   }
 }
 
+pub trait FetchPermissions {
+  fn check_net_url(&self, url: &Url) -> Result<(), AnyError>;
+  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError>;
+}
+
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
-
-/*
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_fetch", op_fetch);
-  super::reg_json_async(rt, "op_fetch_read", op_fetch_read);
-  super::reg_json_sync(rt, "op_create_http_client", op_create_http_client);
-}
-*/
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,17 +72,20 @@ struct FetchArgs {
   client_rid: Option<u32>,
 }
 
-pub async fn op_fetch(
+pub async fn op_fetch<FP>(
   state: Rc<RefCell<OpState>>,
   args: Value,
   data: BufVec,
-) -> Result<Value, AnyError> {
+) -> Result<Value, AnyError>
+where
+  FP: FetchPermissions + 'static,
+{
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
   let client = if let Some(rid) = args.client_rid {
-    let state = state.borrow();
-    let r = state
+    let state_ = state.borrow();
+    let r = state_
       .resource_table
       .get::<HttpClientResource>(rid)
       .ok_or_else(bad_resource_id)?;
@@ -108,8 +109,11 @@ pub async fn op_fetch(
     return Err(type_error(format!("scheme '{}' not supported", scheme)));
   }
 
-  // TODO(ry) check_net_url
-  // super::cli_state2(&state).check_net_url(&url_)?;
+  {
+    let state_ = state.borrow();
+    let permissions = state_.borrow::<FP>();
+    permissions.check_net_url(&url_)?;
+  }
 
   let mut request = client.request(method, url_);
 
@@ -204,11 +208,14 @@ impl HttpClientResource {
   }
 }
 
-pub fn op_create_http_client(
+pub fn op_create_http_client<FP>(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<Value, AnyError>
+where
+  FP: FetchPermissions + 'static,
+{
   #[derive(Deserialize, Default, Debug)]
   #[serde(rename_all = "camelCase")]
   #[serde(default)]
@@ -219,8 +226,8 @@ pub fn op_create_http_client(
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
-    todo!()
-    // super::cli_state(state).check_read(&PathBuf::from(ca_file))?;
+    let permissions = state.borrow::<FP>();
+    permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
   let client = create_http_client(args.ca_file.as_deref()).unwrap();

@@ -123,6 +123,16 @@ pub struct Permissions {
   pub hrtime: PermissionState,
 }
 
+impl deno_fetch::FetchPermissions for Permissions {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    todo!()
+  }
+
+  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+    todo!()
+  }
+}
+
 fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
   allowlist
     .iter()
