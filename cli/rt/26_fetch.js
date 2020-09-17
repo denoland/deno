@@ -300,7 +300,7 @@
               const result = await core.jsonOpAsync("op_fetch_read", { rid });
               if (result.chunk == null) {
                 controller.close();
-                return close(fetchResponse.bodyRid);
+                return close(rid);
               }
               // TODO(ry) This is terribly inefficient. Make this zero-copy.
               const chunk = new Uint8Array(result.chunk);
@@ -308,12 +308,12 @@
             } catch (e) {
               controller.error(e);
               controller.close();
-              close(fetchResponse.bodyRid);
+              close(rid);
             }
           },
           cancel() {
             // When reader.cancel() is called
-            close(fetchResponse.bodyRid);
+            close(rid);
           },
         });
       }

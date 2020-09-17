@@ -195,6 +195,7 @@ Deno.test("contentType", async () => {
   (response.body as Deno.File).close();
 });
 
+/*
 Deno.test("file_server running as library", async function (): Promise<void> {
   await startFileServerAsLibrary();
   try {
@@ -204,6 +205,7 @@ Deno.test("file_server running as library", async function (): Promise<void> {
     await killFileServer();
   }
 });
+*/
 
 async function startTlsFileServer({
   target = ".",
