@@ -313,7 +313,7 @@
           },
           cancel() {
             // When reader.cancel() is called
-            close(rid);
+            close(fetchResponse.bodyRid);
           },
         });
       }
