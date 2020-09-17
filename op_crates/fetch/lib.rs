@@ -2,7 +2,7 @@
 
 use deno_core::js_check;
 use deno_core::JsRuntime;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn init(isolate: &mut JsRuntime) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -25,4 +25,8 @@ pub fn init(isolate: &mut JsRuntime) {
       &std::fs::read_to_string(&file).unwrap(),
     ));
   }
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
