@@ -308,6 +308,8 @@ delete Object.prototype.__proto__;
       core,
       internal: internalSymbol,
       [internalSymbol]: internalObject,
+      resources: core.resources,
+      close: core.close,
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {
@@ -361,6 +363,8 @@ delete Object.prototype.__proto__;
       core,
       internal: internalSymbol,
       [internalSymbol]: internalObject,
+      resources: core.resources,
+      close: core.close,
       ...denoNs,
     };
     if (useDenoNamespace) {

@@ -2,7 +2,6 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { close } = window.__bootstrap.resources;
   const { requiredArguments } = window.__bootstrap.webUtil;
   const CONNECTING = 0;
   const OPEN = 1;
@@ -71,7 +70,7 @@
               event.target = this;
               this.onclose?.(event);
               this.dispatchEvent(event);
-              close(this.#rid);
+              core.close(this.#rid);
             });
 
             const event = new Event("error");
@@ -242,7 +241,7 @@
           event.target = this;
           this.onclose?.(event);
           this.dispatchEvent(event);
-          close(this.#rid);
+          core.close(this.#rid);
         });
       }
     }
