@@ -1255,6 +1255,9 @@
   }
 
   window.__bootstrap.fetch = {
+    Blob,
+    DomFile,
+    FormData,
     fetch,
     Request,
     Response,
