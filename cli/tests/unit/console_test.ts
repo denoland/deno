@@ -102,7 +102,7 @@ unitTest(
       `{ foo\\b: "bar\\n", bar\\r: "baz\\t" }`,
     );
     assertEquals(
-      stringify(new Set(["foo\n", "foo\r", "\x1b[32mfoo\x1b[39m" ])),
+      stringify(new Set(["foo\n", "foo\r", "\x1b[32mfoo\x1b[39m"])),
       `Set { "foo\\n", "foo\\r" , "\\x1b[32mhello\\x1b[39m" }`,
     );
   },
