@@ -52,7 +52,7 @@
       }
       buf += `\r\n`;
 
-      this.writer.write(encoder.encode(buf));
+      this.writer.writeSync(encoder.encode(buf));
     };
 
     #writeFileHeaders = (
