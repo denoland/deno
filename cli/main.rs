@@ -77,6 +77,7 @@ use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
 use log::Level;
+use log::LevelFilter;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
@@ -657,6 +658,8 @@ pub fn main() {
     env_logger::Env::default()
       .default_filter_or(log_level.to_level_filter().to_string()),
   )
+  // https://github.com/denoland/deno/issues/6641
+  .filter_module("rustyline", LevelFilter::Off)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {
