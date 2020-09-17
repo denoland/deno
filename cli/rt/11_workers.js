@@ -4,9 +4,6 @@
 ((window) => {
   const core = window.Deno.core;
   const { log } = window.__bootstrap.util;
-  /*
-  import { blobURLMap } from "./web/url.ts";
-  */
 
   function createWorker(
     specifier,
@@ -67,22 +64,6 @@
       this.#name = name;
       const hasSourceCode = false;
       const sourceCode = decoder.decode(new Uint8Array());
-
-      /* TODO(bartlomieju):
-      // Handle blob URL.
-      if (specifier.startsWith("blob:")) {
-        hasSourceCode = true;
-        const b = blobURLMap.get(specifier);
-        if (!b) {
-          throw new Error("No Blob associated with the given URL is found");
-        }
-        const blobBytes = blobBytesWeakMap.get(b!);
-        if (!blobBytes) {
-          throw new Error("Invalid Blob");
-        }
-        sourceCode = blobBytes!;
-      }
-      */
 
       const useDenoNamespace = options ? !!options.deno : false;
 

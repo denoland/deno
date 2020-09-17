@@ -8,7 +8,6 @@ pub mod errors;
 pub mod fetch;
 pub mod fs;
 pub mod fs_events;
-pub mod idna;
 pub mod io;
 pub mod net;
 #[cfg(unix)]
