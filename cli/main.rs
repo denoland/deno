@@ -63,6 +63,7 @@ use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
+use crate::parse;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
@@ -72,7 +73,6 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
-use deno_lint::swc_util::AstParser;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
@@ -299,16 +299,8 @@ async fn ast_command(
     .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
   let src = &out.source_code.to_str();
-  let parser = AstParser::new();
-  let ast = parser.parse_module::<_, Result<swc_ecma_ast::Module, AnyError>>(
-    &module_specifier.to_string(),
-    out.media_type,
-    src,
-    |parse_result| {
-      let module = parse_result.unwrap();
-      Ok(module)
-    },
-  )?;
+
+  let ast = parser(&module_specifier, src, out.media_type)?;
 
   debug!(">>>>> ast END");
   write_to_stdout_ignore_sigpipe(serde_json::to_string_pretty(&ast)?.as_bytes())
