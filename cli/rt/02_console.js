@@ -15,13 +15,16 @@
   } = window.__bootstrap.colors;
 
   const {
-    isTypedArray,
     isInvalidDate,
     hasOwnProperty,
   } = window.__bootstrap.webUtil;
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
+
+  function isTypedArray(x) {
+    return ArrayBuffer.isView(x) && !(x instanceof DataView);
+  }
 
   const tableChars = {
     middleMiddle: "─",
