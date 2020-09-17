@@ -489,6 +489,8 @@ name = "deno_fetch"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "reqwest",
+ "serde",
 ]
 
 [[package]]
