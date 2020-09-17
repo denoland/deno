@@ -3,13 +3,128 @@
 ((window) => {
   const core = window.Deno.core;  
   const { build } = window.__bootstrap.build;
-  const { Buffer } = window.__bootstrap.buffer;
   const { URLSearchParams } = window.__bootstrap.url;
   const { ReadableStream, isReadableStreamDisturbed } =
     window.__bootstrap.streams;
   const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { Headers } = window.__bootstrap.headers;
   const { requiredArguments } = window.__bootstrap.webUtil;
+
+  const MAX_SIZE = 2 ** 32 - 2;
+
+  // `off` is the offset into `dst` where it will at which to begin writing values
+  // from `src`.
+  // Returns the number of bytes copied.
+  function copyBytes(src, dst, off = 0) {
+    const r = dst.byteLength - off;
+    if (src.byteLength > r) {
+      src = src.subarray(0, r);
+    }
+    dst.set(src, off);
+    return src.byteLength;
+  }
+
+  class Buffer {
+    #buf = null; // contents are the bytes buf[off : len(buf)]
+    #off = 0; // read at buf[off], write at buf[buf.byteLength]
+
+    constructor(ab) {
+      if (ab == null) {
+        this.#buf = new Uint8Array(0);
+        return;
+      }
+
+      this.#buf = new Uint8Array(ab);
+    }
+
+    bytes(options = { copy: true }) {
+      if (options.copy === false) return this.#buf.subarray(this.#off);
+      return this.#buf.slice(this.#off);
+    }
+
+    empty() {
+      return this.#buf.byteLength <= this.#off;
+    }
+
+    get length() {
+      return this.#buf.byteLength - this.#off;
+    }
+
+    get capacity() {
+      return this.#buf.buffer.byteLength;
+    }
+
+    reset() {
+      this.#reslice(0);
+      this.#off = 0;
+    }
+
+    #tryGrowByReslice = (n) => {
+      const l = this.#buf.byteLength;
+      if (n <= this.capacity - l) {
+        this.#reslice(l + n);
+        return l;
+      }
+      return -1;
+    };
+
+    #reslice = (len) => {
+      if (len <= this.#buf.buffer.byteLength) {
+        throw new Error("assert");
+      }
+      this.#buf = new Uint8Array(this.#buf.buffer, 0, len);
+    };
+
+    writeSync(p) {
+      const m = this.#grow(p.byteLength);
+      return copyBytes(p, this.#buf, m);
+    }
+
+    write(p) {
+      const n = this.writeSync(p);
+      return Promise.resolve(n);
+    }
+
+    #grow = (n) => {
+      const m = this.length;
+      // If buffer is empty, reset to recover space.
+      if (m === 0 && this.#off !== 0) {
+        this.reset();
+      }
+      // Fast: Try to grow by means of a reslice.
+      const i = this.#tryGrowByReslice(n);
+      if (i >= 0) {
+        return i;
+      }
+      const c = this.capacity;
+      if (n <= Math.floor(c / 2) - m) {
+        // We can slide things down instead of allocating a new
+        // ArrayBuffer. We only need m+n <= c to slide, but
+        // we instead let capacity get twice as large so we
+        // don't spend all our time copying.
+        copyBytes(this.#buf.subarray(this.#off), this.#buf);
+      } else if (c + n > MAX_SIZE) {
+        throw new Error("The buffer cannot be grown beyond the maximum size.");
+      } else {
+        // Not enough space anywhere, we need to allocate.
+        const buf = new Uint8Array(Math.min(2 * c + n, MAX_SIZE));
+        copyBytes(this.#buf.subarray(this.#off), buf);
+        this.#buf = buf;
+      }
+      // Restore this.#off and len(this.#buf).
+      this.#off = 0;
+      this.#reslice(Math.min(m + n, MAX_SIZE));
+      return m;
+    };
+
+    grow(n) {
+      if (n < 0) {
+        throw Error("Buffer.grow: negative count");
+      }
+      const m = this.#grow(n);
+      this.#reslice(m);
+    }
+  }
 
   function isTypedArray(x) {
     return ArrayBuffer.isView(x) && !(x instanceof DataView);
@@ -409,6 +524,7 @@
       }
       buf += `\r\n`;
 
+      // FIXME(Bartlomieju): this should use `writeSync()`
       this.writer.write(encoder.encode(buf));
     };
 
