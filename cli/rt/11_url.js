@@ -2,7 +2,6 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { getRandomValues } = window.__bootstrap.crypto;
   const { customInspect } = window.__bootstrap.console;
   const { isIterable, requiredArguments } = window.__bootstrap.webUtil;
 
@@ -385,14 +384,6 @@
     return parts;
   }
 
-  // Based on https://github.com/kelektiv/node-uuid
-  // TODO(kevinkassimo): Use deno_std version once possible.
-  function generateUUID() {
-    return "00000000-0000-4000-8000-000000000000".replace(/[0]/g, () =>
-      // random integer from 0 to 15 as a hex digit.
-      (getRandomValues(new Uint8Array(1))[0] % 16).toString(16));
-  }
-
   // Keep it outside of URL to avoid any attempts of access.
   const blobURLMap = new Map();
 
@@ -712,27 +703,12 @@
       return this.href;
     }
 
-    // TODO(kevinkassimo): implement MediaSource version in the future.
-    static createObjectURL(blob) {
-      const origin = "http://deno-opaque-origin";
-      const key = `blob:${origin}/${generateUUID()}`;
-      blobURLMap.set(key, blob);
-      return key;
+    static createObjectURL() {
+      throw new Error("Not implemented");
     }
 
-    static revokeObjectURL(url) {
-      let urlObject;
-      try {
-        urlObject = new URL(url);
-      } catch {
-        throw new TypeError("Provided URL string is not valid");
-      }
-      if (urlObject.protocol !== "blob:") {
-        return;
-      }
-      // Origin match check seems irrelevant for now, unless we implement
-      // persisten storage for per globalThis.location.origin at some point.
-      blobURLMap.delete(url);
+    static revokeObjectURL() {
+      throw new Error("Not implemented");
     }
   }
 
