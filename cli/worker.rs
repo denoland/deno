@@ -277,7 +277,11 @@ impl MainWorker {
       ops::websocket::init(&mut worker);
       ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);
-      ops::idna::init(&mut worker);
+      ops::reg_json_sync(
+        &mut worker,
+        "op_domain_to_ascii",
+        deno_web::op_domain_to_ascii,
+      );
       ops::io::init(&mut worker);
       ops::plugin::init(&mut worker);
       ops::net::init(&mut worker);

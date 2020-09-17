@@ -2,7 +2,31 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { isIterable, requiredArguments } = window.__bootstrap.webUtil;
+
+  function requiredArguments(
+    name,
+    length,
+    required,
+  ) {
+    if (length < required) {
+      const errMsg = `${name} requires at least ${required} argument${
+        required === 1 ? "" : "s"
+      }, but only ${length} present`;
+      throw new TypeError(errMsg);
+    }
+  }
+
+  function isIterable(
+    o,
+  ) {
+    // checks for null and undefined
+    if (o == null) {
+      return false;
+    }
+    return (
+      typeof (o)[Symbol.iterator] === "function"
+    );
+  }
 
   /** https://url.spec.whatwg.org/#idna */
   function domainToAscii(
@@ -382,9 +406,6 @@
     parts.hash = encodeHash(parts.hash);
     return parts;
   }
-
-  // Keep it outside of URL to avoid any attempts of access.
-  const blobURLMap = new Map();
 
   // Resolves `.`s and `..`s where possible.
   // Preserves repeating and trailing `/`s by design.
@@ -872,6 +893,5 @@
   window.__bootstrap.url = {
     URL,
     URLSearchParams,
-    blobURLMap,
   };
 })(this);

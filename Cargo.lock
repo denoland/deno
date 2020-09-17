@@ -414,7 +414,6 @@ dependencies = [
  "futures",
  "fwdansi",
  "http",
- "idna",
  "indexmap",
  "jsonc-parser",
  "lazy_static",
@@ -506,6 +505,8 @@ version = "0.8.0"
 dependencies = [
  "deno_core",
  "futures",
+ "idna",
+ "serde",
 ]
 
 [[package]]
