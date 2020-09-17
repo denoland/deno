@@ -2,7 +2,7 @@
 
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
-  const { customInspect, inspect } = window.__bootstrap.console;
+  const { customInspect } = window.__bootstrap.console;
   const { cloneValue } = window.__bootstrap.webUtil;
 
   let performanceEntries = [];
@@ -130,7 +130,7 @@
     [customInspect]() {
       return this.detail
         ? `${this.constructor.name} {\n  detail: ${
-          inspect(this.detail, { depth: 3 })
+          JSON.stringify(this.detail, null, 2)
         },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
         : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
     }
@@ -170,7 +170,7 @@
     [customInspect]() {
       return this.detail
         ? `${this.constructor.name} {\n  detail: ${
-          inspect(this.detail, { depth: 3 })
+          JSON.stringify(this.detail, null, 2)
         },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
         : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
     }
