@@ -98,7 +98,9 @@ unitTest(
       `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v" ]`,
     );
     assertEquals(
-      stringify({ "foo\b": "bar\n", "bar\r": "baz\t", "\x1b[32mqux\x1b[39m": "qux" }),
+      stringify(
+        { "foo\b": "bar\n", "bar\r": "baz\t", "\x1b[32mqux\x1b[39m": "qux" },
+      ),
       `{ foo\\b: "bar\\n", bar\\r: "baz\\t", \\x1b[32mqux\\x1b[39m: "qux" }`,
     );
     assertEquals(
