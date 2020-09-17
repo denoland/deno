@@ -256,6 +256,14 @@ SharedQueue Binary Layout
     promise.resolve(res);
   }
 
+  function resources() {
+    return jsonOpSync("op_resources");
+  }
+
+  function close(rid) {
+    jsonOpSync("op_close", { rid });
+  }
+
   Object.assign(window.Deno.core, {
     jsonOpAsync,
     jsonOpSync,
@@ -263,6 +271,8 @@ SharedQueue Binary Layout
     dispatch: send,
     dispatchByName: dispatch,
     ops,
+    close,
+    resources,
     registerErrorClass,
     getErrorClass,
     // sharedQueue is private but exposed for testing.
