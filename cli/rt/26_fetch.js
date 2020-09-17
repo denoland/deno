@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const core = window.Deno.core;  
+  const core = window.Deno.core;
   const { build } = window.__bootstrap.build;
   const { URLSearchParams } = window.__bootstrap.url;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -69,7 +69,7 @@
     };
 
     #reslice = (len) => {
-      if (len <= this.#buf.buffer.byteLength) {
+      if (!(len <= this.#buf.buffer.byteLength)) {
         throw new Error("assert");
       }
       this.#buf = new Uint8Array(this.#buf.buffer, 0, len);
