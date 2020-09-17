@@ -3,24 +3,24 @@
 ((window) => {
   const core = window.Deno.core;
   const util = window.__bootstrap.util;
-  const errorNs = window.__bootstrap.errors;
 
   // Using an object without a prototype because `Map` was causing GC problems.
   const promiseTableMin = Object.create(null);
+
+  const decoder = new TextDecoder();
 
   // Note it's important that promiseId starts at 1 instead of 0, because sync
   // messages are indicated with promiseId 0. If we ever add wrap around logic for
   // overflows, this should be taken into account.
   let _nextPromiseId = 1;
 
-  const decoder = new TextDecoder();
-
   function nextPromiseId() {
     return _nextPromiseId++;
   }
 
   function recordFromBufMinimal(ui8) {
-    const header = ui8.subarray(0, 12);
+    const headerLen = 12;
+    const header = ui8.subarray(0, headerLen);
     const buf32 = new Int32Array(
       header.buffer,
       header.byteOffset,
@@ -32,11 +32,12 @@
     let err;
 
     if (arg < 0) {
-      const kind = result;
-      const message = decoder.decode(ui8.subarray(12));
-      err = { kind, message };
+      err = {
+        className: decoder.decode(ui8.subarray(headerLen, headerLen + result)),
+        message: decoder.decode(ui8.subarray(headerLen + result)),
+      };
     } else if (ui8.length != 12) {
-      throw new errorNs.errors.InvalidData("BadMessage");
+      throw new TypeError("Malformed response message");
     }
 
     return {
@@ -49,7 +50,7 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      throw new (errorNs.getErrorClass(res.err.kind))(res.err.message);
+      throw new (core.getErrorClass(res.err.className))(res.err.message);
     }
     return res.result;
   }
@@ -71,11 +72,7 @@
     promise.resolve(record);
   }
 
-  async function sendAsync(
-    opName,
-    arg,
-    zeroCopy,
-  ) {
+  async function sendAsync(opName, arg, zeroCopy) {
     const promiseId = nextPromiseId(); // AKA cmdId
     scratch32[0] = promiseId;
     scratch32[1] = arg;
@@ -95,11 +92,7 @@
     return unwrapResponse(res);
   }
 
-  function sendSync(
-    opName,
-    arg,
-    zeroCopy,
-  ) {
+  function sendSync(opName, arg, zeroCopy) {
     scratch32[0] = 0; // promiseId 0 indicates sync
     scratch32[1] = arg;
     const res = core.dispatchByName(opName, scratchBytes, zeroCopy);

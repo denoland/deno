@@ -4,7 +4,8 @@ import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("ensureDirIfItNotExist", async function (): Promise<void> {
   const baseDir = path.join(testdataDir, "ensure_dir_not_exist");

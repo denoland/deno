@@ -70,7 +70,7 @@ function constructYamlTimestamp(data: string): Date {
   if (match[9]) {
     const tzHour = +match[10];
     const tzMinute = +(match[11] || 0);
-    delta = (tzHour * 60 + tzMinute) * 60000; // delta in mili-seconds
+    delta = (tzHour * 60 + tzMinute) * 60000; // delta in milli-seconds
     if (match[9] === "-") delta = -delta;
   }
 

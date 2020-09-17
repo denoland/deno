@@ -53,7 +53,6 @@
   function immutableDefine(
     o,
     p,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value,
   ) {
     Object.defineProperty(o, p, {
@@ -63,32 +62,32 @@
     });
   }
 
+  // Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
   function pathFromURLWin32(url) {
-    const hostname = url.hostname;
-    const pathname = decodeURIComponent(url.pathname.replace(/\//g, "\\"));
-
-    if (hostname !== "") {
-      //TODO(actual-size) Node adds a punycode decoding step, we should consider adding this
-      return `\\\\${hostname}${pathname}`;
+    let path = decodeURIComponent(
+      url.pathname
+        .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
+        .replace(/\//g, "\\")
+        .replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+    );
+    if (url.hostname != "") {
+      // Note: The `URL` implementation guarantees that the drive letter and
+      // hostname are mutually exclusive. Otherwise it would not have been valid
+      // to append the hostname and path like this.
+      path = `\\\\${url.hostname}${path}`;
     }
-
-    const validPath = /^\\(?<driveLetter>[A-Za-z]):\\/;
-    const matches = validPath.exec(pathname);
-
-    if (!matches?.groups?.driveLetter) {
-      throw new TypeError("A URL with the file schema must be absolute.");
-    }
-
-    // we don't want a leading slash on an absolute path in Windows
-    return pathname.slice(1);
+    return path;
   }
 
+  // Keep in sync with `fromFileUrl()` in `std/path/posix.ts`.
   function pathFromURLPosix(url) {
     if (url.hostname !== "") {
       throw new TypeError(`Host must be empty.`);
     }
 
-    return decodeURIComponent(url.pathname);
+    return decodeURIComponent(
+      url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+    );
   }
 
   function pathFromURL(pathOrUrl) {

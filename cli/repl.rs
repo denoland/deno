@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::deno_dir::DenoDir;
-use crate::op_error::OpError;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use rustyline::Editor;
 use std::fs;
 use std::path::PathBuf;
@@ -34,7 +34,7 @@ impl Repl {
       .unwrap_or(())
   }
 
-  fn save_history(&mut self) -> Result<(), ErrBox> {
+  fn save_history(&mut self) -> Result<(), AnyError> {
     fs::create_dir_all(self.history_file.parent().unwrap())?;
     self
       .editor
@@ -42,11 +42,11 @@ impl Repl {
       .map(|_| debug!("Saved REPL history to: {:?}", self.history_file))
       .map_err(|e| {
         eprintln!("Unable to save REPL history: {:?} {}", self.history_file, e);
-        ErrBox::from(e)
+        e.into()
       })
   }
 
-  pub fn readline(&mut self, prompt: &str) -> Result<String, OpError> {
+  pub fn readline(&mut self, prompt: &str) -> Result<String, AnyError> {
     self
       .editor
       .readline(&prompt)
@@ -54,7 +54,8 @@ impl Repl {
         self.editor.add_history_entry(line.clone());
         line
       })
-      .map_err(OpError::from)
+      .map_err(AnyError::from)
+
     // Forward error to TS side for processing
   }
 }

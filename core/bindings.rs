@@ -1,19 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::CoreIsolate;
-use crate::CoreIsolateState;
-use crate::EsIsolate;
-use crate::JSError;
+use crate::error::AnyError;
+use crate::error::JsError;
+use crate::runtime::JsRuntimeState;
+use crate::JsRuntime;
+use crate::Op;
+use crate::OpId;
+use crate::OpTable;
 use crate::ZeroCopyBuf;
-
+use futures::future::FutureExt;
 use rusty_v8 as v8;
-use v8::MapFnTo;
-
-use smallvec::SmallVec;
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::option::Option;
 use url::Url;
+use v8::MapFnTo;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -49,8 +50,11 @@ lazy_static! {
         function: decode.map_fn_to()
       },
       v8::ExternalReference {
-        function: get_promise_details.map_fn_to(),
-      }
+        function: get_promise_details.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: get_proxy_details.map_fn_to()
+      },
     ]);
 }
 
@@ -181,6 +185,18 @@ pub fn initialize_context<'s>(
     get_promise_details_val.into(),
   );
 
+  let get_proxy_details_key =
+    v8::String::new(scope, "getProxyDetails").unwrap();
+  let get_proxy_details_tmpl =
+    v8::FunctionTemplate::new(scope, get_proxy_details);
+  let get_proxy_details_val =
+    get_proxy_details_tmpl.get_function(scope).unwrap();
+  core_val.set(
+    scope,
+    get_proxy_details_key.into(),
+    get_proxy_details_val.into(),
+  );
+
   let shared_key = v8::String::new(scope, "shared").unwrap();
   core_val.set_accessor(scope, shared_key.into(), shared_getter);
 
@@ -239,7 +255,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = EsIsolate::state(scope);
+    let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
   }
@@ -253,7 +269,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   meta: v8::Local<v8::Object>,
 ) {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let state_rc = EsIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
 
   let id = module.get_identity_hash();
@@ -273,7 +289,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let promise = message.get_promise();
@@ -355,7 +371,7 @@ fn recv(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
@@ -371,23 +387,27 @@ fn recv(
   slot.replace(v8::Global::new(scope, cb));
 }
 
-fn send(
-  scope: &mut v8::HandleScope,
+fn send<'s>(
+  scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
-    Ok(op_id) => op_id.value() as u32,
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow_mut();
+
+  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map_err(AnyError::from)
+    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
+  {
+    Ok(op_id) => op_id,
     Err(err) => {
       let msg = format!("invalid op id: {}", err);
       let msg = v8::String::new(scope, &msg).unwrap();
-      scope.throw_exception(msg.into());
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
       return;
     }
   };
-
-  let state_rc = CoreIsolate::state(scope);
-  let mut state = state_rc.borrow_mut();
 
   let buf_iter = (1..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
@@ -399,24 +419,36 @@ fn send(
       })
   });
 
-  // If response is empty then it's either async op or exception was thrown.
-  let maybe_response =
-    match buf_iter.collect::<Result<SmallVec<[ZeroCopyBuf; 2]>, _>>() {
-      Ok(mut bufs) => state.dispatch_op(scope, op_id, &mut bufs),
-      Err(exc) => {
-        scope.throw_exception(exc);
-        return;
-      }
-    };
+  let bufs = match buf_iter.collect::<Result<_, _>>() {
+    Ok(bufs) => bufs,
+    Err(exc) => {
+      scope.throw_exception(exc);
+      return;
+    }
+  };
 
-  if let Some(response) = maybe_response {
-    // Synchronous response.
-    // Note op_id is not passed back in the case of synchronous response.
-    let (_op_id, buf) = response;
-
-    if !buf.is_empty() {
-      let ui8 = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ui8.into());
+  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
+  assert_eq!(state.shared.size(), 0);
+  match op {
+    Op::Sync(buf) if !buf.is_empty() => {
+      rv.set(boxed_slice_to_uint8array(scope, buf).into());
+    }
+    Op::Sync(_) => {}
+    Op::Async(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::AsyncUnref(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_unref_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::NotFound => {
+      let msg = format!("Unknown op id: {}", op_id);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
     }
   }
 }
@@ -426,7 +458,7 @@ fn set_macrotask_callback(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
@@ -575,8 +607,8 @@ fn format_error(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let e = JSError::from_v8_exception(scope, args.get(0));
-  let state_rc = CoreIsolate::state(scope);
+  let e = JsError::from_v8_exception(scope, args.get(0));
+  let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   let e = (state.js_error_create_fn)(e);
   let e = e.to_string();
@@ -641,9 +673,22 @@ fn decode(
     )
   };
 
-  let text_str =
-    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
-  rv.set(text_str.into())
+  // If `String::new_from_utf8()` returns `None`, this means that the
+  // length of the decoded string would be longer than what V8 can
+  // handle. In this case we return `RangeError`.
+  //
+  // For more details see:
+  // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
+  // - https://github.com/denoland/deno/issues/6649
+  // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
+  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+    Some(text) => rv.set(text.into()),
+    None => {
+      let msg = v8::String::new(scope, "string too long").unwrap();
+      let exception = v8::Exception::range_error(scope, msg);
+      scope.throw_exception(exception);
+    }
+  };
 }
 
 fn queue_microtask(
@@ -667,9 +712,9 @@ fn shared_getter(
   _args: v8::PropertyCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  let CoreIsolateState {
+  let JsRuntimeState {
     shared_ab, shared, ..
   } = &mut *state;
 
@@ -695,7 +740,7 @@ pub fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let state_rc = EsIsolate::state(scope);
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
   let referrer_id = referrer.get_identity_hash();
@@ -778,6 +823,50 @@ fn get_promise_details(
       rv.set(promise_details.into());
     }
   }
+}
+
+// Based on https://github.com/nodejs/node/blob/1e470510ff74391d7d4ec382909ea8960d2d2fbc/src/node_util.cc
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+fn get_proxy_details(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  // Return undefined if it's not a proxy.
+  let proxy = match v8::Local::<v8::Proxy>::try_from(args.get(0)) {
+    Ok(val) => val,
+    Err(_) => {
+      return;
+    }
+  };
+
+  let proxy_details = v8::Array::new(scope, 2);
+  let js_zero = v8::Integer::new(scope, 0);
+  let js_one = v8::Integer::new(scope, 1);
+  let target = proxy.get_target(scope);
+  let handler = proxy.get_handler(scope);
+  proxy_details.set(scope, js_zero.into(), target);
+  proxy_details.set(scope, js_one.into(), handler);
+  rv.set(proxy_details.into());
 }
 
 fn throw_type_error<'s>(

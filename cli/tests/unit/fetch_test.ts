@@ -738,6 +738,16 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.type, "default");
 });
 
+unitTest(async function responseWithoutBody(): Promise<void> {
+  const response = new Response();
+  assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
+  assertEquals(await response.blob(), new Blob([]));
+  assertEquals(await response.text(), "");
+  await assertThrowsAsync(async () => {
+    await response.json();
+  });
+});
+
 unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   void
 > {
@@ -938,3 +948,21 @@ unitTest(function fetchResponseEmptyConstructor(): void {
   assertEquals(response.bodyUsed, false);
   assertEquals([...response.headers], []);
 });
+
+unitTest(
+  { perms: { net: true, read: true } },
+  async function fetchCustomHttpClientSuccess(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient(
+      { caFile: "./cli/tests/tls/RootCA.crt" },
+    );
+    const response = await fetch(
+      "https://localhost:5545/cli/tests/fixture.json",
+      { client },
+    );
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    client.close();
+  },
+);

@@ -1,30 +1,29 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{JsonOp, Value};
+
 use crate::colors;
-use crate::op_error::OpError;
-use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
-use deno_core::CoreIsolate;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use serde_json::Value;
 use std::env;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_start", s.stateful_json_op(op_start));
-  i.register_op("op_main_module", s.stateful_json_op(op_main_module));
-  i.register_op("op_metrics", s.stateful_json_op(op_metrics));
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_start", op_start);
+  super::reg_json_sync(rt, "op_main_module", op_main_module);
+  super::reg_json_sync(rt, "op_metrics", op_metrics);
 }
 
 fn op_start(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let state = state.borrow();
-  let gs = &state.global_state;
+) -> Result<Value, AnyError> {
+  let gs = &super::cli_state(state).global_state;
 
-  Ok(JsonOp::Sync(json!({
+  Ok(json!({
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
     "args": gs.flags.argv.clone(),
     "cwd": &env::current_dir().unwrap(),
@@ -39,33 +38,33 @@ fn op_start(
     "unstableFlag": gs.flags.unstable,
     "v8Version": version::v8(),
     "versionFlag": gs.flags.version,
-  })))
+  }))
 }
 
 fn op_main_module(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let main = &state.borrow().main_module.to_string();
+) -> Result<Value, AnyError> {
+  let cli_state = super::cli_state(state);
+  let main = &cli_state.main_module.to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
-    state.check_read_blind(&main_path, "main_module")?;
+    cli_state.check_read_blind(&main_path, "main_module")?;
   }
-  state.check_unstable("Deno.mainModule");
-  Ok(JsonOp::Sync(json!(&main)))
+  Ok(json!(&main))
 }
 
 fn op_metrics(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let state = state.borrow();
-  let m = &state.metrics;
+) -> Result<Value, AnyError> {
+  let cli_state = super::cli_state(state);
+  let m = &cli_state.metrics.borrow();
 
-  Ok(JsonOp::Sync(json!({
+  Ok(json!({
     "opsDispatched": m.ops_dispatched,
     "opsDispatchedSync": m.ops_dispatched_sync,
     "opsDispatchedAsync": m.ops_dispatched_async,
@@ -77,7 +76,7 @@ fn op_metrics(
     "bytesSentControl": m.bytes_sent_control,
     "bytesSentData": m.bytes_sent_data,
     "bytesReceived": m.bytes_received
-  })))
+  }))
 }
 
 fn ppid() -> Value {

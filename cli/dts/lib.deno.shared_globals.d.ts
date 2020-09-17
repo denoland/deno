@@ -4,174 +4,131 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.web" />
 
-// This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
-// and: https://webassembly.github.io/spec/web-api/
 declare namespace WebAssembly {
-  interface WebAssemblyInstantiatedSource {
-    module: Module;
-    instance: Instance;
-  }
+    interface CompileError {
+    }
 
-  /** Compiles a `WebAssembly.Module` from WebAssembly binary code.  This
-   * function is useful if it is necessary to a compile a module before it can
-   * be instantiated (otherwise, the `WebAssembly.instantiate()` function
-   * should be used). */
-  function compile(bufferSource: BufferSource): Promise<Module>;
+    var CompileError: {
+        prototype: CompileError;
+        new(): CompileError;
+    };
 
-  /** Compiles a `WebAssembly.Module` directly from a streamed underlying
-   * source. This function is useful if it is necessary to a compile a module
-   * before it can be instantiated (otherwise, the
-   * `WebAssembly.instantiateStreaming()` function should be used). */
-  function compileStreaming(source: Promise<Response>): Promise<Module>;
+    interface Global {
+        value: any;
+        valueOf(): any;
+    }
 
-  /** Takes the WebAssembly binary code, in the form of a typed array or
-   * `ArrayBuffer`, and performs both compilation and instantiation in one step.
-   * The returned `Promise` resolves to both a compiled `WebAssembly.Module` and
-   * its first `WebAssembly.Instance`. */
-  function instantiate(
-    bufferSource: BufferSource,
-    importObject?: object,
-  ): Promise<WebAssemblyInstantiatedSource>;
+    var Global: {
+        prototype: Global;
+        new(descriptor: GlobalDescriptor, v?: any): Global;
+    };
 
-  /** Takes an already-compiled `WebAssembly.Module` and returns a `Promise`
-   * that resolves to an `Instance` of that `Module`. This overload is useful if
-   * the `Module` has already been compiled. */
-  function instantiate(
-    module: Module,
-    importObject?: object,
-  ): Promise<Instance>;
+    interface Instance {
+        readonly exports: Exports;
+    }
 
-  /** Compiles and instantiates a WebAssembly module directly from a streamed
-   * underlying source. This is the most efficient, optimized way to load wasm
-   * code. */
-  function instantiateStreaming(
-    source: Promise<Response>,
-    importObject?: object,
-  ): Promise<WebAssemblyInstantiatedSource>;
+    var Instance: {
+        prototype: Instance;
+        new(module: Module, importObject?: Imports): Instance;
+    };
 
-  /** Validates a given typed array of WebAssembly binary code, returning
-   * whether the bytes form a valid wasm module (`true`) or not (`false`). */
-  function validate(bufferSource: BufferSource): boolean;
+    interface LinkError {
+    }
 
-  type ImportExportKind = "function" | "table" | "memory" | "global";
+    var LinkError: {
+        prototype: LinkError;
+        new(): LinkError;
+    };
 
-  interface ModuleExportDescriptor {
-    name: string;
-    kind: ImportExportKind;
-  }
-  interface ModuleImportDescriptor {
-    module: string;
-    name: string;
-    kind: ImportExportKind;
-  }
+    interface Memory {
+        readonly buffer: ArrayBuffer;
+        grow(delta: number): number;
+    }
 
-  class Module {
-    constructor(bufferSource: BufferSource);
+    var Memory: {
+        prototype: Memory;
+        new(descriptor: MemoryDescriptor): Memory;
+    };
 
-    /** Given a `Module` and string, returns a copy of the contents of all
-     * custom sections in the module with the given string name. */
-    static customSections(
-      moduleObject: Module,
-      sectionName: string,
-    ): ArrayBuffer;
+    interface Module {
+    }
 
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared exports. */
-    static exports(moduleObject: Module): ModuleExportDescriptor[];
+    var Module: {
+        prototype: Module;
+        new(bytes: BufferSource): Module;
+        customSections(moduleObject: Module, sectionName: string): ArrayBuffer[];
+        exports(moduleObject: Module): ModuleExportDescriptor[];
+        imports(moduleObject: Module): ModuleImportDescriptor[];
+    };
 
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared imports. */
-    static imports(moduleObject: Module): ModuleImportDescriptor[];
-  }
+    interface RuntimeError {
+    }
 
-  class Instance<T extends object = { [key: string]: any }> {
-    constructor(module: Module, importObject?: object);
+    var RuntimeError: {
+        prototype: RuntimeError;
+        new(): RuntimeError;
+    };
 
-    /** An object containing as its members all the functions exported from the
-     * WebAssembly module instance, to allow them to be accessed and used by
-     * JavaScript. */
-    readonly exports: T;
-  }
+    interface Table {
+        readonly length: number;
+        get(index: number): Function | null;
+        grow(delta: number): number;
+        set(index: number, value: Function | null): void;
+    }
 
-  interface MemoryDescriptor {
-    initial: number;
-    maximum?: number;
-  }
+    var Table: {
+        prototype: Table;
+        new(descriptor: TableDescriptor): Table;
+    };
 
-  class Memory {
-    constructor(descriptor: MemoryDescriptor);
+    interface GlobalDescriptor {
+        mutable?: boolean;
+        value: ValueType;
+    }
 
-    /** An accessor property that returns the buffer contained in the memory. */
-    readonly buffer: ArrayBuffer;
+    interface MemoryDescriptor {
+        initial: number;
+        maximum?: number;
+    }
 
-    /** Increases the size of the memory instance by a specified number of
-     * WebAssembly pages (each one is 64KB in size). */
-    grow(delta: number): number;
-  }
+    interface ModuleExportDescriptor {
+        kind: ImportExportKind;
+        name: string;
+    }
 
-  type TableKind = "anyfunc";
+    interface ModuleImportDescriptor {
+        kind: ImportExportKind;
+        module: string;
+        name: string;
+    }
 
-  interface TableDescriptor {
-    element: TableKind;
-    initial: number;
-    maximum?: number;
-  }
+    interface TableDescriptor {
+        element: TableKind;
+        initial: number;
+        maximum?: number;
+    }
 
-  class Table {
-    constructor(descriptor: TableDescriptor);
+    interface WebAssemblyInstantiatedSource {
+        instance: Instance;
+        module: Module;
+    }
 
-    /** Returns the length of the table, i.e. the number of elements. */
-    readonly length: number;
-
-    /** Accessor function — gets the element stored at a given index. */
-    get(index: number): (...args: any[]) => any;
-
-    /** Increases the size of the Table instance by a specified number of
-     * elements. */
-    grow(delta: number): number;
-
-    /** Sets an element stored at a given index to a given value. */
-    set(index: number, value: (...args: any[]) => any): void;
-  }
-
-  type ValueType = "i32" | "i64" | "f32" | "f64";
-
-  interface GlobalDescriptor {
-    value: ValueType;
-    mutable?: boolean;
-  }
-
-  /** Represents a global variable instance, accessible from both JavaScript and
-   * importable/exportable across one or more `WebAssembly.Module` instances.
-   * This allows dynamic linking of multiple modules. */
-  class Global {
-    constructor(descriptor: GlobalDescriptor, value?: any);
-
-    /** Old-style method that returns the value contained inside the global
-     * variable. */
-    valueOf(): any;
-
-    /** The value contained inside the global variable — this can be used to
-     * directly set and get the global's value. */
-    value: any;
-  }
-
-  /** Indicates an error during WebAssembly decoding or validation */
-  class CompileError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Indicates an error during module instantiation (besides traps from the
-   * start function). */
-  class LinkError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Is thrown whenever WebAssembly specifies a trap. */
-  class RuntimeError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
+    type ImportExportKind = "function" | "global" | "memory" | "table";
+    type TableKind = "anyfunc";
+    type ValueType = "f32" | "f64" | "i32" | "i64";
+    type ExportValue = Function | Global | Memory | Table;
+    type Exports = Record<string, ExportValue>;
+    type ImportValue = ExportValue | number;
+    type ModuleImports = Record<string, ImportValue>;
+    type Imports = Record<string, ModuleImports>;
+    function compile(bytes: BufferSource): Promise<Module>;
+    function compileStreaming(source: Response | Promise<Response>): Promise<Module>;
+    function instantiate(bytes: BufferSource, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
+    function instantiate(moduleObject: Module, importObject?: Imports): Promise<Instance>;
+    function instantiateStreaming(response: Response | PromiseLike<Response>, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
+    function validate(bytes: BufferSource): boolean;
 }
 
 /** Sets a timer which executes a function once after the timer expires. Returns
@@ -529,12 +486,6 @@ interface DOMStringList {
   [index: number]: string;
 }
 
-declare class DOMException extends Error {
-  constructor(message?: string, name?: string);
-  readonly name: string;
-  readonly message: string;
-}
-
 type BufferSource = ArrayBufferView | ArrayBuffer;
 type BlobPart = BufferSource | Blob | string;
 
@@ -574,6 +525,48 @@ declare const File: {
   new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
 };
 
+interface FileReaderEventMap {
+  "abort": ProgressEvent<FileReader>;
+  "error": ProgressEvent<FileReader>;
+  "load": ProgressEvent<FileReader>;
+  "loadend": ProgressEvent<FileReader>;
+  "loadstart": ProgressEvent<FileReader>;
+  "progress": ProgressEvent<FileReader>;
+}
+
+/** Lets web applications asynchronously read the contents of files (or raw data buffers) stored on the user's computer, using File or Blob objects to specify the file or data to read. */
+interface FileReader extends EventTarget {
+  readonly error: DOMException | null;
+  onabort: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onloadend: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onloadstart: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  readonly readyState: number;
+  readonly result: string | ArrayBuffer | null;
+  abort(): void;
+  readAsArrayBuffer(blob: Blob): void;
+  readAsBinaryString(blob: Blob): void;
+  readAsDataURL(blob: Blob): void;
+  readAsText(blob: Blob, encoding?: string): void;
+  readonly DONE: number;
+  readonly EMPTY: number;
+  readonly LOADING: number;
+  addEventListener<K extends keyof FileReaderEventMap>(type: K, listener: (this: FileReader, ev: FileReaderEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+  removeEventListener<K extends keyof FileReaderEventMap>(type: K, listener: (this: FileReader, ev: FileReaderEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+}
+
+declare var FileReader: {
+  prototype: FileReader;
+  new(): FileReader;
+  readonly DONE: number;
+  readonly EMPTY: number;
+  readonly LOADING: number;
+};
+
 declare const isConsoleInstance: unique symbol;
 
 declare class Console {
@@ -594,8 +587,7 @@ declare class Console {
     }>,
   ) => void;
 
-  /** From MDN:
-   * Displays an interactive tree of the descendant elements of
+  /** Displays an interactive tree of the descendant elements of
    * the specified XML/HTML element. If it is not possible to display
    * as an element the JavaScript Object view is shown instead.
    * The output is presented as a hierarchical listing of expandable
@@ -603,6 +595,9 @@ declare class Console {
    *
    * Since we write to stdout, we can't display anything interactive
    * we just fall back to `console.dir`.
+   *
+   * > [Console.dirxml](https://developer.mozilla.org/en-US/docs/Web/API/Console/dirxml)
+   * > by Mozilla Contributors is licensed under CC-BY-SA 2.5.
    */
   dirxml: (
     obj: unknown,
@@ -1028,46 +1023,6 @@ declare function fetch(
   init?: RequestInit,
 ): Promise<Response>;
 
-/** Decodes a string of data which has been encoded using base-64 encoding.
- *
- *     console.log(atob("aGVsbG8gd29ybGQ=")); // outputs 'hello world'
- */
-declare function atob(s: string): string;
-
-/** Creates a base-64 ASCII encoded string from the input string.
- *
- *     console.log(btoa("hello world"));  // outputs "aGVsbG8gd29ybGQ="
- */
-declare function btoa(s: string): string;
-
-declare class TextDecoder {
-  /** Returns encoding's name, lowercased. */
-  readonly encoding: string;
-  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
-  readonly fatal: boolean;
-  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
-  constructor(
-    label?: string,
-    options?: { fatal?: boolean; ignoreBOM?: boolean },
-  );
-  /** Returns the result of running encoding's decoder. */
-  decode(input?: BufferSource, options?: { stream?: false }): string;
-  readonly [Symbol.toStringTag]: string;
-}
-
-declare class TextEncoder {
-  /** Returns "utf-8". */
-  readonly encoding = "utf-8";
-  /** Returns the result of running UTF-8's encoder. */
-  encode(input?: string): Uint8Array;
-  encodeInto(
-    input: string,
-    dest: Uint8Array,
-  ): { read: number; written: number };
-  readonly [Symbol.toStringTag]: string;
-}
-
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
@@ -1277,6 +1232,12 @@ interface PostMessageOptions {
   transfer?: any[];
 }
 
+interface ProgressEventInit extends EventInit {
+  lengthComputable?: boolean;
+  loaded?: number;
+  total?: number;
+}
+
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
@@ -1442,143 +1403,6 @@ declare class PerformanceMeasure extends PerformanceEntry {
   readonly entryType: "measure";
 }
 
-interface EventInit {
-  bubbles?: boolean;
-  cancelable?: boolean;
-  composed?: boolean;
-}
-
-/** An event which takes place in the DOM. */
-declare class Event {
-  constructor(type: string, eventInitDict?: EventInit);
-  /** Returns true or false depending on how event was initialized. True if
-   * event goes through its target's ancestors in reverse tree order, and
-   * false otherwise. */
-  readonly bubbles: boolean;
-  cancelBubble: boolean;
-  /** Returns true or false depending on how event was initialized. Its return
-   * value does not always carry meaning, but true can indicate that part of the
-   * operation during which event was dispatched, can be canceled by invoking
-   * the preventDefault() method. */
-  readonly cancelable: boolean;
-  /** Returns true or false depending on how event was initialized. True if
-   * event invokes listeners past a ShadowRoot node that is the root of its
-   * target, and false otherwise. */
-  readonly composed: boolean;
-  /** Returns the object whose event listener's callback is currently being
-   * invoked. */
-  readonly currentTarget: EventTarget | null;
-  /** Returns true if preventDefault() was invoked successfully to indicate
-   * cancellation, and false otherwise. */
-  readonly defaultPrevented: boolean;
-  /** Returns the event's phase, which is one of NONE, CAPTURING_PHASE,
-   * AT_TARGET, and BUBBLING_PHASE. */
-  readonly eventPhase: number;
-  /** Returns true if event was dispatched by the user agent, and false
-   * otherwise. */
-  readonly isTrusted: boolean;
-  /** Returns the object to which event is dispatched (its target). */
-  readonly target: EventTarget | null;
-  /** Returns the event's timestamp as the number of milliseconds measured
-   * relative to the time origin. */
-  readonly timeStamp: number;
-  /** Returns the type of event, e.g. "click", "hashchange", or "submit". */
-  readonly type: string;
-  /** Returns the invocation target objects of event's path (objects on which
-   * listeners will be invoked), except for any nodes in shadow trees of which
-   * the shadow root's mode is "closed" that are not reachable from event's
-   * currentTarget. */
-  composedPath(): EventTarget[];
-  /** If invoked when the cancelable attribute value is true, and while
-   * executing a listener for the event with passive set to false, signals to
-   * the operation that caused event to be dispatched that it needs to be
-   * canceled. */
-  preventDefault(): void;
-  /** Invoking this method prevents event from reaching any registered event
-   * listeners after the current one finishes running and, when dispatched in a
-   * tree, also prevents event from reaching any other objects. */
-  stopImmediatePropagation(): void;
-  /** When dispatched in a tree, invoking this method prevents event from
-   * reaching any objects other than the current object. */
-  stopPropagation(): void;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly NONE: number;
-  static readonly AT_TARGET: number;
-  static readonly BUBBLING_PHASE: number;
-  static readonly CAPTURING_PHASE: number;
-  static readonly NONE: number;
-}
-
-/**
- * EventTarget is a DOM interface implemented by objects that can receive events
- * and may have listeners for them.
- */
-declare class EventTarget {
-  /** Appends an event listener for events whose type attribute value is type.
-   * The callback argument sets the callback that will be invoked when the event
-   * is dispatched.
-   *
-   * The options argument sets listener-specific options. For compatibility this
-   * can be a boolean, in which case the method behaves exactly as if the value
-   * was specified as options's capture.
-   *
-   * When set to true, options's capture prevents callback from being invoked
-   * when the event's eventPhase attribute value is BUBBLING_PHASE. When false
-   * (or not present), callback will not be invoked when event's eventPhase
-   * attribute value is CAPTURING_PHASE. Either way, callback will be invoked if
-   * event's eventPhase attribute value is AT_TARGET.
-   *
-   * When set to true, options's passive indicates that the callback will not
-   * cancel the event by invoking preventDefault(). This is used to enable
-   * performance optimizations described in § 2.8 Observing event listeners.
-   *
-   * When set to true, options's once indicates that the callback will only be
-   * invoked once after which the event listener will be removed.
-   *
-   * The event listener is appended to target's event listener list and is not
-   * appended if it has the same type, callback, and capture. */
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  /** Dispatches a synthetic event event to target and returns true if either
-   * event's cancelable attribute value is false or its preventDefault() method
-   * was not invoked, and false otherwise. */
-  dispatchEvent(event: Event): boolean;
-  /** Removes the event listener in target's event listener list with the same
-   * type, callback, and options. */
-  removeEventListener(
-    type: string,
-    callback: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean,
-  ): void;
-  [Symbol.toStringTag]: string;
-}
-
-interface EventListener {
-  (evt: Event): void | Promise<void>;
-}
-
-interface EventListenerObject {
-  handleEvent(evt: Event): void | Promise<void>;
-}
-
-declare type EventListenerOrEventListenerObject =
-  | EventListener
-  | EventListenerObject;
-
-interface AddEventListenerOptions extends EventListenerOptions {
-  once?: boolean;
-  passive?: boolean;
-}
-
-interface EventListenerOptions {
-  capture?: boolean;
-}
-
 /** Events measuring progress of an underlying process, like an HTTP request
  * (for an XMLHttpRequest, or the loading of the underlying resource of an
  * <img>, <audio>, <video>, <style> or <link>). */
@@ -1588,6 +1412,11 @@ interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
   readonly target: T | null;
   readonly total: number;
 }
+
+declare var ProgressEvent: {
+  prototype: ProgressEvent;
+  new(type:string, eventInitDict?: ProgressEventInit): ProgressEvent;
+};
 
 interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
@@ -1600,54 +1429,6 @@ declare class CustomEvent<T = any> extends Event {
   readonly detail: T;
 }
 
-/** A controller object that allows you to abort one or more DOM requests as and
- * when desired. */
-declare class AbortController {
-  /** Returns the AbortSignal object associated with this object. */
-  readonly signal: AbortSignal;
-  /** Invoking this method will set this object's AbortSignal's aborted flag and
-   * signal to any observers that the associated activity is to be aborted. */
-  abort(): void;
-}
-
-interface AbortSignalEventMap {
-  abort: Event;
-}
-
-/** A signal object that allows you to communicate with a DOM request (such as a
- * Fetch) and abort it if required via an AbortController object. */
-interface AbortSignal extends EventTarget {
-  /** Returns true if this AbortSignal's AbortController has signaled to abort,
-   * and false otherwise. */
-  readonly aborted: boolean;
-  onabort: ((this: AbortSignal, ev: Event) => any) | null;
-  addEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  removeEventListener<K extends keyof AbortSignalEventMap>(
-    type: K,
-    listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | EventListenerOptions,
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions,
-  ): void;
-}
-
-declare const AbortSignal: {
-  prototype: AbortSignal;
-  new (): AbortSignal;
-};
-
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   // eslint-disable-next-line @typescript-eslint/ban-types
@@ -1655,3 +1436,99 @@ interface ErrorConstructor {
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.
 }
+
+interface CloseEventInit extends EventInit {
+  code?: number;
+  reason?: string;
+  wasClean?: boolean;
+}
+
+interface CloseEvent extends Event {
+  /**
+   * Returns the WebSocket connection close code provided by the server.
+   */
+  readonly code: number;
+  /**
+   * Returns the WebSocket connection close reason provided by the server.
+   */
+  readonly reason: string;
+  /**
+   * Returns true if the connection closed cleanly; false otherwise.
+   */
+  readonly wasClean: boolean;
+}
+
+declare var CloseEvent: {
+  prototype: CloseEvent;
+  new(type: string, eventInitDict?: CloseEventInit): CloseEvent;
+};
+
+interface WebSocketEventMap {
+  "close": CloseEvent;
+  "error": Event;
+  "message": MessageEvent;
+  "open": Event;
+}
+
+/** Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection. */
+interface WebSocket extends EventTarget {
+  /**
+   * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
+   *
+   * Can be set, to change how binary data is returned. The default is "blob".
+   */
+  binaryType: BinaryType;
+  /**
+   * Returns the number of bytes of application data (UTF-8 text and binary data) that have been queued using send() but not yet been transmitted to the network.
+   *
+   * If the WebSocket connection is closed, this attribute's value will only increase with each call to the send() method. (The number does not reset to zero once the connection closes.)
+   */
+  readonly bufferedAmount: number;
+  /**
+   * Returns the extensions selected by the server, if any.
+   */
+  readonly extensions: string;
+  onclose: ((this: WebSocket, ev: CloseEvent) => any) | null;
+  onerror: ((this: WebSocket, ev: Event | ErrorEvent) => any) | null;
+  onmessage: ((this: WebSocket, ev: MessageEvent) => any) | null;
+  onopen: ((this: WebSocket, ev: Event) => any) | null;
+  /**
+   * Returns the subprotocol selected by the server, if any. It can be used in conjunction with the array form of the constructor's second argument to perform subprotocol negotiation.
+   */
+  readonly protocol: string;
+  /**
+   * Returns the state of the WebSocket object's connection. It can have the values described below.
+   */
+  readonly readyState: number;
+  /**
+   * Returns the URL that was used to establish the WebSocket connection.
+   */
+  readonly url: string;
+  /**
+   * Closes the WebSocket connection, optionally using code as the the WebSocket connection close code and reason as the the WebSocket connection close reason.
+   */
+  close(code?: number, reason?: string): void;
+  /**
+   * Transmits data using the WebSocket connection. data can be a string, a Blob, an ArrayBuffer, or an ArrayBufferView.
+   */
+  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void;
+  readonly CLOSED: number;
+  readonly CLOSING: number;
+  readonly CONNECTING: number;
+  readonly OPEN: number;
+  addEventListener<K extends keyof WebSocketEventMap>(type: K, listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+  removeEventListener<K extends keyof WebSocketEventMap>(type: K, listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+}
+
+declare var WebSocket: {
+  prototype: WebSocket;
+  new(url: string, protocols?: string | string[]): WebSocket;
+  readonly CLOSED: number;
+  readonly CLOSING: number;
+  readonly CONNECTING: number;
+  readonly OPEN: number;
+};
+
+type BinaryType = "arraybuffer" | "blob";

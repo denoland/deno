@@ -4,6 +4,37 @@ import * as types from "./_util/_util_types.ts";
 
 export { types };
 
+const DEFAULT_INSPECT_OPTIONS = {
+  showHidden: false,
+  depth: 2,
+  colors: false,
+  customInspect: true,
+  showProxy: false,
+  maxArrayLength: 100,
+  maxStringLength: Infinity,
+  breakLength: 80,
+  compact: 3,
+  sorted: false,
+  getters: false,
+};
+
+inspect.defaultOptions = DEFAULT_INSPECT_OPTIONS;
+inspect.custom = Deno.customInspect;
+
+// TODO(schwarzkopfb): make it in-line with Node's implementation
+// Ref: https://nodejs.org/dist/latest-v14.x/docs/api/util.html#util_util_inspect_object_options
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function inspect(object: unknown, ...opts: any): string {
+  opts = { ...DEFAULT_INSPECT_OPTIONS, ...opts };
+  return Deno.inspect(object, {
+    depth: opts.depth,
+    iterableLimit: opts.maxArrayLength,
+    compact: !!opts.compact,
+    sorted: !!opts.sorted,
+    showProxy: !!opts.showProxy,
+  });
+}
+
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
 }
@@ -56,23 +87,6 @@ export function isPrimitive(value: unknown): boolean {
   return (
     value === null || (typeof value !== "object" && typeof value !== "function")
   );
-}
-
-export function validateIntegerRange(
-  value: number,
-  name: string,
-  min = -2147483648,
-  max = 2147483647,
-): void {
-  // The defaults for min and max correspond to the limits of 32-bit integers.
-  if (!Number.isInteger(value)) {
-    throw new Error(`${name} must be 'an integer' but was ${value}`);
-  }
-  if (value < min || value > max) {
-    throw new Error(
-      `${name} must be >= ${min} && <= ${max}.  Value was ${value}`,
-    );
-  }
 }
 
 import { _TextDecoder, _TextEncoder } from "./_utils.ts";

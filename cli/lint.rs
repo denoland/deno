@@ -6,51 +6,84 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-
+use crate::ast;
 use crate::colors;
-use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::swc_ecma_parser::Syntax;
-use crate::swc_util;
-use deno_core::ErrBox;
+use crate::media_type::MediaType;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use serde::Serialize;
 use std::fs;
+use std::io::{stdin, Read};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use swc_ecmascript::parser::Syntax;
 
-pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
-  let target_files = collect_files(args)?;
+pub enum LintReporterKind {
+  Pretty,
+  Json,
+}
+
+fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
+  match kind {
+    LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
+    LintReporterKind::Json => Box::new(JsonLintReporter::new()),
+  }
+}
+
+pub async fn lint_files(
+  args: Vec<String>,
+  ignore: Vec<String>,
+  json: bool,
+) -> Result<(), AnyError> {
+  if args.len() == 1 && args[0] == "-" {
+    return lint_stdin(json);
+  }
+  let mut target_files = collect_files(args)?;
+  if !ignore.is_empty() {
+    // collect all files to be ignored
+    // and retain only files that should be linted.
+    let ignore_files = collect_files(ignore)?;
+    target_files.retain(|f| !ignore_files.contains(&f));
+  }
   debug!("Found {} files", target_files.len());
+  let target_files_len = target_files.len();
 
-  let error_count = Arc::new(AtomicUsize::new(0));
+  let has_error = Arc::new(AtomicBool::new(false));
 
-  // prevent threads outputting at the same time
-  let output_lock = Arc::new(Mutex::new(0));
+  let reporter_kind = if json {
+    LintReporterKind::Json
+  } else {
+    LintReporterKind::Pretty
+  };
+  let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
   run_parallelized(target_files, {
-    let error_count = error_count.clone();
+    let reporter_lock = reporter_lock.clone();
+    let has_error = has_error.clone();
     move |file_path| {
       let r = lint_file(file_path.clone());
+      let mut reporter = reporter_lock.lock().unwrap();
 
       match r {
-        Ok(file_diagnostics) => {
-          error_count.fetch_add(file_diagnostics.len(), Ordering::SeqCst);
-          let _g = output_lock.lock().unwrap();
+        Ok((mut file_diagnostics, source)) => {
+          sort_diagnostics(&mut file_diagnostics);
           for d in file_diagnostics.iter() {
-            let fmt_diagnostic = format_diagnostic(d);
-            eprintln!("{}\n", fmt_diagnostic);
+            has_error.store(true, Ordering::Relaxed);
+            reporter.visit_diagnostic(&d, source.split('\n').collect());
           }
         }
         Err(err) => {
-          eprintln!("Error linting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", err);
+          has_error.store(true, Ordering::Relaxed);
+          reporter.visit_error(&file_path.to_string_lossy().to_string(), &err);
         }
       }
       Ok(())
@@ -58,73 +91,19 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   })
   .await?;
 
-  let error_count = error_count.load(Ordering::SeqCst);
-  if error_count > 0 {
-    eprintln!("Found {} problems", error_count);
+  let has_error = has_error.load(Ordering::Relaxed);
+
+  reporter_lock.lock().unwrap().close(target_files_len);
+
+  if has_error {
     std::process::exit(1);
   }
 
   Ok(())
 }
 
-/// List of lint rules used available in "deno lint" subcommand
-fn get_rules() -> Vec<Box<dyn LintRule>> {
-  vec![
-    rules::ban_ts_comment::BanTsComment::new(),
-    rules::ban_untagged_ignore::BanUntaggedIgnore::new(),
-    rules::constructor_super::ConstructorSuper::new(),
-    rules::for_direction::ForDirection::new(),
-    rules::getter_return::GetterReturn::new(),
-    rules::no_array_constructor::NoArrayConstructor::new(),
-    rules::no_async_promise_executor::NoAsyncPromiseExecutor::new(),
-    rules::no_case_declarations::NoCaseDeclarations::new(),
-    rules::no_class_assign::NoClassAssign::new(),
-    rules::no_compare_neg_zero::NoCompareNegZero::new(),
-    rules::no_cond_assign::NoCondAssign::new(),
-    rules::no_debugger::NoDebugger::new(),
-    rules::no_delete_var::NoDeleteVar::new(),
-    rules::no_dupe_args::NoDupeArgs::new(),
-    rules::no_dupe_class_members::NoDupeClassMembers::new(),
-    rules::no_dupe_else_if::NoDupeElseIf::new(),
-    rules::no_dupe_keys::NoDupeKeys::new(),
-    rules::no_duplicate_case::NoDuplicateCase::new(),
-    rules::no_empty_character_class::NoEmptyCharacterClass::new(),
-    rules::no_empty_interface::NoEmptyInterface::new(),
-    rules::no_empty_pattern::NoEmptyPattern::new(),
-    rules::no_empty::NoEmpty::new(),
-    rules::no_ex_assign::NoExAssign::new(),
-    rules::no_explicit_any::NoExplicitAny::new(),
-    rules::no_extra_boolean_cast::NoExtraBooleanCast::new(),
-    rules::no_extra_non_null_assertion::NoExtraNonNullAssertion::new(),
-    rules::no_extra_semi::NoExtraSemi::new(),
-    rules::no_func_assign::NoFuncAssign::new(),
-    rules::no_misused_new::NoMisusedNew::new(),
-    rules::no_namespace::NoNamespace::new(),
-    rules::no_new_symbol::NoNewSymbol::new(),
-    rules::no_obj_calls::NoObjCalls::new(),
-    rules::no_octal::NoOctal::new(),
-    rules::no_prototype_builtins::NoPrototypeBuiltins::new(),
-    rules::no_regex_spaces::NoRegexSpaces::new(),
-    rules::no_setter_return::NoSetterReturn::new(),
-    rules::no_this_alias::NoThisAlias::new(),
-    rules::no_this_before_super::NoThisBeforeSuper::new(),
-    rules::no_unsafe_finally::NoUnsafeFinally::new(),
-    rules::no_unsafe_negation::NoUnsafeNegation::new(),
-    rules::no_with::NoWith::new(),
-    rules::prefer_as_const::PreferAsConst::new(),
-    rules::prefer_namespace_keyword::PreferNamespaceKeyword::new(),
-    rules::require_yield::RequireYield::new(),
-    rules::triple_slash_reference::TripleSlashReference::new(),
-    rules::use_isnan::UseIsNaN::new(),
-    rules::valid_typeof::ValidTypeof::new(),
-    rules::no_inferrable_types::NoInferrableTypes::new(),
-    rules::no_unused_labels::NoUnusedLabels::new(),
-    rules::no_shadow_restricted_names::NoShadowRestrictedNames::new(),
-  ]
-}
-
 pub fn print_rules_list() {
-  let lint_rules = get_rules();
+  let lint_rules = rules::get_recommended_rules();
 
   println!("Available rules:");
   for rule in lint_rules {
@@ -147,35 +126,218 @@ fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
     .build()
 }
 
-fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
+fn lint_file(
+  file_path: PathBuf,
+) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
-  let media_type = map_file_extension(&file_path);
-  let syntax = swc_util::get_syntax_for_media_type(media_type);
+  let media_type = MediaType::from(&file_path);
+  let syntax = ast::get_syntax(&media_type);
 
-  let lint_rules = get_rules();
+  let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics = linter.lint(file_name, source_code)?;
+  let file_diagnostics = linter.lint(file_name, source_code.clone())?;
 
-  Ok(file_diagnostics)
+  Ok((file_diagnostics, source_code))
 }
 
-fn format_diagnostic(d: &LintDiagnostic) -> String {
-  let pretty_message =
-    format!("({}) {}", colors::gray(&d.code), d.message.clone());
+/// Lint stdin and write result to stdout.
+/// Treats input as TypeScript.
+/// Compatible with `--json` flag.
+fn lint_stdin(json: bool) -> Result<(), AnyError> {
+  let mut source = String::new();
+  if stdin().read_to_string(&mut source).is_err() {
+    return Err(generic_error("Failed to read from stdin"));
+  }
 
-  fmt_errors::format_stack(
-    true,
-    &pretty_message,
-    Some(&d.line_src),
-    Some(d.location.col as i64),
-    Some((d.location.col + d.snippet_length) as i64),
-    &[fmt_errors::format_location(
-      &d.location.filename,
-      d.location.line as i64,
-      d.location.col as i64,
-    )],
-    0,
+  let reporter_kind = if json {
+    LintReporterKind::Json
+  } else {
+    LintReporterKind::Pretty
+  };
+  let mut reporter = create_reporter(reporter_kind);
+  let lint_rules = rules::get_recommended_rules();
+  let syntax = ast::get_syntax(&MediaType::TypeScript);
+  let mut linter = create_linter(syntax, lint_rules);
+  let mut has_error = false;
+  let pseudo_file_name = "_stdin.ts";
+  match linter
+    .lint(pseudo_file_name.to_string(), source.clone())
+    .map_err(|e| e.into())
+  {
+    Ok(diagnostics) => {
+      for d in diagnostics {
+        has_error = true;
+        reporter.visit_diagnostic(&d, source.split('\n').collect());
+      }
+    }
+    Err(err) => {
+      has_error = true;
+      reporter.visit_error(pseudo_file_name, &err);
+    }
+  }
+
+  reporter.close(1);
+
+  if has_error {
+    std::process::exit(1);
+  }
+
+  Ok(())
+}
+
+trait LintReporter {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>);
+  fn visit_error(&mut self, file_path: &str, err: &AnyError);
+  fn close(&mut self, check_count: usize);
+}
+
+#[derive(Serialize)]
+struct LintError {
+  file_path: String,
+  message: String,
+}
+
+struct PrettyLintReporter {
+  lint_count: u32,
+}
+
+impl PrettyLintReporter {
+  fn new() -> PrettyLintReporter {
+    PrettyLintReporter { lint_count: 0 }
+  }
+}
+
+impl LintReporter for PrettyLintReporter {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>) {
+    self.lint_count += 1;
+
+    let pretty_message =
+      format!("({}) {}", colors::gray(&d.code), d.message.clone());
+
+    let message = format_diagnostic(
+      &pretty_message,
+      &source_lines,
+      d.range.clone(),
+      &fmt_errors::format_location(
+        &d.filename,
+        d.range.start.line as i64,
+        d.range.start.col as i64,
+      ),
+    );
+
+    eprintln!("{}\n", message);
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
+    eprintln!("Error linting: {}", file_path);
+    eprintln!("   {}", err);
+  }
+
+  fn close(&mut self, check_count: usize) {
+    match self.lint_count {
+      1 => eprintln!("Found 1 problem"),
+      n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      _ => (),
+    }
+
+    match check_count {
+      1 => println!("Checked 1 file"),
+      n if n > 1 => println!("Checked {} files", n),
+      _ => (),
+    }
+  }
+}
+
+pub fn format_diagnostic(
+  message_line: &str,
+  source_lines: &[&str],
+  range: deno_lint::diagnostic::Range,
+  formatted_location: &str,
+) -> String {
+  let mut lines = vec![];
+
+  for i in range.start.line..=range.end.line {
+    lines.push(source_lines[i - 1].to_string());
+    if range.start.line == range.end.line {
+      lines.push(format!(
+        "{}{}",
+        " ".repeat(range.start.col),
+        colors::red(&"^".repeat(range.end.col - range.start.col))
+      ));
+    } else {
+      let line_len = source_lines[i - 1].len();
+      if range.start.line == i {
+        lines.push(format!(
+          "{}{}",
+          " ".repeat(range.start.col),
+          colors::red(&"^".repeat(line_len - range.start.col))
+        ));
+      } else if range.end.line == i {
+        lines.push(format!("{}", colors::red(&"^".repeat(range.end.col))));
+      } else if line_len != 0 {
+        lines.push(format!("{}", colors::red(&"^".repeat(line_len))));
+      }
+    }
+  }
+
+  format!(
+    "{}\n{}\n    at {}",
+    message_line,
+    lines.join("\n"),
+    formatted_location
   )
+}
+
+#[derive(Serialize)]
+struct JsonLintReporter {
+  diagnostics: Vec<LintDiagnostic>,
+  errors: Vec<LintError>,
+}
+
+impl JsonLintReporter {
+  fn new() -> JsonLintReporter {
+    JsonLintReporter {
+      diagnostics: Vec::new(),
+      errors: Vec::new(),
+    }
+  }
+}
+
+impl LintReporter for JsonLintReporter {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source_lines: Vec<&str>) {
+    self.diagnostics.push(d.clone());
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
+    self.errors.push(LintError {
+      file_path: file_path.to_string(),
+      message: err.to_string(),
+    });
+  }
+
+  fn close(&mut self, _check_count: usize) {
+    sort_diagnostics(&mut self.diagnostics);
+    let json = serde_json::to_string_pretty(&self);
+    eprintln!("{}", json.unwrap());
+  }
+}
+
+fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
+  // Sort so that we guarantee a deterministic output which is useful for tests
+  diagnostics.sort_by(|a, b| {
+    use std::cmp::Ordering;
+    let file_order = a.filename.cmp(&b.filename);
+    match file_order {
+      Ordering::Equal => {
+        let line_order = a.range.start.line.cmp(&b.range.start.line);
+        match line_order {
+          Ordering::Equal => a.range.start.col.cmp(&b.range.start.col),
+          _ => line_order,
+        }
+      }
+      _ => file_order,
+    }
+  });
 }

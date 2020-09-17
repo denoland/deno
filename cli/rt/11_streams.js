@@ -9,7 +9,6 @@
 ((window) => {
   /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
 
-  const { AbortSignal } = window.__bootstrap.abortSignal;
   const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
   const { assert, AssertionError } = window.__bootstrap.util;
   const { customInspect, inspect } = window.__bootstrap.console;
@@ -389,7 +388,7 @@
       let { highWaterMark } = strategy;
       const { type } = underlyingSource;
 
-      if (isUnderlyingByteSource(underlyingSource)) {
+      if (underlyingSource.type == "bytes") {
         if (size !== undefined) {
           throw new RangeError(
             `When underlying source is "bytes", strategy.size must be undefined.`,
@@ -1225,14 +1224,6 @@
       x === null ||
       !(sym.controlledTransformStream in x)
     );
-  }
-
-  function isUnderlyingByteSource(
-    underlyingSource,
-  ) {
-    const { type } = underlyingSource;
-    const typeString = String(type);
-    return typeString === "bytes";
   }
 
   function isWritableStream(x) {

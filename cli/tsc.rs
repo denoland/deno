@@ -1,38 +1,32 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use crate::ast::parse;
+use crate::ast::Location;
+use crate::ast::TranspileOptions;
 use crate::colors;
-use crate::diagnostics::Diagnostic;
-use crate::diagnostics::DiagnosticItem;
+use crate::diagnostics::Diagnostics;
 use crate::disk_cache::DiskCache;
-use crate::doc::Location;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::fmt_errors::JSError;
+use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
+use crate::js;
+use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
-use crate::msg;
-use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-use crate::startup_data;
-use crate::state::State;
-use crate::swc_common::comments::CommentKind;
-use crate::swc_common::Span;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_visit;
-use crate::swc_ecma_visit::Node;
-use crate::swc_ecma_visit::Visit;
-use crate::swc_util::AstParser;
-use crate::swc_util::SwcDiagnosticBuffer;
+use crate::state::CliState;
+use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
 use core::task::Context;
-use deno_core::ErrBox;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_core::StartupData;
 use futures::future::Future;
 use futures::future::FutureExt;
 use log::debug;
@@ -41,6 +35,7 @@ use log::Level;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::Serializer;
 use serde_json::json;
 use serde_json::Value;
 use sourcemap::SourceMap;
@@ -50,14 +45,18 @@ use std::fs;
 use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
-use url::Url;
+use swc_common::comments::Comment;
+use swc_common::comments::CommentKind;
+use swc_ecmascript::dep_graph;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
   "deno.ns",
@@ -133,18 +132,14 @@ pub struct CompilerWorker {
 }
 
 impl CompilerWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
-    let state_ = state.clone();
-    let mut worker = Worker::new(name, startup_data, state_);
+  pub fn new(name: String, state: &Rc<CliState>) -> Self {
+    let mut worker =
+      Worker::new(name, Some(js::compiler_isolate_init()), state);
     let response = Arc::new(Mutex::new(None));
-    {
-      let isolate = &mut worker.isolate;
-      ops::runtime::init(isolate, &state);
-      ops::errors::init(isolate, &state);
-      ops::timers::init(isolate, &state);
-      ops::compiler::init(isolate, &state, response.clone());
-    }
-
+    ops::runtime::init(&mut worker);
+    ops::errors::init(&mut worker);
+    ops::timers::init(&mut worker);
+    ops::compiler::init(&mut worker, response.clone());
     Self { worker, response }
   }
 
@@ -172,7 +167,7 @@ impl DerefMut for CompilerWorker {
 }
 
 impl Future for CompilerWorker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -181,51 +176,56 @@ impl Future for CompilerWorker {
 }
 
 lazy_static! {
-  // TODO(bartlomieju): use JSONC parser from dprint instead of Regex
-  static ref CHECK_JS_RE: Regex =
-    Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+  /// Matches the `@deno-types` pragma.
   static ref DENO_TYPES_RE: Regex =
-    Regex::new(r"^\s*@deno-types\s?=\s?(\S+)\s*(.*)\s*$").unwrap();
-  // These regexes were adapted from TypeScript
-  // https://github.com/microsoft/TypeScript/blob/87fd1827f2f2f3dafa76c14f13b9defc69481766/src/compiler/parser.ts#L8780-L8781
-  static ref XML_COMMENT_START_RE: Regex =
-    Regex::new(r"^/\s*<(\S+)\s.*?/>").unwrap();
+    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
+      .unwrap();
+  /// Matches a `/// <reference ... />` comment reference.
+  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
+    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
+  /// Matches a path reference, which adds a dependency to a module
   static ref PATH_REFERENCE_RE: Regex =
-    Regex::new(r#"(\spath\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
+  /// Matches a types reference, which for JavaScript files indicates the
+  /// location of types to use when type checking a program that includes it as
+  /// a dependency.
   static ref TYPES_REFERENCE_RE: Regex =
-    Regex::new(r#"(\stypes\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+  /// Matches a lib reference.
   static ref LIB_REFERENCE_RE: Regex =
-    Regex::new(r#"(\slib\s*=\s*)('|")(.+?)('|")"#).unwrap();
+    Regex::new(r#"(?i)\slib\s*=\s*["']([^"']*)["']"#).unwrap();
+}
+
+fn warn_ignored_options(
+  maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
+  config_path: &Path,
+) {
+  if let Some(ignored_options) = maybe_ignored_options {
+    eprintln!(
+      "Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}",
+      config_path.to_string_lossy(),
+      ignored_options
+    );
+  }
 }
 
 /// Create a new worker with snapshot of TS compiler and setup compiler's
 /// runtime.
 fn create_compiler_worker(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
-  // TODO(bartlomieju): these $deno$ specifiers should be unified for all subcommands
-  // like 'eval', 'repl'
   let entry_point =
-    ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-  let worker_state = State::new(
-    global_state.clone(),
-    Some(permissions),
-    entry_point,
-    None,
-    true,
-  )
-  .expect("Unable to create worker state");
+    ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
+  let worker_state =
+    CliState::new(&global_state, Some(permissions), entry_point, None, true)
+      .expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
   global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
-  let mut worker = CompilerWorker::new(
-    "TS".to_string(),
-    startup_data::compiler_isolate_init(),
-    worker_state,
-  );
+  let mut worker = CompilerWorker::new("TS".to_string(), &worker_state);
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
     .unwrap();
@@ -245,70 +245,65 @@ pub enum TargetLib {
 #[derive(Clone)]
 pub struct CompilerConfig {
   pub path: Option<PathBuf>,
-  pub content: Option<Vec<u8>>,
-  pub hash: Vec<u8>,
+  pub options: Value,
+  pub maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
+  pub hash: String,
   pub compile_js: bool,
 }
 
 impl CompilerConfig {
   /// Take the passed flag and resolve the file name relative to the cwd.
-  pub fn load(config_path: Option<String>) -> Result<Self, ErrBox> {
-    let config_file = match &config_path {
-      Some(config_file_name) => {
-        debug!("Compiler config file: {}", config_file_name);
-        let cwd = std::env::current_dir().unwrap();
-        Some(cwd.join(config_file_name))
-      }
-      _ => None,
-    };
+  pub fn load(maybe_config_path: Option<String>) -> Result<Self, AnyError> {
+    if maybe_config_path.is_none() {
+      return Ok(Self {
+        path: Some(PathBuf::new()),
+        options: json!({}),
+        maybe_ignored_options: None,
+        hash: "".to_string(),
+        compile_js: false,
+      });
+    }
+
+    let raw_config_path = maybe_config_path.unwrap();
+    debug!("Compiler config file: {}", raw_config_path);
+    let cwd = std::env::current_dir().unwrap();
+    let config_file = cwd.join(raw_config_path);
 
     // Convert the PathBuf to a canonicalized string.  This is needed by the
     // compiler to properly deal with the configuration.
-    let config_path = match &config_file {
-      Some(config_file) => Some(config_file.canonicalize().map_err(|_| {
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          format!(
-            "Could not find the config file: {}",
-            config_file.to_string_lossy()
-          ),
-        )
-      })),
-      _ => None,
-    };
+    let config_path = config_file.canonicalize().map_err(|_| {
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+          "Could not find the config file: {}",
+          config_file.to_string_lossy()
+        ),
+      )
+    })?;
 
     // Load the contents of the configuration file
-    let config = match &config_file {
-      Some(config_file) => {
-        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        let config = fs::read(&config_file)?;
-        Some(config)
-      }
-      _ => None,
-    };
+    debug!("Attempt to load config: {}", config_path.to_str().unwrap());
+    let config_bytes = fs::read(&config_file)?;
+    let config_hash = crate::checksum::gen(&[&config_bytes]);
+    let config_str = String::from_utf8(config_bytes)?;
 
-    let config_hash = match &config {
-      Some(bytes) => bytes.clone(),
-      _ => b"".to_vec(),
+    let (options, maybe_ignored_options) = if config_str.is_empty() {
+      (json!({}), None)
+    } else {
+      tsc_config::parse_config(&config_str)?
     };
 
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
-    let compile_js = if let Some(config_content) = config.clone() {
-      let config_str = std::str::from_utf8(&config_content)?;
-      CHECK_JS_RE.is_match(config_str)
-    } else {
-      false
-    };
+    let compile_js = options["checkJs"].as_bool().unwrap_or(false);
 
-    let ts_config = Self {
-      path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
-      content: config,
+    Ok(Self {
+      path: Some(config_path),
+      options,
+      maybe_ignored_options,
       hash: config_hash,
       compile_js,
-    };
-
-    Ok(ts_config)
+    })
   }
 }
 
@@ -400,7 +395,7 @@ struct EmittedSource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BundleResponse {
-  diagnostics: Diagnostic,
+  diagnostics: Diagnostics,
   bundle_output: Option<String>,
   stats: Option<Vec<Stat>>,
 }
@@ -408,17 +403,20 @@ struct BundleResponse {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompileResponse {
-  diagnostics: Diagnostic,
+  diagnostics: Diagnostics,
   emit_map: HashMap<String, EmittedSource>,
   build_info: Option<String>,
   stats: Option<Vec<Stat>>,
 }
-#[derive(Deserialize)]
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TranspileResponse {
-  diagnostics: Diagnostic,
-  emit_map: HashMap<String, EmittedSource>,
-  stats: Option<Vec<Stat>>,
+struct TranspileTsOptions {
+  check_js: bool,
+  emit_decorator_metadata: bool,
+  jsx: String,
+  jsx_factory: String,
+  jsx_fragment_factory: String,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -426,14 +424,14 @@ struct TranspileResponse {
 #[serde(rename_all = "camelCase")]
 #[allow(unused)]
 struct RuntimeBundleResponse {
-  diagnostics: Vec<DiagnosticItem>,
+  diagnostics: Diagnostics,
   output: String,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeCompileResponse {
-  diagnostics: Vec<DiagnosticItem>,
+  diagnostics: Diagnostics,
   emit_map: HashMap<String, EmittedSource>,
 }
 
@@ -442,7 +440,7 @@ impl TsCompiler {
     file_fetcher: SourceFileFetcher,
     flags: Flags,
     disk_cache: DiskCache,
-  ) -> Result<Self, ErrBox> {
+  ) -> Result<Self, AnyError> {
     let config = CompilerConfig::load(flags.config_path.clone())?;
     let use_disk_cache = !flags.reload;
 
@@ -480,9 +478,9 @@ impl TsCompiler {
       if let Some(metadata) = self.get_metadata(&url) {
         // Compare version hashes
         let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code,
+          &source_file.source_code.as_bytes(),
           version::DENO,
-          &self.config.hash,
+          &self.config.hash.as_bytes(),
         );
 
         if metadata.version_hash == version_hash_to_validate {
@@ -498,7 +496,7 @@ impl TsCompiler {
     &self,
     url: &Url,
     build_info: &Option<String>,
-  ) -> Result<bool, ErrBox> {
+  ) -> Result<bool, AnyError> {
     if let Some(build_info_str) = build_info.as_ref() {
       let build_inf_json: Value = serde_json::from_str(build_info_str)?;
       let program_val = build_inf_json["program"].as_object().unwrap();
@@ -521,7 +519,7 @@ impl TsCompiler {
           .fetch_cached_source_file(&specifier, Permissions::allow_all())
         {
           let existing_hash = crate::checksum::gen(&[
-            &source_file.source_code,
+            &source_file.source_code.as_bytes(),
             version::DENO.as_bytes(),
           ]);
           let expected_hash =
@@ -554,13 +552,13 @@ impl TsCompiler {
   /// compiler.
   pub async fn compile(
     &self,
-    global_state: GlobalState,
+    global_state: &Arc<GlobalState>,
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
-    module_graph: ModuleGraph,
+    module_graph: &ModuleGraph,
     allow_js: bool,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let module_url = source_file.url.clone();
     let build_info_key = self
       .disk_cache
@@ -586,52 +584,70 @@ impl TsCompiler {
     };
     let root_names = vec![module_url.to_string()];
     let unstable = self.flags.unstable;
-    let performance = match self.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
+    let performance = matches!(self.flags.log_level, Some(Level::Debug));
     let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile,
-        "allowJs": allow_js,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": unstable,
-        "performance": performance,
-        "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-        "buildInfo": if self.use_disk_cache { build_info } else { None },
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Compile,
-        "allowJs": allow_js,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": unstable,
-        "performance": performance,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-        "buildInfo": if self.use_disk_cache { build_info } else { None },
-      }),
-    };
-
-    let req_msg = j.to_string();
 
     // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
     info!("{} {}", colors::green("Check"), module_url.to_string());
+
+    let mut lib = if target == "main" {
+      vec!["deno.window"]
+    } else {
+      vec!["deno.worker"]
+    };
+
+    if unstable {
+      lib.push("deno.unstable");
+    }
+
+    let mut compiler_options = json!({
+      "allowJs": allow_js,
+      "allowNonTsExtensions": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "incremental": true,
+      "inlineSourceMap": true,
+      // TODO(lucacasonato): enable this by default in 1.5.0
+      "isolatedModules": unstable,
+      "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
+      "jsx": "react",
+      "lib": lib,
+      "module": "esnext",
+      "outDir": "deno://",
+      "resolveJsonModule": true,
+      "sourceMap": false,
+      "strict": true,
+      "removeComments": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "cache:///tsbuildinfo.json",
+    });
+
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
+
+    warn_ignored_options(
+      compiler_config.maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
+
+    let j = json!({
+      "type": CompilerRequestType::Compile,
+      "target": target,
+      "rootNames": root_names,
+      "performance": performance,
+      "compilerOptions": compiler_options,
+      "sourceFileMap": module_graph_json,
+      "buildInfo": if self.use_disk_cache { build_info } else { None },
+    });
+
+    let req_msg = j.to_string();
 
     let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
 
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
-    if !compile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(compile_response.diagnostics));
+    if !compile_response.diagnostics.0.is_empty() {
+      return Err(generic_error(compile_response.diagnostics.to_string()));
     }
 
     maybe_log_stats(compile_response.stats);
@@ -647,9 +663,9 @@ impl TsCompiler {
   /// all the dependencies for that module.
   pub async fn bundle(
     &self,
-    global_state: GlobalState,
+    global_state: &Arc<GlobalState>,
     module_specifier: ModuleSpecifier,
-  ) -> Result<String, ErrBox> {
+  ) -> Result<String, AnyError> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
       module_specifier.to_string()
@@ -694,38 +710,54 @@ impl TsCompiler {
 
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
-    let cwd = std::env::current_dir().unwrap();
-    let performance = match global_state.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
+    let performance =
+      matches!(global_state.flags.log_level, Some(Level::Debug));
+    let unstable = self.flags.unstable;
+
+    let mut lib = if target == "main" {
+      vec!["deno.window"]
+    } else {
+      vec!["deno.worker"]
     };
+
+    if unstable {
+      lib.push("deno.unstable");
+    }
+
+    let mut compiler_options = json!({
+      "allowJs": true,
+      "allowNonTsExtensions": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "inlineSourceMap": false,
+      "jsx": "react",
+      "lib": lib,
+      "module": "system",
+      "outFile": "deno:///bundle.js",
+      // disabled until we have effective way to modify source maps
+      "sourceMap": false,
+      "strict": true,
+      "removeComments": true,
+      "target": "esnext",
+    });
 
     let compiler_config = self.config.clone();
 
-    // TODO(bartlomieju): this is non-sense; CompilerConfig's `path` and `content` should
-    // be optional
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Bundle,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": self.flags.unstable,
-        "performance": performance,
-        "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Bundle,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": self.flags.unstable,
-        "performance": performance,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-    };
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
+
+    warn_ignored_options(
+      compiler_config.maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
+
+    let j = json!({
+      "type": CompilerRequestType::Bundle,
+      "target": target,
+      "rootNames": root_names,
+      "performance": performance,
+      "compilerOptions": compiler_options,
+      "sourceFileMap": module_graph_json,
+    });
 
     let req_msg = j.to_string();
 
@@ -736,8 +768,8 @@ impl TsCompiler {
 
     maybe_log_stats(bundle_response.stats);
 
-    if !bundle_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(bundle_response.diagnostics));
+    if !bundle_response.diagnostics.0.is_empty() {
+      return Err(generic_error(bundle_response.diagnostics.to_string()));
     }
 
     assert!(bundle_response.bundle_output.is_some());
@@ -747,10 +779,8 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    global_state: GlobalState,
-    permissions: Permissions,
-    module_graph: ModuleGraph,
-  ) -> Result<(), ErrBox> {
+    module_graph: &ModuleGraph,
+  ) -> Result<(), AnyError> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
     for (_, value) in module_graph.iter() {
       let url = Url::parse(&value.url).expect("Filename is not a valid url");
@@ -767,46 +797,57 @@ impl TsCompiler {
       return Ok(());
     }
 
-    let source_files_json =
-      serde_json::to_value(source_files).expect("Filed to serialize data");
+    let mut emit_map = HashMap::new();
+
+    let mut compiler_options = json!({
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+    });
+
     let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-    let performance = match global_state.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
+
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
+
+    warn_ignored_options(
+      compiler_config.maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
+
+    let compiler_options: TranspileTsOptions =
+      serde_json::from_value(compiler_options)?;
+
+    let transpile_options = TranspileOptions {
+      emit_metadata: compiler_options.emit_decorator_metadata,
+      inline_source_map: true,
+      jsx_factory: compiler_options.jsx_factory,
+      jsx_fragment_factory: compiler_options.jsx_fragment_factory,
+      transform_jsx: compiler_options.jsx == "react",
     };
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "config": str::from_utf8(&config_data).unwrap(),
-        "configPath": config_path,
-        "cwd": cwd,
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-      _ => json!({
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-    };
+    let media_type = MediaType::TypeScript;
+    for source_file in source_files {
+      let specifier =
+        ModuleSpecifier::resolve_url_or_path(&source_file.file_name)?;
+      let parsed_module =
+        parse(&specifier, &source_file.source_code, &media_type)?;
+      let (stripped_source, _) = parsed_module.transpile(&transpile_options)?;
 
-    let req_msg = j.to_string();
+      // TODO(bartlomieju): this is superfluous, just to make caching function happy
+      let emitted_filename = PathBuf::from(&source_file.file_name)
+        .with_extension("js")
+        .to_string_lossy()
+        .to_string();
+      let emitted_source = EmittedSource {
+        filename: source_file.file_name.to_string(),
+        contents: stripped_source,
+      };
 
-    let json_str =
-      execute_in_same_thread(global_state.clone(), permissions, req_msg)
-        .await?;
-
-    let transpile_response: TranspileResponse =
-      serde_json::from_str(&json_str)?;
-
-    if !transpile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(transpile_response.diagnostics));
+      emit_map.insert(emitted_filename, emitted_source);
     }
 
-    maybe_log_stats(transpile_response.stats);
-
-    self.cache_emitted_files(transpile_response.emit_map)?;
+    self.cache_emitted_files(emit_map)?;
     Ok(())
   }
 
@@ -858,9 +899,7 @@ impl TsCompiler {
 
       // NOTE: JavaScript files are only cached to disk if `checkJs`
       // option in on
-      if source_file.media_type == msg::MediaType::JavaScript
-        && !self.compile_js
-      {
+      if source_file.media_type == MediaType::JavaScript && !self.compile_js {
         continue;
       }
 
@@ -879,13 +918,11 @@ impl TsCompiler {
   pub fn get_compiled_module(
     &self,
     module_url: &Url,
-  ) -> Result<CompiledModule, ErrBox> {
+  ) -> Result<CompiledModule, AnyError> {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: str::from_utf8(&compiled_source_file.source_code)
-        .unwrap()
-        .to_string(),
+      code: compiled_source_file.source_code.to_string()?,
       name: module_url.to_string(),
     };
 
@@ -893,12 +930,12 @@ impl TsCompiler {
   }
 
   /// Return compiled JS file for given TS module.
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
-  // SourceFileFetcher
+  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be
+  // delegated to SourceFileFetcher.
   pub fn get_compiled_source_file(
     &self,
     module_url: &Url,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(&module_url, "js");
@@ -909,8 +946,8 @@ impl TsCompiler {
     let compiled_module = SourceFile {
       url: module_url.clone(),
       filename: compiled_code_filename,
-      media_type: msg::MediaType::JavaScript,
-      source_code: compiled_code,
+      media_type: MediaType::JavaScript,
+      source_code: compiled_code.into(),
       types_header: None,
     };
 
@@ -934,9 +971,9 @@ impl TsCompiler {
     self.mark_compiled(module_specifier.as_url());
 
     let version_hash = source_code_version_hash(
-      &source_file.source_code,
+      &source_file.source_code.as_bytes(),
       version::DENO,
-      &self.config.hash,
+      &self.config.hash.as_bytes(),
     );
 
     let compiled_file_metadata = CompiledFileMetadata { version_hash };
@@ -955,7 +992,7 @@ impl TsCompiler {
   pub fn get_source_map_file(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
+  ) -> Result<SourceFile, AnyError> {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
@@ -966,8 +1003,8 @@ impl TsCompiler {
     let source_map_file = SourceFile {
       url: module_specifier.as_url().to_owned(),
       filename: source_map_filename,
-      media_type: msg::MediaType::JavaScript,
-      source_code,
+      media_type: MediaType::JavaScript,
+      source_code: source_code.into(),
       types_header: None,
     };
 
@@ -1013,7 +1050,7 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
-        str::from_utf8(&out.source_code).ok().map(|v| {
+        out.source_code.to_str().ok().map(|v| {
           // Do NOT use .lines(): it skips the terminating empty line.
           // (due to internally using .split_terminator() instead of .split())
           let lines: Vec<&str> = v.split('\n').collect();
@@ -1051,8 +1088,11 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      if module_specifier.as_url().scheme() == "deno" {
+        return None;
+      }
       return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out.source_code),
+        Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
           // Check if map is inlined
           if let Ok(compiled_source) =
@@ -1089,11 +1129,11 @@ impl TsCompiler {
 }
 
 async fn execute_in_same_thread(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   req: String,
-) -> Result<String, ErrBox> {
-  let mut worker = create_compiler_worker(global_state.clone(), permissions);
+) -> Result<String, AnyError> {
+  let mut worker = create_compiler_worker(&global_state, permissions);
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
   worker.execute2("<compiler>", &script)?;
   (&mut *worker).await?;
@@ -1101,12 +1141,12 @@ async fn execute_in_same_thread(
 }
 
 async fn create_runtime_module_graph(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
-  maybe_options: &Option<String>,
-) -> Result<(Vec<String>, ModuleGraph), OpError> {
+  type_files: Vec<String>,
+) -> Result<(Vec<String>, ModuleGraph), AnyError> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
@@ -1129,66 +1169,108 @@ async fn create_runtime_module_graph(
   }
 
   // download all additional files from TSconfig and add them to root_names
-  if let Some(options) = maybe_options {
-    let options_json: serde_json::Value = serde_json::from_str(options)?;
-    if let Some(types_option) = options_json.get("types") {
-      let types_arr = types_option.as_array().expect("types is not an array");
-
-      for type_value in types_arr {
-        let type_str = type_value
-          .as_str()
-          .expect("type is not a string")
-          .to_string();
-        let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_str)?;
-        module_graph_loader
-          .add_to_graph(&type_specifier, None)
-          .await?;
-        root_names.push(type_specifier.to_string())
-      }
-    }
+  for type_file in type_files {
+    let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_file)?;
+    module_graph_loader
+      .add_to_graph(&type_specifier, None)
+      .await?;
+    root_names.push(type_specifier.to_string())
   }
 
   Ok((root_names, module_graph_loader.get_graph()))
 }
 
-/// Because TS compiler can raise runtime error, we need to
-/// manually convert formatted JSError into and OpError.
-fn js_error_to_op_error(error: ErrBox) -> OpError {
-  match error.downcast::<JSError>() {
+fn js_error_to_errbox(error: AnyError) -> AnyError {
+  match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
-      OpError::other(msg)
+      generic_error(msg)
     }
-    Err(error) => error.into(),
+    Err(error) => error,
   }
 }
 
 /// This function is used by `Deno.compile()` API.
 pub async fn runtime_compile(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, AnyError> {
+  let mut user_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  // Intentionally calling "take()" to replace value with `null` - otherwise TSC will try to load that file
+  // using `fileExists` API
+  let type_files = if let Some(types) = user_options["types"].take().as_array()
+  {
+    types
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect()
+  } else {
+    vec![]
+  };
+
+  let unstable = global_state.flags.unstable;
+
+  let mut lib = vec![];
+  if let Some(user_libs) = user_options["lib"].take().as_array() {
+    let libs = user_libs
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect::<Vec<String>>();
+    lib.extend(libs);
+  } else {
+    lib.push("deno.window".to_string());
+  }
+
+  if unstable {
+    lib.push("deno.unstable".to_string());
+  }
+
+  let mut compiler_options = json!({
+    "allowJs": false,
+    "allowNonTsExtensions": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    // TODO(lucacasonato): enable this by default in 1.5.0
+    "isolatedModules": unstable,
+    "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
+    "jsx": "react",
+    "module": "esnext",
+    "sourceMap": true,
+    "strict": true,
+    "removeComments": true,
+    "target": "esnext",
+  });
+
+  tsc_config::json_merge(&mut compiler_options, &user_options);
+  tsc_config::json_merge(&mut compiler_options, &json!({ "lib": lib }));
+
   let (root_names, module_graph) = create_runtime_module_graph(
-    global_state.clone(),
+    &global_state,
     permissions.clone(),
     root_name,
     sources,
-    maybe_options,
+    type_files,
   )
   .await?;
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeCompile,
+    "type": CompilerRequestType::RuntimeCompile,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
-    "options": maybe_options,
-    "unstable": global_state.flags.unstable,
+    "compilerOptions": compiler_options,
   })
   .to_string();
 
@@ -1196,11 +1278,11 @@ pub async fn runtime_compile(
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
+    .map_err(js_error_to_errbox)?;
 
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
-  if response.diagnostics.is_empty() && sources.is_none() {
+  if response.diagnostics.0.is_empty() && sources.is_none() {
     compiler.cache_emitted_files(response.emit_map)?;
   }
 
@@ -1212,36 +1294,100 @@ pub async fn runtime_compile(
 
 /// This function is used by `Deno.bundle()` API.
 pub async fn runtime_bundle(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, AnyError> {
+  let mut user_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  // Intentionally calling "take()" to replace value with `null` - otherwise TSC will try to load that file
+  // using `fileExists` API
+  let type_files = if let Some(types) = user_options["types"].take().as_array()
+  {
+    types
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect()
+  } else {
+    vec![]
+  };
+
   let (root_names, module_graph) = create_runtime_module_graph(
-    global_state.clone(),
+    &global_state,
     permissions.clone(),
     root_name,
     sources,
-    maybe_options,
+    type_files,
   )
   .await?;
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
+  let unstable = global_state.flags.unstable;
+
+  let mut lib = vec![];
+  if let Some(user_libs) = user_options["lib"].take().as_array() {
+    let libs = user_libs
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect::<Vec<String>>();
+    lib.extend(libs);
+  } else {
+    lib.push("deno.window".to_string());
+  }
+
+  if unstable {
+    lib.push("deno.unstable".to_string());
+  }
+
+  let mut compiler_options = json!({
+    "allowJs": false,
+    "allowNonTsExtensions": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "jsx": "react",
+    "module": "esnext",
+    "outDir": null,
+    "sourceMap": true,
+    "strict": true,
+    "removeComments": true,
+    "target": "esnext",
+  });
+
+  let bundler_options = json!({
+    "allowJs": true,
+    "inlineSourceMap": false,
+    "module": "system",
+    "outDir": null,
+    "outFile": "deno:///bundle.js",
+    // disabled until we have effective way to modify source maps
+    "sourceMap": false,
+  });
+
+  tsc_config::json_merge(&mut compiler_options, &user_options);
+  tsc_config::json_merge(&mut compiler_options, &json!({ "lib": lib }));
+  tsc_config::json_merge(&mut compiler_options, &bundler_options);
+
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeBundle,
+    "type": CompilerRequestType::RuntimeBundle,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
-    "options": maybe_options,
-    "unstable": global_state.flags.unstable,
+    "compilerOptions": compiler_options,
   })
   .to_string();
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
+    .map_err(js_error_to_errbox)?;
   let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
@@ -1251,139 +1397,39 @@ pub async fn runtime_bundle(
 
 /// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   sources: &HashMap<String, String>,
-  options: &Option<String>,
-) -> Result<Value, OpError> {
+  maybe_options: &Option<String>,
+) -> Result<Value, AnyError> {
+  let user_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  let mut compiler_options = json!({
+    "esModuleInterop": true,
+    "module": "esnext",
+    "sourceMap": true,
+    "scriptComments": true,
+    "target": "esnext",
+  });
+  tsc_config::json_merge(&mut compiler_options, &user_options);
+
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeTranspile,
+    "type": CompilerRequestType::RuntimeTranspile,
     "sources": sources,
-    "options": options,
+    "compilerOptions": compiler_options,
   })
   .to_string();
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
-  let v = serde_json::from_str::<serde_json::Value>(&json_str)
+    .map_err(js_error_to_errbox)?;
+  let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum DependencyKind {
-  Import,
-  DynamicImport,
-  Export,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct DependencyDescriptor {
-  span: Span,
-  specifier: String,
-  kind: DependencyKind,
-}
-
-struct DependencyVisitor {
-  dependencies: Vec<DependencyDescriptor>,
-}
-
-impl Visit for DependencyVisitor {
-  fn visit_import_decl(
-    &mut self,
-    import_decl: &swc_ecma_ast::ImportDecl,
-    _parent: &dyn Node,
-  ) {
-    let src_str = import_decl.src.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Import,
-      span: import_decl.span,
-    });
-  }
-
-  fn visit_named_export(
-    &mut self,
-    named_export: &swc_ecma_ast::NamedExport,
-    _parent: &dyn Node,
-  ) {
-    if let Some(src) = &named_export.src {
-      let src_str = src.value.to_string();
-      self.dependencies.push(DependencyDescriptor {
-        specifier: src_str,
-        kind: DependencyKind::Export,
-        span: named_export.span,
-      });
-    }
-  }
-
-  fn visit_export_all(
-    &mut self,
-    export_all: &swc_ecma_ast::ExportAll,
-    _parent: &dyn Node,
-  ) {
-    let src_str = export_all.src.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Export,
-      span: export_all.span,
-    });
-  }
-
-  fn visit_ts_import_type(
-    &mut self,
-    ts_import_type: &swc_ecma_ast::TsImportType,
-    _parent: &dyn Node,
-  ) {
-    // TODO(bartlomieju): possibly add separate DependencyKind
-    let src_str = ts_import_type.arg.value.to_string();
-    self.dependencies.push(DependencyDescriptor {
-      specifier: src_str,
-      kind: DependencyKind::Import,
-      span: ts_import_type.arg.span,
-    });
-  }
-
-  fn visit_call_expr(
-    &mut self,
-    call_expr: &swc_ecma_ast::CallExpr,
-    parent: &dyn Node,
-  ) {
-    use swc_ecma_ast::Expr::*;
-    use swc_ecma_ast::ExprOrSuper::*;
-
-    swc_ecma_visit::visit_call_expr(self, call_expr, parent);
-    let boxed_expr = match call_expr.callee.clone() {
-      Super(_) => return,
-      Expr(boxed) => boxed,
-    };
-
-    match &*boxed_expr {
-      Ident(ident) => {
-        if &ident.sym.to_string() != "import" {
-          return;
-        }
-      }
-      _ => return,
-    };
-
-    if let Some(arg) = call_expr.args.get(0) {
-      match &*arg.expr {
-        Lit(lit) => {
-          if let swc_ecma_ast::Lit::Str(str_) = lit {
-            let src_str = str_.value.to_string();
-            self.dependencies.push(DependencyDescriptor {
-              specifier: src_str,
-              kind: DependencyKind::DynamicImport,
-              span: call_expr.span,
-            });
-          }
-        }
-        _ => return,
-      }
-    }
-  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1417,68 +1463,59 @@ pub fn pre_process_file(
   media_type: MediaType,
   source_code: &str,
   analyze_dynamic_imports: bool,
-) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), SwcDiagnosticBuffer> {
-  let parser = AstParser::new();
-  parser.parse_module(file_name, media_type, source_code, |parse_result| {
-    let module = parse_result?;
-    let mut collector = DependencyVisitor {
-      dependencies: vec![],
-    };
-    let module_span = module.span;
-    collector.visit_module(&module, &module);
+) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), AnyError> {
+  let specifier = ModuleSpecifier::resolve_url_or_path(file_name)?;
+  let module = parse(&specifier, source_code, &media_type)?;
 
-    let dependency_descriptors = collector.dependencies;
+  let dependency_descriptors = module.analyze_dependencies();
 
-    // for each import check if there's relevant @deno-types directive
-    let imports = dependency_descriptors
-      .iter()
-      .filter(|desc| {
-        if analyze_dynamic_imports {
-          return true;
-        }
-
-        desc.kind != DependencyKind::DynamicImport
-      })
-      .map(|desc| {
-        let location = parser.get_span_location(desc.span);
-        let deno_types = get_deno_types(&parser, desc.span);
-        ImportDesc {
-          specifier: desc.specifier.to_string(),
-          deno_types,
-          location: location.into(),
-        }
-      })
-      .collect();
-
-    // analyze comment from beginning of the file and find TS directives
-    let comments = parser
-      .comments
-      .take_leading_comments(module_span.lo())
-      .unwrap_or_else(Vec::new);
-
-    let mut references = vec![];
-    for comment in comments {
-      if comment.kind != CommentKind::Line {
-        continue;
+  // for each import check if there's relevant @deno-types directive
+  let imports = dependency_descriptors
+    .iter()
+    .filter(|desc| desc.kind != dep_graph::DependencyKind::Require)
+    .filter(|desc| {
+      if analyze_dynamic_imports {
+        return true;
       }
-
-      let text = comment.text.to_string();
-      if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
-        let location = parser.get_span_location(comment.span);
-        references.push(TsReferenceDesc {
-          kind,
-          specifier,
-          location: location.into(),
-        });
+      !desc.is_dynamic
+    })
+    .map(|desc| {
+      let deno_types = get_deno_types(&desc.leading_comments);
+      ImportDesc {
+        specifier: desc.specifier.to_string(),
+        deno_types,
+        location: Location {
+          filename: file_name.to_string(),
+          col: desc.col,
+          line: desc.line,
+        },
       }
+    })
+    .collect();
+
+  // analyze comment from beginning of the file and find TS directives
+  let comments = module.get_leading_comments();
+
+  let mut references = vec![];
+  for comment in comments {
+    if comment.kind != CommentKind::Line {
+      continue;
     }
-    Ok((imports, references))
-  })
+
+    let text = comment.text.to_string();
+    if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
+      let location = module.get_location(&comment.span);
+      references.push(TsReferenceDesc {
+        kind,
+        specifier,
+        location,
+      });
+    }
+  }
+  Ok((imports, references))
 }
 
-fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
-  let comments = parser.get_span_comments(span);
-
+fn get_deno_types(comments: &[Comment]) -> Option<String> {
   if comments.is_empty() {
     return None;
   }
@@ -1491,17 +1528,17 @@ fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
 }
 
 fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
-  if !XML_COMMENT_START_RE.is_match(comment) {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
     return None;
   }
 
   let (kind, specifier) =
     if let Some(capture_groups) = PATH_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Path, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Path, capture_groups.get(1).unwrap())
     } else if let Some(capture_groups) = TYPES_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Types, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Types, capture_groups.get(1).unwrap())
     } else if let Some(capture_groups) = LIB_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Lib, capture_groups.get(3).unwrap())
+      (TsReferenceKind::Lib, capture_groups.get(1).unwrap())
     } else {
       return None;
     };
@@ -1512,18 +1549,42 @@ fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
 fn parse_deno_types(comment: &str) -> Option<String> {
   if let Some(capture_groups) = DENO_TYPES_RE.captures(comment) {
     if let Some(specifier) = capture_groups.get(1) {
-      let s = specifier
-        .as_str()
-        .trim_start_matches('\"')
-        .trim_start_matches('\'')
-        .trim_end_matches('\"')
-        .trim_end_matches('\'')
-        .to_string();
-      return Some(s);
+      return Some(specifier.as_str().to_string());
+    }
+    if let Some(specifier) = capture_groups.get(2) {
+      return Some(specifier.as_str().to_string());
     }
   }
 
   None
+}
+
+// Warning! The values in this enum are duplicated in js/compiler.ts
+// Update carefully!
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CompilerRequestType {
+  Compile = 0,
+  Bundle = 1,
+  RuntimeCompile = 2,
+  RuntimeBundle = 3,
+  RuntimeTranspile = 4,
+}
+
+impl Serialize for CompilerRequestType {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value: i32 = match self {
+      CompilerRequestType::Compile => 0 as i32,
+      CompilerRequestType::Bundle => 1 as i32,
+      CompilerRequestType::RuntimeCompile => 2 as i32,
+      CompilerRequestType::RuntimeBundle => 3 as i32,
+      CompilerRequestType::RuntimeTranspile => 4 as i32,
+    };
+    Serialize::serialize(&value, serializer)
+  }
 }
 
 #[cfg(test)]
@@ -1531,6 +1592,7 @@ mod tests {
   use super::*;
   use crate::deno_dir;
   use crate::fs as deno_fs;
+  use crate::global_state::GlobalState;
   use crate::http_cache;
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
@@ -1566,6 +1628,10 @@ mod tests {
       ),
       Some("./a/b/c.d.ts".to_string())
     );
+    assert_eq!(
+      parse_deno_types(r#"@deno-types="https://deno.land/x/foo/index.d.ts";"#),
+      Some("https://deno.land/x/foo/index.d.ts".to_string())
+    );
   }
 
   #[test]
@@ -1586,6 +1652,7 @@ mod tests {
     assert!(
       parse_ts_reference(r#"/ <reference unknown="unknown" />"#).is_none()
     );
+    assert!(parse_ts_reference(r#"/ <asset path="./styles.css" />"#).is_none());
   }
 
   #[tokio::test]
@@ -1599,8 +1666,8 @@ mod tests {
     let out = SourceFile {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
-      media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      media_type: MediaType::TypeScript,
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };
     let dir =
@@ -1643,11 +1710,11 @@ mod tests {
 
     let result = ts_compiler
       .compile(
-        mock_state.clone(),
+        &mock_state,
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
-        module_graph,
+        &module_graph,
         false,
       )
       .await;
@@ -1675,8 +1742,8 @@ mod tests {
     let out = SourceFile {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
-      media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      media_type: MediaType::TypeScript,
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };
     let dir =
@@ -1717,9 +1784,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler
-      .transpile(mock_state.clone(), Permissions::allow_all(), module_graph)
-      .await;
+    let result = ts_compiler.transpile(&module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;
@@ -1754,7 +1819,7 @@ mod tests {
 
     let result = mock_state
       .ts_compiler
-      .bundle(mock_state.clone(), module_name)
+      .bundle(&mock_state, module_name)
       .await;
 
     assert!(result.is_ok());
@@ -1793,11 +1858,14 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ "compilerOptions": { // force .js file compilation by Deno "checkJs": true } } "#,
+        r#"{
+          "compilerOptions": {
+            // force .js file compilation by Deno
+            "checkJs": true
+          }
+        }"#,
         true,
       ),
-      // invalid JSON
-      (r#"{ "compilerOptions": { "checkJs": true },{ } "#, true),
       // without content
       ("", false),
     ];

@@ -2,22 +2,16 @@
 
 //! https://url.spec.whatwg.org/#idna
 
-use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::{ErrorKind, OpError};
-use crate::state::State;
-use deno_core::CoreIsolate;
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
-use idna::{domain_to_ascii, domain_to_ascii_strict};
+use idna::domain_to_ascii;
+use idna::domain_to_ascii_strict;
+use serde::Deserialize;
+use serde_json::Value;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_domain_to_ascii", s.stateful_json_op(op_domain_to_ascii));
-}
-
-fn invalid_domain_error() -> OpError {
-  OpError {
-    kind: ErrorKind::TypeError,
-    msg: "Invalid domain.".to_string(),
-  }
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_domain_to_ascii", op_domain_to_ascii);
 }
 
 #[derive(Deserialize)]
@@ -28,16 +22,19 @@ struct DomainToAscii {
 }
 
 fn op_domain_to_ascii(
-  _state: &State,
+  _state: &mut deno_core::OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, AnyError> {
   let args: DomainToAscii = serde_json::from_value(args)?;
-  let domain = if args.be_strict {
+  if args.be_strict {
     domain_to_ascii_strict(args.domain.as_str())
-      .map_err(|_| invalid_domain_error())?
   } else {
-    domain_to_ascii(args.domain.as_str()).map_err(|_| invalid_domain_error())?
-  };
-  Ok(JsonOp::Sync(json!(domain)))
+    domain_to_ascii(args.domain.as_str())
+  }
+  .map_err(|err| {
+    let message = format!("Invalid IDNA encoded domain name: {:?}", err);
+    uri_error(message)
+  })
+  .map(|domain| json!(domain))
 }

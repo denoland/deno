@@ -4,7 +4,7 @@
 /// <reference lib="esnext" />
 
 /** Deno provides extra properties on `import.meta`.  These are included here
- * to ensure that these are still available when using the Deno namepsace in
+ * to ensure that these are still available when using the Deno namespace in
  * conjunction with other type libs, like `dom`. */
 declare interface ImportMeta {
   /** A string representation of the fully qualified module URL. */
@@ -814,12 +814,12 @@ declare namespace Deno {
      * drained. Resolves to the number of bytes read. If the buffer has no
      * data to return, resolves to EOF (`null`).
      *
-     * NOTE: This methods reads bytes sychronously; it's provided for
+     * NOTE: This methods reads bytes synchronously; it's provided for
      * compatibility with `Reader` interfaces.
      */
     read(p: Uint8Array): Promise<number | null>;
     writeSync(p: Uint8Array): number;
-    /** NOTE: This methods writes bytes sychronously; it's provided for
+    /** NOTE: This methods writes bytes synchronously; it's provided for
      * compatibility with `Writer` interface. */
     write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
@@ -993,9 +993,9 @@ declare namespace Deno {
   }
 
   /** Synchronously creates a new temporary directory in the default directory
-   * for temporary files (see also `Deno.dir("temp")`), unless `dir` is specified.
-   * Other optional options include prefixing and suffixing the directory name
-   * with `prefix` and `suffix` respectively.
+   * for temporary files, unless `dir` is specified. Other optional options
+   * include prefixing and suffixing the directory name with `prefix` and
+   * `suffix` respectively.
    *
    * The full path to the newly created directory is returned.
    *
@@ -1013,9 +1013,9 @@ declare namespace Deno {
   export function makeTempDirSync(options?: MakeTempOptions): string;
 
   /** Creates a new temporary directory in the default directory for temporary
-   * files (see also `Deno.dir("temp")`), unless `dir` is specified.  Other
-   * optional options include prefixing and suffixing the directory name with
-   * `prefix` and `suffix` respectively.
+   * files, unless `dir` is specified. Other optional options include
+   * prefixing and suffixing the directory name with `prefix` and `suffix`
+   * respectively.
    *
    * This call resolves to the full path to the newly created directory.
    *
@@ -1077,7 +1077,7 @@ declare namespace Deno {
    * Deno.chmodSync("/path/to/file", 0o666);
    * ```
    *
-   * For a full description, see [chmod](#chmod)
+   * For a full description, see [chmod](#Deno.chmod)
    *
    * NOTE: This API currently throws on Windows
    *
@@ -1565,7 +1565,7 @@ declare namespace Deno {
    * else overwriting.
    *
    * ```ts
-   * await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   * Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
    * ```
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
@@ -1896,7 +1896,7 @@ declare namespace Deno {
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    cmd: string[];
+    cmd: string[] | [URL, ...string[]];
     cwd?: string;
     env?: {
       [key: string]: string;
@@ -1952,6 +1952,8 @@ declare namespace Deno {
     compact?: boolean;
     /** The maximum number of iterable entries to print. Defaults to 100. */
     iterableLimit?: number;
+    /** Show a Proxy's target and handler. Defaults to false. */
+    showProxy?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by
@@ -2025,4 +2027,7 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
   export const customInspect: unique symbol;
+
+  /** The URL of the entrypoint module entered from the command-line. */
+  export const mainModule: string;
 }

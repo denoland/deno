@@ -2,8 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 ((window) => {
+  const core = window.Deno.core;
   const { log } = window.__bootstrap.util;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   /*
   import { blobURLMap } from "./web/url.ts";
   */
@@ -15,7 +15,7 @@
     useDenoNamespace,
     name,
   ) {
-    return sendSync("op_create_worker", {
+    return core.jsonOpSync("op_create_worker", {
       specifier,
       hasSourceCode,
       sourceCode,
@@ -25,33 +25,19 @@
   }
 
   function hostTerminateWorker(id) {
-    sendSync("op_host_terminate_worker", { id });
+    core.jsonOpSync("op_host_terminate_worker", { id });
   }
 
   function hostPostMessage(id, data) {
-    sendSync("op_host_post_message", { id }, data);
+    core.jsonOpSync("op_host_post_message", { id }, data);
   }
 
   function hostGetMessage(id) {
-    return sendAsync("op_host_get_message", { id });
+    return core.jsonOpAsync("op_host_get_message", { id });
   }
 
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-
-  class MessageEvent extends Event {
-    constructor(type, eventInitDict) {
-      super(type, {
-        bubbles: eventInitDict?.bubbles ?? false,
-        cancelable: eventInitDict?.cancelable ?? false,
-        composed: eventInitDict?.composed ?? false,
-      });
-
-      this.data = eventInitDict?.data ?? null;
-      this.origin = eventInitDict?.origin ?? "";
-      this.lastEventId = eventInitDict?.lastEventId ?? "";
-    }
-  }
 
   function encodeMessage(data) {
     const dataJson = JSON.stringify(data);
@@ -226,6 +212,5 @@
 
   window.__bootstrap.worker = {
     Worker,
-    MessageEvent,
   };
 })(this);

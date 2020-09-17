@@ -18,7 +18,7 @@ import { assert } from "../_util/assert.ts";
 
 const isWindows = Deno.build.os == "windows";
 
-export interface ExpandGlobOptions extends GlobOptions {
+export interface ExpandGlobOptions extends Omit<GlobOptions, "os"> {
   root?: string;
   exclude?: string[];
   includeDirs?: boolean;

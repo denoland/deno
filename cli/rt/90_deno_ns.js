@@ -103,6 +103,7 @@ __bootstrap.denoNsUnstable = {
   loadavg: __bootstrap.os.loadavg,
   hostname: __bootstrap.os.hostname,
   osRelease: __bootstrap.os.osRelease,
+  systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
   applySourceMap: __bootstrap.errorStack.opApplySourceMap,
   formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
   shutdown: __bootstrap.net.shutdown,
@@ -118,6 +119,8 @@ __bootstrap.denoNsUnstable = {
   umask: __bootstrap.fs.umask,
   link: __bootstrap.fs.link,
   linkSync: __bootstrap.fs.linkSync,
+  futime: __bootstrap.fs.futime,
+  futimeSync: __bootstrap.fs.futimeSync,
   utime: __bootstrap.fs.utime,
   utimeSync: __bootstrap.fs.utimeSync,
   symlink: __bootstrap.fs.symlink,
@@ -126,4 +129,6 @@ __bootstrap.denoNsUnstable = {
   fdatasync: __bootstrap.fs.fdatasync,
   fsyncSync: __bootstrap.fs.fsyncSync,
   fsync: __bootstrap.fs.fsync,
+  HttpClient: __bootstrap.fetch.HttpClient,
+  createHttpClient: __bootstrap.fetch.createHttpClient,
 };

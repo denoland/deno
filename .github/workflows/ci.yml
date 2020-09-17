@@ -13,17 +13,17 @@ jobs:
     strategy:
       matrix:
         config:
-          - os: macOS-latest
+          - os: macos-10.15
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ubuntu-16.04
+          - os: ubuntu-latest-xl
             kind: test_release
-          - os: ubuntu-16.04
+          - os: ubuntu-latest-xl
             kind: test_debug
-          - os: ubuntu-16.04
+          - os: ubuntu-latest-xl
             kind: bench
-          - os: ubuntu-16.04
+          - os: ubuntu-latest-xl
             kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
@@ -66,13 +66,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.45.0
-
-      - name: Install rust targets
-        run: |
-          # Necessary for the std/wasi tests
-          rustup target add wasm32-unknown-unknown
-          rustup target add wasm32-wasi
+          rust-version: 1.46.0
 
       - name: Install clippy and rustfmt
         if: matrix.config.kind == 'lint'
@@ -154,7 +148,7 @@ jobs:
 
       - name: Run Benchmarks
         if: matrix.config.kind == 'bench'
-        run: python ./tools/benchmark.py --release
+        run: cargo bench
 
       - name: Post Benchmarks
         if: |
@@ -233,6 +227,10 @@ jobs:
         run: |
           cd core
           cargo publish
-          cd ../cli
+          sleep 30
+          cd ../op_crates/web
+          cargo publish
+          sleep 30
+          cd ../../cli
           sleep 30
           cargo publish

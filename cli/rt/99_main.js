@@ -1,14 +1,12 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete Object.prototype.__proto__;
 
 ((window) => {
   const core = Deno.core;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
-  const dispatchJson = window.__bootstrap.dispatchJson;
   const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -20,7 +18,6 @@ delete Object.prototype.__proto__;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
   const { internalSymbol, internalObject } = window.__bootstrap.internals;
-  const abortSignal = window.__bootstrap.abortSignal;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
@@ -29,11 +26,15 @@ delete Object.prototype.__proto__;
   const streams = window.__bootstrap.streams;
   const blob = window.__bootstrap.blob;
   const domFile = window.__bootstrap.domFile;
+  const progressEvent = window.__bootstrap.progressEvent;
+  const fileReader = window.__bootstrap.fileReader;
   const formData = window.__bootstrap.formData;
+  const webSocket = window.__bootstrap.webSocket;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
+  const errors = window.__bootstrap.errors.errors;
 
   let windowIsClosing = false;
 
@@ -79,7 +80,7 @@ delete Object.prototype.__proto__;
 
   let isClosing = false;
   async function workerMessageRecvCallback(data) {
-    const msgEvent = new worker.MessageEvent("message", {
+    const msgEvent = new MessageEvent("message", {
       cancelable: false,
       data,
     });
@@ -127,29 +128,19 @@ delete Object.prototype.__proto__;
   }
 
   function opPostMessage(data) {
-    dispatchJson.sendSync("op_worker_post_message", {}, data);
+    core.jsonOpSync("op_worker_post_message", {}, data);
   }
 
   function opCloseWorker() {
-    dispatchJson.sendSync("op_worker_close");
+    core.jsonOpSync("op_worker_close");
   }
 
   function opStart() {
-    return dispatchJson.sendSync("op_start");
+    return core.jsonOpSync("op_start");
   }
 
   function opMainModule() {
-    return dispatchJson.sendSync("op_main_module");
-  }
-
-  function getAsyncHandler(opName) {
-    switch (opName) {
-      case "op_write":
-      case "op_read":
-        return dispatchMinimal.asyncMsgFromRust;
-      default:
-        return dispatchJson.asyncMsgFromRust;
-    }
+    return core.jsonOpSync("op_main_module");
   }
 
   // TODO(bartlomieju): temporary solution, must be fixed when moving
@@ -157,7 +148,9 @@ delete Object.prototype.__proto__;
   function initOps() {
     const opsMap = core.ops();
     for (const [name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, getAsyncHandler(name));
+      if (name === "op_write" || name === "op_read") {
+        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
+      }
     }
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
   }
@@ -175,64 +168,85 @@ delete Object.prototype.__proto__;
     return s;
   }
 
-  // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
-  const windowOrWorkerGlobalScopeMethods = {
-    atob: util.writable(atob),
-    btoa: util.writable(btoa),
-    clearInterval: util.writable(timers.clearInterval),
-    clearTimeout: util.writable(timers.clearTimeout),
-    fetch: util.writable(fetch.fetch),
-    // queueMicrotask is bound in Rust
-    setInterval: util.writable(timers.setInterval),
-    setTimeout: util.writable(timers.setTimeout),
-  };
+  function registerErrors() {
+    core.registerErrorClass("NotFound", errors.NotFound);
+    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+    core.registerErrorClass("NotConnected", errors.NotConnected);
+    core.registerErrorClass("AddrInUse", errors.AddrInUse);
+    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+    core.registerErrorClass("InvalidData", errors.InvalidData);
+    core.registerErrorClass("TimedOut", errors.TimedOut);
+    core.registerErrorClass("Interrupted", errors.Interrupted);
+    core.registerErrorClass("WriteZero", errors.WriteZero);
+    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+    core.registerErrorClass("BadResource", errors.BadResource);
+    core.registerErrorClass("Http", errors.Http);
+    core.registerErrorClass("Busy", errors.Busy);
+    core.registerErrorClass("NotSupported", errors.NotSupported);
+    core.registerErrorClass("Error", Error);
+    core.registerErrorClass("RangeError", RangeError);
+    core.registerErrorClass("ReferenceError", ReferenceError);
+    core.registerErrorClass("SyntaxError", SyntaxError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("URIError", URIError);
+  }
 
-  // Other properties shared between WindowScope and WorkerGlobalScope
-  const windowOrWorkerGlobalScopeProperties = {
-    console: util.writable(new Console(core.print)),
-    AbortController: util.nonEnumerable(abortSignal.AbortController),
-    AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
+  // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
+  const windowOrWorkerGlobalScope = {
     Blob: util.nonEnumerable(blob.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       queuingStrategy.ByteLengthQueuingStrategy,
     ),
+    CloseEvent: util.nonEnumerable(CloseEvent),
     CountQueuingStrategy: util.nonEnumerable(
       queuingStrategy.CountQueuingStrategy,
     ),
-    crypto: util.readOnly(crypto),
-    File: util.nonEnumerable(domFile.DomFile),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
-    Headers: util.nonEnumerable(headers.Headers),
+    File: util.nonEnumerable(domFile.DomFile),
+    FileReader: util.nonEnumerable(fileReader.FileReader),
     FormData: util.nonEnumerable(formData.FormData),
-    ReadableStream: util.nonEnumerable(streams.ReadableStream),
-    Request: util.nonEnumerable(request.Request),
-    Response: util.nonEnumerable(fetch.Response),
-    performance: util.writable(new performance.Performance()),
+    Headers: util.nonEnumerable(headers.Headers),
+    MessageEvent: util.nonEnumerable(MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
+    ProgressEvent: util.nonEnumerable(progressEvent.ProgressEvent),
+    ReadableStream: util.nonEnumerable(streams.ReadableStream),
+    Request: util.nonEnumerable(request.Request),
+    Response: util.nonEnumerable(fetch.Response),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
+    WebSocket: util.nonEnumerable(webSocket.WebSocket),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
-  };
-
-  const eventTargetProperties = {
-    addEventListener: util.readOnly(
-      EventTarget.prototype.addEventListener,
-    ),
+    addEventListener: util.readOnly(EventTarget.prototype.addEventListener),
+    atob: util.writable(atob),
+    btoa: util.writable(btoa),
+    clearInterval: util.writable(timers.clearInterval),
+    clearTimeout: util.writable(timers.clearTimeout),
+    console: util.writable(new Console(core.print)),
+    crypto: util.readOnly(crypto),
     dispatchEvent: util.readOnly(EventTarget.prototype.dispatchEvent),
+    fetch: util.writable(fetch.fetch),
+    performance: util.writable(new performance.Performance()),
     removeEventListener: util.readOnly(
       EventTarget.prototype.removeEventListener,
     ),
+    setInterval: util.writable(timers.setInterval),
+    setTimeout: util.writable(timers.setTimeout),
   };
 
   const mainRuntimeGlobalProperties = {
@@ -262,14 +276,12 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
-    Object.defineProperties(globalThis, eventTargetProperties);
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
     eventTarget.setEventTargetData(globalThis);
     // Registers the handler for window.onload function.
@@ -290,6 +302,8 @@ delete Object.prototype.__proto__;
     const { args, cwd, noColor, pid, ppid, repl, unstableFlag } =
       runtimeStart();
 
+    registerErrors();
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
@@ -301,14 +315,10 @@ delete Object.prototype.__proto__;
       ppid: util.readOnly(ppid),
       noColor: util.readOnly(noColor),
       args: util.readOnly(Object.freeze(args)),
+      mainModule: util.getterOnly(opMainModule),
     });
 
     if (unstableFlag) {
-      Object.defineProperty(
-        finalDenoNs,
-        "mainModule",
-        util.getterOnly(opMainModule),
-      );
       Object.assign(finalDenoNs, denoNsUnstable);
     }
 
@@ -332,20 +342,20 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
-    Object.defineProperties(globalThis, eventTargetProperties);
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
     eventTarget.setEventTargetData(globalThis);
     const { unstableFlag, pid, noColor, args } = runtimeStart(
       internalName ?? name,
     );
+
+    registerErrors();
 
     const finalDenoNs = {
       core,
@@ -382,7 +392,6 @@ delete Object.prototype.__proto__;
         workerRuntime: bootstrapWorkerRuntime,
       },
       configurable: true,
-      writable: true,
     },
   });
 })(this);

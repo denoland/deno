@@ -67,7 +67,52 @@ async function testModuleDownload(): Promise<void> {
   http.close();
 }
 
+async function testFetchNoProxy(): Promise<void> {
+  const c = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--quiet",
+      "--reload",
+      "--allow-net",
+      "045_proxy_client.ts",
+    ],
+    stdout: "piped",
+    env: {
+      HTTP_PROXY: "http://not.exising.proxy.server",
+      NO_PROXY: "localhost",
+    },
+  });
+
+  const status = await c.status();
+  assertEquals(status.code, 0);
+  c.close();
+}
+
+async function testModuleDownloadNoProxy(): Promise<void> {
+  const http = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "cache",
+      "--reload",
+      "--quiet",
+      "http://localhost:4545/std/examples/colors.ts",
+    ],
+    stdout: "piped",
+    env: {
+      HTTP_PROXY: "http://not.exising.proxy.server",
+      NO_PROXY: "localhost",
+    },
+  });
+
+  const httpStatus = await http.status();
+  assertEquals(httpStatus.code, 0);
+  http.close();
+}
+
 proxyServer();
 await testFetch();
 await testModuleDownload();
+await testFetchNoProxy();
+await testModuleDownloadNoProxy();
 Deno.exit(0);

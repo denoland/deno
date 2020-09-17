@@ -1,8 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::version;
 use bytes::Bytes;
-use deno_core::ErrBox;
-use futures::future::FutureExt;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use reqwest::header::IF_NONE_MATCH;
@@ -22,11 +24,10 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
-use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn create_http_client(ca_file: Option<String>) -> Result<Client, ErrBox> {
+pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
@@ -44,12 +45,9 @@ pub fn create_http_client(ca_file: Option<String>) -> Result<Client, ErrBox> {
     builder = builder.add_root_certificate(cert);
   }
 
-  builder.build().map_err(|_| {
-    ErrBox::from(io::Error::new(
-      io::ErrorKind::Other,
-      "Unable to build http client".to_string(),
-    ))
-  })
+  builder
+    .build()
+    .map_err(|_| generic_error("Unable to build http client"))
 }
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
@@ -95,77 +93,71 @@ pub enum FetchOnceResult {
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-pub fn fetch_once(
+pub async fn fetch_once(
   client: Client,
   url: &Url,
   cached_etag: Option<String>,
-) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
+) -> Result<FetchOnceResult, AnyError> {
   let url = url.clone();
 
-  let fut = async move {
-    let mut request = client.get(url.clone());
+  let mut request = client.get(url.clone());
 
-    if let Some(etag) = cached_etag {
-      let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
-      request = request.header(IF_NONE_MATCH, if_none_match_val);
-    }
-    let response = request.send().await?;
+  if let Some(etag) = cached_etag {
+    let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
+    request = request.header(IF_NONE_MATCH, if_none_match_val);
+  }
+  let response = request.send().await?;
 
-    if response.status() == StatusCode::NOT_MODIFIED {
-      return Ok(FetchOnceResult::NotModified);
-    }
+  if response.status() == StatusCode::NOT_MODIFIED {
+    return Ok(FetchOnceResult::NotModified);
+  }
 
-    let mut headers_: HashMap<String, String> = HashMap::new();
-    let headers = response.headers();
+  let mut headers_: HashMap<String, String> = HashMap::new();
+  let headers = response.headers();
 
-    if let Some(warning) = headers.get("X-Deno-Warning") {
-      eprintln!(
-        "{} {}",
-        crate::colors::yellow("Warning"),
-        warning.to_str().unwrap()
-      );
-    }
+  if let Some(warning) = headers.get("X-Deno-Warning") {
+    eprintln!(
+      "{} {}",
+      crate::colors::yellow("Warning"),
+      warning.to_str().unwrap()
+    );
+  }
 
-    for key in headers.keys() {
-      let key_str = key.to_string();
-      let values = headers.get_all(key);
-      let values_str = values
-        .iter()
-        .map(|e| e.to_str().unwrap().to_string())
-        .collect::<Vec<String>>()
-        .join(",");
-      headers_.insert(key_str, values_str);
-    }
+  for key in headers.keys() {
+    let key_str = key.to_string();
+    let values = headers.get_all(key);
+    let values_str = values
+      .iter()
+      .map(|e| e.to_str().unwrap().to_string())
+      .collect::<Vec<String>>()
+      .join(",");
+    headers_.insert(key_str, values_str);
+  }
 
-    if response.status().is_redirection() {
-      let location_string = response
-        .headers()
-        .get(LOCATION)
-        .expect("url redirection should provide 'location' header")
-        .to_str()
-        .unwrap();
-
+  if response.status().is_redirection() {
+    if let Some(location) = response.headers().get(LOCATION) {
+      let location_string = location.to_str().unwrap();
       debug!("Redirecting to {:?}...", &location_string);
       let new_url = resolve_url_from_location(&url, location_string);
       return Ok(FetchOnceResult::Redirect(new_url, headers_));
+    } else {
+      return Err(generic_error(format!(
+        "Redirection from '{}' did not provide location header",
+        url
+      )));
     }
+  }
 
-    if response.status().is_client_error()
-      || response.status().is_server_error()
-    {
-      let err = io::Error::new(
-        io::ErrorKind::Other,
-        format!("Import '{}' failed: {}", &url, response.status()),
-      );
-      return Err(err.into());
-    }
+  if response.status().is_client_error() || response.status().is_server_error()
+  {
+    let err =
+      generic_error(format!("Import '{}' failed: {}", &url, response.status()));
+    return Err(err);
+  }
 
-    let body = response.bytes().await?.to_vec();
+  let body = response.bytes().await?.to_vec();
 
-    return Ok(FetchOnceResult::Code(body, headers_));
-  };
-
-  fut.boxed()
+  Ok(FetchOnceResult::Code(body, headers_))
 }
 
 /// Wraps reqwest `Response` so that it can be exposed as an `AsyncRead` and integrated
@@ -248,7 +240,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_string() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
@@ -262,12 +254,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_gzip() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
@@ -286,12 +277,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_etag() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client.clone(), &url, None).await;
@@ -310,13 +300,11 @@ mod tests {
     let res =
       fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_brotli() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
@@ -336,12 +324,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_once_with_redirect() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
@@ -355,7 +342,6 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[test]
@@ -398,17 +384,17 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_string() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
-    let client = create_http_client(Some(String::from(
+    let client = create_http_client(Some(
       test_util::root_path()
         .join("std/http/testdata/tls/RootCA.pem")
         .to_str()
         .unwrap(),
-    )))
+    ))
     .unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -419,23 +405,22 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_cafile_gzip() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "https://localhost:5545/cli/tests/053_import_compression/gziped",
     )
     .unwrap();
-    let client = create_http_client(Some(String::from(
+    let client = create_http_client(Some(
       test_util::root_path()
         .join("std/http/testdata/tls/RootCA.pem")
         .to_str()
         .unwrap(),
-    )))
+    ))
     .unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -449,19 +434,18 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_cafile_with_etag() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
-    let client = create_http_client(Some(String::from(
+    let client = create_http_client(Some(
       test_util::root_path()
         .join("std/http/testdata/tls/RootCA.pem")
         .to_str()
         .unwrap(),
-    )))
+    ))
     .unwrap();
     let result = fetch_once(client.clone(), &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -480,24 +464,22 @@ mod tests {
     let res =
       fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_cafile_brotli() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "https://localhost:5545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
-    let client = create_http_client(Some(String::from(
+    let client = create_http_client(Some(
       test_util::root_path()
         .join("std/http/testdata/tls/RootCA.pem")
         .to_str()
         .unwrap(),
-    )))
+    ))
     .unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -512,6 +494,18 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn bad_redirect() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:4545/bad_redirect";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_http_client(None).unwrap();
+    let result = fetch_once(client, &url, None).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    // Check that the error message contains the original URL
+    assert!(err.to_string().contains(url_str));
   }
 }

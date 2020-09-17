@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { close } = window.__bootstrap.resources;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   const { pathFromURL } = window.__bootstrap.util;
 
   function seekSync(
@@ -11,7 +11,7 @@
     offset,
     whence,
   ) {
-    return sendSync("op_seek", { rid, offset, whence });
+    return core.jsonOpSync("op_seek_sync", { rid, offset, whence });
   }
 
   function seek(
@@ -19,20 +19,7 @@
     offset,
     whence,
   ) {
-    return sendAsync("op_seek", { rid, offset, whence });
-  }
-
-  function opOpenSync(path, options) {
-    const mode = options?.mode;
-    return sendSync("op_open", { path: pathFromURL(path), options, mode });
-  }
-
-  function opOpen(
-    path,
-    options,
-  ) {
-    const mode = options?.mode;
-    return sendAsync("op_open", { path: pathFromURL(path), options, mode });
+    return core.jsonOpAsync("op_seek_async", { rid, offset, whence });
   }
 
   function openSync(
@@ -40,7 +27,12 @@
     options = { read: true },
   ) {
     checkOpenOptions(options);
-    const rid = opOpenSync(path, options);
+    const mode = options?.mode;
+    const rid = core.jsonOpSync(
+      "op_open_sync",
+      { path: pathFromURL(path), options, mode },
+    );
+
     return new File(rid);
   }
 
@@ -49,7 +41,12 @@
     options = { read: true },
   ) {
     checkOpenOptions(options);
-    const rid = await opOpen(path, options);
+    const mode = options?.mode;
+    const rid = await core.jsonOpAsync(
+      "op_open_async",
+      { path: pathFromURL(path), options, mode },
+    );
+
     return new File(rid);
   }
 

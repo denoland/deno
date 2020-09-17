@@ -34,7 +34,7 @@ Format the code:
 
 ### Profiling
 
-To start profiling,
+To start profiling:
 
 ```sh
 # Make sure we're only building release.
@@ -107,7 +107,7 @@ Current executable set to '../deno/target/debug/deno' (x86_64).
 
 ### V8 flags
 
-V8 has many many internal command-line flags.
+V8 has many many internal command-line flags:
 
 ```shell
 $ deno run --v8-flags=--help _

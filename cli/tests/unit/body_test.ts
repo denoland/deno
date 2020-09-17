@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assert } from "./test_util.ts";
+import {
+  unitTest,
+  assertEquals,
+  assert,
+} from "./test_util.ts";
 
 // just a hack to get a body object
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,6 +43,8 @@ unitTest(
     const response = await fetch(
       "http://localhost:4545/multipart_form_data.txt",
     );
+    assert(response.body instanceof ReadableStream);
+
     const text = await response.text();
 
     const body = buildBody(text, response.headers);
@@ -56,6 +62,8 @@ unitTest(
     const response = await fetch(
       "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
     );
+    assert(response.body instanceof ReadableStream);
+
     const text = await response.text();
 
     const body = buildBody(text, response.headers);
