@@ -388,7 +388,7 @@
       let { highWaterMark } = strategy;
       const { type } = underlyingSource;
 
-      if (isUnderlyingByteSource(underlyingSource)) {
+      if (underlyingSource.type == "bytes") {
         if (size !== undefined) {
           throw new RangeError(
             `When underlying source is "bytes", strategy.size must be undefined.`,
@@ -1224,14 +1224,6 @@
       x === null ||
       !(sym.controlledTransformStream in x)
     );
-  }
-
-  function isUnderlyingByteSource(
-    underlyingSource,
-  ) {
-    const { type } = underlyingSource;
-    const typeString = String(type);
-    return typeString === "bytes";
   }
 
   function isWritableStream(x) {
