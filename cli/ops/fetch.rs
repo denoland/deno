@@ -122,12 +122,28 @@ async fn op_fetch_read(
   let args: Args = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let mut state = state.borrow_mut();
-  let response = state
-    .resource_table
-    .get_mut::<Response>(rid as u32)
-    .ok_or_else(bad_resource_id)?;
+  use futures::future::poll_fn;
+  use futures::FutureExt;
+  use std::task::Poll;
+  let f = poll_fn(move |cx| {
+    let mut state = state.borrow_mut();
+    let response = state
+      .resource_table
+      .get_mut::<Response>(rid as u32)
+      .ok_or_else(bad_resource_id)?;
 
+    let mut chunk_fut = response.chunk().boxed_local();
+    match chunk_fut.poll_unpin(cx) {
+      Poll::Ready(Ok(Some(chunk))) => {
+        Poll::Ready(Ok(json!({ "chunk": &*chunk })))
+      }
+      Poll::Ready(Ok(None)) => Poll::Ready(Ok(json!({ "chunk": null }))),
+      Poll::Ready(Err(_)) => Poll::Ready(Ok(json!({ "chunk": null }))),
+      Poll::Pending => Poll::Pending,
+    }
+  });
+  f.await
+  /*
   // I'm programming this as I want it to be programmed, even though it might be
   // incorrect, normally we would use poll_fn here. We need to make this await pattern work.
   let chunk = response.chunk().await?;
@@ -137,6 +153,7 @@ async fn op_fetch_read(
   } else {
     Ok(json!({ "chunk": null }))
   }
+  */
 }
 
 struct HttpClientResource {
