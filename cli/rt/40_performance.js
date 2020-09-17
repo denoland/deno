@@ -2,9 +2,9 @@
 
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
-  const { customInspect } = window.__bootstrap.console;
   const { cloneValue } = window.__bootstrap.webUtil;
 
+  const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
 
   function findMostRecent(

@@ -3,7 +3,6 @@
 ((window) => {
   const core = window.Deno.core;
   const { getRandomValues } = window.__bootstrap.crypto;
-  const { customInspect } = window.__bootstrap.console;
   const { isIterable, requiredArguments } = window.__bootstrap.webUtil;
 
   /** https://url.spec.whatwg.org/#idna */
@@ -501,7 +500,7 @@
   class URL {
     #searchParams = null;
 
-    [customInspect]() {
+    [Symbol.for("Deno.customInspect")]() {
       const keys = [
         "href",
         "origin",

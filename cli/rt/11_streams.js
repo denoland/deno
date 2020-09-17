@@ -11,7 +11,8 @@
 
   const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
   const { assert, AssertionError } = window.__bootstrap.util;
-  const { customInspect } = window.__bootstrap.console;
+
+  const customInspect = Symbol.for("Deno.customInspect");
 
   const sym = {
     abortAlgorithm: Symbol("abortAlgorithm"),

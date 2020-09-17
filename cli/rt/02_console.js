@@ -1517,7 +1517,7 @@
     }
   }
 
-  const customInspect = Symbol("Deno.customInspect");
+  const customInspect = Symbol.for("Deno.customInspect");
 
   function inspect(
     value,
