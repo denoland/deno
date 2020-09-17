@@ -41,6 +41,7 @@ async function startFileServer({
   assert(s !== null && s.includes("server listening"));
 }
 
+/*
 async function startFileServerAsLibrary({}: FileServerCfg = {}): Promise<void> {
   fileServer = await Deno.run({
     cmd: [
@@ -59,6 +60,7 @@ async function startFileServerAsLibrary({}: FileServerCfg = {}): Promise<void> {
   const s = await r.readLine();
   assert(s !== null && s.includes("Server running..."));
 }
+*/
 
 async function killFileServer(): Promise<void> {
   fileServer.close();
