@@ -121,7 +121,16 @@ impl WebWorker {
         deno_web::op_domain_to_ascii,
       );
       ops::io::init(&mut web_worker.worker);
-      ops::resources::init(&mut web_worker.worker);
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_close",
+        deno_core::op_close,
+      );
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_resources",
+        deno_core::op_resources,
+      );
       ops::errors::init(&mut web_worker.worker);
       ops::timers::init(&mut web_worker.worker);
       ops::fetch::init(&mut web_worker.worker);

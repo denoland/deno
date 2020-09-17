@@ -2,7 +2,6 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { close } = window.__bootstrap.resources;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
   const { pathFromURL } = window.__bootstrap.util;
 
@@ -104,7 +103,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -122,7 +121,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -140,7 +139,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -158,7 +157,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
