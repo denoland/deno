@@ -396,6 +396,11 @@ impl SourceFileFetcher {
     let result = self.http_cache.get(&module_url);
     let result = match result {
       Err(e) => {
+        if let Some(e) = e.downcast_ref::<serde_json::Error>() {
+          if e.to_string().starts_with("invalid type: string") {
+            return Ok(None);
+          }
+        }
         if let Some(e) = e.downcast_ref::<std::io::Error>() {
           if e.kind() == std::io::ErrorKind::NotFound {
             return Ok(None);
