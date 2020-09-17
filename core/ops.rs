@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::bad_resource_id;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
@@ -7,6 +8,7 @@ use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
+use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -216,4 +218,37 @@ fn json_serialize_op_result(
     }),
   };
   serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
+
+/// Return map of resources with id as key
+/// and string representaion as value.
+///
+/// This op must be wrapped in `json_op_sync`.
+pub fn op_resources(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let serialized_resources = state.resource_table.entries();
+  Ok(json!(serialized_resources))
+}
+
+/// Remove a resource from the resource table.
+///
+/// This op must be wrapped in `json_op_sync`.
+pub fn op_close(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let rid = args
+    .get("rid")
+    .and_then(Value::as_u64)
+    .ok_or_else(|| type_error("missing or invalid `rid`"))?;
+
+  state
+    .resource_table
+    .close(rid as u32)
+    .ok_or_else(bad_resource_id)?;
+  Ok(json!({}))
 }
