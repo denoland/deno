@@ -94,16 +94,25 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
 unitTest(
   function consoleTestStringifyComplexObjectsWithEscapedSequences(): void {
     assertEquals(
-      stringify(["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v"]),
-      `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v" ]`,
+      stringify(
+        ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
+      ),
+      `[
+  "foo\\b",   "foo\\f",
+  "foo\\n",   "foo\\r",
+  "foo\\t",   "foo\\v",
+  "foo\\x00"
+]`,
     );
     assertEquals(
-      stringify({ "foo\b": "bar\n", "bar\r": "baz\t" }),
-      `{ foo\\b: "bar\\n", bar\\r: "baz\\t" }`,
+      stringify(
+        { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
+      ),
+      `{ foo\\b: "bar\\n", bar\\r: "baz\\t", qux\\x00: "qux\\x00" }`,
     );
     assertEquals(
-      stringify(new Set(["foo\n", "foo\r"])),
-      `Set { "foo\\n", "foo\\r" }`,
+      stringify(new Set(["foo\n", "foo\r", "foo\0"])),
+      `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
     );
   },
 );
