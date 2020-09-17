@@ -4,7 +4,6 @@
   const core = window.Deno.core;
   const exit = window.__bootstrap.os.exit;
   const version = window.__bootstrap.version.version;
-  const close = window.__bootstrap.resources.close;
   const inspectArgs = window.__bootstrap.console.inspectArgs;
 
   function opStartRepl(historyFile) {
@@ -90,7 +89,7 @@
     const quitRepl = (exitCode) => {
       // Special handling in case user calls deno.close(3).
       try {
-        close(rid); // close signals Drop on REPL and saves history.
+        core.close(rid); // close signals Drop on REPL and saves history.
       } catch {}
       exit(exitCode);
     };

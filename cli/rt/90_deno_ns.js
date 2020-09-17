@@ -53,8 +53,6 @@ __bootstrap.denoNs = {
   env: __bootstrap.os.env,
   exit: __bootstrap.os.exit,
   execPath: __bootstrap.os.execPath,
-  resources: __bootstrap.resources.resources,
-  close: __bootstrap.resources.close,
   Buffer: __bootstrap.buffer.Buffer,
   readAll: __bootstrap.buffer.readAll,
   readAllSync: __bootstrap.buffer.readAllSync,
