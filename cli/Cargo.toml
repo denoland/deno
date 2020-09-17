@@ -31,6 +31,7 @@ winapi = "0.3.9"
 deno_core = { path = "../core", version = "0.57.0" }
 deno_doc = "0.1.9"
 deno_lint = { version = "0.2.0", features = ["json"] }
+deno_web = { path = "../op_crates/web", version = "0.8.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
@@ -44,7 +45,6 @@ dprint-plugin-typescript = "0.31.3"
 futures = "0.3.5" # TODO(ry) Remove and use deno_core::futures
 filetime = "0.2.12"
 http = "0.2.1"
-idna = "0.2.0"
 indexmap = "1.6.0"
 jsonc-parser = "0.14.0"
 lazy_static = "1.4.0"
