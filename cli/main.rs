@@ -64,8 +64,6 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
-use crate::swc_util::AstParser;
-use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -74,6 +72,7 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
+use deno_lint::swc_util::AstParser;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
@@ -281,7 +280,10 @@ async fn eval_command(
   Ok(())
 }
 
-async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
+async fn ast_command(
+  flags: Flags,
+  source_file: String,
+) -> Result<(), AnyError> {
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> ast START");
@@ -296,9 +298,9 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
     .file_fetcher
     .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
-  let src = std::str::from_utf8(&out.source_code)?;
+  let src = &out.source_code.to_str();
   let parser = AstParser::new();
-  let ast = parser.parse_module::<_, Result<swc_ecma_ast::Module, ErrBox>>(
+  let ast = parser.parse_module::<_, Result<swc_ecma_ast::Module, AnyError>>(
     &module_specifier.to_string(),
     out.media_type,
     src,
@@ -310,7 +312,7 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
 
   debug!(">>>>> ast END");
   write_to_stdout_ignore_sigpipe(serde_json::to_string_pretty(&ast)?.as_bytes())
-    .map_err(ErrBox::from)
+    .map_err(AnyError::from)
 }
 
 async fn bundle_command(
