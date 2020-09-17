@@ -11,7 +11,8 @@
 
   const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
   const { assert, AssertionError } = window.__bootstrap.util;
-  const { customInspect, inspect } = window.__bootstrap.console;
+
+  const customInspect = Symbol.for("Deno.customInspect");
 
   const sym = {
     abortAlgorithm: Symbol("abortAlgorithm"),
@@ -636,9 +637,7 @@
     }
 
     [customInspect]() {
-      return `${this.constructor.name} {\n  readable: ${
-        inspect(this.readable)
-      }\n  writable: ${inspect(this.writable)}\n}`;
+      return this.constructor.name;
     }
   }
 
