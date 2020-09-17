@@ -14,7 +14,7 @@ fn fmt_add_text(x: &str) -> String {
 }
 
 fn fmt_add_text_highlight(x: &str) -> String {
-  format!("{}", colors::white_on_green(x))
+  format!("{}", colors::black_on_green(x))
 }
 
 fn fmt_rem() -> String {
@@ -41,9 +41,9 @@ fn write_line_diff(
   for (i, s) in split {
     write!(
       diff,
-      "{:0width$}{} ",
+      "{:width$}{} ",
       *orig_line + i,
-      colors::gray("|"),
+      colors::gray(" |"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_rem())?;
@@ -55,9 +55,9 @@ fn write_line_diff(
   for (i, s) in split {
     write!(
       diff,
-      "{:0width$}{} ",
+      "{:width$}{} ",
       *edit_line + i,
-      colors::gray("|"),
+      colors::gray(" |"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_add())?;
