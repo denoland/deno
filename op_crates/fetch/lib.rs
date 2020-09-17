@@ -6,7 +6,13 @@ use std::path::Path;
 
 pub fn init(isolate: &mut JsRuntime) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let files = vec![manifest_dir.join("11_streams.js")];
+  let files = vec![
+    manifest_dir.join("01_fetch_util.js"),
+    manifest_dir.join("03_dom_iterable.js"),
+    manifest_dir.join("11_streams.js"),
+    manifest_dir.join("20_headers.js"),
+    manifest_dir.join("26_fetch.js"),
+  ];
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = manifest_dir.parent().unwrap().parent().unwrap();

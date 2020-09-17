@@ -3,13 +3,19 @@
 ((window) => {
   const core = window.Deno.core;
 
-  const { build } = window.__bootstrap.build;
+  // provided by "deno_web"
   const { URLSearchParams } = window.__bootstrap.url;
+
+  const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
     window.__bootstrap.streams;
   const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { Headers } = window.__bootstrap.headers;
-  const { requiredArguments } = window.__bootstrap.webUtil;
+
+  // FIXME(bartlomieju): stubbed out, needed in blob
+  const build = {
+    os: "",
+  };
 
   const MAX_SIZE = 2 ** 32 - 2;
 
