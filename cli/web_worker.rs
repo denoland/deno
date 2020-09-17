@@ -115,7 +115,11 @@ impl WebWorker {
       let handle = web_worker.thread_safe_handle();
       ops::web_worker::init(&mut web_worker.worker, sender, handle);
       ops::worker_host::init(&mut web_worker.worker);
-      ops::idna::init(&mut web_worker.worker);
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_domain_to_ascii",
+        deno_web::op_domain_to_ascii,
+      );
       ops::io::init(&mut web_worker.worker);
       ops::reg_json_sync(
         &mut web_worker.worker,

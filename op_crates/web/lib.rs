@@ -1,8 +1,42 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
 use deno_core::js_check;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
+use deno_core::ZeroCopyBuf;
+use idna::domain_to_ascii;
+use idna::domain_to_ascii_strict;
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
+
+pub fn op_domain_to_ascii(
+  _state: &mut deno_core::OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct DomainToAscii {
+    domain: String,
+    be_strict: bool,
+  }
+
+  let args: DomainToAscii = serde_json::from_value(args)?;
+  if args.be_strict {
+    domain_to_ascii_strict(args.domain.as_str())
+  } else {
+    domain_to_ascii(args.domain.as_str())
+  }
+  .map_err(|err| {
+    let message = format!("Invalid IDNA encoded domain name: {:?}", err);
+    uri_error(message)
+  })
+  .map(|domain| json!(domain))
+}
 
 pub fn init(isolate: &mut JsRuntime) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -11,6 +45,7 @@ pub fn init(isolate: &mut JsRuntime) {
     manifest_dir.join("01_event.js"),
     manifest_dir.join("02_abort_signal.js"),
     manifest_dir.join("08_text_encoding.js"),
+    manifest_dir.join("11_url.js"),
   ];
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.

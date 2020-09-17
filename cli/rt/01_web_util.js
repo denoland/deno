@@ -37,19 +37,6 @@
     return Object.prototype.hasOwnProperty.call(obj, v);
   }
 
-  /** Returns whether o is iterable. */
-  function isIterable(
-    o,
-  ) {
-    // checks for null and undefined
-    if (o == null) {
-      return false;
-    }
-    return (
-      typeof (o)[Symbol.iterator] === "function"
-    );
-  }
-
   const objectCloneMemo = new WeakMap();
 
   function cloneArrayBuffer(
@@ -170,7 +157,6 @@
     requiredArguments,
     immutableDefine,
     hasOwnProperty,
-    isIterable,
     cloneValue,
     defineEnumerableProps,
     setFunctionName,

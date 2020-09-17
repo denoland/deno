@@ -2,6 +2,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+
   const { build } = window.__bootstrap.build;
   const { URLSearchParams } = window.__bootstrap.url;
   const { ReadableStream, isReadableStreamDisturbed } =

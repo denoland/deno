@@ -465,7 +465,11 @@
       .replace(/\n/g, "\\n")
       .replace(/\r/g, "\\r")
       .replace(/\t/g, "\\t")
-      .replace(/\v/g, "\\v");
+      .replace(/\v/g, "\\v")
+      .replace(
+        /[\x00-\x1f\x7f-\x9f]/g,
+        (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
+      );
   }
 
   // Print strings when they are inside of arrays or objects with quotes
@@ -765,6 +769,19 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
+      } catch {}
+    }
+    // This non-unique symbol is used to support op_crates, ie.
+    // in op_crates/web we don't want to depend on unique "Deno.customInspect"
+    // symbol defined in the public API. Internal only, shouldn't be used
+    // by users.
+    const nonUniqueCustomInspect = Symbol.for("Deno.customInspect");
+    if (
+      nonUniqueCustomInspect in value &&
+      typeof value[nonUniqueCustomInspect] === "function"
+    ) {
+      try {
+        return String(value[nonUniqueCustomInspect]());
       } catch {}
     }
     if (value instanceof Error) {
