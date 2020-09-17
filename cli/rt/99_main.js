@@ -23,7 +23,6 @@ delete Object.prototype.__proto__;
   const url = window.__bootstrap.url;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
-  const blob = window.__bootstrap.blob;
   const progressEvent = window.__bootstrap.progressEvent;
   const fileReader = window.__bootstrap.fileReader;
   const webSocket = window.__bootstrap.webSocket;

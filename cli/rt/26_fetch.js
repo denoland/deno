@@ -194,7 +194,7 @@
 
   // A WeakMap holding blob to byte array mapping.
   // Ensures it does not impact garbage collection.
-  const blobBytesWeakMap = new WeakMap();
+  // const blobBytesWeakMap = new WeakMap();
 
   class Blob {
     constructor(blobParts, options) {
