@@ -282,6 +282,7 @@
         body,
         clientRid,
       );
+      const rid = fetchResponse.bodyRid;
 
       if (
         NULL_BODY_STATUS.includes(fetchResponse.status) ||
@@ -296,15 +297,15 @@
           type: "bytes",
           async pull(controller) {
             try {
-              const rid = fetchResponse.bodyRid;
               const result = await core.jsonOpAsync("op_fetch_read", { rid });
-              if (result.chunk == null) {
+              if (!result || !result.chunk) {
                 controller.close();
-                return close(rid);
+                close(rid);
+              } else {
+                // TODO(ry) This is terribly inefficient. Make this zero-copy.
+                const chunk = new Uint8Array(result.chunk);
+                controller.enqueue(chunk);
               }
-              // TODO(ry) This is terribly inefficient. Make this zero-copy.
-              const chunk = new Uint8Array(result.chunk);
-              controller.enqueue(chunk);
             } catch (e) {
               controller.error(e);
               controller.close();
@@ -313,7 +314,7 @@
           },
           cancel() {
             // When reader.cancel() is called
-            close(fetchResponse.bodyRid);
+            close(rid);
           },
         });
       }
