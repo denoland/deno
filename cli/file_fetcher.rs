@@ -239,15 +239,6 @@ impl SourceFileFetcher {
         Ok(file)
       }
       Err(err) => {
-        // FIXME(bartlomieju): rewrite this whole block
-
-        // FIXME(bartlomieju): very ugly
-        let mut is_not_found = false;
-        if let Some(e) = err.downcast_ref::<std::io::Error>() {
-          if e.kind() == std::io::ErrorKind::NotFound {
-            is_not_found = true;
-          }
-        }
         let referrer_suffix = if let Some(referrer) = maybe_referrer {
           format!(r#" from "{}""#, referrer)
         } else {
@@ -255,20 +246,31 @@ impl SourceFileFetcher {
         };
         // Hack: Check error message for "--cached-only" because the kind
         // conflicts with other errors.
-        let err = if err.to_string().contains("--cached-only") {
-          let msg = format!(
-            r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
-            module_url, referrer_suffix
-          );
-          custom_error("NotFound", msg)
-        } else if is_not_found {
-          let msg = format!(
-            r#"Cannot resolve module "{}"{}"#,
-            module_url, referrer_suffix
-          );
-          custom_error("NotFound", msg)
-        } else {
-          err
+        let err = match err.to_string().contains("--cached-only") {
+          true => {
+            let msg = format!(
+              r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
+              module_url, referrer_suffix
+            );
+            custom_error("NotFound", msg)
+          },
+          false => {
+            match err.downcast_ref::<std::io::Error>() {
+              Some(e) => {
+                match e.kind() == std::io::ErrorKind::NotFound {
+                  true => {
+                    let msg = format!(
+                      r#"Cannot resolve module "{}"{}"#,
+                      module_url, referrer_suffix
+                    );
+                    custom_error("NotFound", msg)
+                  },
+                  false => err,
+                }
+              },
+              None => err,
+            }
+          },
         };
         Err(err)
       }
