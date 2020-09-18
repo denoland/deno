@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.1 / 2020.09.18
+
+- fix(cli/console): escape special characters in strings and property names
+  (#7546, #7533, #7550)
+- fix(cli/fmt): canonicalize files in current dir (#7508)
+- fix(cli/fmt): make fmt output more readable (#7534)
+- fix(cli/install): revert "bundle before installation" (#7522)
+- fix(cli/js): disable URL.createObjectUrl (#7543)
+- fix(cli/js): use Buffer.writeSync in MultipartBuilder (#7542)
+- fix(cli/repl): disable rustyline logs (#7535)
+- fix(cli/repl): format evaluation results with the object specifier (#7561)
+- fix(cli/bundle,eval,repl): add missing flags (#7414)
+- refactor(cli): move fetch() implementation to op_crates/fetch (#7524, #7529)
+- refactor(cli): move FileReader and URL to op_crates/web (#7554, #7544)
+- refactor(cli): move op_resources and op_close to deno_core (#7539)
+- refactor(cli/info,unstable): deno info --json output (#7417)
+- refactor(cli/js): simplify global properties (#7502)
+- refactor(cli/js): use Symbol.for instead of Symbol (#7537)
+- refactor(core): remove JsRuntime::set_js_error_create_fn (#7478)
+- refactor(core): use the 'anyhow' crate instead of ErrBox (#7476)
+- upgrade: rust crates (#7454)
+- benchmark: add no_check_hello benchmark (#7458)
+
+Changes in std version 0.70.0:
+
+- feat(std/node): add AssertionError class (#7210)
+- fix(std/datetime): timezone bug (#7466)
+- fix(std/testing): assertion diff color (#7499)
+
 ### 1.4.0 / 2020.09.13
 
 - feat: Implement WebSocket API (#7051, #7437)
