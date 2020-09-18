@@ -21,6 +21,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -313,5 +314,15 @@ impl CliState {
     if !self.global_state.flags.unstable {
       exit_unstable(api_name);
     }
+  }
+}
+
+impl deno_fetch::FetchPermissions for CliState {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    CliState::check_net_url(self, url)
+  }
+
+  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+    CliState::check_read(self, p)
   }
 }

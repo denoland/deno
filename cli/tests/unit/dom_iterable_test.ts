@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+/* TODO https://github.com/denoland/deno/issues/7540
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -24,6 +26,7 @@ function setup() {
     DomIterable: Deno[Deno.internal].DomIterableMixin(Base, dataSymbol),
   };
 }
+
 
 unitTest(function testDomIterable(): void {
   const { DomIterable, Base } = setup();
@@ -85,3 +88,4 @@ unitTest(function testDomIterableScope(): void {
   checkScope(null, window);
   checkScope(undefined, window);
 });
+*/
