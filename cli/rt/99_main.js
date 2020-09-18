@@ -22,15 +22,10 @@ delete Object.prototype.__proto__;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
   const headers = window.__bootstrap.headers;
-  const queuingStrategy = window.__bootstrap.queuingStrategy;
   const streams = window.__bootstrap.streams;
-  const blob = window.__bootstrap.blob;
-  const domFile = window.__bootstrap.domFile;
   const progressEvent = window.__bootstrap.progressEvent;
   const fileReader = window.__bootstrap.fileReader;
-  const formData = window.__bootstrap.formData;
   const webSocket = window.__bootstrap.webSocket;
-  const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
@@ -198,22 +193,22 @@ delete Object.prototype.__proto__;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
-    Blob: util.nonEnumerable(blob.Blob),
+    Blob: util.nonEnumerable(fetch.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
-      queuingStrategy.ByteLengthQueuingStrategy,
+      streams.ByteLengthQueuingStrategy,
     ),
     CloseEvent: util.nonEnumerable(CloseEvent),
     CountQueuingStrategy: util.nonEnumerable(
-      queuingStrategy.CountQueuingStrategy,
+      streams.CountQueuingStrategy,
     ),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
-    File: util.nonEnumerable(domFile.DomFile),
+    File: util.nonEnumerable(fetch.DomFile),
     FileReader: util.nonEnumerable(fileReader.FileReader),
-    FormData: util.nonEnumerable(formData.FormData),
+    FormData: util.nonEnumerable(fetch.FormData),
     Headers: util.nonEnumerable(headers.Headers),
     MessageEvent: util.nonEnumerable(MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
@@ -222,7 +217,7 @@ delete Object.prototype.__proto__;
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     ProgressEvent: util.nonEnumerable(progressEvent.ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
-    Request: util.nonEnumerable(request.Request),
+    Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),

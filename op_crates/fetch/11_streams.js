@@ -9,10 +9,106 @@
 ((window) => {
   /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
 
-  const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
-  const { assert, AssertionError } = window.__bootstrap.util;
-
   const customInspect = Symbol.for("Deno.customInspect");
+
+  /** Clone a value in a similar way to structured cloning.  It is similar to a
+ * StructureDeserialize(StructuredSerialize(...)). */
+  function cloneValue(value) {
+    switch (typeof value) {
+      case "number":
+      case "string":
+      case "boolean":
+      case "undefined":
+      case "bigint":
+        return value;
+      case "object": {
+        if (objectCloneMemo.has(value)) {
+          return objectCloneMemo.get(value);
+        }
+        if (value === null) {
+          return value;
+        }
+        if (value instanceof Date) {
+          return new Date(value.valueOf());
+        }
+        if (value instanceof RegExp) {
+          return new RegExp(value);
+        }
+        if (value instanceof SharedArrayBuffer) {
+          return value;
+        }
+        if (value instanceof ArrayBuffer) {
+          const cloned = cloneArrayBuffer(
+            value,
+            0,
+            value.byteLength,
+            ArrayBuffer,
+          );
+          objectCloneMemo.set(value, cloned);
+          return cloned;
+        }
+        if (ArrayBuffer.isView(value)) {
+          const clonedBuffer = cloneValue(value.buffer);
+          // Use DataViewConstructor type purely for type-checking, can be a
+          // DataView or TypedArray.  They use the same constructor signature,
+          // only DataView has a length in bytes and TypedArrays use a length in
+          // terms of elements, so we adjust for that.
+          let length;
+          if (value instanceof DataView) {
+            length = value.byteLength;
+          } else {
+            length = value.length;
+          }
+          return new (value.constructor)(
+            clonedBuffer,
+            value.byteOffset,
+            length,
+          );
+        }
+        if (value instanceof Map) {
+          const clonedMap = new Map();
+          objectCloneMemo.set(value, clonedMap);
+          value.forEach((v, k) => clonedMap.set(k, cloneValue(v)));
+          return clonedMap;
+        }
+        if (value instanceof Set) {
+          const clonedSet = new Map();
+          objectCloneMemo.set(value, clonedSet);
+          value.forEach((v, k) => clonedSet.set(k, cloneValue(v)));
+          return clonedSet;
+        }
+
+        const clonedObj = {};
+        objectCloneMemo.set(value, clonedObj);
+        const sourceKeys = Object.getOwnPropertyNames(value);
+        for (const key of sourceKeys) {
+          clonedObj[key] = cloneValue(value[key]);
+        }
+        return clonedObj;
+      }
+      case "symbol":
+      case "function":
+      default:
+        throw new DOMException("Uncloneable value in stream", "DataCloneError");
+    }
+  }
+
+  function setFunctionName(fn, value) {
+    Object.defineProperty(fn, "name", { value, configurable: true });
+  }
+
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
 
   const sym = {
     abortAlgorithm: Symbol("abortAlgorithm"),
@@ -3271,10 +3367,52 @@
   }
   /* eslint-enable */
 
+  class CountQueuingStrategy {
+    constructor({ highWaterMark }) {
+      this.highWaterMark = highWaterMark;
+    }
+
+    size() {
+      return 1;
+    }
+
+    [customInspect]() {
+      return `${this.constructor.name} { highWaterMark: ${
+        String(this.highWaterMark)
+      }, size: f }`;
+    }
+  }
+
+  Object.defineProperty(CountQueuingStrategy.prototype, "size", {
+    enumerable: true,
+  });
+
+  class ByteLengthQueuingStrategy {
+    constructor({ highWaterMark }) {
+      this.highWaterMark = highWaterMark;
+    }
+
+    size(chunk) {
+      return chunk.byteLength;
+    }
+
+    [customInspect]() {
+      return `${this.constructor.name} { highWaterMark: ${
+        String(this.highWaterMark)
+      }, size: f }`;
+    }
+  }
+
+  Object.defineProperty(ByteLengthQueuingStrategy.prototype, "size", {
+    enumerable: true,
+  });
+
   window.__bootstrap.streams = {
     ReadableStream,
     TransformStream,
     WritableStream,
     isReadableStreamDisturbed,
+    CountQueuingStrategy,
+    ByteLengthQueuingStrategy,
   };
 })(this);
