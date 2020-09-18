@@ -301,10 +301,7 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = global_state
-    .ts_compiler
-    .bundle(&global_state, module_specifier)
-    .await?;
+  let output = bundler::bundle(&global_state, module_specifier).await?;
 
   debug!(">>>>> bundle END");
 

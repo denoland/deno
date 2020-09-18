@@ -1,7 +1,11 @@
-use crate::module_graph::ModuleGraphFile;
+use crate::{
+  global_state::GlobalState,
+  module_graph::{ModuleGraphFile, ModuleGraphLoader},
+  permissions::Permissions,
+};
 use anyhow::bail;
-use deno_core::ModuleSpecifier;
-use std::{collections::HashMap, rc::Rc};
+use deno_core::{ErrBox, ModuleSpecifier};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
 use swc_common::input::StringInput;
 use swc_common::FileName;
 use swc_common::FilePathMapping;
@@ -12,10 +16,30 @@ use swc_ecmascript::{
   parser::{lexer::Lexer, JscTarget, Parser, Syntax},
 };
 
-pub fn bundle(
+pub async fn bundle(
+  global_state: &Arc<GlobalState>,
+  module_specifier: ModuleSpecifier,
+) -> Result<String, ErrBox> {
+  let permissions = Permissions::allow_all();
+  let mut module_graph_loader = ModuleGraphLoader::new(
+    global_state.ts_compiler.file_fetcher.clone(),
+    global_state.maybe_import_map.clone(),
+    permissions.clone(),
+    false,
+    true,
+  );
+  module_graph_loader
+    .add_to_graph(&module_specifier, None)
+    .await?;
+  let module_graph = module_graph_loader.get_graph();
+
+  bundle_graph(&module_graph, &module_specifier)
+}
+
+pub fn bundle_graph(
   module_graph: &HashMap<String, ModuleGraphFile>,
   entry: &ModuleSpecifier,
-) -> Result<String, anyhow::Error> {
+) -> Result<String, ErrBox> {
   let cm = Rc::new(swc_common::SourceMap::new(FilePathMapping::empty()));
   let loader = SwcLoader {
     cm: cm.clone(),
