@@ -3,9 +3,11 @@
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
 use serde_json::Value;
+use std::cell::RefCell;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_get_random_values", op_get_random_values);
@@ -17,8 +19,8 @@ fn op_get_random_values(
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   assert_eq!(zero_copy.len(), 1);
-  let cli_state = super::cli_state(state);
-  if let Some(seeded_rng) = &cli_state.seeded_rng {
+  let maybe_seeded_rng = state.try_borrow_mut::<RefCell<StdRng>>();
+  if let Some(seeded_rng) = maybe_seeded_rng {
     seeded_rng.borrow_mut().fill(&mut *zero_copy[0]);
   } else {
     let mut rng = thread_rng();

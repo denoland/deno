@@ -2,12 +2,12 @@
 
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
+use crate::global_timer::GlobalTimer;
 use crate::inspector::DenoInspector;
 use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::state::CliState;
-use crate::global_timer::GlobalTimer;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
@@ -19,6 +19,9 @@ use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use std::cell::RefCell;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -29,7 +32,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
-use std::cell::RefCell;
 
 /// Events that are sent to host from child
 /// worker.
@@ -131,6 +133,11 @@ impl Worker {
 
       let global_timer = RefCell::new(GlobalTimer::default());
       op_state.put(global_timer);
+
+      if let Some(seed) = global_state.flags.seed {
+        let rng = StdRng::seed_from_u64(seed);
+        op_state.put(RefCell::new(rng));
+      }
     }
     let inspector = {
       let global_state = &state.global_state;

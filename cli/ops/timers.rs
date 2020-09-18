@@ -46,9 +46,7 @@ async fn op_global_timer(
   let timer_fut = {
     let s = state.borrow();
     let mut global_timer = s.borrow::<RefCell<GlobalTimer>>().borrow_mut();
-    global_timer
-      .new_timeout(deadline)
-      .boxed_local()
+    global_timer.new_timeout(deadline).boxed_local()
   };
   let _ = timer_fut.await;
   Ok(json!({}))

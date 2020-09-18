@@ -14,8 +14,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::Future;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -43,7 +41,6 @@ pub struct CliState {
   pub workers: RefCell<HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>>,
   pub next_worker_id: Cell<u32>,
   pub start_time: Instant,
-  pub seeded_rng: Option<RefCell<StdRng>>,
   pub target_lib: TargetLib,
   pub is_main: bool,
   pub is_internal: bool,
@@ -161,7 +158,6 @@ impl CliState {
     maybe_import_map: Option<ImportMap>,
     is_internal: bool,
   ) -> Result<Rc<Self>, AnyError> {
-    let fl = &global_state.flags;
     let state = CliState {
       global_state: global_state.clone(),
       main_module,
@@ -173,7 +169,6 @@ impl CliState {
       workers: Default::default(),
       next_worker_id: Default::default(),
       start_time: Instant::now(),
-      seeded_rng: fl.seed.map(|v| StdRng::seed_from_u64(v).into()),
       target_lib: TargetLib::Main,
       is_main: true,
       is_internal,
@@ -187,7 +182,6 @@ impl CliState {
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
   ) -> Result<Rc<Self>, AnyError> {
-    let fl = &global_state.flags;
     let state = CliState {
       global_state: global_state.clone(),
       main_module,
@@ -199,7 +193,6 @@ impl CliState {
       workers: Default::default(),
       next_worker_id: Default::default(),
       start_time: Instant::now(),
-      seeded_rng: fl.seed.map(|v| StdRng::seed_from_u64(v).into()),
       target_lib: TargetLib::Worker,
       is_main: false,
       is_internal: false,
