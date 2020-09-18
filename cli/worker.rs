@@ -21,7 +21,6 @@ use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::cell::RefCell;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -131,12 +130,10 @@ impl Worker {
       let client = crate::http_util::create_http_client(ca_file).unwrap();
       op_state.put(client);
 
-      let global_timer = RefCell::new(GlobalTimer::default());
-      op_state.put(global_timer);
+      op_state.put(GlobalTimer::default());
 
       if let Some(seed) = global_state.flags.seed {
-        let rng = StdRng::seed_from_u64(seed);
-        op_state.put(RefCell::new(rng));
+        op_state.put(StdRng::seed_from_u64(seed));
       }
     }
     let inspector = {

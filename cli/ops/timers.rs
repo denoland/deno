@@ -44,8 +44,8 @@ async fn op_global_timer(
 
   let deadline = Instant::now() + Duration::from_millis(val);
   let timer_fut = {
-    let s = state.borrow();
-    let mut global_timer = s.borrow::<RefCell<GlobalTimer>>().borrow_mut();
+    let mut s = state.borrow_mut();
+    let global_timer = s.borrow_mut::<GlobalTimer>();
     global_timer.new_timeout(deadline).boxed_local()
   };
   let _ = timer_fut.await;
