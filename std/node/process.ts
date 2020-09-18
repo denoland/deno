@@ -38,6 +38,67 @@ export const process = {
   platform,
   version,
   versions,
+  get stderr() {
+    return {
+      fd: Deno.stderr.rid,
+      get isTTY(): boolean {
+        return Deno.isatty(this.fd);
+      },
+      pipe(_destination: Deno.Writer, _options: { end: boolean }): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+      // eslint-disable-next-line @typescript-eslint/ban-types
+      write(_chunk: string | Uint8Array, _callback: Function): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+      // eslint-disable-next-line @typescript-eslint/ban-types
+      on(_event: string, _callback: Function): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+    };
+  },
+  get stdin() {
+    return {
+      fd: Deno.stdin.rid,
+      get isTTY(): boolean {
+        return Deno.isatty(this.fd);
+      },
+      read(_size: number): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+      // eslint-disable-next-line @typescript-eslint/ban-types
+      on(_event: string, _callback: Function): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+    };
+  },
+  get stdout() {
+    return {
+      fd: Deno.stdout.rid,
+      get isTTY(): boolean {
+        return Deno.isatty(this.fd);
+      },
+      pipe(_destination: Deno.Writer, _options: { end: boolean }): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+      // eslint-disable-next-line @typescript-eslint/ban-types
+      write(_chunk: string | Uint8Array, _callback: Function): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+      // eslint-disable-next-line @typescript-eslint/ban-types
+      on(_event: string, _callback: Function): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
+      },
+    };
+  },
 
   /** https://nodejs.org/api/process.html#process_process_events */
   // on is not exported by node, it is only available within process:
