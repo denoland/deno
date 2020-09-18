@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.4.0"
+version = "1.4.1"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,8 +20,8 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.57.0" }
-deno_web = { path = "../op_crates/web", version = "0.8.0" }
+deno_core = { path = "../core", version = "0.58.0" }
+deno_web = { path = "../op_crates/web", version = "0.9.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.1.0" }
 
 [target.'cfg(windows)'.build-dependencies]
@@ -29,10 +29,10 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.57.0" }
+deno_core = { path = "../core", version = "0.58.0" }
 deno_doc = "0.1.9"
 deno_lint = { version = "0.2.0", features = ["json"] }
-deno_web = { path = "../op_crates/web", version = "0.8.0" }
+deno_web = { path = "../op_crates/web", version = "0.9.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.1.0" }
 
 atty = "0.2.14"
@@ -71,7 +71,7 @@ tokio-rustls = "0.14.1"
 # Keep in-sync with warp.
 tokio-tungstenite = "0.11.0"
 webpki = "0.21.3"
-webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'. 
+webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'.
 walkdir = "2.3.1"
 warp = { version = "0.2.5", features = ["tls"] }
 semver-parser = "0.9.0"
