@@ -8,6 +8,8 @@ use crate::js;
 use crate::metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
+use crate::ops::worker_host::WorkerId;
+use crate::ops::worker_host::WorkersTable;
 use crate::state::CliState;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -138,6 +140,9 @@ impl Worker {
       }
 
       op_state.put(Metrics::default());
+
+      op_state.put(WorkersTable::default());
+      op_state.put(WorkerId::default());
     }
     let inspector = {
       let global_state = &state.global_state;
