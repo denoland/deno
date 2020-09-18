@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#![deny(warnings)]
+
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -14,10 +16,9 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use reqwest::header::HeaderMap;
+
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
-use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Client;
 use reqwest::Method;
@@ -30,6 +31,8 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+pub use reqwest; // Re-export reqwest
 
 pub fn init(isolate: &mut JsRuntime) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -63,15 +66,6 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FetchArgs {
-  method: Option<String>,
-  url: String,
-  headers: Vec<(String, String)>,
-  client_rid: Option<u32>,
-}
-
 pub async fn op_fetch<FP>(
   state: Rc<RefCell<OpState>>,
   args: Value,
@@ -80,6 +74,15 @@ pub async fn op_fetch<FP>(
 where
   FP: FetchPermissions + 'static,
 {
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct FetchArgs {
+    method: Option<String>,
+    url: String,
+    headers: Vec<(String, String)>,
+    client_rid: Option<u32>,
+  }
+
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
@@ -181,23 +184,13 @@ pub async fn op_fetch_read(
     let mut chunk_fut = response.chunk().boxed_local();
     let r = ready!(chunk_fut.poll_unpin(cx))?;
     if let Some(chunk) = r {
+      // TODO(ry) This is terribly inefficient. Make this zero-copy.
       Ok(json!({ "chunk": &*chunk })).into()
     } else {
       Ok(json!({ "chunk": null })).into()
     }
   });
   f.await
-  /*
-  // I'm programming this as I want it to be programmed, even though it might be
-  // incorrect, normally we would use poll_fn here. We need to make this await pattern work.
-  let chunk = response.chunk().await?;
-  if let Some(chunk) = chunk {
-    // TODO(ry) This is terribly inefficient. Make this zero-copy.
-    Ok(json!({ "chunk": &*chunk }))
-  } else {
-    Ok(json!({ "chunk": null }))
-  }
-  */
 }
 
 struct HttpClientResource {
@@ -245,21 +238,13 @@ where
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
-  let mut headers = HeaderMap::new();
-  // TODO(ry) set the verison correctly.
-  headers.insert(USER_AGENT, format!("Deno/{}", "x.x.x").parse().unwrap());
-  let mut builder = Client::builder()
-    .redirect(Policy::none())
-    .default_headers(headers)
-    .use_rustls_tls();
-
+  let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
   if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
     builder = builder.add_root_certificate(cert);
   }
-
   builder
     .build()
     .map_err(|_| deno_core::error::generic_error("Unable to build http client"))
