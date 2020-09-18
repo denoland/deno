@@ -46,6 +46,7 @@ pub fn init(isolate: &mut JsRuntime) {
     manifest_dir.join("02_abort_signal.js"),
     manifest_dir.join("08_text_encoding.js"),
     manifest_dir.join("11_url.js"),
+    manifest_dir.join("21_filereader.js"),
   ];
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
