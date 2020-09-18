@@ -405,7 +405,7 @@
 
     switch (typeof value) {
       case "string":
-        return value;
+        return green(quoteString(value));
       case "number": // Numbers are yellow
         // Special handling of -0
         return yellow(Object.is(value, -0) ? "-0" : `${value}`);
@@ -1265,8 +1265,12 @@
       if (a > 0) {
         string += " ";
       }
-      // Use default maximum depth for null or undefined arguments.
-      string += inspectValue(args[a], new Set(), 0, rInspectOptions);
+      if (typeof args[a] == "string") {
+        string += args[a];
+      } else {
+        // Use default maximum depth for null or undefined arguments.
+        string += inspectValue(args[a], new Set(), 0, rInspectOptions);
+      }
     }
 
     if (rInspectOptions.indentLevel > 0) {
@@ -1543,16 +1547,12 @@
     value,
     inspectOptions = {},
   ) {
-    if (typeof value === "string") {
-      return value;
-    } else {
-      return inspectValue(value, new Set(), 0, {
-        ...DEFAULT_INSPECT_OPTIONS,
-        ...inspectOptions,
-        // TODO(nayeemrmn): Indent level is not supported.
-        indentLevel: 0,
-      });
-    }
+    return inspectValue(value, new Set(), 0, {
+      ...DEFAULT_INSPECT_OPTIONS,
+      ...inspectOptions,
+      // TODO(nayeemrmn): Indent level is not supported.
+      indentLevel: 0,
+    });
   }
 
   // Expose these fields to internalObject for tests.
