@@ -403,6 +403,7 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_doc",
+ "deno_fetch",
  "deno_lint",
  "deno_web",
  "dissimilar",
@@ -481,6 +482,15 @@ dependencies = [
  "swc_common",
  "swc_ecmascript",
  "termcolor",
+]
+
+[[package]]
+name = "deno_fetch"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "reqwest",
+ "serde",
 ]
 
 [[package]]

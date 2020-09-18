@@ -655,8 +655,14 @@ Deno.test("testErrors", function (): void {
 
   assertEquals(S("%[1]*.2f", "a", "p"), "%!(BAD WIDTH 'a')");
 
-  assertEquals(S("A", "a", "p"), "A%!(EXTRA 'a' 'p')");
-  assertEquals(S("%[2]s %[2]s", "a", "p"), "p p%!(EXTRA 'a')");
+  assertEquals(
+    S("A", "a", "p"),
+    `A%!(EXTRA '\x1b[32m"a"\x1b[39m' '\x1b[32m"p"\x1b[39m')`,
+  );
+  assertEquals(
+    S("%[2]s %[2]s", "a", "p"),
+    `p p%!(EXTRA '\x1b[32m"a"\x1b[39m')`,
+  );
 
   // remains to be determined how to handle bad indices ...
   // (realistically) the entire error handling is still up for grabs.
