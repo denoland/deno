@@ -1053,7 +1053,7 @@ fn repl_test_console_log() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("hello\nundefined\nworld\n"));
+  assert!(out.ends_with("hello\nundefined\n\"world\"\n"));
   assert!(err.is_empty());
 }
 

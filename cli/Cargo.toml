@@ -22,6 +22,7 @@ path = "./bench/main.rs"
 [build-dependencies]
 deno_core = { path = "../core", version = "0.57.0" }
 deno_web = { path = "../op_crates/web", version = "0.8.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.1.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
@@ -32,6 +33,7 @@ deno_core = { path = "../core", version = "0.57.0" }
 deno_doc = "0.1.9"
 deno_lint = { version = "0.2.0", features = ["json"] }
 deno_web = { path = "../op_crates/web", version = "0.8.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.1.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"

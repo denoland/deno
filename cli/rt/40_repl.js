@@ -63,7 +63,7 @@
         ? undefined
         : result;
       if (!isCloseCalled()) {
-        replLog(lastEvalResult);
+        replLog("%o", lastEvalResult);
       }
     } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
       // Recoverable compiler error

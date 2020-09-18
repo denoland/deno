@@ -1,10 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  function isTypedArray(x) {
-    return ArrayBuffer.isView(x) && !(x instanceof DataView);
-  }
-
   function isInvalidDate(x) {
     return isNaN(x.getTime());
   }
@@ -149,40 +145,12 @@
     }
   }
 
-  function getHeaderValueParams(value) {
-    const params = new Map();
-    // Forced to do so for some Map constructor param mismatch
-    value
-      .split(";")
-      .slice(1)
-      .map((s) => s.trim().split("="))
-      .filter((arr) => arr.length > 1)
-      .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
-      .forEach(([k, v]) => params.set(k, v));
-    return params;
-  }
-
-  function hasHeaderValueOf(s, value) {
-    return new RegExp(`^${value}[\t\s]*;?`).test(s);
-  }
-
-  /** An internal function which provides a function name for some generated
- * functions, so stack traces are a bit more readable.
- */
-  function setFunctionName(fn, value) {
-    Object.defineProperty(fn, "name", { value, configurable: true });
-  }
-
   window.__bootstrap.webUtil = {
-    isTypedArray,
     isInvalidDate,
     requiredArguments,
     immutableDefine,
     hasOwnProperty,
     cloneValue,
     defineEnumerableProps,
-    getHeaderValueParams,
-    hasHeaderValueOf,
-    setFunctionName,
   };
 })(this);
