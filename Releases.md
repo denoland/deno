@@ -6,6 +6,95 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.0 / 2020.09.13
+
+- feat: Implement WebSocket API (#7051, #7437)
+- feat(console): print proxy details (#7139)
+- feat(console): support CSS styling with "%c" (#7357)
+- feat(core): Add JSON ops (#7336)
+- feat(fmt, lint): show number of checked files (#7312)
+- feat(info): Dependency count and sizes (#6786, #7439)
+- feat(install): bundle before installation (#5276)
+- feat(op_crates/web): Add all single byte encodings to TextDecoder (#6178)
+- feat(unstable): Add Deno.systemMemoryInfo() (#7350)
+- feat(unstable): deno run --watch (#7382)
+- feat(unstable): deno test --coverage (#6901)
+- feat(unstable): enable importsNotUsedAsValues by default (#7413)
+- feat(unstable): enable isolatedModules by default (#7327)
+- fix: Empty Response body returns 0-byte array (#7387)
+- fix: panic on process.kill() after run (#7405)
+- fix: colors mismatch (#7367)
+- fix: compiler config resolution using relative paths (#7392)
+- fix(core): panic on big string allocation (#7395)
+- fix(op_crates/web): Use "deno:" URLs for internal script specifiers (#7383)
+- refactor: Improve placeholder module names (#7430)
+- refactor: improve tsc diagnostics (#7420)
+- refactor(core): merge CoreIsolate and EsIsolate into JsRuntime (#7370, #7373,
+  #7415)
+- refactor(core): Use gotham-like state for ops (#7385)
+- upgrade: deno_doc, deno_lint, dprint, swc (#7381, #7391, #7402, #7434)
+- upgrade: rusty_v8 0.10.0 / V8 8.7.75 (#7429)
+
+Changes in std version 0.69.0:
+
+- BREAKING(std/fs): remove writeJson and writeJsonSync (#7256)
+- BREAKING(std/fs): remove readJson and readJsonSync (#7255)
+- BREAKING(std/ws): remove connect method (#7403)
+
+### 1.3.3 / 2020.09.04
+
+- feat(unstable): Add Deno.futime and Deno.futimeSync (#7266)
+- feat(unstable): Allow deno lint to read from stdin (#7263)
+- fix: Don't expose globalThis.__bootstrap (#7344)
+- fix: Handle bad redirects more gracefully (#7342)
+- fix: Handling of + character in URLSearchParams (#7314)
+- fix: Regex for TS refereces and deno-types (#7333)
+- fix: Set maximum size of thread pool to 31 (#7290)
+- fix: Support missing features in --no-check (#7289)
+- fix: Use millisecond precision for Deno.futime and Deno.utime (#7299)
+- fix: Use upstream type definitions for WebAssembly (#7216)
+- refactor: Compiler config in Rust (#7228)
+- refactor: Support env_logger / RUST_LOG (#7142)
+- refactor: Support multiline diagnostics in linter (#7303)
+- refactor: Use dependency analyzer from SWC (#7334)
+- upgrade: rust 1.46.0 (#7251)
+- upgrade: swc, deno_doc, deno_lint, dprint (#7276, #7332)
+
+Changes in std version 0.68.0:
+
+- refactor(std/uuid): remove dependency on isString from std/node (#7273)
+
+### 1.3.2 / 2020.08.29
+
+- fix(cli): revert "never type check deno info #6978" (#7199)
+- fix(console): handle escape sequences when logging objects (#7171)
+- fix(doc): stack overflow for .d.ts files (#7167)
+- fix(install): Strip "@..." suffixes from inferred names (#7223)
+- fix(lint): use recommended rules set (#7222)
+- fix(url): Add missing part assignment (#7239)
+- fix(url): Don't encode "'" in non-special query strings (#7152)
+- fix(web): throw TypeError on invalid input types in TextDecoder.decode()
+  (#7179)
+- build: Move benchmarks to Rust (#7134)
+- upgrade: swc, dprint, deno_lint, deno_doc (#7162, #7194)
+- upgrade: rusty_v8 0.9.1 / V8 8.6.334 (#7243)
+- upgrade: TypeScript 4.0 (#6514)
+
+Changes in std version 0.67.0:
+
+- BREAKING(std/wasi): rename Module to Context (#7110)
+- BREAKING(std/wasi): use record for exports (#7109)
+- feat(std/fmt): add bright color variations (#7241)
+- feat(std/node): add URL export (#7132)
+- feat(std/testing): add assertNotMatch (#6775)
+- fix(std/encoding/toml): Comment after arrays causing incorrect output (#7224)
+- fix(std/node): "events" and "util" modules (#7170)
+- fix(std/testing): invalid dates assertion equality (#7230)
+- fix(std/wasi): always capture syscall exceptions (#7116)
+- fix(std/wasi): ignore lint errors (#7197)
+- fix(std/wasi): invalid number to bigint conversion in fd_tell (#7215)
+- fix(std/wasi): return flags from fd_fdstat_get (#7112)
+
 ### 1.3.1 / 2020.08.21
 
 - fix: Allow isolated "%"s when parsing file URLs (#7108)

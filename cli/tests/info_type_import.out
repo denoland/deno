@@ -1,0 +1,5 @@
+local: [WILDCARD]info_type_import.ts
+type: TypeScript
+deps: 1 unique (total [WILDCARD])
+[WILDCARD]info_type_import.ts ([WILDCARD])
+└── [WILDCARD]type_and_code.ts ([WILDCARD])

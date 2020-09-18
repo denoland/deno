@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { customInspect } = window.__bootstrap.console;
+  const customInspect = Symbol.for("Deno.customInspect");
 
   class CountQueuingStrategy {
     constructor({ highWaterMark }) {

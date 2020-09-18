@@ -1,25 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { Listener, Conn } = window.__bootstrap.net;
-  const { sendAsync, sendSync } = window.__bootstrap.dispatchJson;
 
   function opConnectTls(
     args,
   ) {
-    return sendAsync("op_connect_tls", args);
+    return core.jsonOpAsync("op_connect_tls", args);
   }
 
   function opAcceptTLS(rid) {
-    return sendAsync("op_accept_tls", { rid });
+    return core.jsonOpAsync("op_accept_tls", { rid });
   }
 
   function opListenTls(args) {
-    return sendSync("op_listen_tls", args);
+    return core.jsonOpSync("op_listen_tls", args);
   }
 
   function opStartTls(args) {
-    return sendAsync("op_start_tls", args);
+    return core.jsonOpAsync("op_start_tls", args);
   }
 
   async function connectTls({

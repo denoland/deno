@@ -8,6 +8,8 @@ more about the runtime.
 - [Hello World](./examples/hello_world)
 - [Import and Export Modules](./examples/import_export)
 - [How to Manage Dependencies](./examples/manage_dependencies)
+- [Fetch Data](./examples/fetch_data)
+- [Read and Write Files](./examples/read_write_files)
 
 ## Advanced
 

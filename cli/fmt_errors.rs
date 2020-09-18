@@ -3,7 +3,8 @@
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use deno_core::error::JsError as CoreJsError;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
@@ -103,29 +104,29 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-/// Wrapper around deno_core::JSError which provides color to_string.
+/// Wrapper around deno_core::JsError which provides color to_string.
 #[derive(Debug)]
-pub struct JSError(deno_core::JSError);
+pub struct JsError(CoreJsError);
 
-impl JSError {
+impl JsError {
   pub fn create(
-    core_js_error: deno_core::JSError,
+    core_js_error: CoreJsError,
     source_map_getter: &impl SourceMapGetter,
-  ) -> ErrBox {
+  ) -> AnyError {
     let core_js_error = apply_source_map(&core_js_error, source_map_getter);
     let js_error = Self(core_js_error);
-    ErrBox::from(js_error)
+    js_error.into()
   }
 }
 
-impl Deref for JSError {
-  type Target = deno_core::JSError;
+impl Deref for JsError {
+  type Target = CoreJsError;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl fmt::Display for JSError {
+impl fmt::Display for JsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut formatted_frames = self.0.formatted_frames.clone();
 
@@ -170,7 +171,7 @@ impl fmt::Display for JSError {
   }
 }
 
-impl Error for JSError {}
+impl Error for JsError {}
 
 #[cfg(test)]
 mod tests {

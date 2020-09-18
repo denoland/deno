@@ -1,24 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::diagnostics::Diagnostic;
-use crate::op_error::OpError;
+
+use crate::diagnostics::Diagnostics;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
-use crate::state::State;
-use deno_core::CoreIsolate;
+use deno_core::error::AnyError;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
-use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op(
-    "op_apply_source_map",
-    s.stateful_json_op(op_apply_source_map),
-  );
-  i.register_op(
-    "op_format_diagnostic",
-    s.stateful_json_op(op_format_diagnostic),
-  );
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_apply_source_map", op_apply_source_map);
+  super::reg_json_sync(rt, "op_format_diagnostic", op_format_diagnostic);
 }
 
 #[derive(Deserialize)]
@@ -30,10 +24,10 @@ struct ApplySourceMap {
 }
 
 fn op_apply_source_map(
-  state: &Rc<State>,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, AnyError> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -43,21 +37,21 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      &state.global_state.ts_compiler,
+      &super::cli_state(state).global_state.ts_compiler,
     );
 
-  Ok(JsonOp::Sync(json!({
+  Ok(json!({
     "fileName": orig_file_name,
     "lineNumber": orig_line_number as u32,
     "columnNumber": orig_column_number as u32,
-  })))
+  }))
 }
 
 fn op_format_diagnostic(
-  _state: &Rc<State>,
+  _state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let diagnostic = serde_json::from_value::<Diagnostic>(args)?;
-  Ok(JsonOp::Sync(json!(diagnostic.to_string())))
+) -> Result<Value, AnyError> {
+  let diagnostic: Diagnostics = serde_json::from_value(args)?;
+  Ok(json!(diagnostic.to_string()))
 }

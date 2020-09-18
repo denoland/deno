@@ -1,12 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { notImplemented } = window.__bootstrap.util;
   const { getHeaderValueParams, isTypedArray } = window.__bootstrap.webUtil;
   const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
-  const { read } = window.__bootstrap.io;
-  const { close } = window.__bootstrap.resources;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   const Body = window.__bootstrap.body;
   const { ReadableStream } = window.__bootstrap.streams;
   const { MultipartBuilder } = window.__bootstrap.multipart;
@@ -17,7 +15,7 @@
   }
 
   function opCreateHttpClient(args) {
-    return sendSync("op_create_http_client", args);
+    return core.jsonOpSync("op_create_http_client", args);
   }
 
   class HttpClient {
@@ -25,7 +23,7 @@
       this.rid = rid;
     }
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -35,7 +33,7 @@
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
     }
 
-    return sendAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+    return core.jsonOpAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
   }
 
   const NULL_BODY_STATUS = [101, 204, 205, 304];
@@ -283,6 +281,7 @@
         body,
         clientRid,
       );
+      const rid = fetchResponse.bodyRid;
 
       if (
         NULL_BODY_STATUS.includes(fetchResponse.status) ||
@@ -290,29 +289,31 @@
       ) {
         // We won't use body of received response, so close it now
         // otherwise it will be kept in resource table.
-        close(fetchResponse.bodyRid);
+        core.close(fetchResponse.bodyRid);
         responseBody = null;
       } else {
         responseBody = new ReadableStream({
+          type: "bytes",
           async pull(controller) {
             try {
-              const b = new Uint8Array(1024 * 32);
-              const result = await read(fetchResponse.bodyRid, b);
-              if (result === null) {
+              const result = await core.jsonOpAsync("op_fetch_read", { rid });
+              if (!result || !result.chunk) {
                 controller.close();
-                return close(fetchResponse.bodyRid);
+                core.close(rid);
+              } else {
+                // TODO(ry) This is terribly inefficient. Make this zero-copy.
+                const chunk = new Uint8Array(result.chunk);
+                controller.enqueue(chunk);
               }
-
-              controller.enqueue(b.subarray(0, result));
             } catch (e) {
               controller.error(e);
               controller.close();
-              close(fetchResponse.bodyRid);
+              core.close(rid);
             }
           },
           cancel() {
             // When reader.cancel() is called
-            close(fetchResponse.bodyRid);
+            core.close(rid);
           },
         });
       }

@@ -5,6 +5,13 @@ unitTest(function globalThisExists(): void {
   assert(globalThis != null);
 });
 
+unitTest(function noInternalGlobals(): void {
+  // globalThis.__bootstrap should not be there.
+  for (const key of Object.keys(globalThis)) {
+    assert(!key.startsWith("_"));
+  }
+});
+
 unitTest(function windowExists(): void {
   assert(window != null);
 });

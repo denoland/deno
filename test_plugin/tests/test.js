@@ -65,11 +65,11 @@ function runTestOpCount() {
 
   const end = Deno.metrics();
 
-  if (end.opsCompleted - start.opsCompleted !== 1) {
+  if (end.opsCompleted - start.opsCompleted !== 2) {
     // one op for the plugin and one for Deno.metrics
     throw new Error("The opsCompleted metric is not correct!");
   }
-  if (end.opsDispatched - start.opsDispatched !== 1) {
+  if (end.opsDispatched - start.opsDispatched !== 2) {
     // one op for the plugin and one for Deno.metrics
     throw new Error("The opsDispatched metric is not correct!");
   }

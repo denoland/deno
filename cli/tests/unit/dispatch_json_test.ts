@@ -2,27 +2,7 @@ import {
   assertStrictEquals,
   unitTest,
   assertMatch,
-  unreachable,
 } from "./test_util.ts";
-
-const openErrorStackPattern = new RegExp(
-  `^.*
-    at unwrapResponse \\(.*dispatch_json\\.js:.*\\)
-    at sendAsync \\(.*dispatch_json\\.js:.*\\)
-    at async Object\\.open \\(.*files\\.js:.*\\).*$`,
-  "ms",
-);
-
-unitTest(
-  { perms: { read: true } },
-  async function sendAsyncStackTrace(): Promise<void> {
-    await Deno.open("nonexistent.txt")
-      .then(unreachable)
-      .catch((error): void => {
-        assertMatch(error.stack, openErrorStackPattern);
-      });
-  },
-);
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -39,7 +19,7 @@ unitTest(function malformedJsonControlBuffer(): void {
   const resText = new TextDecoder().decode(resBuf);
   const resObj = JSON.parse(resText);
   assertStrictEquals(resObj.ok, undefined);
-  assertStrictEquals(resObj.err.kind, "TypeError");
+  assertStrictEquals(resObj.err.className, "SyntaxError");
   assertMatch(resObj.err.message, /\bexpected value\b/);
 });
 
@@ -65,6 +45,6 @@ unitTest(function invalidPromiseId(): void {
   const resObj = JSON.parse(resText);
   console.error(resText);
   assertStrictEquals(resObj.ok, undefined);
-  assertStrictEquals(resObj.err.kind, "TypeError");
+  assertStrictEquals(resObj.err.className, "TypeError");
   assertMatch(resObj.err.message, /\bpromiseId\b/);
 });

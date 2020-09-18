@@ -47,13 +47,18 @@ export function format(date: Date, formatString: string): string {
  * @return Number of the day in year
  */
 export function dayOfYear(date: Date): number {
-  const yearStart = new Date(date.getFullYear(), 0, 0);
+  // Values from 0 to 99 map to the years 1900 to 1999. All other values are the actual year. (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/Date)
+  // Using setFullYear as a workaround
+
+  const yearStart = new Date(date);
+
+  yearStart.setUTCFullYear(date.getUTCFullYear(), 0, 0);
   const diff = date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
+
   return Math.floor(diff / DAY);
 }
-
 /**
  * Get number of the week in the year (ISO-8601)
  * @return Number of the week in year
@@ -129,7 +134,7 @@ export function isLeap(year: Date | number): boolean {
 }
 
 export type Unit =
-  | "miliseconds"
+  | "milliseconds"
   | "seconds"
   | "minutes"
   | "hours"
@@ -163,7 +168,7 @@ export function difference(
   options?: DifferenceOptions,
 ): DifferenceFormat {
   const uniqueUnits = options?.units ? [...new Set(options?.units)] : [
-    "miliseconds",
+    "milliseconds",
     "seconds",
     "minutes",
     "hours",
@@ -182,8 +187,8 @@ export function difference(
 
   for (const uniqueUnit of uniqueUnits) {
     switch (uniqueUnit) {
-      case "miliseconds":
-        differences.miliseconds = differenceInMs;
+      case "milliseconds":
+        differences.milliseconds = differenceInMs;
         break;
       case "seconds":
         differences.seconds = Math.floor(differenceInMs / SECOND);

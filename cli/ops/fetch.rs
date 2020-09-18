@@ -1,27 +1,29 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::{StreamResource, StreamResourceHolder};
-use crate::http_util::{create_http_client, HttpBody};
-use crate::op_error::OpError;
-use crate::state::State;
-use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
+
+use crate::http_util::create_http_client;
+use deno_core::error::bad_resource_id;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::url;
+use deno_core::BufVec;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use reqwest::Client;
+use reqwest::Response;
+use serde::Deserialize;
+use serde_json::Value;
+use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
-  i.register_op(
-    "op_create_http_client",
-    s.stateful_json_op2(op_create_http_client),
-  );
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_async(rt, "op_fetch", op_fetch);
+  super::reg_json_async(rt, "op_fetch_read", op_fetch_read);
+  super::reg_json_sync(rt, "op_create_http_client", op_create_http_client);
 }
 
 #[derive(Deserialize)]
@@ -33,45 +35,41 @@ struct FetchArgs {
   client_rid: Option<u32>,
 }
 
-pub fn op_fetch(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+async fn op_fetch(
+  state: Rc<RefCell<OpState>>,
   args: Value,
-  data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+  data: BufVec,
+) -> Result<Value, AnyError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
-  let resource_table_ = isolate_state.resource_table.borrow();
 
-  let mut client_ref_mut;
   let client = if let Some(rid) = args.client_rid {
-    let r = resource_table_
+    let state = state.borrow();
+    let r = state
+      .resource_table
       .get::<HttpClientResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
-    &r.client
+      .ok_or_else(bad_resource_id)?;
+    r.client.clone()
   } else {
-    client_ref_mut = state.http_client.borrow_mut();
-    &mut *client_ref_mut
+    let state_ = state.borrow();
+    let client = state_.borrow::<reqwest::Client>();
+    client.clone()
   };
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())
-      .map_err(|e| OpError::other(e.to_string()))?,
+    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(OpError::from)?;
+  let url_ = url::Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(OpError::type_error(format!(
-      "scheme '{}' not supported",
-      scheme
-    )));
+    return Err(type_error(format!("scheme '{}' not supported", scheme)));
   }
 
-  state.check_net_url(&url_)?;
+  super::cli_state2(&state).check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
 
@@ -88,36 +86,72 @@ pub fn op_fetch(
   }
   debug!("Before fetch {}", url);
 
-  let resource_table = isolate_state.resource_table.clone();
-  let future = async move {
-    let res = request.send().await?;
-    debug!("Fetch response {}", url);
-    let status = res.status();
-    let mut res_headers = Vec::new();
-    for (key, val) in res.headers().iter() {
-      res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
+  let res = request.send().await?;
+
+  debug!("Fetch response {}", url);
+  let status = res.status();
+  let mut res_headers = Vec::new();
+  for (key, val) in res.headers().iter() {
+    res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
+  }
+
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add("httpBody", Box::new(res));
+
+  Ok(json!({
+    "bodyRid": rid,
+    "status": status.as_u16(),
+    "statusText": status.canonical_reason().unwrap_or(""),
+    "headers": res_headers
+  }))
+}
+
+async fn op_fetch_read(
+  state: Rc<RefCell<OpState>>,
+  args: Value,
+  _data: BufVec,
+) -> Result<Value, AnyError> {
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct Args {
+    rid: u32,
+  }
+
+  let args: Args = serde_json::from_value(args)?;
+  let rid = args.rid;
+
+  use futures::future::poll_fn;
+  use futures::ready;
+  use futures::FutureExt;
+  let f = poll_fn(move |cx| {
+    let mut state = state.borrow_mut();
+    let response = state
+      .resource_table
+      .get_mut::<Response>(rid as u32)
+      .ok_or_else(bad_resource_id)?;
+
+    let mut chunk_fut = response.chunk().boxed_local();
+    let r = ready!(chunk_fut.poll_unpin(cx))?;
+    if let Some(chunk) = r {
+      Ok(json!({ "chunk": &*chunk })).into()
+    } else {
+      Ok(json!({ "chunk": null })).into()
     }
-
-    let body = HttpBody::from(res);
-    let mut resource_table = resource_table.borrow_mut();
-    let rid = resource_table.add(
-      "httpBody",
-      Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
-        Box::new(body),
-      ))),
-    );
-
-    let json_res = json!({
-      "bodyRid": rid,
-      "status": status.as_u16(),
-      "statusText": status.canonical_reason().unwrap_or(""),
-      "headers": res_headers
-    });
-
-    Ok(json_res)
-  };
-
-  Ok(JsonOp::Async(future.boxed_local()))
+  });
+  f.await
+  /*
+  // I'm programming this as I want it to be programmed, even though it might be
+  // incorrect, normally we would use poll_fn here. We need to make this await pattern work.
+  let chunk = response.chunk().await?;
+  if let Some(chunk) = chunk {
+    // TODO(ry) This is terribly inefficient. Make this zero-copy.
+    Ok(json!({ "chunk": &*chunk }))
+  } else {
+    Ok(json!({ "chunk": null }))
+  }
+  */
 }
 
 struct HttpClientResource {
@@ -138,21 +172,20 @@ struct CreateHttpClientOptions {
 }
 
 fn op_create_http_client(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, AnyError> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   if let Some(ca_file) = args.ca_file.clone() {
-    state.check_read(&PathBuf::from(ca_file))?;
+    super::cli_state(state).check_read(&PathBuf::from(ca_file))?;
   }
 
   let client = create_http_client(args.ca_file.as_deref()).unwrap();
 
-  let rid =
-    resource_table.add("httpClient", Box::new(HttpClientResource::new(client)));
-  Ok(JsonOp::Sync(json!(rid)))
+  let rid = state
+    .resource_table
+    .add("httpClient", Box::new(HttpClientResource::new(client)));
+  Ok(json!(rid))
 }

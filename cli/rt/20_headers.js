@@ -3,7 +3,6 @@
 ((window) => {
   const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { requiredArguments } = window.__bootstrap.webUtil;
-  const { customInspect } = window.__bootstrap.console;
 
   // From node-fetch
   // Copyright (c) 2016 David Frank. MIT License.
@@ -194,7 +193,7 @@
       }
     }
 
-    [customInspect]() {
+    [Symbol.for("Deno.customInspect")]() {
       let length = this[headersData].length;
       let output = "";
       for (const [key, value] of this[headersData]) {

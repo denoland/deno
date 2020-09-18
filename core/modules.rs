@@ -2,15 +2,15 @@
 
 use rusty_v8 as v8;
 
+use crate::error::generic_error;
+use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
-use crate::ErrBox;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -49,8 +49,9 @@ pub struct ModuleSource {
 }
 
 pub type PrepareLoadFuture =
-  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, ErrBox>)>;
-pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, AnyError>)>;
+pub type ModuleSourceFuture =
+  dyn Future<Output = Result<ModuleSource, AnyError>>;
 
 pub trait ModuleLoader {
   /// Returns an absolute URL.
@@ -64,8 +65,8 @@ pub trait ModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox>;
+    _is_main: bool,
+  ) -> Result<ModuleSpecifier, AnyError>;
 
   /// Given ModuleSpecifier, load its source code.
   ///
@@ -83,7 +84,7 @@ pub trait ModuleLoader {
   ///
   /// For example implementor might download multiple modules in
   /// parallel and transpile them to final JS sources before
-  /// yielding control back to Isolate.
+  /// yielding control back to the runtime.
   ///
   /// It's not required to implement this method.
   fn prepare_load(
@@ -92,8 +93,33 @@ pub trait ModuleLoader {
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     async { Ok(()) }.boxed_local()
+  }
+}
+
+/// Placeholder structure used when creating
+/// a runtime that doesn't support module loading.
+pub(crate) struct NoopModuleLoader;
+
+impl ModuleLoader for NoopModuleLoader {
+  fn resolve(
+    &self,
+    _specifier: &str,
+    _referrer: &str,
+    _is_main: bool,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    Err(generic_error("Module loading is not supported"))
+  }
+
+  fn load(
+    &self,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<ModuleSpecifier>,
+    _is_dyn_import: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    async { Err(generic_error("Module loading is not supported")) }
+      .boxed_local()
   }
 }
 
@@ -112,8 +138,7 @@ pub enum LoadState {
   Done,
 }
 
-/// This future is used to implement parallel async module loading without
-/// that is consumed by the isolate.
+/// This future is used to implement parallel async module loading.
 pub struct RecursiveModuleLoad {
   kind: Kind,
   // TODO(bartlomieju): in future this value should
@@ -165,7 +190,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, ErrBox>) {
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         let spec = match self.loader.resolve(specifier, ".", true) {
@@ -200,7 +225,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  fn add_root(&mut self) -> Result<(), ErrBox> {
+  fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         self.loader.resolve(specifier, ".", true)?
@@ -250,7 +275,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<ModuleSource, ErrBox>;
+  type Item = Result<ModuleSource, AnyError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -338,6 +363,7 @@ impl ModuleNameMap {
   }
 
   /// Check if a name is an alias to another module.
+  #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
     let cond = self.inner.get(name);
     matches!(cond, Some(SymbolicModule::Alias(_)))
@@ -402,6 +428,7 @@ impl Modules {
     self.by_name.alias(name.to_owned(), target.to_owned());
   }
 
+  #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
     self.by_name.is_alias(name)
   }
@@ -412,136 +439,14 @@ impl Modules {
     }
     self.info.get(&id)
   }
-
-  pub fn deps(&self, module_specifier: &ModuleSpecifier) -> Option<Deps> {
-    Deps::new(self, module_specifier)
-  }
-}
-
-/// This is a tree structure representing the dependencies of a given module.
-/// Use Modules::deps to construct it. The 'deps' member is None if this module
-/// was already seen elsewhere in the tree.
-#[derive(Debug, PartialEq)]
-pub struct Deps {
-  pub name: String,
-  pub deps: Option<Vec<Deps>>,
-  prefix: String,
-  is_last: bool,
-}
-
-impl Deps {
-  fn new(
-    modules: &Modules,
-    module_specifier: &ModuleSpecifier,
-  ) -> Option<Deps> {
-    let mut seen = HashSet::new();
-    Self::helper(&mut seen, "".to_string(), true, modules, module_specifier)
-  }
-
-  fn helper(
-    seen: &mut HashSet<String>,
-    prefix: String,
-    is_last: bool,
-    modules: &Modules,
-    module_specifier: &ModuleSpecifier,
-  ) -> Option<Deps> {
-    let name = module_specifier.to_string();
-    if seen.contains(&name) {
-      Some(Deps {
-        name,
-        prefix,
-        deps: None,
-        is_last,
-      })
-    } else {
-      let mod_id = modules.get_id(&name)?;
-      let children = modules.get_children(mod_id).unwrap();
-      seen.insert(name.to_string());
-      let child_count = children.len();
-      let deps: Vec<Deps> = children
-        .iter()
-        .enumerate()
-        .map(|(index, dep_specifier)| {
-          let new_is_last = index == child_count - 1;
-          let mut new_prefix = prefix.clone();
-          new_prefix.push(if is_last { ' ' } else { '│' });
-          new_prefix.push(' ');
-
-          Self::helper(seen, new_prefix, new_is_last, modules, dep_specifier)
-        })
-        // If any of the children are missing, return None.
-        .collect::<Option<_>>()?;
-
-      Some(Deps {
-        name,
-        prefix,
-        deps: Some(deps),
-        is_last,
-      })
-    }
-  }
-
-  pub fn to_json(&self) -> serde_json::Value {
-    let children;
-    if let Some(deps) = &self.deps {
-      children = deps.iter().map(|c| c.to_json()).collect();
-    } else {
-      children = Vec::new()
-    }
-    serde_json::json!([&self.name, children])
-  }
-}
-
-impl fmt::Display for Deps {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut has_children = false;
-    if let Some(ref deps) = self.deps {
-      has_children = !deps.is_empty();
-    }
-    write!(
-      f,
-      "{}{}─{} {}",
-      self.prefix,
-      if self.is_last { "└" } else { "├" },
-      if has_children { "┬" } else { "─" },
-      self.name
-    )?;
-
-    if let Some(ref deps) = self.deps {
-      for d in deps {
-        write!(f, "\n{}", d)?;
-      }
-    }
-    Ok(())
-  }
-}
-
-#[macro_export]
-macro_rules! crate_modules {
-  () => {
-    pub const DENO_CRATE_PATH: &'static str = env!("CARGO_MANIFEST_DIR");
-  };
-}
-
-#[macro_export]
-macro_rules! include_crate_modules {
-  ( $( $x:ident ),* ) => {
-    {
-      let mut temp: HashMap<String, String> = HashMap::new();
-      $(
-        temp.insert(stringify!($x).to_string(), $x::DENO_CRATE_PATH.to_string());
-      )*
-      temp
-    }
-  };
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::es_isolate::EsIsolate;
   use crate::js_check;
-  use crate::StartupData;
+  use crate::JsRuntime;
+  use crate::RuntimeOptions;
   use futures::future::FutureExt;
   use std::error::Error;
   use std::fmt;
@@ -553,17 +458,16 @@ mod tests {
   // even though we are only using poll() in these tests and not Tokio, we must
   // nevertheless run it in the tokio executor. Ideally run_in_task can be
   // removed in the future.
-  use crate::core_isolate::tests::run_in_task;
+  use crate::runtime::tests::run_in_task;
 
+  #[derive(Default)]
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
   }
 
   impl MockLoader {
-    fn new() -> Self {
-      Self {
-        loads: Arc::new(Mutex::new(Vec::new())),
-      }
+    fn new() -> Rc<Self> {
+      Default::default()
     }
   }
 
@@ -618,7 +522,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Output = Result<ModuleSource, ErrBox>;
+    type Output = Result<ModuleSource, AnyError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
       let inner = self.get_mut();
@@ -649,7 +553,7 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
+    ) -> Result<ModuleSpecifier, AnyError> {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -719,12 +623,15 @@ mod tests {
   fn test_recursive_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
     let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
-    let a_id_fut = isolate.load_module(&spec, None);
+    let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    js_check(isolate.mod_evaluate(a_id));
+    js_check(runtime.mod_evaluate(a_id));
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -736,7 +643,7 @@ mod tests {
       ]
     );
 
-    let state_rc = EsIsolate::state(&isolate);
+    let state_rc = JsRuntime::state(&runtime);
     let state = state_rc.borrow();
     let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
@@ -781,14 +688,17 @@ mod tests {
   fn test_circular_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
-      let result = isolate.load_module(&spec, None).await;
+      let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      js_check(isolate.mod_evaluate(circular1_id));
+      js_check(runtime.mod_evaluate(circular1_id));
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -800,7 +710,7 @@ mod tests {
         ]
       );
 
-      let state_rc = EsIsolate::state(&isolate);
+      let state_rc = JsRuntime::state(&runtime);
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -854,15 +764,18 @@ mod tests {
   fn test_redirect_load() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
 
     let fut = async move {
       let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
-      let result = isolate.load_module(&spec, None).await;
+      let result = runtime.load_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      js_check(isolate.mod_evaluate(redirect1_id));
+      js_check(runtime.mod_evaluate(redirect1_id));
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -873,7 +786,7 @@ mod tests {
         ]
       );
 
-      let state_rc = EsIsolate::state(&isolate);
+      let state_rc = JsRuntime::state(&runtime);
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -918,10 +831,12 @@ mod tests {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
-      let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
       let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
-      let mut recursive_load = isolate.load_module(&spec, None).boxed_local();
+      let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
       assert!(result.is_pending());
@@ -964,10 +879,12 @@ mod tests {
   fn loader_disappears_after_error() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
-      let mut isolate =
-        EsIsolate::new(Rc::new(loader), StartupData::None, false);
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
       let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
-      let mut load_fut = isolate.load_module(&spec, None).boxed_local();
+      let mut load_fut = runtime.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -993,19 +910,22 @@ mod tests {
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
-    let mut isolate = EsIsolate::new(Rc::new(loader), StartupData::None, false);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
     let spec =
       ModuleSpecifier::resolve_url("file:///main_with_code.js").unwrap();
-    let main_id_fut = isolate
+    let main_id_fut = runtime
       .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    js_check(isolate.mod_evaluate(main_id));
+    js_check(runtime.mod_evaluate(main_id));
 
     let l = loads.lock().unwrap();
     assert_eq!(
@@ -1013,7 +933,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = EsIsolate::state(&isolate);
+    let state_rc = JsRuntime::state(&runtime);
     let state = state_rc.borrow();
     let modules = &state.modules;
 
@@ -1039,56 +959,4 @@ mod tests {
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
-
-  #[test]
-  fn empty_deps() {
-    let modules = Modules::new();
-    let specifier = ModuleSpecifier::resolve_url("file:///foo").unwrap();
-    assert!(modules.deps(&specifier).is_none());
-  }
-
-  #[test]
-  fn deps_to_json() {
-    fn dep(name: &str, deps: Option<Vec<Deps>>) -> Deps {
-      Deps {
-        name: name.to_string(),
-        deps,
-        prefix: "".to_string(),
-        is_last: false,
-      }
-    }
-    let deps = dep(
-      "a",
-      Some(vec![
-        dep("b", Some(vec![dep("b2", None)])),
-        dep("c", Some(vec![])),
-      ]),
-    );
-    assert_eq!(
-      serde_json::json!(["a", [["b", [["b2", []]]], ["c", []]]]),
-      deps.to_json()
-    );
-  }
-
-  /* TODO(bartlomieju): reenable
-  #[test]
-  fn deps() {
-    // "foo" -> "bar"
-    let mut modules = Modules::new();
-    modules.register(1, "foo");
-    modules.register(2, "bar");
-    modules.add_child(1, "bar");
-    let maybe_deps = modules.deps("foo");
-    assert!(maybe_deps.is_some());
-    let mut foo_deps = maybe_deps.unwrap();
-    assert_eq!(foo_deps.name, "foo");
-    assert!(foo_deps.deps.is_some());
-    let foo_children = foo_deps.deps.take().unwrap();
-    assert_eq!(foo_children.len(), 1);
-    let bar_deps = &foo_children[0];
-    assert_eq!(bar_deps.name, "bar");
-    assert_eq!(bar_deps.deps, Some(vec![]));
-  }
-
-  */
 }

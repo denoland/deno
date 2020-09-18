@@ -14,271 +14,71 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 delete Object.prototype.__proto__;
 
 ((window) => {
-  const core = Deno.core;
+  const core = window.Deno.core;
   const { assert, log, notImplemented } = window.__bootstrap.util;
-  const dispatchJson = window.__bootstrap.dispatchJson;
   const util = window.__bootstrap.util;
   const errorStack = window.__bootstrap.errorStack;
   const errors = window.__bootstrap.errors.errors;
 
-  function opNow() {
-    const res = dispatchJson.sendSync("op_now");
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
-  }
-
-  const DiagnosticCategory = {
-    0: "Log",
-    1: "Debug",
-    2: "Info",
-    3: "Error",
-    4: "Warning",
-    5: "Suggestion",
-
-    Log: 0,
-    Debug: 1,
-    Info: 2,
-    Error: 3,
-    Warning: 4,
-    Suggestion: 5,
-  };
-
-  const unstableDenoGlobalProperties = [
-    "CompilerOptions",
-    "DatagramConn",
-    "Diagnostic",
-    "DiagnosticCategory",
-    "DiagnosticItem",
-    "DiagnosticMessageChain",
-    "EnvPermissionDescriptor",
-    "HrtimePermissionDescriptor",
-    "HttpClient",
-    "LinuxSignal",
-    "Location",
-    "MacOSSignal",
-    "NetPermissionDescriptor",
-    "PermissionDescriptor",
-    "PermissionName",
-    "PermissionState",
-    "PermissionStatus",
-    "Permissions",
-    "PluginPermissionDescriptor",
-    "ReadPermissionDescriptor",
-    "RunPermissionDescriptor",
-    "ShutdownMode",
-    "Signal",
-    "SignalStream",
-    "StartTlsOptions",
-    "SymlinkOptions",
-    "TranspileOnlyResult",
-    "UnixConnectOptions",
-    "UnixListenOptions",
-    "WritePermissionDescriptor",
-    "applySourceMap",
-    "bundle",
-    "compile",
-    "connect",
-    "consoleSize",
-    "createHttpClient",
-    "fdatasync",
-    "fdatasyncSync",
-    "formatDiagnostics",
-    "fstat",
-    "fstatSync",
-    "fsync",
-    "fsyncSync",
-    "ftruncate",
-    "ftruncateSync",
-    "hostname",
-    "kill",
-    "link",
-    "linkSync",
-    "listen",
-    "listenDatagram",
-    "loadavg",
-    "mainModule",
-    "openPlugin",
-    "osRelease",
-    "permissions",
-    "ppid",
-    "setRaw",
-    "shutdown",
-    "signal",
-    "signals",
-    "startTls",
-    "symlink",
-    "symlinkSync",
-    "transpileOnly",
-    "umask",
-    "utime",
-    "utimeSync",
-  ];
-
-  function transformMessageText(messageText, code) {
-    switch (code) {
-      case 2339: {
-        const property = messageText
-          .replace(/^Property '/, "")
-          .replace(/' does not exist on type 'typeof Deno'\./, "");
-
-        if (
-          messageText.endsWith("on type 'typeof Deno'.") &&
-          unstableDenoGlobalProperties.includes(property)
-        ) {
-          return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
-        }
-        break;
-      }
-      case 2551: {
-        const suggestionMessagePattern = / Did you mean '(.+)'\?$/;
-        const property = messageText
-          .replace(/^Property '/, "")
-          .replace(/' does not exist on type 'typeof Deno'\./, "")
-          .replace(suggestionMessagePattern, "");
-        const suggestion = messageText.match(suggestionMessagePattern);
-        const replacedMessageText = messageText.replace(
-          suggestionMessagePattern,
-          "",
-        );
-        if (suggestion && unstableDenoGlobalProperties.includes(property)) {
-          const suggestedProperty = suggestion[1];
-          return `${replacedMessageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestedProperty}'?`;
-        }
-        break;
-      }
+  /**
+   * @param {import("../dts/typescript").DiagnosticRelatedInformation} diagnostic
+   */
+  function fromRelatedInformation({
+    start,
+    length,
+    file,
+    messageText: msgText,
+    ...ri
+  }) {
+    let messageText;
+    let messageChain;
+    if (typeof msgText === "object") {
+      messageChain = msgText;
+    } else {
+      messageText = msgText;
     }
-
-    return messageText;
-  }
-
-  function fromDiagnosticCategory(category) {
-    switch (category) {
-      case ts.DiagnosticCategory.Error:
-        return DiagnosticCategory.Error;
-      case ts.DiagnosticCategory.Message:
-        return DiagnosticCategory.Info;
-      case ts.DiagnosticCategory.Suggestion:
-        return DiagnosticCategory.Suggestion;
-      case ts.DiagnosticCategory.Warning:
-        return DiagnosticCategory.Warning;
-      default:
-        throw new Error(
-          `Unexpected DiagnosticCategory: "${category}"/"${
-            ts.DiagnosticCategory[category]
-          }"`,
-        );
-    }
-  }
-
-  function getSourceInformation(sourceFile, start, length) {
-    const scriptResourceName = sourceFile.fileName;
-    const {
-      line: lineNumber,
-      character: startColumn,
-    } = sourceFile.getLineAndCharacterOfPosition(start);
-    const endPosition = sourceFile.getLineAndCharacterOfPosition(
-      start + length,
-    );
-    const endColumn = lineNumber === endPosition.line
-      ? endPosition.character
-      : startColumn;
-    const lastLineInFile = sourceFile.getLineAndCharacterOfPosition(
-      sourceFile.text.length,
-    ).line;
-    const lineStart = sourceFile.getPositionOfLineAndCharacter(lineNumber, 0);
-    const lineEnd = lineNumber < lastLineInFile
-      ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
-      : sourceFile.text.length;
-    const sourceLine = sourceFile.text
-      .slice(lineStart, lineEnd)
-      .replace(/\s+$/g, "")
-      .replace("\t", " ");
-    return {
-      sourceLine,
-      lineNumber,
-      scriptResourceName,
-      startColumn,
-      endColumn,
-    };
-  }
-
-  function fromDiagnosticMessageChain(messageChain) {
-    if (!messageChain) {
-      return undefined;
-    }
-
-    return messageChain.map(({ messageText, code, category, next }) => {
-      const message = transformMessageText(messageText, code);
+    if (start !== undefined && length !== undefined && file) {
+      const startPos = file.getLineAndCharacterOfPosition(start);
+      const sourceLine = file.getFullText().split("\n")[startPos.line];
+      const fileName = file.fileName;
       return {
-        message,
-        code,
-        category: fromDiagnosticCategory(category),
-        next: fromDiagnosticMessageChain(next),
+        start: startPos,
+        end: file.getLineAndCharacterOfPosition(start + length),
+        fileName,
+        messageChain,
+        messageText,
+        sourceLine,
+        ...ri,
       };
+    } else {
+      return {
+        messageChain,
+        messageText,
+        ...ri,
+      };
+    }
+  }
+
+  /**
+   * @param {import("../dts/typescript").Diagnostic[]} diagnostics 
+   */
+  function fromTypeScriptDiagnostic(diagnostics) {
+    return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
+      const value = fromRelatedInformation(diag);
+      value.relatedInformation = ri
+        ? ri.map(fromRelatedInformation)
+        : undefined;
+      value.source = source;
+      return value;
     });
   }
 
-  function parseDiagnostic(item) {
-    const {
-      messageText,
-      category: sourceCategory,
-      code,
-      file,
-      start: startPosition,
-      length,
-    } = item;
-    const sourceInfo = file && startPosition && length
-      ? getSourceInformation(file, startPosition, length)
-      : undefined;
-    const endPosition = startPosition && length
-      ? startPosition + length
-      : undefined;
-    const category = fromDiagnosticCategory(sourceCategory);
-
-    let message;
-    let messageChain;
-    if (typeof messageText === "string") {
-      message = transformMessageText(messageText, code);
-    } else {
-      message = transformMessageText(messageText.messageText, messageText.code);
-      messageChain = fromDiagnosticMessageChain([messageText])[0];
-    }
-
-    const base = {
-      message,
-      messageChain,
-      code,
-      category,
-      startPosition,
-      endPosition,
-    };
-
-    return sourceInfo ? { ...base, ...sourceInfo } : base;
-  }
-
-  function parseRelatedInformation(relatedInformation) {
-    const result = [];
-    for (const item of relatedInformation) {
-      result.push(parseDiagnostic(item));
-    }
-    return result;
-  }
-
-  function fromTypeScriptDiagnostic(diagnostics) {
-    const items = [];
-    for (const sourceDiagnostic of diagnostics) {
-      const item = parseDiagnostic(sourceDiagnostic);
-      if (sourceDiagnostic.relatedInformation) {
-        item.relatedInformation = parseRelatedInformation(
-          sourceDiagnostic.relatedInformation,
-        );
-      }
-      items.push(item);
-    }
-    return { items };
+  function opNow() {
+    const res = core.jsonOpSync("op_now");
+    return res.seconds * 1e3 + res.subsecNanos / 1e6;
   }
 
   // We really don't want to depend on JSON dispatch during snapshotting, so
@@ -298,99 +98,11 @@ delete Object.prototype.__proto__;
   // it makes sense to use the same scheme here.
   const ASSETS = "asset://";
   const OUT_DIR = "deno://";
+  const CACHE = "cache:///";
   // This constant is passed to compiler settings when
   // doing incremental compiles. Contents of this
   // file are passed back to Rust and saved to $DENO_DIR.
   const TS_BUILD_INFO = "cache:///tsbuildinfo.json";
-
-  // TODO(Bartlomieju): this check should be done in Rust
-  const IGNORED_COMPILER_OPTIONS = [
-    "allowSyntheticDefaultImports",
-    "allowUmdGlobalAccess",
-    "assumeChangesOnlyAffectDirectDependencies",
-    "baseUrl",
-    "build",
-    "composite",
-    "declaration",
-    "declarationDir",
-    "declarationMap",
-    "diagnostics",
-    "downlevelIteration",
-    "emitBOM",
-    "emitDeclarationOnly",
-    "esModuleInterop",
-    "extendedDiagnostics",
-    "forceConsistentCasingInFileNames",
-    "generateCpuProfile",
-    "help",
-    "importHelpers",
-    "incremental",
-    "inlineSourceMap",
-    "inlineSources",
-    "init",
-    "listEmittedFiles",
-    "listFiles",
-    "mapRoot",
-    "maxNodeModuleJsDepth",
-    "module",
-    "moduleResolution",
-    "newLine",
-    "noEmit",
-    "noEmitHelpers",
-    "noEmitOnError",
-    "noLib",
-    "noResolve",
-    "out",
-    "outDir",
-    "outFile",
-    "paths",
-    "preserveSymlinks",
-    "preserveWatchOutput",
-    "pretty",
-    "rootDir",
-    "rootDirs",
-    "showConfig",
-    "skipDefaultLibCheck",
-    "skipLibCheck",
-    "sourceMap",
-    "sourceRoot",
-    "stripInternal",
-    "target",
-    "traceResolution",
-    "tsBuildInfoFile",
-    "types",
-    "typeRoots",
-    "version",
-    "watch",
-  ];
-
-  const DEFAULT_BUNDLER_OPTIONS = {
-    allowJs: true,
-    inlineSourceMap: false,
-    module: ts.ModuleKind.System,
-    outDir: undefined,
-    outFile: `${OUT_DIR}/bundle.js`,
-    // disabled until we have effective way to modify source maps
-    sourceMap: false,
-  };
-
-  const DEFAULT_INCREMENTAL_COMPILE_OPTIONS = {
-    allowJs: false,
-    allowNonTsExtensions: true,
-    checkJs: false,
-    esModuleInterop: true,
-    incremental: true,
-    inlineSourceMap: true,
-    jsx: ts.JsxEmit.React,
-    module: ts.ModuleKind.ESNext,
-    outDir: OUT_DIR,
-    resolveJsonModule: true,
-    sourceMap: false,
-    strict: true,
-    stripComments: true,
-    target: ts.ScriptTarget.ESNext,
-    tsBuildInfoFile: TS_BUILD_INFO,
-  };
 
   const DEFAULT_COMPILE_OPTIONS = {
     allowJs: false,
@@ -406,27 +118,6 @@ delete Object.prototype.__proto__;
     target: ts.ScriptTarget.ESNext,
   };
 
-  const DEFAULT_TRANSPILE_OPTIONS = {
-    esModuleInterop: true,
-    inlineSourceMap: true,
-    jsx: ts.JsxEmit.React,
-    module: ts.ModuleKind.ESNext,
-    removeComments: true,
-    target: ts.ScriptTarget.ESNext,
-  };
-
-  const DEFAULT_RUNTIME_COMPILE_OPTIONS = {
-    outDir: undefined,
-  };
-
-  const DEFAULT_RUNTIME_TRANSPILE_OPTIONS = {
-    esModuleInterop: true,
-    module: ts.ModuleKind.ESNext,
-    sourceMap: true,
-    scriptComments: true,
-    target: ts.ScriptTarget.ESNext,
-  };
-
   const CompilerHostTarget = {
     Main: "main",
     Runtime: "runtime",
@@ -439,16 +130,20 @@ delete Object.prototype.__proto__;
     0: "JavaScript",
     1: "JSX",
     2: "TypeScript",
-    3: "TSX",
-    4: "Json",
-    5: "Wasm",
-    6: "Unknown",
+    3: "Dts",
+    4: "TSX",
+    5: "Json",
+    6: "Wasm",
+    7: "BuildInfo",
+    8: "Unknown",
     JavaScript: 0,
     JSX: 1,
     TypeScript: 2,
-    TSX: 3,
-    Json: 4,
-    Wasm: 5,
+    Dts: 3,
+    TSX: 4,
+    Json: 5,
+    Wasm: 6,
+    BuildInfo: 7,
     Unknown: 6,
   };
 
@@ -490,28 +185,14 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
-  function configure(defaultOptions, source, path, cwd) {
-    const { config, error } = ts.parseConfigFileTextToJson(path, source);
-    if (error) {
-      return { diagnostics: [error], options: defaultOptions };
-    }
+  function parseCompilerOptions(compilerOptions) {
     const { options, errors } = ts.convertCompilerOptionsFromJson(
-      config.compilerOptions,
-      cwd,
+      compilerOptions,
+      "",
+      "tsconfig.json",
     );
-    const ignoredOptions = [];
-    for (const key of Object.keys(options)) {
-      if (
-        IGNORED_COMPILER_OPTIONS.includes(key) &&
-        (!(key in defaultOptions) || options[key] !== defaultOptions[key])
-      ) {
-        ignoredOptions.push(key);
-        delete options[key];
-      }
-    }
     return {
-      options: Object.assign({}, defaultOptions, options),
-      ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
+      options,
       diagnostics: errors.length ? errors : undefined,
     };
   }
@@ -576,55 +257,23 @@ delete Object.prototype.__proto__;
   }
 
   class Host {
-    #options = DEFAULT_COMPILE_OPTIONS;
-    #target = "";
-    #writeFile = null;
+    #options;
+    #target;
+    #writeFile;
     /* Deno specific APIs */
 
-    constructor({
-      bundle = false,
-      incremental = false,
+    constructor(
+      options,
       target,
-      unstable,
       writeFile,
-    }) {
+    ) {
       this.#target = target;
       this.#writeFile = writeFile;
-      if (bundle) {
-        // options we need to change when we are generating a bundle
-        Object.assign(this.#options, DEFAULT_BUNDLER_OPTIONS);
-      } else if (incremental) {
-        Object.assign(this.#options, DEFAULT_INCREMENTAL_COMPILE_OPTIONS);
-      }
-      if (unstable) {
-        this.#options.lib = [
-          target === CompilerHostTarget.Worker
-            ? "lib.deno.worker.d.ts"
-            : "lib.deno.window.d.ts",
-          "lib.deno.unstable.d.ts",
-        ];
-      }
+      this.#options = options;
     }
 
     get options() {
       return this.#options;
-    }
-
-    configure(cwd, path, configurationText) {
-      log("compiler::host.configure", path);
-      const { options, ...result } = configure(
-        this.#options,
-        configurationText,
-        path,
-        cwd,
-      );
-      this.#options = options;
-      return result;
-    }
-
-    mergeOptions(...options) {
-      Object.assign(this.#options, ...options);
-      return Object.assign({}, this.#options);
     }
 
     /* TypeScript CompilerHost APIs */
@@ -643,7 +292,7 @@ delete Object.prototype.__proto__;
     }
 
     getCurrentDirectory() {
-      return "";
+      return CACHE;
     }
 
     getDefaultLibFileName(_options) {
@@ -751,9 +400,13 @@ delete Object.prototype.__proto__;
   class IncrementalCompileHost extends Host {
     #buildInfo = "";
 
-    constructor(options) {
-      super({ ...options, incremental: true });
-      const { buildInfo } = options;
+    constructor(
+      options,
+      target,
+      writeFile,
+      buildInfo,
+    ) {
+      super(options, target, writeFile);
       if (buildInfo) {
         this.#buildInfo = buildInfo;
       }
@@ -770,10 +423,11 @@ delete Object.prototype.__proto__;
   // NOTE: target doesn't really matter here,
   // this is in fact a mock host created just to
   // load all type definitions and snapshot them.
-  let SNAPSHOT_HOST = new Host({
-    target: CompilerHostTarget.Main,
-    writeFile() {},
-  });
+  let SNAPSHOT_HOST = new Host(
+    DEFAULT_COMPILE_OPTIONS,
+    CompilerHostTarget.Main,
+    () => {},
+  );
   const SNAPSHOT_COMPILER_OPTIONS = SNAPSHOT_HOST.getCompilationSettings();
 
   // This is a hacky way of adding our libs to the libs available in TypeScript()
@@ -943,11 +597,10 @@ delete Object.prototype.__proto__;
   // Update carefully!
   const CompilerRequestType = {
     Compile: 0,
-    Transpile: 1,
-    Bundle: 2,
-    RuntimeCompile: 3,
-    RuntimeBundle: 4,
-    RuntimeTranspile: 5,
+    Bundle: 1,
+    RuntimeCompile: 2,
+    RuntimeBundle: 3,
+    RuntimeTranspile: 4,
   };
 
   function createBundleWriteFile(state) {
@@ -995,101 +648,7 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function convertCompilerOptions(str) {
-    const options = JSON.parse(str);
-    const out = {};
-    const keys = Object.keys(options);
-    const files = [];
-    for (const key of keys) {
-      switch (key) {
-        case "jsx":
-          const value = options[key];
-          if (value === "preserve") {
-            out[key] = ts.JsxEmit.Preserve;
-          } else if (value === "react") {
-            out[key] = ts.JsxEmit.React;
-          } else {
-            out[key] = ts.JsxEmit.ReactNative;
-          }
-          break;
-        case "module":
-          switch (options[key]) {
-            case "amd":
-              out[key] = ts.ModuleKind.AMD;
-              break;
-            case "commonjs":
-              out[key] = ts.ModuleKind.CommonJS;
-              break;
-            case "es2015":
-            case "es6":
-              out[key] = ts.ModuleKind.ES2015;
-              break;
-            case "esnext":
-              out[key] = ts.ModuleKind.ESNext;
-              break;
-            case "none":
-              out[key] = ts.ModuleKind.None;
-              break;
-            case "system":
-              out[key] = ts.ModuleKind.System;
-              break;
-            case "umd":
-              out[key] = ts.ModuleKind.UMD;
-              break;
-            default:
-              throw new TypeError("Unexpected module type");
-          }
-          break;
-        case "target":
-          switch (options[key]) {
-            case "es3":
-              out[key] = ts.ScriptTarget.ES3;
-              break;
-            case "es5":
-              out[key] = ts.ScriptTarget.ES5;
-              break;
-            case "es6":
-            case "es2015":
-              out[key] = ts.ScriptTarget.ES2015;
-              break;
-            case "es2016":
-              out[key] = ts.ScriptTarget.ES2016;
-              break;
-            case "es2017":
-              out[key] = ts.ScriptTarget.ES2017;
-              break;
-            case "es2018":
-              out[key] = ts.ScriptTarget.ES2018;
-              break;
-            case "es2019":
-              out[key] = ts.ScriptTarget.ES2019;
-              break;
-            case "es2020":
-              out[key] = ts.ScriptTarget.ES2020;
-              break;
-            case "esnext":
-              out[key] = ts.ScriptTarget.ESNext;
-              break;
-            default:
-              throw new TypeError("Unexpected emit target.");
-          }
-          break;
-        case "types":
-          const types = options[key];
-          assert(types);
-          files.push(...types);
-          break;
-        default:
-          out[key] = options[key];
-      }
-    }
-    return {
-      options: out,
-      files: files.length ? files : undefined,
-    };
-  }
-
-  const ignoredDiagnostics = [
+  const IGNORED_DIAGNOSTICS = [
     // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
     // not a module.
     2306,
@@ -1118,6 +677,13 @@ delete Object.prototype.__proto__;
     // implicitly has an 'any' type.  This is due to `allowJs` being off by
     // default but importing of a JavaScript module.
     7016,
+  ];
+
+  const IGNORED_COMPILE_DIAGNOSTICS = [
+    // TS1208: All files must be modules when the '--isolatedModules' flag is
+    // provided.  We can ignore because we guarantuee that all files are
+    // modules.
+    1208,
   ];
 
   const stats = [];
@@ -1166,21 +732,6 @@ delete Object.prototype.__proto__;
     const duration = opNow() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
-  }
-
-  // TODO(Bartlomieju): this check should be done in Rust; there should be no
-  function processConfigureResponse(configResult, configPath) {
-    const { ignoredOptions, diagnostics } = configResult;
-    if (ignoredOptions) {
-      const msg =
-        `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${
-          ignoredOptions
-            .map((value) => value)
-            .join(", ")
-        }\n`;
-      core.print(msg, true);
-    }
-    return diagnostics;
   }
 
   function normalizeString(path) {
@@ -1356,14 +907,10 @@ delete Object.prototype.__proto__;
   }
 
   function compile({
-    allowJs,
     buildInfo,
-    config,
-    configPath,
+    compilerOptions,
     rootNames,
     target,
-    unstable,
-    cwd,
     sourceFileMap,
     type,
     performance,
@@ -1381,23 +928,27 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
-    const host = new IncrementalCompileHost({
-      bundle: false,
-      target,
-      unstable,
-      writeFile: createCompileWriteFile(state),
-      rootNames,
-      buildInfo,
-    });
+
     let diagnostics = [];
 
-    host.mergeOptions({ allowJs });
+    const { options, diagnostics: diags } = parseCompilerOptions(
+      compilerOptions,
+    );
 
-    // if there is a configuration supplied, we need to parse that
-    if (config && config.length && configPath) {
-      const configResult = host.configure(cwd, configPath, config);
-      diagnostics = processConfigureResponse(configResult, configPath) || [];
-    }
+    diagnostics = diags.filter(
+      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
+    );
+
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
+    options.allowNonTsExtensions = true;
+
+    const host = new IncrementalCompileHost(
+      options,
+      target,
+      createCompileWriteFile(state),
+      buildInfo,
+    );
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1419,7 +970,9 @@ delete Object.prototype.__proto__;
         ...program.getSemanticDiagnostics(),
       ];
       diagnostics = diagnostics.filter(
-        ({ code }) => !ignoredDiagnostics.includes(code),
+        ({ code }) =>
+          !IGNORED_DIAGNOSTICS.includes(code) &&
+          !IGNORED_COMPILE_DIAGNOSTICS.includes(code),
       );
 
       // We will only proceed with the emit if there are no diagnostics.
@@ -1452,78 +1005,10 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function transpile({
-    config: configText,
-    configPath,
-    cwd,
-    performance,
-    sourceFiles,
-  }) {
-    if (performance) {
-      performanceStart();
-    }
-    log(">>> transpile start");
-    let compilerOptions;
-    if (configText && configPath && cwd) {
-      const { options, ...response } = configure(
-        DEFAULT_TRANSPILE_OPTIONS,
-        configText,
-        configPath,
-        cwd,
-      );
-      const diagnostics = processConfigureResponse(response, configPath);
-      if (diagnostics && diagnostics.length) {
-        return {
-          diagnostics: fromTypeScriptDiagnostic(diagnostics),
-          emitMap: {},
-        };
-      }
-      compilerOptions = options;
-    } else {
-      compilerOptions = Object.assign({}, DEFAULT_TRANSPILE_OPTIONS);
-    }
-    const emitMap = {};
-    let diagnostics = [];
-    for (const { sourceCode, fileName } of sourceFiles) {
-      const {
-        outputText,
-        sourceMapText,
-        diagnostics: diags,
-      } = ts.transpileModule(sourceCode, {
-        fileName,
-        compilerOptions,
-        reportDiagnostics: true,
-      });
-      if (diags) {
-        diagnostics = diagnostics.concat(...diags);
-      }
-      emitMap[`${fileName}.js`] = { filename: fileName, contents: outputText };
-      // currently we inline source maps, but this is good logic to have if this
-      // ever changes
-      if (sourceMapText) {
-        emitMap[`${fileName}.map`] = {
-          filename: fileName,
-          contents: sourceMapText,
-        };
-      }
-    }
-    performanceProgram({ fileCount: sourceFiles.length });
-    const stats = performance ? performanceEnd() : undefined;
-    log("<<< transpile end");
-    return {
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
-      emitMap,
-      stats,
-    };
-  }
-
   function bundle({
-    config,
-    configPath,
+    compilerOptions,
     rootNames,
     target,
-    unstable,
-    cwd,
     sourceFileMap,
     type,
     performance,
@@ -1544,20 +1029,25 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
-    const host = new Host({
-      bundle: true,
-      target,
-      unstable,
-      writeFile: createBundleWriteFile(state),
-    });
-    state.host = host;
-    let diagnostics = [];
 
-    // if there is a configuration supplied, we need to parse that
-    if (config && config.length && configPath) {
-      const configResult = host.configure(cwd, configPath, config);
-      diagnostics = processConfigureResponse(configResult, configPath) || [];
-    }
+    const { options, diagnostics: diags } = parseCompilerOptions(
+      compilerOptions,
+    );
+
+    diagnostics = diags.filter(
+      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
+    );
+
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js)
+    options.allowNonTsExtensions = true;
+
+    const host = new Host(
+      options,
+      target,
+      createBundleWriteFile(state),
+    );
+    state.host = host;
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1572,7 +1062,7 @@ delete Object.prototype.__proto__;
 
       diagnostics = ts
         .getPreEmitDiagnostics(program)
-        .filter(({ code }) => !ignoredDiagnostics.includes(code));
+        .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
 
       // We will only proceed with the emit if there are no diagnostics.
       if (diagnostics.length === 0) {
@@ -1617,7 +1107,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeCompile(request) {
-    const { options, rootNames, target, unstable, sourceFileMap } = request;
+    const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
     log(">>> runtime compile start", {
       rootNames,
@@ -1625,11 +1115,13 @@ delete Object.prototype.__proto__;
 
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
-    let convertedOptions;
-    if (options) {
-      const result = convertCompilerOptions(options);
-      convertedOptions = result.options;
-    }
+    const result = parseCompilerOptions(
+      compilerOptions,
+    );
+    const options = result.options;
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
+    options.allowNonTsExtensions = true;
 
     buildLocalSourceFileCache(sourceFileMap);
 
@@ -1637,26 +1129,11 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
-    const host = new Host({
-      bundle: false,
+    const host = new Host(
+      options,
       target,
-      writeFile: createRuntimeCompileWriteFile(state),
-    });
-    const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
-    if (convertedOptions) {
-      compilerOptions.push(convertedOptions);
-    }
-    if (unstable) {
-      compilerOptions.push({
-        lib: [
-          "deno.unstable",
-          ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
-        ],
-      });
-    }
-
-    host.mergeOptions(...compilerOptions);
-
+      createRuntimeCompileWriteFile(state),
+    );
     const program = ts.createProgram({
       rootNames,
       options: host.getCompilationSettings(),
@@ -1665,10 +1142,12 @@ delete Object.prototype.__proto__;
 
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+      .filter(({ code }) =>
+        !IGNORED_DIAGNOSTICS.includes(code) &&
+        !IGNORED_COMPILE_DIAGNOSTICS.includes(code)
+      );
 
     const emitResult = program.emit();
-
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
     log("<<< runtime compile finish", {
@@ -1677,7 +1156,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
@@ -1687,7 +1166,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeBundle(request) {
-    const { options, rootNames, target, unstable, sourceFileMap } = request;
+    const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
     log(">>> runtime bundle start", {
       rootNames,
@@ -1695,11 +1174,13 @@ delete Object.prototype.__proto__;
 
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
-    let convertedOptions;
-    if (options) {
-      const result = convertCompilerOptions(options);
-      convertedOptions = result.options;
-    }
+    const result = parseCompilerOptions(
+      compilerOptions,
+    );
+    const options = result.options;
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
+    options.allowNonTsExtensions = true;
 
     buildLocalSourceFileCache(sourceFileMap);
 
@@ -1707,27 +1188,13 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
-    const host = new Host({
-      bundle: true,
-      target,
-      writeFile: createBundleWriteFile(state),
-    });
-    state.host = host;
 
-    const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
-    if (convertedOptions) {
-      compilerOptions.push(convertedOptions);
-    }
-    if (unstable) {
-      compilerOptions.push({
-        lib: [
-          "deno.unstable",
-          ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
-        ],
-      });
-    }
-    compilerOptions.push(DEFAULT_BUNDLER_OPTIONS);
-    host.mergeOptions(...compilerOptions);
+    const host = new Host(
+      options,
+      target,
+      createBundleWriteFile(state),
+    );
+    state.host = host;
 
     const program = ts.createProgram({
       rootNames,
@@ -1738,7 +1205,7 @@ delete Object.prototype.__proto__;
     setRootExports(program, rootNames[0]);
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+      .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
 
     const emitResult = program.emit();
 
@@ -1749,7 +1216,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
@@ -1760,21 +1227,22 @@ delete Object.prototype.__proto__;
 
   function runtimeTranspile(request) {
     const result = {};
-    const { sources, options } = request;
-    const compilerOptions = options
-      ? Object.assign(
-        {},
-        DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
-        convertCompilerOptions(options).options,
-      )
-      : DEFAULT_RUNTIME_TRANSPILE_OPTIONS;
+    const { sources, compilerOptions } = request;
+
+    const parseResult = parseCompilerOptions(
+      compilerOptions,
+    );
+    const options = parseResult.options;
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
+    options.allowNonTsExtensions = true;
 
     for (const [fileName, inputText] of Object.entries(sources)) {
       const { outputText: source, sourceMapText: map } = ts.transpileModule(
         inputText,
         {
           fileName,
-          compilerOptions,
+          compilerOptions: options,
         },
       );
       result[fileName] = { source, map };
@@ -1783,7 +1251,7 @@ delete Object.prototype.__proto__;
   }
 
   function opCompilerRespond(msg) {
-    dispatchJson.sendSync("op_compiler_respond", msg);
+    core.jsonOpSync("op_compiler_respond", msg);
   }
 
   async function tsCompilerOnMessage(msg) {
@@ -1791,11 +1259,6 @@ delete Object.prototype.__proto__;
     switch (request.type) {
       case CompilerRequestType.Compile: {
         const result = compile(request);
-        opCompilerRespond(result);
-        break;
-      }
-      case CompilerRequestType.Transpile: {
-        const result = transpile(request);
         opCompilerRespond(result);
         break;
       }
@@ -1828,21 +1291,12 @@ delete Object.prototype.__proto__;
     }
   }
 
-  // TODO(bartlomieju): temporary solution, must be fixed when moving
-  // dispatches to separate crates
-  function initOps() {
-    const opsMap = core.ops();
-    for (const [_name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
-    }
-  }
-
   function runtimeStart(source) {
-    initOps();
+    core.ops();
     // First we send an empty `Start` message to let the privileged side know we
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
-    const s = dispatchJson.sendSync("op_start");
+    const s = core.jsonOpSync("op_start");
     util.setLogDebug(s.debugFlag, source);
     errorStack.setPrepareStackTrace(Error);
     return s;
@@ -1876,7 +1330,7 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("TypeError", TypeError);
     core.registerErrorClass("Other", Error);
     core.registerErrorClass("Busy", errors.Busy);
-    globalThis.__bootstrap = undefined;
+    delete globalThis.__bootstrap;
     runtimeStart("TS");
   }
 

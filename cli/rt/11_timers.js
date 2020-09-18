@@ -2,18 +2,18 @@
 
 ((window) => {
   const assert = window.__bootstrap.util.assert;
-  const dispatchJson = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
 
   function opStopGlobalTimer() {
-    dispatchJson.sendSync("op_global_timer_stop");
+    core.jsonOpSync("op_global_timer_stop");
   }
 
   async function opStartGlobalTimer(timeout) {
-    await dispatchJson.sendAsync("op_global_timer", { timeout });
+    await core.jsonOpAsync("op_global_timer", { timeout });
   }
 
   function opNow() {
-    return dispatchJson.sendSync("op_now");
+    return core.jsonOpSync("op_now");
   }
 
   // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.

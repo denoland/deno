@@ -21,7 +21,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { validateIntegerRange } from "./util.ts";
+import { validateIntegerRange } from "./_utils.ts";
 import { assert } from "../_util/assert.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -356,7 +356,14 @@ export default class EventEmitter {
    * Infinity (or 0) to indicate an unlimited number of listeners.
    */
   public setMaxListeners(n: number): this {
-    validateIntegerRange(n, "maxListeners", 0);
+    if (n !== Infinity) {
+      if (n === 0) {
+        n = Infinity;
+      } else {
+        validateIntegerRange(n, "maxListeners", 0);
+      }
+    }
+
     this.maxListeners = n;
     return this;
   }

@@ -130,6 +130,43 @@ declare namespace Deno {
    */
   export function osRelease(): string;
 
+  /** **Unstable** new API. yet to be vetted. 
+   *
+   * Displays the total amount of free and used physical and swap memory in the
+   * system, as well as the buffers and caches used by the kernel.
+   * 
+   * This is similar to the `free` command in Linux
+   *
+   * ```ts
+   * console.log(Deno.systemMemoryInfo());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   */
+  export function systemMemoryInfo(): SystemMemoryInfo;
+
+  export interface SystemMemoryInfo {
+    /** Total installed memory */
+    total: number;
+    /** Unused memory */
+    free: number;
+    /** Estimation of how much memory is available  for  starting  new
+     * applications, without  swapping. Unlike the data provided by the cache or
+     * free fields, this field takes into account page cache and also that not
+     * all reclaimable memory slabs will be reclaimed due to items being in use
+     */
+    available: number;
+    /** Memory used by kernel buffers */
+    buffers: number;
+    /** Memory  used  by  the  page  cache  and  slabs */
+    cached: number;
+    /** Total swap memory */
+    swapTotal: number;
+    /** Unused swap memory */
+    swapFree: number;
+  }
+
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initialize a plugin.
@@ -151,12 +188,10 @@ declare namespace Deno {
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
-    Log = 0,
-    Debug = 1,
-    Info = 2,
-    Error = 3,
-    Warning = 4,
-    Suggestion = 5,
+    Warning = 0,
+    Error = 1,
+    Suggestion = 2,
+    Message = 3,
   }
 
   export interface DiagnosticMessageChain {
@@ -166,37 +201,33 @@ declare namespace Deno {
     next?: DiagnosticMessageChain[];
   }
 
-  export interface DiagnosticItem {
+  export interface Diagnostic {
     /** A string message summarizing the diagnostic. */
-    message: string;
+    messageText?: string;
     /** An ordered array of further diagnostics. */
     messageChain?: DiagnosticMessageChain;
     /** Information related to the diagnostic. This is present when there is a
      * suggestion or other additional diagnostic information */
-    relatedInformation?: DiagnosticItem[];
+    relatedInformation?: Diagnostic[];
     /** The text of the source line related to the diagnostic. */
     sourceLine?: string;
-    /** The line number that is related to the diagnostic. */
-    lineNumber?: number;
-    /** The name of the script resource related to the diagnostic. */
-    scriptResourceName?: string;
-    /** The start position related to the diagnostic. */
-    startPosition?: number;
-    /** The end position related to the diagnostic. */
-    endPosition?: number;
+    source?: string;
+    /** The start position of the error. Zero based index. */
+    start?: {
+      line: number;
+      character: number;
+    };
+    /** The end position of the error.  Zero based index. */
+    end?: {
+      line: number;
+      character: number;
+    };
+    /** The filename of the resource related to the diagnostic message. */
+    fileName?: string;
     /** The category of the diagnostic. */
     category: DiagnosticCategory;
     /** A number identifier. */
     code: number;
-    /** The the start column of the sourceLine related to the diagnostic. */
-    startColumn?: number;
-    /** The end column of the sourceLine related to the diagnostic. */
-    endColumn?: number;
-  }
-
-  export interface Diagnostic {
-    /** An array of diagnostic items. */
-    items: DiagnosticItem[];
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -210,9 +241,9 @@ declare namespace Deno {
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
    * ```
    *
-   * @param items An array of diagnostic items to format
+   * @param diagnostics An array of diagnostic items to format
    */
-  export function formatDiagnostics(items: DiagnosticItem[]): string;
+  export function formatDiagnostics(diagnostics: Diagnostic[]): string;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -493,7 +524,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions,
-  ): Promise<[DiagnosticItem[] | undefined, Record<string, string>]>;
+  ): Promise<[Diagnostic[] | undefined, Record<string, string>]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -536,7 +567,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions,
-  ): Promise<[DiagnosticItem[] | undefined, string]>;
+  ): Promise<[Diagnostic[] | undefined, string]>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
@@ -1247,6 +1278,40 @@ declare namespace Deno {
   export function createHttpClient(
     options: CreateHttpClientOptions,
   ): HttpClient;
+
+  /** **UNSTABLE**: needs investigation into high precision time.
+   *
+   * Synchronously changes the access (`atime`) and modification (`mtime`) times
+   * of a file stream resource referenced by `rid`. Given times are either in
+   * seconds (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { create: true });
+   * Deno.futimeSync(file.rid, 1556495550, new Date());
+   * ```
+   */
+  export function futimeSync(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): void;
+
+  /** **UNSTABLE**: needs investigation into high precision time.
+   *
+   * Changes the access (`atime`) and modification (`mtime`) times of a file
+   * stream resource referenced by `rid`. Given times are either in seconds
+   * (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { create: true });
+   * await Deno.futime(file.rid, 1556495550, new Date());
+   * ```
+   */
+  export function futime(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): Promise<void>;
 }
 
 declare function fetch(
