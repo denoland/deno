@@ -2,12 +2,12 @@
 
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
-use crate::global_timer::GlobalTimer;
 use crate::inspector::DenoInspector;
 use crate::js;
 use crate::metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
+use crate::ops::timers;
 use crate::ops::worker_host::WorkerId;
 use crate::ops::worker_host::WorkersTable;
 use crate::state::CliState;
@@ -133,7 +133,8 @@ impl Worker {
       let client = crate::http_util::create_http_client(ca_file).unwrap();
       op_state.put(client);
 
-      op_state.put(GlobalTimer::default());
+      op_state.put(timers::GlobalTimer::default());
+      op_state.put(timers::StartTime::now());
 
       if let Some(seed) = global_state.flags.seed {
         op_state.put(StdRng::seed_from_u64(seed));
