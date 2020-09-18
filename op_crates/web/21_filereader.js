@@ -2,22 +2,6 @@
 
 ((window) => {
   const base64 = window.__bootstrap.base64;
-  const setTimeout = window.__bootstrap.timers.setTimeout;
-
-  // ProgressEvent could also be used in other DOM progress event emits.
-  // Current use is for FileReader.
-  class ProgressEvent extends Event {
-    constructor(type, eventInitDict = {}) {
-      super(type, eventInitDict);
-
-      this.lengthComputable = eventInitDict?.lengthComputable ?? false;
-      this.loaded = eventInitDict?.loaded ?? 0;
-      this.total = eventInitDict?.total ?? 0;
-    }
-  }
-  window.__bootstrap.progressEvent = {
-    ProgressEvent,
-  };
 
   async function readOperation(fr, blob, readtype) {
     // Implementation from https://w3c.github.io/FileAPI/ notes
@@ -63,14 +47,14 @@
 
         // 2. If chunkPromise is fulfilled, and isFirstChunk is true, queue a task to fire a progress event called loadstart at fr.
         if (isFirstChunk) {
-          setTimeout(() => {
+          queueMicrotask(() => {
             // fire a progress event for loadstart
             const ev = new ProgressEvent("loadstart", {});
             fr.dispatchEvent(ev);
             if (fr.onloadstart !== null) {
               fr.onloadstart(ev);
             }
-          }, 0);
+          });
         }
         // 3. Set isFirstChunk to false.
         isFirstChunk = false;
@@ -95,7 +79,7 @@
           chunkPromise = reader.read();
         } // 5 Otherwise, if chunkPromise is fulfilled with an object whose done property is true, queue a task to run the following steps and abort this algorithm:
         else if (chunk.done === true) {
-          setTimeout(() => {
+          queueMicrotask(() => {
             if (fr.aborting) {
               return;
             }
@@ -152,7 +136,7 @@
                 fr.onloadend(ev);
               }
             }
-          }, 0);
+          });
 
           break;
         }

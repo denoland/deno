@@ -4,7 +4,7 @@ import { unitTest, assertEquals, assert, assertThrows } from "./test_util.ts";
 unitTest(function resourcesCloseBadArgs(): void {
   assertThrows(() => {
     Deno.close((null as unknown) as number);
-  }, Deno.errors.InvalidData);
+  }, TypeError);
 });
 
 unitTest(function resourcesStdio(): void {

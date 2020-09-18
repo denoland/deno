@@ -3,7 +3,6 @@
 ((window) => {
   const core = window.Deno.core;
   const { errors } = window.__bootstrap.errors;
-  const { close } = window.__bootstrap.resources;
 
   class FsWatcher {
     #rid = 0;
@@ -31,7 +30,7 @@
     }
 
     return(value) {
-      close(this.rid);
+      core.close(this.rid);
       return Promise.resolve({ value, done: true });
     }
 

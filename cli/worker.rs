@@ -277,7 +277,11 @@ impl MainWorker {
       ops::websocket::init(&mut worker);
       ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);
-      ops::idna::init(&mut worker);
+      ops::reg_json_sync(
+        &mut worker,
+        "op_domain_to_ascii",
+        deno_web::op_domain_to_ascii,
+      );
       ops::io::init(&mut worker);
       ops::plugin::init(&mut worker);
       ops::net::init(&mut worker);
@@ -287,7 +291,8 @@ impl MainWorker {
       ops::process::init(&mut worker);
       ops::random::init(&mut worker);
       ops::repl::init(&mut worker);
-      ops::resources::init(&mut worker);
+      ops::reg_json_sync(&mut worker, "op_close", deno_core::op_close);
+      ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
       ops::signal::init(&mut worker);
       ops::timers::init(&mut worker);
       ops::tty::init(&mut worker);
