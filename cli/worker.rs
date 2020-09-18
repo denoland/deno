@@ -3,9 +3,9 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
-use crate::metrics::Metrics;
 use crate::inspector::DenoInspector;
 use crate::js;
+use crate::metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::state::CliState;

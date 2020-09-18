@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::version;
 use crate::metrics::Metrics;
+use crate::version;
 use crate::DenoSubcommand;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
