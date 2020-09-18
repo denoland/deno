@@ -37,6 +37,8 @@ pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::json_op_async;
 pub use crate::ops::json_op_sync;
+pub use crate::ops::op_close;
+pub use crate::ops::op_resources;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;

@@ -231,6 +231,9 @@ jobs:
           cd ../op_crates/web
           cargo publish
           sleep 30
+          cd ../op_crates/fetch
+          cargo publish
+          sleep 30
           cd ../../cli
           sleep 30
           cargo publish
