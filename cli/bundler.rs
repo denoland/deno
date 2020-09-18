@@ -3,7 +3,7 @@ use crate::{
   module_graph::{ModuleGraphFile, ModuleGraphLoader},
   permissions::Permissions,
 };
-use anyhow::bail;
+use anyhow::{bail, Context};
 use deno_core::{error::AnyError, ModuleSpecifier};
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 use swc_common::input::StringInput;
@@ -58,16 +58,14 @@ pub fn bundle_graph(
     resolver,
     swc_bundler::Config {
       require: false,
-      // TODO(kdy1): Change this to false
-      disable_inliner: true,
+      disable_inliner: false,
       external_modules: vec![],
     },
   );
 
   let mut entries = HashMap::default();
   entries.insert("bundle".to_string(), FileName::Custom(entry.to_string()));
-  // TODO(kdy1): Remove expect
-  let output = bundler.bundle(entries).expect("failed to bundle");
+  let output = bundler.bundle(entries).context("failed to bundle")?;
   let mut buf = vec![];
   {
     let mut emitter = swc_ecmascript::codegen::Emitter {
@@ -78,10 +76,13 @@ pub fn bundle_graph(
     };
 
     // Cannnot happen
-    emitter.emit_module(&output[0].module).unwrap();
+    emitter
+      .emit_module(&output[0].module)
+      .context("failed to emit module")?;
   }
 
-  Ok(String::from_utf8(buf).expect("codegen should generate utf-8 output"))
+  let s = String::from_utf8(buf).context("swc emitted non-utf8 string")?;
+  Ok(s)
 }
 
 struct SwcLoader<'a> {
@@ -148,7 +149,7 @@ impl swc_bundler::Resolve for SwcResolver<'_> {
     let base = if let FileName::Custom(base) = base {
       base
     } else {
-      unreachable!()
+      unreachable!("swc_bundler gave non-string filename: {:?}", base)
     };
 
     if let Some(module) = self.module_graph.get(base) {
@@ -159,7 +160,6 @@ impl swc_bundler::Resolve for SwcResolver<'_> {
       }
     }
 
-    dbg!(base, module_specifier);
-    unimplemented!()
+    bail!("failed to resolve {} from {}", module_specifier, base)
   }
 }
