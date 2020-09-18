@@ -2254,9 +2254,9 @@ dependencies = [
 
 [[package]]
 name = "swc_bundler"
-version = "0.7.1"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4e8cfb2ca736d04ab930caea55f8d7c727238020d4d15a9af32448179be46b3"
+checksum = "64693bf91d9cc1f9130679651dc7db294f1c76b04fce010b5a91e1c122032b6e"
 dependencies = [
  "anyhow",
  "crc",
@@ -2389,9 +2389,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms"
-version = "0.23.12"
+version = "0.23.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3551422506d4059cdb33212a098403954539b7030cd54439edfa5d77e128c1ed"
+checksum = "8ef90e5b628adc3b3bacd35d2e876890263bb7a5b66f06f183850aa163a9850d"
 dependencies = [
  "Inflector",
  "arrayvec",
