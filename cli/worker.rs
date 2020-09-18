@@ -7,6 +7,7 @@ use crate::js;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::state::CliState;
+use crate::global_timer::GlobalTimer;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
@@ -28,6 +29,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
+use std::cell::RefCell;
 
 /// Events that are sent to host from child
 /// worker.
@@ -126,6 +128,9 @@ impl Worker {
       let ca_file = global_state.flags.ca_file.as_deref();
       let client = crate::http_util::create_http_client(ca_file).unwrap();
       op_state.put(client);
+
+      let global_timer = RefCell::new(GlobalTimer::default());
+      op_state.put(global_timer);
     }
     let inspector = {
       let global_state = &state.global_state;

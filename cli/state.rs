@@ -2,7 +2,6 @@
 
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
-use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::permissions::Permissions;
@@ -41,7 +40,6 @@ pub struct CliState {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: RefCell<Metrics>,
-  pub global_timer: RefCell<GlobalTimer>,
   pub workers: RefCell<HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>>,
   pub next_worker_id: Cell<u32>,
   pub start_time: Instant,
@@ -172,7 +170,6 @@ impl CliState {
         .into(),
       import_map: maybe_import_map,
       metrics: Default::default(),
-      global_timer: Default::default(),
       workers: Default::default(),
       next_worker_id: Default::default(),
       start_time: Instant::now(),
@@ -199,7 +196,6 @@ impl CliState {
         .into(),
       import_map: None,
       metrics: Default::default(),
-      global_timer: Default::default(),
       workers: Default::default(),
       next_worker_id: Default::default(),
       start_time: Instant::now(),
