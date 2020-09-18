@@ -3,7 +3,7 @@
  * on npm.
  *
  * ```
- * import { bgBlue, red, bold } from "https://deno.land/std@0.69.0/fmt/colors.ts";
+ * import { bgBlue, red, bold } from "https://deno.land/std@0.70.0/fmt/colors.ts";
  * console.log(bgBlue(red(bold("Hello world!"))));
  * ```
  *
