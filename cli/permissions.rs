@@ -125,11 +125,11 @@ pub struct Permissions {
 
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
-    todo!()
+    Permissions::check_net_url(self, url)
   }
 
   fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
-    todo!()
+    Permissions::check_read(self, p)
   }
 }
 
