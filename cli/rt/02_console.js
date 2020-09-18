@@ -472,6 +472,15 @@
       );
   }
 
+  // Surround a string with quotes when it is required (e.g the string not a valid identifier).
+  function maybeQuoteString(string) {
+    if (/^[a-zA-Z_][a-zA-Z_0-9]*$/.test(string)) {
+      return replaceEscapeSequences(string);
+    }
+
+    return quoteString(string);
+  }
+
   // Print strings when they are inside of arrays or objects with quotes
   function inspectValueWithQuotes(
     value,
@@ -713,7 +722,7 @@
 
     for (const key of stringKeys) {
       entries.push(
-        `${replaceEscapeSequences(key)}: ${
+        `${maybeQuoteString(key)}: ${
           inspectValueWithQuotes(
             value[key],
             ctx,
