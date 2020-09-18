@@ -3661,7 +3661,8 @@ fn info_compatible() {
   let tmp_dir = TempDir::new().unwrap();
 
   //copy cache and metadata file
-  let target_dir_path = tmp_dir.path()
+  let target_dir_path = tmp_dir
+    .path()
     .join("deps")
     .join("http")
     .join("127.0.0.1_PORT4545");
