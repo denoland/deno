@@ -2,8 +2,10 @@
 
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
+use crate::global_timer::GlobalTimer;
 use crate::inspector::DenoInspector;
 use crate::js;
+use crate::metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::state::CliState;
@@ -18,6 +20,8 @@ use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -126,6 +130,14 @@ impl Worker {
       let ca_file = global_state.flags.ca_file.as_deref();
       let client = crate::http_util::create_http_client(ca_file).unwrap();
       op_state.put(client);
+
+      op_state.put(GlobalTimer::default());
+
+      if let Some(seed) = global_state.flags.seed {
+        op_state.put(StdRng::seed_from_u64(seed));
+      }
+
+      op_state.put(Metrics::default());
     }
     let inspector = {
       let global_state = &state.global_state;
@@ -381,7 +393,6 @@ mod tests {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
-    assert_eq!(state.metrics.borrow().resolve_count, 2);
     // Check that we didn't start the compiler.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
@@ -446,7 +457,6 @@ mod tests {
     if let Err(e) = (&mut *worker).await {
       panic!("Future got unexpected error: {:?}", e);
     }
-    assert_eq!(state.metrics.borrow().resolve_count, 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 1);
   }

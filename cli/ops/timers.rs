@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::global_timer::GlobalTimer;
 use deno_core::error::AnyError;
 use deno_core::BufVec;
 use deno_core::OpState;
@@ -23,8 +24,8 @@ fn op_global_timer_stop(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
-  cli_state.global_timer.borrow_mut().cancel();
+  let global_timer = state.borrow_mut::<GlobalTimer>();
+  global_timer.cancel();
   Ok(json!({}))
 }
 
@@ -43,11 +44,9 @@ async fn op_global_timer(
 
   let deadline = Instant::now() + Duration::from_millis(val);
   let timer_fut = {
-    super::cli_state2(&state)
-      .global_timer
-      .borrow_mut()
-      .new_timeout(deadline)
-      .boxed_local()
+    let mut s = state.borrow_mut();
+    let global_timer = s.borrow_mut::<GlobalTimer>();
+    global_timer.new_timeout(deadline).boxed_local()
   };
   let _ = timer_fut.await;
   Ok(json!({}))
