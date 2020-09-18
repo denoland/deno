@@ -126,8 +126,6 @@ impl Worker {
       let ca_file = global_state.flags.ca_file.as_deref();
       let client = crate::http_util::create_http_client(ca_file).unwrap();
       op_state.put(client);
-
-      op_state.put(state.permissions.borrow().clone());
     }
     let inspector = {
       let global_state = &state.global_state;

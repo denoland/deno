@@ -111,7 +111,7 @@ where
 
   {
     let state_ = state.borrow();
-    let permissions = state_.borrow::<FP>();
+    let permissions = state_.borrow::<Rc<FP>>();
     permissions.check_net_url(&url_)?;
   }
 
@@ -226,7 +226,7 @@ where
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow::<FP>();
+    let permissions = state.borrow::<Rc<FP>>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
