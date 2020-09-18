@@ -14,7 +14,7 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use reqwest::header::HeaderMap;
+
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use reqwest::redirect::Policy;
