@@ -12,7 +12,6 @@ pub struct Metrics {
   pub bytes_sent_control: u64,
   pub bytes_sent_data: u64,
   pub bytes_received: u64,
-  pub resolve_count: u64,
 }
 
 impl Metrics {

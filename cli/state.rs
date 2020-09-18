@@ -82,8 +82,6 @@ impl ModuleLoader for CliState {
     _is_dyn_import: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.to_owned();
-    // TODO(bartlomieju): incrementing resolve_count here has no sense...
-    self.metrics.borrow_mut().resolve_count += 1;
     let module_url_specified = module_specifier.to_string();
     let global_state = self.global_state.clone();
 
