@@ -20,7 +20,7 @@ export class AssertionError extends Error {
 }
 
 export function _format(v: unknown): string {
-  let string = globalThis.Deno
+  return globalThis.Deno
     ? stripColor(Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
@@ -29,8 +29,6 @@ export function _format(v: unknown): string {
       iterableLimit: Infinity,
     }))
     : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
-
-  return string;
 }
 
 function createColor(diffType: DiffType): (s: string) => string {
