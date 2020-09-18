@@ -7,6 +7,8 @@ extern crate log;
 #[macro_use]
 extern crate serde_json;
 
+#![deny(warnings)]
+
 mod ast;
 mod checksum;
 pub mod colors;
