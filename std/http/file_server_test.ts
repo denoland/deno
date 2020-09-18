@@ -197,7 +197,7 @@ Deno.test("contentType", async () => {
   (response.body as Deno.File).close();
 });
 
-/*
+/* TODO https://github.com/denoland/deno/issues/7540
 Deno.test("file_server running as library", async function (): Promise<void> {
   await startFileServerAsLibrary();
   try {

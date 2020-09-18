@@ -2,7 +2,7 @@
 
 ((window) => {
   const { DomIterableMixin } = window.__bootstrap.domIterable;
-  const { requiredArguments } = window.__bootstrap.webUtil;
+  const { requiredArguments } = window.__bootstrap.fetchUtil;
 
   // From node-fetch
   // Copyright (c) 2016 David Frank. MIT License.

@@ -140,9 +140,10 @@ fn print_cache_info(
 
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}",
     crate::js::DENO_NS_LIB,
     crate::js::DENO_WEB_LIB,
+    crate::js::DENO_FETCH_LIB,
     crate::js::SHARED_GLOBALS_LIB,
     crate::js::WINDOW_LIB,
   );
