@@ -425,7 +425,6 @@ dependencies = [
  "os_pipe",
  "rand 0.7.3",
  "regex",
- "reqwest",
  "ring",
  "rustyline",
  "semver-parser 0.9.0",

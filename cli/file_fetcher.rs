@@ -15,6 +15,7 @@ use deno_core::error::AnyError;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_fetch::reqwest;
 use futures::future::FutureExt;
 use log::info;
 use std::borrow::Cow;
