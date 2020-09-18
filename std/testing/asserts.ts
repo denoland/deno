@@ -28,10 +28,8 @@ export function _format(v: unknown): string {
       compact: false,
       iterableLimit: Infinity,
     }))
-    : String(v);
-  if (typeof v == "string") {
-    string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
-  }
+    : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
+
   return string;
 }
 
