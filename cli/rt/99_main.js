@@ -23,7 +23,6 @@ delete Object.prototype.__proto__;
   const url = window.__bootstrap.url;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
-  const progressEvent = window.__bootstrap.progressEvent;
   const fileReader = window.__bootstrap.fileReader;
   const webSocket = window.__bootstrap.webSocket;
   const fetch = window.__bootstrap.fetch;
@@ -215,7 +214,7 @@ delete Object.prototype.__proto__;
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
-    ProgressEvent: util.nonEnumerable(progressEvent.ProgressEvent),
+    ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
