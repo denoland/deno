@@ -236,8 +236,10 @@ pub fn collect_files(
   let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
-    target_files
-      .extend(files_in_subtree(std::env::current_dir()?, is_supported));
+    target_files.extend(files_in_subtree(
+      std::env::current_dir()?.canonicalize()?,
+      is_supported,
+    ));
   } else {
     for arg in files {
       let p = PathBuf::from(arg);
