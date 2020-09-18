@@ -8,9 +8,9 @@
 //! only need to be able to start and cancel a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
-use crate::futures::TryFutureExt;
 use futures::channel::oneshot;
 use futures::future::FutureExt;
+use futures::TryFutureExt;
 use std::future::Future;
 use std::time::Instant;
 

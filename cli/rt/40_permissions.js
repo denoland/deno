@@ -1,18 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
 
   function opQuery(desc) {
-    return sendSync("op_query_permission", desc).state;
+    return core.jsonOpSync("op_query_permission", desc).state;
   }
 
   function opRevoke(desc) {
-    return sendSync("op_revoke_permission", desc).state;
+    return core.jsonOpSync("op_revoke_permission", desc).state;
   }
 
   function opRequest(desc) {
-    return sendSync("op_request_permission", desc).state;
+    return core.jsonOpSync("op_request_permission", desc).state;
   }
 
   class PermissionStatus {

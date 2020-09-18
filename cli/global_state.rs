@@ -6,16 +6,15 @@ use crate::flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
+use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
-use crate::msg;
-use crate::msg::MediaType;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::env;
 use std::sync::atomic::AtomicUsize;
@@ -41,7 +40,7 @@ pub struct GlobalState {
 }
 
 impl GlobalState {
-  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, ErrBox> {
+  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -107,7 +106,7 @@ impl GlobalState {
     permissions: Permissions,
     is_dyn_import: bool,
     maybe_import_map: Option<ImportMap>,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let module_specifier = module_specifier.clone();
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -188,7 +187,7 @@ impl GlobalState {
     &self,
     module_specifier: ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Result<CompiledModule, ErrBox> {
+  ) -> Result<CompiledModule, AnyError> {
     let module_specifier = module_specifier.clone();
 
     let out = self
@@ -202,10 +201,8 @@ impl GlobalState {
 
     // Check if we need to compile files
     let was_compiled = match out.media_type {
-      msg::MediaType::TypeScript
-      | msg::MediaType::TSX
-      | msg::MediaType::JSX => true,
-      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+      MediaType::TypeScript | MediaType::TSX | MediaType::JSX => true,
+      MediaType::JavaScript => self.ts_compiler.compile_js,
       _ => false,
     };
 
@@ -288,10 +285,8 @@ fn needs_compilation(
   module_graph_files: &[&ModuleGraphFile],
 ) -> bool {
   let mut needs_compilation = match media_type {
-    msg::MediaType::TypeScript | msg::MediaType::TSX | msg::MediaType::JSX => {
-      true
-    }
-    msg::MediaType::JavaScript => compile_js,
+    MediaType::TypeScript | MediaType::TSX | MediaType::JSX => true,
+    MediaType::JavaScript => compile_js,
     _ => false,
   };
 
@@ -314,8 +309,8 @@ fn thread_safe() {
 
 #[test]
 fn test_should_allow_js() {
+  use crate::ast::Location;
   use crate::module_graph::ImportDescriptor;
-  use crate::swc_util::Location;
 
   assert!(should_allow_js(&[
     &ModuleGraphFile {

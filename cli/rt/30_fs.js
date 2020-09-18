@@ -1,16 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
   const { pathFromURL } = window.__bootstrap.util;
   const build = window.__bootstrap.build.build;
 
   function chmodSync(path, mode) {
-    sendSync("op_chmod_sync", { path: pathFromURL(path), mode });
+    core.jsonOpSync("op_chmod_sync", { path: pathFromURL(path), mode });
   }
 
   async function chmod(path, mode) {
-    await sendAsync("op_chmod_async", { path: pathFromURL(path), mode });
+    await core.jsonOpAsync("op_chmod_async", { path: pathFromURL(path), mode });
   }
 
   function chownSync(
@@ -18,7 +18,7 @@
     uid,
     gid,
   ) {
-    sendSync("op_chown_sync", { path: pathFromURL(path), uid, gid });
+    core.jsonOpSync("op_chown_sync", { path: pathFromURL(path), uid, gid });
   }
 
   async function chown(
@@ -26,14 +26,17 @@
     uid,
     gid,
   ) {
-    await sendAsync("op_chown_async", { path: pathFromURL(path), uid, gid });
+    await core.jsonOpAsync(
+      "op_chown_async",
+      { path: pathFromURL(path), uid, gid },
+    );
   }
 
   function copyFileSync(
     fromPath,
     toPath,
   ) {
-    sendSync("op_copy_file_sync", {
+    core.jsonOpSync("op_copy_file_sync", {
       from: pathFromURL(fromPath),
       to: pathFromURL(toPath),
     });
@@ -43,34 +46,34 @@
     fromPath,
     toPath,
   ) {
-    await sendAsync("op_copy_file_async", {
+    await core.jsonOpAsync("op_copy_file_async", {
       from: pathFromURL(fromPath),
       to: pathFromURL(toPath),
     });
   }
 
   function cwd() {
-    return sendSync("op_cwd");
+    return core.jsonOpSync("op_cwd");
   }
 
   function chdir(directory) {
-    sendSync("op_chdir", { directory });
+    core.jsonOpSync("op_chdir", { directory });
   }
 
   function makeTempDirSync(options = {}) {
-    return sendSync("op_make_temp_dir_sync", options);
+    return core.jsonOpSync("op_make_temp_dir_sync", options);
   }
 
   function makeTempDir(options = {}) {
-    return sendAsync("op_make_temp_dir_async", options);
+    return core.jsonOpAsync("op_make_temp_dir_async", options);
   }
 
   function makeTempFileSync(options = {}) {
-    return sendSync("op_make_temp_file_sync", options);
+    return core.jsonOpSync("op_make_temp_file_sync", options);
   }
 
   function makeTempFile(options = {}) {
-    return sendAsync("op_make_temp_file_async", options);
+    return core.jsonOpAsync("op_make_temp_file_async", options);
   }
 
   function mkdirArgs(path, options) {
@@ -87,14 +90,14 @@
   }
 
   function mkdirSync(path, options) {
-    sendSync("op_mkdir_sync", mkdirArgs(path, options));
+    core.jsonOpSync("op_mkdir_sync", mkdirArgs(path, options));
   }
 
   async function mkdir(
     path,
     options,
   ) {
-    await sendAsync("op_mkdir_async", mkdirArgs(path, options));
+    await core.jsonOpAsync("op_mkdir_async", mkdirArgs(path, options));
   }
 
   function res(response) {
@@ -102,13 +105,18 @@
   }
 
   function readDirSync(path) {
-    return res(sendSync("op_read_dir_sync", { path: pathFromURL(path) }))[
+    return res(
+      core.jsonOpSync("op_read_dir_sync", { path: pathFromURL(path) }),
+    )[
       Symbol.iterator
     ]();
   }
 
   function readDir(path) {
-    const array = sendAsync("op_read_dir_async", { path: pathFromURL(path) })
+    const array = core.jsonOpAsync(
+      "op_read_dir_async",
+      { path: pathFromURL(path) },
+    )
       .then(
         res,
       );
@@ -120,26 +128,26 @@
   }
 
   function readLinkSync(path) {
-    return sendSync("op_read_link_sync", { path });
+    return core.jsonOpSync("op_read_link_sync", { path });
   }
 
   function readLink(path) {
-    return sendAsync("op_read_link_async", { path });
+    return core.jsonOpAsync("op_read_link_async", { path });
   }
 
   function realPathSync(path) {
-    return sendSync("op_realpath_sync", { path });
+    return core.jsonOpSync("op_realpath_sync", { path });
   }
 
   function realPath(path) {
-    return sendAsync("op_realpath_async", { path });
+    return core.jsonOpAsync("op_realpath_async", { path });
   }
 
   function removeSync(
     path,
     options = {},
   ) {
-    sendSync("op_remove_sync", {
+    core.jsonOpSync("op_remove_sync", {
       path: pathFromURL(path),
       recursive: !!options.recursive,
     });
@@ -149,18 +157,18 @@
     path,
     options = {},
   ) {
-    await sendAsync("op_remove_async", {
+    await core.jsonOpAsync("op_remove_async", {
       path: pathFromURL(path),
       recursive: !!options.recursive,
     });
   }
 
   function renameSync(oldpath, newpath) {
-    sendSync("op_rename_sync", { oldpath, newpath });
+    core.jsonOpSync("op_rename_sync", { oldpath, newpath });
   }
 
   async function rename(oldpath, newpath) {
-    await sendAsync("op_rename_async", { oldpath, newpath });
+    await core.jsonOpAsync("op_rename_async", { oldpath, newpath });
   }
 
   function parseFileInfo(response) {
@@ -189,15 +197,15 @@
   }
 
   function fstatSync(rid) {
-    return parseFileInfo(sendSync("op_fstat_sync", { rid }));
+    return parseFileInfo(core.jsonOpSync("op_fstat_sync", { rid }));
   }
 
   async function fstat(rid) {
-    return parseFileInfo(await sendAsync("op_fstat_async", { rid }));
+    return parseFileInfo(await core.jsonOpAsync("op_fstat_async", { rid }));
   }
 
   async function lstat(path) {
-    const res = await sendAsync("op_stat_async", {
+    const res = await core.jsonOpAsync("op_stat_async", {
       path: pathFromURL(path),
       lstat: true,
     });
@@ -205,7 +213,7 @@
   }
 
   function lstatSync(path) {
-    const res = sendSync("op_stat_sync", {
+    const res = core.jsonOpSync("op_stat_sync", {
       path: pathFromURL(path),
       lstat: true,
     });
@@ -213,7 +221,7 @@
   }
 
   async function stat(path) {
-    const res = await sendAsync("op_stat_async", {
+    const res = await core.jsonOpAsync("op_stat_async", {
       path: pathFromURL(path),
       lstat: false,
     });
@@ -221,7 +229,7 @@
   }
 
   function statSync(path) {
-    const res = sendSync("op_stat_sync", {
+    const res = core.jsonOpSync("op_stat_sync", {
       path: pathFromURL(path),
       lstat: false,
     });
@@ -237,31 +245,31 @@
   }
 
   function ftruncateSync(rid, len) {
-    sendSync("op_ftruncate_sync", { rid, len: coerceLen(len) });
+    core.jsonOpSync("op_ftruncate_sync", { rid, len: coerceLen(len) });
   }
 
   async function ftruncate(rid, len) {
-    await sendAsync("op_ftruncate_async", { rid, len: coerceLen(len) });
+    await core.jsonOpAsync("op_ftruncate_async", { rid, len: coerceLen(len) });
   }
 
   function truncateSync(path, len) {
-    sendSync("op_truncate_sync", { path, len: coerceLen(len) });
+    core.jsonOpSync("op_truncate_sync", { path, len: coerceLen(len) });
   }
 
   async function truncate(path, len) {
-    await sendAsync("op_truncate_async", { path, len: coerceLen(len) });
+    await core.jsonOpAsync("op_truncate_async", { path, len: coerceLen(len) });
   }
 
   function umask(mask) {
-    return sendSync("op_umask", { mask });
+    return core.jsonOpSync("op_umask", { mask });
   }
 
   function linkSync(oldpath, newpath) {
-    sendSync("op_link_sync", { oldpath, newpath });
+    core.jsonOpSync("op_link_sync", { oldpath, newpath });
   }
 
   async function link(oldpath, newpath) {
-    await sendAsync("op_link_async", { oldpath, newpath });
+    await core.jsonOpAsync("op_link_async", { oldpath, newpath });
   }
 
   function toUnixTimeFromEpoch(value) {
@@ -290,7 +298,7 @@
     atime,
     mtime,
   ) {
-    sendSync("op_futime_sync", {
+    core.jsonOpSync("op_futime_sync", {
       rid,
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
@@ -302,7 +310,7 @@
     atime,
     mtime,
   ) {
-    await sendAsync("op_futime_async", {
+    await core.jsonOpAsync("op_futime_async", {
       rid,
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
@@ -314,7 +322,7 @@
     atime,
     mtime,
   ) {
-    sendSync("op_utime_sync", {
+    core.jsonOpSync("op_utime_sync", {
       path,
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
@@ -326,7 +334,7 @@
     atime,
     mtime,
   ) {
-    await sendAsync("op_utime_async", {
+    await core.jsonOpAsync("op_utime_async", {
       path,
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
@@ -338,7 +346,7 @@
     newpath,
     options,
   ) {
-    sendSync("op_symlink_sync", { oldpath, newpath, options });
+    core.jsonOpSync("op_symlink_sync", { oldpath, newpath, options });
   }
 
   async function symlink(
@@ -346,23 +354,23 @@
     newpath,
     options,
   ) {
-    await sendAsync("op_symlink_async", { oldpath, newpath, options });
+    await core.jsonOpAsync("op_symlink_async", { oldpath, newpath, options });
   }
 
   function fdatasyncSync(rid) {
-    sendSync("op_fdatasync_sync", { rid });
+    core.jsonOpSync("op_fdatasync_sync", { rid });
   }
 
   async function fdatasync(rid) {
-    await sendAsync("op_fdatasync_async", { rid });
+    await core.jsonOpAsync("op_fdatasync_async", { rid });
   }
 
   function fsyncSync(rid) {
-    sendSync("op_fsync_sync", { rid });
+    core.jsonOpSync("op_fsync_sync", { rid });
   }
 
   async function fsync(rid) {
-    await sendAsync("op_fsync_async", { rid });
+    await core.jsonOpAsync("op_fsync_async", { rid });
   }
 
   window.__bootstrap.fs = {

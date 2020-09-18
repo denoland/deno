@@ -1,11 +1,15 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { dirname, fromFileUrl } from "../path/mod.ts";
+
+const moduleDir = dirname(fromFileUrl(import.meta.url));
 
 let server: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 async function startServer(): Promise<void> {
   server = Deno.run({
-    cmd: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
+    cmd: [Deno.execPath(), "run", "-A", "racing_server.ts"],
+    cwd: moduleDir,
     stdout: "piped",
   });
   // Once racing server is ready it will write to its stdout.

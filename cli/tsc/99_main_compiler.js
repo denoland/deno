@@ -17,9 +17,8 @@
 delete Object.prototype.__proto__;
 
 ((window) => {
-  const core = Deno.core;
+  const core = window.Deno.core;
   const { assert, log, notImplemented } = window.__bootstrap.util;
-  const dispatchJson = window.__bootstrap.dispatchJson;
   const util = window.__bootstrap.util;
   const errorStack = window.__bootstrap.errorStack;
   const errors = window.__bootstrap.errors.errors;
@@ -78,7 +77,7 @@ delete Object.prototype.__proto__;
   }
 
   function opNow() {
-    const res = dispatchJson.sendSync("op_now");
+    const res = core.jsonOpSync("op_now");
     return res.seconds * 1e3 + res.subsecNanos / 1e6;
   }
 
@@ -131,16 +130,20 @@ delete Object.prototype.__proto__;
     0: "JavaScript",
     1: "JSX",
     2: "TypeScript",
-    3: "TSX",
-    4: "Json",
-    5: "Wasm",
-    6: "Unknown",
+    3: "Dts",
+    4: "TSX",
+    5: "Json",
+    6: "Wasm",
+    7: "BuildInfo",
+    8: "Unknown",
     JavaScript: 0,
     JSX: 1,
     TypeScript: 2,
-    TSX: 3,
-    Json: 4,
-    Wasm: 5,
+    Dts: 3,
+    TSX: 4,
+    Json: 5,
+    Wasm: 6,
+    BuildInfo: 7,
     Unknown: 6,
   };
 
@@ -1248,7 +1251,7 @@ delete Object.prototype.__proto__;
   }
 
   function opCompilerRespond(msg) {
-    dispatchJson.sendSync("op_compiler_respond", msg);
+    core.jsonOpSync("op_compiler_respond", msg);
   }
 
   async function tsCompilerOnMessage(msg) {
@@ -1288,21 +1291,12 @@ delete Object.prototype.__proto__;
     }
   }
 
-  // TODO(bartlomieju): temporary solution, must be fixed when moving
-  // dispatches to separate crates
-  function initOps() {
-    const opsMap = core.ops();
-    for (const [_name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
-    }
-  }
-
   function runtimeStart(source) {
-    initOps();
+    core.ops();
     // First we send an empty `Start` message to let the privileged side know we
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
-    const s = dispatchJson.sendSync("op_start");
+    const s = core.jsonOpSync("op_start");
     util.setLogDebug(s.debugFlag, source);
     errorStack.setPrepareStackTrace(Error);
     return s;

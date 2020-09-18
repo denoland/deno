@@ -1,27 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-extern crate futures;
 #[macro_use]
 extern crate serde_json;
-extern crate clap;
-extern crate deno_core;
-extern crate encoding_rs;
-extern crate indexmap;
-#[cfg(unix)]
-extern crate nix;
-extern crate rand;
-extern crate regex;
-extern crate reqwest;
-extern crate serde;
-extern crate serde_derive;
-extern crate tokio;
-extern crate url;
 
+mod ast;
 mod bundler;
 mod checksum;
 pub mod colors;
@@ -49,9 +35,9 @@ pub mod installer;
 mod js;
 mod lint;
 mod lockfile;
+mod media_type;
 mod metrics;
 mod module_graph;
-pub mod msg;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -60,7 +46,6 @@ pub mod resolve_addr;
 pub mod signal;
 pub mod source_maps;
 pub mod state;
-mod swc_util;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
@@ -73,17 +58,18 @@ pub mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
-use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
-use crate::msg::MediaType;
+use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
+use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::url::Url;
 use deno_core::v8_set_flags;
-use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
@@ -92,6 +78,7 @@ use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
 use log::Level;
+use log::LevelFilter;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
@@ -101,7 +88,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use upgrade::upgrade_command;
-use url::Url;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -115,18 +101,18 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-fn write_json_to_stdout<T>(value: &T) -> Result<(), ErrBox>
+fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
 where
   T: ?Sized + serde::ser::Serialize,
 {
   let writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(writer, value).map_err(ErrBox::from)
+  serde_json::to_writer_pretty(writer, value).map_err(AnyError::from)
 }
 
 fn print_cache_info(
   state: &Arc<GlobalState>,
   json: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.http_cache.location;
   let typescript_cache = &state.dir.gen_cache.location;
@@ -173,7 +159,7 @@ async fn info_command(
   flags: Flags,
   file: Option<String>,
   json: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   if json && !flags.unstable {
     exit_unstable("--json");
   }
@@ -189,8 +175,8 @@ async fn info_command(
     if json {
       write_json_to_stdout(&json!(info))
     } else {
-      print!("{}", info);
-      Ok(())
+      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())
+        .map_err(AnyError::from)
     }
   }
 }
@@ -202,8 +188,15 @@ async fn install_command(
   name: Option<String>,
   root: Option<PathBuf>,
   force: bool,
-) -> Result<(), ErrBox> {
-  installer::install(flags, &module_url, args, name, root, force).await
+) -> Result<(), AnyError> {
+  // First, fetch and compile the module; this step ensures that the module exists.
+  let mut fetch_flags = flags.clone();
+  fetch_flags.reload = true;
+  let global_state = GlobalState::new(fetch_flags)?;
+  let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  worker.preload_module(&main_module).await?;
+  installer::install(flags, &module_url, args, name, root, force)
 }
 
 async fn lint_command(
@@ -212,7 +205,7 @@ async fn lint_command(
   list_rules: bool,
   ignore: Vec<String>,
   json: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("lint");
   }
@@ -225,7 +218,10 @@ async fn lint_command(
   lint::lint_files(files, ignore, json).await
 }
 
-async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+async fn cache_command(
+  flags: Flags,
+  files: Vec<String>,
+) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$cache.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
@@ -246,7 +242,7 @@ async fn eval_command(
   code: String,
   as_typescript: bool,
   print: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
@@ -289,7 +285,7 @@ async fn bundle_command(
   flags: Flags,
   source_file: String,
   out_file: Option<PathBuf>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
@@ -327,7 +323,7 @@ async fn doc_command(
   json: bool,
   maybe_filter: Option<String>,
   private: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
@@ -374,7 +370,7 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
-    let syntax = swc_util::get_syntax_for_dts();
+    let syntax = ast::get_syntax(&MediaType::Dts);
     doc_parser.parse_source(
       "lib.deno.d.ts",
       syntax,
@@ -382,12 +378,8 @@ async fn doc_command(
     )
   } else {
     let path = PathBuf::from(&source_file);
-    let syntax = if path.ends_with("d.ts") {
-      swc_util::get_syntax_for_dts()
-    } else {
-      let media_type = map_file_extension(&path);
-      swc_util::get_syntax_for_media_type(media_type)
-    };
+    let media_type = MediaType::from(&path);
+    let syntax = ast::get_syntax(&media_type);
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
     doc_parser
@@ -425,11 +417,11 @@ async fn doc_command(
       )
     };
 
-    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
+    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
   }
 }
 
-async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
+async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
@@ -439,7 +431,7 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   }
 }
 
-async fn run_from_stdin(flags: Flags) -> Result<(), ErrBox> {
+async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
@@ -471,7 +463,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), ErrBox> {
   Ok(())
 }
 
-async fn run_with_watch(flags: Flags, script: String) -> Result<(), ErrBox> {
+async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let global_state = GlobalState::new(flags.clone())?;
 
@@ -513,7 +505,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), ErrBox> {
   .await
 }
 
-async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
+async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   // Read script content from stdin
   if script == "-" {
     return run_from_stdin(flags).await;
@@ -542,7 +534,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
   coverage: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
@@ -664,10 +656,12 @@ pub fn main() {
     env_logger::Env::default()
       .default_filter_or(log_level.to_level_filter().to_string()),
   )
+  // https://github.com/denoland/deno/issues/6641
+  .filter_module("rustyline", LevelFilter::Off)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {
-      target.push_str(":");
+      target.push(':');
       target.push_str(&line_no.to_string());
     }
     if record.level() >= Level::Info {

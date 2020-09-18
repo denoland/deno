@@ -1525,7 +1525,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 // TODO(ry) move this to utility module and add test.
 /// Strips fragment part of URL. Panics on bad URL.
 pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
-  use url::Url;
+  use deno_core::url::Url;
   let mut out: Vec<String> = vec![];
   for urlstr in urls.iter() {
     use std::str::FromStr;

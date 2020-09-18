@@ -1,23 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#[cfg(unix)]
-extern crate nix;
-extern crate tempfile;
-
-use test_util as util;
-
+use deno_core::url;
 use futures::prelude::*;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
+use test_util as util;
 
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let std_path = util::root_path().join("std");
-  let std_config = std_path.join("tsconfig_test.json");
+  let std_config = util::root_path().join("std/tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
-    .current_dir(std_path) // TODO(ry) change this to root_path
+    .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
@@ -25,6 +20,7 @@ fn std_tests() {
     .arg("--config")
     .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
+    .arg("std/")
     .spawn()
     .unwrap()
     .wait()
@@ -614,7 +610,6 @@ fn js_unit_tests() {
     .arg("cli/tests/unit/unit_test_runner.ts")
     .arg("--master")
     .arg("--verbose")
-    .env("NO_COLOR", "1")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
@@ -2034,8 +2029,9 @@ itest!(exit_error42 {
 });
 
 itest!(https_import {
-  args: "run --quiet --reload https_import.ts",
+  args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
   output: "https_import.ts.out",
+  http_server: true,
 });
 
 itest!(if_main {
@@ -2121,9 +2117,7 @@ itest!(ts_type_imports {
   exit_code: 1,
 });
 
-// Broken after V8 upgrade
-// https://github.com/denoland/deno/pull/7429
-itest_ignore!(ts_decorators {
+itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
@@ -2428,7 +2422,7 @@ itest!(info_type_import {
 
 #[test]
 fn cafile_env_fetch() {
-  use url::Url;
+  use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
@@ -2448,7 +2442,7 @@ fn cafile_env_fetch() {
 
 #[test]
 fn cafile_fetch() {
-  use url::Url;
+  use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =

@@ -11,7 +11,8 @@
 
   const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
   const { assert, AssertionError } = window.__bootstrap.util;
-  const { customInspect, inspect } = window.__bootstrap.console;
+
+  const customInspect = Symbol.for("Deno.customInspect");
 
   const sym = {
     abortAlgorithm: Symbol("abortAlgorithm"),
@@ -388,7 +389,7 @@
       let { highWaterMark } = strategy;
       const { type } = underlyingSource;
 
-      if (isUnderlyingByteSource(underlyingSource)) {
+      if (underlyingSource.type == "bytes") {
         if (size !== undefined) {
           throw new RangeError(
             `When underlying source is "bytes", strategy.size must be undefined.`,
@@ -636,9 +637,7 @@
     }
 
     [customInspect]() {
-      return `${this.constructor.name} {\n  readable: ${
-        inspect(this.readable)
-      }\n  writable: ${inspect(this.writable)}\n}`;
+      return this.constructor.name;
     }
   }
 
@@ -1224,14 +1223,6 @@
       x === null ||
       !(sym.controlledTransformStream in x)
     );
-  }
-
-  function isUnderlyingByteSource(
-    underlyingSource,
-  ) {
-    const { type } = underlyingSource;
-    const typeString = String(type);
-    return typeString === "bytes";
   }
 
   function isWritableStream(x) {
