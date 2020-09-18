@@ -4,7 +4,7 @@ use crate::{
   permissions::Permissions,
 };
 use anyhow::bail;
-use deno_core::{ErrBox, ModuleSpecifier};
+use deno_core::{error::AnyError, ModuleSpecifier};
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 use swc_common::input::StringInput;
 use swc_common::FileName;
@@ -21,7 +21,7 @@ use swc_ecmascript::{
 pub async fn bundle(
   global_state: &Arc<GlobalState>,
   module_specifier: ModuleSpecifier,
-) -> Result<String, ErrBox> {
+) -> Result<String, AnyError> {
   let permissions = Permissions::allow_all();
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.ts_compiler.file_fetcher.clone(),
@@ -41,7 +41,7 @@ pub async fn bundle(
 pub fn bundle_graph(
   module_graph: &HashMap<String, ModuleGraphFile>,
   entry: &ModuleSpecifier,
-) -> Result<String, ErrBox> {
+) -> Result<String, AnyError> {
   let cm = Rc::new(swc_common::SourceMap::new(FilePathMapping::empty()));
   let loader = SwcLoader {
     cm: cm.clone(),
