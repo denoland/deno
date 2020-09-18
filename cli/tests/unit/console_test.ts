@@ -831,7 +831,7 @@ unitTest(function consoleTestWithStringFormatSpecifier(): void {
 unitTest(function consoleTestWithObjectFormatSpecifier(): void {
   assertEquals(stringify("%o"), "%o");
   assertEquals(stringify("%o", 42), "42");
-  assertEquals(stringify("%o", "foo"), "foo");
+  assertEquals(stringify("%o", "foo"), `"foo"`);
   assertEquals(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
   assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
   assertEquals(
@@ -1422,6 +1422,17 @@ unitTest(function consoleTrace(): void {
     assert(err);
     assert(err.toString().includes("Trace: custom message"));
   });
+});
+
+unitTest(function inspectString(): void {
+  assertEquals(
+    stripColor(Deno.inspect("\0")),
+    `"\\x00"`,
+  );
+  assertEquals(
+    stripColor(Deno.inspect("\x1b[2J")),
+    `"\\x1b[2J"`,
+  );
 });
 
 unitTest(function inspectSorted(): void {
