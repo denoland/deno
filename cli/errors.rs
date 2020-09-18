@@ -14,6 +14,7 @@ use crate::import_map::ImportMapError;
 use deno_core::error::AnyError;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
+use deno_fetch::reqwest;
 use rustyline::error::ReadlineError;
 use std::env;
 use std::error::Error;
