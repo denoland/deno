@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* TODO(bartlomieju): move to op_crates/fetch
+/* TODO https://github.com/denoland/deno/issues/7540
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

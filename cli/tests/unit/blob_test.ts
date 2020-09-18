@@ -61,7 +61,7 @@ unitTest(function blobShouldNotThrowError(): void {
   assertEquals(hasThrown, false);
 });
 
-/* FIXME(bartlomieju)
+/* TODO https://github.com/denoland/deno/issues/7540
 unitTest(function nativeEndLine(): void {
   const options = {
     ending: "native",
