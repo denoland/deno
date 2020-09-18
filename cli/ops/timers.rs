@@ -12,16 +12,16 @@ use deno_core::error::AnyError;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use futures::channel::oneshot;
 use futures::FutureExt;
 use futures::TryFutureExt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
+use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
-use futures::channel::oneshot;
-use std::future::Future;
 pub type StartTime = Instant;
 
 #[derive(Default)]
@@ -55,7 +55,6 @@ impl GlobalTimer {
     futures::future::select(delay, rx).then(|_| futures::future::ok(()))
   }
 }
-
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
