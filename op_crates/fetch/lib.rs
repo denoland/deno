@@ -111,6 +111,8 @@ where
 
   {
     let state_ = state.borrow();
+    // TODO(ry) The Rc below is a hack because we store Rc<CliState> in OpState.
+    // Ideally it could be removed.
     let permissions = state_.borrow::<Rc<FP>>();
     permissions.check_net_url(&url_)?;
   }
@@ -226,6 +228,8 @@ where
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {
+    // TODO(ry) The Rc below is a hack because we store Rc<CliState> in OpState.
+    // Ideally it could be removed.
     let permissions = state.borrow::<Rc<FP>>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
