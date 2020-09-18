@@ -24,8 +24,8 @@ fn op_global_timer_stop(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let global_timer = state.borrow::<GlobalTimer>();
-  global_timer.borrow_mut().cancel();
+  let global_timer = state.borrow_mut::<GlobalTimer>();
+  global_timer.cancel();
   Ok(json!({}))
 }
 
