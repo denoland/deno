@@ -253,23 +253,19 @@ impl SourceFileFetcher {
               module_url, referrer_suffix
             );
             custom_error("NotFound", msg)
-          },
-          false => {
-            match err.downcast_ref::<std::io::Error>() {
-              Some(e) => {
-                match e.kind() == std::io::ErrorKind::NotFound {
-                  true => {
-                    let msg = format!(
-                      r#"Cannot resolve module "{}"{}"#,
-                      module_url, referrer_suffix
-                    );
-                    custom_error("NotFound", msg)
-                  },
-                  false => err,
-                }
-              },
-              None => err,
-            }
+          }
+          false => match err.downcast_ref::<std::io::Error>() {
+            Some(e) => match e.kind() == std::io::ErrorKind::NotFound {
+              true => {
+                let msg = format!(
+                  r#"Cannot resolve module "{}"{}"#,
+                  module_url, referrer_suffix
+                );
+                custom_error("NotFound", msg)
+              }
+              false => err,
+            },
+            None => err,
           },
         };
         Err(err)
