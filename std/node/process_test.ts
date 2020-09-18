@@ -18,8 +18,11 @@ Deno.test({
     allKeys.delete("process");
     // without esm default
     allKeys.delete("default");
-    // with on, which is not exported via *
+    // with on, stdin, stderr, and stdout, which is not exported via *
     allKeys.add("on");
+    allKeys.add("stdin");
+    allKeys.add("stderr");
+    allKeys.add("stdout");
     const allStr = Array.from(allKeys).sort().join(" ");
     assertEquals(Object.keys(all.default).sort().join(" "), allStr);
     assertEquals(Object.keys(all.process).sort().join(" "), allStr);
@@ -128,5 +131,35 @@ Deno.test({
   fn() {
     assertEquals(typeof process.env.PATH, "string");
     assertEquals(typeof env.PATH, "string");
+  },
+});
+
+Deno.test({
+  name: "process.stdin",
+  fn() {
+    assertEquals(typeof process.stdin.fd, "number");
+    assertEquals(process.stdin.fd, Deno.stdin.rid);
+    // TODO(jayhelton) Uncomment out this assertion once PTY is supported
+    //assert(process.stdin.isTTY);
+  },
+});
+
+Deno.test({
+  name: "process.stdout",
+  fn() {
+    assertEquals(typeof process.stdout.fd, "number");
+    assertEquals(process.stdout.fd, Deno.stdout.rid);
+    // TODO(jayhelton) Uncomment out this assertion once PTY is supported
+    // assert(process.stdout.isTTY);
+  },
+});
+
+Deno.test({
+  name: "process.stderr",
+  fn() {
+    assertEquals(typeof process.stderr.fd, "number");
+    assertEquals(process.stderr.fd, Deno.stderr.rid);
+    // TODO(jayhelton) Uncomment out this assertion once PTY is supported
+    // assert(process.stderr.isTTY);
   },
 });
