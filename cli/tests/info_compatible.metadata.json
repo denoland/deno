@@ -1,0 +1,10 @@
+{
+  "headers": {
+    "content-type": "application/javascript",
+    "accept-ranges": "bytes",
+    "content-length": "28",
+    "last-modified": "Thu, 27 Aug 2020 14:28:55 GMT",
+    "date": "Fri, 18 Sep 2020 02:05:24 GMT"
+  },
+  "url": "http://127.0.0.1:4545/cli/tests/001_hello.js"
+}

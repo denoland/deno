@@ -3655,3 +3655,42 @@ fn fmt_ignore_unexplicit_files() {
   assert!(output.status.success());
   assert_eq!(output.stderr, b"Checked 0 file\n");
 }
+
+#[test]
+fn info_compatible() {
+  let tmp_dir = TempDir::new().unwrap();
+
+  //copy cache and metadata file
+  let target_dir_path = tmp_dir.path()
+    .join("deps")
+    .join("http")
+    .join("127.0.0.1_PORT4545");
+  std::fs::create_dir_all(&target_dir_path).unwrap();
+  let metadata_path = target_dir_path
+    .join("e1633cbe03bb09239afc9fe0cf376c91c8d41384ef7407feebdec69f45bb4c11.metadata.json");
+  let cache_path = target_dir_path
+    .join("e1633cbe03bb09239afc9fe0cf376c91c8d41384ef7407feebdec69f45bb4c11");
+  std::fs::File::create(&metadata_path).unwrap();
+  std::fs::copy(
+    util::tests_path().join("info_compatible.metadata.json"),
+    &metadata_path,
+  )
+  .unwrap();
+  std::fs::copy(
+    util::tests_path().join("001_hello.js"),
+    &cache_path,
+  )
+  .unwrap();
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("info")
+    .arg("--unstable")
+    .arg("http://127.0.0.1:4545/cli/tests/001_hello.js")
+    .env("DENO_DIR", tmp_dir.path().to_str().unwrap())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
