@@ -16,6 +16,8 @@ use swc_ecmascript::{
   parser::{lexer::Lexer, JscTarget, Parser, Syntax},
 };
 
+/// For a given module, generate a single file JavaScript output that includes
+/// all the dependencies for that module.
 pub async fn bundle(
   global_state: &Arc<GlobalState>,
   module_specifier: ModuleSpecifier,
