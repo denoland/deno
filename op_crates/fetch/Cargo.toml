@@ -4,7 +4,7 @@
 name = "deno_fetch"
 version = "0.1.0"
 edition = "2018"
-description = "fetch Web API"
+description = "provides fetch Web API to deno_core"
 authors = ["the Deno authors"]
 license = "MIT"
 readme = "README.md"
