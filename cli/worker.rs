@@ -3,6 +3,7 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
+use crate::metrics::Metrics;
 use crate::inspector::DenoInspector;
 use crate::js;
 use crate::ops;
@@ -135,6 +136,8 @@ impl Worker {
       if let Some(seed) = global_state.flags.seed {
         op_state.put(StdRng::seed_from_u64(seed));
       }
+
+      op_state.put(Metrics::default());
     }
     let inspector = {
       let global_state = &state.global_state;

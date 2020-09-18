@@ -92,9 +92,9 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
 
     let op = (op_fn)(op_state.clone(), bufs);
 
-    let cli_state = crate::ops::cli_state2(&op_state);
-    let cli_state_ = cli_state.clone();
-    let mut metrics = cli_state.metrics.borrow_mut();
+    let op_state_ = op_state.clone();
+    let mut s = op_state.borrow_mut();
+    let metrics = s.borrow_mut::<Metrics>();
 
     use futures::future::FutureExt;
 
@@ -107,7 +107,8 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
         metrics.op_dispatched_async(bytes_sent_control, bytes_sent_data);
         let fut = fut
           .inspect(move |buf| {
-            let mut metrics = cli_state_.metrics.borrow_mut();
+            let mut s = op_state_.borrow_mut();
+            let metrics = s.borrow_mut::<Metrics>();
             metrics.op_completed_async(buf.len());
           })
           .boxed_local();
@@ -117,7 +118,8 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
         metrics.op_dispatched_async_unref(bytes_sent_control, bytes_sent_data);
         let fut = fut
           .inspect(move |buf| {
-            let mut metrics = cli_state_.metrics.borrow_mut();
+            let mut s = op_state_.borrow_mut();
+            let metrics = s.borrow_mut::<Metrics>();
             metrics.op_completed_async_unref(buf.len());
           })
           .boxed_local();
