@@ -3526,3 +3526,36 @@ fn rust_log() {
   assert!(output.status.success());
   assert!(!output.stderr.is_empty());
 }
+
+#[test]
+fn lint_ignore_unexplicit_files() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("lint")
+    .arg("--unstable")
+    .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn fmt_ignore_unexplicit_files() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("--unstable")
+    .arg("--check")
+    .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+}
