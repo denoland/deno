@@ -108,7 +108,7 @@ unitTest(
       stringify(
         { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
       ),
-      `{ foo\\b: "bar\\n", bar\\r: "baz\\t", qux\\x00: "qux\\x00" }`,
+      `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
     );
     assertEquals(
       stringify(new Set(["foo\n", "foo\r", "foo\0"])),
