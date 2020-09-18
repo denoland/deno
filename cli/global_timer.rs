@@ -20,10 +20,6 @@ pub struct GlobalTimer {
 }
 
 impl GlobalTimer {
-  pub fn new() -> Self {
-    Self { tx: None }
-  }
-
   pub fn cancel(&mut self) {
     if let Some(tx) = self.tx.take() {
       tx.send(()).ok();
