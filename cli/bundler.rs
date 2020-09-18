@@ -72,7 +72,7 @@ pub fn bundle_graph(
       cfg: swc_ecmascript::codegen::Config { minify: false },
       cm: cm.clone(),
       comments: None,
-      wr: Box::new(JsWriter::new(cm.clone(), "\n", &mut buf, None)),
+      wr: Box::new(JsWriter::new(cm, "\n", &mut buf, None)),
     };
 
     // Cannnot happen
