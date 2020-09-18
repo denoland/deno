@@ -1083,12 +1083,25 @@
     enumerable: true,
   });
 
+  // ProgressEvent could also be used in other DOM progress event emits.
+  // Current use is for FileReader.
+  class ProgressEvent extends Event {
+    constructor(type, eventInitDict = {}) {
+      super(type, eventInitDict);
+
+      this.lengthComputable = eventInitDict?.lengthComputable ?? false;
+      this.loaded = eventInitDict?.loaded ?? 0;
+      this.total = eventInitDict?.total ?? 0;
+    }
+  }
+
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
   window.CloseEvent = CloseEvent;
   window.MessageEvent = MessageEvent;
   window.CustomEvent = CustomEvent;
+  window.ProgressEvent = ProgressEvent;
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;
   window.addEventListener = EventTarget.prototype.addEventListener;
   window.removeEventListener = EventTarget.prototype.removeEventListener;
