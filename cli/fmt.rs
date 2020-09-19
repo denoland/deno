@@ -211,7 +211,7 @@ fn format_stdin(check: bool) -> Result<(), AnyError> {
 }
 
 fn files_str(len: usize) -> &'static str {
-  if len == 1 {
+  if len <= 1 {
     "file"
   } else {
     "files"

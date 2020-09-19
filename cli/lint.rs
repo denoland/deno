@@ -245,7 +245,7 @@ impl LintReporter for PrettyLintReporter {
     }
 
     match check_count {
-      1 => info!("Checked 1 file"),
+      n if n <= 1 => info!("Checked {} file", n),
       n if n > 1 => info!("Checked {} files", n),
       _ => (),
     }
