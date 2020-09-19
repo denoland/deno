@@ -23,7 +23,7 @@ fn op_start(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let gs = &super::cli_state(state).global_state;
+  let gs = &super::cli_state(state);
 
   Ok(json!({
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?

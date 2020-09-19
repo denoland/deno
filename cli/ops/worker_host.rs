@@ -198,7 +198,6 @@ fn op_create_worker(
   if use_deno_namespace {
     cli_state.check_unstable("Worker.deno");
   }
-  let global_state = cli_state.global_state.clone();
   let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
   state.put::<WorkerId>(worker_id + 1);
@@ -209,7 +208,7 @@ fn op_create_worker(
   let (join_handle, worker_handle) = run_worker_thread(
     worker_id,
     worker_name,
-    &global_state,
+    &cli_state,
     permissions,
     module_specifier,
     use_deno_namespace,

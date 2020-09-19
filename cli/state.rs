@@ -30,14 +30,6 @@ pub struct CliState {
   pub is_main: bool,
 }
 
-pub fn exit_unstable(api_name: &str) {
-  eprintln!(
-    "Unstable API '{}'. The --unstable flag must be provided.",
-    api_name
-  );
-  std::process::exit(70);
-}
-
 impl ModuleLoader for CliState {
   fn resolve(
     &self,
@@ -165,17 +157,5 @@ impl CliState {
   pub fn mock() -> Rc<Self> {
     CliState::new(&GlobalState::mock(vec!["deno".to_string()], None), None)
       .unwrap()
-  }
-
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  pub fn check_unstable(&self, api_name: &str) {
-    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
-    // stack trace in JS.
-    if !self.global_state.flags.unstable {
-      exit_unstable(api_name);
-    }
   }
 }

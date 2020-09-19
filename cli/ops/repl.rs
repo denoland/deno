@@ -36,7 +36,7 @@ fn op_repl_start(
   debug!("op_repl_start {}", args.history_file);
   let history_path = {
     let cli_state = super::cli_state(state);
-    repl::history_path(&cli_state.global_state.dir, &args.history_file)
+    repl::history_path(&cli_state.dir, &args.history_file)
   };
   let repl = repl::Repl::new(history_path);
   let resource = ReplResource(Arc::new(Mutex::new(repl)));

@@ -152,6 +152,7 @@ impl Worker {
       op_state.put(permissions);
 
       op_state.put(main_module);
+      op_state.put(global_state.clone());
     }
     let inspector = {
       let global_state = &state.global_state;
