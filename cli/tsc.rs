@@ -18,7 +18,7 @@ use crate::module_graph::ModuleGraphLoader;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-use crate::state::CliState;
+use crate::state::CliModuleLoader;
 use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
@@ -139,14 +139,15 @@ impl CompilerWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
     // TODO(bartlomieju): compiler worker shouldn't require any loader/state
-    let state = CliState::new(None);
+    let loader = CliModuleLoader::new(None);
     let mut worker = Worker::new(
       name,
       Some(js::compiler_isolate_init()),
       permissions,
       main_module,
       global_state,
-      &state,
+      loader,
+      false,
       true,
     );
     let response = Arc::new(Mutex::new(None));

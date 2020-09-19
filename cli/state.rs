@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
 
-pub struct CliState {
+pub struct CliModuleLoader {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -25,7 +25,25 @@ pub struct CliState {
   pub is_main: bool,
 }
 
-impl ModuleLoader for CliState {
+impl CliModuleLoader {
+  pub fn new(maybe_import_map: Option<ImportMap>) -> Rc<Self> {
+    Rc::new(CliModuleLoader {
+      import_map: maybe_import_map,
+      target_lib: TargetLib::Main,
+      is_main: true,
+    })
+  }
+
+  pub fn new_for_worker() -> Rc<Self> {
+    Rc::new(CliModuleLoader {
+      import_map: None,
+      target_lib: TargetLib::Worker,
+      is_main: false,
+    })
+  }
+}
+
+impl ModuleLoader for CliModuleLoader {
   fn resolve(
     &self,
     specifier: &str,
@@ -124,23 +142,5 @@ impl ModuleLoader for CliState {
         .await
     }
     .boxed_local()
-  }
-}
-
-impl CliState {
-  pub fn new(maybe_import_map: Option<ImportMap>) -> Rc<Self> {
-    Rc::new(CliState {
-      import_map: maybe_import_map,
-      target_lib: TargetLib::Main,
-      is_main: true,
-    })
-  }
-
-  pub fn new_for_worker() -> Rc<Self> {
-    Rc::new(CliState {
-      import_map: None,
-      target_lib: TargetLib::Worker,
-      is_main: false,
-    })
   }
 }

@@ -3,7 +3,7 @@ use crate::global_state::GlobalState;
 use crate::js;
 use crate::ops;
 use crate::permissions::Permissions;
-use crate::state::CliState;
+use crate::state::CliModuleLoader;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
@@ -91,14 +91,15 @@ impl WebWorker {
     global_state: Arc<GlobalState>,
     has_deno_namespace: bool,
   ) -> Self {
-    let state = CliState::new_for_worker();
+    let loader = CliModuleLoader::new_for_worker();
     let mut worker = Worker::new(
       name,
       Some(js::deno_isolate_init()),
       permissions,
       main_module,
       global_state,
-      &state,
+      loader,
+      false,
       false,
     );
 

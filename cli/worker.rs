@@ -11,7 +11,7 @@ use crate::ops::timers;
 use crate::ops::worker_host::WorkerId;
 use crate::ops::worker_host::WorkersTable;
 use crate::permissions::Permissions;
-use crate::state::CliState;
+use crate::state::CliModuleLoader;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
@@ -108,19 +108,21 @@ pub struct Worker {
 }
 
 impl Worker {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
     permissions: Permissions,
     main_module: ModuleSpecifier,
     global_state: Arc<GlobalState>,
-    state: &Rc<CliState>,
+    state: Rc<CliModuleLoader>,
+    is_main: bool,
     is_internal: bool,
   ) -> Self {
     let global_state_ = global_state.clone();
 
     let mut isolate = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(state.clone()),
+      module_loader: Some(state),
       startup_snapshot,
       js_error_create_fn: Some(Box::new(move |core_js_error| {
         JsError::create(core_js_error, &global_state_.ts_compiler)
@@ -131,7 +133,6 @@ impl Worker {
       let op_state = isolate.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.get_error_class_fn = &crate::errors::get_error_class_name;
-      op_state.put(state.clone());
 
       let ca_file = global_state.flags.ca_file.as_deref();
       let client = crate::http_util::create_http_client(ca_file).unwrap();
@@ -163,9 +164,9 @@ impl Worker {
         .map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
     };
 
-    let should_break_on_first_statement = inspector.is_some() && {
-      state.is_main && global_state.flags.inspect_brk.is_some()
-    };
+    let should_break_on_first_statement = inspector.is_some()
+      && is_main
+      && global_state.flags.inspect_brk.is_some();
 
     let (internal_channels, external_channels) = create_channels();
 
@@ -297,14 +298,15 @@ impl MainWorker {
     main_module: ModuleSpecifier,
     global_state: Arc<GlobalState>,
   ) -> Self {
-    let state = CliState::new(global_state.maybe_import_map.clone());
+    let loader = CliModuleLoader::new(global_state.maybe_import_map.clone());
     let mut worker = Worker::new(
       name,
       startup_snapshot,
       permissions,
       main_module,
       global_state,
-      &state,
+      loader,
+      true,
       false,
     );
     {
