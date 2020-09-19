@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::Permissions;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
@@ -32,11 +33,14 @@ async fn op_compile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
-  let global_state = cli_state.global_state.clone();
-  let permissions = cli_state.permissions.borrow().clone();
+  let global_state = cli_state.clone();
+  let permissions = {
+    let state = state.borrow();
+    state.borrow::<Permissions>().clone()
+  };
   let fut = if args.bundle {
     runtime_bundle(
       &global_state,
@@ -71,11 +75,14 @@ async fn op_transpile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let global_state = cli_state.global_state.clone();
-  let permissions = cli_state.permissions.borrow().clone();
+  let global_state = cli_state.clone();
+  let permissions = {
+    let state = state.borrow();
+    state.borrow::<Permissions>().clone()
+  };
   let result =
     runtime_transpile(&global_state, permissions, &args.sources, &args.options)
       .await?;

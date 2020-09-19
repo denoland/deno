@@ -1,58 +1,49 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
-use crate::web_worker::WebWorkerHandle;
 use deno_core::error::AnyError;
-use deno_core::url;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use futures::future::FutureExt;
 use futures::Future;
-use std::cell::Cell;
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
-use std::thread::JoinHandle;
-use std::time::Instant;
 
-// This is named "CliState" instead of just "State" to avoid confusion with all
-// other state structs (GlobalState, OpState, GothamState).
-// TODO(ry) Many of the items in this struct should be moved out and into
-// OpState, removing redundant RefCell wrappers if possible.
-pub struct CliState {
-  pub global_state: Arc<GlobalState>,
-  pub permissions: RefCell<Permissions>,
-  pub main_module: ModuleSpecifier,
+pub struct CliModuleLoader {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
-  pub workers: RefCell<HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>>,
-  pub next_worker_id: Cell<u32>,
-  pub start_time: Instant,
   pub target_lib: TargetLib,
   pub is_main: bool,
-  pub is_internal: bool,
 }
 
-pub fn exit_unstable(api_name: &str) {
-  eprintln!(
-    "Unstable API '{}'. The --unstable flag must be provided.",
-    api_name
-  );
-  std::process::exit(70);
+impl CliModuleLoader {
+  pub fn new(maybe_import_map: Option<ImportMap>) -> Rc<Self> {
+    Rc::new(CliModuleLoader {
+      import_map: maybe_import_map,
+      target_lib: TargetLib::Main,
+      is_main: true,
+    })
+  }
+
+  pub fn new_for_worker() -> Rc<Self> {
+    Rc::new(CliModuleLoader {
+      import_map: None,
+      target_lib: TargetLib::Worker,
+      is_main: false,
+    })
+  }
 }
 
-impl ModuleLoader for CliState {
+impl ModuleLoader for CliModuleLoader {
   fn resolve(
     &self,
     specifier: &str,
@@ -75,13 +66,17 @@ impl ModuleLoader for CliState {
 
   fn load(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.to_owned();
     let module_url_specified = module_specifier.to_string();
-    let global_state = self.global_state.clone();
+    let global_state = {
+      let state = op_state.borrow();
+      state.borrow::<Arc<GlobalState>>().clone()
+    };
 
     // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
     let fut = async move {
@@ -102,6 +97,7 @@ impl ModuleLoader for CliState {
 
   fn prepare_load(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     _load_id: ModuleLoadId,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
@@ -110,15 +106,19 @@ impl ModuleLoader for CliState {
     let module_specifier = module_specifier.clone();
     let target_lib = self.target_lib.clone();
     let maybe_import_map = self.import_map.clone();
+    let state = op_state.borrow();
+
     // Only "main" module is loaded without permission check,
     // ie. module that is associated with "is_main" state
     // and is not a dynamic import.
     let permissions = if self.is_main && !is_dyn_import {
       Permissions::allow_all()
     } else {
-      self.permissions.borrow().clone()
+      state.borrow::<Permissions>().clone()
     };
-    let global_state = self.global_state.clone();
+    let global_state = state.borrow::<Arc<GlobalState>>().clone();
+    drop(state);
+
     // TODO(bartlomieju): I'm not sure if it's correct to ignore
     // bad referrer - this is the case for `Deno.core.evalContext()` where
     // `ref_str` is `<unknown>`.
@@ -142,170 +142,5 @@ impl ModuleLoader for CliState {
         .await
     }
     .boxed_local()
-  }
-}
-
-impl CliState {
-  /// If `shared_permission` is None then permissions from globa state are used.
-  pub fn new(
-    global_state: &Arc<GlobalState>,
-    shared_permissions: Option<Permissions>,
-    main_module: ModuleSpecifier,
-    maybe_import_map: Option<ImportMap>,
-    is_internal: bool,
-  ) -> Result<Rc<Self>, AnyError> {
-    let state = CliState {
-      global_state: global_state.clone(),
-      main_module,
-      permissions: shared_permissions
-        .unwrap_or_else(|| global_state.permissions.clone())
-        .into(),
-      import_map: maybe_import_map,
-      workers: Default::default(),
-      next_worker_id: Default::default(),
-      start_time: Instant::now(),
-      target_lib: TargetLib::Main,
-      is_main: true,
-      is_internal,
-    };
-    Ok(Rc::new(state))
-  }
-
-  /// If `shared_permission` is None then permissions from globa state are used.
-  pub fn new_for_worker(
-    global_state: &Arc<GlobalState>,
-    shared_permissions: Option<Permissions>,
-    main_module: ModuleSpecifier,
-  ) -> Result<Rc<Self>, AnyError> {
-    let state = CliState {
-      global_state: global_state.clone(),
-      main_module,
-      permissions: shared_permissions
-        .unwrap_or_else(|| global_state.permissions.clone())
-        .into(),
-      import_map: None,
-      workers: Default::default(),
-      next_worker_id: Default::default(),
-      start_time: Instant::now(),
-      target_lib: TargetLib::Worker,
-      is_main: false,
-      is_internal: false,
-    };
-    Ok(Rc::new(state))
-  }
-
-  #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
-    self.permissions.borrow().check_read(path)
-  }
-
-  /// As `check_read()`, but permission error messages will anonymize the path
-  /// by replacing it with the given `display`.
-  #[inline]
-  pub fn check_read_blind(
-    &self,
-    path: &Path,
-    display: &str,
-  ) -> Result<(), AnyError> {
-    self.permissions.borrow().check_read_blind(path, display)
-  }
-
-  #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
-    self.permissions.borrow().check_write(path)
-  }
-
-  #[inline]
-  pub fn check_env(&self) -> Result<(), AnyError> {
-    self.permissions.borrow().check_env()
-  }
-
-  #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), AnyError> {
-    self.permissions.borrow().check_net(hostname, port)
-  }
-
-  #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
-    self.permissions.borrow().check_net_url(url)
-  }
-
-  #[inline]
-  pub fn check_run(&self) -> Result<(), AnyError> {
-    self.permissions.borrow().check_run()
-  }
-
-  #[inline]
-  pub fn check_hrtime(&self) -> Result<(), AnyError> {
-    self.permissions.borrow().check_hrtime()
-  }
-
-  #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), AnyError> {
-    self.permissions.borrow().check_plugin(filename)
-  }
-
-  pub fn check_dyn_import(
-    &self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    let u = module_specifier.as_url();
-    // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
-    // statement that is actually reachable...
-    SourceFileFetcher::check_if_supported_scheme(u)?;
-
-    match u.scheme() {
-      "http" | "https" => {
-        self.check_net_url(u)?;
-        Ok(())
-      }
-      "file" => {
-        let path = u
-          .to_file_path()
-          .unwrap()
-          .into_os_string()
-          .into_string()
-          .unwrap();
-        self.check_read(Path::new(&path))?;
-        Ok(())
-      }
-      _ => unreachable!(),
-    }
-  }
-
-  #[cfg(test)]
-  pub fn mock(main_module: &str) -> Rc<Self> {
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
-      .expect("Invalid entry module");
-    CliState::new(
-      &GlobalState::mock(vec!["deno".to_string()], None),
-      None,
-      module_specifier,
-      None,
-      false,
-    )
-    .unwrap()
-  }
-
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  pub fn check_unstable(&self, api_name: &str) {
-    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
-    // stack trace in JS.
-    if !self.global_state.flags.unstable {
-      exit_unstable(api_name);
-    }
-  }
-}
-
-impl deno_fetch::FetchPermissions for CliState {
-  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
-    CliState::check_net_url(self, url)
-  }
-
-  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
-    CliState::check_read(self, p)
   }
 }

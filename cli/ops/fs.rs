@@ -2,6 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
+use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -151,15 +152,15 @@ fn open_helper(
     let _ = mode; // avoid unused warning
   }
 
+  let permissions = state.borrow::<Permissions>();
   let options = args.options;
+
   if options.read {
-    let cli_state = super::cli_state(state);
-    cli_state.check_read(&path)?;
+    permissions.check_read(&path)?;
   }
 
   if options.write || options.append {
-    let cli_state = super::cli_state(state);
-    cli_state.check_write(&path)?;
+    permissions.check_write(&path)?;
   }
 
   open_options
@@ -280,7 +281,7 @@ fn op_fdatasync_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.fdatasync");
   }
   let args: FdatasyncArgs = serde_json::from_value(args)?;
@@ -297,7 +298,7 @@ async fn op_fdatasync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.fdatasync");
+  super::global_state2(&state).check_unstable("Deno.fdatasync");
 
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -320,7 +321,7 @@ fn op_fsync_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.fsync");
   }
   let args: FsyncArgs = serde_json::from_value(args)?;
@@ -337,7 +338,7 @@ async fn op_fsync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.fsync");
+  super::global_state2(&state).check_unstable("Deno.fsync");
 
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -360,7 +361,7 @@ fn op_fstat_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.fstat");
   }
   let args: FstatArgs = serde_json::from_value(args)?;
@@ -377,7 +378,7 @@ async fn op_fstat_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.fstat");
+  super::global_state2(&state).check_unstable("Deno.fstat");
 
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -402,7 +403,7 @@ fn op_umask(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.umask");
   }
   let args: UmaskArgs = serde_json::from_value(args)?;
@@ -444,8 +445,7 @@ fn op_chdir(
 ) -> Result<Value, AnyError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
-  let cli_state = super::cli_state(state);
-  cli_state.check_read(&d)?;
+  state.borrow::<Permissions>().check_read(&d)?;
   set_current_dir(&d)?;
   Ok(json!({}))
 }
@@ -466,8 +466,7 @@ fn op_mkdir_sync(
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-  let cli_state = super::cli_state(state);
-  cli_state.check_write(&path)?;
+  state.borrow::<Permissions>().check_write(&path)?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
   builder.recursive(args.recursive);
@@ -489,7 +488,10 @@ async fn op_mkdir_async(
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
-  super::cli_state2(&state).check_write(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_write(&path)?;
+  }
 
   tokio::task::spawn_blocking(move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
@@ -523,8 +525,7 @@ fn op_chmod_sync(
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_write(&path)?;
+  state.borrow::<Permissions>().check_write(&path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
   #[cfg(unix)]
   {
@@ -551,7 +552,10 @@ async fn op_chmod_async(
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
-  super::cli_state2(&state).check_write(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_write(&path)?;
+  }
 
   tokio::task::spawn_blocking(move || {
     debug!("op_chmod_async {} {:o}", path.display(), mode);
@@ -589,8 +593,7 @@ fn op_chown_sync(
 ) -> Result<Value, AnyError> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
-  let cli_state = super::cli_state(state);
-  cli_state.check_write(&path)?;
+  state.borrow::<Permissions>().check_write(&path)?;
   debug!(
     "op_chown_sync {} {:?} {:?}",
     path.display(),
@@ -620,7 +623,10 @@ async fn op_chown_async(
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
-  super::cli_state2(&state).check_write(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_write(&path)?;
+  }
 
   tokio::task::spawn_blocking(move || {
     debug!(
@@ -661,8 +667,7 @@ fn op_remove_sync(
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_write(&path)?;
+  state.borrow::<Permissions>().check_write(&path)?;
 
   #[cfg(not(unix))]
   use std::os::windows::prelude::MetadataExt;
@@ -705,7 +710,10 @@ async fn op_remove_async(
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
-  super::cli_state2(&state).check_write(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_write(&path)?;
+  }
 
   tokio::task::spawn_blocking(move || {
     #[cfg(not(unix))]
@@ -759,9 +767,9 @@ fn op_copy_file_sync(
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_read(&from)?;
-  cli_state.check_write(&to)?;
+  let permissions = state.borrow::<Permissions>();
+  permissions.check_read(&from)?;
+  permissions.check_write(&to)?;
 
   debug!("op_copy_file_sync {} {}", from.display(), to.display());
   // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
@@ -785,9 +793,12 @@ async fn op_copy_file_async(
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
-  let cli_state = super::cli_state2(&state);
-  cli_state.check_read(&from)?;
-  cli_state.check_write(&to)?;
+  {
+    let state = state.borrow();
+    let permissions = state.borrow::<Permissions>();
+    permissions.check_read(&from)?;
+    permissions.check_write(&to)?;
+  }
 
   debug!("op_copy_file_async {} {}", from.display(), to.display());
   tokio::task::spawn_blocking(move || {
@@ -879,8 +890,7 @@ fn op_stat_sync(
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
-  let cli_state = super::cli_state(state);
-  cli_state.check_read(&path)?;
+  state.borrow::<Permissions>().check_read(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
     std::fs::symlink_metadata(&path)?
@@ -899,7 +909,10 @@ async fn op_stat_async(
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
-  super::cli_state2(&state).check_read(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_read(&path)?;
+  }
 
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
@@ -928,10 +941,10 @@ fn op_realpath_sync(
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_read(&path)?;
+  let permissions = state.borrow::<Permissions>();
+  permissions.check_read(&path)?;
   if path.is_relative() {
-    cli_state.check_read_blind(&current_dir()?, "CWD")?;
+    permissions.check_read_blind(&current_dir()?, "CWD")?;
   }
 
   debug!("op_realpath_sync {}", path.display());
@@ -954,10 +967,13 @@ async fn op_realpath_async(
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let cli_state = super::cli_state2(&state);
-  cli_state.check_read(&path)?;
-  if path.is_relative() {
-    cli_state.check_read_blind(&current_dir()?, "CWD")?;
+  {
+    let state = state.borrow();
+    let permissions = state.borrow::<Permissions>();
+    permissions.check_read(&path)?;
+    if path.is_relative() {
+      permissions.check_read_blind(&current_dir()?, "CWD")?;
+    }
   }
 
   tokio::task::spawn_blocking(move || {
@@ -990,8 +1006,7 @@ fn op_read_dir_sync(
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_read(&path)?;
+  state.borrow::<Permissions>().check_read(&path)?;
 
   debug!("op_read_dir_sync {}", path.display());
   let entries: Vec<_> = std::fs::read_dir(path)?
@@ -1022,7 +1037,10 @@ async fn op_read_dir_async(
 ) -> Result<Value, AnyError> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
-  super::cli_state2(&state).check_read(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_read(&path)?;
+  }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_dir_async {}", path.display());
     let entries: Vec<_> = std::fs::read_dir(path)?
@@ -1065,10 +1083,10 @@ fn op_rename_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_read(&oldpath)?;
-  cli_state.check_write(&oldpath)?;
-  cli_state.check_write(&newpath)?;
+  let permissions = state.borrow::<Permissions>();
+  permissions.check_read(&oldpath)?;
+  permissions.check_write(&oldpath)?;
+  permissions.check_write(&newpath)?;
   debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
   std::fs::rename(&oldpath, &newpath)?;
   Ok(json!({}))
@@ -1083,10 +1101,11 @@ async fn op_rename_async(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
   {
-    let cli_state = super::cli_state2(&state);
-    cli_state.check_read(&oldpath)?;
-    cli_state.check_write(&oldpath)?;
-    cli_state.check_write(&newpath)?;
+    let state = state.borrow();
+    let permissions = state.borrow::<Permissions>();
+    permissions.check_read(&oldpath)?;
+    permissions.check_write(&oldpath)?;
+    permissions.check_write(&newpath)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!(
@@ -1113,14 +1132,15 @@ fn op_link_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  cli_state.check_read(&oldpath)?;
-  cli_state.check_write(&newpath)?;
+  let permissions = state.borrow::<Permissions>();
+  permissions.check_read(&oldpath)?;
+  permissions.check_write(&newpath)?;
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
   std::fs::hard_link(&oldpath, &newpath)?;
@@ -1132,15 +1152,19 @@ async fn op_link_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.link");
 
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  cli_state.check_read(&oldpath)?;
-  cli_state.check_write(&newpath)?;
+  {
+    let state = state.borrow();
+    let permissions = state.borrow::<Permissions>();
+    permissions.check_read(&oldpath)?;
+    permissions.check_write(&newpath)?;
+  }
 
   tokio::task::spawn_blocking(move || {
     debug!("op_link_async {} {}", oldpath.display(), newpath.display());
@@ -1172,13 +1196,13 @@ fn op_symlink_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  cli_state.check_write(&newpath)?;
+  state.borrow::<Permissions>().check_write(&newpath)?;
 
   debug!(
     "op_symlink_sync {} {}",
@@ -1224,14 +1248,17 @@ async fn op_symlink_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.symlink");
 
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  cli_state.check_write(&newpath)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_write(&newpath)?;
+  }
 
   tokio::task::spawn_blocking(move || {
     debug!("op_symlink_async {} {}", oldpath.display(), newpath.display());
@@ -1286,8 +1313,7 @@ fn op_read_link_sync(
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_read(&path)?;
+  state.borrow::<Permissions>().check_read(&path)?;
 
   debug!("op_read_link_value {}", path.display());
   let target = std::fs::read_link(&path)?.into_os_string();
@@ -1302,7 +1328,10 @@ async fn op_read_link_async(
 ) -> Result<Value, AnyError> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
-  super::cli_state2(&state).check_read(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_read(&path)?;
+  }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_link_async {}", path.display());
     let target = std::fs::read_link(&path)?.into_os_string();
@@ -1326,7 +1355,7 @@ fn op_ftruncate_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.ftruncate");
   }
   let args: FtruncateArgs = serde_json::from_value(args)?;
@@ -1344,7 +1373,7 @@ async fn op_ftruncate_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.ftruncate");
+  super::global_state2(&state).check_unstable("Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
@@ -1371,8 +1400,7 @@ fn op_truncate_sync(
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_write(&path)?;
+  state.borrow::<Permissions>().check_write(&path)?;
 
   debug!("op_truncate_sync {} {}", path.display(), len);
   let f = std::fs::OpenOptions::new().write(true).open(&path)?;
@@ -1388,7 +1416,10 @@ async fn op_truncate_async(
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
-  super::cli_state2(&state).check_write(&path)?;
+  {
+    let state = state.borrow();
+    state.borrow::<Permissions>().check_write(&path)?;
+  }
   tokio::task::spawn_blocking(move || {
     debug!("op_truncate_async {} {}", path.display(), len);
     let f = std::fs::OpenOptions::new().write(true).open(&path)?;
@@ -1463,8 +1494,9 @@ fn op_make_temp_dir_sync(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+  state
+    .borrow::<Permissions>()
+    .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
   // See https://github.com/denoland/deno/issues/627.
@@ -1492,8 +1524,10 @@ async fn op_make_temp_dir_async(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
-    let cli_state = super::cli_state2(&state);
-    cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+    let state = state.borrow();
+    state
+      .borrow::<Permissions>()
+      .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1525,8 +1559,9 @@ fn op_make_temp_file_sync(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+  state
+    .borrow::<Permissions>()
+    .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
   // See https://github.com/denoland/deno/issues/627.
@@ -1555,8 +1590,9 @@ async fn op_make_temp_file_async(
   let suffix = args.suffix.map(String::from);
   {
     let state = state.borrow();
-    let cli_state = super::cli_state(&state);
-    cli_state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+    state
+      .borrow::<Permissions>()
+      .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1591,7 +1627,7 @@ fn op_futime_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.futimeSync");
   }
   let args: FutimeArgs = serde_json::from_value(args)?;
@@ -1618,7 +1654,7 @@ async fn op_futime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
-  let cli_state = super::cli_state(&state);
+  let cli_state = super::global_state(&state);
   cli_state.check_unstable("Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1651,7 +1687,7 @@ fn op_utime_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1659,7 +1695,7 @@ fn op_utime_sync(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  cli_state.check_write(&path)?;
+  state.borrow::<Permissions>().check_write(&path)?;
   filetime::set_file_times(path, atime, mtime)?;
   Ok(json!({}))
 }
@@ -1670,7 +1706,7 @@ async fn op_utime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let state = state.borrow();
-  let cli_state = super::cli_state(&state);
+  let cli_state = super::global_state(&state);
   cli_state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1678,7 +1714,7 @@ async fn op_utime_async(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  cli_state.check_write(&path)?;
+  state.borrow::<Permissions>().check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_times(path, atime, mtime)?;
@@ -1694,8 +1730,9 @@ fn op_cwd(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let path = current_dir()?;
-  let cli_state = super::cli_state(state);
-  cli_state.check_read_blind(&path, "CWD")?;
+  state
+    .borrow::<Permissions>()
+    .check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(json!(path_str))
 }

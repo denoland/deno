@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::BufVec;
@@ -91,7 +92,9 @@ fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    super::cli_state(state).check_read(&PathBuf::from(path))?;
+    state
+      .borrow::<Permissions>()
+      .check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };

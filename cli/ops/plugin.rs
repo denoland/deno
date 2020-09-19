@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::metrics::metrics_op;
+use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::plugin_api;
 use deno_core::BufVec;
@@ -39,9 +40,10 @@ pub fn op_open_plugin(
   let args: OpenPluginArgs = serde_json::from_value(args)?;
   let filename = PathBuf::from(&args.filename);
 
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.openPlugin");
-  cli_state.check_plugin(&filename)?;
+  let permissions = state.borrow::<Permissions>();
+  permissions.check_plugin(&filename)?;
 
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;
