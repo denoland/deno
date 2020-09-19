@@ -702,7 +702,7 @@ declare class CustomEvent<T = any> extends Event {
   readonly detail: T;
 }
 
-declare interface ErrorConstructor {
+interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   // eslint-disable-next-line @typescript-eslint/ban-types
   captureStackTrace(error: Object, constructor?: Function): void;
@@ -710,7 +710,7 @@ declare interface ErrorConstructor {
   // internally in a way that makes it unavailable for users.
 }
 
-declare interface CloseEventInit extends EventInit {
+interface CloseEventInit extends EventInit {
   code?: number;
   reason?: string;
   wasClean?: boolean;
