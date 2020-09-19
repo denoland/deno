@@ -23,7 +23,6 @@ use std::sync::Arc;
 // OpState, removing redundant RefCell wrappers if possible.
 pub struct CliState {
   pub global_state: Arc<GlobalState>,
-  pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -138,12 +137,10 @@ impl CliState {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: &Arc<GlobalState>,
-    main_module: ModuleSpecifier,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<Rc<Self>, AnyError> {
     let state = CliState {
       global_state: global_state.clone(),
-      main_module,
       import_map: maybe_import_map,
       target_lib: TargetLib::Main,
       is_main: true,
@@ -154,11 +151,9 @@ impl CliState {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new_for_worker(
     global_state: &Arc<GlobalState>,
-    main_module: ModuleSpecifier,
   ) -> Result<Rc<Self>, AnyError> {
     let state = CliState {
       global_state: global_state.clone(),
-      main_module,
       import_map: None,
       target_lib: TargetLib::Worker,
       is_main: false,
@@ -167,15 +162,9 @@ impl CliState {
   }
 
   #[cfg(test)]
-  pub fn mock(main_module: &str) -> Rc<Self> {
-    let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
-      .expect("Invalid entry module");
-    CliState::new(
-      &GlobalState::mock(vec!["deno".to_string()], None),
-      module_specifier,
-      None,
-    )
-    .unwrap()
+  pub fn mock() -> Rc<Self> {
+    CliState::new(&GlobalState::mock(vec!["deno".to_string()], None), None)
+      .unwrap()
   }
 
   /// Quits the process if the --unstable flag was not provided.

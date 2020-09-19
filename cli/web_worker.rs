@@ -9,6 +9,7 @@ use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::error::AnyError;
 use deno_core::v8;
+use deno_core::ModuleSpecifier;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -87,6 +88,7 @@ impl WebWorker {
   pub fn new(
     name: String,
     permissions: Permissions,
+    main_module: ModuleSpecifier,
     state: &Rc<CliState>,
     has_deno_namespace: bool,
   ) -> Self {
@@ -94,6 +96,7 @@ impl WebWorker {
       name,
       Some(js::deno_isolate_init()),
       permissions,
+      main_module,
       &state,
       false,
     );
@@ -265,10 +268,13 @@ mod tests {
   use crate::worker::WorkerEvent;
 
   fn create_test_worker() -> WebWorker {
-    let state = CliState::mock("./hello.js");
+    let main_module =
+      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let state = CliState::mock();
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),
+      main_module,
       &state,
       false,
     );

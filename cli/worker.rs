@@ -112,6 +112,7 @@ impl Worker {
     name: String,
     startup_snapshot: Option<Snapshot>,
     permissions: Permissions,
+    main_module: ModuleSpecifier,
     state: &Rc<CliState>,
     is_internal: bool,
   ) -> Self {
@@ -149,6 +150,8 @@ impl Worker {
       op_state.put(WorkerId::default());
 
       op_state.put(permissions);
+
+      op_state.put(main_module);
     }
     let inspector = {
       let global_state = &state.global_state;
@@ -290,10 +293,17 @@ impl MainWorker {
     name: String,
     startup_snapshot: Option<Snapshot>,
     permissions: Permissions,
+    main_module: ModuleSpecifier,
     state: &Rc<CliState>,
   ) -> Self {
-    let mut worker =
-      Worker::new(name, startup_snapshot, permissions, state, false);
+    let mut worker = Worker::new(
+      name,
+      startup_snapshot,
+      permissions,
+      main_module,
+      state,
+      false,
+    );
     {
       ops::runtime::init(&mut worker);
       ops::runtime_compiler::init(&mut worker);
@@ -330,15 +340,13 @@ impl MainWorker {
     global_state: &Arc<GlobalState>,
     main_module: ModuleSpecifier,
   ) -> Result<MainWorker, AnyError> {
-    let state = CliState::new(
-      &global_state,
-      main_module,
-      global_state.maybe_import_map.clone(),
-    )?;
+    let state =
+      CliState::new(&global_state, global_state.maybe_import_map.clone())?;
     let mut worker = MainWorker::new(
       "main".to_string(),
       Some(js::deno_isolate_init()),
       global_state.permissions.clone(),
+      main_module,
       &state,
     );
     {
@@ -392,13 +400,13 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      CliState::new(&global_state, module_specifier.clone(), None).unwrap();
+    let state = CliState::new(&global_state, None).unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new(
         "TEST".to_string(),
         None,
         global_state.permissions.clone(),
+        module_specifier.clone(),
         &state,
       );
       let result = worker.execute_module(&module_specifier).await;
@@ -422,13 +430,13 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      CliState::new(&global_state, module_specifier.clone(), None).unwrap();
+    let state = CliState::new(&global_state, None).unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new(
         "TEST".to_string(),
         None,
         global_state.permissions.clone(),
+        module_specifier.clone(),
         &state,
       );
       let result = worker.execute_module(&module_specifier).await;
@@ -461,12 +469,12 @@ mod tests {
       ..flags::Flags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
-    let state =
-      CliState::new(&global_state, module_specifier.clone(), None).unwrap();
+    let state = CliState::new(&global_state, None).unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
       global_state.permissions.clone(),
+      module_specifier.clone(),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();
@@ -482,11 +490,14 @@ mod tests {
   }
 
   fn create_test_worker() -> MainWorker {
-    let state = CliState::mock("./hello.js");
+    let main_module =
+      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let state = CliState::mock();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
       Permissions::allow_all(),
+      main_module,
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();

@@ -45,11 +45,15 @@ fn create_web_worker(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
 ) -> Result<WebWorker, AnyError> {
-  let cli_state =
-    crate::state::CliState::new_for_worker(global_state, specifier)?;
+  let cli_state = crate::state::CliState::new_for_worker(global_state)?;
 
-  let mut worker =
-    WebWorker::new(name.clone(), permissions, &cli_state, has_deno_namespace);
+  let mut worker = WebWorker::new(
+    name.clone(),
+    permissions,
+    specifier,
+    &cli_state,
+    has_deno_namespace,
+  );
 
   if has_deno_namespace {
     let state = worker.isolate.op_state();

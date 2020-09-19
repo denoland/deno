@@ -137,10 +137,13 @@ impl CompilerWorker {
     permissions: Permissions,
     state: &Rc<CliState>,
   ) -> Self {
+    let main_module =
+      ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
     let mut worker = Worker::new(
       name,
       Some(js::compiler_isolate_init()),
       permissions,
+      main_module,
       state,
       true,
     );
@@ -224,10 +227,8 @@ fn create_compiler_worker(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
-  let entry_point =
-    ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
-  let worker_state = CliState::new(&global_state, entry_point, None)
-    .expect("Unable to create worker state");
+  let worker_state =
+    CliState::new(&global_state, None).expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
