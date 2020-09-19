@@ -309,7 +309,8 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("unstable")
         .long("unstable")
-        .help("Enable unstable features and APIs"),
+        .help("Enable unstable features and APIs")
+        .global(true),
     )
     .arg(
       Arg::with_name("log-level")
@@ -1550,6 +1551,10 @@ mod tests {
         ..Flags::default()
       }
     );
+    #[rustfmt::skip]
+    let r2 = flags_from_vec_safe(svec!["deno", "run", "--unstable", "--log-level", "debug", "--quiet", "script.ts"]);
+    let flags2 = r2.unwrap();
+    assert_eq!(flags2, flags);
   }
 
   #[test]
