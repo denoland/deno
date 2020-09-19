@@ -8,9 +8,9 @@
 //! only need to be able to start and cancel a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
-use crate::futures::TryFutureExt;
 use futures::channel::oneshot;
 use futures::future::FutureExt;
+use futures::TryFutureExt;
 use std::future::Future;
 use std::time::Instant;
 
@@ -20,10 +20,6 @@ pub struct GlobalTimer {
 }
 
 impl GlobalTimer {
-  pub fn new() -> Self {
-    Self { tx: None }
-  }
-
   pub fn cancel(&mut self) {
     if let Some(tx) = self.tx.take() {
       tx.send(()).ok();

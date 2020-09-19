@@ -2,11 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 ((window) => {
+  const core = window.Deno.core;
   const { log } = window.__bootstrap.util;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
-  /*
-  import { blobURLMap } from "./web/url.ts";
-  */
 
   function createWorker(
     specifier,
@@ -15,7 +12,7 @@
     useDenoNamespace,
     name,
   ) {
-    return sendSync("op_create_worker", {
+    return core.jsonOpSync("op_create_worker", {
       specifier,
       hasSourceCode,
       sourceCode,
@@ -25,15 +22,15 @@
   }
 
   function hostTerminateWorker(id) {
-    sendSync("op_host_terminate_worker", { id });
+    core.jsonOpSync("op_host_terminate_worker", { id });
   }
 
   function hostPostMessage(id, data) {
-    sendSync("op_host_post_message", { id }, data);
+    core.jsonOpSync("op_host_post_message", { id }, data);
   }
 
   function hostGetMessage(id) {
-    return sendAsync("op_host_get_message", { id });
+    return core.jsonOpAsync("op_host_get_message", { id });
   }
 
   const encoder = new TextEncoder();
@@ -67,22 +64,6 @@
       this.#name = name;
       const hasSourceCode = false;
       const sourceCode = decoder.decode(new Uint8Array());
-
-      /* TODO(bartlomieju):
-      // Handle blob URL.
-      if (specifier.startsWith("blob:")) {
-        hasSourceCode = true;
-        const b = blobURLMap.get(specifier);
-        if (!b) {
-          throw new Error("No Blob associated with the given URL is found");
-        }
-        const blobBytes = blobBytesWeakMap.get(b!);
-        if (!blobBytes) {
-          throw new Error("Invalid Blob");
-        }
-        sourceCode = blobBytes!;
-      }
-      */
 
       const useDenoNamespace = options ? !!options.deno : false;
 

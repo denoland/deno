@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-//! This module provides file formating utilities using
+//! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dsherret/dprint-plugin-typescript).
 //!
 //! At the moment it is only consumed using CLI but in
@@ -236,8 +236,10 @@ pub fn collect_files(
   let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
-    target_files
-      .extend(files_in_subtree(std::env::current_dir()?, is_supported));
+    target_files.extend(files_in_subtree(
+      std::env::current_dir()?.canonicalize()?,
+      is_supported,
+    ));
   } else {
     for arg in files {
       let p = PathBuf::from(arg);

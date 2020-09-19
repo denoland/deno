@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::metrics::Metrics;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::error::AnyError;
@@ -61,8 +62,7 @@ fn op_metrics(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
-  let m = &cli_state.metrics.borrow();
+  let m = state.borrow::<Metrics>();
 
   Ok(json!({
     "opsDispatched": m.ops_dispatched,

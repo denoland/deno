@@ -2,25 +2,22 @@
 
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
-use crate::global_timer::GlobalTimer;
-use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
-use crate::metrics::Metrics;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::error::AnyError;
+use deno_core::url;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::Future;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -39,16 +36,12 @@ pub struct CliState {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
-  pub metrics: RefCell<Metrics>,
-  pub global_timer: RefCell<GlobalTimer>,
   pub workers: RefCell<HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>>,
   pub next_worker_id: Cell<u32>,
   pub start_time: Instant,
-  pub seeded_rng: Option<RefCell<StdRng>>,
   pub target_lib: TargetLib,
   pub is_main: bool,
   pub is_internal: bool,
-  pub http_client: RefCell<reqwest::Client>,
 }
 
 pub fn exit_unstable(api_name: &str) {
@@ -87,8 +80,6 @@ impl ModuleLoader for CliState {
     _is_dyn_import: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.to_owned();
-    // TODO(bartlomieju): incrementing resolve_count here has no sense...
-    self.metrics.borrow_mut().resolve_count += 1;
     let module_url_specified = module_specifier.to_string();
     let global_state = self.global_state.clone();
 
@@ -163,7 +154,6 @@ impl CliState {
     maybe_import_map: Option<ImportMap>,
     is_internal: bool,
   ) -> Result<Rc<Self>, AnyError> {
-    let fl = &global_state.flags;
     let state = CliState {
       global_state: global_state.clone(),
       main_module,
@@ -171,16 +161,12 @@ impl CliState {
         .unwrap_or_else(|| global_state.permissions.clone())
         .into(),
       import_map: maybe_import_map,
-      metrics: Default::default(),
-      global_timer: Default::default(),
       workers: Default::default(),
       next_worker_id: Default::default(),
       start_time: Instant::now(),
-      seeded_rng: fl.seed.map(|v| StdRng::seed_from_u64(v).into()),
       target_lib: TargetLib::Main,
       is_main: true,
       is_internal,
-      http_client: create_http_client(fl.ca_file.as_deref())?.into(),
     };
     Ok(Rc::new(state))
   }
@@ -191,7 +177,6 @@ impl CliState {
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
   ) -> Result<Rc<Self>, AnyError> {
-    let fl = &global_state.flags;
     let state = CliState {
       global_state: global_state.clone(),
       main_module,
@@ -199,16 +184,12 @@ impl CliState {
         .unwrap_or_else(|| global_state.permissions.clone())
         .into(),
       import_map: None,
-      metrics: Default::default(),
-      global_timer: Default::default(),
       workers: Default::default(),
       next_worker_id: Default::default(),
       start_time: Instant::now(),
-      seeded_rng: fl.seed.map(|v| StdRng::seed_from_u64(v).into()),
       target_lib: TargetLib::Worker,
       is_main: false,
       is_internal: false,
-      http_client: create_http_client(fl.ca_file.as_deref())?.into(),
     };
     Ok(Rc::new(state))
   }
@@ -316,5 +297,15 @@ impl CliState {
     if !self.global_state.flags.unstable {
       exit_unstable(api_name);
     }
+  }
+}
+
+impl deno_fetch::FetchPermissions for CliState {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    CliState::check_net_url(self, url)
+  }
+
+  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+    CliState::check_read(self, p)
   }
 }

@@ -4,6 +4,7 @@ members = [
   "core",
   "test_plugin",
   "test_util",
+  "op_crates/fetch",
   "op_crates/web",
 ]
 exclude = [

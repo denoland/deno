@@ -17,9 +17,8 @@
 delete Object.prototype.__proto__;
 
 ((window) => {
-  const core = Deno.core;
+  const core = window.Deno.core;
   const { assert, log, notImplemented } = window.__bootstrap.util;
-  const dispatchJson = window.__bootstrap.dispatchJson;
   const util = window.__bootstrap.util;
   const errorStack = window.__bootstrap.errorStack;
   const errors = window.__bootstrap.errors.errors;
@@ -78,7 +77,7 @@ delete Object.prototype.__proto__;
   }
 
   function opNow() {
-    const res = dispatchJson.sendSync("op_now");
+    const res = core.jsonOpSync("op_now");
     return res.seconds * 1e3 + res.subsecNanos / 1e6;
   }
 
@@ -436,6 +435,7 @@ delete Object.prototype.__proto__;
   ts.libs.push("deno.ns", "deno.window", "deno.worker", "deno.shared_globals");
   ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
   ts.libMap.set("deno.web", "lib.deno.web.d.ts");
+  ts.libMap.set("deno.fetch", "lib.deno.fetch.d.ts");
   ts.libMap.set("deno.window", "lib.deno.window.d.ts");
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
@@ -449,6 +449,10 @@ delete Object.prototype.__proto__;
   );
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.web.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  SNAPSHOT_HOST.getSourceFile(
+    `${ASSETS}/lib.deno.fetch.d.ts`,
     ts.ScriptTarget.ESNext,
   );
   SNAPSHOT_HOST.getSourceFile(
@@ -1252,7 +1256,7 @@ delete Object.prototype.__proto__;
   }
 
   function opCompilerRespond(msg) {
-    dispatchJson.sendSync("op_compiler_respond", msg);
+    core.jsonOpSync("op_compiler_respond", msg);
   }
 
   async function tsCompilerOnMessage(msg) {
@@ -1292,21 +1296,12 @@ delete Object.prototype.__proto__;
     }
   }
 
-  // TODO(bartlomieju): temporary solution, must be fixed when moving
-  // dispatches to separate crates
-  function initOps() {
-    const opsMap = core.ops();
-    for (const [_name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
-    }
-  }
-
   function runtimeStart(source) {
-    initOps();
+    core.ops();
     // First we send an empty `Start` message to let the privileged side know we
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
-    const s = dispatchJson.sendSync("op_start");
+    const s = core.jsonOpSync("op_start");
     util.setLogDebug(s.debugFlag, source);
     errorStack.setPrepareStackTrace(Error);
     return s;

@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "atty",
  "base64 0.12.3",
@@ -403,6 +403,7 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_doc",
+ "deno_fetch",
  "deno_lint",
  "deno_web",
  "dissimilar",
@@ -414,7 +415,6 @@ dependencies = [
  "futures",
  "fwdansi",
  "http",
- "idna",
  "indexmap",
  "jsonc-parser",
  "lazy_static",
@@ -425,12 +425,10 @@ dependencies = [
  "os_pipe",
  "rand 0.7.3",
  "regex",
- "reqwest",
  "ring",
  "rustyline",
  "semver-parser 0.9.0",
  "serde",
- "serde_derive",
  "serde_json",
  "sourcemap",
  "swc_common",
@@ -442,7 +440,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
- "url",
  "uuid",
  "walkdir",
  "warp",
@@ -454,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.57.0"
+version = "0.58.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -487,6 +484,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_fetch"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "reqwest",
+ "serde",
+]
+
+[[package]]
 name = "deno_lint"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -504,10 +510,12 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "deno_core",
  "futures",
+ "idna",
+ "serde",
 ]
 
 [[package]]

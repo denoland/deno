@@ -14,7 +14,7 @@ fn fmt_add_text(x: &str) -> String {
 }
 
 fn fmt_add_text_highlight(x: &str) -> String {
-  format!("{}", colors::white_on_green(x))
+  format!("{}", colors::black_on_green(x))
 }
 
 fn fmt_rem() -> String {
@@ -41,9 +41,9 @@ fn write_line_diff(
   for (i, s) in split {
     write!(
       diff,
-      "{:0width$}{} ",
+      "{:width$}{} ",
       *orig_line + i,
-      colors::gray("|"),
+      colors::gray(" |"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_rem())?;
@@ -55,9 +55,9 @@ fn write_line_diff(
   for (i, s) in split {
     write!(
       diff,
-      "{:0width$}{} ",
+      "{:width$}{} ",
       *edit_line + i,
-      colors::gray("|"),
+      colors::gray(" |"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_add())?;
@@ -160,13 +160,13 @@ fn test_diff() {
     colors::strip_ansi_codes(
       &diff(simple_console_log_unfmt, simple_console_log_fmt).unwrap()
     ),
-    "1| -console.log('Hello World')\n1| +console.log(\"Hello World\");\n"
+    "1 | -console.log('Hello World')\n1 | +console.log(\"Hello World\");\n"
   );
 
   let line_number_unfmt = "\n\n\n\nconsole.log(\n'Hello World'\n)";
   let line_number_fmt = "console.log(\n\"Hello World\"\n);";
   assert_eq!(
     colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt).unwrap()),
-    "1| -\n2| -\n3| -\n4| -\n5| -console.log(\n1| +console.log(\n6| -'Hello World'\n2| +\"Hello World\"\n7| -)\n3| +);\n"
+    "1 | -\n2 | -\n3 | -\n4 | -\n5 | -console.log(\n1 | +console.log(\n6 | -'Hello World'\n2 | +\"Hello World\"\n7 | -)\n3 | +);\n"
   )
 }

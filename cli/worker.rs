@@ -2,12 +2,15 @@
 
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
+use crate::global_timer::GlobalTimer;
 use crate::inspector::DenoInspector;
 use crate::js;
+use crate::metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::state::CliState;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -17,6 +20,8 @@ use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -27,7 +32,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
-use url::Url;
 
 /// Events that are sent to host from child
 /// worker.
@@ -107,12 +111,13 @@ impl Worker {
     state: &Rc<CliState>,
   ) -> Self {
     let global_state = state.global_state.clone();
+    let global_state_ = global_state.clone();
 
     let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(state.clone()),
       startup_snapshot,
       js_error_create_fn: Some(Box::new(move |core_js_error| {
-        JsError::create(core_js_error, &global_state.ts_compiler)
+        JsError::create(core_js_error, &global_state_.ts_compiler)
       })),
       ..Default::default()
     });
@@ -121,6 +126,18 @@ impl Worker {
       let mut op_state = op_state.borrow_mut();
       op_state.get_error_class_fn = &crate::errors::get_error_class_name;
       op_state.put(state.clone());
+
+      let ca_file = global_state.flags.ca_file.as_deref();
+      let client = crate::http_util::create_http_client(ca_file).unwrap();
+      op_state.put(client);
+
+      op_state.put(GlobalTimer::default());
+
+      if let Some(seed) = global_state.flags.seed {
+        op_state.put(StdRng::seed_from_u64(seed));
+      }
+
+      op_state.put(Metrics::default());
     }
     let inspector = {
       let global_state = &state.global_state;
@@ -272,7 +289,11 @@ impl MainWorker {
       ops::websocket::init(&mut worker);
       ops::fs::init(&mut worker);
       ops::fs_events::init(&mut worker);
-      ops::idna::init(&mut worker);
+      ops::reg_json_sync(
+        &mut worker,
+        "op_domain_to_ascii",
+        deno_web::op_domain_to_ascii,
+      );
       ops::io::init(&mut worker);
       ops::plugin::init(&mut worker);
       ops::net::init(&mut worker);
@@ -282,7 +303,8 @@ impl MainWorker {
       ops::process::init(&mut worker);
       ops::random::init(&mut worker);
       ops::repl::init(&mut worker);
-      ops::resources::init(&mut worker);
+      ops::reg_json_sync(&mut worker, "op_close", deno_core::op_close);
+      ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
       ops::signal::init(&mut worker);
       ops::timers::init(&mut worker);
       ops::tty::init(&mut worker);
@@ -371,7 +393,6 @@ mod tests {
         panic!("Future got unexpected error: {:?}", e);
       }
     });
-    assert_eq!(state.metrics.borrow().resolve_count, 2);
     // Check that we didn't start the compiler.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
@@ -436,7 +457,6 @@ mod tests {
     if let Err(e) = (&mut *worker).await {
       panic!("Future got unexpected error: {:?}", e);
     }
-    assert_eq!(state.metrics.borrow().resolve_count, 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 1);
   }

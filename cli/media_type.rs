@@ -117,65 +117,31 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
   }
 }
 
-// Warning! The values in this enum are duplicated in js/compiler.ts
-// Update carefully!
-#[allow(non_camel_case_types)]
-#[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum CompilerRequestType {
-  Compile = 0,
-  Bundle = 1,
-  RuntimeCompile = 2,
-  RuntimeBundle = 3,
-  RuntimeTranspile = 4,
-}
-
-impl Serialize for CompilerRequestType {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let value: i32 = match self {
-      CompilerRequestType::Compile => 0 as i32,
-      CompilerRequestType::Bundle => 1 as i32,
-      CompilerRequestType::RuntimeCompile => 2 as i32,
-      CompilerRequestType::RuntimeBundle => 3 as i32,
-      CompilerRequestType::RuntimeTranspile => 4 as i32,
-    };
-    Serialize::serialize(&value, serializer)
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_map_file_extension() {
-    assert_eq!(
-      MediaType::from(Path::new("foo/bar.ts")),
-      MediaType::TypeScript
-    );
-    assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::TSX);
-    assert_eq!(
-      MediaType::from(Path::new("foo/bar.d.ts")),
-      MediaType::TypeScript
-    );
-    assert_eq!(
-      MediaType::from(Path::new("foo/bar.js")),
-      MediaType::JavaScript
-    );
-    assert_eq!(MediaType::from(Path::new("foo/bar.jsx")), MediaType::JSX);
-    assert_eq!(MediaType::from(Path::new("foo/bar.json")), MediaType::Json);
-    assert_eq!(MediaType::from(Path::new("foo/bar.wasm")), MediaType::Wasm);
-    assert_eq!(
-      MediaType::from(Path::new("foo/bar.cjs")),
-      MediaType::JavaScript
-    );
-    assert_eq!(
-      MediaType::from(Path::new("foo/bar.txt")),
-      MediaType::Unknown
-    );
-    assert_eq!(MediaType::from(Path::new("foo/bar")), MediaType::Unknown);
-  }
+#[test]
+fn test_map_file_extension() {
+  assert_eq!(
+    MediaType::from(Path::new("foo/bar.ts")),
+    MediaType::TypeScript
+  );
+  assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::TSX);
+  assert_eq!(
+    MediaType::from(Path::new("foo/bar.d.ts")),
+    MediaType::TypeScript
+  );
+  assert_eq!(
+    MediaType::from(Path::new("foo/bar.js")),
+    MediaType::JavaScript
+  );
+  assert_eq!(MediaType::from(Path::new("foo/bar.jsx")), MediaType::JSX);
+  assert_eq!(MediaType::from(Path::new("foo/bar.json")), MediaType::Json);
+  assert_eq!(MediaType::from(Path::new("foo/bar.wasm")), MediaType::Wasm);
+  assert_eq!(
+    MediaType::from(Path::new("foo/bar.cjs")),
+    MediaType::JavaScript
+  );
+  assert_eq!(
+    MediaType::from(Path::new("foo/bar.txt")),
+    MediaType::Unknown
+  );
+  assert_eq!(MediaType::from(Path::new("foo/bar")), MediaType::Unknown);
 }
