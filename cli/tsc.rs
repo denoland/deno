@@ -134,7 +134,7 @@ pub struct CompilerWorker {
 impl CompilerWorker {
   pub fn new(name: String, state: &Rc<CliState>) -> Self {
     let mut worker =
-      Worker::new(name, Some(js::compiler_isolate_init()), state);
+      Worker::new(name, Some(js::compiler_isolate_init()), state, true);
     let response = Arc::new(Mutex::new(None));
     ops::runtime::init(&mut worker);
     ops::errors::init(&mut worker);
@@ -218,7 +218,7 @@ fn create_compiler_worker(
   let entry_point =
     ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
   let worker_state =
-    CliState::new(&global_state, Some(permissions), entry_point, None, true)
+    CliState::new(&global_state, Some(permissions), entry_point, None)
       .expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere

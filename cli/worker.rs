@@ -111,6 +111,7 @@ impl Worker {
     name: String,
     startup_snapshot: Option<Snapshot>,
     state: &Rc<CliState>,
+    is_internal: bool,
   ) -> Self {
     let global_state = state.global_state.clone();
     let global_state_ = global_state.clone();
@@ -151,7 +152,7 @@ impl Worker {
         .flags
         .inspect
         .or(global_state.flags.inspect_brk)
-        .filter(|_| !state.is_internal)
+        .filter(|_| !is_internal)
         .map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
     };
 
@@ -286,7 +287,7 @@ impl MainWorker {
     startup_snapshot: Option<Snapshot>,
     state: &Rc<CliState>,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_snapshot, state);
+    let mut worker = Worker::new(name, startup_snapshot, state, false);
     {
       ops::runtime::init(&mut worker);
       ops::runtime_compiler::init(&mut worker);
@@ -328,7 +329,6 @@ impl MainWorker {
       None,
       main_module,
       global_state.maybe_import_map.clone(),
-      false,
     )?;
     let mut worker = MainWorker::new(
       "main".to_string(),
@@ -387,7 +387,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      CliState::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None)
         .unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new("TEST".to_string(), None, &state);
@@ -413,7 +413,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      CliState::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None)
         .unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new("TEST".to_string(), None, &state);
@@ -448,7 +448,7 @@ mod tests {
     };
     let global_state = GlobalState::new(flags).unwrap();
     let state =
-      CliState::new(&global_state, None, module_specifier.clone(), None, false)
+      CliState::new(&global_state, None, module_specifier.clone(), None)
         .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),

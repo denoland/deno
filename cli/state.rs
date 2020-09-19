@@ -33,7 +33,6 @@ pub struct CliState {
   pub import_map: Option<ImportMap>,
   pub target_lib: TargetLib,
   pub is_main: bool,
-  pub is_internal: bool,
 }
 
 pub fn exit_unstable(api_name: &str) {
@@ -144,7 +143,6 @@ impl CliState {
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
     maybe_import_map: Option<ImportMap>,
-    is_internal: bool,
   ) -> Result<Rc<Self>, AnyError> {
     let state = CliState {
       global_state: global_state.clone(),
@@ -155,7 +153,6 @@ impl CliState {
       import_map: maybe_import_map,
       target_lib: TargetLib::Main,
       is_main: true,
-      is_internal,
     };
     Ok(Rc::new(state))
   }
@@ -175,7 +172,6 @@ impl CliState {
       import_map: None,
       target_lib: TargetLib::Worker,
       is_main: false,
-      is_internal: false,
     };
     Ok(Rc::new(state))
   }
@@ -268,7 +264,6 @@ impl CliState {
       None,
       module_specifier,
       None,
-      false,
     )
     .unwrap()
   }

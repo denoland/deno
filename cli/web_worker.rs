@@ -88,7 +88,8 @@ impl WebWorker {
     state: &Rc<CliState>,
     has_deno_namespace: bool,
   ) -> Self {
-    let mut worker = Worker::new(name, Some(js::deno_isolate_init()), &state);
+    let mut worker =
+      Worker::new(name, Some(js::deno_isolate_init()), &state, false);
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
