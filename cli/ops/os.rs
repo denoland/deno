@@ -120,7 +120,7 @@ fn op_loadavg(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.loadavg");
   state.borrow::<Permissions>().check_env()?;
   match sys_info::loadavg() {
@@ -134,7 +134,7 @@ fn op_hostname(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.hostname");
   state.borrow::<Permissions>().check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
@@ -146,7 +146,7 @@ fn op_os_release(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.osRelease");
   state.borrow::<Permissions>().check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
@@ -158,7 +158,7 @@ fn op_system_memory_info(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.systemMemoryInfo");
   state.borrow::<Permissions>().check_env()?;
   match sys_info::mem_info() {

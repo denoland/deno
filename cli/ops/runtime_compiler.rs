@@ -33,7 +33,7 @@ async fn op_compile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
   let global_state = cli_state.clone();
@@ -75,7 +75,7 @@ async fn op_transpile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   let global_state = cli_state.clone();

@@ -225,7 +225,7 @@ fn op_kill(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.kill");
   state.borrow::<Permissions>().check_run()?;
 

@@ -301,7 +301,7 @@ async fn op_connect(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" => {
       let address_path = Path::new(&args.path);
-      let cli_state = super::cli_state2(&state);
+      let cli_state = super::global_state2(&state);
       cli_state.check_unstable("Deno.connect");
       {
         let state_ = state.borrow();
@@ -346,7 +346,7 @@ fn op_shutdown(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.shutdown");
+  super::global_state(state).check_unstable("Deno.shutdown");
 
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
@@ -490,7 +490,7 @@ fn op_listen(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   let permissions = state.borrow::<Permissions>();
   match serde_json::from_value(args)? {
     ListenArgs {

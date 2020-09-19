@@ -281,7 +281,7 @@ fn op_fdatasync_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.fdatasync");
   }
   let args: FdatasyncArgs = serde_json::from_value(args)?;
@@ -298,7 +298,7 @@ async fn op_fdatasync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.fdatasync");
+  super::global_state2(&state).check_unstable("Deno.fdatasync");
 
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -321,7 +321,7 @@ fn op_fsync_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.fsync");
   }
   let args: FsyncArgs = serde_json::from_value(args)?;
@@ -338,7 +338,7 @@ async fn op_fsync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.fsync");
+  super::global_state2(&state).check_unstable("Deno.fsync");
 
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -361,7 +361,7 @@ fn op_fstat_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.fstat");
   }
   let args: FstatArgs = serde_json::from_value(args)?;
@@ -378,7 +378,7 @@ async fn op_fstat_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.fstat");
+  super::global_state2(&state).check_unstable("Deno.fstat");
 
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -403,7 +403,7 @@ fn op_umask(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.umask");
   }
   let args: UmaskArgs = serde_json::from_value(args)?;
@@ -1132,7 +1132,7 @@ fn op_link_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1152,7 +1152,7 @@ async fn op_link_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.link");
 
   let args: LinkArgs = serde_json::from_value(args)?;
@@ -1196,7 +1196,7 @@ fn op_symlink_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1248,7 +1248,7 @@ async fn op_symlink_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
+  let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.symlink");
 
   let args: SymlinkArgs = serde_json::from_value(args)?;
@@ -1355,7 +1355,7 @@ fn op_ftruncate_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.ftruncate");
   }
   let args: FtruncateArgs = serde_json::from_value(args)?;
@@ -1373,7 +1373,7 @@ async fn op_ftruncate_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.ftruncate");
+  super::global_state2(&state).check_unstable("Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
@@ -1627,7 +1627,7 @@ fn op_futime_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   {
-    let cli_state = super::cli_state(state);
+    let cli_state = super::global_state(state);
     cli_state.check_unstable("Deno.futimeSync");
   }
   let args: FutimeArgs = serde_json::from_value(args)?;
@@ -1654,7 +1654,7 @@ async fn op_futime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
-  let cli_state = super::cli_state(&state);
+  let cli_state = super::global_state(&state);
   cli_state.check_unstable("Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -1687,7 +1687,7 @@ fn op_utime_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1706,7 +1706,7 @@ async fn op_utime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let state = state.borrow();
-  let cli_state = super::cli_state(&state);
+  let cli_state = super::global_state(&state);
   cli_state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;

@@ -60,12 +60,12 @@ where
 }
 
 /// Helper for extracting the commonly used state. Used for sync ops.
-pub fn cli_state(state: &OpState) -> Arc<GlobalState> {
+pub fn global_state(state: &OpState) -> Arc<GlobalState> {
   state.borrow::<Arc<GlobalState>>().clone()
 }
 
 /// Helper for extracting the commonly used state. Used for async ops.
-pub fn cli_state2(state: &Rc<RefCell<OpState>>) -> Arc<GlobalState> {
+pub fn global_state2(state: &Rc<RefCell<OpState>>) -> Arc<GlobalState> {
   let state = state.borrow();
   state.borrow::<Arc<GlobalState>>().clone()
 }
