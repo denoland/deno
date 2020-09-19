@@ -128,23 +128,19 @@ impl ModuleLoader for CliState {
 }
 
 impl CliState {
-  pub fn new(
-    maybe_import_map: Option<ImportMap>,
-  ) -> Result<Rc<Self>, AnyError> {
-    let state = CliState {
+  pub fn new(maybe_import_map: Option<ImportMap>) -> Rc<Self> {
+    Rc::new(CliState {
       import_map: maybe_import_map,
       target_lib: TargetLib::Main,
       is_main: true,
-    };
-    Ok(Rc::new(state))
+    })
   }
 
-  pub fn new_for_worker() -> Result<Rc<Self>, AnyError> {
-    let state = CliState {
+  pub fn new_for_worker() -> Rc<Self> {
+    Rc::new(CliState {
       import_map: None,
       target_lib: TargetLib::Worker,
       is_main: false,
-    };
-    Ok(Rc::new(state))
+    })
   }
 }

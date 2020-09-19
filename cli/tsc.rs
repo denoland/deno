@@ -48,7 +48,6 @@ use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -136,17 +135,18 @@ impl CompilerWorker {
     name: String,
     permissions: Permissions,
     global_state: Arc<GlobalState>,
-    state: &Rc<CliState>,
   ) -> Self {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
+    // TODO(bartlomieju): compiler worker shouldn't require any loader/state
+    let state = CliState::new(None);
     let mut worker = Worker::new(
       name,
       Some(js::compiler_isolate_init()),
       permissions,
       main_module,
       global_state,
-      state,
+      &state,
       true,
     );
     let response = Arc::new(Mutex::new(None));
@@ -229,19 +229,12 @@ fn create_compiler_worker(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
-  let worker_state =
-    CliState::new(None).expect("Unable to create worker state");
-
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
   global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
-  let mut worker = CompilerWorker::new(
-    "TS".to_string(),
-    permissions,
-    global_state.clone(),
-    &worker_state,
-  );
+  let mut worker =
+    CompilerWorker::new("TS".to_string(), permissions, global_state.clone());
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
     .unwrap();

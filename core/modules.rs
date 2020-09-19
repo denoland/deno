@@ -186,7 +186,12 @@ impl RecursiveModuleLoad {
     self.kind != Kind::Main
   }
 
-  fn new(op_state: Rc<RefCell<OpState>>, kind: Kind, state: LoadState, loader: Rc<dyn ModuleLoader>) -> Self {
+  fn new(
+    op_state: Rc<RefCell<OpState>>,
+    kind: Kind,
+    state: LoadState,
+    loader: Rc<dyn ModuleLoader>,
+  ) -> Self {
     Self {
       id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
       root_module_id: None,
@@ -199,9 +204,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(
-    self,
-  ) -> (ModuleLoadId, Result<Self, AnyError>) {
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         let spec = match self.loader.resolve(specifier, ".", true) {
@@ -260,7 +263,12 @@ impl RecursiveModuleLoad {
       }
       _ => self
         .loader
-        .load(self.op_state.clone(), &module_specifier, None, self.is_dynamic_import())
+        .load(
+          self.op_state.clone(),
+          &module_specifier,
+          None,
+          self.is_dynamic_import(),
+        )
         .boxed_local(),
     };
 
@@ -276,10 +284,12 @@ impl RecursiveModuleLoad {
     referrer: ModuleSpecifier,
   ) {
     if !self.is_pending.contains(&specifier) {
-      let fut =
-        self
-          .loader
-          .load(self.op_state.clone(), &specifier, Some(referrer), self.is_dynamic_import());
+      let fut = self.loader.load(
+        self.op_state.clone(),
+        &specifier,
+        Some(referrer),
+        self.is_dynamic_import(),
+      );
       self.pending.push(fut.boxed_local());
       self.is_pending.insert(specifier);
     }

@@ -17,7 +17,6 @@ use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -90,9 +89,9 @@ impl WebWorker {
     permissions: Permissions,
     main_module: ModuleSpecifier,
     global_state: Arc<GlobalState>,
-    state: &Rc<CliState>,
     has_deno_namespace: bool,
   ) -> Self {
+    let state = CliState::new_for_worker();
     let mut worker = Worker::new(
       name,
       Some(js::deno_isolate_init()),
@@ -265,7 +264,6 @@ impl Future for WebWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::state::CliState;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
 
@@ -273,13 +271,11 @@ mod tests {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
     let global_state = GlobalState::mock(vec!["deno".to_string()], None);
-    let state = CliState::new(None).unwrap();
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
       global_state,
-      &state,
       false,
     );
     worker

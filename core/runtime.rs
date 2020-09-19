@@ -1208,7 +1208,12 @@ impl JsRuntime {
       state.loader.clone()
     };
 
-    let load = RecursiveModuleLoad::main(self.op_state(), &specifier.to_string(), code, loader);
+    let load = RecursiveModuleLoad::main(
+      self.op_state(),
+      &specifier.to_string(),
+      code,
+      loader,
+    );
     let (_load_id, prepare_result) = load.prepare().await;
 
     let mut load = prepare_result?;
