@@ -3565,7 +3565,7 @@ fn lint_ignore_unexplicit_files() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stderr, "Checked 0 file\n".as_bytes());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
 }
 
 #[test]
@@ -3582,5 +3582,5 @@ fn fmt_ignore_unexplicit_files() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stderr, "Checked 0 file\n".as_bytes());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
 }
