@@ -69,7 +69,7 @@ Deno.test({
       write: true,
       read: true,
     });
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       appendFile(file.rid, "hello world", (err) => {
         if (err) reject();
         else resolve();
@@ -93,7 +93,7 @@ Deno.test({
   name: "Async: Data is written to passed in file path",
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       appendFile("_fs_appendFile_test_file.txt", "hello world", (err) => {
         if (err) reject(err);
         else resolve();
@@ -118,7 +118,7 @@ Deno.test({
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const fileURL = new URL("_fs_appendFile_test_file.txt", import.meta.url);
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       appendFile(fileURL, "hello world", (err) => {
         if (err) reject(err);
         else resolve();
@@ -144,7 +144,7 @@ Deno.test({
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const tempFile: string = await Deno.makeTempFile();
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       appendFile(tempFile, "hello world", { flag: "ax" }, (err) => {
         if (err) reject(err);
         else resolve();
