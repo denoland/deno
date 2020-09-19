@@ -17,6 +17,7 @@ use futures::future::FutureExt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::From;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -33,6 +34,9 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_host_get_message", op_host_get_message);
 }
 
+pub type WorkersTable = HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>;
+pub type WorkerId = u32;
+
 fn create_web_worker(
   worker_id: u32,
   name: String,
@@ -41,13 +45,13 @@ fn create_web_worker(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
 ) -> Result<WebWorker, AnyError> {
-  let cli_state = crate::state::CliState::new_for_worker(
-    global_state,
-    Some(permissions),
+  let mut worker = WebWorker::new(
+    name.clone(),
+    permissions,
     specifier,
-  )?;
-
-  let mut worker = WebWorker::new(name.clone(), &cli_state, has_deno_namespace);
+    global_state.clone(),
+    has_deno_namespace,
+  );
 
   if has_deno_namespace {
     let state = worker.isolate.op_state();
@@ -178,7 +182,7 @@ fn op_create_worker(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -192,10 +196,9 @@ fn op_create_worker(
   if use_deno_namespace {
     cli_state.check_unstable("Worker.deno");
   }
-  let global_state = cli_state.global_state.clone();
-  let permissions = cli_state.permissions.borrow().clone();
-  let worker_id = cli_state.next_worker_id.get();
-  cli_state.next_worker_id.set(worker_id + 1);
+  let permissions = state.borrow::<Permissions>().clone();
+  let worker_id = state.take::<WorkerId>();
+  state.put::<WorkerId>(worker_id + 1);
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
@@ -203,7 +206,7 @@ fn op_create_worker(
   let (join_handle, worker_handle) = run_worker_thread(
     worker_id,
     worker_name,
-    &global_state,
+    &cli_state,
     permissions,
     module_specifier,
     use_deno_namespace,
@@ -211,10 +214,8 @@ fn op_create_worker(
   )?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
-  let cli_state = super::cli_state(state);
-  cli_state
-    .workers
-    .borrow_mut()
+  state
+    .borrow_mut::<WorkersTable>()
     .insert(worker_id, (join_handle, worker_handle));
 
   Ok(json!({ "id": worker_id }))
@@ -232,10 +233,8 @@ fn op_host_terminate_worker(
 ) -> Result<Value, AnyError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let cli_state = super::cli_state(state);
-  let (join_handle, worker_handle) = cli_state
-    .workers
-    .borrow_mut()
+  let (join_handle, worker_handle) = state
+    .borrow_mut::<WorkersTable>()
     .remove(&id)
     .expect("No worker handle found");
   worker_handle.terminate();
@@ -301,10 +300,10 @@ async fn op_host_get_message(
 ) -> Result<Value, AnyError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let cli_state = super::cli_state2(&state);
 
   let worker_handle = {
-    let workers_table = cli_state.workers.borrow();
+    let s = state.borrow();
+    let workers_table = s.borrow::<WorkersTable>();
     let maybe_handle = workers_table.get(&id);
     if let Some(handle) = maybe_handle {
       handle.1.clone()
@@ -318,8 +317,9 @@ async fn op_host_get_message(
     Some(event) => {
       // Terminal error means that worker should be removed from worker table.
       if let WorkerEvent::TerminalError(_) = &event {
+        let mut s = state.borrow_mut();
         if let Some((join_handle, mut worker_handle)) =
-          cli_state.workers.borrow_mut().remove(&id)
+          s.borrow_mut::<WorkersTable>().remove(&id)
         {
           worker_handle.sender.close_channel();
           join_handle.join().expect("Worker thread panicked");
@@ -329,7 +329,8 @@ async fn op_host_get_message(
     }
     None => {
       // Worker shuts down
-      let mut workers = cli_state.workers.borrow_mut();
+      let mut s = state.borrow_mut();
+      let workers = s.borrow_mut::<WorkersTable>();
       // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
       // already meaning that we won't find worker in table - in that case ignore.
       if let Some((join_handle, mut worker_handle)) = workers.remove(&id) {
@@ -354,8 +355,7 @@ fn op_host_post_message(
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let cli_state = super::cli_state(state);
-  let workers = cli_state.workers.borrow();
+  let workers = state.borrow::<WorkersTable>();
   let worker_handle = workers[&id].1.clone();
   worker_handle.post_message(msg)?;
   Ok(json!({}))

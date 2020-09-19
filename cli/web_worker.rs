@@ -1,13 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
+use crate::global_state::GlobalState;
 use crate::js;
 use crate::ops;
-use crate::state::CliState;
+use crate::permissions::Permissions;
+use crate::state::CliModuleLoader;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::error::AnyError;
 use deno_core::v8;
+use deno_core::ModuleSpecifier;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -15,7 +17,6 @@ use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -85,10 +86,22 @@ pub struct WebWorker {
 impl WebWorker {
   pub fn new(
     name: String,
-    state: &Rc<CliState>,
+    permissions: Permissions,
+    main_module: ModuleSpecifier,
+    global_state: Arc<GlobalState>,
     has_deno_namespace: bool,
   ) -> Self {
-    let mut worker = Worker::new(name, Some(js::deno_isolate_init()), &state);
+    let loader = CliModuleLoader::new_for_worker();
+    let mut worker = Worker::new(
+      name,
+      Some(js::deno_isolate_init()),
+      permissions,
+      main_module,
+      global_state,
+      loader,
+      false,
+      false,
+    );
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
@@ -252,13 +265,20 @@ impl Future for WebWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::state::CliState;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
 
   fn create_test_worker() -> WebWorker {
-    let state = CliState::mock("./hello.js");
-    let mut worker = WebWorker::new("TEST".to_string(), &state, false);
+    let main_module =
+      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let global_state = GlobalState::mock(vec!["deno".to_string()], None);
+    let mut worker = WebWorker::new(
+      "TEST".to_string(),
+      Permissions::allow_all(),
+      main_module,
+      global_state,
+      false,
+    );
     worker
       .execute("bootstrap.workerRuntime(\"TEST\", false)")
       .unwrap();

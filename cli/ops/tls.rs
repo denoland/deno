@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::io::{StreamResource, StreamResourceHolder};
+use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
@@ -72,11 +73,13 @@ async fn op_start_tls(
     domain.push_str("localhost");
   }
   {
-    let cli_state = super::cli_state2(&state);
+    let cli_state = super::global_state2(&state);
     cli_state.check_unstable("Deno.startTls");
-    cli_state.check_net(&domain, 0)?;
+    let s = state.borrow();
+    let permissions = s.borrow::<Permissions>();
+    permissions.check_net(&domain, 0)?;
     if let Some(path) = cert_file.clone() {
-      cli_state.check_read(Path::new(&path))?;
+      permissions.check_read(Path::new(&path))?;
     }
   }
   let mut resource_holder = {
@@ -143,10 +146,11 @@ async fn op_connect_tls(
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   {
-    let cli_state = super::cli_state2(&state);
-    cli_state.check_net(&args.hostname, args.port)?;
+    let s = state.borrow();
+    let permissions = s.borrow::<Permissions>();
+    permissions.check_net(&args.hostname, args.port)?;
     if let Some(path) = cert_file.clone() {
-      cli_state.check_read(Path::new(&path))?;
+      permissions.check_read(Path::new(&path))?;
     }
   }
   let mut domain = args.hostname.clone();
@@ -318,10 +322,10 @@ fn op_listen_tls(
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
-    let cli_state = super::cli_state(state);
-    cli_state.check_net(&args.hostname, args.port)?;
-    cli_state.check_read(Path::new(&cert_file))?;
-    cli_state.check_read(Path::new(&key_file))?;
+    let permissions = state.borrow::<Permissions>();
+    permissions.check_net(&args.hostname, args.port)?;
+    permissions.check_read(Path::new(&cert_file))?;
+    permissions.check_read(Path::new(&key_file))?;
   }
   let mut config = ServerConfig::new(NoClientAuth::new());
   config

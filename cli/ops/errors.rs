@@ -37,7 +37,7 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      &super::cli_state(state).global_state.ts_compiler,
+      &super::global_state(state).ts_compiler,
     );
 
   Ok(json!({

@@ -28,6 +28,7 @@ pub mod web_worker;
 pub mod websocket;
 pub mod worker_host;
 
+use crate::global_state::GlobalState;
 use crate::metrics::metrics_op;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
@@ -40,6 +41,7 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn reg_json_async<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
@@ -58,12 +60,12 @@ where
 }
 
 /// Helper for extracting the commonly used state. Used for sync ops.
-pub fn cli_state(state: &OpState) -> Rc<crate::state::CliState> {
-  state.borrow::<Rc<crate::state::CliState>>().clone()
+pub fn global_state(state: &OpState) -> Arc<GlobalState> {
+  state.borrow::<Arc<GlobalState>>().clone()
 }
 
 /// Helper for extracting the commonly used state. Used for async ops.
-pub fn cli_state2(state: &Rc<RefCell<OpState>>) -> Rc<crate::state::CliState> {
+pub fn global_state2(state: &Rc<RefCell<OpState>>) -> Arc<GlobalState> {
   let state = state.borrow();
-  state.borrow::<Rc<crate::state::CliState>>().clone()
+  state.borrow::<Arc<GlobalState>>().clone()
 }

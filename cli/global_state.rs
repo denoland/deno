@@ -10,7 +10,6 @@ use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::permissions::Permissions;
-use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
@@ -21,6 +20,14 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
+
+pub fn exit_unstable(api_name: &str) {
+  eprintln!(
+    "Unstable API '{}'. The --unstable flag must be provided.",
+    api_name
+  );
+  std::process::exit(70);
+}
 
 /// This structure represents state of single "deno" program.
 ///
@@ -233,6 +240,16 @@ impl GlobalState {
     drop(compile_lock);
 
     Ok(compiled_module)
+  }
+
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    if !self.flags.unstable {
+      exit_unstable(api_name);
+    }
   }
 
   #[cfg(test)]

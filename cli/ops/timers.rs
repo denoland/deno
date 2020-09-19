@@ -1,17 +1,61 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::global_timer::GlobalTimer;
+//! This module helps deno implement timers.
+//!
+//! As an optimization, we want to avoid an expensive calls into rust for every
+//! setTimeout in JavaScript. Thus in //js/timers.ts a data structure is
+//! implemented that calls into Rust for only the smallest timeout.  Thus we
+//! only need to be able to start and cancel a single timer (or Delay, as Tokio
+//! calls it) for an entire Isolate. This is what is implemented here.
+
+use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::FutureExt;
+use futures::channel::oneshot;
+use futures::FutureExt;
+use futures::TryFutureExt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
+use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
+pub type StartTime = Instant;
+
+#[derive(Default)]
+pub struct GlobalTimer {
+  tx: Option<oneshot::Sender<()>>,
+}
+
+impl GlobalTimer {
+  pub fn cancel(&mut self) {
+    if let Some(tx) = self.tx.take() {
+      tx.send(()).ok();
+    }
+  }
+
+  pub fn new_timeout(
+    &mut self,
+    deadline: Instant,
+  ) -> impl Future<Output = Result<(), ()>> {
+    if self.tx.is_some() {
+      self.cancel();
+    }
+    assert!(self.tx.is_none());
+
+    let (tx, rx) = oneshot::channel();
+    self.tx = Some(tx);
+
+    let delay = tokio::time::delay_until(deadline.into());
+    let rx = rx
+      .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
+
+    futures::future::select(delay, rx).then(|_| futures::future::ok(()))
+  }
+}
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
@@ -61,15 +105,15 @@ fn op_now(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
-  let seconds = cli_state.start_time.elapsed().as_secs();
-  let mut subsec_nanos = cli_state.start_time.elapsed().subsec_nanos();
+  let start_time = state.borrow::<StartTime>();
+  let seconds = start_time.elapsed().as_secs();
+  let mut subsec_nanos = start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if cli_state.check_hrtime().is_err() {
+  if state.borrow::<Permissions>().check_hrtime().is_err() {
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
