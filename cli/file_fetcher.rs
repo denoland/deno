@@ -255,13 +255,13 @@ impl SourceFileFetcher {
             custom_error("NotFound", msg)
           }
           false => match err.downcast_ref::<std::io::Error>() {
-            Some(e) if e.kind() == std::io::ErrorKind::NotFound  => {
+            Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
               let msg = format!(
                 r#"Cannot resolve module "{}"{}"#,
                 module_url, referrer_suffix
               );
               custom_error("NotFound", msg)
-            },
+            }
             Some(_) => err,
             None => err,
           },
