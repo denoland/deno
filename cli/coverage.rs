@@ -21,7 +21,8 @@ use std::sync::Arc;
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-  response_queue: VecDeque<String>,
+  response_queue: VecDeque<serde_json::Value>,
+  next_message_id: usize,
 }
 
 impl Deref for CoverageCollector {
@@ -51,7 +52,8 @@ impl v8::inspector::ChannelImpl for CoverageCollector {
     _call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    let message = message.unwrap().string().to_string();
+    let raw_message = message.unwrap().string().to_string();
+    let message = serde_json::from_str(&raw_message).unwrap();
     self.response_queue.push_back(message);
   }
 
@@ -77,34 +79,59 @@ impl CoverageCollector {
       );
 
       let response_queue = VecDeque::with_capacity(10);
+      let next_message_id = 0;
 
       Self {
         v8_channel,
         v8_session,
         response_queue,
+        next_message_id,
       }
     })
   }
 
-  async fn dispatch(&mut self, message: String) -> Result<String, AnyError> {
-    let message = v8::inspector::StringView::from(message.as_bytes());
-    self.v8_session.dispatch_protocol_message(message);
+  async fn post_message(
+    &mut self,
+    method: String,
+    params: Option<serde_json::Value>,
+  ) -> Result<serde_json::Value, AnyError> {
+    let id = self.next_message_id;
+    self.next_message_id += 1;
 
-    let response = self.response_queue.pop_back();
-    Ok(response.unwrap())
+    let message = json!({
+        "id": id,
+        "method": method,
+        "params": params,
+    });
+
+    let raw_message = serde_json::to_string(&message).unwrap();
+    let raw_message = v8::inspector::StringView::from(raw_message.as_bytes());
+    self.v8_session.dispatch_protocol_message(raw_message);
+
+    let response = self.response_queue.pop_back().unwrap();
+    if let Some(error) = response.get("error") {
+      return Err(generic_error(format!("{}", error)));
+    }
+
+    let result = response.get("result").unwrap().clone();
+    Ok(result)
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self
-      .dispatch(r#"{"id":1,"method":"Runtime.enable"}"#.into())
-      .await?;
-    self
-      .dispatch(r#"{"id":2,"method":"Profiler.enable"}"#.into())
+      .post_message("Runtime.enable".to_string(), None)
       .await?;
 
     self
-        .dispatch(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into())
-        .await?;
+      .post_message("Profiler.enable".to_string(), None)
+      .await?;
+
+    self
+      .post_message(
+        "Profiler.startPreciseCoverage".to_string(),
+        Some(json!({"callCount": true, "detailed": true})),
+      )
+      .await?;
 
     Ok(())
   }
@@ -112,27 +139,24 @@ impl CoverageCollector {
   pub async fn take_precise_coverage(
     &mut self,
   ) -> Result<Vec<ScriptCoverage>, AnyError> {
-    let response = self
-      .dispatch(r#"{"id":4,"method":"Profiler.takePreciseCoverage" }"#.into())
+    let result = self
+      .post_message("Profiler.takePreciseCoverage".to_string(), None)
       .await?;
+    let take_coverage_result: TakePreciseCoverageResult =
+      serde_json::from_value(result)?;
 
-    let coverage_result: TakePreciseCoverageResponse =
-      serde_json::from_str(&response).unwrap();
-
-    Ok(coverage_result.result.result)
+    Ok(take_coverage_result.result)
   }
 
   pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
     self
-      .dispatch(r#"{"id":5,"method":"Profiler.stopPreciseCoverage"}"#.into())
+      .post_message("Profiler.stopPreciseCoverage".to_string(), None)
       .await?;
-
     self
-      .dispatch(r#"{"id":6,"method":"Profiler.disable"}"#.into())
+      .post_message("Profiler.disable".to_string(), None)
       .await?;
-
     self
-      .dispatch(r#"{"id":7,"method":"Runtime.disable"}"#.into())
+      .post_message("Runtime.disable".to_string(), None)
       .await?;
 
     Ok(())
@@ -167,13 +191,6 @@ pub struct ScriptCoverage {
 #[serde(rename_all = "camelCase")]
 struct TakePreciseCoverageResult {
   result: Vec<ScriptCoverage>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TakePreciseCoverageResponse {
-  id: usize,
-  result: TakePreciseCoverageResult,
 }
 
 pub struct PrettyCoverageReporter {
