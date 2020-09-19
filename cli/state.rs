@@ -17,12 +17,7 @@ use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
 
-// This is named "CliState" instead of just "State" to avoid confusion with all
-// other state structs (GlobalState, OpState, GothamState).
-// TODO(ry) Many of the items in this struct should be moved out and into
-// OpState, removing redundant RefCell wrappers if possible.
 pub struct CliState {
-  pub global_state: Arc<GlobalState>,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -53,13 +48,17 @@ impl ModuleLoader for CliState {
 
   fn load(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.to_owned();
     let module_url_specified = module_specifier.to_string();
-    let global_state = self.global_state.clone();
+    let global_state = {
+      let state = op_state.borrow();
+      state.borrow::<Arc<GlobalState>>().clone()
+    };
 
     // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
     let fut = async move {
@@ -89,16 +88,19 @@ impl ModuleLoader for CliState {
     let module_specifier = module_specifier.clone();
     let target_lib = self.target_lib.clone();
     let maybe_import_map = self.import_map.clone();
+    let state = op_state.borrow();
+
     // Only "main" module is loaded without permission check,
     // ie. module that is associated with "is_main" state
     // and is not a dynamic import.
     let permissions = if self.is_main && !is_dyn_import {
       Permissions::allow_all()
     } else {
-      let state = op_state.borrow();
       state.borrow::<Permissions>().clone()
     };
-    let global_state = self.global_state.clone();
+    let global_state = state.borrow::<Arc<GlobalState>>().clone();
+    drop(state);
+
     // TODO(bartlomieju): I'm not sure if it's correct to ignore
     // bad referrer - this is the case for `Deno.core.evalContext()` where
     // `ref_str` is `<unknown>`.
@@ -126,13 +128,10 @@ impl ModuleLoader for CliState {
 }
 
 impl CliState {
-  /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
-    global_state: &Arc<GlobalState>,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<Rc<Self>, AnyError> {
     let state = CliState {
-      global_state: global_state.clone(),
       import_map: maybe_import_map,
       target_lib: TargetLib::Main,
       is_main: true,
@@ -140,22 +139,12 @@ impl CliState {
     Ok(Rc::new(state))
   }
 
-  /// If `shared_permission` is None then permissions from globa state are used.
-  pub fn new_for_worker(
-    global_state: &Arc<GlobalState>,
-  ) -> Result<Rc<Self>, AnyError> {
+  pub fn new_for_worker() -> Result<Rc<Self>, AnyError> {
     let state = CliState {
-      global_state: global_state.clone(),
       import_map: None,
       target_lib: TargetLib::Worker,
       is_main: false,
     };
     Ok(Rc::new(state))
-  }
-
-  #[cfg(test)]
-  pub fn mock() -> Rc<Self> {
-    CliState::new(&GlobalState::mock(vec!["deno".to_string()], None), None)
-      .unwrap()
   }
 }

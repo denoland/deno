@@ -135,6 +135,7 @@ impl CompilerWorker {
   pub fn new(
     name: String,
     permissions: Permissions,
+    global_state: Arc<GlobalState>,
     state: &Rc<CliState>,
   ) -> Self {
     let main_module =
@@ -144,6 +145,7 @@ impl CompilerWorker {
       Some(js::compiler_isolate_init()),
       permissions,
       main_module,
+      global_state,
       state,
       true,
     );
@@ -228,14 +230,18 @@ fn create_compiler_worker(
   permissions: Permissions,
 ) -> CompilerWorker {
   let worker_state =
-    CliState::new(&global_state, None).expect("Unable to create worker state");
+    CliState::new(None).expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
   global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
-  let mut worker =
-    CompilerWorker::new("TS".to_string(), permissions, &worker_state);
+  let mut worker = CompilerWorker::new(
+    "TS".to_string(),
+    permissions,
+    global_state.clone(),
+    &worker_state,
+  );
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
     .unwrap();

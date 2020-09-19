@@ -105,6 +105,7 @@ pub struct Worker {
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
+  should_break_on_first_statement: bool,
 }
 
 impl Worker {
@@ -113,10 +114,10 @@ impl Worker {
     startup_snapshot: Option<Snapshot>,
     permissions: Permissions,
     main_module: ModuleSpecifier,
+    global_state: Arc<GlobalState>,
     state: &Rc<CliState>,
     is_internal: bool,
   ) -> Self {
-    let global_state = state.global_state.clone();
     let global_state_ = global_state.clone();
 
     let mut isolate = JsRuntime::new(RuntimeOptions {
@@ -155,13 +156,16 @@ impl Worker {
       op_state.put(global_state.clone());
     }
     let inspector = {
-      let global_state = &state.global_state;
       global_state
         .flags
         .inspect
         .or(global_state.flags.inspect_brk)
         .filter(|_| !is_internal)
         .map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
+    };
+
+    let should_break_on_first_statement = inspector.is_some() && {
+      state.is_main && global_state.flags.inspect_brk.is_some()
     };
 
     let (internal_channels, external_channels) = create_channels();
@@ -174,6 +178,7 @@ impl Worker {
       waker: AtomicWaker::new(),
       internal_channels,
       external_channels,
+      should_break_on_first_statement,
     }
   }
 
@@ -233,10 +238,7 @@ impl Worker {
   }
 
   fn wait_for_inspector_session(&mut self) {
-    let should_break_on_first_statement = self.inspector.is_some() && {
-      self.state.is_main && self.state.global_state.flags.inspect_brk.is_some()
-    };
-    if should_break_on_first_statement {
+    if self.should_break_on_first_statement {
       self
         .inspector
         .as_mut()
@@ -295,6 +297,7 @@ impl MainWorker {
     startup_snapshot: Option<Snapshot>,
     permissions: Permissions,
     main_module: ModuleSpecifier,
+    global_state: Arc<GlobalState>,
     state: &Rc<CliState>,
   ) -> Self {
     let mut worker = Worker::new(
@@ -302,6 +305,7 @@ impl MainWorker {
       startup_snapshot,
       permissions,
       main_module,
+      global_state,
       state,
       false,
     );
@@ -342,12 +346,13 @@ impl MainWorker {
     main_module: ModuleSpecifier,
   ) -> Result<MainWorker, AnyError> {
     let state =
-      CliState::new(&global_state, global_state.maybe_import_map.clone())?;
+      CliState::new(global_state.maybe_import_map.clone())?;
     let mut worker = MainWorker::new(
       "main".to_string(),
       Some(js::deno_isolate_init()),
       global_state.permissions.clone(),
       main_module,
+      global_state.clone(),
       &state,
     );
     {
@@ -401,13 +406,15 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state = CliState::new(&global_state, None).unwrap();
+    let global_state_ = global_state.clone();
+    let state = CliState::new(None).unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new(
         "TEST".to_string(),
         None,
         global_state.permissions.clone(),
         module_specifier.clone(),
+        global_state_,
         &state,
       );
       let result = worker.execute_module(&module_specifier).await;
@@ -419,7 +426,7 @@ mod tests {
       }
     });
     // Check that we didn't start the compiler.
-    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
+    assert_eq!(global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[test]
@@ -431,13 +438,15 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state = CliState::new(&global_state, None).unwrap();
+    let global_state_ = global_state.clone();
+    let state = CliState::new(None).unwrap();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new(
         "TEST".to_string(),
         None,
-        global_state.permissions.clone(),
+        global_state_.permissions.clone(),
         module_specifier.clone(),
+        global_state_,
         &state,
       );
       let result = worker.execute_module(&module_specifier).await;
@@ -450,7 +459,7 @@ mod tests {
     });
 
     // Check that we didn't start the compiler.
-    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
+    assert_eq!(global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[tokio::test]
@@ -470,12 +479,13 @@ mod tests {
       ..flags::Flags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
-    let state = CliState::new(&global_state, None).unwrap();
+    let state = CliState::new(None).unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
       global_state.permissions.clone(),
       module_specifier.clone(),
+      global_state.clone(),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();
@@ -487,18 +497,20 @@ mod tests {
       panic!("Future got unexpected error: {:?}", e);
     }
     // Check that we've only invoked the compiler once.
-    assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 1);
+    assert_eq!(global_state.compiler_starts.load(Ordering::SeqCst), 1);
   }
 
   fn create_test_worker() -> MainWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let state = CliState::mock();
+    let global_state = GlobalState::mock(vec!["deno".to_string()], None);
+    let state = CliState::new(None).unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
       Permissions::allow_all(),
       main_module,
+      global_state,
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();

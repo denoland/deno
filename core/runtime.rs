@@ -624,13 +624,14 @@ impl JsRuntimeState {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
     let load = RecursiveModuleLoad::dynamic_import(
+      self.op_state.clone(),
       specifier,
       referrer,
       self.loader.clone(),
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
-    let fut = load.prepare(self.op_state.clone()).boxed_local();
+    let fut = load.prepare().boxed_local();
     self.preparing_dyn_imports.push(fut);
   }
 }
@@ -1207,8 +1208,8 @@ impl JsRuntime {
       state.loader.clone()
     };
 
-    let load = RecursiveModuleLoad::main(&specifier.to_string(), code, loader);
-    let (_load_id, prepare_result) = load.prepare(self.op_state()).await;
+    let load = RecursiveModuleLoad::main(self.op_state(), &specifier.to_string(), code, loader);
+    let (_load_id, prepare_result) = load.prepare().await;
 
     let mut load = prepare_result?;
 
@@ -1890,6 +1891,7 @@ pub mod tests {
 
       fn load(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -1999,6 +2001,7 @@ pub mod tests {
 
       fn load(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -2059,6 +2062,7 @@ pub mod tests {
 
     fn load(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,
@@ -2180,6 +2184,7 @@ pub mod tests {
 
       fn load(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,

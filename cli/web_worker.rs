@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
+use crate::global_state::GlobalState;
 use crate::js;
 use crate::ops;
 use crate::permissions::Permissions;
@@ -89,6 +89,7 @@ impl WebWorker {
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
+    global_state: Arc<GlobalState>,
     state: &Rc<CliState>,
     has_deno_namespace: bool,
   ) -> Self {
@@ -97,6 +98,7 @@ impl WebWorker {
       Some(js::deno_isolate_init()),
       permissions,
       main_module,
+      global_state,
       &state,
       false,
     );
@@ -270,11 +272,13 @@ mod tests {
   fn create_test_worker() -> WebWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let state = CliState::mock();
+    let global_state = GlobalState::mock(vec!["deno".to_string()], None);
+    let state = CliState::new(None).unwrap();
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
+      global_state,
       &state,
       false,
     );
