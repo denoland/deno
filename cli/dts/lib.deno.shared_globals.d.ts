@@ -38,7 +38,7 @@ declare namespace WebAssembly {
     constructor(bytes: BufferSource);
     static customSections(
       moduleObject: Module,
-      sectionName: string,
+      sectionName: string
     ): ArrayBuffer[];
     static exports(moduleObject: Module): ModuleExportDescriptor[];
     static imports(moduleObject: Module): ModuleImportDescriptor[];
@@ -98,19 +98,19 @@ declare namespace WebAssembly {
   export type Imports = Record<string, ModuleImports>;
   export function compile(bytes: BufferSource): Promise<Module>;
   export function compileStreaming(
-    source: Response | Promise<Response>,
+    source: Response | Promise<Response>
   ): Promise<Module>;
   export function instantiate(
     bytes: BufferSource,
-    importObject?: Imports,
+    importObject?: Imports
   ): Promise<WebAssemblyInstantiatedSource>;
   export function instantiate(
     moduleObject: Module,
-    importObject?: Imports,
+    importObject?: Imports
   ): Promise<Instance>;
   export function instantiateStreaming(
     response: Response | PromiseLike<Response>,
-    importObject?: Imports,
+    importObject?: Imports
   ): Promise<WebAssemblyInstantiatedSource>;
   export function validate(bytes: BufferSource): boolean;
 }
@@ -187,7 +187,7 @@ declare var crypto: Crypto;
 declare function addEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined,
+  options?: boolean | AddEventListenerOptions | undefined
 ): void;
 
 /** Dispatches an event in the global scope, synchronously invoking any
@@ -208,7 +208,7 @@ declare function dispatchEvent(event: Event): boolean;
 declare function removeEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined,
+  options?: boolean | EventListenerOptions | undefined
 ): void;
 
 interface DOMStringList {
@@ -240,7 +240,7 @@ declare class Console {
     options?: Partial<{
       depth: number;
       indentLevel: number;
-    }>,
+    }>
   ) => void;
 
   /** Displays an interactive tree of the descendant elements of
@@ -262,7 +262,7 @@ declare class Console {
       depth: number;
       colors: boolean;
       indentLevel: number;
-    }>,
+    }>
   ) => void;
 
   /** Writes the arguments to stdout */
@@ -303,13 +303,18 @@ declare interface Crypto {
       | Float32Array
       | Float64Array
       | DataView
-      | null,
+      | null
   >(
-    array: T,
+    array: T
   ): T;
 }
 
-declare interface URLSearchParams {
+declare class URLSearchParams {
+  constructor(
+    init?: string[][] | Record<string, string> | string | URLSearchParams
+  );
+  static toString(): string;
+
   /** Appends a specified key/value pair as a new search parameter.
    *
    * ```ts
@@ -391,7 +396,7 @@ declare interface URLSearchParams {
    */
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any,
+    thisArg?: any
   ): void;
 
   /** Returns an iterator allowing to go through all keys contained
@@ -568,7 +573,7 @@ declare class Worker extends EventTarget {
        *
        */
       deno?: boolean;
-    },
+    }
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;
@@ -597,14 +602,14 @@ declare class Performance {
    * associated name (a "measure"). */
   measure(
     measureName: string,
-    options?: PerformanceMeasureOptions,
+    options?: PerformanceMeasureOptions
   ): PerformanceMeasure;
   /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
    * associated name (a "measure"). */
   measure(
     measureName: string,
     startMark?: string,
-    endMark?: string,
+    endMark?: string
   ): PerformanceMeasure;
 
   /** Returns a current time from Deno's start in milliseconds.
@@ -728,10 +733,10 @@ declare class CloseEvent extends Event {
 }
 
 interface WebSocketEventMap {
-  "close": CloseEvent;
-  "error": Event;
-  "message": MessageEvent;
-  "open": Event;
+  close: CloseEvent;
+  error: Event;
+  message: MessageEvent;
+  open: Event;
 }
 
 /** Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection. */
@@ -790,22 +795,22 @@ declare class WebSocket extends EventTarget {
   addEventListener<K extends keyof WebSocketEventMap>(
     type: K,
     listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions,
+    options?: boolean | AddEventListenerOptions
   ): void;
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
+    options?: boolean | AddEventListenerOptions
   ): void;
   removeEventListener<K extends keyof WebSocketEventMap>(
     type: K,
     listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | EventListenerOptions,
+    options?: boolean | EventListenerOptions
   ): void;
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions,
+    options?: boolean | EventListenerOptions
   ): void;
 }
 
