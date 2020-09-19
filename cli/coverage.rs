@@ -90,9 +90,13 @@ impl CoverageCollector {
     })
   }
 
-  async fn post_message(&mut self, method: String, params: Option<serde_json::Value>) -> Result<serde_json::Value, AnyError> {
-      let id = self.next_message_id;
-      self.next_message_id += 1;
+  async fn post_message(
+    &mut self,
+    method: String,
+    params: Option<serde_json::Value>,
+  ) -> Result<serde_json::Value, AnyError> {
+    let id = self.next_message_id;
+    self.next_message_id += 1;
 
     let message = json!({
         "id": id,
@@ -106,7 +110,7 @@ impl CoverageCollector {
 
     let response = self.response_queue.pop_back().unwrap();
     if let Some(error) = response.get("error") {
-        return Err(generic_error(format!("{}", error)));
+      return Err(generic_error(format!("{}", error)));
     }
 
     let result = response.get("result").unwrap().clone();
@@ -114,13 +118,20 @@ impl CoverageCollector {
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self.post_message("Runtime.enable".to_string(), None)
+    self
+      .post_message("Runtime.enable".to_string(), None)
       .await?;
 
-    self.post_message("Profiler.enable".to_string(), None)
+    self
+      .post_message("Profiler.enable".to_string(), None)
       .await?;
 
-    self.post_message("Profiler.startPreciseCoverage".to_string(), Some(json!({"callCount": true, "detailed": true}))).await?;
+    self
+      .post_message(
+        "Profiler.startPreciseCoverage".to_string(),
+        Some(json!({"callCount": true, "detailed": true})),
+      )
+      .await?;
 
     Ok(())
   }
@@ -128,16 +139,25 @@ impl CoverageCollector {
   pub async fn take_precise_coverage(
     &mut self,
   ) -> Result<Vec<ScriptCoverage>, AnyError> {
-    let result = self.post_message("Profiler.takePreciseCoverage".to_string(), None).await?;
-    let take_coverage_result: TakePreciseCoverageResult = serde_json::from_value(result)?;
+    let result = self
+      .post_message("Profiler.takePreciseCoverage".to_string(), None)
+      .await?;
+    let take_coverage_result: TakePreciseCoverageResult =
+      serde_json::from_value(result)?;
 
     Ok(take_coverage_result.result)
   }
 
   pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
-    self.post_message("Profiler.stopPreciseCoverage".to_string(), None).await?;
-    self.post_message("Profiler.disable".to_string(), None).await?;
-    self.post_message("Runtime.disable".to_string(), None).await?;
+    self
+      .post_message("Profiler.stopPreciseCoverage".to_string(), None)
+      .await?;
+    self
+      .post_message("Profiler.disable".to_string(), None)
+      .await?;
+    self
+      .post_message("Runtime.disable".to_string(), None)
+      .await?;
 
     Ok(())
   }
