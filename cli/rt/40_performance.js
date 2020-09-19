@@ -2,7 +2,7 @@
 
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
-  const { cloneValue } = window.__bootstrap.webUtil;
+  const { cloneValue, illegalConstructorKey } = window.__bootstrap.webUtil;
 
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
@@ -74,7 +74,11 @@
       entryType,
       startTime,
       duration,
+      key,
     ) {
+      if (key != illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
       this.#name = name;
       this.#entryType = entryType;
       this.#startTime = startTime;
@@ -110,7 +114,7 @@
       name,
       { detail = null, startTime = now() } = {},
     ) {
-      super(name, "mark", startTime, 0);
+      super(name, "mark", startTime, 0, illegalConstructorKey);
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
@@ -152,8 +156,12 @@
       startTime,
       duration,
       detail = null,
+      key,
     ) {
-      super(name, "measure", startTime, duration);
+      if (key != illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
+      super(name, "measure", startTime, duration, illegalConstructorKey);
       this.#detail = cloneValue(detail);
     }
 
@@ -177,6 +185,12 @@
   }
 
   class Performance {
+    constructor(key) {
+      if (key != illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
+    }
+
     clearMarks(markName) {
       if (markName == null) {
         performanceEntries = performanceEntries.filter(
@@ -302,6 +316,7 @@
         typeof startOrMeasureOptions === "object"
           ? startOrMeasureOptions.detail ?? null
           : null,
+        illegalConstructorKey,
       );
       performanceEntries.push(entry);
       return entry;
@@ -312,10 +327,13 @@
     }
   }
 
+  const performance = new Performance(illegalConstructorKey);
+
   window.__bootstrap.performance = {
     PerformanceEntry,
     PerformanceMark,
     PerformanceMeasure,
     Performance,
+    performance,
   };
 })(this);

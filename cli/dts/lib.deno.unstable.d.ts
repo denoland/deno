@@ -1139,7 +1139,7 @@ declare namespace Deno {
   /** see: https://w3c.github.io/permissions/#permissionstatus */
   export class PermissionStatus {
     state: PermissionState;
-    constructor(state: PermissionState);
+    constructor();
   }
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
