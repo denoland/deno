@@ -263,15 +263,18 @@ async fn op_connect(
       transport,
       transport_args: ArgsEnum::Ip(args),
     } if transport == "tcp" => {
-      let mut state_ = state.borrow_mut();
-      state_
-        .borrow::<Permissions>()
-        .check_net(&args.hostname, args.port)?;
+      {
+        let state_ = state.borrow();
+        state_
+          .borrow::<Permissions>()
+          .check_net(&args.hostname, args.port)?;
+      }
       let addr = resolve_addr(&args.hostname, args.port)?;
       let tcp_stream = TcpStream::connect(&addr).await?;
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
 
+      let mut state_ = state.borrow_mut();
       let rid = state_.resource_table.add(
         "tcpStream",
         Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
@@ -300,13 +303,16 @@ async fn op_connect(
       let address_path = Path::new(&args.path);
       let cli_state = super::cli_state2(&state);
       cli_state.check_unstable("Deno.connect");
-      let mut state_ = state.borrow_mut();
-      state_.borrow::<Permissions>().check_read(&address_path)?;
+      {
+        let state_ = state.borrow();
+        state_.borrow::<Permissions>().check_read(&address_path)?;
+      }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
       let local_addr = unix_stream.local_addr()?;
       let remote_addr = unix_stream.peer_addr()?;
 
+      let mut state_ = state.borrow_mut();
       let rid = state_.resource_table.add(
         "unixStream",
         Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
