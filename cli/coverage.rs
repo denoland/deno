@@ -10,8 +10,9 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use futures::channel::oneshot;
 use serde::Deserialize;
-use std::collections::VecDeque;
+use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -21,8 +22,8 @@ use std::sync::Arc;
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-  response_queue: VecDeque<serde_json::Value>,
-  next_message_id: usize,
+  response_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
+  next_message_id: i32,
 }
 
 impl Deref for CoverageCollector {
@@ -49,12 +50,17 @@ impl v8::inspector::ChannelImpl for CoverageCollector {
 
   fn send_response(
     &mut self,
-    _call_id: i32,
+    call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let raw_message = message.unwrap().string().to_string();
     let message = serde_json::from_str(&raw_message).unwrap();
-    self.response_queue.push_back(message);
+    self
+      .response_map
+      .remove(&call_id)
+      .unwrap()
+      .send(message)
+      .unwrap();
   }
 
   fn send_notification(
@@ -78,13 +84,13 @@ impl CoverageCollector {
         v8::inspector::StringView::empty(),
       );
 
-      let response_queue = VecDeque::with_capacity(10);
+      let response_map = HashMap::new();
       let next_message_id = 0;
 
       Self {
         v8_channel,
         v8_session,
-        response_queue,
+        response_map,
         next_message_id,
       }
     })
@@ -98,6 +104,9 @@ impl CoverageCollector {
     let id = self.next_message_id;
     self.next_message_id += 1;
 
+    let (sender, receiver) = oneshot::channel::<serde_json::Value>();
+    self.response_map.insert(id, sender);
+
     let message = json!({
         "id": id,
         "method": method,
@@ -108,7 +117,7 @@ impl CoverageCollector {
     let raw_message = v8::inspector::StringView::from(raw_message.as_bytes());
     self.v8_session.dispatch_protocol_message(raw_message);
 
-    let response = self.response_queue.pop_back().unwrap();
+    let response = receiver.await.unwrap();
     if let Some(error) = response.get("error") {
       return Err(generic_error(format!("{}", error)));
     }
