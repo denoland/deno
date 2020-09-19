@@ -630,7 +630,7 @@ impl JsRuntimeState {
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
-    let fut = load.prepare().boxed_local();
+    let fut = load.prepare(self.op_state.clone()).boxed_local();
     self.preparing_dyn_imports.push(fut);
   }
 }
@@ -1208,7 +1208,7 @@ impl JsRuntime {
     };
 
     let load = RecursiveModuleLoad::main(&specifier.to_string(), code, loader);
-    let (_load_id, prepare_result) = load.prepare().await;
+    let (_load_id, prepare_result) = load.prepare(self.op_state()).await;
 
     let mut load = prepare_result?;
 
@@ -2074,6 +2074,7 @@ pub mod tests {
 
     fn prepare_load(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       _load_id: ModuleLoadId,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,

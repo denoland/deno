@@ -10,6 +10,7 @@ use crate::ops::io::get_stdio;
 use crate::ops::timers;
 use crate::ops::worker_host::WorkerId;
 use crate::ops::worker_host::WorkersTable;
+use crate::permissions::Permissions;
 use crate::state::CliState;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -110,6 +111,7 @@ impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
+    permissions: Permissions,
     state: &Rc<CliState>,
     is_internal: bool,
   ) -> Self {
@@ -145,6 +147,8 @@ impl Worker {
 
       op_state.put(WorkersTable::default());
       op_state.put(WorkerId::default());
+
+      op_state.put(permissions);
     }
     let inspector = {
       let global_state = &state.global_state;
@@ -285,9 +289,11 @@ impl MainWorker {
   fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
+    permissions: Permissions,
     state: &Rc<CliState>,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_snapshot, state, false);
+    let mut worker =
+      Worker::new(name, startup_snapshot, permissions, state, false);
     {
       ops::runtime::init(&mut worker);
       ops::runtime_compiler::init(&mut worker);
@@ -326,13 +332,13 @@ impl MainWorker {
   ) -> Result<MainWorker, AnyError> {
     let state = CliState::new(
       &global_state,
-      None,
       main_module,
       global_state.maybe_import_map.clone(),
     )?;
     let mut worker = MainWorker::new(
       "main".to_string(),
       Some(js::deno_isolate_init()),
+      global_state.permissions.clone(),
       &state,
     );
     {
@@ -387,10 +393,14 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      CliState::new(&global_state, None, module_specifier.clone(), None)
-        .unwrap();
+      CliState::new(&global_state, module_specifier.clone(), None).unwrap();
     tokio_util::run_basic(async {
-      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
+      let mut worker = MainWorker::new(
+        "TEST".to_string(),
+        None,
+        global_state.permissions.clone(),
+        &state,
+      );
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -413,10 +423,14 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      CliState::new(&global_state, None, module_specifier.clone(), None)
-        .unwrap();
+      CliState::new(&global_state, module_specifier.clone(), None).unwrap();
     tokio_util::run_basic(async {
-      let mut worker = MainWorker::new("TEST".to_string(), None, &state);
+      let mut worker = MainWorker::new(
+        "TEST".to_string(),
+        None,
+        global_state.permissions.clone(),
+        &state,
+      );
       let result = worker.execute_module(&module_specifier).await;
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -448,11 +462,11 @@ mod tests {
     };
     let global_state = GlobalState::new(flags).unwrap();
     let state =
-      CliState::new(&global_state, None, module_specifier.clone(), None)
-        .unwrap();
+      CliState::new(&global_state, module_specifier.clone(), None).unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
+      global_state.permissions.clone(),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();
@@ -472,6 +486,7 @@ mod tests {
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       Some(js::deno_isolate_init()),
+      Permissions::allow_all(),
       &state,
     );
     worker.execute("bootstrap.mainRuntime()").unwrap();

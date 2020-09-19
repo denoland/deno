@@ -8,6 +8,7 @@
 //! only need to be able to start and cancel a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
+use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::BufVec;
 use deno_core::OpState;
@@ -109,11 +110,10 @@ fn op_now(
   let mut subsec_nanos = start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
 
-  let cli_state = super::cli_state(state);
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if cli_state.check_hrtime().is_err() {
+  if state.borrow::<Permissions>().check_hrtime().is_err() {
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 

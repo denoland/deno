@@ -2,6 +2,7 @@
 
 use crate::ops::io::StreamResource;
 use crate::ops::io::StreamResourceHolder;
+use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
@@ -189,7 +190,6 @@ async fn op_datagram_send(
 ) -> Result<Value, AnyError> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let zero_copy = zero_copy[0].clone();
-  let cli_state = super::cli_state2(&state);
 
   match serde_json::from_value(args)? {
     SendArgs {
@@ -197,7 +197,11 @@ async fn op_datagram_send(
       transport,
       transport_args: ArgsEnum::Ip(args),
     } if transport == "udp" => {
-      cli_state.check_net(&args.hostname, args.port)?;
+      {
+        let s = state.borrow();
+        s.borrow::<Permissions>()
+          .check_net(&args.hostname, args.port)?;
+      }
       let addr = resolve_addr(&args.hostname, args.port)?;
       poll_fn(move |cx| {
         let mut state = state.borrow_mut();
@@ -220,7 +224,10 @@ async fn op_datagram_send(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unixpacket" => {
       let address_path = Path::new(&args.path);
-      cli_state.check_read(&address_path)?;
+      {
+        let s = state.borrow();
+        s.borrow::<Permissions>().check_read(&address_path)?;
+      }
       let mut state = state.borrow_mut();
       let resource = state
         .resource_table
@@ -251,19 +258,20 @@ async fn op_connect(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state2(&state);
   match serde_json::from_value(args)? {
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
     } if transport == "tcp" => {
-      cli_state.check_net(&args.hostname, args.port)?;
+      let mut state_ = state.borrow_mut();
+      state_
+        .borrow::<Permissions>()
+        .check_net(&args.hostname, args.port)?;
       let addr = resolve_addr(&args.hostname, args.port)?;
       let tcp_stream = TcpStream::connect(&addr).await?;
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
 
-      let mut state_ = state.borrow_mut();
       let rid = state_.resource_table.add(
         "tcpStream",
         Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
@@ -290,14 +298,15 @@ async fn op_connect(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" => {
       let address_path = Path::new(&args.path);
+      let cli_state = super::cli_state2(&state);
       cli_state.check_unstable("Deno.connect");
-      cli_state.check_read(&address_path)?;
+      let mut state_ = state.borrow_mut();
+      state_.borrow::<Permissions>().check_read(&address_path)?;
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
       let local_addr = unix_stream.local_addr()?;
       let remote_addr = unix_stream.peer_addr()?;
 
-      let mut state_ = state.borrow_mut();
       let rid = state_.resource_table.add(
         "unixStream",
         Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
@@ -476,6 +485,7 @@ fn op_listen(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let cli_state = super::cli_state(state);
+  let permissions = state.borrow::<Permissions>();
   match serde_json::from_value(args)? {
     ListenArgs {
       transport,
@@ -485,7 +495,7 @@ fn op_listen(
         if transport == "udp" {
           cli_state.check_unstable("Deno.listenDatagram");
         }
-        cli_state.check_net(&args.hostname, args.port)?;
+        permissions.check_net(&args.hostname, args.port)?;
       }
       let addr = resolve_addr(&args.hostname, args.port)?;
       let (rid, local_addr) = if transport == "tcp" {
@@ -521,8 +531,8 @@ fn op_listen(
         if transport == "unixpacket" {
           cli_state.check_unstable("Deno.listenDatagram");
         }
-        cli_state.check_read(&address_path)?;
-        cli_state.check_write(&address_path)?;
+        permissions.check_read(&address_path)?;
+        permissions.check_write(&address_path)?;
       }
       let (rid, local_addr) = if transport == "unix" {
         net_unix::listen_unix(state, &address_path)?

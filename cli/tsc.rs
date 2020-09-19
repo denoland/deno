@@ -132,9 +132,18 @@ pub struct CompilerWorker {
 }
 
 impl CompilerWorker {
-  pub fn new(name: String, state: &Rc<CliState>) -> Self {
-    let mut worker =
-      Worker::new(name, Some(js::compiler_isolate_init()), state, true);
+  pub fn new(
+    name: String,
+    permissions: Permissions,
+    state: &Rc<CliState>,
+  ) -> Self {
+    let mut worker = Worker::new(
+      name,
+      Some(js::compiler_isolate_init()),
+      permissions,
+      state,
+      true,
+    );
     let response = Arc::new(Mutex::new(None));
     ops::runtime::init(&mut worker);
     ops::errors::init(&mut worker);
@@ -217,15 +226,15 @@ fn create_compiler_worker(
 ) -> CompilerWorker {
   let entry_point =
     ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
-  let worker_state =
-    CliState::new(&global_state, Some(permissions), entry_point, None)
-      .expect("Unable to create worker state");
+  let worker_state = CliState::new(&global_state, entry_point, None)
+    .expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
   global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
-  let mut worker = CompilerWorker::new("TS".to_string(), &worker_state);
+  let mut worker =
+    CompilerWorker::new("TS".to_string(), permissions, &worker_state);
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
     .unwrap();

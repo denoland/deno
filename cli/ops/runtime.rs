@@ -2,6 +2,7 @@
 
 use crate::colors;
 use crate::metrics::Metrics;
+use crate::permissions::Permissions;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::error::AnyError;
@@ -52,7 +53,9 @@ fn op_main_module(
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
-    cli_state.check_read_blind(&main_path, "main_module")?;
+    state
+      .borrow::<Permissions>()
+      .check_read_blind(&main_path, "main_module")?;
   }
   Ok(json!(&main))
 }

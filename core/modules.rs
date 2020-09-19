@@ -5,10 +5,12 @@ use rusty_v8 as v8;
 use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
+use crate::OpState;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::Future;
@@ -89,6 +91,7 @@ pub trait ModuleLoader {
   /// It's not required to implement this method.
   fn prepare_load(
     &self,
+    _op_state: Rc<RefCell<OpState>>,
     _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
@@ -190,7 +193,10 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
+  pub async fn prepare(
+    self,
+    op_state: Rc<RefCell<OpState>>,
+  ) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
         let spec = match self.loader.resolve(specifier, ".", true) {
@@ -212,6 +218,7 @@ impl RecursiveModuleLoad {
     let prepare_result = self
       .loader
       .prepare_load(
+        op_state,
         self.id,
         &module_specifier,
         maybe_referrer,

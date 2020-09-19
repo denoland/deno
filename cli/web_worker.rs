@@ -2,6 +2,7 @@
 
 use crate::js;
 use crate::ops;
+use crate::permissions::Permissions;
 use crate::state::CliState;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
@@ -85,11 +86,17 @@ pub struct WebWorker {
 impl WebWorker {
   pub fn new(
     name: String,
+    permissions: Permissions,
     state: &Rc<CliState>,
     has_deno_namespace: bool,
   ) -> Self {
-    let mut worker =
-      Worker::new(name, Some(js::deno_isolate_init()), &state, false);
+    let mut worker = Worker::new(
+      name,
+      Some(js::deno_isolate_init()),
+      permissions,
+      &state,
+      false,
+    );
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
@@ -259,7 +266,12 @@ mod tests {
 
   fn create_test_worker() -> WebWorker {
     let state = CliState::mock("./hello.js");
-    let mut worker = WebWorker::new("TEST".to_string(), &state, false);
+    let mut worker = WebWorker::new(
+      "TEST".to_string(),
+      Permissions::allow_all(),
+      &state,
+      false,
+    );
     worker
       .execute("bootstrap.workerRuntime(\"TEST\", false)")
       .unwrap();

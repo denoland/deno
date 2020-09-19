@@ -45,13 +45,11 @@ fn create_web_worker(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
 ) -> Result<WebWorker, AnyError> {
-  let cli_state = crate::state::CliState::new_for_worker(
-    global_state,
-    Some(permissions),
-    specifier,
-  )?;
+  let cli_state =
+    crate::state::CliState::new_for_worker(global_state, specifier)?;
 
-  let mut worker = WebWorker::new(name.clone(), &cli_state, has_deno_namespace);
+  let mut worker =
+    WebWorker::new(name.clone(), permissions, &cli_state, has_deno_namespace);
 
   if has_deno_namespace {
     let state = worker.isolate.op_state();
@@ -197,7 +195,7 @@ fn op_create_worker(
     cli_state.check_unstable("Worker.deno");
   }
   let global_state = cli_state.global_state.clone();
-  let permissions = cli_state.permissions.borrow().clone();
+  let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
   state.put::<WorkerId>(worker_id + 1);
 
