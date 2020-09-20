@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "./_utils.ts";
 
 /** https://nodejs.org/api/process.html#process_process_arch */

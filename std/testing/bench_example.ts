@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // https://deno.land/std/testing/bench.ts
 import { BenchmarkTimer, bench, runBenchmarks } from "./bench.ts";
 

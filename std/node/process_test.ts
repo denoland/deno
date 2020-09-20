@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-undef
 
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";

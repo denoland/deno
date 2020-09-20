@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { access, accessSync } from "./_fs/_fs_access.ts";
 import { appendFile, appendFileSync } from "./_fs/_fs_appendFile.ts";
 import { chmod, chmodSync } from "./_fs/_fs_chmod.ts";

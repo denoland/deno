@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import Context from "./snapshot_preview1.ts";
 
 const options = JSON.parse(Deno.args[0]);

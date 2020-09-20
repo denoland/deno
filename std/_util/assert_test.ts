@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, DenoStdInternalError } from "./assert.ts";
 import { assertThrows } from "../testing/asserts.ts";
 
