@@ -100,6 +100,45 @@ use std::sync::Arc;
 use upgrade::upgrade_command;
 use url::Url;
 
+impl DocFileLoader for SourceFileFetcher {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<String, doc::DocError> {
+    ModuleSpecifier::resolve_import(specifier, referrer)
+      .map(|specifier| specifier.to_string())
+      .map_err(|e| doc::DocError::Resolve(e.to_string()))
+  }
+
+  fn load_source_code(
+    &self,
+    specifier: &str,
+  ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
+    let fetcher = self.clone();
+    let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
+      .expect("Expected valid specifier");
+    async move {
+      let source_file = fetcher
+        .fetch_source_file(&specifier, None, Permissions::allow_all())
+        .await
+        .map_err(|e| {
+          doc::DocError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+          ))
+        })?;
+      source_file.source_code.to_string().map_err(|e| {
+        doc::DocError::Io(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          e.to_string(),
+        ))
+      })
+    }
+    .boxed_local()
+  }
+}
+
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
 
@@ -329,45 +368,6 @@ async fn doc_command(
   let global_state = GlobalState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
-  impl DocFileLoader for SourceFileFetcher {
-    fn resolve(
-      &self,
-      specifier: &str,
-      referrer: &str,
-    ) -> Result<String, doc::DocError> {
-      ModuleSpecifier::resolve_import(specifier, referrer)
-        .map(|specifier| specifier.to_string())
-        .map_err(|e| doc::DocError::Resolve(e.to_string()))
-    }
-
-    fn load_source_code(
-      &self,
-      specifier: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
-      let fetcher = self.clone();
-      let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
-        .expect("Expected valid specifier");
-      async move {
-        let source_file = fetcher
-          .fetch_source_file(&specifier, None, Permissions::allow_all())
-          .await
-          .map_err(|e| {
-            doc::DocError::Io(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              e.to_string(),
-            ))
-          })?;
-        source_file.source_code.to_string().map_err(|e| {
-          doc::DocError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-          ))
-        })
-      }
-      .boxed_local()
-    }
-  }
-
   let loader = Box::new(global_state.file_fetcher.clone());
   let doc_parser = doc::DocParser::new(loader, private);
 
@@ -487,7 +487,11 @@ async fn test_command(
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
 
   let (test_file, is_empty) = if !docs {
-    let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
+    let test_modules = test_runner::prepare_test_modules_urls(
+      include,
+      &cwd,
+      test_runner::is_supported,
+    )?;
     let empty = &test_modules.is_empty();
     (
       test_runner::render_test_file(test_modules, fail_fast, quiet, filter),

@@ -1,11 +1,35 @@
+use crate::file_fetcher::map_file_extension;
+use crate::flags::Flags;
+use crate::global_state::GlobalState;
+use crate::swc_util;
+use crate::swc_util::get_syntax_for_media_type;
+use deno_core::ErrBox;
+use deno_doc::DocParser;
+use jsdoc::{self, ast::JsDoc, Input};
 use regex::Regex;
 use std::collections::HashSet;
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use url::Url;
 
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use crate::test_runner::is_supported;
+
+lazy_static! {
+  static ref JS_DOC_PATTERN: Regex =
+    Regex::new(r"/\*\*\s*\n([^\*]|\*[^/])*\*/").unwrap();
+  // IMPORT_PATTERN doesn't match dynamic imports by design
+  static ref IMPORT_PATTERN: Regex =
+    Regex::new(r"import[^(].*\n").unwrap();
+  static ref EXAMPLE_PATTERN: Regex = Regex::new(r"@example\s*(?:<\w+>.*</\w+>)*\n(?:\s*\*\s*\n*)*```").unwrap();
+  static ref TEST_TAG_PATTERN: Regex = Regex::new(r"@example\s*(?:<\w+>.*</\w+>)*\n(?:\s*\*\s*\n*)*```(\w+)").unwrap();
+  static ref AWAIT_PATTERN: Regex = Regex::new(r"\Wawait\s").unwrap();
+  static ref CAPTION_PATTERN: Regex =
+      Regex::new(r"<caption>([\s\w\W]+)</caption>").unwrap();
+      static ref TICKS_OR_IMPORT_PATTERN: Regex =
+      Regex::new(r"(?:import[^(].*)|(?:```\w*)").unwrap();
+}
 
 pub struct DocTest {
   // This removes repetition of imports in a file
@@ -21,6 +45,49 @@ struct DocTestBody {
   value: String,
   ignore: bool,
   is_async: bool,
+}
+
+pub async fn parse_jsdoc(
+  source_files: Vec<Url>,
+  flags: Flags,
+) -> Result<Vec<JsDoc>, ErrBox> {
+  let global_state = GlobalState::new(flags.clone())?;
+  let loader = Box::new(global_state.file_fetcher.clone());
+
+  let doc_parser = DocParser::new(loader, false);
+  let mut modules = vec![];
+  for url in source_files {
+    let source_code =
+      doc_parser.loader.load_source_code(&url.to_string()).await?;
+    let path = PathBuf::from(&url.to_string());
+    let media_type = map_file_extension(&path);
+    let module = doc_parser.ast_parser.parse_module(
+      &url.to_string(),
+      get_syntax_for_media_type(media_type),
+      &source_code,
+    )?;
+    modules.push(module);
+  }
+
+  let jsdocs = modules
+    .into_iter()
+    .flat_map(|module| doc_parser.ast_parser.get_span_comments(module.span))
+    .map(|comment| {
+      jsdoc::parse(Input::from(&comment))
+        .expect("Error when parsing jsdoc")
+        .1
+    })
+    .collect::<Vec<_>>();
+  Ok(jsdocs)
+}
+
+pub fn is_supported_doctest(path: &Path) -> bool {
+  let valid_ext = ["ts", "tsx", "js", "jsx"];
+  path
+    .extension()
+    .and_then(OsStr::to_str)
+    .map(|ext| valid_ext.contains(&ext) && !is_supported(path))
+    .unwrap_or(false)
 }
 
 pub fn prepare_doctests(
@@ -59,17 +126,6 @@ pub fn prepare_doctests(
 }
 
 fn extract_jsdoc_examples(input: String, p: PathBuf) -> Option<DocTest> {
-  lazy_static! {
-    static ref JS_DOC_PATTERN: Regex =
-      Regex::new(r"/\*\*\s*\n([^\*]|\*[^/])*\*/").unwrap();
-    // IMPORT_PATTERN doesn't match dynamic imports by design
-    static ref IMPORT_PATTERN: Regex =
-      Regex::new(r"import[^(].*\n").unwrap();
-    static ref EXAMPLE_PATTERN: Regex = Regex::new(r"@example\s*(?:<\w+>.*</\w+>)*\n(?:\s*\*\s*\n*)*```").unwrap();
-    static ref TEST_TAG_PATTERN: Regex = Regex::new(r"@example\s*(?:<\w+>.*</\w+>)*\n(?:\s*\*\s*\n*)*```(\w+)").unwrap();
-    static ref AWAIT_PATTERN: Regex = Regex::new(r"\Wawait\s").unwrap();
-  }
-
   let mut import_set = HashSet::new();
 
   let test_bodies = JS_DOC_PATTERN
@@ -204,10 +260,6 @@ pub fn render_doctest_file(
 }
 
 fn get_caption_from_example(ex: &str) -> String {
-  lazy_static! {
-    static ref CAPTION_PATTERN: Regex =
-      Regex::new(r"<caption>([\s\w\W]+)</caption>").unwrap();
-  }
   CAPTION_PATTERN
     .captures(ex)
     .and_then(|cap| cap.get(1).map(|m| m.as_str()))
@@ -216,10 +268,6 @@ fn get_caption_from_example(ex: &str) -> String {
 }
 
 fn get_code_from_example(ex: &str) -> String {
-  lazy_static! {
-    static ref TICKS_OR_IMPORT_PATTERN: Regex =
-      Regex::new(r"(?:import[^(].*)|(?:```\w*)").unwrap();
-  }
   TICKS_OR_IMPORT_PATTERN
     .replace_all(ex, "\n")
     .lines()
@@ -242,7 +290,6 @@ fn get_code_from_example(ex: &str) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
-
   #[test]
   fn test_extract_jsdoc() {
     let test = r#"/**

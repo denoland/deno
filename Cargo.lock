@@ -410,6 +410,7 @@ dependencies = [
  "http",
  "idna",
  "indexmap",
+ "jsdoc",
  "jsonc-parser",
  "lazy_static",
  "libc",
@@ -1113,9 +1114,9 @@ dependencies = [
 
 [[package]]
 name = "jsdoc"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bf288cd831329dde36e0c5b667d1823c4cfba4fcb311c6471e37cdcb8b019a7"
+checksum = "3eb0392aa1730824b8359786500d1e1812a8fe4f220bb97a799a4390cf302d9d"
 dependencies = [
  "nom",
  "serde",

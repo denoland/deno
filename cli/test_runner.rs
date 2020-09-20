@@ -31,10 +31,14 @@ pub(crate) fn is_supported(p: &Path) -> bool {
   }
 }
 
-pub fn prepare_test_modules_urls(
+pub fn prepare_test_modules_urls<F>(
   include: Vec<String>,
   root_path: &PathBuf,
-) -> Result<Vec<Url>, ErrBox> {
+  filter: F,
+) -> Result<Vec<Url>, ErrBox>
+where
+  F: Fn(&Path) -> bool,
+{
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
 
@@ -43,7 +47,7 @@ pub fn prepare_test_modules_urls(
   for path in include_paths {
     let p = deno_fs::normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = crate::fs::files_in_subtree(p, is_supported);
+      let test_files = crate::fs::files_in_subtree(p, &filter);
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
@@ -106,6 +110,7 @@ mod tests {
         "http://example.com/printf_test.ts".to_string(),
       ],
       &test_data_path,
+      is_supported,
     )
     .unwrap();
     let test_data_url =
@@ -150,7 +155,8 @@ mod tests {
     let root = test_util::root_path().join("std").join("http");
     println!("root {:?}", root);
     let mut matched_urls =
-      prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();
+      prepare_test_modules_urls(vec![".".to_string()], &root, is_supported)
+        .unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);

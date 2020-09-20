@@ -1195,7 +1195,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("docs")
         .long("docs")
-        .help("Run code examples as tests")
+        .help("Run code examples from JSDocs as tests")
         .takes_value(false),
     )
     .arg(
@@ -2871,6 +2871,24 @@ mod tests {
       }
     );
   }
+  #[test]
+  fn test_docs() {
+    let r = flags_from_vec_safe(svec!["deno", "test", "--docs", "dir1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          docs: true,
+          fail_fast: false,
+          allow_none: false,
+          quiet: false,
+          filter: None,
+          include: Some(svec!["dir1"]),
+        },
+        ..Flags::default()
+      }
+    );
+  }
 
   #[test]
   fn test_filter_leading_hyphen() {
@@ -2880,6 +2898,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Test {
+          docs: false,
           fail_fast: false,
           allow_none: false,
           quiet: false,
@@ -3219,25 +3238,6 @@ mod tests {
           script: "foo.js".to_string(),
         },
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn doctest() {
-    let r = flags_from_vec_safe(svec!["deno", "test", "--docs"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test {
-          allow_none: false,
-          docs: true,
-          fail_fast: false,
-          quiet: false,
-          include: None,
-          filter: None
-        },
         ..Flags::default()
       }
     );
