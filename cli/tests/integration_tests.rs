@@ -1058,6 +1058,19 @@ fn repl_test_console_log() {
 }
 
 #[test]
+fn repl_test_object_literal() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{ foo: 'bar' }"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("{ foo: \"bar\" }\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
 fn repl_cwd() {
   let (_out, err) = util::run_and_collect_output(
     true,

@@ -53,6 +53,12 @@
   // Returns true if code is consumed (no error/irrecoverable error).
   // Returns false if error is recoverable
   function evaluate(code) {
+    // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
+    // statement rather than an object literal so we interpret it as an expression statement.
+    if (code.startsWith("{") && code.endsWith("}")) {
+      code = `(${code.trim()})`;
+    }
+
     // each evalContext is a separate function body, and we want strict mode to
     // work, so we should ensure that the code starts with "use strict"
     const [result, errInfo] = core.evalContext(`"use strict";\n\n${code}`);
