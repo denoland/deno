@@ -10,8 +10,8 @@
     return core.jsonOpSync("op_repl_start", { historyFile });
   }
 
-  function opReadline(rid, prompt) {
-    return core.jsonOpAsync("op_repl_readline", { rid, prompt });
+  function opReadline(rid, prompt, initial) {
+    return core.jsonOpAsync("op_repl_readline", { rid, prompt, initial });
   }
 
   function replLog(...args) {
@@ -20,6 +20,27 @@
 
   function replError(...args) {
     core.print(inspectArgs(args) + "\n", true);
+  }
+
+  function indentLevel(code) {
+    let level = 0;
+    for (let i = 0; i < code.length; i++) {
+      switch (code[i]) {
+        case "(":
+        case "[":
+        case "{":
+          level++;
+          break;
+
+        case ")":
+        case "]":
+        case "}":
+          level--;
+          break;
+      }
+    }
+
+    return level;
   }
 
   // Error messages that allow users to continue input
@@ -157,8 +178,9 @@
       // Start continued read
       while (!evaluate(code)) {
         code += "\n";
+
         try {
-          code += await opReadline(rid, "  ");
+          code += await opReadline(rid, "  ", ["  ".repeat(indentLevel(code)), ""]);
         } catch (err) {
           // If interrupted on continued read,
           // abort this read instead of quitting.

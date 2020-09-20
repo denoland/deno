@@ -48,6 +48,7 @@ fn op_repl_start(
 struct ReplReadlineArgs {
   rid: i32,
   prompt: String,
+  initial: Option<(String, String)>,
 }
 
 async fn op_repl_readline(
@@ -58,6 +59,8 @@ async fn op_repl_readline(
   let args: ReplReadlineArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let prompt = args.prompt;
+  let initial = args.initial;
+
   debug!("op_repl_readline {} {}", rid, prompt);
   let repl = {
     let state = state.borrow();
@@ -68,7 +71,11 @@ async fn op_repl_readline(
     resource.0.clone()
   };
   tokio::task::spawn_blocking(move || {
-    let line = repl.lock().unwrap().readline(&prompt)?;
+    let line = match initial {
+      Some(initial) => repl.lock().unwrap().readline_with_initial(&prompt, (&initial.0, &initial.1))?,
+      None => repl.lock().unwrap().readline(&prompt)?,
+    };
+
     Ok(json!(line))
   })
   .await
