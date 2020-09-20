@@ -21,8 +21,8 @@ The standard practice for solving this problem in Deno is to create a `deps.ts`
 file. All required remote dependencies are referenced in this file and the
 required methods and classes are re-exported. The dependent local modules then
 reference the `deps.ts` rather than the remote dependencies. If now for example 
-one dependency is used in several files, upgrading to a new version of this 
-dependency is much simpler as this can be done just within `deps.ts`.
+one remote dependency is used in several files, upgrading to a new version of this 
+remote dependency is much simpler as this can be done just within `deps.ts`.
 
 With all dependencies centralized in `deps.ts`, managing these becomes easier.
 Dev dependencies can also be managed in a separate `dev_deps.ts` file, allowing
