@@ -29,6 +29,7 @@ interface Rgb {
 
 let enabled = !noColor;
 
+/** Set changing text color to enabled or disabled */
 export function setColorEnabled(value: boolean): void {
   if (noColor) {
     return;
@@ -37,6 +38,7 @@ export function setColorEnabled(value: boolean): void {
   enabled = value;
 }
 
+/** Get wheather text color change is enabled or disabled. */
 export function getColorEnabled(): boolean {
   return enabled;
 }
@@ -55,166 +57,207 @@ function run(str: string, code: Code): string {
     : str;
 }
 
+/** Reset the text modified */
 export function reset(str: string): string {
   return run(str, code([0], 0));
 }
 
+/** Make the text bold. */
 export function bold(str: string): string {
   return run(str, code([1], 22));
 }
 
+/** The text emits only a small amount of light. */
 export function dim(str: string): string {
   return run(str, code([2], 22));
 }
 
+/** Make the text italic. */
 export function italic(str: string): string {
   return run(str, code([3], 23));
 }
 
+/** Make the text underline. */
 export function underline(str: string): string {
   return run(str, code([4], 24));
 }
 
+/** Invert background color and text color. */
 export function inverse(str: string): string {
   return run(str, code([7], 27));
 }
 
+/** Make the text hidden. */
 export function hidden(str: string): string {
   return run(str, code([8], 28));
 }
 
+/** Put horizontal line throught the center of the text. */
 export function strikethrough(str: string): string {
   return run(str, code([9], 29));
 }
 
+/** Set text color to black. */
 export function black(str: string): string {
   return run(str, code([30], 39));
 }
 
+/** Set text color to red. */
 export function red(str: string): string {
   return run(str, code([31], 39));
 }
 
+/** Set text color to green. */
 export function green(str: string): string {
   return run(str, code([32], 39));
 }
 
+/** Set text color to yellow. */
 export function yellow(str: string): string {
   return run(str, code([33], 39));
 }
 
+/** Set text color to blue. */
 export function blue(str: string): string {
   return run(str, code([34], 39));
 }
 
+/** Set text color to magenta. */
 export function magenta(str: string): string {
   return run(str, code([35], 39));
 }
 
+/** Set text color to cyan. */
 export function cyan(str: string): string {
   return run(str, code([36], 39));
 }
 
+/** Set text color to white. */
 export function white(str: string): string {
   return run(str, code([37], 39));
 }
 
+/** Set text color to gray. */
 export function gray(str: string): string {
   return brightBlack(str);
 }
 
+/** Set text color to bright black. */
 export function brightBlack(str: string): string {
   return run(str, code([90], 39));
 }
 
+/** Set text color to bright red. */
 export function brightRed(str: string): string {
   return run(str, code([91], 39));
 }
 
+/** Set text color to bright green. */
 export function brightGreen(str: string): string {
   return run(str, code([92], 39));
 }
 
+/** Set text color to bright yellow. */
 export function brightYellow(str: string): string {
   return run(str, code([93], 39));
 }
 
+/** Set text color to bright blue. */
 export function brightBlue(str: string): string {
   return run(str, code([94], 39));
 }
 
+/** Set text color to bright magenta. */
 export function brightMagenta(str: string): string {
   return run(str, code([95], 39));
 }
 
+/** Set text color to bright cyan. */
 export function brightCyan(str: string): string {
   return run(str, code([96], 39));
 }
 
+/** Set text color to bright white. */
 export function brightWhite(str: string): string {
   return run(str, code([97], 39));
 }
 
+/** Set background color to black. */
 export function bgBlack(str: string): string {
   return run(str, code([40], 49));
 }
 
+/** Set background color to red. */
 export function bgRed(str: string): string {
   return run(str, code([41], 49));
 }
 
+/** Set background color to green. */
 export function bgGreen(str: string): string {
   return run(str, code([42], 49));
 }
 
+/** Set background color to yellow. */
 export function bgYellow(str: string): string {
   return run(str, code([43], 49));
 }
 
+/** Set background color to blue. */
 export function bgBlue(str: string): string {
   return run(str, code([44], 49));
 }
 
+/** Set background color to magenta. */
 export function bgMagenta(str: string): string {
   return run(str, code([45], 49));
 }
 
+/** Set background color to cyan. */
 export function bgCyan(str: string): string {
   return run(str, code([46], 49));
 }
 
+/** Set background color to white. */
 export function bgWhite(str: string): string {
   return run(str, code([47], 49));
 }
 
+/** Set background color to bright black. */
 export function bgBrightBlack(str: string): string {
   return run(str, code([100], 49));
 }
 
+/** Set background color to bright red. */
 export function bgBrightRed(str: string): string {
   return run(str, code([101], 49));
 }
 
+/** Set background color to bright green. */
 export function bgBrightGreen(str: string): string {
   return run(str, code([102], 49));
 }
 
+/** Set background color to bright yellow. */
 export function bgBrightYellow(str: string): string {
   return run(str, code([103], 49));
 }
 
+/** Set background color to bright blue. */
 export function bgBrightBlue(str: string): string {
   return run(str, code([104], 49));
 }
 
+/** Set background color to bright magenta. */
 export function bgBrightMagenta(str: string): string {
   return run(str, code([105], 49));
 }
 
+/** Set background color to bright cyan. */
 export function bgBrightCyan(str: string): string {
   return run(str, code([106], 49));
 }
 
+/** Set background color to bright white. */
 export function bgBrightWhite(str: string): string {
   return run(str, code([107], 49));
 }
@@ -314,6 +357,7 @@ const ANSI_PATTERN = new RegExp(
   "g",
 );
 
+/** Remove ANSI escape codes from the string. */
 export function stripColor(string: string): string {
   return string.replace(ANSI_PATTERN, "");
 }
