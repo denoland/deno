@@ -36,7 +36,7 @@ function createCommon<T>(A: T[], B: T[], reverse?: boolean): T[] {
   return common;
 }
 
-export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
+export function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
   const prefixCommon = createCommon(A, B);
   const suffixCommon = createCommon(
     A.slice(prefixCommon.length),

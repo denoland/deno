@@ -1,4 +1,4 @@
-import diff from "./diff.ts";
+import { diff } from "./diff.ts";
 import { assertEquals } from "../testing/asserts.ts";
 
 Deno.test({
