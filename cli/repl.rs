@@ -60,7 +60,11 @@ impl Repl {
     // forward error to ts side for processing
   }
 
-  pub fn readline_with_initial(&mut self, prompt: &str, initial: (&str, &str)) -> Result<String, AnyError> {
+  pub fn readline_with_initial(
+    &mut self,
+    prompt: &str,
+    initial: (&str, &str),
+  ) -> Result<String, AnyError> {
     self
       .editor
       .readline_with_initial(&prompt, initial)

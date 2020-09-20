@@ -180,7 +180,11 @@
         code += "\n";
 
         try {
-          code += await opReadline(rid, "  ", ["  ".repeat(indentLevel(code)), ""]);
+          code += await opReadline(
+            rid,
+            "  ",
+            ["  ".repeat(indentLevel(code)), ""],
+          );
         } catch (err) {
           // If interrupted on continued read,
           // abort this read instead of quitting.

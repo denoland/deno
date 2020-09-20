@@ -72,7 +72,10 @@ async fn op_repl_readline(
   };
   tokio::task::spawn_blocking(move || {
     let line = match initial {
-      Some(initial) => repl.lock().unwrap().readline_with_initial(&prompt, (&initial.0, &initial.1))?,
+      Some(initial) => repl
+        .lock()
+        .unwrap()
+        .readline_with_initial(&prompt, (&initial.0, &initial.1))?,
       None => repl.lock().unwrap().readline(&prompt)?,
     };
 
