@@ -244,6 +244,9 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
 
   let mut flags = Flags::default();
 
+  if matches.is_present("unstable") {
+    flags.unstable = true;
+  }
   if matches.is_present("log-level") {
     flags.log_level = match matches.value_of("log-level").unwrap() {
       "debug" => Some(Level::Debug),
@@ -304,6 +307,12 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     .version(crate::version::DENO)
     .long_version(LONG_VERSION.as_str())
     .arg(
+      Arg::with_name("unstable")
+        .long("unstable")
+        .help("Enable unstable features and APIs")
+        .global(true),
+    )
+    .arg(
       Arg::with_name("log-level")
         .short("L")
         .long("log-level")
@@ -342,14 +351,11 @@ If the flag is set, restrict these messages to errors.",
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn types_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  unstable_arg_parse(flags, matches);
+fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Types;
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  // TODO(divy-work): remove `--unstable` in 1.3.0
-  unstable_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
@@ -370,7 +376,6 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   no_check_arg_parse(flags, matches);
-  unstable_arg_parse(flags, matches);
 
   let root = if matches.is_present("root") {
     let install_root = matches.value_of("root").unwrap();
@@ -402,7 +407,6 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   // TODO(nayeemrmn): Replace the next couple lines with `compile_args_parse()`
   // once `deno bundle --no-check` is supported.
-  unstable_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
@@ -474,7 +478,6 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  unstable_arg_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info {
     file: matches.value_of("file").map(|f| f.to_string()),
@@ -504,7 +507,6 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn compile_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
-    .arg(unstable_arg())
     .arg(importmap_arg())
     .arg(no_remote_arg())
     .arg(config_arg())
@@ -516,7 +518,6 @@ fn compile_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 }
 
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  unstable_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
@@ -632,7 +633,6 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
-  unstable_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").map(String::from);
   let private = matches.is_present("private");
@@ -647,7 +647,6 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  unstable_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
@@ -668,7 +667,6 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("types")
-    .arg(unstable_arg())
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
@@ -699,7 +697,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("check")
         .long("check")
-        .help("Check if the source files are formatted.")
+        .help("Check if the source files are formatted")
         .takes_value(false),
     )
     .arg(
@@ -711,7 +709,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .require_equals(true)
         .help("Ignore formatting particular source files. Use with --unstable"),
     )
-    .arg(unstable_arg())
     .arg(
       Arg::with_name("files")
         .takes_value(true)
@@ -754,7 +751,6 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .takes_value(false))
         .arg(no_check_arg())
         .arg(ca_file_arg())
-        .arg(unstable_arg())
         .arg(config_arg())
         .about("Install script as an executable")
         .long_about(
@@ -788,7 +784,6 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("bundle")
     // TODO(nayeemrmn): Replace the next couple lines with `compile_args()` once
     // `deno bundle --no-check` is supported.
-    .arg(unstable_arg())
     .arg(importmap_arg())
     .arg(no_remote_arg())
     .arg(config_arg())
@@ -887,7 +882,6 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(ca_file_arg())
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hidden(true))
-    .arg(unstable_arg())
     .arg(
       Arg::with_name("json")
         .long("json")
@@ -960,7 +954,6 @@ update to a different location, use the --output flag
 
 fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("doc")
-    .arg(unstable_arg())
     .about("Show documentation for a module")
     .long_about(
       "Show documentation for a module.
@@ -985,7 +978,7 @@ Show documentation for runtime built-ins:
     .arg(
       Arg::with_name("json")
         .long("json")
-        .help("Output documentation in JSON format.")
+        .help("Output documentation in JSON format")
         .takes_value(false),
     )
     .arg(
@@ -1002,7 +995,7 @@ Show documentation for runtime built-ins:
     .arg(Arg::with_name("source_file").takes_value(true))
     .arg(
       Arg::with_name("filter")
-        .help("Dot separated path to symbol.")
+        .help("Dot separated path to symbol")
         .takes_value(true)
         .required(false)
         .conflicts_with("json")
@@ -1043,7 +1036,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
   // deno-lint-ignore-file
 ",
     )
-    .arg(unstable_arg())
     .arg(
       Arg::with_name("rules")
         .long("rules")
@@ -1056,12 +1048,12 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Ignore linting particular source files."),
+        .help("Ignore linting particular source files"),
     )
     .arg(
       Arg::with_name("json")
         .long("json")
-        .help("Output lint result in JSON format.")
+        .help("Output lint result in JSON format")
         .takes_value(false),
     )
     .arg(
@@ -1211,7 +1203,7 @@ fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("script_arg")
     .multiple(true)
     .required(true)
-    .help("script args")
+    .help("Script arg")
     .value_name("SCRIPT_ARG")
 }
 
@@ -1227,7 +1219,7 @@ fn lock_write_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("lock-write")
     .long("lock-write")
     .requires("lock")
-    .help("Write lock file. Use with --lock.")
+    .help("Write lock file (use with --lock)")
 }
 
 fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1253,18 +1245,6 @@ fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
-}
-
-fn unstable_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("unstable")
-    .long("unstable")
-    .help("Enable unstable APIs")
-}
-
-fn unstable_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if matches.is_present("unstable") {
-    flags.unstable = true;
-  }
 }
 
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
@@ -1384,7 +1364,7 @@ fn v8_flags_arg<'a, 'b>() -> Arg<'a, 'b> {
     .takes_value(true)
     .use_delimiter(true)
     .require_equals(true)
-    .help("Set V8 command line options. For help: --v8-flags=--help")
+    .help("Set V8 command line options (for help: --v8-flags=--help)")
 }
 
 fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
@@ -1554,6 +1534,28 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn global_flags() {
+    #[rustfmt::skip]
+    let r = flags_from_vec_safe(svec!["deno", "--unstable", "--log-level", "debug", "--quiet", "run", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        unstable: true,
+        log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
+    #[rustfmt::skip]
+    let r2 = flags_from_vec_safe(svec!["deno", "run", "--unstable", "--log-level", "debug", "--quiet", "script.ts"]);
+    let flags2 = r2.unwrap();
+    assert_eq!(flags2, flags);
+  }
 
   #[test]
   fn upgrade() {
@@ -1920,40 +1922,11 @@ mod tests {
   }
 
   #[test]
-  fn types_unstable() {
-    let r = flags_from_vec_safe(svec!["deno", "types", "--unstable"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        unstable: true,
-        subcommand: DenoSubcommand::Types,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
   fn cache() {
     let r = flags_from_vec_safe(svec!["deno", "cache", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec!["script.ts"],
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn cache_unstable() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "cache", "--unstable", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        unstable: true,
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
@@ -2296,23 +2269,6 @@ mod tests {
   }
 
   #[test]
-  fn bundle_unstable() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "bundle", "--unstable", "source.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        unstable: true,
-        subcommand: DenoSubcommand::Bundle {
-          source_file: "source.ts".to_string(),
-          out_file: None,
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
   fn bundle_with_config() {
     let r = flags_from_vec_safe(svec![
       "deno",
@@ -2504,30 +2460,6 @@ mod tests {
           name: None,
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
-          root: None,
-          force: false,
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn install_unstable() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "install",
-      "--unstable",
-      "https://deno.land/std/examples/colors.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        unstable: true,
-        subcommand: DenoSubcommand::Install {
-          name: None,
-          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
-          args: svec![],
           root: None,
           force: false,
         },
