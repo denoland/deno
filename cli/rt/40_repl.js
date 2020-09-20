@@ -54,7 +54,8 @@
   // Returns false if error is recoverable
   function evaluate(code) {
     // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
-    // statement rather than an object literal so we interpret it as an expression statement.
+    // statement rather than an object literal so we interpret it as an expression statement
+    // to match the behavior found in a typical prompt including browser developer tools.
     if (code.startsWith("{") && code.endsWith("}")) {
       code = `(${code.trim()})`;
     }
