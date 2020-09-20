@@ -374,6 +374,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   config_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   no_check_arg_parse(flags, matches);
 
@@ -750,6 +751,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .help("Forcefully overwrite existing installation")
             .takes_value(false))
         .arg(no_check_arg())
+        .arg(reload_arg())
         .arg(ca_file_arg())
         .arg(config_arg())
         .about("Install script as an executable")
@@ -2473,6 +2475,7 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "install",
+      "--reload",
       "--allow-net",
       "--allow-read",
       "-n",
@@ -2489,6 +2492,7 @@ mod tests {
           root: None,
           force: false,
         },
+        reload: true,
         allow_net: true,
         allow_read: true,
         ..Flags::default()
