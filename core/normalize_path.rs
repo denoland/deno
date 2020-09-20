@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
