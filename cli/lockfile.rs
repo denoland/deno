@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::Result;

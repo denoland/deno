@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::global_state::GlobalState;
 use crate::js;
 use crate::ops;

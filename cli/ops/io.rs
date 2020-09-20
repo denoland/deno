@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
