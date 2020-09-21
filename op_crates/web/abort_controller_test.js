@@ -9,6 +9,19 @@ function assertEquals(left, right) {
   assert(left === right);
 }
 
+function assertThrows(fn) {
+  let error = null;
+  try {
+    fn();
+  } catch (error_) {
+    error = error_;
+  }
+  if (error == null) {
+    throw new Error("Didn't throw.");
+  }
+  return error;
+}
+
 function basicAbortController() {
   controller = new AbortController();
   assert(controller);
@@ -64,12 +77,19 @@ function controllerHasProperToString() {
   assertEquals(actual, "[object AbortController]");
 }
 
+function abortSignalIllegalConstructor() {
+  const error = assertThrows(() => new AbortSignal());
+  assert(error instanceof TypeError);
+  assertEquals(error.message, "Illegal constructor.");
+}
+
 function main() {
   basicAbortController();
   signalCallsOnabort();
   signalEventListener();
   onlyAbortsOnce();
   controllerHasProperToString();
+  abortSignalIllegalConstructor();
 }
 
 main();

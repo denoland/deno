@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
@@ -235,7 +236,7 @@ delete Object.prototype.__proto__;
     crypto: util.readOnly(crypto),
     dispatchEvent: util.readOnly(EventTarget.prototype.dispatchEvent),
     fetch: util.writable(fetch.fetch),
-    performance: util.writable(new performance.Performance()),
+    performance: util.writable(performance.performance),
     removeEventListener: util.readOnly(
       EventTarget.prototype.removeEventListener,
     ),

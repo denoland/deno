@@ -4,6 +4,7 @@ use crate::version;
 use bytes::Bytes;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::url::Url;
 use deno_fetch::reqwest;
 use deno_fetch::reqwest::header::HeaderMap;

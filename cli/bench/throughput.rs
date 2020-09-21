@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::Result;
-use serde_json::{Number, Value};
+use deno_core::serde_json::{Number, Value};
 use std::{
   path::PathBuf,
   process::Command,
