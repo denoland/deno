@@ -37,10 +37,12 @@ unitTest(async function responseBlob() {
   assertEquals(blob, new Blob([new Uint8Array([1, 2, 3])]));
 });
 
-unitTest(async function responseBlob() {
+unitTest(async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
-  const response = new Response(input);
+  const response = new Response(input, {
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
   const formDataPromise = response.formData();
   assert(formDataPromise instanceof Promise);
   const formData = await formDataPromise;
