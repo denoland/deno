@@ -9,11 +9,11 @@ use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::stream::StreamExt;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use futures::channel::mpsc;
-use futures::future::FutureExt;
-use futures::stream::StreamExt;
 use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -268,6 +268,7 @@ mod tests {
   use super::*;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
+  use deno_core::serde_json::json;
 
   fn create_test_worker() -> WebWorker {
     let main_module =

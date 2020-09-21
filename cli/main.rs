@@ -6,8 +6,6 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde_json;
 
 mod ast;
 mod checksum;
@@ -68,7 +66,10 @@ use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
-use deno_core::futures;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::Future;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
@@ -76,8 +77,6 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
-use futures::future::FutureExt;
-use futures::Future;
 use global_state::exit_unstable;
 use log::Level;
 use log::LevelFilter;

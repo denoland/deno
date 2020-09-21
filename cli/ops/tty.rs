@@ -7,11 +7,13 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::last_os_error;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::Value;
 
 #[cfg(unix)]
 use deno_core::error::not_supported;

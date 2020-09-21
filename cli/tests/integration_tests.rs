@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use deno_core::futures;
+use deno_core::futures::prelude::*;
 use deno_core::url;
-use futures::prelude::*;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
@@ -3088,7 +3089,7 @@ async fn inspector_pause() {
   async fn ws_read_msg(
     socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
   ) -> String {
-    use futures::stream::StreamExt;
+    use deno_core::futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
       // FIXME(bartlomieju): fails because there's a file loaded
