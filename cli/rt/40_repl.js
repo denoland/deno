@@ -59,7 +59,7 @@
       // statement rather than an object literal so we interpret it as an expression statement
       // to match the behavior found in a typical prompt including browser developer tools.
       code = code.trim();
-      if (code.startsWith("{")) {
+      if (code.startsWith("{") && !code.endsWith(";")) {
         code = `(${code})`;
       }
     }
