@@ -19,7 +19,6 @@ use std::env;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tokio::sync::Mutex as AsyncMutex;
 
 pub fn exit_unstable(api_name: &str) {
   eprintln!(
@@ -43,7 +42,6 @@ pub struct GlobalState {
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
   pub maybe_import_map: Option<ImportMap>,
-  compile_lock: AsyncMutex<()>,
 }
 
 impl GlobalState {
@@ -96,7 +94,6 @@ impl GlobalState {
       lockfile,
       maybe_import_map,
       compiler_starts: AtomicUsize::new(0),
-      compile_lock: AsyncMutex::new(()),
     };
     Ok(Arc::new(global_state))
   }
@@ -115,10 +112,6 @@ impl GlobalState {
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let module_specifier = module_specifier.clone();
-
-    // TODO(ry) Try to lift compile_lock as high up in the call stack for
-    // sanity.
-    let compile_lock = self.compile_lock.lock().await;
 
     let mut module_graph_loader = ModuleGraphLoader::new(
       self.file_fetcher.clone(),
@@ -180,8 +173,6 @@ impl GlobalState {
       g.write()?;
     }
 
-    drop(compile_lock);
-
     Ok(())
   }
 
@@ -195,16 +186,10 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, AnyError> {
-    let module_specifier = module_specifier.clone();
-
     let out = self
       .file_fetcher
       .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
       .expect("Cached source file doesn't exist");
-
-    // TODO(ry) Try to lift compile_lock as high up in the call stack for
-    // sanity.
-    let compile_lock = self.compile_lock.lock().await;
 
     // Check if we need to compile files
     let was_compiled = match out.media_type {
@@ -236,8 +221,6 @@ impl GlobalState {
         name: out.url.to_string(),
       }
     };
-
-    drop(compile_lock);
 
     Ok(compiled_module)
   }
