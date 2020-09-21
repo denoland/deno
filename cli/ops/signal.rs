@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
@@ -14,6 +12,10 @@ use std::rc::Rc;
 use deno_core::error::bad_resource_id;
 #[cfg(unix)]
 use deno_core::futures::future::poll_fn;
+#[cfg(unix)]
+use deno_core::serde_json;
+#[cfg(unix)]
+use deno_core::serde_json::json;
 #[cfg(unix)]
 use serde::Deserialize;
 #[cfg(unix)]
