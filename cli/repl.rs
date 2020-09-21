@@ -57,7 +57,7 @@ impl Repl {
       .map_err(AnyError::from)
 
     // Forward error to TS side for processing
-    // forward error to ts side for processing
+    // Forward error to ts side for processing
   }
 
   pub fn readline_with_initial(
