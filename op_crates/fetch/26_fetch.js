@@ -865,15 +865,11 @@
       return JSON.parse(raw);
     }
 
-    async arrayBuffer() {
+    arrayBuffer() {
       if (this._bodySource instanceof ReadableStream) {
-        const buffer = await bufferFromStream(
-          this._bodySource.getReader(),
-          this.#size,
-        );
-        return buffer;
+        return bufferFromStream(this._bodySource.getReader(), this.#size);
       }
-      return bodyToArrayBuffer(this._bodySource);
+      return Promise.resolve(bodyToArrayBuffer(this._bodySource));
     }
   }
 
