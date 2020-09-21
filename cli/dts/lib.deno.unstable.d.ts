@@ -130,11 +130,11 @@ declare namespace Deno {
    */
   export function osRelease(): string;
 
-  /** **Unstable** new API. yet to be vetted. 
+  /** **Unstable** new API. yet to be vetted.
    *
    * Displays the total amount of free and used physical and swap memory in the
    * system, as well as the buffers and caches used by the kernel.
-   * 
+   *
    * This is similar to the `free` command in Linux
    *
    * ```ts
@@ -1113,7 +1113,7 @@ declare namespace Deno {
   /** see: https://w3c.github.io/permissions/#permissionstatus */
   export class PermissionStatus {
     state: PermissionState;
-    constructor(state: PermissionState);
+    constructor();
   }
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still

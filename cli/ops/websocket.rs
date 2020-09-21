@@ -1,18 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::Permissions;
 use core::task::Poll;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::StreamExt;
+use deno_core::futures::{ready, SinkExt};
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::BufVec;
 use deno_core::OpState;
-use futures::future::poll_fn;
-use futures::StreamExt;
-use futures::{ready, SinkExt};
 use http::{Method, Request, Uri};
 use serde::Deserialize;
-use serde_json::Value;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File;
@@ -55,10 +58,14 @@ pub async fn op_ws_create(
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
   let args: CreateArgs = serde_json::from_value(args)?;
+  {
+    let s = state.borrow();
+    s.borrow::<Permissions>()
+      .check_net_url(&url::Url::parse(&args.url)?)?;
+  }
   let ca_file = {
-    let cli_state = super::cli_state2(&state);
-    cli_state.check_net_url(&url::Url::parse(&args.url)?)?;
-    cli_state.global_state.flags.ca_file.clone()
+    let cli_state = super::global_state2(&state);
+    cli_state.flags.ca_file.clone()
   };
   let uri: Uri = args.url.parse()?;
   let request = Request::builder()

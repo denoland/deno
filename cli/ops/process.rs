@@ -1,17 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
+use crate::permissions::Permissions;
 use crate::signal::kill;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::future::FutureExt;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
-use futures::future::FutureExt;
 use serde::Deserialize;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::process::Command;
@@ -68,7 +71,7 @@ fn op_run(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
-  super::cli_state(state).check_run()?;
+  state.borrow::<Permissions>().check_run()?;
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -178,7 +181,10 @@ async fn op_run_status(
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
-  super::cli_state2(&state).check_run()?;
+  {
+    let s = state.borrow();
+    s.borrow::<Permissions>().check_run()?;
+  }
 
   let run_status = poll_fn(|cx| {
     let mut state = state.borrow_mut();
@@ -221,9 +227,9 @@ fn op_kill(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
+  let cli_state = super::global_state(state);
   cli_state.check_unstable("Deno.kill");
-  cli_state.check_run()?;
+  state.borrow::<Permissions>().check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;
   kill(args.pid, args.signo)?;

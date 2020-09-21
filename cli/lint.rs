@@ -14,6 +14,7 @@ use crate::fmt_errors;
 use crate::media_type::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
@@ -105,6 +106,8 @@ pub async fn lint_files(
 pub fn print_rules_list() {
   let lint_rules = rules::get_recommended_rules();
 
+  // The rules should still be printed even if `--quiet` option is enabled,
+  // so use `println!` here instead of `info!`.
   println!("Available rules:");
   for rule in lint_rules {
     println!(" - {}", rule.code());
@@ -237,15 +240,15 @@ impl LintReporter for PrettyLintReporter {
 
   fn close(&mut self, check_count: usize) {
     match self.lint_count {
-      1 => eprintln!("Found 1 problem"),
-      n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      1 => info!("Found 1 problem"),
+      n if n > 1 => info!("Found {} problems", self.lint_count),
       _ => (),
     }
 
     match check_count {
-      1 => println!("Checked 1 file"),
-      n if n > 1 => println!("Checked {} files", n),
-      _ => (),
+      n if n <= 1 => info!("Checked {} file", n),
+      n if n > 1 => info!("Checked {} files", n),
+      _ => unreachable!(),
     }
   }
 }

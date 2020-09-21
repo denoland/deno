@@ -10,7 +10,6 @@ use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::permissions::Permissions;
-use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
@@ -20,7 +19,14 @@ use std::env;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tokio::sync::Mutex as AsyncMutex;
+
+pub fn exit_unstable(api_name: &str) {
+  eprintln!(
+    "Unstable API '{}'. The --unstable flag must be provided.",
+    api_name
+  );
+  std::process::exit(70);
+}
 
 /// This structure represents state of single "deno" program.
 ///
@@ -36,7 +42,6 @@ pub struct GlobalState {
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
   pub maybe_import_map: Option<ImportMap>,
-  compile_lock: AsyncMutex<()>,
 }
 
 impl GlobalState {
@@ -89,7 +94,6 @@ impl GlobalState {
       lockfile,
       maybe_import_map,
       compiler_starts: AtomicUsize::new(0),
-      compile_lock: AsyncMutex::new(()),
     };
     Ok(Arc::new(global_state))
   }
@@ -108,10 +112,6 @@ impl GlobalState {
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let module_specifier = module_specifier.clone();
-
-    // TODO(ry) Try to lift compile_lock as high up in the call stack for
-    // sanity.
-    let compile_lock = self.compile_lock.lock().await;
 
     let mut module_graph_loader = ModuleGraphLoader::new(
       self.file_fetcher.clone(),
@@ -173,8 +173,6 @@ impl GlobalState {
       g.write()?;
     }
 
-    drop(compile_lock);
-
     Ok(())
   }
 
@@ -188,16 +186,10 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, AnyError> {
-    let module_specifier = module_specifier.clone();
-
     let out = self
       .file_fetcher
       .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
       .expect("Cached source file doesn't exist");
-
-    // TODO(ry) Try to lift compile_lock as high up in the call stack for
-    // sanity.
-    let compile_lock = self.compile_lock.lock().await;
 
     // Check if we need to compile files
     let was_compiled = match out.media_type {
@@ -230,9 +222,17 @@ impl GlobalState {
       }
     };
 
-    drop(compile_lock);
-
     Ok(compiled_module)
+  }
+
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    if !self.flags.unstable {
+      exit_unstable(api_name);
+    }
   }
 
   #[cfg(test)]
