@@ -46,7 +46,6 @@ impl GlobalTimer {
   }
 
   pub fn new_timeout(&mut self, deadline: Instant) {
-    eprintln!("new timeout");
     if self.tx.is_some() {
       self.cancel();
     }
