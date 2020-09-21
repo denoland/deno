@@ -867,7 +867,11 @@
 
     async arrayBuffer() {
       if (this._bodySource instanceof ReadableStream) {
-        return bufferFromStream(this._bodySource.getReader(), this.#size);
+        const buffer = await bufferFromStream(
+          this._bodySource.getReader(),
+          this.#size,
+        );
+        return buffer;
       }
       return bodyToArrayBuffer(this._bodySource);
     }
