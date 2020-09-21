@@ -4,6 +4,8 @@ use deno_core::{ZeroCopyBuf, OpState};
 use deno_core::ErrBox;
 use serde_derive::Deserialize;
 use serde_json::Value;
+use crate::checksum;
+use rusqlite::{Connection, OptionalExtension, params};
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_localstorage_open", op_localstorage_open);
@@ -19,6 +21,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
   temporary: bool,
+  location: String,
 }
 
 pub fn op_localstorage_open(
@@ -27,11 +30,20 @@ pub fn op_localstorage_open(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: OpenArgs = serde_json::from_value(args)?;
-  let db = sled::Config::default()
-    .path(if args.temporary {"/tmp/sessionStorage"} else {"/tmp/localStorage"})
-    .temporary(args.temporary)
-    .open().unwrap();
-  let rid = state.resource_table.add("localStorage", Box::new(db));
+
+  let cli_state = super::cli_state(&state);
+  let deno_dir = &cli_state.global_state.dir;
+  let path = deno_dir.root
+    .join("web_storage")
+    .join(checksum::gen(&[args.location.as_bytes()]));
+
+  std::fs::create_dir_all(&path).unwrap();
+
+  let conn = Connection::open(path.join("local_storage")).unwrap();
+
+  conn.execute("CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)", params![]).unwrap();
+
+  let rid = state.resource_table.add("localStorage", Box::new(conn));
   Ok(json!(rid))
 }
 
@@ -47,11 +59,15 @@ pub fn op_localstorage_length(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: LengthArgs = serde_json::from_value(args)?;
-  let db = state.resource_table
-    .get_mut::<sled::Db>(args.rid)
+  let conn = state.resource_table
+    .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-  let length = db.len();
+  let mut stmt = conn.prepare("SELECT COUNT(*) FROM data").unwrap();
+
+  let length: u32 = stmt.query_row(params![], |row| {
+    row.get(0)
+  }).unwrap();
 
   Ok(json!(length))
 }
@@ -69,19 +85,18 @@ pub fn op_localstorage_key(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: KeyArgs = serde_json::from_value(args)?;
-  let db = state.resource_table
-    .get_mut::<sled::Db>(args.rid)
+  let conn = state.resource_table
+    .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-  let mut val = None;
-  for (index, db_val) in db.iter().enumerate() {
-    if (index as u32) == args.index {
-      let (key, _) = db_val.unwrap();
-      val = Some(String::from_utf8(key.to_vec()).unwrap());
-    }
-  }
+  let mut stmt = conn.prepare("SELECT key FROM data LIMIT 1 OFFSET ?").unwrap();
 
-  let json_val = match val {
+  let key: Option<String> = stmt.query_row(&[args.index], |row| {
+    row.get(0)
+  }).optional().unwrap();
+
+
+  let json_val = match key {
     Some(string) => json!(string),
     None => Value::Null,
   };
@@ -103,12 +118,11 @@ pub fn op_localstorage_set(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: SetArgs = serde_json::from_value(args)?;
-  let db = state.resource_table
-    .get_mut::<sled::Db>(args.rid)
+  let conn = state.resource_table
+    .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-
-  db.insert(&*args.key_name, &*args.key_value).unwrap();
+  conn.execute("INSERT or REPLACE INTO data (key, value) values (?1, ?2)", &[args.key_name, args.key_value]).unwrap();
 
   Ok(json!({}))
 }
@@ -126,12 +140,20 @@ pub fn op_localstorage_get(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: GetArgs = serde_json::from_value(args)?;
-  let db = state.resource_table
-    .get_mut::<sled::Db>(args.rid)
+  let conn = state.resource_table
+    .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-  let res = match db.get(&args.key_name).unwrap() {
-    Some(value) => json!(String::from_utf8(value.to_vec()).unwrap()),
+  let mut stmt = conn.prepare("SELECT value FROM data WHERE key = ?").unwrap();
+
+  let val: Option<String> = stmt.query_row(params![args.key_name], |row| {
+    row.get(0)
+  }).optional().unwrap();
+
+  println!("{:?}", val);
+
+  let res = match val {
+    Some(value) => json!(value),
     None => Value::Null,
   };
 
@@ -151,11 +173,11 @@ pub fn op_localstorage_remove(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: RemoveArgs = serde_json::from_value(args)?;
-  let db = state.resource_table
-    .get_mut::<sled::Db>(args.rid)
+  let conn = state.resource_table
+    .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-  db.remove(&args.key_name).unwrap();
+  conn.execute("DELETE FROM data WHERE key = ?", &[args.key_name]).unwrap();
 
   Ok(json!({}))
 }
@@ -172,11 +194,12 @@ pub fn op_localstorage_clear(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let args: ClearArgs = serde_json::from_value(args)?;
-  let db = state.resource_table
-    .get_mut::<sled::Db>(args.rid)
+  let conn = state.resource_table
+    .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-  db.clear().unwrap();
+  conn.execute("DROP data", params![]).unwrap();
+  conn.execute("CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)", params![]).unwrap();
 
   Ok(json!({}))
 }

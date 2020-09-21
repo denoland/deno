@@ -7,13 +7,14 @@
     function getRid() {
       if (!rid) {
         rid = sendSync("op_localstorage_open", {
-          temporary
+          temporary,
+          location: "foobar"
         });
       }
       return rid;
     }
 
-    return {
+    const storage = {
       get length() {
         return sendSync("op_localstorage_length", {
           rid: getRid(),
@@ -48,8 +49,24 @@
         sendSync("op_localstorage_clear", {
           rid: getRid(),
         });
-      }
+      },
     };
+
+    const proxy = new Proxy(storage, {
+      deleteProperty(target, prop) {
+        target.removeItem(prop);
+      },
+      get(target, p, receiver) {
+        return target.getItem(p);
+      },
+      set(target, p, value, receiver) {
+        target.setItem(p, value);
+
+        return true;
+      }
+    });
+
+    return proxy;
   }
 
   const localStorage = webStorage();
