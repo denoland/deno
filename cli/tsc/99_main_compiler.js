@@ -490,7 +490,6 @@ delete Object.prototype.__proto__;
 
   function buildLocalSourceFileCache(sourceFileMap) {
     for (const entry of Object.values(sourceFileMap)) {
-      assert(entry.sourceCode.length > 0);
       SourceFile.addToCache({
         url: entry.url,
         filename: entry.url,
@@ -503,6 +502,9 @@ delete Object.prototype.__proto__;
         let mappedUrl = importDesc.resolvedSpecifier;
         const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
         assert(importedFile);
+        if (importedFile.redirect) {
+          mappedUrl = importedFile.redirect;
+        }
         const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
           importedFile.mediaType === MediaType.JSX;
         // If JS or JSX perform substitution for types if available
