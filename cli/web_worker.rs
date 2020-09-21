@@ -1,13 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
+use crate::global_state::GlobalState;
+use crate::js;
 use crate::ops;
-use crate::state::State;
+use crate::permissions::Permissions;
+use crate::state::CliModuleLoader;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
 use crate::worker::WorkerHandle;
+use deno_core::error::AnyError;
 use deno_core::v8;
-use deno_core::ErrBox;
-use deno_core::StartupData;
+use deno_core::ModuleSpecifier;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
@@ -15,7 +17,6 @@ use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -85,11 +86,22 @@ pub struct WebWorker {
 impl WebWorker {
   pub fn new(
     name: String,
-    startup_data: StartupData,
-    state: &Rc<State>,
+    permissions: Permissions,
+    main_module: ModuleSpecifier,
+    global_state: Arc<GlobalState>,
     has_deno_namespace: bool,
   ) -> Self {
-    let mut worker = Worker::new(name, startup_data, &state);
+    let loader = CliModuleLoader::new_for_worker();
+    let mut worker = Worker::new(
+      name,
+      Some(js::deno_isolate_init()),
+      permissions,
+      main_module,
+      global_state,
+      loader,
+      false,
+      false,
+    );
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
@@ -102,7 +114,7 @@ impl WebWorker {
       terminate_tx,
     };
 
-    let web_worker = Self {
+    let mut web_worker = Self {
       worker,
       event_loop_idle: false,
       terminate_rx,
@@ -110,37 +122,46 @@ impl WebWorker {
       has_deno_namespace,
     };
 
-    let handle = web_worker.thread_safe_handle();
-
     {
-      ops::runtime::init(&state);
-      ops::web_worker::init(
-        &state,
-        &web_worker.worker.internal_channels.sender,
-        handle,
+      ops::runtime::init(&mut web_worker.worker);
+      let sender = web_worker.worker.internal_channels.sender.clone();
+      let handle = web_worker.thread_safe_handle();
+      ops::web_worker::init(&mut web_worker.worker, sender, handle);
+      ops::worker_host::init(&mut web_worker.worker);
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_domain_to_ascii",
+        deno_web::op_domain_to_ascii,
       );
-      ops::worker_host::init(&state);
-      ops::idna::init(&state);
-      ops::io::init(&state);
-      ops::resources::init(&state);
-      ops::errors::init(&state);
-      ops::timers::init(&state);
-      ops::fetch::init(&state);
-      ops::websocket::init(&state);
+      ops::io::init(&mut web_worker.worker);
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_close",
+        deno_core::op_close,
+      );
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_resources",
+        deno_core::op_resources,
+      );
+      ops::errors::init(&mut web_worker.worker);
+      ops::timers::init(&mut web_worker.worker);
+      ops::fetch::init(&mut web_worker.worker);
+      ops::websocket::init(&mut web_worker.worker);
 
       if has_deno_namespace {
-        ops::runtime_compiler::init(&state);
-        ops::fs::init(&state);
-        ops::fs_events::init(&state);
-        ops::plugin::init(&state);
-        ops::net::init(&state);
-        ops::tls::init(&state);
-        ops::os::init(&state);
-        ops::permissions::init(&state);
-        ops::process::init(&state);
-        ops::random::init(&state);
-        ops::signal::init(&state);
-        ops::tty::init(&state);
+        ops::runtime_compiler::init(&mut web_worker.worker);
+        ops::fs::init(&mut web_worker.worker);
+        ops::fs_events::init(&mut web_worker.worker);
+        ops::plugin::init(&mut web_worker.worker);
+        ops::net::init(&mut web_worker.worker);
+        ops::tls::init(&mut web_worker.worker);
+        ops::os::init(&mut web_worker.worker);
+        ops::permissions::init(&mut web_worker.worker);
+        ops::process::init(&mut web_worker.worker);
+        ops::random::init(&mut web_worker.worker);
+        ops::signal::init(&mut web_worker.worker);
+        ops::tty::init(&mut web_worker.worker);
       }
     }
 
@@ -169,7 +190,7 @@ impl DerefMut for WebWorker {
 }
 
 impl Future for WebWorker {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
@@ -244,17 +265,18 @@ impl Future for WebWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::startup_data;
-  use crate::state::State;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
 
   fn create_test_worker() -> WebWorker {
-    let state = State::mock("./hello.js");
+    let main_module =
+      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let global_state = GlobalState::mock(vec!["deno".to_string()], None);
     let mut worker = WebWorker::new(
       "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      &state,
+      Permissions::allow_all(),
+      main_module,
+      global_state,
       false,
     );
     worker

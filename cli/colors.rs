@@ -85,6 +85,12 @@ pub fn white_on_green(s: &str) -> impl fmt::Display {
   style(&s, style_spec)
 }
 
+pub fn black_on_green(s: &str) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_bg(Some(Green)).set_fg(Some(Black));
+  style(&s, style_spec)
+}
+
 pub fn yellow(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Yellow));

@@ -1,16 +1,15 @@
-use crate::file_fetcher::map_file_extension;
+use crate::ast;
 use crate::flags::Flags;
 use crate::global_state::GlobalState;
-use crate::swc_util;
-use crate::swc_util::get_syntax_for_media_type;
-use deno_core::ErrBox;
+use crate::media_type::MediaType;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_doc::DocParser;
 use jsdoc::{self, ast::JsDoc, Input};
 use regex::Regex;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use url::Url;
 
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
@@ -50,7 +49,7 @@ struct DocTestBody {
 pub async fn parse_jsdoc(
   source_files: Vec<Url>,
   flags: Flags,
-) -> Result<Vec<JsDoc>, ErrBox> {
+) -> Result<Vec<JsDoc>, AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let loader = Box::new(global_state.file_fetcher.clone());
 
@@ -60,10 +59,10 @@ pub async fn parse_jsdoc(
     let source_code =
       doc_parser.loader.load_source_code(&url.to_string()).await?;
     let path = PathBuf::from(&url.to_string());
-    let media_type = map_file_extension(&path);
+    let media_type = MediaType::from(&path);
     let module = doc_parser.ast_parser.parse_module(
       &url.to_string(),
-      get_syntax_for_media_type(media_type),
+      ast::get_syntax(&media_type),
       &source_code,
     )?;
     modules.push(module);

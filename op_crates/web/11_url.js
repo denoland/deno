@@ -1,17 +1,39 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { getRandomValues } = window.__bootstrap.crypto;
-  const { customInspect } = window.__bootstrap.console;
-  const { sendSync } = window.__bootstrap.dispatchJson;
-  const { isIterable, requiredArguments } = window.__bootstrap.webUtil;
+  const core = window.Deno.core;
+
+  function requiredArguments(
+    name,
+    length,
+    required,
+  ) {
+    if (length < required) {
+      const errMsg = `${name} requires at least ${required} argument${
+        required === 1 ? "" : "s"
+      }, but only ${length} present`;
+      throw new TypeError(errMsg);
+    }
+  }
+
+  function isIterable(
+    o,
+  ) {
+    // checks for null and undefined
+    if (o == null) {
+      return false;
+    }
+    return (
+      typeof (o)[Symbol.iterator] === "function"
+    );
+  }
 
   /** https://url.spec.whatwg.org/#idna */
   function domainToAscii(
     domain,
     { beStrict = false } = {},
   ) {
-    return sendSync("op_domain_to_ascii", { domain, beStrict });
+    return core.jsonOpSync("op_domain_to_ascii", { domain, beStrict });
   }
 
   function decodeSearchParam(p) {
@@ -385,17 +407,6 @@
     return parts;
   }
 
-  // Based on https://github.com/kelektiv/node-uuid
-  // TODO(kevinkassimo): Use deno_std version once possible.
-  function generateUUID() {
-    return "00000000-0000-4000-8000-000000000000".replace(/[0]/g, () =>
-      // random integer from 0 to 15 as a hex digit.
-      (getRandomValues(new Uint8Array(1))[0] % 16).toString(16));
-  }
-
-  // Keep it outside of URL to avoid any attempts of access.
-  const blobURLMap = new Map();
-
   // Resolves `.`s and `..`s where possible.
   // Preserves repeating and trailing `/`s by design.
   // Assumes drive letter file paths will have a leading slash.
@@ -501,7 +512,7 @@
   class URL {
     #searchParams = null;
 
-    [customInspect]() {
+    [Symbol.for("Deno.customInspect")]() {
       const keys = [
         "href",
         "origin",
@@ -712,27 +723,12 @@
       return this.href;
     }
 
-    // TODO(kevinkassimo): implement MediaSource version in the future.
-    static createObjectURL(blob) {
-      const origin = "http://deno-opaque-origin";
-      const key = `blob:${origin}/${generateUUID()}`;
-      blobURLMap.set(key, blob);
-      return key;
+    static createObjectURL() {
+      throw new Error("Not implemented");
     }
 
-    static revokeObjectURL(url) {
-      let urlObject;
-      try {
-        urlObject = new URL(url);
-      } catch {
-        throw new TypeError("Provided URL string is not valid");
-      }
-      if (urlObject.protocol !== "blob:") {
-        return;
-      }
-      // Origin match check seems irrelevant for now, unless we implement
-      // persisten storage for per globalThis.location.origin at some point.
-      blobURLMap.delete(url);
+    static revokeObjectURL() {
+      throw new Error("Not implemented");
     }
   }
 
@@ -897,6 +893,5 @@
   window.__bootstrap.url = {
     URL,
     URLSearchParams,
-    blobURLMap,
   };
 })(this);

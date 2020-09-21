@@ -1,17 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
+use crate::permissions::Permissions;
 use core::task::Poll;
+use deno_core::error::bad_resource_id;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::url;
 use deno_core::BufVec;
-use deno_core::ErrBox;
-use deno_core::OpRegistry;
+use deno_core::OpState;
 use futures::future::poll_fn;
 use futures::StreamExt;
 use futures::{ready, SinkExt};
 use http::{Method, Request, Uri};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::BufReader;
 use std::rc::Rc;
@@ -19,18 +23,19 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
+use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, Error, Message,
+  protocol::CloseFrame, Message,
 };
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_async("op_ws_create", op_ws_create);
-  s.register_op_json_async("op_ws_send", op_ws_send);
-  s.register_op_json_async("op_ws_close", op_ws_close);
-  s.register_op_json_async("op_ws_next_event", op_ws_next_event);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_async(rt, "op_ws_create", op_ws_create);
+  super::reg_json_async(rt, "op_ws_send", op_ws_send);
+  super::reg_json_async(rt, "op_ws_close", op_ws_close);
+  super::reg_json_async(rt, "op_ws_next_event", op_ws_next_event);
 }
 
 type MaybeTlsStream =
@@ -46,20 +51,26 @@ struct CreateArgs {
 }
 
 pub async fn op_ws_create(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: CreateArgs = serde_json::from_value(args)?;
-  state.check_net_url(&url::Url::parse(&args.url)?)?;
-  let ca_file = state.global_state.flags.ca_file.clone();
-  let uri: Uri = args.url.parse().unwrap();
+  {
+    let s = state.borrow();
+    s.borrow::<Permissions>()
+      .check_net_url(&url::Url::parse(&args.url)?)?;
+  }
+  let ca_file = {
+    let cli_state = super::global_state2(&state);
+    cli_state.flags.ca_file.clone()
+  };
+  let uri: Uri = args.url.parse()?;
   let request = Request::builder()
     .method(Method::GET)
     .uri(&uri)
     .header("Sec-WebSocket-Protocol", args.protocols)
-    .body(())
-    .unwrap();
+    .body(())?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,
@@ -68,7 +79,7 @@ pub async fn op_ws_create(
   });
   let addr = format!("{}:{}", domain, port);
   let try_socket = TcpStream::connect(addr).await;
-  let tcp_socket = match try_socket.map_err(Error::Io) {
+  let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
     Ok(socket) => socket,
     Err(_) => return Ok(json!({"success": false})),
   };
@@ -97,11 +108,16 @@ pub async fn op_ws_create(
   };
 
   let (stream, response): (WsStream, Response) =
-    client_async(request, socket).await.unwrap();
+    client_async(request, socket).await.map_err(|err| {
+      type_error(format!(
+        "failed to connect to WebSocket: {}",
+        err.to_string()
+      ))
+    })?;
 
+  let mut state = state.borrow_mut();
   let rid = state
     .resource_table
-    .borrow_mut()
     .add("webSocketStream", Box::new(stream));
 
   let protocol = match response.headers().get("Sec-WebSocket-Protocol") {
@@ -130,10 +146,10 @@ struct SendArgs {
 }
 
 pub async fn op_ws_send(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: SendArgs = serde_json::from_value(args)?;
 
   let mut maybe_msg = Some(match args.text {
@@ -143,14 +159,14 @@ pub async fn op_ws_send(
   let rid = args.rid;
 
   poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
-    let stream = resource_table
+    let mut state = state.borrow_mut();
+    let stream = state
+      .resource_table
       .get_mut::<WsStream>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
-    // Need to map tungstenite::error::Error to ErrBox.
-
+    // Need to map `TungsteniteError` to `AnyError`.
     ready!(stream.poll_ready_unpin(cx)).unwrap();
     if let Some(msg) = maybe_msg.take() {
       stream.start_send_unpin(msg).unwrap();
@@ -171,10 +187,10 @@ struct CloseArgs {
 }
 
 pub async fn op_ws_close(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: CloseArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let mut maybe_msg = Some(Message::Close(args.code.map(|c| CloseFrame {
@@ -186,14 +202,14 @@ pub async fn op_ws_close(
   })));
 
   poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
-    let stream = resource_table
+    let mut state = state.borrow_mut();
+    let stream = state
+      .resource_table
       .get_mut::<WsStream>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
-    // Need to map tungstenite::error::Error to ErrBox.
-
+    // Need to map `TungsteniteError` to `AnyError`.
     ready!(stream.poll_ready_unpin(cx)).unwrap();
     if let Some(msg) = maybe_msg.take() {
       stream.start_send_unpin(msg).unwrap();
@@ -213,16 +229,17 @@ struct NextEventArgs {
 }
 
 pub async fn op_ws_next_event(
-  state: Rc<State>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: NextEventArgs = serde_json::from_value(args)?;
   poll_fn(move |cx| {
-    let mut resource_table = state.resource_table.borrow_mut();
-    let stream = resource_table
+    let mut state = state.borrow_mut();
+    let stream = state
+      .resource_table
       .get_mut::<WsStream>(args.rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
     stream
       .poll_next_unpin(cx)
       .map(|val| {
@@ -248,7 +265,7 @@ pub async fn op_ws_next_event(
           Some(Ok(Message::Pong(_))) => json!({"type": "pong"}),
           Some(Err(_)) => json!({"type": "error"}),
           None => {
-            resource_table.close(args.rid).unwrap();
+            state.resource_table.close(args.rid).unwrap();
             json!({"type": "closed"})
           }
         }

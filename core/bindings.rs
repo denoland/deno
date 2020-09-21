@@ -1,11 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ErrBox;
-use crate::JsError;
+use crate::error::AnyError;
+use crate::error::JsError;
+use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
-use crate::JsRuntimeState;
 use crate::Op;
 use crate::OpId;
+use crate::OpTable;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rusty_v8 as v8;
@@ -395,8 +396,8 @@ fn send<'s>(
   let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-    .map_err(ErrBox::from)
-    .and_then(|l| OpId::try_from(l.value()).map_err(ErrBox::from))
+    .map_err(AnyError::from)
+    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
   {
     Ok(op_id) => op_id,
     Err(err) => {
@@ -426,8 +427,7 @@ fn send<'s>(
     }
   };
 
-  let op_router = state.op_router.clone();
-  let op = op_router.route_op(op_id, bufs);
+  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
   assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(buf) if !buf.is_empty() => {

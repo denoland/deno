@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
 
   function openPlugin(filename) {
-    return sendSync("op_open_plugin", { filename });
+    return core.jsonOpSync("op_open_plugin", { filename });
   }
 
   window.__bootstrap.plugins = {
