@@ -53,6 +53,7 @@ const tests = [
   "testdata/wasi_fd_fdstat_get_stderr.wasm",
   "testdata/wasi_fd_fdstat_get_stdin.wasm",
   "testdata/wasi_fd_fdstat_get_stdout.wasm",
+  "testdata/wasi_fd_renumber.wasm",
   "testdata/wasi_fd_tell_file.wasm",
   "testdata/wasi_fd_write_file.wasm",
   "testdata/wasi_fd_write_stderr.wasm",
