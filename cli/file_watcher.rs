@@ -11,8 +11,9 @@ use notify::RecursiveMode;
 use notify::Watcher;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Mutex;
 use tokio::select;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, mpsc::Receiver};
 
 // TODO(bartlomieju): rename
 type WatchFuture = Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
@@ -26,17 +27,19 @@ async fn error_handler(watch_future: WatchFuture) {
 }
 
 pub async fn watch_func<F>(
-  watch_paths: &[PathBuf],
+  paths: &[PathBuf],
   closure: F,
 ) -> Result<(), AnyError>
 where
   F: Fn() -> WatchFuture,
 {
+  let (mut watcher, receiver) = new_watcher()?;
+  let receiver = Mutex::new(receiver);
   loop {
     let func = error_handler(closure());
     let mut is_file_changed = false;
     select! {
-      _ = file_watcher(watch_paths) => {
+      _ = watch_paths(paths, &mut watcher, &receiver) => {
           is_file_changed = true;
           info!(
             "{} File change detected! Restarting!",
@@ -50,7 +53,7 @@ where
         "{} Process terminated! Restarting on file change...",
         colors::intense_blue("Watcher")
       );
-      file_watcher(watch_paths).await?;
+      watch_paths(paths, &mut watcher, &receiver).await?;
       info!(
         "{} File change detected! Restarting!",
         colors::intense_blue("Watcher")
@@ -59,10 +62,33 @@ where
   }
 }
 
-pub async fn file_watcher(paths: &[PathBuf]) -> Result<(), AnyError> {
-  let (sender, mut receiver) =
-    mpsc::channel::<Result<NotifyEvent, AnyError>>(16);
-  let sender = std::sync::Mutex::new(sender);
+async fn watch_paths(
+  paths: &[PathBuf],
+  watcher: &mut RecommendedWatcher,
+  receiver: &Mutex<Receiver<Result<NotifyEvent, AnyError>>>,
+) -> Result<(), AnyError> {
+  for path in paths {
+    if let Ok(_) = watcher.unwatch(path) {};
+    watcher.watch(path, RecursiveMode::NonRecursive)?;
+  }
+  while let Some(result) = receiver.lock().unwrap().next().await {
+    let event = result?;
+    match event.kind {
+      EventKind::Create(_) => break,
+      EventKind::Modify(_) => break,
+      EventKind::Remove(_) => break,
+      _ => continue,
+    }
+  }
+  Ok(())
+}
+
+fn new_watcher() -> Result<
+  (RecommendedWatcher, Receiver<Result<NotifyEvent, AnyError>>),
+  AnyError,
+> {
+  let (sender, receiver) = mpsc::channel::<Result<NotifyEvent, AnyError>>(16);
+  let sender = Mutex::new(sender);
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
@@ -75,18 +101,5 @@ pub async fn file_watcher(paths: &[PathBuf]) -> Result<(), AnyError> {
 
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 
-  for path in paths {
-    watcher.watch(path, RecursiveMode::NonRecursive)?;
-  }
-
-  while let Some(result) = receiver.next().await {
-    let event = result?;
-    match event.kind {
-      EventKind::Create(_) => break,
-      EventKind::Modify(_) => break,
-      EventKind::Remove(_) => break,
-      _ => continue,
-    }
-  }
-  Ok(())
+  Ok((watcher, receiver))
 }

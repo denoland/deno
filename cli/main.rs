@@ -488,7 +488,6 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .map(|url| url.to_file_path().unwrap())
     .collect();
 
-  // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func(&paths_to_watch, move || {
     // FIXME(bartlomieju): GlobalState must be created on each restart - otherwise file fetcher
     // will use cached source files
