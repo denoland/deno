@@ -1062,13 +1062,27 @@ fn repl_test_object_literal() {
   let (out, err) = util::run_and_collect_output(
     true,
     "repl",
-    Some(vec!["{ foo: 'bar' }"]),
+    Some(vec!["{}", "{ foo: 'bar' }"]),
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("{ foo: \"bar\" }\n"));
+  assert!(out.ends_with("{}\n{ foo: \"bar\" }\n"));
   assert!(err.is_empty());
 }
+
+#[test]
+fn repl_test_block_expression() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{};", "{\"\"}"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("undefined\n\"\"\n"));
+  assert!(err.is_empty());
+}
+
 
 #[test]
 fn repl_cwd() {
