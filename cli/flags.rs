@@ -1380,6 +1380,8 @@ fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
     .requires("unstable")
     .long("watch")
+    .conflicts_with("inspect")
+    .conflicts_with("inspect-brk")
     .help("Watch for file changes and restart process automatically")
     .long_help(
       "Watch for file changes and restart process automatically.
