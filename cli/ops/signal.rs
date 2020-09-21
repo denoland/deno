@@ -1,17 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
 use deno_core::error::bad_resource_id;
 #[cfg(unix)]
-use futures::future::poll_fn;
+use deno_core::futures::future::poll_fn;
+#[cfg(unix)]
+use deno_core::serde_json;
+#[cfg(unix)]
+use deno_core::serde_json::json;
 #[cfg(unix)]
 use serde::Deserialize;
 #[cfg(unix)]

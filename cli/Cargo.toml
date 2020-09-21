@@ -44,7 +44,6 @@ dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.24"
 dprint-plugin-typescript = "0.31.3"
-futures = "0.3.5" # TODO(ry) Remove and use deno_core::futures
 filetime = "0.2.12"
 http = "0.2.1"
 indexmap = "1.6.0"
@@ -59,7 +58,6 @@ regex = "1.3.9"
 ring = "0.16.15"
 rustyline = { version = "6.3.0", default-features = false }
 serde = { version = "1.0.116", features = ["derive"] }
-serde_json = { version = "1.0.57", features = [ "preserve_order" ] } # TODO(ry) Remove and use deno_core::serde_json
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
 swc_common = { version = "=0.10.2", features = ["sourcemap"] }

@@ -1,11 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::Map;
+use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
-use serde_json::Map;
-use serde_json::Value;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
@@ -473,6 +474,7 @@ impl ImportMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::serde_json::json;
 
   #[test]
   fn load_nonexistent() {

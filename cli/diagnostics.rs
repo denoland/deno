@@ -384,7 +384,8 @@ impl Error for Diagnostics {}
 mod tests {
   use super::*;
   use colors::strip_ansi_codes;
-  use serde_json::json;
+  use deno_core::serde_json;
+  use deno_core::serde_json::json;
 
   #[test]
   fn test_de_diagnostics() {

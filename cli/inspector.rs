@@ -5,19 +5,20 @@
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::futures::channel::mpsc::UnboundedSender;
+use deno_core::futures::channel::oneshot;
+use deno_core::futures::future::Future;
+use deno_core::futures::prelude::*;
+use deno_core::futures::select;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::task;
+use deno_core::futures::task::Context;
+use deno_core::futures::task::Poll;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::v8;
-use futures::channel::mpsc;
-use futures::channel::mpsc::UnboundedReceiver;
-use futures::channel::mpsc::UnboundedSender;
-use futures::channel::oneshot;
-use futures::future::Future;
-use futures::prelude::*;
-use futures::select;
-use futures::stream::FuturesUnordered;
-use futures::task;
-use futures::task::Context;
-use futures::task::Poll;
-use serde_json::Value;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;

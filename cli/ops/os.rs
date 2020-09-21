@@ -2,11 +2,13 @@
 
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 
