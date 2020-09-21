@@ -58,8 +58,7 @@
       // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
       // statement rather than an object literal so we interpret it as an expression statement
       // to match the behavior found in a typical prompt including browser developer tools.
-      code = code.trim();
-      if (code.startsWith("{") && !code.endsWith(";")) {
+      if (code.trimLeft().startsWith("{") && !code.trimRight().endsWith(";")) {
         code = `(${code})`;
       }
     }
@@ -77,7 +76,7 @@
       if (!isCloseCalled()) {
         replLog("%o", lastEvalResult);
       }
-    } else if (errInfo.isCompileError && preprocess) {
+    } else if (errInfo.isCompileError && code.length != rawCode.length) {
       return evaluate(rawCode, false);
     } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
       // Recoverable compiler error
