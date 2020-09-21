@@ -1,22 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::file_fetcher::SourceFile;
-use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
-use crate::permissions::Permissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr;
-use std::sync::Arc;
 
 pub struct CoverageCollector {
   v8_channel: v8::inspector::ChannelBase,
