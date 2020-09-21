@@ -23,14 +23,19 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
+
 pub type StartTime = Instant;
+
+type TimerFuture = Pin<Box<dyn Future<Output = Result<(), ()>>>>;
 
 #[derive(Default)]
 pub struct GlobalTimer {
   tx: Option<oneshot::Sender<()>>,
+  pub future: Option<TimerFuture>,
 }
 
 impl GlobalTimer {
@@ -40,14 +45,13 @@ impl GlobalTimer {
     }
   }
 
-  pub fn new_timeout(
-    &mut self,
-    deadline: Instant,
-  ) -> impl Future<Output = Result<(), ()>> {
+  pub fn new_timeout(&mut self, deadline: Instant) {
+    eprintln!("new timeout");
     if self.tx.is_some() {
       self.cancel();
     }
     assert!(self.tx.is_none());
+    assert!(self.future.is_none());
 
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
@@ -56,12 +60,16 @@ impl GlobalTimer {
     let rx = rx
       .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 
-    futures::future::select(delay, rx).then(|_| futures::future::ok(()))
+    let fut = futures::future::select(delay, rx)
+      .then(|_| futures::future::ok(()))
+      .boxed_local();
+    self.future = Some(fut);
   }
 }
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
+  super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
   super::reg_json_sync(rt, "op_now", op_now);
 }
@@ -81,19 +89,29 @@ struct GlobalTimerArgs {
   timeout: u64,
 }
 
-async fn op_global_timer(
-  state: Rc<RefCell<OpState>>,
+fn op_global_timer_start(
+  state: &mut OpState,
   args: Value,
-  _zero_copy: BufVec,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
+  let global_timer = state.borrow_mut::<GlobalTimer>();
+  global_timer.new_timeout(deadline);
+  Ok(json!({}))
+}
+
+async fn op_global_timer(
+  state: Rc<RefCell<OpState>>,
+  _args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, AnyError> {
   let timer_fut = {
     let mut s = state.borrow_mut();
     let global_timer = s.borrow_mut::<GlobalTimer>();
-    global_timer.new_timeout(deadline).boxed_local()
+    global_timer.future.take().unwrap()
   };
   let _ = timer_fut.await;
   Ok(json!({}))
