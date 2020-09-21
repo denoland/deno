@@ -3,6 +3,7 @@
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::futures::channel::mpsc;
+use deno_core::serde_json::json;
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,

@@ -268,6 +268,7 @@ mod tests {
   use super::*;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
+  use deno_core::serde_json::json;
 
   fn create_test_worker() -> WebWorker {
     let main_module =

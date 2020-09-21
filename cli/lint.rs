@@ -14,6 +14,7 @@ use crate::fmt_errors;
 use crate::media_type::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;

@@ -595,6 +595,8 @@ impl ModuleGraphLoader {
 mod tests {
   use super::*;
   use crate::global_state::GlobalState;
+  use deno_core::serde_json;
+  use deno_core::serde_json::json;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,

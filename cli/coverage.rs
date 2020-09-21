@@ -8,6 +8,8 @@ use crate::permissions::Permissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
