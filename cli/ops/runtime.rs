@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::metrics::Metrics;
+use crate::permissions::Permissions;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::error::AnyError;
@@ -21,7 +23,7 @@ fn op_start(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let gs = &super::cli_state(state).global_state;
+  let gs = &super::global_state(state);
 
   Ok(json!({
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
@@ -46,12 +48,13 @@ fn op_main_module(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
-  let main = &cli_state.main_module.to_string();
+  let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
-    cli_state.check_read_blind(&main_path, "main_module")?;
+    state
+      .borrow::<Permissions>()
+      .check_read_blind(&main_path, "main_module")?;
   }
   Ok(json!(&main))
 }
@@ -61,8 +64,7 @@ fn op_metrics(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::cli_state(state);
-  let m = &cli_state.metrics.borrow();
+  let m = state.borrow::<Metrics>();
 
   Ok(json!({
     "opsDispatched": m.ops_dispatched,

@@ -94,16 +94,25 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
 unitTest(
   function consoleTestStringifyComplexObjectsWithEscapedSequences(): void {
     assertEquals(
-      stringify(["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v"]),
-      `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v" ]`,
+      stringify(
+        ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
+      ),
+      `[
+  "foo\\b",   "foo\\f",
+  "foo\\n",   "foo\\r",
+  "foo\\t",   "foo\\v",
+  "foo\\x00"
+]`,
     );
     assertEquals(
-      stringify({ "foo\b": "bar\n", "bar\r": "baz\t" }),
-      `{ foo\\b: "bar\\n", bar\\r: "baz\\t" }`,
+      stringify(
+        { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
+      ),
+      `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
     );
     assertEquals(
-      stringify(new Set(["foo\n", "foo\r"])),
-      `Set { "foo\\n", "foo\\r" }`,
+      stringify(new Set(["foo\n", "foo\r", "foo\0"])),
+      `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
     );
   },
 );
@@ -822,7 +831,7 @@ unitTest(function consoleTestWithStringFormatSpecifier(): void {
 unitTest(function consoleTestWithObjectFormatSpecifier(): void {
   assertEquals(stringify("%o"), "%o");
   assertEquals(stringify("%o", 42), "42");
-  assertEquals(stringify("%o", "foo"), "foo");
+  assertEquals(stringify("%o", "foo"), `"foo"`);
   assertEquals(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
   assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
   assertEquals(
@@ -1413,6 +1422,17 @@ unitTest(function consoleTrace(): void {
     assert(err);
     assert(err.toString().includes("Trace: custom message"));
   });
+});
+
+unitTest(function inspectString(): void {
+  assertEquals(
+    stripColor(Deno.inspect("\0")),
+    `"\\x00"`,
+  );
+  assertEquals(
+    stripColor(Deno.inspect("\x1b[2J")),
+    `"\\x1b[2J"`,
+  );
 });
 
 unitTest(function inspectSorted(): void {

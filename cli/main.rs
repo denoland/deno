@@ -1,26 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-extern crate dissimilar;
+#![deny(warnings)]
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-extern crate futures;
 #[macro_use]
 extern crate serde_json;
-extern crate clap;
-extern crate deno_core;
-extern crate encoding_rs;
-extern crate indexmap;
-#[cfg(unix)]
-extern crate nix;
-extern crate rand;
-extern crate regex;
-extern crate reqwest;
-extern crate serde;
-extern crate serde_derive;
-extern crate tokio;
-extern crate url;
 
 mod ast;
 mod checksum;
@@ -49,9 +36,9 @@ pub mod installer;
 mod js;
 mod lint;
 mod lockfile;
+mod media_type;
 mod metrics;
 mod module_graph;
-pub mod msg;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -77,10 +64,12 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
-use crate::msg::MediaType;
+use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
@@ -89,8 +78,9 @@ use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
+use global_state::exit_unstable;
 use log::Level;
-use state::exit_unstable;
+use log::LevelFilter;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -99,7 +89,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use upgrade::upgrade_command;
-use url::Url;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -153,9 +142,10 @@ fn print_cache_info(
 
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}",
     crate::js::DENO_NS_LIB,
     crate::js::DENO_WEB_LIB,
+    crate::js::DENO_FETCH_LIB,
     crate::js::SHARED_GLOBALS_LIB,
     crate::js::WINDOW_LIB,
   );
@@ -187,8 +177,8 @@ async fn info_command(
     if json {
       write_json_to_stdout(&json!(info))
     } else {
-      print!("{}", info);
-      Ok(())
+      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())
+        .map_err(AnyError::from)
     }
   }
 }
@@ -201,7 +191,12 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), AnyError> {
-  installer::install(flags, &module_url, args, name, root, force).await
+  let global_state = GlobalState::new(flags.clone())?;
+  let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  // First, fetch and compile the module; this step ensures that the module exists.
+  worker.preload_module(&main_module).await?;
+  installer::install(flags, &module_url, args, name, root, force)
 }
 
 async fn lint_command(
@@ -378,7 +373,7 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
-    let syntax = ast::get_syntax(&msg::MediaType::Dts);
+    let syntax = ast::get_syntax(&MediaType::Dts);
     doc_parser.parse_source(
       "lib.deno.d.ts",
       syntax,
@@ -664,6 +659,8 @@ pub fn main() {
     env_logger::Env::default()
       .default_filter_or(log_level.to_level_filter().to_string()),
   )
+  // https://github.com/denoland/deno/issues/6641
+  .filter_module("rustyline", LevelFilter::Off)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

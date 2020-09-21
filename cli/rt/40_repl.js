@@ -4,16 +4,14 @@
   const core = window.Deno.core;
   const exit = window.__bootstrap.os.exit;
   const version = window.__bootstrap.version.version;
-  const dispatchJson = window.__bootstrap.dispatchJson;
-  const close = window.__bootstrap.resources.close;
   const inspectArgs = window.__bootstrap.console.inspectArgs;
 
   function opStartRepl(historyFile) {
-    return dispatchJson.sendSync("op_repl_start", { historyFile });
+    return core.jsonOpSync("op_repl_start", { historyFile });
   }
 
   function opReadline(rid, prompt) {
-    return dispatchJson.sendAsync("op_repl_readline", { rid, prompt });
+    return core.jsonOpAsync("op_repl_readline", { rid, prompt });
   }
 
   function replLog(...args) {
@@ -65,7 +63,7 @@
         ? undefined
         : result;
       if (!isCloseCalled()) {
-        replLog(lastEvalResult);
+        replLog("%o", lastEvalResult);
       }
     } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
       // Recoverable compiler error
@@ -91,7 +89,7 @@
     const quitRepl = (exitCode) => {
       // Special handling in case user calls deno.close(3).
       try {
-        close(rid); // close signals Drop on REPL and saves history.
+        core.close(rid); // close signals Drop on REPL and saves history.
       } catch {}
       exit(exitCode);
     };

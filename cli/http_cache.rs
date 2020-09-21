@@ -7,14 +7,14 @@
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
+use serde::Deserialize;
 use serde::Serialize;
-use serde_derive::Deserialize;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-use url::Url;
 
 /// Turn base of url (scheme, hostname, port) into a valid filename.
 /// This method replaces port part with a special string token (because
@@ -215,14 +215,11 @@ mod tests {
     let cache = HttpCache::new(dir.path());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
-    headers
-      .entry("content-type".to_string())
-      .or_insert_with(Vec::new)
-      .push("application/javascript".to_string());
-    headers
-      .entry("etag".to_string())
-      .or_insert_with(Vec::new)
-      .push("as5625rqdsfb".to_string());
+    headers.insert(
+      "content-type".to_string(),
+      "application/javascript".to_string(),
+    );
+    headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
     eprintln!("result {:?}", r);
@@ -234,18 +231,10 @@ mod tests {
     file.read_to_string(&mut content).unwrap();
     assert_eq!(content, "Hello world");
     assert_eq!(
-      headers
-        .get("content-type")
-        .unwrap()
-        .first()
-        .unwrap()
-        .as_str(),
+      headers.get("content-type").unwrap(),
       "application/javascript"
     );
-    assert_eq!(
-      headers.get("etag").unwrap().first().unwrap().as_str(),
-      "as5625rqdsfb"
-    );
+    assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
     assert_eq!(headers.get("foobar"), None);
   }
 

@@ -3,17 +3,17 @@
 // This file contains the runtime APIs which will dispatch work to the internal
 // compiler within Deno.
 ((window) => {
+  const core = window.Deno.core;
   const util = window.__bootstrap.util;
-  const { sendAsync } = window.__bootstrap.dispatchJson;
 
   function opCompile(request) {
-    return sendAsync("op_compile", request);
+    return core.jsonOpAsync("op_compile", request);
   }
 
   function opTranspile(
     request,
   ) {
-    return sendAsync("op_transpile", request);
+    return core.jsonOpAsync("op_transpile", request);
   }
 
   function checkRelative(specifier) {

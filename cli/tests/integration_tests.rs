@@ -1,14 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#[cfg(unix)]
-extern crate nix;
-extern crate tempfile;
-
-use test_util as util;
-
+use deno_core::url;
 use futures::prelude::*;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
+use test_util as util;
 
 #[test]
 fn std_tests() {
@@ -1057,7 +1053,7 @@ fn repl_test_console_log() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("hello\nundefined\nworld\n"));
+  assert!(out.ends_with("hello\nundefined\n\"world\"\n"));
   assert!(err.is_empty());
 }
 
@@ -1791,6 +1787,12 @@ itest!(fmt_check_tests_dir {
   exit_code: 1,
 });
 
+itest!(fmt_quiet_check_fmt_dir {
+  args: "fmt --check --quiet fmt/",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
 itest!(fmt_check_formatted_files {
   args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
   output: "fmt/expected_fmt_check_formatted_files.out",
@@ -2358,6 +2360,12 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_quiet {
+  args: "lint --unstable --quiet lint/file1.js",
+  output: "lint/expected_quiet.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_json {
   args:
     "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
@@ -2389,6 +2397,19 @@ itest!(deno_lint_from_stdin_json {
   input: Some("let a: any;"),
   output: "lint/expected_from_stdin_json.out",
   exit_code: 1,
+});
+
+itest!(deno_lint_rules {
+  args: "lint --unstable --rules",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
+});
+
+// Make sure that the rules are printed if quiet option is enabled.
+itest!(deno_lint_rules_quiet {
+  args: "lint --unstable --rules -q",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
 });
 
 itest!(deno_doc_builtin {
@@ -2426,7 +2447,7 @@ itest!(info_type_import {
 
 #[test]
 fn cafile_env_fetch() {
-  use url::Url;
+  use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
@@ -2446,7 +2467,7 @@ fn cafile_env_fetch() {
 
 #[test]
 fn cafile_fetch() {
-  use url::Url;
+  use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
@@ -3529,4 +3550,37 @@ fn rust_log() {
     .unwrap();
   assert!(output.status.success());
   assert!(!output.stderr.is_empty());
+}
+
+#[test]
+fn lint_ignore_unexplicit_files() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("lint")
+    .arg("--unstable")
+    .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
+}
+
+#[test]
+fn fmt_ignore_unexplicit_files() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("--unstable")
+    .arg("--check")
+    .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
 }

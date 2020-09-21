@@ -1,19 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
   const { build } = window.__bootstrap.build;
 
   function bindSignal(signo) {
-    return sendSync("op_signal_bind", { signo });
+    return core.jsonOpSync("op_signal_bind", { signo });
   }
 
   function pollSignal(rid) {
-    return sendAsync("op_signal_poll", { rid });
+    return core.jsonOpAsync("op_signal_poll", { rid });
   }
 
   function unbindSignal(rid) {
-    sendSync("op_signal_unbind", { rid });
+    core.jsonOpSync("op_signal_unbind", { rid });
   }
 
   // From `kill -l`

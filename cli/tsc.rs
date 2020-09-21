@@ -12,20 +12,20 @@ use crate::flags::Flags;
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::js;
+use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
-use crate::msg;
-use crate::msg::MediaType;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-use crate::state::CliState;
+use crate::state::CliModuleLoader;
 use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
 use core::task::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use futures::future::Future;
 use futures::future::FutureExt;
@@ -35,6 +35,7 @@ use log::Level;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::Serializer;
 use serde_json::json;
 use serde_json::Value;
 use sourcemap::SourceMap;
@@ -47,7 +48,6 @@ use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -56,7 +56,6 @@ use std::task::Poll;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
 use swc_ecmascript::dep_graph;
-use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
   "deno.ns",
@@ -132,9 +131,25 @@ pub struct CompilerWorker {
 }
 
 impl CompilerWorker {
-  pub fn new(name: String, state: &Rc<CliState>) -> Self {
-    let mut worker =
-      Worker::new(name, Some(js::compiler_isolate_init()), state);
+  pub fn new(
+    name: String,
+    permissions: Permissions,
+    global_state: Arc<GlobalState>,
+  ) -> Self {
+    let main_module =
+      ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
+    // TODO(bartlomieju): compiler worker shouldn't require any loader/state
+    let loader = CliModuleLoader::new(None);
+    let mut worker = Worker::new(
+      name,
+      Some(js::compiler_isolate_init()),
+      permissions,
+      main_module,
+      global_state,
+      loader,
+      false,
+      true,
+    );
     let response = Arc::new(Mutex::new(None));
     ops::runtime::init(&mut worker);
     ops::errors::init(&mut worker);
@@ -215,17 +230,12 @@ fn create_compiler_worker(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
-  let entry_point =
-    ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
-  let worker_state =
-    CliState::new(&global_state, Some(permissions), entry_point, None, true)
-      .expect("Unable to create worker state");
-
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
   global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
-  let mut worker = CompilerWorker::new("TS".to_string(), &worker_state);
+  let mut worker =
+    CompilerWorker::new("TS".to_string(), permissions, global_state.clone());
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
     .unwrap();
@@ -628,7 +638,7 @@ impl TsCompiler {
     );
 
     let j = json!({
-      "type": msg::CompilerRequestType::Compile,
+      "type": CompilerRequestType::Compile,
       "target": target,
       "rootNames": root_names,
       "performance": performance,
@@ -749,7 +759,7 @@ impl TsCompiler {
     );
 
     let j = json!({
-      "type": msg::CompilerRequestType::Bundle,
+      "type": CompilerRequestType::Bundle,
       "target": target,
       "rootNames": root_names,
       "performance": performance,
@@ -897,9 +907,7 @@ impl TsCompiler {
 
       // NOTE: JavaScript files are only cached to disk if `checkJs`
       // option in on
-      if source_file.media_type == msg::MediaType::JavaScript
-        && !self.compile_js
-      {
+      if source_file.media_type == MediaType::JavaScript && !self.compile_js {
         continue;
       }
 
@@ -946,7 +954,7 @@ impl TsCompiler {
     let compiled_module = SourceFile {
       url: module_url.clone(),
       filename: compiled_code_filename,
-      media_type: msg::MediaType::JavaScript,
+      media_type: MediaType::JavaScript,
       source_code: compiled_code.into(),
       types_header: None,
     };
@@ -1003,7 +1011,7 @@ impl TsCompiler {
     let source_map_file = SourceFile {
       url: module_specifier.as_url().to_owned(),
       filename: source_map_filename,
-      media_type: msg::MediaType::JavaScript,
+      media_type: MediaType::JavaScript,
       source_code: source_code.into(),
       types_header: None,
     };
@@ -1266,7 +1274,7 @@ pub async fn runtime_compile(
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeCompile,
+    "type": CompilerRequestType::RuntimeCompile,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
@@ -1374,7 +1382,7 @@ pub async fn runtime_bundle(
   tsc_config::json_merge(&mut compiler_options, &bundler_options);
 
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeBundle,
+    "type": CompilerRequestType::RuntimeBundle,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
@@ -1412,7 +1420,7 @@ pub async fn runtime_transpile(
   tsc_config::json_merge(&mut compiler_options, &user_options);
 
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeTranspile,
+    "type": CompilerRequestType::RuntimeTranspile,
     "sources": sources,
     "compilerOptions": compiler_options,
   })
@@ -1553,6 +1561,34 @@ fn parse_deno_types(comment: &str) -> Option<String> {
   None
 }
 
+// Warning! The values in this enum are duplicated in js/compiler.ts
+// Update carefully!
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CompilerRequestType {
+  Compile = 0,
+  Bundle = 1,
+  RuntimeCompile = 2,
+  RuntimeBundle = 3,
+  RuntimeTranspile = 4,
+}
+
+impl Serialize for CompilerRequestType {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value: i32 = match self {
+      CompilerRequestType::Compile => 0 as i32,
+      CompilerRequestType::Bundle => 1 as i32,
+      CompilerRequestType::RuntimeCompile => 2 as i32,
+      CompilerRequestType::RuntimeBundle => 3 as i32,
+      CompilerRequestType::RuntimeTranspile => 4 as i32,
+    };
+    Serialize::serialize(&value, serializer)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1632,7 +1668,7 @@ mod tests {
     let out = SourceFile {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
-      media_type: msg::MediaType::TypeScript,
+      media_type: MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };
@@ -1708,7 +1744,7 @@ mod tests {
     let out = SourceFile {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
-      media_type: msg::MediaType::TypeScript,
+      media_type: MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };

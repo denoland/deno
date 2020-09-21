@@ -7,7 +7,7 @@ use deno_core::error::AnyError;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -35,8 +35,8 @@ fn op_repl_start(
   let args: ReplStartArgs = serde_json::from_value(args)?;
   debug!("op_repl_start {}", args.history_file);
   let history_path = {
-    let cli_state = super::cli_state(state);
-    repl::history_path(&cli_state.global_state.dir, &args.history_file)
+    let cli_state = super::global_state(state);
+    repl::history_path(&cli_state.dir, &args.history_file)
   };
   let repl = repl::Repl::new(history_path);
   let resource = ReplResource(Arc::new(Mutex::new(repl)));

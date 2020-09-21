@@ -11,7 +11,7 @@ use crate::colors;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::msg;
+use crate::media_type::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_lint::diagnostic::LintDiagnostic;
@@ -105,6 +105,8 @@ pub async fn lint_files(
 pub fn print_rules_list() {
   let lint_rules = rules::get_recommended_rules();
 
+  // The rules should still be printed even if `--quiet` option is enabled,
+  // so use `println!` here instead of `info!`.
   println!("Available rules:");
   for rule in lint_rules {
     println!(" - {}", rule.code());
@@ -131,7 +133,7 @@ fn lint_file(
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
-  let media_type = msg::MediaType::from(&file_path);
+  let media_type = MediaType::from(&file_path);
   let syntax = ast::get_syntax(&media_type);
 
   let lint_rules = rules::get_recommended_rules();
@@ -158,7 +160,7 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
   };
   let mut reporter = create_reporter(reporter_kind);
   let lint_rules = rules::get_recommended_rules();
-  let syntax = ast::get_syntax(&msg::MediaType::TypeScript);
+  let syntax = ast::get_syntax(&MediaType::TypeScript);
   let mut linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
@@ -237,15 +239,15 @@ impl LintReporter for PrettyLintReporter {
 
   fn close(&mut self, check_count: usize) {
     match self.lint_count {
-      1 => eprintln!("Found 1 problem"),
-      n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      1 => info!("Found 1 problem"),
+      n if n > 1 => info!("Found {} problems", self.lint_count),
       _ => (),
     }
 
     match check_count {
-      1 => println!("Checked 1 file"),
-      n if n > 1 => println!("Checked {} files", n),
-      _ => (),
+      n if n <= 1 => info!("Checked {} file", n),
+      n if n > 1 => info!("Checked {} files", n),
+      _ => unreachable!(),
     }
   }
 }

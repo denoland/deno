@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { close } = window.__bootstrap.resources;
+  const core = window.Deno.core;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   const { pathFromURL } = window.__bootstrap.util;
 
   function seekSync(
@@ -11,7 +10,7 @@
     offset,
     whence,
   ) {
-    return sendSync("op_seek_sync", { rid, offset, whence });
+    return core.jsonOpSync("op_seek_sync", { rid, offset, whence });
   }
 
   function seek(
@@ -19,7 +18,7 @@
     offset,
     whence,
   ) {
-    return sendAsync("op_seek_async", { rid, offset, whence });
+    return core.jsonOpAsync("op_seek_async", { rid, offset, whence });
   }
 
   function openSync(
@@ -28,7 +27,7 @@
   ) {
     checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = sendSync(
+    const rid = core.jsonOpSync(
       "op_open_sync",
       { path: pathFromURL(path), options, mode },
     );
@@ -42,7 +41,7 @@
   ) {
     checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = await sendAsync(
+    const rid = await core.jsonOpAsync(
       "op_open_async",
       { path: pathFromURL(path), options, mode },
     );
@@ -104,7 +103,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -122,7 +121,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -140,7 +139,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 
@@ -158,7 +157,7 @@
     }
 
     close() {
-      close(this.rid);
+      core.close(this.rid);
     }
   }
 

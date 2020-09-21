@@ -5,10 +5,12 @@ use rusty_v8 as v8;
 use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
+use crate::OpState;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::Future;
@@ -74,6 +76,7 @@ pub trait ModuleLoader {
   /// dynamic imports altogether.
   fn load(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
@@ -89,6 +92,7 @@ pub trait ModuleLoader {
   /// It's not required to implement this method.
   fn prepare_load(
     &self,
+    _op_state: Rc<RefCell<OpState>>,
     _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
@@ -114,6 +118,7 @@ impl ModuleLoader for NoopModuleLoader {
 
   fn load(
     &self,
+    _op_state: Rc<RefCell<OpState>>,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
@@ -140,6 +145,7 @@ pub enum LoadState {
 
 /// This future is used to implement parallel async module loading.
 pub struct RecursiveModuleLoad {
+  op_state: Rc<RefCell<OpState>>,
   kind: Kind,
   // TODO(bartlomieju): in future this value should
   // be randomized
@@ -154,16 +160,18 @@ pub struct RecursiveModuleLoad {
 impl RecursiveModuleLoad {
   /// Starts a new parallel load of the given URL of the main module.
   pub fn main(
+    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     code: Option<String>,
     loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
-    Self::new(kind, state, loader)
+    Self::new(op_state, kind, state, loader)
   }
 
   pub fn dynamic_import(
+    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     loader: Rc<dyn ModuleLoader>,
@@ -171,17 +179,23 @@ impl RecursiveModuleLoad {
     let kind = Kind::DynamicImport;
     let state =
       LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(kind, state, loader)
+    Self::new(op_state, kind, state, loader)
   }
 
   pub fn is_dynamic_import(&self) -> bool {
     self.kind != Kind::Main
   }
 
-  fn new(kind: Kind, state: LoadState, loader: Rc<dyn ModuleLoader>) -> Self {
+  fn new(
+    op_state: Rc<RefCell<OpState>>,
+    kind: Kind,
+    state: LoadState,
+    loader: Rc<dyn ModuleLoader>,
+  ) -> Self {
     Self {
       id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
       root_module_id: None,
+      op_state,
       kind,
       state,
       loader,
@@ -212,6 +226,7 @@ impl RecursiveModuleLoad {
     let prepare_result = self
       .loader
       .prepare_load(
+        self.op_state.clone(),
         self.id,
         &module_specifier,
         maybe_referrer,
@@ -248,7 +263,12 @@ impl RecursiveModuleLoad {
       }
       _ => self
         .loader
-        .load(&module_specifier, None, self.is_dynamic_import())
+        .load(
+          self.op_state.clone(),
+          &module_specifier,
+          None,
+          self.is_dynamic_import(),
+        )
         .boxed_local(),
     };
 
@@ -264,10 +284,12 @@ impl RecursiveModuleLoad {
     referrer: ModuleSpecifier,
   ) {
     if !self.is_pending.contains(&specifier) {
-      let fut =
-        self
-          .loader
-          .load(&specifier, Some(referrer), self.is_dynamic_import());
+      let fut = self.loader.load(
+        self.op_state.clone(),
+        &specifier,
+        Some(referrer),
+        self.is_dynamic_import(),
+      );
       self.pending.push(fut.boxed_local());
       self.is_pending.insert(specifier);
     }
@@ -577,6 +599,7 @@ mod tests {
 
     fn load(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,

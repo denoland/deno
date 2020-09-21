@@ -9,8 +9,8 @@ use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
-use serde_derive::Serialize;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 #[cfg(unix)]
@@ -62,7 +62,7 @@ fn op_set_raw(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.setRaw");
+  super::global_state(state).check_unstable("Deno.setRaw");
 
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
@@ -273,7 +273,7 @@ fn op_console_size(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.consoleSize");
+  super::global_state(state).check_unstable("Deno.consoleSize");
 
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;

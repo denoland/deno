@@ -200,6 +200,7 @@ Deno.test("file_server running as library", async function (): Promise<void> {
   try {
     const res = await fetch("http://localhost:8000");
     assertEquals(res.status, 200);
+    const _ = await res.text();
   } finally {
     await killFileServer();
   }

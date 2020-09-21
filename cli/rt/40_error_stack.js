@@ -3,17 +3,17 @@
 ((window) => {
   // Some of the code here is adapted directly from V8 and licensed under a BSD
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
+  const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
   const assert = window.__bootstrap.util.assert;
   const internals = window.__bootstrap.internals;
-  const dispatchJson = window.__bootstrap.dispatchJson;
 
   function opFormatDiagnostics(diagnostics) {
-    return dispatchJson.sendSync("op_format_diagnostic", diagnostics);
+    return core.jsonOpSync("op_format_diagnostic", diagnostics);
   }
 
   function opApplySourceMap(location) {
-    const res = dispatchJson.sendSync("op_apply_source_map", location);
+    const res = core.jsonOpSync("op_apply_source_map", location);
     return {
       fileName: res.fileName,
       lineNumber: res.lineNumber,

@@ -139,13 +139,13 @@ Deno.test("Test Assert Not Match", () => {
 ### Throws
 
 There are two ways to assert whether something throws an error in Deno,
-`assertThrows()` and `assertAsyncThrows()`. Both assertions allow you to check
+`assertThrows()` and `assertThrowsAsync()`. Both assertions allow you to check
 an
 [Error](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error)
 has been thrown, the type of error thrown and what the message was.
 
 The difference between the two assertions is `assertThrows()` accepts a standard
-function and `assertAsyncThrows()` accepts a function which returns a
+function and `assertThrowsAsync()` accepts a function which returns a
 [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise).
 
 The `assertThrows()` assertion will check an error has been thrown, and
@@ -164,7 +164,7 @@ Deno.test("Test Assert Throws", () => {
 });
 ```
 
-The `assertAsyncThrows()` assertion is a little more complicated, mainly because
+The `assertThrowsAsync()` assertion is a little more complicated, mainly because
 it deals with Promises. But basically it will catch thrown errors or rejections
 in Promises. You can also optionally check for the error type and error message.
 

@@ -52,7 +52,7 @@ impl ResourceTable {
     rid
   }
 
-  pub fn entries(&self) -> Vec<(ResourceId, String)> {
+  pub fn entries(&self) -> HashMap<ResourceId, String> {
     self
       .map
       .iter()

@@ -49,15 +49,16 @@ export function format(date: Date, formatString: string): string {
 export function dayOfYear(date: Date): number {
   // Values from 0 to 99 map to the years 1900 to 1999. All other values are the actual year. (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/Date)
   // Using setFullYear as a workaround
-  const yearStart = new Date(date);
-  yearStart.setFullYear(date.getFullYear(), 0, 0);
 
+  const yearStart = new Date(date);
+
+  yearStart.setUTCFullYear(date.getUTCFullYear(), 0, 0);
   const diff = date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
+
   return Math.floor(diff / DAY);
 }
-
 /**
  * Get number of the week in the year (ISO-8601)
  * @return Number of the week in year

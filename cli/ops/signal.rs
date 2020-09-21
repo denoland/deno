@@ -13,7 +13,7 @@ use deno_core::error::bad_resource_id;
 #[cfg(unix)]
 use futures::future::poll_fn;
 #[cfg(unix)]
-use serde_derive::Deserialize;
+use serde::Deserialize;
 #[cfg(unix)]
 use std::task::Waker;
 #[cfg(unix)]
@@ -48,7 +48,7 @@ fn op_signal_bind(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.signal");
+  super::global_state(state).check_unstable("Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
   let rid = state.resource_table.add(
     "signal",
@@ -68,7 +68,7 @@ async fn op_signal_poll(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.signal");
+  super::global_state2(&state).check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
@@ -92,7 +92,7 @@ pub fn op_signal_unbind(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.signal");
+  super::global_state(state).check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let resource = state.resource_table.get_mut::<SignalStreamResource>(rid);
