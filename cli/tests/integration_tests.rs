@@ -1083,7 +1083,6 @@ fn repl_test_block_expression() {
   assert!(err.is_empty());
 }
 
-
 #[test]
 fn repl_cwd() {
   let (_out, err) = util::run_and_collect_output(
