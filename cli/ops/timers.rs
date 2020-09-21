@@ -10,12 +10,13 @@
 
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::futures::channel::oneshot;
+use deno_core::futures::FutureExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::channel::oneshot;
-use futures::FutureExt;
-use futures::TryFutureExt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;

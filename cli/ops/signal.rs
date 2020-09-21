@@ -11,7 +11,7 @@ use std::rc::Rc;
 #[cfg(unix)]
 use deno_core::error::bad_resource_id;
 #[cfg(unix)]
-use futures::future::poll_fn;
+use deno_core::futures::future::poll_fn;
 #[cfg(unix)]
 use serde::Deserialize;
 #[cfg(unix)]

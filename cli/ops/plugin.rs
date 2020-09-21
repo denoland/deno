@@ -3,6 +3,7 @@
 use crate::metrics::metrics_op;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
@@ -12,7 +13,6 @@ use deno_core::OpId;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
-use futures::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;

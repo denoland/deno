@@ -3,10 +3,10 @@
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;

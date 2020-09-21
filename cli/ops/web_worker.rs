@@ -2,7 +2,7 @@
 
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
-use futures::channel::mpsc;
+use deno_core::futures::channel::mpsc;
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,

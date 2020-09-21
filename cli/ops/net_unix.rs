@@ -6,9 +6,9 @@ use crate::ops::net::AcceptArgs;
 use crate::ops::net::ReceiveArgs;
 use deno_core::error::bad_resource;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
 use deno_core::BufVec;
 use deno_core::OpState;
-use futures::future::poll_fn;
 use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -49,7 +49,7 @@ pub(crate) async fn accept_unix(
       .get_mut::<UnixListenerResource>(rid)
       .ok_or_else(|| bad_resource("Listener has been closed"))?;
     let listener = &mut listener_resource.listener;
-    use futures::StreamExt;
+    use deno_core::futures::StreamExt;
     match listener.poll_next_unpin(cx) {
       Poll::Ready(Some(stream)) => {
         //listener_resource.untrack_task();

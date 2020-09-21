@@ -412,7 +412,6 @@ dependencies = [
  "encoding_rs",
  "env_logger",
  "filetime",
- "futures",
  "fwdansi",
  "http",
  "indexmap",
