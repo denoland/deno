@@ -119,6 +119,10 @@ impl CoverageCollector {
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self
+      .post_message("Debugger.enable".to_string(), None)
+      .await?;
+
+    self
       .post_message("Runtime.enable".to_string(), None)
       .await?;
 
@@ -136,222 +140,219 @@ impl CoverageCollector {
     Ok(())
   }
 
-  pub async fn take_precise_coverage(
-    &mut self,
-  ) -> Result<Vec<ScriptCoverage>, AnyError> {
+  pub async fn collect(&mut self) -> Result<Vec<Coverage>, AnyError> {
     let result = self
       .post_message("Profiler.takePreciseCoverage".to_string(), None)
       .await?;
+
     let take_coverage_result: TakePreciseCoverageResult =
       serde_json::from_value(result)?;
 
-    Ok(take_coverage_result.result)
+    let mut coverages: Vec<Coverage> = Vec::new();
+    for script_coverage in take_coverage_result.result {
+        let result = self
+            .post_message(
+                "Debugger.getScriptSource".to_string(),
+                Some(json!({
+                    "scriptId": script_coverage.script_id,
+                })),
+                )
+            .await?;
+
+        let get_script_source_result: GetScriptSourceResult =
+            serde_json::from_value(result)?;
+
+        coverages.push(Coverage {
+            script_coverage,
+            script_source: get_script_source_result.script_source,
+        })
+    }
+
+    Ok(coverages)
   }
 
   pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
-    self
-      .post_message("Profiler.stopPreciseCoverage".to_string(), None)
-      .await?;
-    self
-      .post_message("Profiler.disable".to_string(), None)
-      .await?;
-    self
-      .post_message("Runtime.disable".to_string(), None)
-      .await?;
+      self
+          .post_message("Profiler.stopPreciseCoverage".to_string(), None)
+          .await?;
+      self
+          .post_message("Profiler.disable".to_string(), None)
+          .await?;
+      self
+          .post_message("Runtime.disable".to_string(), None)
+          .await?;
+      self
+          .post_message("Debugger.disable".to_string(), None)
+          .await?;
 
-    Ok(())
+      Ok(())
   }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
-  pub start_offset: usize,
-  pub end_offset: usize,
-  pub count: usize,
+    pub start_offset: usize,
+    pub end_offset: usize,
+    pub count: usize,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverage {
-  pub function_name: String,
-  pub ranges: Vec<CoverageRange>,
-  pub is_block_coverage: bool,
+    pub function_name: String,
+    pub ranges: Vec<CoverageRange>,
+    pub is_block_coverage: bool,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptCoverage {
-  pub script_id: String,
-  pub url: String,
-  pub functions: Vec<FunctionCoverage>,
+    pub script_id: String,
+    pub url: String,
+    pub functions: Vec<FunctionCoverage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Coverage {
+    pub script_coverage: ScriptCoverage,
+    pub script_source: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TakePreciseCoverageResult {
-  result: Vec<ScriptCoverage>,
+    result: Vec<ScriptCoverage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetScriptSourceResult {
+    pub script_source: String,
+    pub bytecode: Option<String>,
 }
 
 pub struct PrettyCoverageReporter {
-  coverages: Vec<ScriptCoverage>,
-  global_state: Arc<GlobalState>,
+    coverages: Vec<Coverage>,
 }
 
 // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
 impl PrettyCoverageReporter {
-  pub fn new(
-    global_state: Arc<GlobalState>,
-    coverages: Vec<ScriptCoverage>,
-  ) -> PrettyCoverageReporter {
-    PrettyCoverageReporter {
-      global_state,
-      coverages,
-    }
-  }
-
-  pub fn get_report(&self) -> String {
-    let mut report = String::from("test coverage:\n");
-
-    for script_coverage in &self.coverages {
-      if let Some(script_report) = self.get_script_report(script_coverage) {
-        report.push_str(&format!("{}\n", script_report))
-      }
+    pub fn new(coverages: Vec<Coverage>) -> PrettyCoverageReporter {
+        PrettyCoverageReporter { coverages }
     }
 
-    report
-  }
+    pub fn get_report(&self) -> String {
+        let mut report = String::from("test coverage:\n");
 
-  fn get_source_file_for_script(
-    &self,
-    script_coverage: &ScriptCoverage,
-  ) -> Option<SourceFile> {
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&script_coverage.url).ok()?;
-
-    let maybe_source_file = self
-      .global_state
-      .ts_compiler
-      .get_compiled_source_file(&module_specifier.as_url())
-      .or_else(|_| {
-        self
-          .global_state
-          .file_fetcher
-          .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
-          .ok_or_else(|| generic_error("unable to fetch source file"))
-      })
-      .ok();
-
-    maybe_source_file
-  }
-
-  fn get_script_report(
-    &self,
-    script_coverage: &ScriptCoverage,
-  ) -> Option<String> {
-    let source_file = match self.get_source_file_for_script(script_coverage) {
-      Some(sf) => sf,
-      None => return None,
-    };
-
-    let mut total_lines = 0;
-    let mut covered_lines = 0;
-
-    let mut line_offset = 0;
-    let source_string = source_file.source_code.to_string().unwrap();
-
-    for line in source_string.lines() {
-      let line_start_offset = line_offset;
-      let line_end_offset = line_start_offset + line.len();
-
-      let mut count = 0;
-      for function in &script_coverage.functions {
-        for range in &function.ranges {
-          if range.start_offset <= line_start_offset
-            && range.end_offset >= line_end_offset
-          {
-            count += range.count;
-            if range.count == 0 {
-              count = 0;
-              break;
+        for coverage in &self.coverages {
+            if let Some(coverage_report) = Self::get_coverage_report(coverage) {
+                report.push_str(&format!("{}\n", coverage_report))
             }
-          }
         }
-      }
 
-      if count > 0 {
-        covered_lines += 1;
-      }
-
-      total_lines += 1;
-      line_offset += line.len();
+        report
     }
 
-    let line_ratio = covered_lines as f32 / total_lines as f32;
-    let line_coverage = format!("{:.3}%", line_ratio * 100.0);
+    fn get_coverage_report(coverage: &Coverage) ->  Option<String> {
+        let mut total_lines = 0;
+        let mut covered_lines = 0;
 
-    let line = if line_ratio >= 0.9 {
-      format!(
-        "{} {}",
-        source_file.url.to_string(),
-        colors::green(&line_coverage)
-      )
-    } else if line_ratio >= 0.75 {
-      format!(
-        "{} {}",
-        source_file.url.to_string(),
-        colors::yellow(&line_coverage)
-      )
-    } else {
-      format!(
-        "{} {}",
-        source_file.url.to_string(),
-        colors::red(&line_coverage)
-      )
-    };
+        let mut line_offset = 0;
 
-    Some(line)
-  }
+        for line in coverage.script_source.lines() {
+            let line_start_offset = line_offset;
+            let line_end_offset = line_start_offset + line.len();
+
+            let mut count = 0;
+            for function in &coverage.script_coverage.functions {
+                for range in &function.ranges {
+                    if range.start_offset <= line_start_offset
+                        && range.end_offset >= line_end_offset
+                        {
+                            count += range.count;
+                            if range.count == 0 {
+                                count = 0;
+                                break;
+                            }
+                        }
+                }
+            }
+
+            if count > 0 {
+                covered_lines += 1;
+            }
+
+            total_lines += 1;
+            line_offset += line.len();
+        }
+
+        let line_ratio = covered_lines as f32 / total_lines as f32;
+        let line_coverage = format!("{:.3}%", line_ratio * 100.0);
+
+        let line = if line_ratio >= 0.9 {
+            format!(
+                "{} {}",
+                coverage.script_coverage.url,
+                colors::green(&line_coverage)
+                )
+        } else if line_ratio >= 0.75 {
+            format!(
+                "{} {}",
+                coverage.script_coverage.url,
+                colors::yellow(&line_coverage)
+                )
+        } else {
+            format!(
+                "{} {}",
+                coverage.script_coverage.url,
+                colors::red(&line_coverage)
+                )
+        };
+
+        Some(line)
+    }
 }
 
 fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
-  let b = Box::new(MaybeUninit::<T>::uninit());
-  let p = Box::into_raw(b) as *mut T;
-  unsafe { ptr::write(p, new_fn(p)) };
-  unsafe { Box::from_raw(p) }
+    let b = Box::new(MaybeUninit::<T>::uninit());
+    let p = Box::into_raw(b) as *mut T;
+    unsafe { ptr::write(p, new_fn(p)) };
+    unsafe { Box::from_raw(p) }
 }
 
 pub fn filter_script_coverages(
-  coverages: Vec<ScriptCoverage>,
-  test_file_url: Url,
-  test_modules: Vec<Url>,
-) -> Vec<ScriptCoverage> {
-  coverages
-    .into_iter()
-    .filter(|e| {
-      if let Ok(url) = Url::parse(&e.url) {
-        if url == test_file_url {
-          return false;
-        }
+    coverages: Vec<Coverage>,
+    test_file_url: Url,
+    test_modules: Vec<Url>,
+    ) -> Vec<Coverage> {
+    coverages
+        .into_iter()
+        .filter(|e| {
+            if let Ok(url) = Url::parse(&e.script_coverage.url) {
+                if url == test_file_url {
+                    return false;
+                }
 
-        for test_module_url in &test_modules {
-          if &url == test_module_url {
-            return false;
-          }
-        }
+                for test_module_url in &test_modules {
+                    if &url == test_module_url {
+                        return false;
+                    }
+                }
 
-        if let Ok(path) = url.to_file_path() {
-          for test_module_url in &test_modules {
-            if let Ok(test_module_path) = test_module_url.to_file_path() {
-              if path.starts_with(test_module_path.parent().unwrap()) {
-                return true;
-              }
+                if let Ok(path) = url.to_file_path() {
+                    for test_module_url in &test_modules {
+                        if let Ok(test_module_path) = test_module_url.to_file_path() {
+                            if path.starts_with(test_module_path.parent().unwrap()) {
+                                return true;
+                            }
+                        }
+                    }
+                }
             }
-          }
-        }
-      }
 
-      false
-    })
-    .collect::<Vec<ScriptCoverage>>()
+            false
+        })
+    .collect::<Vec<Coverage>>()
 }
