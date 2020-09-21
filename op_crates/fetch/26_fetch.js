@@ -865,7 +865,7 @@
       return JSON.parse(raw);
     }
 
-    arrayBuffer() {
+    async arrayBuffer() {
       if (this._bodySource instanceof ReadableStream) {
         return bufferFromStream(this._bodySource.getReader(), this.#size);
       }
