@@ -72,11 +72,6 @@
               this.dispatchEvent(event);
               core.close(this.#rid);
             });
-
-            const event = new Event("error");
-            event.target = this;
-            this.onerror?.(event);
-            this.dispatchEvent(event);
           } else {
             this.#readyState = OPEN;
             const event = new Event("open");
@@ -100,13 +95,19 @@
           this.dispatchEvent(closeEvent);
         }
       }).catch((err) => {
-        const event = new ErrorEvent(
+        const errorEv = new ErrorEvent(
           "error",
           { error: err, message: err.toString() },
         );
-        event.target = this;
-        this.onerror?.(event);
-        this.dispatchEvent(event);
+        errorEv.target = this;
+        this.onerror?.(errorEv);
+        this.dispatchEvent(errorEv);
+
+        this.#readyState = CLOSED;
+        const closeEv = new CloseEvent("close");
+        closeEv.target = this;
+        this.onclose?.(closeEv);
+        this.dispatchEvent(closeEv);
       });
     }
 
@@ -285,10 +286,16 @@
           this.onclose?.(event);
           this.dispatchEvent(event);
         } else if (message.type === "error") {
-          const event = new Event("error");
-          event.target = this;
-          this.onerror?.(event);
-          this.dispatchEvent(event);
+          const errorEv = new Event("error");
+          errorEv.target = this;
+          this.onerror?.(errorEv);
+          this.dispatchEvent(errorEv);
+
+          this.#readyState = CLOSED;
+          const closeEv = new CloseEvent("close");
+          closeEv.target = this;
+          this.onclose?.(closeEv);
+          this.dispatchEvent(closeEv);
         }
       }
     }
