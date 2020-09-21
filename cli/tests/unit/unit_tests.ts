@@ -54,6 +54,7 @@ import "./remove_test.ts";
 import "./rename_test.ts";
 import "./request_test.ts";
 import "./resources_test.ts";
+import "./response_test.ts";
 import "./signal_test.ts";
 import "./stat_test.ts";
 import "./stdio_test.ts";
