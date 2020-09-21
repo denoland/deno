@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 /** A default TextEncoder instance */
 export const encoder = new TextEncoder();
 

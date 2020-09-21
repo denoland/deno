@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 export function notImplemented(msg?: string): never {
   const message = msg ? `Not implemented: ${msg}` : "Not implemented";
   throw new Error(message);

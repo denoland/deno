@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
