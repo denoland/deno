@@ -326,6 +326,10 @@ pub fn filter_script_coverages(
     .into_iter()
     .filter(|e| {
       if let Ok(url) = Url::parse(&e.script_coverage.url) {
+        if url.path().ends_with("__anonymous__") {
+          return false;
+        }
+
         if url == test_file_url {
           return false;
         }
