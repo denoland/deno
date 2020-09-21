@@ -3,10 +3,8 @@
 mod op_fetch_asset;
 
 use deno_core::js_check;
-use deno_core::BasicState;
 use deno_core::JsRuntime;
-use deno_core::OpRegistry;
-use deno_core::StartupData;
+use deno_core::RuntimeOptions;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -18,6 +16,7 @@ fn create_snapshot(
   files: Vec<PathBuf>,
 ) {
   deno_web::init(&mut isolate);
+  deno_fetch::init(&mut isolate);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -39,8 +38,10 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let state = BasicState::new();
-  let isolate = JsRuntime::new(state, StartupData::None, true);
+  let isolate = JsRuntime::new(RuntimeOptions {
+    will_snapshot: true,
+    ..Default::default()
+  });
   create_snapshot(isolate, snapshot_path, files);
 }
 
@@ -52,6 +53,10 @@ fn create_compiler_snapshot(
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs
     .insert("lib.deno.web.d.ts".to_string(), deno_web::get_declaration());
+  custom_libs.insert(
+    "lib.deno.fetch.d.ts".to_string(),
+    deno_fetch::get_declaration(),
+  );
   custom_libs.insert(
     "lib.deno.window.d.ts".to_string(),
     cwd.join("dts/lib.deno.window.d.ts"),
@@ -73,13 +78,14 @@ fn create_compiler_snapshot(
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
 
-  let state = BasicState::new();
-  state.register_op(
+  let mut isolate = JsRuntime::new(RuntimeOptions {
+    will_snapshot: true,
+    ..Default::default()
+  });
+  isolate.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),
   );
-
-  let isolate = JsRuntime::new(state, StartupData::None, true);
   create_snapshot(isolate, snapshot_path, files);
 }
 
@@ -110,6 +116,10 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
     deno_web::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
+    deno_fetch::get_declaration().display()
   );
 
   println!(

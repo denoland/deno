@@ -12,7 +12,6 @@ pub struct Metrics {
   pub bytes_sent_control: u64,
   pub bytes_sent_data: u64,
   pub bytes_received: u64,
-  pub resolve_count: u64,
 }
 
 impl Metrics {
@@ -70,4 +69,63 @@ impl Metrics {
     self.ops_completed_async_unref += 1;
     self.op_completed(bytes_received);
   }
+}
+
+use deno_core::BufVec;
+use deno_core::Op;
+use deno_core::OpFn;
+use deno_core::OpState;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
+  Box::new(move |op_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+    // TODOs:
+    // * The 'bytes' metrics seem pretty useless, especially now that the
+    //   distinction between 'control' and 'data' buffers has become blurry.
+    // * Tracking completion of async ops currently makes us put the boxed
+    //   future into _another_ box. Keeping some counters may not be expensive
+    //   in itself, but adding a heap allocation for every metric seems bad.
+    let mut buf_len_iter = bufs.iter().map(|buf| buf.len());
+    let bytes_sent_control = buf_len_iter.next().unwrap_or(0);
+    let bytes_sent_data = buf_len_iter.sum();
+
+    let op = (op_fn)(op_state.clone(), bufs);
+
+    let op_state_ = op_state.clone();
+    let mut s = op_state.borrow_mut();
+    let metrics = s.borrow_mut::<Metrics>();
+
+    use futures::future::FutureExt;
+
+    match op {
+      Op::Sync(buf) => {
+        metrics.op_sync(bytes_sent_control, bytes_sent_data, buf.len());
+        Op::Sync(buf)
+      }
+      Op::Async(fut) => {
+        metrics.op_dispatched_async(bytes_sent_control, bytes_sent_data);
+        let fut = fut
+          .inspect(move |buf| {
+            let mut s = op_state_.borrow_mut();
+            let metrics = s.borrow_mut::<Metrics>();
+            metrics.op_completed_async(buf.len());
+          })
+          .boxed_local();
+        Op::Async(fut)
+      }
+      Op::AsyncUnref(fut) => {
+        metrics.op_dispatched_async_unref(bytes_sent_control, bytes_sent_data);
+        let fut = fut
+          .inspect(move |buf| {
+            let mut s = op_state_.borrow_mut();
+            let metrics = s.borrow_mut::<Metrics>();
+            metrics.op_completed_async_unref(buf.len());
+          })
+          .boxed_local();
+        Op::AsyncUnref(fut)
+      }
+      other => other,
+    }
+  })
 }

@@ -61,6 +61,7 @@ unitTest(function blobShouldNotThrowError(): void {
   assertEquals(hasThrown, false);
 });
 
+/* TODO https://github.com/denoland/deno/issues/7540
 unitTest(function nativeEndLine(): void {
   const options = {
     ending: "native",
@@ -69,6 +70,7 @@ unitTest(function nativeEndLine(): void {
 
   assertEquals(blob.size, Deno.build.os === "windows" ? 12 : 11);
 });
+*/
 
 unitTest(async function blobText(): Promise<void> {
   const blob = new Blob(["Hello World"]);

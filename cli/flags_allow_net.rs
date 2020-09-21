@@ -1,6 +1,6 @@
+use deno_core::url::Url;
 use std::net::IpAddr;
 use std::str::FromStr;
-use url::Url;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsePortError(String);

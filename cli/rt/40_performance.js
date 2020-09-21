@@ -2,9 +2,9 @@
 
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
-  const { customInspect, inspect } = window.__bootstrap.console;
-  const { cloneValue } = window.__bootstrap.webUtil;
+  const { cloneValue, illegalConstructorKey } = window.__bootstrap.webUtil;
 
+  const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
 
   function findMostRecent(
@@ -74,7 +74,11 @@
       entryType,
       startTime,
       duration,
+      key,
     ) {
+      if (key != illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
       this.#name = name;
       this.#entryType = entryType;
       this.#startTime = startTime;
@@ -110,7 +114,7 @@
       name,
       { detail = null, startTime = now() } = {},
     ) {
-      super(name, "mark", startTime, 0);
+      super(name, "mark", startTime, 0, illegalConstructorKey);
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
@@ -130,7 +134,7 @@
     [customInspect]() {
       return this.detail
         ? `${this.constructor.name} {\n  detail: ${
-          inspect(this.detail, { depth: 3 })
+          JSON.stringify(this.detail, null, 2)
         },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
         : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
     }
@@ -152,8 +156,12 @@
       startTime,
       duration,
       detail = null,
+      key,
     ) {
-      super(name, "measure", startTime, duration);
+      if (key != illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
+      super(name, "measure", startTime, duration, illegalConstructorKey);
       this.#detail = cloneValue(detail);
     }
 
@@ -170,13 +178,19 @@
     [customInspect]() {
       return this.detail
         ? `${this.constructor.name} {\n  detail: ${
-          inspect(this.detail, { depth: 3 })
+          JSON.stringify(this.detail, null, 2)
         },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
         : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
     }
   }
 
   class Performance {
+    constructor(key) {
+      if (key != illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
+    }
+
     clearMarks(markName) {
       if (markName == null) {
         performanceEntries = performanceEntries.filter(
@@ -302,6 +316,7 @@
         typeof startOrMeasureOptions === "object"
           ? startOrMeasureOptions.detail ?? null
           : null,
+        illegalConstructorKey,
       );
       performanceEntries.push(entry);
       return entry;
@@ -312,10 +327,13 @@
     }
   }
 
+  const performance = new Performance(illegalConstructorKey);
+
   window.__bootstrap.performance = {
     PerformanceEntry,
     PerformanceMark,
     PerformanceMeasure,
     Performance,
+    performance,
   };
 })(this);

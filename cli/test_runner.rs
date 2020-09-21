@@ -2,10 +2,10 @@
 
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
 use std::path::Path;
 use std::path::PathBuf;
-use url::Url;
 
 pub(crate) fn is_supported(p: &Path) -> bool {
   use std::path::Component;
@@ -35,7 +35,7 @@ pub fn prepare_test_modules_urls<F>(
   include: Vec<String>,
   root_path: &PathBuf,
   filter: F,
-) -> Result<Vec<Url>, ErrBox>
+) -> Result<Vec<Url>, AnyError>
 where
   F: Fn(&Path) -> bool,
 {

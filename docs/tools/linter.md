@@ -51,9 +51,12 @@ For more detail, run `deno lint --help`.
 - `no-extra-boolean-cast`
 - `no-extra-non-null-assertion`
 - `no-extra-semi`
+- `no-fallthrough`
 - `no-func-assign`
-- `no-inner-declarations`
+- `no-global-assign`
+- `no-import-assign`
 - `no-inferrable-types`
+- `no-inner-declarations`
 - `no-invalid-regexp`
 - `no-irregular-whitespace`
 - `no-misused-new`
@@ -63,12 +66,14 @@ For more detail, run `deno lint --help`.
 - `no-obj-calls`
 - `no-octal`
 - `no-prototype-builtins`
+- `no-redeclare`
 - `no-regex-spaces`
 - `no-self-assign`
 - `no-setter-return`
 - `no-shadow-restricted-names`
 - `no-this-alias`
 - `no-this-before-super`
+- `no-undef`
 - `no-unreachable`
 - `no-unsafe-finally`
 - `no-unsafe-negation`
@@ -108,6 +113,16 @@ Ignore directive must be placed before first stament or declaration:
 // deno-lint-ignore-file
 
 import { bar } from "./bar.js";
+
+function foo(): any {
+  // ...
+}
+```
+
+You can also ignore certain diagnostics in the whole file
+
+```ts
+// deno-lint-ignore-file no-explicit-any no-empty
 
 function foo(): any {
   // ...

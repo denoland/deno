@@ -1,36 +1,37 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::state::State;
-use deno_core::ErrBox;
-use deno_core::OpRegistry;
+use crate::permissions::Permissions;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
-use std::rc::Rc;
-use url::Url;
 
-pub fn init(s: &Rc<State>) {
-  s.register_op_json_sync("op_exit", op_exit);
-  s.register_op_json_sync("op_env", op_env);
-  s.register_op_json_sync("op_exec_path", op_exec_path);
-  s.register_op_json_sync("op_set_env", op_set_env);
-  s.register_op_json_sync("op_get_env", op_get_env);
-  s.register_op_json_sync("op_delete_env", op_delete_env);
-  s.register_op_json_sync("op_hostname", op_hostname);
-  s.register_op_json_sync("op_loadavg", op_loadavg);
-  s.register_op_json_sync("op_os_release", op_os_release);
-  s.register_op_json_sync("op_system_memory_info", op_system_memory_info);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_exit", op_exit);
+  super::reg_json_sync(rt, "op_env", op_env);
+  super::reg_json_sync(rt, "op_exec_path", op_exec_path);
+  super::reg_json_sync(rt, "op_set_env", op_set_env);
+  super::reg_json_sync(rt, "op_get_env", op_get_env);
+  super::reg_json_sync(rt, "op_delete_env", op_delete_env);
+  super::reg_json_sync(rt, "op_hostname", op_hostname);
+  super::reg_json_sync(rt, "op_loadavg", op_loadavg);
+  super::reg_json_sync(rt, "op_os_release", op_os_release);
+  super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
 }
 
 fn op_exec_path(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let current_exe = env::current_exe().unwrap();
-  state.check_read_blind(&current_exe, "exec_path")?;
+  state
+    .borrow::<Permissions>()
+    .check_read_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -45,22 +46,22 @@ struct SetEnv {
 }
 
 fn op_set_env(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: SetEnv = serde_json::from_value(args)?;
-  state.check_env()?;
+  state.borrow::<Permissions>().check_env()?;
   env::set_var(args.key, args.value);
   Ok(json!({}))
 }
 
 fn op_env(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  state.check_env()?;
+) -> Result<Value, AnyError> {
+  state.borrow::<Permissions>().check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
   Ok(json!(v))
 }
@@ -71,12 +72,12 @@ struct GetEnv {
 }
 
 fn op_get_env(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: GetEnv = serde_json::from_value(args)?;
-  state.check_env()?;
+  state.borrow::<Permissions>().check_env()?;
   let r = match env::var(args.key) {
     Err(env::VarError::NotPresent) => json!([]),
     v => json!([v?]),
@@ -90,12 +91,12 @@ struct DeleteEnv {
 }
 
 fn op_delete_env(
-  state: &State,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: DeleteEnv = serde_json::from_value(args)?;
-  state.check_env()?;
+  state.borrow::<Permissions>().check_env()?;
   env::remove_var(args.key);
   Ok(json!({}))
 }
@@ -106,21 +107,22 @@ struct Exit {
 }
 
 fn op_exit(
-  _state: &State,
+  _state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
 }
 
 fn op_loadavg(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.loadavg");
-  state.check_env()?;
+) -> Result<Value, AnyError> {
+  let cli_state = super::global_state(state);
+  cli_state.check_unstable("Deno.loadavg");
+  state.borrow::<Permissions>().check_env()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(json!([loadavg.one, loadavg.five, loadavg.fifteen])),
     Err(_) => Ok(json!([0f64, 0f64, 0f64])),
@@ -128,34 +130,37 @@ fn op_loadavg(
 }
 
 fn op_hostname(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.hostname");
-  state.check_env()?;
+) -> Result<Value, AnyError> {
+  let cli_state = super::global_state(state);
+  cli_state.check_unstable("Deno.hostname");
+  state.borrow::<Permissions>().check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(json!(hostname))
 }
 
 fn op_os_release(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.osRelease");
-  state.check_env()?;
+) -> Result<Value, AnyError> {
+  let cli_state = super::global_state(state);
+  cli_state.check_unstable("Deno.osRelease");
+  state.borrow::<Permissions>().check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(json!(release))
 }
 
 fn op_system_memory_info(
-  state: &State,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.systemMemoryInfo");
-  state.check_env()?;
+) -> Result<Value, AnyError> {
+  let cli_state = super::global_state(state);
+  cli_state.check_unstable("Deno.systemMemoryInfo");
+  state.borrow::<Permissions>().check_env()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(json!({
       "total": info.total,
