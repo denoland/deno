@@ -710,4 +710,31 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     assert!(content == "{}");
   }
+
+  #[test]
+  fn install_shell_escaping() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    install(
+      Flags::default(),
+      "http://localhost:4545/cli/tests/echo_server.ts",
+      vec!["\"".to_string()],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
+      false,
+    )
+    .expect("Install failed");
+
+    let mut file_path = bin_dir.join("echo_test");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+
+    assert!(file_path.exists());
+    let content = fs::read_to_string(file_path).unwrap();
+    println!("{}", content);
+    assert!(content.contains(r#"run 'http://localhost:4545/cli/tests/echo_server.ts' '"'"#));
+  }
 }
