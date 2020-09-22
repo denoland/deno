@@ -14,7 +14,7 @@ import { unreachable } from "../../../testing/asserts.ts";
 // This setup automatically exports maps from both "win", "linux" & darwin:
 // https://github.com/schwarzkopfb/node_errno_map
 
-type ErrMapData = [number, [string, string]][];
+type ErrMapData = Array<[number, [string, string]]>;
 
 const windows: ErrMapData = [
   [-4093, ["E2BIG", "argument list too long"]],
