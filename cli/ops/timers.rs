@@ -5,7 +5,7 @@
 //! As an optimization, we want to avoid an expensive calls into rust for every
 //! setTimeout in JavaScript. Thus in //js/timers.ts a data structure is
 //! implemented that calls into Rust for only the smallest timeout.  Thus we
-//! only need to be able to start, cancel and awwait a single timer (or Delay, as Tokio
+//! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
