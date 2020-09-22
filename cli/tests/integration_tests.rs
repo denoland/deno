@@ -1371,6 +1371,11 @@ itest!(_004_set_timeout {
   output: "004_set_timeout.ts.out",
 });
 
+itest!(_004_set_timeout_clear {
+  args: "run --quiet --reload 004_set_timeout_clear.ts",
+  output: "004_set_timeout_clear.ts.out",
+});
+
 itest!(_005_more_imports {
   args: "run --quiet --reload 005_more_imports.ts",
   output: "005_more_imports.ts.out",

@@ -50,7 +50,7 @@ impl GlobalTimer {
       self.cancel();
     }
     assert!(self.tx.is_none());
-    assert!(self.future.is_none());
+    self.future.take();
 
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
@@ -107,12 +107,14 @@ async fn op_global_timer(
   _args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let timer_fut = {
+  let maybe_timer_fut = {
     let mut s = state.borrow_mut();
     let global_timer = s.borrow_mut::<GlobalTimer>();
-    global_timer.future.take().unwrap()
+    global_timer.future.take()
   };
-  let _ = timer_fut.await;
+  if let Some(timer_fut) = maybe_timer_fut {
+    let _ = timer_fut.await;
+  }
   Ok(json!({}))
 }
 
