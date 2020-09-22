@@ -97,6 +97,7 @@ pub struct JsError {
   pub start_column: Option<i64>, // 0-based
   pub end_column: Option<i64>,   // 0-based
   pub frames: Vec<JsStackFrame>,
+  pub stack: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -166,7 +167,7 @@ impl JsError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let (message, frames) = if exception.is_native_error() {
+    let (message, frames, stack) = if exception.is_native_error() {
       // The exception is a JS Error object.
       let exception: v8::Local<v8::Object> =
         exception.clone().try_into().unwrap();
@@ -184,7 +185,14 @@ impl JsError {
 
       // Access error.stack to ensure that prepareStackTrace() has been called.
       // This should populate error.__callSiteEvals.
-      let _ = get_property(scope, exception, "stack");
+      let stack: Option<v8::Local<v8::String>> =
+        get_property(scope, exception, "stack")
+          .unwrap()
+          .try_into()
+          .ok();
+      let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+
+      // FIXME(bartlmieju): the rest of this function is CLI only
 
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
@@ -300,12 +308,12 @@ impl JsError {
           });
         }
       }
-      (message, frames)
+      (message, frames, stack)
     } else {
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
-      (msg.get(scope).to_rust_string_lossy(scope), vec![])
+      (msg.get(scope).to_rust_string_lossy(scope), vec![], None)
     };
 
     Self {
@@ -321,6 +329,7 @@ impl JsError {
       start_column: msg.get_start_column().try_into().ok(),
       end_column: msg.get_end_column().try_into().ok(),
       frames,
+      stack,
     }
   }
 }
@@ -339,35 +348,24 @@ fn format_source_loc(
 
 impl Display for JsError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    if let Some(stack) = &self.stack {
+      let stack_lines = stack.lines();
+      if stack_lines.count() > 1 {
+        return writeln!(f, "{}", stack);
+      }
+    }
+
+    writeln!(f, "{}", self.message)?;
     if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {
-        assert!(self.line_number.is_some());
-        assert!(self.start_column.is_some());
         let source_loc = format_source_loc(
           script_resource_name,
           self.line_number.unwrap(),
           self.start_column.unwrap(),
         );
-        write!(f, "{}", source_loc)?;
-      }
-      if self.source_line.is_some() {
-        let source_line = self.source_line.as_ref().unwrap();
-        write!(f, "\n{}\n", source_line)?;
-        let mut s = String::new();
-        for i in 0..self.end_column.unwrap() {
-          if i >= self.start_column.unwrap() {
-            s.push('^');
-          } else if source_line.chars().nth(i as usize).unwrap() == '\t' {
-            s.push('\t');
-          } else {
-            s.push(' ');
-          }
-        }
-        writeln!(f, "{}", s)?;
+        writeln!(f, "    at {}", source_loc)?;
       }
     }
-
-    write!(f, "{}", self.message)?;
     Ok(())
   }
 }

@@ -5,7 +5,6 @@ extern crate log;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::js_check;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -196,5 +195,5 @@ fn main() {
       .unwrap();
     isolate.await
   };
-  js_check(runtime.block_on(future));
+  runtime.block_on(future).unwrap();
 }
