@@ -22,6 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // It will do so until we'll have Node errors completely ported (#5944):
+
 // Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L251
 // Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L299
 // Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L325
@@ -43,6 +44,25 @@ class ERR_INVALID_ARG_TYPE extends TypeError {
   }
 }
 
+class ERR_OUT_OF_RANGE extends RangeError {
+  code = "ERR_OUT_OF_RANGE";
+
+  constructor(str: string, range: string, received: unknown) {
+    super(
+      `The value of "${str}" is out of range. It must be ${range}. Received ${received}`,
+    );
+
+    const { name } = this;
+    // Add the error code to the name to include it in the stack trace.
+    this.name = `${name} [${this.code}]`;
+    // Access the stack to generate the error message including the error code from the name.
+    this.stack;
+    // Reset the name to the actual name.
+    this.name = name;
+  }
+}
+
 export const codes = {
   ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
 };

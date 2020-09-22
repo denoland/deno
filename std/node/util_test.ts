@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../testing/asserts.ts";
+
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "../testing/asserts.ts";
 import { stripColor } from "../fmt/colors.ts";
 import * as util from "./util.ts";
 
@@ -180,5 +186,35 @@ Deno.test({
   fn() {
     // Test verifies the method is exposed. See _util/_util_types_test for details
     assert(util.types.isDate(new Date()));
+  },
+});
+
+Deno.test({
+  name: "[util] getSystemErrorName()",
+  fn() {
+    assertThrows(
+      () => (util.getSystemErrorName as any)(),
+      TypeError,
+    );
+    assertThrows(
+      () => (util.getSystemErrorName as any)(1),
+      RangeError,
+    );
+
+    assertStrictEquals(util.getSystemErrorName(-424242), undefined);
+
+    switch (Deno.build.os) {
+      case "windows":
+        assertStrictEquals(util.getSystemErrorName(-4091), "EADDRINUSE");
+        break;
+
+      case "darwin":
+        assertStrictEquals(util.getSystemErrorName(-48), "EADDRINUSE");
+        break;
+
+      case "linux":
+        assertStrictEquals(util.getSystemErrorName(-98), "EADDRINUSE");
+        break;
+    }
   },
 });
