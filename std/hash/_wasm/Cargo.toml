@@ -24,3 +24,6 @@ wasm-bindgen = "0.2.68"
 [profile.release]
 lto = true
 opt-level = 3
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O", "--enable-mutable-globals"]
