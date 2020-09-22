@@ -422,12 +422,12 @@ struct CompileResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TranspileTsOptions {
-  check_js: bool,
-  emit_decorator_metadata: bool,
-  jsx: String,
-  jsx_factory: String,
-  jsx_fragment_factory: String,
+pub struct TranspileTsOptions {
+  pub check_js: bool,
+  pub emit_decorator_metadata: bool,
+  pub jsx: String,
+  pub jsx_factory: String,
+  pub jsx_fragment_factory: String,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -843,7 +843,9 @@ impl TsCompiler {
         ModuleSpecifier::resolve_url_or_path(&source_file.file_name)?;
       let parsed_module =
         parse(&specifier, &source_file.source_code, &media_type)?;
-      let (stripped_source, _) = parsed_module.transpile(&transpile_options)?;
+      let (stripped_source_doc, _) =
+        parsed_module.transpile(&transpile_options)?;
+      let stripped_source = stripped_source_doc.to_string()?;
 
       // TODO(bartlomieju): this is superfluous, just to make caching function happy
       let emitted_filename = PathBuf::from(&source_file.file_name)
