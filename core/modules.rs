@@ -466,7 +466,6 @@ impl Modules {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::js_check;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use futures::future::FutureExt;
@@ -654,7 +653,7 @@ mod tests {
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    js_check(runtime.mod_evaluate(a_id));
+    runtime.mod_evaluate(a_id).unwrap();
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -721,7 +720,7 @@ mod tests {
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      js_check(runtime.mod_evaluate(circular1_id));
+      runtime.mod_evaluate(circular1_id).unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -798,7 +797,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      js_check(runtime.mod_evaluate(redirect1_id));
+      runtime.mod_evaluate(redirect1_id).unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -948,7 +947,7 @@ mod tests {
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    js_check(runtime.mod_evaluate(main_id));
+    runtime.mod_evaluate(main_id).unwrap();
 
     let l = loads.lock().unwrap();
     assert_eq!(

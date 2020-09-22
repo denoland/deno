@@ -78,6 +78,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     start_column,
     end_column,
     frames: js_error.frames.clone(),
+    stack: None,
   }
 }
 
@@ -204,6 +205,7 @@ mod tests {
       start_column: Some(16),
       end_column: None,
       frames: vec![],
+      stack: None,
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
