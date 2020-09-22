@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
@@ -6,12 +8,13 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::ready;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
-use futures::future::poll_fn;
-use futures::future::FutureExt;
-use futures::ready;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::Pin;

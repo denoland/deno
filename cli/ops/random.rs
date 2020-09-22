@@ -1,12 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
-use serde_json::Value;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_get_random_values", op_get_random_values);

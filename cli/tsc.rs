@@ -18,17 +18,20 @@ use crate::module_graph::ModuleGraphLoader;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-use crate::state::CliState;
+use crate::state::CliModuleLoader;
 use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
 use core::task::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::Future;
+use deno_core::futures::future::FutureExt;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use futures::future::Future;
-use futures::future::FutureExt;
 use log::debug;
 use log::info;
 use log::Level;
@@ -36,8 +39,6 @@ use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
-use serde_json::json;
-use serde_json::Value;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -48,7 +49,6 @@ use std::ops::DerefMut;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -132,9 +132,25 @@ pub struct CompilerWorker {
 }
 
 impl CompilerWorker {
-  pub fn new(name: String, state: &Rc<CliState>) -> Self {
-    let mut worker =
-      Worker::new(name, Some(js::compiler_isolate_init()), state);
+  pub fn new(
+    name: String,
+    permissions: Permissions,
+    global_state: Arc<GlobalState>,
+  ) -> Self {
+    let main_module =
+      ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
+    // TODO(bartlomieju): compiler worker shouldn't require any loader/state
+    let loader = CliModuleLoader::new(None);
+    let mut worker = Worker::new(
+      name,
+      Some(js::compiler_isolate_init()),
+      permissions,
+      main_module,
+      global_state,
+      loader,
+      false,
+      true,
+    );
     let response = Arc::new(Mutex::new(None));
     ops::runtime::init(&mut worker);
     ops::errors::init(&mut worker);
@@ -215,17 +231,12 @@ fn create_compiler_worker(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
-  let entry_point =
-    ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
-  let worker_state =
-    CliState::new(&global_state, Some(permissions), entry_point, None, true)
-      .expect("Unable to create worker state");
-
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
   global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
 
-  let mut worker = CompilerWorker::new("TS".to_string(), &worker_state);
+  let mut worker =
+    CompilerWorker::new("TS".to_string(), permissions, global_state.clone());
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
     .unwrap();

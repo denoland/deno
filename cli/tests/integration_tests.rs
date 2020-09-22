@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use deno_core::futures;
+use deno_core::futures::prelude::*;
 use deno_core::url;
-use futures::prelude::*;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
@@ -1058,6 +1059,32 @@ fn repl_test_console_log() {
 }
 
 #[test]
+fn repl_test_object_literal() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{}", "{ foo: 'bar' }"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("{}\n{ foo: \"bar\" }\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_block_expression() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{};", "{\"\"}"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("undefined\n\"\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
 fn repl_cwd() {
   let (_out, err) = util::run_and_collect_output(
     true,
@@ -1711,6 +1738,12 @@ itest!(_064_permissions_revoke_global {
   output: "064_permissions_revoke_global.ts.out",
 });
 
+itest!(_065_import_map_info {
+  args:
+    "info --quiet --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
+  output: "065_import_map_info.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -1785,6 +1818,12 @@ itest!(fmt_check_tests_dir {
   args: "fmt --check ./",
   output: "fmt/expected_fmt_check_tests_dir.out",
   exit_code: 1,
+});
+
+itest!(fmt_quiet_check_fmt_dir {
+  args: "fmt --check --quiet fmt/",
+  output_str: Some(""),
+  exit_code: 0,
 });
 
 itest!(fmt_check_formatted_files {
@@ -2354,6 +2393,12 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_quiet {
+  args: "lint --unstable --quiet lint/file1.js",
+  output: "lint/expected_quiet.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_json {
   args:
     "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
@@ -2385,6 +2430,19 @@ itest!(deno_lint_from_stdin_json {
   input: Some("let a: any;"),
   output: "lint/expected_from_stdin_json.out",
   exit_code: 1,
+});
+
+itest!(deno_lint_rules {
+  args: "lint --unstable --rules",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
+});
+
+// Make sure that the rules are printed if quiet option is enabled.
+itest!(deno_lint_rules_quiet {
+  args: "lint --unstable --rules -q",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
 });
 
 itest!(deno_doc_builtin {
@@ -3057,7 +3115,7 @@ async fn inspector_pause() {
   async fn ws_read_msg(
     socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
   ) -> String {
-    use futures::stream::StreamExt;
+    use deno_core::futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
       // FIXME(bartlomieju): fails because there's a file loaded
@@ -3540,7 +3598,7 @@ fn lint_ignore_unexplicit_files() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert!(output.stderr.is_empty());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
 }
 
 #[test]
@@ -3557,5 +3615,5 @@ fn fmt_ignore_unexplicit_files() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert!(output.stderr.is_empty());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
 }

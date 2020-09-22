@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::futures::future::FutureExt;
 use deno_core::BufVec;
 use deno_core::Op;
 use deno_core::OpFn;
 use deno_core::OpState;
-use futures::future::FutureExt;
 use std::cell::RefCell;
 use std::future::Future;
 use std::iter::repeat;

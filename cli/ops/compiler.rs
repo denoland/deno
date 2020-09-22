@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use std::sync::Arc;
 use std::sync::Mutex;
 

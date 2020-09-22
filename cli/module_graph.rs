@@ -16,11 +16,11 @@ use crate::version;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::stream::StreamExt;
+use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
-use futures::stream::FuturesUnordered;
-use futures::stream::StreamExt;
-use futures::Future;
-use futures::FutureExt;
 use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
@@ -595,6 +595,8 @@ impl ModuleGraphLoader {
 mod tests {
   use super::*;
   use crate::global_state::GlobalState;
+  use deno_core::serde_json;
+  use deno_core::serde_json::json;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use serde_json::{self, map::Map, Number, Value};
+use deno_core::serde_json::{self, map::Map, Number, Value};
 use std::{
   convert::From,
   env, fs,

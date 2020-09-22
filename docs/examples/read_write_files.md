@@ -1,4 +1,4 @@
-# Read and Write Files
+# Read and write files
 
 ## Concepts
 

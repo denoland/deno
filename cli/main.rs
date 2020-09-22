@@ -6,8 +6,6 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde_json;
 
 mod ast;
 mod checksum;
@@ -68,7 +66,10 @@ use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
-use deno_core::futures;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::Future;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
@@ -76,11 +77,9 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
-use futures::future::FutureExt;
-use futures::Future;
+use global_state::exit_unstable;
 use log::Level;
 use log::LevelFilter;
-use state::exit_unstable;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -191,12 +190,10 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), AnyError> {
-  // First, fetch and compile the module; this step ensures that the module exists.
-  let mut fetch_flags = flags.clone();
-  fetch_flags.reload = true;
-  let global_state = GlobalState::new(fetch_flags)?;
+  let global_state = GlobalState::new(flags.clone())?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
 }
@@ -604,7 +601,7 @@ async fn test_command(
   (&mut *worker).await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    let script_coverage = coverage_collector.take_precise_coverage().await?;
+    let script_coverage = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
     let filtered_coverage = coverage::filter_script_coverages(
@@ -614,7 +611,7 @@ async fn test_command(
     );
 
     let pretty_coverage_reporter =
-      PrettyCoverageReporter::new(global_state, filtered_coverage);
+      PrettyCoverageReporter::new(filtered_coverage);
     let report = pretty_coverage_reporter.get_report();
     print!("{}", report)
   }

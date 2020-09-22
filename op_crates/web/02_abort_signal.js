@@ -5,6 +5,8 @@
   const signalAbort = Symbol("signalAbort");
   const remove = Symbol("remove");
 
+  const illegalConstructorKey = Symbol("illegalConstructorKey");
+
   class AbortSignal extends EventTarget {
     #aborted = false;
     #abortAlgorithms = new Set();
@@ -29,7 +31,10 @@
       this.#abortAlgorithms.delete(algorithm);
     }
 
-    constructor() {
+    constructor(key) {
+      if (key != illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
       super();
       this.onabort = null;
       this.addEventListener("abort", (evt) => {
@@ -50,7 +55,7 @@
   }
 
   class AbortController {
-    #signal = new AbortSignal();
+    #signal = new AbortSignal(illegalConstructorKey);
 
     get signal() {
       return this.#signal;

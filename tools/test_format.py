@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # This program fails if ./tools/format.py changes any files.
 
 import sys
