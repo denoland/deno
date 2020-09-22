@@ -332,7 +332,7 @@ impl JsRuntime {
   pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
-      js_check(self.execute("core.js", include_str!("core.js")));
+      self.execute("core.js", include_str!("core.js")).unwrap();
     }
   }
 
@@ -1359,16 +1359,18 @@ pub mod tests {
 
     runtime.register_op("test", dispatch);
 
-    js_check(runtime.execute(
-      "setup.js",
-      r#"
+    runtime
+      .execute(
+        "setup.js",
+        r#"
         function assert(cond) {
           if (!cond) {
             throw Error("assert");
           }
         }
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     (runtime, dispatch_count)
   }
@@ -1376,9 +1378,10 @@ pub mod tests {
   #[test]
   fn test_dispatch() {
     let (mut runtime, dispatch_count) = setup(Mode::Async);
-    js_check(runtime.execute(
-      "filename.js",
-      r#"
+    runtime
+      .execute(
+        "filename.js",
+        r#"
         let control = new Uint8Array([42]);
         Deno.core.send(1, control);
         async function main() {
@@ -1386,40 +1389,45 @@ pub mod tests {
         }
         main();
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
   }
 
   #[test]
   fn test_dispatch_no_zero_copy_buf() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(0));
-    js_check(runtime.execute(
-      "filename.js",
-      r#"
+    runtime
+      .execute(
+        "filename.js",
+        r#"
         Deno.core.send(1);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn test_dispatch_stack_zero_copy_bufs() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
-    js_check(runtime.execute(
-      "filename.js",
-      r#"
+    runtime
+      .execute(
+        "filename.js",
+        r#"
         let zero_copy_a = new Uint8Array([0]);
         let zero_copy_b = new Uint8Array([1]);
         Deno.core.send(1, zero_copy_a, zero_copy_b);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn test_dispatch_heap_zero_copy_bufs() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(5));
-    js_check(runtime.execute(
+    runtime.execute(
       "filename.js",
       r#"
         let zero_copy_a = new Uint8Array([0]);
@@ -1429,7 +1437,7 @@ pub mod tests {
         let zero_copy_e = new Uint8Array([4]);
         Deno.core.send(1, zero_copy_a, zero_copy_b, zero_copy_c, zero_copy_d, zero_copy_e);
         "#,
-    ));
+    ).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1438,39 +1446,45 @@ pub mod tests {
     run_in_task(|cx| {
       let (mut runtime, dispatch_count) = setup(Mode::Async);
 
-      js_check(runtime.execute(
-        "setup2.js",
-        r#"
+      runtime
+        .execute(
+          "setup2.js",
+          r#"
          let nrecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            nrecv++;
          });
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-      js_check(runtime.execute(
-        "check1.js",
-        r#"
+      runtime
+        .execute(
+          "check1.js",
+          r#"
          assert(nrecv == 0);
          let control = new Uint8Array([42]);
          Deno.core.send(1, control);
          assert(nrecv == 0);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      js_check(runtime.execute(
-        "check2.js",
-        r#"
+      runtime
+        .execute(
+          "check2.js",
+          r#"
          assert(nrecv == 1);
          Deno.core.send(1, control);
          assert(nrecv == 1);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
-      js_check(runtime.execute("check3.js", "assert(nrecv == 2)"));
+      runtime.execute("check3.js", "assert(nrecv == 2)").unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
@@ -1481,9 +1495,10 @@ pub mod tests {
   fn test_poll_async_optional_ops() {
     run_in_task(|cx| {
       let (mut runtime, dispatch_count) = setup(Mode::AsyncUnref);
-      js_check(runtime.execute(
-        "check1.js",
-        r#"
+      runtime
+        .execute(
+          "check1.js",
+          r#"
           Deno.core.setAsyncHandler(1, (buf) => {
             // This handler will never be called
             assert(false);
@@ -1491,7 +1506,8 @@ pub mod tests {
           let control = new Uint8Array([42]);
           Deno.core.send(1, control);
         "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       // The above op never finish, but runtime can finish
       // because the op is an unreffed async op.
@@ -1559,9 +1575,10 @@ pub mod tests {
   #[test]
   fn overflow_req_sync() {
     let (mut runtime, dispatch_count) = setup(Mode::OverflowReqSync);
-    js_check(runtime.execute(
-      "overflow_req_sync.js",
-      r#"
+    runtime
+      .execute(
+        "overflow_req_sync.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
@@ -1572,7 +1589,8 @@ pub mod tests {
         assert(response[0] == 43);
         assert(asyncRecv == 0);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1581,9 +1599,10 @@ pub mod tests {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
     let (mut runtime, dispatch_count) = setup(Mode::OverflowResSync);
-    js_check(runtime.execute(
-      "overflow_res_sync.js",
-      r#"
+    runtime
+      .execute(
+        "overflow_res_sync.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
@@ -1594,7 +1613,8 @@ pub mod tests {
         assert(response[0] == 99);
         assert(asyncRecv == 0);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1602,9 +1622,10 @@ pub mod tests {
   fn overflow_req_async() {
     run_in_task(|cx| {
       let (mut runtime, dispatch_count) = setup(Mode::OverflowReqAsync);
-      js_check(runtime.execute(
-        "overflow_req_async.js",
-        r#"
+      runtime
+        .execute(
+          "overflow_req_async.js",
+          r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 1);
@@ -1618,10 +1639,13 @@ pub mod tests {
          assert(response == null);
          assert(asyncRecv == 0);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
-      js_check(runtime.execute("check.js", "assert(asyncRecv == 1);"));
+      runtime
+        .execute("check.js", "assert(asyncRecv == 1);")
+        .unwrap();
     });
   }
 
@@ -1631,9 +1655,10 @@ pub mod tests {
       // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
       // should optimize this.
       let (mut runtime, dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(runtime.execute(
-        "overflow_res_async.js",
-        r#"
+      runtime
+        .execute(
+          "overflow_res_async.js",
+          r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 100 * 1024 * 1024);
@@ -1646,10 +1671,13 @@ pub mod tests {
          assert(response == null);
          assert(asyncRecv == 0);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       poll_until_ready(&mut runtime, 3).unwrap();
-      js_check(runtime.execute("check.js", "assert(asyncRecv == 1);"));
+      runtime
+        .execute("check.js", "assert(asyncRecv == 1);")
+        .unwrap();
     });
   }
 
@@ -1659,9 +1687,10 @@ pub mod tests {
     // should optimize this.
     run_in_task(|_cx| {
       let (mut runtime, dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(runtime.execute(
-        "overflow_res_multiple_dispatch_async.js",
-        r#"
+      runtime
+        .execute(
+          "overflow_res_multiple_dispatch_async.js",
+          r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 100 * 1024 * 1024);
@@ -1677,10 +1706,13 @@ pub mod tests {
          // are done even if shared space overflows
          Deno.core.dispatch(1, control);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       poll_until_ready(&mut runtime, 3).unwrap();
-      js_check(runtime.execute("check.js", "assert(asyncRecv == 2);"));
+      runtime
+        .execute("check.js", "assert(asyncRecv == 2);")
+        .unwrap();
     });
   }
 
@@ -1688,9 +1720,10 @@ pub mod tests {
   fn test_pre_dispatch() {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(runtime.execute(
-        "bad_op_id.js",
-        r#"
+      runtime
+        .execute(
+          "bad_op_id.js",
+          r#"
           let thrown;
           try {
             Deno.core.dispatch(100);
@@ -1699,7 +1732,8 @@ pub mod tests {
           }
           assert(String(thrown) === "TypeError: Unknown op id: 100");
          "#,
-      ));
+        )
+        .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -1710,7 +1744,9 @@ pub mod tests {
   fn core_test_js() {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      js_check(runtime.execute("core_test.js", include_str!("core_test.js")));
+      runtime
+        .execute("core_test.js", include_str!("core_test.js"))
+        .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -1731,10 +1767,12 @@ pub mod tests {
   fn test_encode_decode() {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      js_check(runtime.execute(
-        "encode_decode_test.js",
-        include_str!("encode_decode_test.js"),
-      ));
+      runtime
+        .execute(
+          "encode_decode_test.js",
+          include_str!("encode_decode_test.js"),
+        )
+        .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -1748,7 +1786,7 @@ pub mod tests {
         will_snapshot: true,
         ..Default::default()
       });
-      js_check(runtime.execute("a.js", "a = 1 + 2"));
+      runtime.execute("a.js", "a = 1 + 2").unwrap();
       runtime.snapshot()
     };
 
@@ -1757,7 +1795,9 @@ pub mod tests {
       startup_snapshot: Some(snapshot),
       ..Default::default()
     });
-    js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
+    runtime2
+      .execute("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
   }
 
   #[test]
@@ -1767,7 +1807,7 @@ pub mod tests {
         will_snapshot: true,
         ..Default::default()
       });
-      js_check(runtime.execute("a.js", "a = 1 + 2"));
+      runtime.execute("a.js", "a = 1 + 2").unwrap();
       let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
@@ -1777,7 +1817,9 @@ pub mod tests {
       startup_snapshot: Some(snapshot),
       ..Default::default()
     });
-    js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
+    runtime2
+      .execute("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
   }
 
   #[test]
@@ -1924,16 +1966,18 @@ pub mod tests {
     });
     runtime.register_op("test", dispatcher);
 
-    js_check(runtime.execute(
-      "setup.js",
-      r#"
+    runtime
+      .execute(
+        "setup.js",
+        r#"
         function assert(cond) {
           if (!cond) {
             throw Error("assert");
           }
         }
         "#,
-    ));
+      )
+      .unwrap();
 
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
@@ -1970,14 +2014,14 @@ pub mod tests {
       assert_eq!(imports.len(), 0);
     }
 
-    js_check(runtime.mod_instantiate(mod_b));
+    runtime.mod_instantiate(mod_b).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    js_check(runtime.mod_instantiate(mod_a));
+    runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    js_check(runtime.mod_evaluate(mod_a));
+    runtime.mod_evaluate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -2022,14 +2066,16 @@ pub mod tests {
         ..Default::default()
       });
 
-      js_check(runtime.execute(
-        "file:///dyn_import2.js",
-        r#"
+      runtime
+        .execute(
+          "file:///dyn_import2.js",
+          r#"
         (async () => {
           await import("/foo.js");
         })();
         "#,
-      ));
+        )
+        .unwrap();
 
       assert_eq!(count.load(Ordering::Relaxed), 0);
       // We should get an error here.
@@ -2105,9 +2151,10 @@ pub mod tests {
       });
 
       // Dynamically import mod_b
-      js_check(runtime.execute(
-        "file:///dyn_import3.js",
-        r#"
+      runtime
+        .execute(
+          "file:///dyn_import3.js",
+          r#"
           (async () => {
             let mod = await import("./b.js");
             if (mod.b() !== 'b') {
@@ -2120,7 +2167,8 @@ pub mod tests {
             }
           })();
           "#,
-      ));
+        )
+        .unwrap();
 
       // First poll runs `prepare_load` hook.
       assert!(matches!(runtime.poll_unpin(cx), Poll::Pending));
@@ -2146,9 +2194,10 @@ pub mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      js_check(runtime.execute(
-        "file:///dyn_import3.js",
-        r#"
+      runtime
+        .execute(
+          "file:///dyn_import3.js",
+          r#"
           (async () => {
             let mod = await import("./b.js");
             if (mod.b() !== 'b') {
@@ -2158,7 +2207,8 @@ pub mod tests {
             Deno.core.ops();
           })();
           "#,
-      ));
+        )
+        .unwrap();
       // First poll runs `prepare_load` hook.
       let _ = runtime.poll_unpin(cx);
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
@@ -2211,7 +2261,7 @@ pub mod tests {
     )
     .unwrap();
 
-    js_check(runtime.mod_evaluate(module_id));
+    runtime.mod_evaluate(module_id).unwrap();
 
     let _snapshot = runtime.snapshot();
   }
@@ -2246,9 +2296,10 @@ main();
   fn test_error_async_stack() {
     run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions::default());
-      js_check(runtime.execute(
-        "error_async_stack.js",
-        r#"
+      runtime
+        .execute(
+          "error_async_stack.js",
+          r#"
 (async () => {
   const p = (async () => {
     await Promise.resolve().then(() => {
@@ -2263,7 +2314,8 @@ main();
     throw error;
   }
 })();"#,
-      ));
+        )
+        .unwrap();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5

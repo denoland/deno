@@ -2,7 +2,6 @@
 
 mod op_fetch_asset;
 
-use deno_core::js_check;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use std::collections::HashMap;
@@ -24,10 +23,12 @@ fn create_snapshot(
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
-    js_check(isolate.execute(
-      &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-      &std::fs::read_to_string(&file).unwrap(),
-    ));
+    isolate
+      .execute(
+        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+        &std::fs::read_to_string(&file).unwrap(),
+      )
+      .unwrap();
   }
 
   let snapshot = isolate.snapshot();

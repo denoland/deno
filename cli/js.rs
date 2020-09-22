@@ -34,15 +34,17 @@ fn cli_snapshot() {
     startup_snapshot: Some(deno_isolate_init()),
     ..Default::default()
   });
-  deno_core::js_check(isolate.execute(
-    "<anon>",
-    r#"
+  isolate
+    .execute(
+      "<anon>",
+      r#"
       if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
         throw Error("bad");
       }
       console.log("we have console.log!!!");
     "#,
-  ));
+    )
+    .unwrap();
 }
 
 #[test]
@@ -51,13 +53,15 @@ fn compiler_snapshot() {
     startup_snapshot: Some(compiler_isolate_init()),
     ..Default::default()
   });
-  deno_core::js_check(isolate.execute(
-    "<anon>",
-    r#"
+  isolate
+    .execute(
+      "<anon>",
+      r#"
     if (!(bootstrapCompilerRuntime)) {
         throw Error("bad");
       }
       console.log(`ts version: ${ts.version}`);
     "#,
-  ));
+    )
+    .unwrap();
 }
