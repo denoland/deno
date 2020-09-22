@@ -554,8 +554,8 @@ pub mod tests {
     assert!(cached_module.maybe_dependencies.is_none());
     assert_eq!(cached_module.media_type, MediaType::TypeScript);
     assert_eq!(
-      cached_module.source.as_bytes(),
-      b"export { printHello } from \"./print_hello.ts\";\n"
+      cached_module.source.to_str().unwrap(),
+      "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(cached_module.specifier, specifier);
   }
