@@ -1371,11 +1371,6 @@ itest!(_004_set_timeout {
   output: "004_set_timeout.ts.out",
 });
 
-itest!(_004_set_timeout_clear {
-  args: "run --quiet --reload 004_set_timeout_clear.ts",
-  output: "004_set_timeout_clear.ts.out",
-});
-
 itest!(_005_more_imports {
   args: "run --quiet --reload 005_more_imports.ts",
   output: "005_more_imports.ts.out",
@@ -1484,6 +1479,29 @@ itest!(deno_test_only {
   exit_code: 1,
   output: "deno_test_only.ts.out",
 });
+
+#[test]
+fn timeout_clear() {
+  // https://github.com/denoland/deno/issues/7599
+
+  use std::time::Duration;
+  use std::time::Instant;
+
+  let mut p = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("run")
+    .arg("--reload")
+    .arg("set_timeout_clear.ts")
+    .spawn()
+    .unwrap();
+  let start = Instant::now();
+  let status = p.wait().unwrap();
+  let end = Instant::now();
+  assert!(status.success());
+  // check that program did not run for 10 seconds
+  // for timeout to clear
+  assert!(end - start < Duration::new(10, 0));
+}
 
 #[test]
 fn workers() {
