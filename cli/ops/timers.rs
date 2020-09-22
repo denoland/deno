@@ -5,7 +5,7 @@
 //! As an optimization, we want to avoid an expensive calls into rust for every
 //! setTimeout in JavaScript. Thus in //js/timers.ts a data structure is
 //! implemented that calls into Rust for only the smallest timeout.  Thus we
-//! only need to be able to start and cancel a single timer (or Delay, as Tokio
+//! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
@@ -23,14 +23,19 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
+
 pub type StartTime = Instant;
+
+type TimerFuture = Pin<Box<dyn Future<Output = Result<(), ()>>>>;
 
 #[derive(Default)]
 pub struct GlobalTimer {
   tx: Option<oneshot::Sender<()>>,
+  pub future: Option<TimerFuture>,
 }
 
 impl GlobalTimer {
@@ -40,14 +45,12 @@ impl GlobalTimer {
     }
   }
 
-  pub fn new_timeout(
-    &mut self,
-    deadline: Instant,
-  ) -> impl Future<Output = Result<(), ()>> {
+  pub fn new_timeout(&mut self, deadline: Instant) {
     if self.tx.is_some() {
       self.cancel();
     }
     assert!(self.tx.is_none());
+    self.future.take();
 
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
@@ -56,12 +59,16 @@ impl GlobalTimer {
     let rx = rx
       .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 
-    futures::future::select(delay, rx).then(|_| futures::future::ok(()))
+    let fut = futures::future::select(delay, rx)
+      .then(|_| futures::future::ok(()))
+      .boxed_local();
+    self.future = Some(fut);
   }
 }
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
+  super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
   super::reg_json_sync(rt, "op_now", op_now);
 }
@@ -81,21 +88,40 @@ struct GlobalTimerArgs {
   timeout: u64,
 }
 
-async fn op_global_timer(
-  state: Rc<RefCell<OpState>>,
+// Set up a timer that will be later awaited by JS promise.
+// It's a separate op, because canceling a timeout immediately
+// after setting it caused a race condition (because Tokio timeout)
+// might have been registered after next event loop tick.
+//
+// See https://github.com/denoland/deno/issues/7599 for more
+// details.
+fn op_global_timer_start(
+  state: &mut OpState,
   args: Value,
-  _zero_copy: BufVec,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
-  let timer_fut = {
+  let global_timer = state.borrow_mut::<GlobalTimer>();
+  global_timer.new_timeout(deadline);
+  Ok(json!({}))
+}
+
+async fn op_global_timer(
+  state: Rc<RefCell<OpState>>,
+  _args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, AnyError> {
+  let maybe_timer_fut = {
     let mut s = state.borrow_mut();
     let global_timer = s.borrow_mut::<GlobalTimer>();
-    global_timer.new_timeout(deadline).boxed_local()
+    global_timer.future.take()
   };
-  let _ = timer_fut.await;
+  if let Some(timer_fut) = maybe_timer_fut {
+    let _ = timer_fut.await;
+  }
   Ok(json!({}))
 }
 
