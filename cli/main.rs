@@ -666,9 +666,11 @@ pub fn main() {
       target.push(':');
       target.push_str(&line_no.to_string());
     }
-    if record.level() >= Level::Info {
+    if record.level() <= Level::Info {
+      // Print ERROR, WARN, INFO logs as they are
       writeln!(buf, "{}", record.args())
     } else {
+      // Add prefix to DEBUG or TRACE logs
       writeln!(
         buf,
         "{} RS - {} - {}",
