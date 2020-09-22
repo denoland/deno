@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 export { promisify } from "./_util/_util_promisify.ts";
 export { callbackify } from "./_util/_util_callbackify.ts";
-import { codes } from "./_internal/errors/mod.ts";
-import errmap from "./_internal/errors/errmap.ts";
+import { codes, errorMap } from "./_errors.ts";
 import * as types from "./_util/_util_types.ts";
 export { types };
 
@@ -104,7 +103,7 @@ export function getSystemErrorName(code: number): string | undefined {
   if (code >= 0 || !NumberIsSafeInteger(code)) {
     throw new ERR_OUT_OF_RANGE("err", "a negative integer", code);
   }
-  return errmap.get(code)?.[0];
+  return errorMap.get(code)?.[0];
 }
 
 import { _TextDecoder, _TextEncoder } from "./_utils.ts";
