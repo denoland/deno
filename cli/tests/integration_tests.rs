@@ -1487,13 +1487,23 @@ fn timeout_clear() {
   use std::time::Duration;
   use std::time::Instant;
 
+  let source_code = r#"
+const handle = setTimeout(() => {
+  console.log("timeout finish");
+}, 10000);
+clearTimeout(handle);
+console.log("finish");
+"#;
+
   let mut p = util::deno_cmd()
     .current_dir(util::tests_path())
     .arg("run")
-    .arg("--reload")
-    .arg("set_timeout_clear.ts")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
     .spawn()
     .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
   let start = Instant::now();
   let status = p.wait().unwrap();
   let end = Instant::now();
