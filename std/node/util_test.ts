@@ -192,12 +192,14 @@ Deno.test({
 Deno.test({
   name: "[util] getSystemErrorName()",
   fn() {
+    type FnTestInvalidArg = (code?: unknown) => void;
+
     assertThrows(
-      () => (util.getSystemErrorName as any)(),
+      () => (util.getSystemErrorName as FnTestInvalidArg)(),
       TypeError,
     );
     assertThrows(
-      () => (util.getSystemErrorName as any)(1),
+      () => (util.getSystemErrorName as FnTestInvalidArg)(1),
       RangeError,
     );
 
