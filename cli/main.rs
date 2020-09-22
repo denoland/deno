@@ -601,7 +601,7 @@ async fn test_command(
   (&mut *worker).await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    let script_coverage = coverage_collector.take_precise_coverage().await?;
+    let script_coverage = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
     let filtered_coverage = coverage::filter_script_coverages(
@@ -611,7 +611,7 @@ async fn test_command(
     );
 
     let pretty_coverage_reporter =
-      PrettyCoverageReporter::new(global_state, filtered_coverage);
+      PrettyCoverageReporter::new(filtered_coverage);
     let report = pretty_coverage_reporter.get_report();
     print!("{}", report)
   }
