@@ -187,11 +187,11 @@
         if (fileName && lineNumber != null && columnNumber != null) {
           return patchCallSite(
             callSite,
-            opApplySourceMap({
+            {
               fileName,
               lineNumber,
               columnNumber,
-            }),
+            },
           );
         }
         return callSite;
