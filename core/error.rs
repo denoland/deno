@@ -97,7 +97,6 @@ pub struct JsError {
   pub start_column: Option<i64>, // 0-based
   pub end_column: Option<i64>,   // 0-based
   pub frames: Vec<JsStackFrame>,
-  pub formatted_frames: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -116,6 +115,31 @@ pub struct JsStackFrame {
   pub is_async: bool,
   pub is_promise_all: bool,
   pub promise_index: Option<i64>,
+}
+
+impl JsStackFrame {
+  pub fn from_location(
+    file_name: Option<String>,
+    line_number: Option<i64>,
+    column_number: Option<i64>,
+  ) -> Self {
+    Self {
+      type_name: None,
+      function_name: None,
+      method_name: None,
+      file_name,
+      line_number,
+      column_number,
+      eval_origin: None,
+      is_top_level: None,
+      is_eval: false,
+      is_native: false,
+      is_constructor: false,
+      is_async: false,
+      is_promise_all: false,
+      promise_index: None,
+    }
+  }
 }
 
 fn get_property<'a>(
@@ -142,7 +166,7 @@ impl JsError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let (message, frames, formatted_frames) = if exception.is_native_error() {
+    let (message, frames) = if exception.is_native_error() {
       // The exception is a JS Error object.
       let exception: v8::Local<v8::Object> =
         exception.clone().try_into().unwrap();
@@ -159,7 +183,7 @@ impl JsError {
       let message = format!("Uncaught {}: {}", name, message_prop);
 
       // Access error.stack to ensure that prepareStackTrace() has been called.
-      // This should populate error.__callSiteEvals and error.__formattedFrames.
+      // This should populate error.__callSiteEvals.
       let _ = get_property(scope, exception, "stack");
 
       // Read an array of structured frames from error.__callSiteEvals.
@@ -167,18 +191,9 @@ impl JsError {
       let frames_v8: Option<v8::Local<v8::Array>> =
         frames_v8.and_then(|a| a.try_into().ok());
 
-      // Read an array of pre-formatted frames from error.__formattedFrames.
-      let formatted_frames_v8 =
-        get_property(scope, exception, "__formattedFrames");
-      let formatted_frames_v8: Option<v8::Local<v8::Array>> =
-        formatted_frames_v8.and_then(|a| a.try_into().ok());
-
       // Convert them into Vec<JSStack> and Vec<String> respectively.
       let mut frames: Vec<JsStackFrame> = vec![];
-      let mut formatted_frames: Vec<String> = vec![];
-      if let (Some(frames_v8), Some(formatted_frames_v8)) =
-        (frames_v8, formatted_frames_v8)
-      {
+      if let Some(frames_v8) = frames_v8 {
         for i in 0..frames_v8.length() {
           let call_site: v8::Local<v8::Object> =
             frames_v8.get_index(scope, i).unwrap().try_into().unwrap();
@@ -226,7 +241,7 @@ impl JsError {
               .ok();
           let eval_origin = eval_origin.map(|s| s.to_rust_string_lossy(scope));
           let is_top_level: Option<v8::Local<v8::Boolean>> =
-            get_property(scope, call_site, "isTopLevel")
+            get_property(scope, call_site, "isToplevel")
               .unwrap()
               .try_into()
               .ok();
@@ -283,21 +298,14 @@ impl JsError {
             is_promise_all,
             promise_index,
           });
-          let formatted_frame: v8::Local<v8::String> = formatted_frames_v8
-            .get_index(scope, i)
-            .unwrap()
-            .try_into()
-            .unwrap();
-          let formatted_frame = formatted_frame.to_rust_string_lossy(scope);
-          formatted_frames.push(formatted_frame)
         }
       }
-      (message, frames, formatted_frames)
+      (message, frames)
     } else {
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
-      (msg.get(scope).to_rust_string_lossy(scope), vec![], vec![])
+      (msg.get(scope).to_rust_string_lossy(scope), vec![])
     };
 
     Self {
@@ -313,7 +321,6 @@ impl JsError {
       start_column: msg.get_start_column().try_into().ok(),
       end_column: msg.get_end_column().try_into().ok(),
       frames,
-      formatted_frames,
     }
   }
 }
@@ -361,11 +368,6 @@ impl Display for JsError {
     }
 
     write!(f, "{}", self.message)?;
-
-    for formatted_frame in &self.formatted_frames {
-      // TODO: Strip ANSI color from formatted_frame.
-      write!(f, "\n    at {}", formatted_frame)?;
-    }
     Ok(())
   }
 }

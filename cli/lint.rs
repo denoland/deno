@@ -12,8 +12,7 @@ use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
 use crate::media_type::MediaType;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
+use deno_core::error::{generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -223,11 +222,11 @@ impl LintReporter for PrettyLintReporter {
       &pretty_message,
       &source_lines,
       d.range.clone(),
-      &fmt_errors::format_location(
-        &d.filename,
-        d.range.start.line as i64,
-        d.range.start.col as i64,
-      ),
+      &fmt_errors::format_location(&JsStackFrame::from_location(
+        Some(d.filename.clone()),
+        Some(d.range.start.line as i64),
+        Some(d.range.start.col as i64),
+      )),
     );
 
     eprintln!("{}\n", message);

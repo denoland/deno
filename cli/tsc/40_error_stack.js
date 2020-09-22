@@ -5,19 +5,6 @@
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
   const assert = window.__bootstrap.util.assert;
 
-  // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
-  const ANSI_PATTERN = new RegExp(
-    [
-      "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
-      "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
-    ].join("|"),
-    "g",
-  );
-
-  function stripColor(string) {
-    return string.replace(ANSI_PATTERN, "");
-  }
-
   function patchCallSite(callSite, location) {
     return {
       getThis() {
@@ -71,42 +58,8 @@
     };
   }
 
-  function getMethodCall(callSite) {
-    let result = "";
-
-    const typeName = callSite.getTypeName();
-    const methodName = callSite.getMethodName();
-    const functionName = callSite.getFunctionName();
-
-    if (functionName) {
-      if (typeName) {
-        const startsWithTypeName = functionName.startsWith(typeName);
-        if (!startsWithTypeName) {
-          result += `${typeName}.`;
-        }
-      }
-      result += functionName;
-
-      if (methodName) {
-        if (!functionName.endsWith(methodName)) {
-          result += ` [as ${methodName}]`;
-        }
-      }
-    } else {
-      if (typeName) {
-        result += `${typeName}.`;
-      }
-      if (methodName) {
-        result += methodName;
-      } else {
-        result += "<anonymous>";
-      }
-    }
-
-    return result;
-  }
-
-  function getFileLocation(callSite) {
+  // Keep in sync with `cli/fmt_errors.rs`.
+  function formatLocation(callSite) {
     if (callSite.isNative()) {
       return "native";
     }
@@ -114,32 +67,33 @@
     let result = "";
 
     const fileName = callSite.getFileName();
-    if (!fileName && callSite.isEval()) {
-      const evalOrigin = callSite.getEvalOrigin();
-      assert(evalOrigin != null);
-      result += `${evalOrigin}, `;
-    }
 
     if (fileName) {
       result += fileName;
     } else {
+      if (callSite.isEval()) {
+        const evalOrigin = callSite.getEvalOrigin();
+        assert(evalOrigin != null);
+        result += `${evalOrigin}, `;
+      }
       result += "<anonymous>";
     }
 
     const lineNumber = callSite.getLineNumber();
     if (lineNumber != null) {
-      result += `:${lineNumber.toString()}`;
+      result += `:${lineNumber}`;
 
       const columnNumber = callSite.getColumnNumber();
       if (columnNumber != null) {
-        result += `:${columnNumber.toString()}`;
+        result += `:${columnNumber}`;
       }
     }
 
     return result;
   }
 
-  function callSiteToString(callSite) {
+  // Keep in sync with `cli/fmt_errors.rs`.
+  function formatCallSite(callSite) {
     let result = "";
     const functionName = callSite.getFunctionName();
 
@@ -157,7 +111,31 @@
       return result;
     }
     if (isMethodCall) {
-      result += getMethodCall(callSite);
+      const typeName = callSite.getTypeName();
+      const methodName = callSite.getMethodName();
+
+      if (functionName) {
+        if (typeName) {
+          if (!functionName.startsWith(typeName)) {
+            result += `${typeName}.`;
+          }
+        }
+        result += functionName;
+        if (methodName) {
+          if (!functionName.endsWith(methodName)) {
+            result += ` [as ${methodName}]`;
+          }
+        }
+      } else {
+        if (typeName) {
+          result += `${typeName}.`;
+        }
+        if (methodName) {
+          result += methodName;
+        } else {
+          result += "<anonymous>";
+        }
+      }
     } else if (isConstructor) {
       result += "new ";
       if (functionName) {
@@ -168,11 +146,11 @@
     } else if (functionName) {
       result += functionName;
     } else {
-      result += getFileLocation(callSite);
+      result += formatLocation(callSite);
       return result;
     }
 
-    result += ` (${getFileLocation(callSite)})`;
+    result += ` (${formatLocation(callSite)})`;
     return result;
   }
 
@@ -221,18 +199,17 @@
     );
     Object.defineProperties(error, {
       __callSiteEvals: { value: [], configurable: true },
-      __formattedFrames: { value: [], configurable: true },
     });
+    const formattedCallSites = [];
     for (const callSite of mappedCallSites) {
       error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-      error.__formattedFrames.push(callSiteToString(callSite));
+      formattedCallSites.push(formatCallSite(callSite));
     }
     Object.freeze(error.__callSiteEvals);
-    Object.freeze(error.__formattedFrames);
     return (
       `${error.name}: ${error.message}\n` +
-      error.__formattedFrames
-        .map((s) => `    at ${stripColor(s)}`)
+      formattedCallSites
+        .map((s) => `    at ${s}`)
         .join("\n")
     );
   }
