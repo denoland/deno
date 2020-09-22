@@ -1535,7 +1535,9 @@ pub mod tests {
     // Rn an infinite loop, which should be terminated.
     match isolate.execute("infinite_loop.js", "for(;;) {}") {
       Ok(_) => panic!("execution should be terminated"),
-      Err(e) => assert_eq!(e.to_string(), "Error: execution terminated"),
+      Err(e) => {
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated\n")
+      }
     };
 
     // Cancel the execution-terminating exception in order to allow script
@@ -2267,6 +2269,26 @@ pub mod tests {
   }
 
   #[test]
+  fn test_error_without_stack() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    // SyntaxError
+    let result = runtime.execute(
+      "error_without_stack.js",
+      r#"
+function main() {
+  console.log("asdf);
+}
+
+main();
+"#,
+    );
+    let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
+    at error_without_stack.js:3:14
+"#;
+    assert_eq!(result.unwrap_err().to_string(), expected_error);
+  }
+
+  #[test]
   fn test_error_stack() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
     let result = runtime.execute(
@@ -2288,7 +2310,8 @@ main();
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
     at main (error_stack.js:9:3)
-    at error_stack.js:12:1"#;
+    at error_stack.js:12:1
+"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -2319,7 +2342,8 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5"#;
+    at async error_async_stack.js:10:5
+"#;
 
       match runtime.poll_unpin(cx) {
         Poll::Ready(Err(e)) => {

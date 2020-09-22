@@ -336,13 +336,37 @@ impl JsError {
 
 impl Error for JsError {}
 
+fn format_source_loc(
+  file_name: &str,
+  line_number: i64,
+  column_number: i64,
+) -> String {
+  let line_number = line_number;
+  let column_number = column_number;
+  format!("{}:{}:{}", file_name, line_number, column_number)
+}
+
 impl Display for JsError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     if let Some(stack) = &self.stack {
-      write!(f, "{}", stack)
-    } else {
-      write!(f, "{}", self.message)
+      let stack_lines = stack.lines();
+      if stack_lines.count() > 1 {
+        return writeln!(f, "{}", stack);
+      }
     }
+
+    writeln!(f, "{}", self.message)?;
+    if let Some(script_resource_name) = &self.script_resource_name {
+      if self.line_number.is_some() && self.start_column.is_some() {
+        let source_loc = format_source_loc(
+          script_resource_name,
+          self.line_number.unwrap(),
+          self.start_column.unwrap(),
+        );
+        writeln!(f, "    at {}", source_loc)?;
+      }
+    }
+    Ok(())
   }
 }
 
