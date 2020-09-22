@@ -14,7 +14,9 @@ import { unreachable } from "../../../testing/asserts.ts";
 // This setup automatically exports maps from both "win", "linux" & darwin:
 // https://github.com/schwarzkopfb/node_errno_map
 
-const windows = `[
+type ErrMapData = [number, [string, string]][];
+
+const windows: ErrMapData = [
   [-4093, ["E2BIG", "argument list too long"]],
   [-4092, ["EACCES", "permission denied"]],
   [-4091, ["EADDRINUSE", "address already in use"]],
@@ -94,10 +96,10 @@ const windows = `[
   [-4030, ["EREMOTEIO", "remote I/O error"]],
   [-4029, ["ENOTTY", "inappropriate ioctl for device"]],
   [-4028, ["EFTYPE", "inappropriate file type or format"]],
-  [-4027, ["EILSEQ", "illegal byte sequence"]]
-]`;
+  [-4027, ["EILSEQ", "illegal byte sequence"]],
+];
 
-const darwin = `[
+const darwin: ErrMapData = [
   [-7, ["E2BIG", "argument list too long"]],
   [-13, ["EACCES", "permission denied"]],
   [-48, ["EADDRINUSE", "address already in use"]],
@@ -177,10 +179,10 @@ const darwin = `[
   [-4030, ["EREMOTEIO", "remote I/O error"]],
   [-25, ["ENOTTY", "inappropriate ioctl for device"]],
   [-79, ["EFTYPE", "inappropriate file type or format"]],
-  [-92, ["EILSEQ", "illegal byte sequence"]]
-]`;
+  [-92, ["EILSEQ", "illegal byte sequence"]],
+];
 
-const linux = `[
+const linux: ErrMapData = [
   [-7, ["E2BIG", "argument list too long"]],
   [-13, ["EACCES", "permission denied"]],
   [-98, ["EADDRINUSE", "address already in use"]],
@@ -260,20 +262,18 @@ const linux = `[
   [-121, ["EREMOTEIO", "remote I/O error"]],
   [-25, ["ENOTTY", "inappropriate ioctl for device"]],
   [-4028, ["EFTYPE", "inappropriate file type or format"]],
-  [-84, ["EILSEQ", "illegal byte sequence"]]
-]`;
+  [-84, ["EILSEQ", "illegal byte sequence"]],
+];
 
 const { os } = Deno.build;
 const map = new Map<number, [string, string]>(
-  JSON.parse(
-    os === "windows"
-      ? windows
-      : os === "darwin"
-      ? darwin
-      : os === "linux"
-      ? linux
-      : unreachable(),
-  ),
+  os === "windows"
+    ? windows
+    : os === "darwin"
+    ? darwin
+    : os === "linux"
+    ? linux
+    : unreachable(),
 );
 
 export default map;
