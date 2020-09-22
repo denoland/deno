@@ -481,6 +481,19 @@
     return quoteString(string);
   }
 
+  // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
+  function maybeQuoteSymbol(symbol) {
+    if (symbol.description === undefined) {
+      return symbol.toString();
+    }
+
+    if (/^[a-zA-Z_][a-zA-Z_.0-9]*$/.test(symbol.description)) {
+      return symbol.toString();
+    }
+
+    return `Symbol(${quoteString(symbol.description)})`;
+  }
+
   // Print strings when they are inside of arrays or objects with quotes
   function inspectValueWithQuotes(
     value,
@@ -734,7 +747,7 @@
     }
     for (const key of symbolKeys) {
       entries.push(
-        `${replaceEscapeSequences(key.toString())}: ${
+        `${maybeQuoteSymbol(key)}: ${
           inspectValueWithQuotes(
             value[key],
             ctx,

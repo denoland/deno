@@ -111,6 +111,24 @@ unitTest(
       `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
     );
     assertEquals(
+      stringify(
+        {
+          [Symbol("foo\b")]: `Symbol("foo\n")`,
+          [Symbol("bar\n")]: `Symbol("bar\n")`,
+          [Symbol("bar\r")]: `Symbol("bar\r")`,
+          [Symbol("baz\t")]: `Symbol("baz\t")`,
+          [Symbol("qux\0")]: `Symbol("qux\0")`,
+        },
+      ),
+      `{
+  Symbol("foo\\b"): 'Symbol("foo\\n\")',
+  Symbol("bar\\n"): 'Symbol("bar\\n\")',
+  Symbol("bar\\r"): 'Symbol("bar\\r\")',
+  Symbol("baz\\t"): 'Symbol("baz\\t\")',
+  Symbol("qux\\x00"): 'Symbol(\"qux\\x00")'
+}`,
+    );
+    assertEquals(
       stringify(new Set(["foo\n", "foo\r", "foo\0"])),
       `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
     );
