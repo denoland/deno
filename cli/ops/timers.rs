@@ -5,7 +5,7 @@
 //! As an optimization, we want to avoid an expensive calls into rust for every
 //! setTimeout in JavaScript. Thus in //js/timers.ts a data structure is
 //! implemented that calls into Rust for only the smallest timeout.  Thus we
-//! only need to be able to start and cancel a single timer (or Delay, as Tokio
+//! only need to be able to start, cancel and awwait a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
@@ -88,6 +88,13 @@ struct GlobalTimerArgs {
   timeout: u64,
 }
 
+// Set up a timer that will be later awaited by JS promise.
+// It's a separate op, because canceling a timeout immediately
+// after setting it caused a race condition (because Tokio timeout)
+// might have been registered after next event loop tick.
+//
+// See https://github.com/denoland/deno/issues/7599 for more
+// details.
 fn op_global_timer_start(
   state: &mut OpState,
   args: Value,
