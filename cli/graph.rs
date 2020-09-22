@@ -13,7 +13,6 @@ use crate::specifier_handler::EmitMap;
 use crate::specifier_handler::EmitType;
 use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
-use crate::tsc::TranspileTsOptions;
 use crate::tsc_config::json_merge;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::IgnoredCompilerOptions;
@@ -379,6 +378,18 @@ pub struct TranspileOptions {
   /// passed to the TypeScript compiler.  This is typically the contents of a
   /// user supplied `tsconfig.json`.
   pub maybe_config: Option<String>,
+}
+
+/// The transpile options that are significant out of a user provided tsconfig
+/// file, that we want to parse out of the config.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranspileTsOptions {
+  pub check_js: bool,
+  pub emit_decorator_metadata: bool,
+  pub jsx: String,
+  pub jsx_factory: String,
+  pub jsx_fragment_factory: String,
 }
 
 /// A dependency graph of modules, were the modules that have been inserted via

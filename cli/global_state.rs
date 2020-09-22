@@ -205,21 +205,17 @@ impl GlobalState {
       let allow_js = should_allow_js(&module_graph_files);
 
       if should_compile {
-        if self.flags.no_check {
-          self.ts_compiler.transpile(&module_graph).await?;
-        } else {
-          self
-            .ts_compiler
-            .compile(
-              self,
-              &out,
-              target_lib,
-              permissions,
-              &module_graph,
-              allow_js,
-            )
-            .await?;
-        }
+        self
+          .ts_compiler
+          .compile(
+            self,
+            &out,
+            target_lib,
+            permissions,
+            &module_graph,
+            allow_js,
+          )
+          .await?;
       }
     }
 
