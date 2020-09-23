@@ -747,7 +747,7 @@
     }
     for (const key of symbolKeys) {
       entries.push(
-        `${maybeQuoteSymbol(key)}: ${
+        `[${maybeQuoteSymbol(key)}]: ${
           inspectValueWithQuotes(
             value[key],
             ctx,

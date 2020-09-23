@@ -121,11 +121,11 @@ unitTest(
         },
       ),
       `{
-  Symbol("foo\\b"): 'Symbol("foo\\n\")',
-  Symbol("bar\\n"): 'Symbol("bar\\n\")',
-  Symbol("bar\\r"): 'Symbol("bar\\r\")',
-  Symbol("baz\\t"): 'Symbol("baz\\t\")',
-  Symbol("qux\\x00"): 'Symbol(\"qux\\x00")'
+  [Symbol("foo\\b")]: 'Symbol("foo\\n\")',
+  [Symbol("bar\\n")]: 'Symbol("bar\\n\")',
+  [Symbol("bar\\r")]: 'Symbol("bar\\r\")',
+  [Symbol("baz\\t")]: 'Symbol("baz\\t\")',
+  [Symbol("qux\\x00")]: 'Symbol(\"qux\\x00")'
 }`,
     );
     assertEquals(
@@ -277,7 +277,10 @@ unitTest(function consoleTestStringifyCircular(): void {
     "{ a: { b: { c: { d: [Set] } } } }",
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
-  assertEquals(stringify(JSON), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
+  assertEquals(
+    stringify(JSON),
+    'JSON { [Symbol(Symbol.toStringTag)]: "JSON" }',
+  );
   assertEquals(
     stringify(console),
     `{
@@ -301,12 +304,12 @@ unitTest(function consoleTestStringifyCircular(): void {
   clear: [Function: clear],
   trace: [Function: trace],
   indentLevel: 0,
-  Symbol(isConsoleInstance): true
+  [Symbol(isConsoleInstance)]: true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
-    'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }',
+    'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
@@ -798,7 +801,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ Symbol(Deno.customInspect): [Function: [Deno.customInspect]] }",
+    "{ [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
   );
 });
 
