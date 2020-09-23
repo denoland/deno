@@ -41,6 +41,7 @@ async function startFileServer({
   assert(s !== null && s.includes("server listening"));
 }
 
+/*
 async function startFileServerAsLibrary({}: FileServerCfg = {}): Promise<void> {
   fileServer = await Deno.run({
     cmd: [
@@ -59,6 +60,7 @@ async function startFileServerAsLibrary({}: FileServerCfg = {}): Promise<void> {
   const s = await r.readLine();
   assert(s !== null && s.includes("Server running..."));
 }
+*/
 
 async function killFileServer(): Promise<void> {
   fileServer.close();
@@ -195,16 +197,17 @@ Deno.test("contentType", async () => {
   (response.body as Deno.File).close();
 });
 
+/* TODO https://github.com/denoland/deno/issues/7540
 Deno.test("file_server running as library", async function (): Promise<void> {
   await startFileServerAsLibrary();
   try {
     const res = await fetch("http://localhost:8000");
     assertEquals(res.status, 200);
-    const _ = await res.text();
   } finally {
     await killFileServer();
   }
 });
+*/
 
 async function startTlsFileServer({
   target = ".",
