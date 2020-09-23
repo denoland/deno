@@ -56,7 +56,6 @@ mod web_worker;
 pub mod worker;
 
 use crate::coverage::CoverageCollector;
-use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
@@ -536,6 +535,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
   coverage: bool,
+  json: bool,
 ) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -610,10 +610,7 @@ async fn test_command(
       test_modules,
     );
 
-    let pretty_coverage_reporter =
-      PrettyCoverageReporter::new(filtered_coverage);
-    let report = pretty_coverage_reporter.get_report();
-    print!("{}", report)
+    coverage::report_coverages(filtered_coverage, json);
   }
 
   Ok(())
@@ -733,8 +730,9 @@ pub fn main() {
       allow_none,
       filter,
       coverage,
+      json,
     } => test_command(
-      flags, include, fail_fast, quiet, allow_none, filter, coverage,
+      flags, include, fail_fast, quiet, allow_none, filter, coverage, json,
     )
     .boxed_local(),
     DenoSubcommand::Completions { buf } => {

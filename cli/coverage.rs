@@ -10,6 +10,7 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
@@ -195,7 +196,7 @@ impl CoverageCollector {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
   pub start_offset: usize,
@@ -203,7 +204,7 @@ pub struct CoverageRange {
   pub count: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverage {
   pub function_name: String,
@@ -211,7 +212,7 @@ pub struct FunctionCoverage {
   pub is_block_coverage: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptCoverage {
   pub script_id: String,
@@ -239,29 +240,79 @@ pub struct GetScriptSourceResult {
   pub bytecode: Option<String>,
 }
 
-pub struct PrettyCoverageReporter {
-  coverages: Vec<Coverage>,
+pub enum CoverageReporterKind {
+    Json,
+    Pretty,
 }
 
-// TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
-impl PrettyCoverageReporter {
-  pub fn new(coverages: Vec<Coverage>) -> PrettyCoverageReporter {
-    PrettyCoverageReporter { coverages }
-  }
+fn create_reporter(reporter_kind: CoverageReporterKind) -> Box<dyn CoverageReporter> {
+    match reporter_kind {
+        CoverageReporterKind::Json => Box::new(JsonCoverageReporter::new()),
+        CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
+    }
+}
 
-  pub fn get_report(&self) -> String {
-    let mut report = String::from("test coverage:\n");
+pub fn report_coverages(coverages: Vec<Coverage>, json: bool) {
+    let reporter_kind = if json {
+        CoverageReporterKind::Json
+    } else {
+        CoverageReporterKind::Pretty
+    };
 
-    for coverage in &self.coverages {
-      if let Some(coverage_report) = Self::get_coverage_report(coverage) {
-        report.push_str(&format!("{}\n", coverage_report))
-      }
+    let mut reporter = create_reporter(reporter_kind);
+    for coverage in &coverages {
+        reporter.visit_coverage(coverage);
     }
 
-    report
-  }
+    reporter.close();
+}
 
-  fn get_coverage_report(coverage: &Coverage) -> Option<String> {
+pub trait CoverageReporter {
+  fn visit_coverage(&mut self, coverage: &Coverage);
+  fn close(&mut self);
+}
+
+#[derive(Serialize)]
+pub struct JsonCoverageReporter {
+    coverages: Vec<ScriptCoverage>,
+    sources: HashMap<String, String>,
+}
+
+impl JsonCoverageReporter {
+  pub fn new() -> JsonCoverageReporter {
+    let coverages: Vec<ScriptCoverage> = Vec::new();
+    let sources: HashMap<String, String> = HashMap::new();
+
+    JsonCoverageReporter { coverages, sources }
+  }
+}
+
+impl CoverageReporter for JsonCoverageReporter {
+    fn visit_coverage(&mut self, coverage: &Coverage) {
+        self.coverages.push(coverage.script_coverage.clone());
+        self.sources.insert(
+            coverage.script_coverage.script_id.clone(),
+            coverage.script_source.clone()
+        );
+    }
+
+    fn close(&mut self) {
+        let json = serde_json::to_string_pretty(&self);
+        eprintln!("{}", json.unwrap());
+    }
+}
+
+pub struct PrettyCoverageReporter {
+}
+
+impl PrettyCoverageReporter {
+  pub fn new() -> PrettyCoverageReporter {
+    PrettyCoverageReporter { }
+  }
+}
+
+impl CoverageReporter for PrettyCoverageReporter {
+  fn visit_coverage(&mut self, coverage: &Coverage) {
     let mut total_lines = 0;
     let mut covered_lines = 0;
 
@@ -276,13 +327,13 @@ impl PrettyCoverageReporter {
         for range in &function.ranges {
           if range.start_offset <= line_start_offset
             && range.end_offset >= line_end_offset
-          {
-            count += range.count;
-            if range.count == 0 {
-              count = 0;
-              break;
+            {
+              count += range.count;
+              if range.count == 0 {
+                count = 0;
+                break;
+              }
             }
-          }
         }
       }
 
@@ -302,22 +353,25 @@ impl PrettyCoverageReporter {
         "{} {}",
         coverage.script_coverage.url,
         colors::green(&line_coverage)
-      )
+        )
     } else if line_ratio >= 0.75 {
       format!(
         "{} {}",
         coverage.script_coverage.url,
         colors::yellow(&line_coverage)
-      )
+        )
     } else {
       format!(
         "{} {}",
         coverage.script_coverage.url,
         colors::red(&line_coverage)
-      )
+        )
     };
 
-    Some(line)
+    println!("{}", line);
+  }
+
+  fn close(&mut self) {
   }
 }
 
@@ -332,7 +386,7 @@ pub fn filter_script_coverages(
   coverages: Vec<Coverage>,
   test_file_url: Url,
   test_modules: Vec<Url>,
-) -> Vec<Coverage> {
+  ) -> Vec<Coverage> {
   coverages
     .into_iter()
     .filter(|e| {
@@ -364,5 +418,5 @@ pub fn filter_script_coverages(
 
       false
     })
-    .collect::<Vec<Coverage>>()
+  .collect::<Vec<Coverage>>()
 }

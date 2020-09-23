@@ -72,6 +72,7 @@ pub enum DenoSubcommand {
     include: Option<Vec<String>>,
     filter: Option<String>,
     coverage: bool,
+    json: bool,
   },
   Types,
   Upgrade {
@@ -584,6 +585,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
   let coverage = matches.is_present("coverage");
+  let json = matches.is_present("json");
 
   // Coverage implies `--inspect`
   if coverage {
@@ -608,6 +610,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     filter,
     allow_none,
     coverage,
+    json,
   };
 }
 
@@ -1182,6 +1185,13 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
         .help("Collect coverage information"),
+    )
+    .arg(
+      Arg::with_name("json")
+        .long("json")
+        .takes_value(false)
+        .requires("coverage")
+        .help("Output coverage result in JSON format")
     )
     .arg(
       Arg::with_name("files")
