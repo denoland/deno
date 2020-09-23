@@ -9,7 +9,7 @@ is a prerequisite to run this before code check in.
 
 To run formatting:
 
-```bash
+```sh
 ./tools/format.py
 ```
 
@@ -20,6 +20,6 @@ It is a prerequisite to run this before code check in.
 
 To run linting:
 
-```bash
+```sh
 ./tools/lint.py
 ```
