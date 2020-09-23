@@ -480,12 +480,20 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let module_graph = module_graph_loader.get_graph();
 
   // Find all local files in graph
-  let paths_to_watch: Vec<PathBuf> = module_graph
+  let mut paths_to_watch: Vec<PathBuf> = module_graph
     .values()
     .map(|f| Url::parse(&f.url).unwrap())
     .filter(|url| url.scheme() == "file")
     .map(|url| url.to_file_path().unwrap())
     .collect();
+
+  if let Some(import_map) = global_state.flags.import_map_path.clone() {
+    paths_to_watch.push(
+      Url::parse(&format!("file://{}", &import_map))?
+        .to_file_path()
+        .unwrap(),
+    );
+  }
 
   // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func(&paths_to_watch, move || {
