@@ -303,7 +303,12 @@ impl PrettyCoverageReporter {
       }
 
       for line_index in uncovered_lines {
-        println!("{:width$} {}", line_index + 1, colors::red(&lines[line_index]), width = 4);
+        println!(
+          "{:width$} {}",
+          line_index + 1,
+          colors::red(&lines[line_index]),
+          width = 4
+        );
       }
     }
   }
