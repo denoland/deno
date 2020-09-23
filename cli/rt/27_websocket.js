@@ -95,6 +95,8 @@
           this.dispatchEvent(closeEvent);
         }
       }).catch((err) => {
+        this.#readyState = CLOSED;
+
         const errorEv = new ErrorEvent(
           "error",
           { error: err, message: err.toString() },
@@ -103,7 +105,6 @@
         this.onerror?.(errorEv);
         this.dispatchEvent(errorEv);
 
-        this.#readyState = CLOSED;
         const closeEv = new CloseEvent("close");
         closeEv.target = this;
         this.onclose?.(closeEv);
@@ -286,6 +287,8 @@
           this.onclose?.(event);
           this.dispatchEvent(event);
         } else if (message.type === "error") {
+          this.#readyState = CLOSED;
+
           const errorEv = new Event("error");
           errorEv.target = this;
           this.onerror?.(errorEv);
