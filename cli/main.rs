@@ -492,7 +492,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   if let Some(import_map) = global_state.flags.import_map_path.clone() {
     paths_to_watch.push(
-      Url::parse(&format!("file://{}", &import_map.clone()))?
+      Url::parse(&format!("file://{}", &import_map))?
         .to_file_path()
         .unwrap(),
     );
