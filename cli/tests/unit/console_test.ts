@@ -106,6 +106,32 @@ unitTest(
     );
     assertEquals(
       stringify(
+        [
+          Symbol(),
+          Symbol(""),
+          Symbol("foo\b"),
+          Symbol("foo\f"),
+          Symbol("foo\n"),
+          Symbol("foo\r"),
+          Symbol("foo\t"),
+          Symbol("foo\v"),
+          Symbol("foo\0"),
+        ],
+      ),
+      `[
+  Symbol(),
+  Symbol(""),
+  Symbol("foo\\b"),
+  Symbol("foo\\f"),
+  Symbol("foo\\n"),
+  Symbol("foo\\r"),
+  Symbol("foo\\t"),
+  Symbol("foo\\v"),
+  Symbol("foo\\x00")
+]`,
+    );
+    assertEquals(
+      stringify(
         { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
       ),
       `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
@@ -247,7 +273,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
   assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
-  assertEquals(stringify(Symbol(1)), "Symbol(1)");
+  assertEquals(stringify(Symbol(1)), `Symbol("1")`);
   assertEquals(stringify(null), "null");
   assertEquals(stringify(undefined), "undefined");
   assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");
