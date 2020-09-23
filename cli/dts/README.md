@@ -14,6 +14,6 @@ So that might look something like this:
 git clone https://github.com/microsoft/TypeScript.git
 cd typescript
 git checkout v3.9.7
-cp lib/typescript.js ~/src/deno/cli/tsc/00_typescript.js
-cp lib/*.d.ts ~/src/deno/cli/dts/
+rsync lib/typescript.js ~/src/deno/cli/tsc/00_typescript.js
+rsync --exclude=protocol.d.ts --exclude=tsserverlibrary.d.ts --exclude=typescriptServices.d.ts lib/*.d.ts ~/src/deno/cli/dts/
 ```
