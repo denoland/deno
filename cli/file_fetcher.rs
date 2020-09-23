@@ -14,6 +14,7 @@ use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
+use deno_core::serde_json;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
