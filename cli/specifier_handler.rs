@@ -559,4 +559,27 @@ pub mod tests {
     );
     assert_eq!(cached_module.specifier, specifier);
   }
+
+  #[tokio::test]
+  async fn test_fetch_handler_set_cache() {
+    let _http_server_guard = test_util::http_server();
+    let (_, mut file_fetcher) = setup();
+    let specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/subdir/mod2.ts",
+    )
+    .unwrap();
+    let cached_module: CachedModule =
+      file_fetcher.fetch(specifier.clone()).await.unwrap();
+    assert_eq!(cached_module.emits.len(), 0);
+    let code = TextDocument::from("some code");
+    file_fetcher
+      .set_cache(&specifier, &EmitType::Cli, code, None)
+      .expect("could not set cache");
+    let cached_module: CachedModule =
+      file_fetcher.fetch(specifier.clone()).await.unwrap();
+    assert_eq!(cached_module.emits.len(), 1);
+    let actual_emit = cached_module.emits.get(&EmitType::Cli).unwrap();
+    assert_eq!(actual_emit.0.to_str().unwrap(), "some code");
+    assert_eq!(actual_emit.1, None);
+  }
 }

@@ -79,6 +79,12 @@ impl From<String> for TextDocument {
   }
 }
 
+impl From<&str> for TextDocument {
+  fn from(s: &str) -> Self {
+    TextDocument::new(s.as_bytes().to_vec(), Option::<&str>::None)
+  }
+}
+
 /// Structure representing local or remote file.
 ///
 /// In case of remote file `url` might be different than originally requested URL, if so

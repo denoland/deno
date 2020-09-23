@@ -33,6 +33,7 @@ use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
 use std::result;
+use std::time::Instant;
 use swc_ecmascript::dep_graph::DependencyKind;
 
 type Result<V> = result::Result<V, AnyError>;
@@ -120,6 +121,8 @@ pub trait ModuleProvider {
   ) -> Result<(ModuleSpecifier, MediaType)>;
 }
 
+/// An enum which represents the parsed out values of references in source code.
+#[derive(Debug, Clone, Eq, PartialEq)]
 enum TypeScriptReference {
   Path(String),
   Types(String),
@@ -347,14 +350,14 @@ impl Module {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Stats(Vec<(String, u64)>);
+pub struct Stats(Vec<(String, u128)>);
 
 impl<'de> Deserialize<'de> for Stats {
   fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {
-    let items: Vec<(String, u64)> = Deserialize::deserialize(deserializer)?;
+    let items: Vec<(String, u128)> = Deserialize::deserialize(deserializer)?;
     Ok(Stats(items))
   }
 }
@@ -462,6 +465,7 @@ impl Graph {
     &mut self,
     options: TranspileOptions,
   ) -> Result<(Stats, Option<IgnoredCompilerOptions>)> {
+    let start = Instant::now();
     let emit_type = EmitType::Cli;
     let mut compiler_options = json!({
       "checkJs": false,
@@ -492,6 +496,7 @@ impl Graph {
       transform_jsx,
     };
 
+    let mut emit_count: u128 = 0;
     for (_, module) in self.modules.iter_mut() {
       // if the module is a Dts file we should skip it
       if module.media_type == MediaType::Dts {
@@ -514,13 +519,19 @@ impl Graph {
       }
       let parsed_module = module.maybe_parsed_module.clone().unwrap();
       let emit = parsed_module.transpile(&emit_options)?;
+      emit_count += 1;
       module.emits.insert(emit_type.clone(), emit);
       module.is_dirty = true;
     }
     self.flush(&emit_type)?;
 
-    // TODO(kitsonk) - provide some useful stats
-    Ok((Stats(Vec::new()), maybe_ignored_options))
+    let stats = Stats(vec![
+      ("Files".to_string(), self.modules.len() as u128),
+      ("Emitted".to_string(), emit_count),
+      ("Total time".to_string(), start.elapsed().as_millis()),
+    ]);
+
+    Ok((stats, maybe_ignored_options))
   }
 }
 
@@ -712,10 +723,10 @@ mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
+    let mut builder = GraphBuilder::new(handler, None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
         .expect("could not resolve module");
-    let mut builder = GraphBuilder::new(handler, None);
     builder
       .insert(&specifier)
       .await
@@ -733,24 +744,80 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_graph_transpile() {
+  async fn test_graph_builder_import_map() {
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/module_graph");
     let handler = Rc::new(RefCell::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
+    let import_map = ImportMap::from_json(
+      "https://deno.land/x/import_map.ts",
+      r#"{
+      "imports": {
+        "jquery": "./jquery.js",
+        "lodash": "https://unpkg.com/lodash/index.js"
+      }
+    }"#,
+    )
+    .expect("could not load import map");
+    let mut builder = GraphBuilder::new(handler, Some(import_map));
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/import_map.ts")
+        .expect("could not resolve module");
+    builder
+      .insert(&specifier)
+      .await
+      .expect("module not inserted");
+    let graph = builder.get_graph();
+    let actual_jquery = graph
+      .resolve("jquery", &specifier)
+      .expect("module to resolve");
+    let expected_jquery = (
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/jquery.js")
+        .expect("unable to resolve"),
+      MediaType::JavaScript,
+    );
+    assert_eq!(actual_jquery, expected_jquery);
+    let actual_lodash = graph
+      .resolve("lodash", &specifier)
+      .expect("module to resolve");
+    let expected_lodash = (
+      ModuleSpecifier::resolve_url_or_path("https://unpkg.com/lodash/index.js")
+        .expect("unable to resolve"),
+      MediaType::JavaScript,
+    );
+    assert_eq!(actual_lodash, expected_lodash);
+  }
+
+  #[tokio::test]
+  async fn test_graph_transpile() {
+    // This is a complex scenario of transpiling, where we have TypeScript
+    // importing a JavaScript file (with type definitions) which imports
+    // TypeScript, JavaScript, and JavaScript with type definitions.
+    // For scenarios where we transpile, we only want the TypeScript files
+    // to be actually emitted.
+    //
+    // This also exercises "@deno-types" and type references.
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..MockSpecifierHandler::default()
+    }));
+    let mut builder = GraphBuilder::new(handler.clone(), None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
-    let mut builder = GraphBuilder::new(handler.clone(), None);
     builder
       .insert(&specifier)
       .await
       .expect("module not inserted");
     let mut graph = builder.get_graph();
-    let actual = graph.transpile(TranspileOptions::default()).unwrap();
-    assert_eq!(actual, (Stats(Vec::new()), None));
+    let (stats, maybe_ignored_options) =
+      graph.transpile(TranspileOptions::default()).unwrap();
+    assert_eq!(stats.0.len(), 3);
+    assert_eq!(maybe_ignored_options, None);
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
     assert_eq!(h.cache_calls[0].1, EmitType::Cli);
@@ -768,5 +835,74 @@ mod tests {
       .contains("# sourceMappingURL=data:application/json;base64,"));
     assert_eq!(h.cache_calls[0].3, None);
     assert_eq!(h.deps_calls.len(), 7);
+    assert_eq!(
+      h.deps_calls[0].0,
+      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts").unwrap()
+    );
+    assert_eq!(h.deps_calls[0].1.len(), 1);
+    assert_eq!(
+      h.deps_calls[1].0,
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.js")
+        .unwrap()
+    );
+    assert_eq!(h.deps_calls[1].1.len(), 3);
+    assert_eq!(
+      h.deps_calls[2].0,
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.d.ts")
+        .unwrap()
+    );
+    assert_eq!(h.deps_calls[2].1.len(), 3, "should have 3 dependencies");
+    // sometimes the calls are not deterministic, and so checking the contents
+    // can cause some failures
+    assert_eq!(h.deps_calls[3].1.len(), 0, "should have no dependencies");
+    assert_eq!(h.deps_calls[4].1.len(), 0, "should have no dependencies");
+    assert_eq!(h.deps_calls[5].1.len(), 0, "should have no dependencies");
+    assert_eq!(h.deps_calls[6].1.len(), 0, "should have no dependencies");
+  }
+
+  #[tokio::test]
+  async fn test_graph_transpile_user_config() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..MockSpecifierHandler::default()
+    }));
+    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/transpile.tsx")
+        .expect("could not resolve module");
+    builder
+      .insert(&specifier)
+      .await
+      .expect("module not inserted");
+    let mut graph = builder.get_graph();
+    let config = r#"{
+        "compilerOptions": {
+          "target": "es5",
+          "jsx": "preserve"
+        }
+      }"#;
+    let (_, maybe_ignored_options) = graph
+      .transpile(TranspileOptions {
+        debug: false,
+        maybe_config: Some(config.to_string()),
+      })
+      .unwrap();
+    assert_eq!(
+      maybe_ignored_options,
+      Some(IgnoredCompilerOptions(vec!["target".to_string()])),
+      "the 'target' options should have been ignored"
+    );
+    let h = handler.borrow();
+    assert_eq!(h.cache_calls.len(), 1, "only one file should be emitted");
+    assert!(
+      h.cache_calls[0]
+        .2
+        .to_string()
+        .unwrap()
+        .contains("<div>Hello world!</div>"),
+      "jsx should have been preserved"
+    );
   }
 }
