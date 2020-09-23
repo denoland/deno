@@ -125,15 +125,10 @@ pub async fn fetch_once(
   for key in headers.keys() {
     let key_str = key.to_string();
     let values = headers.get_all(key);
-    let values_str = values
-      .iter()
-      .map(|e| e.to_str().unwrap().to_string())
-      .collect::<Vec<String>>()
-      .join(",");
-    headers_
-      .entry(key_str)
-      .or_insert_with(Vec::new)
-      .push(values_str);
+    for value in values.iter() {
+      let value = value.to_str().unwrap().to_string();
+      headers_.entry(key_str.clone()).or_insert_with(Vec::new).push(value);
+    }
   }
 
   if response.status().is_redirection() {
