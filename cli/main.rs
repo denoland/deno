@@ -612,7 +612,6 @@ async fn test_command(
       coverage_reporter.visit_coverage(&coverage);
     }
 
-    coverage_reporter.close();
   }
 
   Ok(())
