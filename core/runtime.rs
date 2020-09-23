@@ -760,13 +760,6 @@ fn check_promise_exceptions<'s>(
   }
 }
 
-pub fn js_check<T>(r: Result<T, AnyError>) -> T {
-  if let Err(e) = r {
-    panic!(e.to_string());
-  }
-  r.unwrap()
-}
-
 fn boxed_slice_to_uint8array<'sc>(
   scope: &mut v8::HandleScope<'sc>,
   buf: Box<[u8]>,

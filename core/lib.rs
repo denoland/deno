@@ -46,7 +46,6 @@ pub use crate::ops::OpId;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
-pub use crate::runtime::js_check;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::HeapLimits;
 pub use crate::runtime::JsRuntime;
