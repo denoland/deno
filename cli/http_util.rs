@@ -127,7 +127,10 @@ pub async fn fetch_once(
     let values = headers.get_all(key);
     for value in values.iter() {
       let value = value.to_str().unwrap().to_string();
-      headers_.entry(key_str.clone()).or_insert_with(Vec::new).push(value);
+      headers_
+        .entry(key_str.clone())
+        .or_insert_with(Vec::new)
+        .push(value);
     }
   }
 

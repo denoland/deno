@@ -3678,11 +3678,7 @@ fn info_compatible() {
     &metadata_path,
   )
   .unwrap();
-  std::fs::copy(
-    util::tests_path().join("001_hello.js"),
-    &cache_path,
-  )
-  .unwrap();
+  std::fs::copy(util::tests_path().join("001_hello.js"), &cache_path).unwrap();
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())
