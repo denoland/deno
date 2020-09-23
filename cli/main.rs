@@ -609,19 +609,16 @@ async fn test_command(
   (&mut *worker).await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    let script_coverage = coverage_collector.collect().await?;
+    let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverage = coverage::filter_script_coverages(
-      script_coverage,
-      test_file_url,
-      test_modules,
-    );
+    let filtered_coverages =
+      coverage::filter_script_coverages(coverages, test_file_url, test_modules);
 
-    let pretty_coverage_reporter =
-      PrettyCoverageReporter::new(filtered_coverage);
-    let report = pretty_coverage_reporter.get_report();
-    print!("{}", report)
+    let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
+    for coverage in filtered_coverages {
+      coverage_reporter.visit_coverage(&coverage);
+    }
   }
 
   Ok(())

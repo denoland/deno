@@ -240,35 +240,23 @@ pub struct GetScriptSourceResult {
 }
 
 pub struct PrettyCoverageReporter {
-  coverages: Vec<Coverage>,
+  quiet: bool,
 }
 
 // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
 impl PrettyCoverageReporter {
-  pub fn new(coverages: Vec<Coverage>) -> PrettyCoverageReporter {
-    PrettyCoverageReporter { coverages }
+  pub fn new(quiet: bool) -> PrettyCoverageReporter {
+    PrettyCoverageReporter { quiet }
   }
 
-  pub fn get_report(&self) -> String {
-    let mut report = String::from("test coverage:\n");
+  pub fn visit_coverage(&mut self, coverage: &Coverage) {
+    let lines = coverage.script_source.lines().collect::<Vec<_>>();
 
-    for coverage in &self.coverages {
-      if let Some(coverage_report) = Self::get_coverage_report(coverage) {
-        report.push_str(&format!("{}\n", coverage_report))
-      }
-    }
+    let mut covered_lines: Vec<usize> = Vec::new();
+    let mut uncovered_lines: Vec<usize> = Vec::new();
 
-    report
-  }
-
-  fn get_coverage_report(coverage: &Coverage) -> Option<String> {
-    let mut total_lines = 0;
-    let mut covered_lines = 0;
-
-    let mut line_offset = 0;
-
-    for line in coverage.script_source.lines() {
-      let line_start_offset = line_offset;
+    let mut line_start_offset = 0;
+    for (index, line) in lines.iter().enumerate() {
       let line_end_offset = line_start_offset + line.len();
 
       let mut count = 0;
@@ -277,47 +265,53 @@ impl PrettyCoverageReporter {
           if range.start_offset <= line_start_offset
             && range.end_offset >= line_end_offset
           {
-            count += range.count;
             if range.count == 0 {
               count = 0;
               break;
             }
+
+            count += range.count;
           }
         }
-      }
 
+        line_start_offset = line_end_offset;
+      }
       if count > 0 {
-        covered_lines += 1;
+        covered_lines.push(index);
+      } else {
+        uncovered_lines.push(index);
       }
-
-      total_lines += 1;
-      line_offset += line.len();
     }
 
-    let line_ratio = covered_lines as f32 / total_lines as f32;
-    let line_coverage = format!("{:.3}%", line_ratio * 100.0);
+    if !self.quiet {
+      print!("cover {} ... ", coverage.script_coverage.url);
 
-    let line = if line_ratio >= 0.9 {
-      format!(
-        "{} {}",
-        coverage.script_coverage.url,
-        colors::green(&line_coverage)
-      )
-    } else if line_ratio >= 0.75 {
-      format!(
-        "{} {}",
-        coverage.script_coverage.url,
-        colors::yellow(&line_coverage)
-      )
-    } else {
-      format!(
-        "{} {}",
-        coverage.script_coverage.url,
-        colors::red(&line_coverage)
-      )
-    };
+      let line_coverage_ratio = covered_lines.len() as f32 / lines.len() as f32;
+      let line_coverage = format!(
+        "{:.3}% ({}/{})",
+        line_coverage_ratio * 100.0,
+        covered_lines.len(),
+        lines.len()
+      );
 
-    Some(line)
+      if line_coverage_ratio >= 0.9 {
+        println!("{}", colors::green(&line_coverage));
+      } else if line_coverage_ratio >= 0.75 {
+        println!("{}", colors::yellow(&line_coverage));
+      } else {
+        println!("{}", colors::red(&line_coverage));
+      }
+
+      for line_index in uncovered_lines {
+        println!(
+          "{:width$}{} {}",
+          line_index + 1,
+          colors::gray(" |"),
+          colors::red(&lines[line_index]),
+          width = 4
+        );
+      }
+    }
   }
 }
 
