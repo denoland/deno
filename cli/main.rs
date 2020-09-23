@@ -611,7 +611,6 @@ async fn test_command(
     for coverage in filtered_coverages {
       coverage_reporter.visit_coverage(&coverage);
     }
-
   }
 
   Ok(())

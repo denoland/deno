@@ -310,7 +310,6 @@ impl PrettyCoverageReporter {
       }
     }
   }
-
 }
 
 fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
