@@ -2378,6 +2378,11 @@ itest!(fix_js_imports {
   output: "fix_js_imports.ts.out",
 });
 
+itest!(fix_tsc_file_exists {
+  args: "run --quiet --reload tsc/test.js",
+  output: "fix_tsc_file_exists.out",
+});
+
 itest!(es_private_fields {
   args: "run --quiet --reload es_private_fields.js",
   output: "es_private_fields.js.out",
