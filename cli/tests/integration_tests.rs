@@ -3657,7 +3657,7 @@ fn fmt_ignore_unexplicit_files() {
 }
 
 #[test]
-fn info_compatible() {
+fn metadata_json_compatible() {
   let _g = util::http_server();
   let tmp_dir = TempDir::new().unwrap();
 
