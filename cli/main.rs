@@ -490,8 +490,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .map(|url| url.to_file_path().unwrap())
     .collect();
 
-  if let Some(import_map) = global_state.maybe_import_map.clone() {
-    paths_to_watch.push(import_map.file_path()?);
+  if let Some(import_map) = global_state.flags.import_map_path.clone() {
+    paths_to_watch.push(
+      Url::parse(&format!("file://{}", &import_map.clone()))?
+        .to_file_path()
+        .unwrap(),
+    );
   }
 
   // FIXME(bartlomieju): new file watcher is created on after each restart

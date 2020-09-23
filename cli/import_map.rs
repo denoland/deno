@@ -1,4 +1,4 @@
-use deno_core::error::{uri_error, AnyError};
+use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
@@ -9,7 +9,6 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct ImportMapError {
@@ -124,17 +123,6 @@ impl ImportMap {
     };
 
     Ok(import_map)
-  }
-
-  pub fn file_path(&self) -> Result<PathBuf, AnyError> {
-    let url = Url::parse(&self.base_url).unwrap();
-    if url.scheme() == "file" {
-      return Ok(url.to_file_path().unwrap());
-    }
-    Err(uri_error(format!(
-      "Wrong URL schema: {}. Only 'file' URL schema is allowed.",
-      url.scheme()
-    )))
   }
 
   fn try_url_like_specifier(specifier: &str, base: &str) -> Option<Url> {
