@@ -106,7 +106,7 @@ function copyFileSync(src: string, dest: string, options: CopyOptions): void {
 
 /* copy symlink to dest */
 async function copySymLink(
-  src: string | URL,
+  src: string,
   dest: string,
   options: CopyOptions,
 ): Promise<void> {
@@ -130,7 +130,7 @@ async function copySymLink(
 
 /* copy symlink to dest synchronously */
 function copySymlinkSync(
-  src: string | URL,
+  src: string,
   dest: string,
   options: CopyOptions,
 ): void {
