@@ -754,12 +754,12 @@ function tryPackage(
 // if using --preserve-symlinks and isMain is false,
 // keep symlinks intact, otherwise resolve to the
 // absolute realpath.
-function tryFile(requestPath: string, _isMain: boolean): string | false {
+function tryFile(requestPath: string | URL, _isMain: boolean): string | false {
   const rc = stat(requestPath);
   return rc === 0 && toRealPath(requestPath);
 }
 
-function toRealPath(requestPath: string): string {
+function toRealPath(requestPath: string | URL): string {
   // Deno does not have realpath implemented yet.
   let fullPath = requestPath;
   while (true) {

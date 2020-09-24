@@ -1445,7 +1445,7 @@ declare namespace Deno {
    * Throws TypeError if called with a hard link
    *
    * Requires `allow-read` permission. */
-  export function readLinkSync(path: string): string;
+  export function readLinkSync(path: string | URL): string;
 
   /** Resolves to the full path destination of the named symbolic link.
    *
@@ -1457,7 +1457,7 @@ declare namespace Deno {
    * Throws TypeError if called with a hard link
    *
    * Requires `allow-read` permission. */
-  export function readLink(path: string): Promise<string>;
+  export function readLink(path: string | URL): Promise<string>;
 
   /** Resolves to a `Deno.FileInfo` for the specified `path`. If `path` is a
    * symlink, information for the symlink will be returned instead of what it
