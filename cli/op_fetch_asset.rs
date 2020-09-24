@@ -4,6 +4,8 @@
 pub use deno_core::v8_set_flags;
 use deno_core::BufVec;
 use deno_core::Op;
+use deno_core::OpState;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -82,13 +84,13 @@ fn get_asset(name: &str) -> Option<&'static str> {
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
 /// JsRuntime.
-pub fn op_fetch_asset<H: std::hash::BuildHasher, S>(
-  custom_assets: HashMap<String, PathBuf, H>,
-) -> impl Fn(Rc<S>, BufVec) -> Op {
+pub fn op_fetch_asset(
+  custom_assets: HashMap<String, PathBuf>,
+) -> impl Fn(Rc<RefCell<OpState>>, BufVec) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |_state: Rc<S>, bufs: BufVec| -> Op {
+  move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
     assert_eq!(bufs.len(), 1, "Invalid number of arguments");
     let name = std::str::from_utf8(&bufs[0]).unwrap();
 
