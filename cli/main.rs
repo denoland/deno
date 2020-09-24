@@ -561,28 +561,21 @@ async fn test_command(
     return Ok(());
   }
 
-  if docs {
-    let jsdocs = doctest_runner::parse_jsdocs(&test_modules, flags).await?;
-    let res =
-      doctest_runner::prepare_doctests(jsdocs, fail_fast, quiet, filter);
-    std::fs::write("../js_test/res.ts", res)?;
-    // println!("{:#?}", res);
-    return Ok(());
-  }
-
   let test_file_path = cwd.join(".deno.test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file = test_runner::render_test_file(
-    test_modules.clone(),
-    fail_fast,
-    quiet,
-    filter,
-  );
-  // } else {
-  //   let jsdocs = doctest_runner::parse_jsdocs(&test_modules, flags).await?;
-  //   doctest_runner::prepare_doctests_new(jsdocs)
-  // };
+
+  let test_file = if !docs {
+    test_runner::render_test_file(
+      test_modules.clone(),
+      fail_fast,
+      quiet,
+      filter,
+    )
+  } else {
+    let jsdocs = doctest_runner::parse_jsdocs(&test_modules, flags).await?;
+    doctest_runner::prepare_doctests(jsdocs, fail_fast, quiet, filter)?
+  };
 
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();

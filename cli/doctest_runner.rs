@@ -69,9 +69,13 @@ pub fn prepare_doctests(
   fail_fast: bool,
   quiet: bool,
   filter: Option<String>,
-) -> String {
+) -> Result<String, AnyError> {
   let mut test_file =  "import * as assert from \"https://deno.land/std@0.70.0/testing/asserts.ts\";\n".to_string();
   let mut import_set = HashSet::new();
+  let cwd = std::env::current_dir()?;
+  let cwd_url_str = Url::from_directory_path(cwd)
+    .map(|url| url.to_string())
+    .unwrap_or("".to_string());
   let tests: String = jsdocs
     .into_iter()
     .map(|(loc, example)| (loc, clean_string(&example)))
@@ -87,7 +91,7 @@ pub fn prepare_doctests(
       let is_async = has_await(&x);
       let res = format!(
         "\nDeno.test({{\n\tname: \"{} - {} (line {})\",\n\tignore: {},\n\t{}fn() {{\n{}\n}}\n}});\n",
-        l.filename,
+        l.filename.replace(&cwd_url_str, ""),
         caption.unwrap_or(""),
         l.line,
         ignore,
@@ -114,7 +118,7 @@ pub fn prepare_doctests(
   );
 
   test_file.push_str(&run_tests_cmd);
-  test_file
+  Ok(test_file)
 }
 
 fn clean_string(input: &str) -> String {
