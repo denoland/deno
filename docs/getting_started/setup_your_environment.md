@@ -62,7 +62,7 @@ mkdir ~/.oh-my-zsh/custom/plugins/deno
 deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
 ```
 
-After this add deno plugin under plugins tag in `~/.zshrc` file. for tools like
+After this add `deno` plugin under plugins tag in `~/.zshrc` file. for tools like
 `antigen` path will be `~/.antigen/bundles/robbyrussell/oh-my-zsh/plugins` and
 command will be `antigen bundle deno` and so on.
 
