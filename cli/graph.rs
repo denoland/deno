@@ -6,6 +6,7 @@ use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::file_fetcher::TextDocument;
 use crate::import_map::ImportMap;
+use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::specifier_handler::CachedModule;
 use crate::specifier_handler::DependencyMap;
@@ -16,8 +17,8 @@ use crate::specifier_handler::SpecifierHandler;
 use crate::tsc_config::json_merge;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::IgnoredCompilerOptions;
+use crate::AnyError;
 
-use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
@@ -33,6 +34,7 @@ use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
 use std::result;
+use std::sync::Mutex;
 use std::time::Instant;
 use swc_ecmascript::dep_graph::DependencyKind;
 
@@ -68,6 +70,8 @@ pub enum GraphError {
   InvalidDowngrade(ModuleSpecifier, Location),
   /// A remote module is trying to import a local module.
   InvalidLocalImport(ModuleSpecifier, Location),
+  /// A remote module is trying to import a local module.
+  InvalidSource(ModuleSpecifier, String),
   /// A module specifier could not be resolved for a given import.
   InvalidSpecifier(String, Location),
   /// An unexpected dependency was requested for a module.
@@ -86,6 +90,7 @@ impl fmt::Display for GraphError {
     match self {
       InvalidDowngrade(ref specifier, ref location) => write!(f, "Modules imported via https are not allowed to import http modules.\n  Importing: {}\n    at {}:{}:{}", specifier, location.filename, location.line, location.col),
       InvalidLocalImport(ref specifier, ref location) => write!(f, "Remote modules are not allowed to import local modules.\n  Importing: {}\n    at {}:{}:{}", specifier, location.filename, location.line, location.col),
+      InvalidSource(ref specifier, ref lockfile) => write!(f, "The source code is invalid, as it does not match the expected hash in the lock file.\n  Specifier: {}\n  Lock file: {}", specifier, lockfile),
       InvalidSpecifier(ref specifier, ref location) => write!(f, "Unable to resolve dependency specifier.\n  Specifier: {}\n    at {}:{}:{}", specifier, location.filename, location.line, location.col),
       MissingDependency(ref referrer, specifier) => write!(
         f,
@@ -384,10 +389,10 @@ pub struct TranspileOptions {
 }
 
 /// The transpile options that are significant out of a user provided tsconfig
-/// file, that we want to parse out of the config.
+/// file, that we want to deserialize out of the final config for a transpile.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TranspileTsOptions {
+struct TranspileConfigOptions {
   pub check_js: bool,
   pub emit_decorator_metadata: bool,
   pub jsx: String,
@@ -399,7 +404,7 @@ pub struct TranspileTsOptions {
 /// the builder will be loaded into the graph.  Also provides an interface to
 /// be able to manipulate and handle the graph.
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Graph {
   build_info: BuildInfoMap,
   handler: Rc<RefCell<dyn SpecifierHandler>>,
@@ -451,6 +456,27 @@ impl Graph {
     Ok(())
   }
 
+  /// Verify the subresource integrity of the graph based upon the optional
+  /// lockfile, updating the lockfile with any missing resources.  This will
+  /// error if any of the resources do not match their lock status.
+  pub fn lock(&self, maybe_lockfile: &Option<Mutex<Lockfile>>) -> Result<()> {
+    if let Some(lf) = maybe_lockfile {
+      let mut lockfile = lf.lock().unwrap();
+      for (ms, module) in self.modules.iter() {
+        let specifier = module.specifier.to_string();
+        let code = module.source.to_string()?;
+        let valid = lockfile.check_or_insert(&specifier, &code);
+        if !valid {
+          return Err(
+            InvalidSource(ms.clone(), lockfile.filename.clone()).into(),
+          );
+        }
+      }
+    }
+
+    Ok(())
+  }
+
   /// Transpile (only transform) the graph, updating any emitted modules
   /// with the specifier handler.  The result contains any performance stats
   /// from the compiler and optionally any user provided configuration compiler
@@ -484,7 +510,7 @@ impl Graph {
       None
     };
 
-    let compiler_options: TranspileTsOptions =
+    let compiler_options: TranspileConfigOptions =
       serde_json::from_value(compiler_options)?;
     let check_js = compiler_options.check_js;
     let transform_jsx = compiler_options.jsx == "react";
@@ -535,7 +561,7 @@ impl Graph {
   }
 }
 
-impl ModuleProvider for Graph {
+impl<'a> ModuleProvider for Graph {
   fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
     if let Some(module) = self.modules.get(specifier) {
       if let Ok(source) = module.source.to_string() {
@@ -700,9 +726,16 @@ impl GraphBuilder {
     Ok(())
   }
 
-  /// Move out the graph from the builder to be utilized further.
-  pub fn get_graph(self) -> Graph {
-    self.graph
+  /// Move out the graph from the builder to be utilized further.  An optional
+  /// lockfile can be provided, where if the sources in the graph do not match
+  /// the expected lockfile, the method with error instead of returning the
+  /// graph.
+  pub fn get_graph(
+    self,
+    maybe_lockfile: &Option<Mutex<Lockfile>>,
+  ) -> Result<Graph> {
+    self.graph.lock(maybe_lockfile)?;
+    Ok(self.graph)
   }
 }
 
@@ -714,6 +747,7 @@ mod tests {
 
   use std::env;
   use std::path::PathBuf;
+  use std::sync::Mutex;
 
   #[tokio::test]
   async fn test_graph_builder() {
@@ -731,7 +765,7 @@ mod tests {
       .insert(&specifier)
       .await
       .expect("module not inserted");
-    let graph = builder.get_graph();
+    let graph = builder.get_graph(&None).expect("error getting graph");
     let actual = graph
       .resolve("./a.ts", &specifier)
       .expect("module to resolve");
@@ -769,7 +803,7 @@ mod tests {
       .insert(&specifier)
       .await
       .expect("module not inserted");
-    let graph = builder.get_graph();
+    let graph = builder.get_graph(&None).expect("could not get graph");
     let actual_jquery = graph
       .resolve("jquery", &specifier)
       .expect("module to resolve");
@@ -813,7 +847,7 @@ mod tests {
       .insert(&specifier)
       .await
       .expect("module not inserted");
-    let mut graph = builder.get_graph();
+    let mut graph = builder.get_graph(&None).expect("could not get graph");
     let (stats, maybe_ignored_options) =
       graph.transpile(TranspileOptions::default()).unwrap();
     assert_eq!(stats.0.len(), 3);
@@ -876,7 +910,7 @@ mod tests {
       .insert(&specifier)
       .await
       .expect("module not inserted");
-    let mut graph = builder.get_graph();
+    let mut graph = builder.get_graph(&None).expect("could not get graph");
     let config = r#"{
         "compilerOptions": {
           "target": "es5",
@@ -904,5 +938,57 @@ mod tests {
         .contains("<div>Hello world!</div>"),
       "jsx should have been preserved"
     );
+  }
+
+  #[tokio::test]
+  async fn test_graph_with_lockfile() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let lockfile_path = fixtures.join("lockfile.json");
+    let lockfile =
+      Lockfile::new(lockfile_path.to_string_lossy().to_string(), false)
+        .expect("could not load lockfile");
+    let maybe_lockfile = Some(Mutex::new(lockfile));
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..MockSpecifierHandler::default()
+    }));
+    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
+        .expect("could not resolve module");
+    builder
+      .insert(&specifier)
+      .await
+      .expect("module not inserted");
+    builder
+      .get_graph(&maybe_lockfile)
+      .expect("could not get graph");
+  }
+
+  #[tokio::test]
+  async fn test_graph_with_lockfile_fail() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let lockfile_path = fixtures.join("lockfile_fail.json");
+    let lockfile =
+      Lockfile::new(lockfile_path.to_string_lossy().to_string(), false)
+        .expect("could not load lockfile");
+    let maybe_lockfile = Some(Mutex::new(lockfile));
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..MockSpecifierHandler::default()
+    }));
+    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
+        .expect("could not resolve module");
+    builder
+      .insert(&specifier)
+      .await
+      .expect("module not inserted");
+    builder
+      .get_graph(&maybe_lockfile)
+      .expect_err("expected an error");
   }
 }

@@ -75,7 +75,7 @@ impl GlobalState {
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
-      let lockfile = Lockfile::new(filename.to_string(), flags.lock_write)?;
+      let lockfile = Lockfile::new(filename.clone(), flags.lock_write)?;
       Some(Mutex::new(lockfile))
     } else {
       None
@@ -126,7 +126,7 @@ impl GlobalState {
         Rc::new(RefCell::new(FetchHandler::new(&self.flags, &permissions)?));
       let mut builder = GraphBuilder::new(handler, maybe_import_map);
       builder.insert(&module_specifier).await?;
-      let mut graph = builder.get_graph();
+      let mut graph = builder.get_graph(&self.lockfile)?;
 
       // TODO(kitsonk) this needs to move, but CompilerConfig is way too
       // complicated to use here.
