@@ -60,7 +60,7 @@ const testdir = path.join(rootdir, "testdata");
 
 for (const pathname of tests) {
   Deno.test({
-    name: path.basename(pathname),
+    name: path.fileName(pathname)!,
     ignore: ignore.includes(pathname),
     fn: async function () {
       const prelude = await Deno.readTextFile(

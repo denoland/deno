@@ -790,15 +790,17 @@ function tryExtensions(
 // Find the longest (possibly multi-dot) extension registered in
 // Module._extensions
 function findLongestRegisteredExtension(filename: string): string {
-  const name = path.basename(filename);
-  let currentExtension;
-  let index;
-  let startIndex = 0;
-  while ((index = name.indexOf(".", startIndex)) !== -1) {
-    startIndex = index + 1;
-    if (index === 0) continue; // Skip dotfiles like .gitignore
-    currentExtension = name.slice(index);
-    if (Module._extensions[currentExtension]) return currentExtension;
+  const name = path.fileName(filename);
+  if (name != null) {
+    let currentExtension;
+    let index;
+    let startIndex = 0;
+    while ((index = name.indexOf(".", startIndex)) !== -1) {
+      startIndex = index + 1;
+      if (index === 0) continue; // Skip dotfiles like .gitignore
+      currentExtension = name.slice(index);
+      if (Module._extensions[currentExtension]) return currentExtension;
+    }
   }
   return ".js";
 }

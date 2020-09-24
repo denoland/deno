@@ -2,12 +2,12 @@
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 import { assert } from "../_util/assert.ts";
-import { basename, join, normalize } from "../path/mod.ts";
+import { fileName, join, normalize } from "../path/mod.ts";
 
 /** Create WalkEntry for the `path` synchronously */
 export function _createWalkEntrySync(path: string): WalkEntry {
   path = normalize(path);
-  const name = basename(path);
+  const name = fileName(path)!;
   const info = Deno.statSync(path);
   return {
     path,
@@ -21,7 +21,7 @@ export function _createWalkEntrySync(path: string): WalkEntry {
 /** Create WalkEntry for the `path` asynchronously */
 export async function _createWalkEntry(path: string): Promise<WalkEntry> {
   path = normalize(path);
-  const name = basename(path);
+  const name = fileName(path)!;
   const info = await Deno.stat(path);
   return {
     path,

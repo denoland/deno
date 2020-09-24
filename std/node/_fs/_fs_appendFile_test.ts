@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { fromFileUrl } from "../../path/mod.ts";
 import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { appendFile, appendFileSync } from "./_fs_appendFile.ts";
-import { fromFileUrl } from "../path.ts";
 
 const decoder = new TextDecoder("utf-8");
 

@@ -1,4 +1,4 @@
-import { fromFileUrl } from "../path.ts";
+import { fromFileUrl } from "../../path/mod.ts";
 import { EventEmitter } from "../events.ts";
 import { notImplemented } from "../_utils.ts";
 

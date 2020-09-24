@@ -1,5 +1,5 @@
 import { existsSync } from "../../fs/mod.ts";
-import { fromFileUrl } from "../path.ts";
+import { fromFileUrl } from "../../path/mod.ts";
 import { getOpenOptions } from "./_fs_common.ts";
 
 type openFlags =

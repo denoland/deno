@@ -1,4 +1,4 @@
-import { fromFileUrl } from "../path.ts";
+import { fromFileUrl } from "../../path/mod.ts";
 
 export function rename(
   oldPath: string | URL,

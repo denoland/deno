@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { fromFileUrl } from "../../path/mod.ts";
 import {
   BinaryEncodings,
   BinaryOptionsArgument,
@@ -9,7 +10,6 @@ import {
   TextOptionsArgument,
 } from "./_fs_common.ts";
 import { Buffer } from "../buffer.ts";
-import { fromFileUrl } from "../path.ts";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(

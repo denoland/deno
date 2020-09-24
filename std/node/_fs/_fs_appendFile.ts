@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { fromFileUrl } from "../../path/mod.ts";
 import {
   CallbackWithError,
   Encodings,
@@ -7,7 +8,6 @@ import {
   WriteFileOptions,
 } from "./_fs_common.ts";
 import { notImplemented } from "../_utils.ts";
-import { fromFileUrl } from "../path.ts";
 
 /**
  * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these

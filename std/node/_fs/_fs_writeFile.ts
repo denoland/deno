@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { fromFileUrl } from "../../path/mod.ts";
 import { notImplemented } from "../_utils.ts";
-import { fromFileUrl } from "../path.ts";
 import { Buffer } from "../buffer.ts";
 
 import {
