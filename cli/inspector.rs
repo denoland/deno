@@ -35,54 +35,34 @@ use std::ptr;
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::Once;
 use std::thread;
 use uuid::Uuid;
 use warp::filters::ws;
 use warp::Filter;
 
-struct InspectorServer {
-  host: SocketAddr,
+pub struct InspectorServer {
+  pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
   _thread_handle: thread::JoinHandle<()>,
 }
 
 impl InspectorServer {
-  /// Registers an Inspector instance with the inspector server. If the server
-  /// is not running yet, it'll  be started first.
-  pub fn register_inspector(info: InspectorInfo) {
-    let self_ = Self::global(&info.host);
-    self_.register_inspector_tx.unbounded_send(info).unwrap();
-  }
-
-  /// Returns the global InspectorServer instance. If the server is not yet
-  /// running, this function starts it.
-  fn global(host: &SocketAddr) -> &'static InspectorServer {
-    let instance = unsafe {
-      static mut INSTANCE: Option<InspectorServer> = None;
-      static INIT: Once = Once::new();
-      INIT.call_once(|| {
-        INSTANCE.replace(Self::new(*host));
-      });
-      INSTANCE.as_ref().unwrap()
-    };
-    // We only start a single server, so all inspectors must bind to the same
-    // host:port combination.
-    assert_eq!(host, &instance.host);
-    instance
-  }
-
-  fn new(host: SocketAddr) -> Self {
+  pub fn new(host: SocketAddr) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
     let thread_handle = thread::spawn(move || {
       crate::tokio_util::run_basic(server(host, register_inspector_rx))
     });
+
     Self {
       host,
       register_inspector_tx,
       _thread_handle: thread_handle,
     }
+  }
+
+  fn register_inspector(&self, info: InspectorInfo) {
+    self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
 
@@ -323,7 +303,8 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
-  pub debugger_url: String,
+  pub server: Option<Arc<InspectorServer>>,
+  pub debugger_url: Option<String>,
 }
 
 impl Deref for DenoInspector {
@@ -393,7 +374,7 @@ impl DenoInspector {
 
   pub fn new(
     isolate: &mut deno_core::JsRuntime,
-    host: SocketAddr,
+    server: Option<Arc<InspectorServer>>,
   ) -> Box<Self> {
     let context = isolate.global_context();
     let scope = &mut v8::HandleScope::new(&mut **isolate);
@@ -401,14 +382,6 @@ impl DenoInspector {
     let (new_websocket_tx, new_websocket_rx) =
       mpsc::unbounded::<WebSocketProxy>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
-
-    let info = InspectorInfo {
-      host,
-      uuid: Uuid::new_v4(),
-      thread_name: thread::current().name().map(|n| n.to_owned()),
-      new_websocket_tx,
-      canary_rx,
-    };
 
     // Create DenoInspector instance.
     let mut self_ = new_box_with(|self_ptr| {
@@ -421,6 +394,22 @@ impl DenoInspector {
       let flags = InspectorFlags::new();
       let waker = InspectorWaker::new(scope.thread_safe_handle());
 
+      let debugger_url = if let Some(server) = server.clone() {
+        let info = InspectorInfo {
+          host: server.host,
+          uuid: Uuid::new_v4(),
+          thread_name: thread::current().name().map(|n| n.to_owned()),
+          new_websocket_tx,
+          canary_rx,
+        };
+
+        let debugger_url = info.get_websocket_debugger_url();
+        server.register_inspector(info);
+        Some(debugger_url)
+      } else {
+        None
+      };
+
       Self {
         v8_inspector_client,
         v8_inspector,
@@ -428,7 +417,8 @@ impl DenoInspector {
         flags,
         waker,
         _canary_tx: canary_tx,
-        debugger_url: info.get_websocket_debugger_url(),
+        server,
+        debugger_url,
       }
     });
 
@@ -436,9 +426,6 @@ impl DenoInspector {
     let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
-
-    // Register this inspector with the server thread.
-    InspectorServer::register_inspector(info);
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
