@@ -5,6 +5,7 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
+use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
@@ -42,6 +43,7 @@ pub struct GlobalState {
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
   pub maybe_import_map: Option<ImportMap>,
+  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
 impl GlobalState {
@@ -85,6 +87,12 @@ impl GlobalState {
         }
       };
 
+    let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
+    let maybe_inspector_server = match maybe_inspect_host {
+      Some(host) => Some(Arc::new(InspectorServer::new(host))),
+      None => None,
+    };
+
     let global_state = GlobalState {
       dir,
       permissions: Permissions::from_flags(&flags),
@@ -93,6 +101,7 @@ impl GlobalState {
       ts_compiler,
       lockfile,
       maybe_import_map,
+      maybe_inspector_server,
       compiler_starts: AtomicUsize::new(0),
     };
     Ok(Arc::new(global_state))

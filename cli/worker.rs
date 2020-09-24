@@ -3,7 +3,6 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
-use crate::inspector::InspectorServer;
 use crate::js;
 use crate::metrics::Metrics;
 use crate::ops;
@@ -156,18 +155,17 @@ impl Worker {
       op_state.put(main_module);
       op_state.put(global_state.clone());
     }
-    let inspector = {
-      global_state
-        .flags
-        .inspect
-        .or(global_state.flags.inspect_brk)
-        .filter(|_| !is_internal)
-        .map(|inspector_host| {
-          DenoInspector::new(
-            &mut isolate,
-            Some(Arc::new(InspectorServer::new(inspector_host))),
-          )
-        })
+
+    let inspector = if is_internal {
+      None
+    } else if let Some(inspector_server) = &global_state.maybe_inspector_server
+    {
+      Some(DenoInspector::new(
+        &mut isolate,
+        Some(inspector_server.clone()),
+      ))
+    } else {
+      None
     };
 
     let should_break_on_first_statement = inspector.is_some()
