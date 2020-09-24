@@ -544,11 +544,13 @@ async fn test_command(
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
 
-  let test_modules = test_runner::prepare_test_modules_urls(
-    include,
-    &cwd,
-    test_runner::is_supported,
-  )?;
+  let test_files_filter = if docs {
+    doctest_runner::is_supported_doctest
+  } else {
+    test_runner::is_supported
+  };
+  let test_modules =
+    test_runner::prepare_test_modules_urls(include, &cwd, test_files_filter)?;
   let is_empty = test_modules.is_empty();
 
   if is_empty {
@@ -556,6 +558,15 @@ async fn test_command(
     if !allow_none {
       std::process::exit(1);
     }
+    return Ok(());
+  }
+
+  if docs {
+    let jsdocs = doctest_runner::parse_jsdocs(&test_modules, flags).await?;
+    let res =
+      doctest_runner::prepare_doctests(jsdocs, fail_fast, quiet, filter);
+    std::fs::write("../js_test/res.ts", res)?;
+    // println!("{:#?}", res);
     return Ok(());
   }
 
@@ -568,6 +579,11 @@ async fn test_command(
     quiet,
     filter,
   );
+  // } else {
+  //   let jsdocs = doctest_runner::parse_jsdocs(&test_modules, flags).await?;
+  //   doctest_runner::prepare_doctests_new(jsdocs)
+  // };
+
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
