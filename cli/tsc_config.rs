@@ -16,9 +16,8 @@ impl fmt::Display for IgnoredCompilerOptions {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut codes = self.0.clone();
     codes.sort();
-    write!(f, "{}", codes.join(", "))?;
 
-    Ok(())
+    write!(f, "{}", codes.join(", "))
   }
 }
 
