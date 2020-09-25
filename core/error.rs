@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+pub use anyhow::bail;
+pub use anyhow::Context;
+pub use anyhow::Result;
 use rusty_v8 as v8;
 use std::borrow::Cow;
 use std::convert::TryFrom;
