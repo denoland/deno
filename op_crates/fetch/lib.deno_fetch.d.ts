@@ -142,7 +142,7 @@ interface ReadableStream<R = any> {
   }): AsyncIterableIterator<R>;
 }
 
-declare const ReadableStream: {
+declare var ReadableStream: {
   prototype: ReadableStream;
   new (
     underlyingSource: UnderlyingByteSource,

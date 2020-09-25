@@ -222,8 +222,6 @@ interface DOMStringList {
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
-declare const isConsoleInstance: unique symbol;
-
 declare interface Console {
   assert(condition?: boolean, ...data: any[]): void;
   clear(): void;
@@ -584,7 +582,7 @@ declare class Performance {
   now(): number;
 }
 
-declare const performance: Performance;
+declare var performance: Performance;
 
 declare interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
