@@ -9,7 +9,6 @@ Deno.test("[async] delay", async function (): Promise<void> {
   const diff = new Date().getTime() - start.getTime();
   assert(result === undefined);
   assert(diff >= 100);
-  assert(diff < 150);
 });
 
 export {};
