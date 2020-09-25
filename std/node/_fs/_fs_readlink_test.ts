@@ -3,10 +3,14 @@ import { readlink, readlinkSync } from "./_fs_readlink.ts";
 import { assertEquals, assert } from "../../testing/asserts.ts";
 import * as path from "../path.ts";
 
-const testDir = Deno.makeTempDirSync();
+const testDir = path.dirname(path.fromFileUrl(import.meta.url));
 const oldname = path.join(testDir, "oldname");
 const newname = path.join(testDir, "newname");
 
+/**
+ * Deno.symlinkSync works under unstable mode only.
+ * To enable them, use 'deno run --unstable'
+ */
 if (Deno.build.os === "windows") {
   Deno.symlinkSync(oldname, newname, { type: "file" });
 } else {
