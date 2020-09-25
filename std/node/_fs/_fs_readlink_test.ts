@@ -3,7 +3,7 @@ import { readlink, readlinkSync } from "./_fs_readlink.ts";
 import { assertEquals, assert } from "../../testing/asserts.ts";
 import * as path from "../path.ts";
 
-const testDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testDir = Deno.makeTempDirSync();
 const oldname = path.join(testDir, "oldname");
 const newname = path.join(testDir, "newname");
 
