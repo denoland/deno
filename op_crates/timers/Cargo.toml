@@ -1,0 +1,24 @@
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_timers"
+version = "0.1.0"
+edition = "2018"
+description = "Collection of Timer APIs"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { version = "0.58.0", path = "../../core" }
+deno_permissions = { version = "0.1.0", path = "../../crates/permissions" }
+deno_metrics = { version = "0.1.0", path = "../../crates/metrics" }
+serde = { version = "1.0.116", features = ["derive"] }
+tokio = { version = "0.2.22", features = ["full"] }
+
+[dev-dependencies]
+futures = "0.3.5"
