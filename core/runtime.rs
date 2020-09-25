@@ -748,6 +748,8 @@ impl JsRuntime {
         let promise_id = promise.get_identity_hash();
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_id);
+        // FIXME(bartlomieju): this promise should be awaited
+        assert!(promise.state() != v8::PromiseState::Pending);
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
