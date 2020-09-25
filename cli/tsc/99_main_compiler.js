@@ -1335,7 +1335,6 @@ delete Object.prototype.__proto__;
     // args and other info.
     const s = core.jsonOpSync("op_start");
     setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
     return s;
   }
 
