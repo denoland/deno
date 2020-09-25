@@ -15,6 +15,7 @@ import { readdir, readdirSync } from "./_fs/_fs_readdir.ts";
 import { rename, renameSync } from "./_fs/_fs_rename.ts";
 import { rmdir, rmdirSync } from "./_fs/_fs_rmdir.ts";
 import { unlink, unlinkSync } from "./_fs/_fs_unlink.ts";
+import { watch } from "./_fs/_fs_watch.ts";
 // not sure about those
 import { stat, statSync } from "./_fs/_fs_stat.ts";
 import { lstat, lstatSync } from "./_fs/_fs_lstat.ts";
@@ -51,6 +52,7 @@ export {
   mkdirSync,
   unlink,
   unlinkSync,
+  watch,
   writeFile,
   writeFileSync,
   promises,

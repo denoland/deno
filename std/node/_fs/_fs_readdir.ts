@@ -1,9 +1,11 @@
+import { asyncIterableToCallback } from "./_fs_watch.ts";
+
 type readDirOptions = {
   encoding: string;
   withFileTypes: boolean;
 };
 
-type readDirCallback = (err: Error, files: string[]) => any;
+type readDirCallback = (err: Error | undefined, files: string[]) => any;
 
 export function readdir(
   path: string | URL,
@@ -21,12 +23,16 @@ export function readdir(
       ? optionsOrCallback
       : maybeCallback || (() => {});
   // const options = typeof optionsOrCallback === "object" ? optionsOrCallback : null;
-  const result = [];
+  const result: string[] = [];
 
   try {
-    for (let file of Deno.readDirSync(path)) {
-      result.push(file.name);
-    }
+    asyncIterableToCallback(Deno.readDir(path), (val, done) => {
+      if (done) {
+        callback(undefined, result);
+        return;
+      }
+      result.push(val.name);
+    });
   } catch (error) {
     callback(error, result);
   }
