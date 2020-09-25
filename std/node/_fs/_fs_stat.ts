@@ -133,8 +133,16 @@ export type BigIntStats = {
   mtimeMs: BigInt | null;
   /** atime in milliseconds */
   ctimeMs: BigInt | null;
-  /** atime in milliseconds */
+  /** atime in nanoseconds */
   birthtimeMs: BigInt | null;
+  /** atime in nanoseconds */
+  atimeNs: BigInt | null;
+  /** atime in nanoseconds */
+  mtimeNs: BigInt | null;
+  /** atime in nanoseconds */
+  ctimeNs: BigInt | null;
+  /** atime in nanoseconds */
+  birthtimeNs: BigInt | null;
   isBlockDevice: () => boolean;
   isCharacterDevice: () => boolean;
   isDirectory: () => boolean;
@@ -195,6 +203,11 @@ export function convertFileInfoToBigIntStats(
     mtimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
     atimeMs: origin.atime ? BigInt(origin.atime.getTime()) : null,
     birthtimeMs: origin.birthtime ? BigInt(origin.birthtime.getTime()) : null,
+    mtimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
+    atimeNs: origin.atime ? BigInt(origin.atime.getTime()) * 1000000n : null,
+    birthtimeNs: origin.birthtime
+      ? BigInt(origin.birthtime.getTime()) * 1000000n
+      : null,
     isFile: () => origin.isFile,
     isDirectory: () => origin.isDirectory,
     isSymbolicLink: () => origin.isSymlink,
@@ -205,6 +218,7 @@ export function convertFileInfoToBigIntStats(
     isSocket: () => false,
     ctime: origin.mtime,
     ctimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
+    ctimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
   };
 }
 
