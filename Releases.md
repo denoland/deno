@@ -6,6 +6,40 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.2 / 2020.09.25
+
+- fix: Better formatting in console (#7642, #7641, #7553)
+- fix: Change log level to which prefix added (#7582)
+- fix: Change the Console class declaration to an interface (#7646)
+- fix: Clearing timers race condition (#7617)
+- fix: customInspect works on functions (#7670)
+- fix: Ignore fileExists in tsc host (#7635)
+- fix: Make --unstable a global flag (#7585)
+- fix: Make --watch and --inspect conflicting args (#7610)
+- fix: Make some web API constructors illegal at runtime (#7468)
+- fix: Replaced legacy chrome-devtools:// scheme. (#7659)
+- fix: Response.arrayBuffer() doesn't return promise (#7618)
+- fix: Update supported text encodings (#7668)
+- fix: Use class instead of var+interface in d.ts #7514
+- fix(coverage): print lines with no coverage to stdout (#7640)
+- fix(fmt,lint): do not print number of checked files when `--quiet` is enabled
+  (#7579)
+- fix(info): add --importmap flag (#7424)
+- fix(installer): Don't reload by default (#7596)
+- fix(repl): interpret object literals as expressions (#7591)
+- fix(watch): watch importmap file for changes (#7580)
+- refactor(core): support error stack, remove js_check (#7629, #7636)
+- refactor(coverage): Harden coverage collection (#7584, #7616, #7577)
+- upgrade: TypeScript to 4.0.3 (#7637)
+- example(core): Add hello world example (#7611)
+
+Changes in std version 0.71.0:
+
+- feat(std/node): implement getSystemErrorName() (#7624)
+- fix(std/datetime): 12 and 24 support (#7661)
+- fix(std/fs): mark createWalkEntry(Sync) as internal (#7643)
+- chore(std/hash): update crates (#7631)
+
 ### 1.4.1 / 2020.09.18
 
 - fix(cli/console): escape special characters in strings and property names
