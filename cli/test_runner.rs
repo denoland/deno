@@ -159,9 +159,9 @@ mod tests {
       format!("{}/_io_test.ts", root_url),
       format!("{}/cookie_test.ts", root_url),
       format!("{}/file_server_test.ts", root_url),
+      format!("{}/mod_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
-      format!("{}/mod_test.ts", root_url),
     ]
     .into_iter()
     .map(|f| Url::parse(&f).unwrap())
