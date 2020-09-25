@@ -296,7 +296,7 @@
       "l9",
     ],
     "iso-8859-16": ["iso-8859-16"],
-    "gbk": [
+    gbk: [
       "chinese",
       "csgb2312",
       "csiso58gb231280",
@@ -307,8 +307,8 @@
       "iso-ir-58", 
       "x-gbk",
     ],
-    "gb18030": ["gb18030"],
-    "big5": ["big5", "big5-hkscs", "cn-big5", "csbig5", "x-x-big5"],
+    gb18030: ["gb18030"],
+    big5: ["big5", "big5-hkscs", "cn-big5", "csbig5", "x-x-big5"],
     "koi8-r": ["cskoi8r", "koi", "koi8", "koi8-r", "koi8_r"],
     "koi8-u": ["koi8-ru", "koi8-u"],
     macintosh: ["csmacintosh", "mac", "macintosh", "x-mac-roman"],
