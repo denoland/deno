@@ -158,79 +158,127 @@ Deno.test({
     // Test YearDay in several different scenarios
     // and corner cases
     // Non-leap-year tests
-    assertEquals(datetime.dayOfYear(new Date("2007-01-01")), 1);
-    assertEquals(datetime.dayOfYear(new Date("2007-01-15")), 15);
-    assertEquals(datetime.dayOfYear(new Date("2007-02-01")), 32);
-    assertEquals(datetime.dayOfYear(new Date("2007-02-15")), 46);
-    assertEquals(datetime.dayOfYear(new Date("2007-03-01")), 60);
-    assertEquals(datetime.dayOfYear(new Date("2007-03-15")), 74);
-    assertEquals(datetime.dayOfYear(new Date("2007-04-01")), 91);
-    assertEquals(datetime.dayOfYear(new Date("2007-12-31")), 365);
+    assertEquals(datetime.dayOfYear(new Date("2007-01-01T00:00:00.000Z")), 1);
+    assertEquals(datetime.dayOfYear(new Date("2007-01-15T00:00:00.000Z")), 15);
+    assertEquals(datetime.dayOfYear(new Date("2007-02-01T00:00:00.000Z")), 32);
+    assertEquals(datetime.dayOfYear(new Date("2007-02-15T00:00:00.000Z")), 46);
+    assertEquals(datetime.dayOfYear(new Date("2007-03-01T00:00:00.000Z")), 60);
+    assertEquals(datetime.dayOfYear(new Date("2007-03-15T00:00:00.000Z")), 74);
+    assertEquals(datetime.dayOfYear(new Date("2007-04-01T00:00:00.000Z")), 91);
+    assertEquals(datetime.dayOfYear(new Date("2007-12-31T00:00:00.000Z")), 365);
 
     // Leap-year tests
-    assertEquals(datetime.dayOfYear(new Date("2008-01-01")), 1);
-    assertEquals(datetime.dayOfYear(new Date("2008-01-15")), 15);
-    assertEquals(datetime.dayOfYear(new Date("2008-02-01")), 32);
-    assertEquals(datetime.dayOfYear(new Date("2008-02-15")), 46);
-    assertEquals(datetime.dayOfYear(new Date("2008-03-01")), 61);
-    assertEquals(datetime.dayOfYear(new Date("2008-03-15")), 75);
-    assertEquals(datetime.dayOfYear(new Date("2008-04-01")), 92);
-    assertEquals(datetime.dayOfYear(new Date("2008-12-31")), 366);
+    assertEquals(datetime.dayOfYear(new Date("2008-01-01T00:00:00.000Z")), 1);
+    assertEquals(datetime.dayOfYear(new Date("2008-01-15T00:00:00.000Z")), 15);
+    assertEquals(datetime.dayOfYear(new Date("2008-02-01T00:00:00.000Z")), 32);
+    assertEquals(datetime.dayOfYear(new Date("2008-02-15T00:00:00.000Z")), 46);
+    assertEquals(datetime.dayOfYear(new Date("2008-03-01T00:00:00.000Z")), 61);
+    assertEquals(datetime.dayOfYear(new Date("2008-03-15T00:00:00.000Z")), 75);
+    assertEquals(datetime.dayOfYear(new Date("2008-04-01T00:00:00.000Z")), 92);
+    assertEquals(datetime.dayOfYear(new Date("2008-12-31T00:00:00.000Z")), 366);
 
     // Looks like leap-year (but isn't) tests
-    assertEquals(datetime.dayOfYear(new Date("1900-01-01")), 1);
-    assertEquals(datetime.dayOfYear(new Date("1900-01-15")), 15);
-    assertEquals(datetime.dayOfYear(new Date("1900-02-01")), 32);
-    assertEquals(datetime.dayOfYear(new Date("1900-02-15")), 46);
-    assertEquals(datetime.dayOfYear(new Date("1900-03-01")), 60);
-    assertEquals(datetime.dayOfYear(new Date("1900-03-15")), 74);
-    assertEquals(datetime.dayOfYear(new Date("1900-04-01")), 91);
-    assertEquals(datetime.dayOfYear(new Date("1900-12-31")), 365);
+    assertEquals(datetime.dayOfYear(new Date("1900-01-01T00:00:00.000Z")), 1);
+    assertEquals(datetime.dayOfYear(new Date("1900-01-15T00:00:00.000Z")), 15);
+    assertEquals(datetime.dayOfYear(new Date("1900-02-01T00:00:00.000Z")), 32);
+    assertEquals(datetime.dayOfYear(new Date("1900-02-15T00:00:00.000Z")), 46);
+    assertEquals(datetime.dayOfYear(new Date("1900-03-01T00:00:00.000Z")), 60);
+    assertEquals(datetime.dayOfYear(new Date("1900-03-15T00:00:00.000Z")), 74);
+    assertEquals(datetime.dayOfYear(new Date("1900-04-01T00:00:00.000Z")), 91);
+    assertEquals(datetime.dayOfYear(new Date("1900-12-31T00:00:00.000Z")), 365);
 
     // Year one tests (non-leap)
-    assertEquals(datetime.dayOfYear(new Date("0001-01-01")), 1);
-    assertEquals(datetime.dayOfYear(new Date("0001-01-15")), 15);
-    assertEquals(datetime.dayOfYear(new Date("0001-02-01")), 32);
-    assertEquals(datetime.dayOfYear(new Date("0001-02-15")), 46);
-    assertEquals(datetime.dayOfYear(new Date("0001-03-01")), 60);
-    assertEquals(datetime.dayOfYear(new Date("0001-03-15")), 74);
-    assertEquals(datetime.dayOfYear(new Date("0001-04-01")), 91);
-    assertEquals(datetime.dayOfYear(new Date("0001-12-31")), 365);
+    assertEquals(datetime.dayOfYear(new Date("0001-01-01T00:00:00.000Z")), 1);
+    assertEquals(datetime.dayOfYear(new Date("0001-01-15T00:00:00.000Z")), 15);
+    assertEquals(datetime.dayOfYear(new Date("0001-02-01T00:00:00.000Z")), 32);
+    assertEquals(datetime.dayOfYear(new Date("0001-02-15T00:00:00.000Z")), 46);
+    assertEquals(datetime.dayOfYear(new Date("0001-03-01T00:00:00.000Z")), 60);
+    assertEquals(datetime.dayOfYear(new Date("0001-03-15T00:00:00.000Z")), 74);
+    assertEquals(datetime.dayOfYear(new Date("0001-04-01T00:00:00.000Z")), 91);
+    assertEquals(datetime.dayOfYear(new Date("0001-12-31T00:00:00.000Z")), 365);
 
     // Year minus one tests (non-leap)
-    assertEquals(datetime.dayOfYear(new Date("-000001-01-01")), 1);
-    assertEquals(datetime.dayOfYear(new Date("-000001-01-15")), 15);
-    assertEquals(datetime.dayOfYear(new Date("-000001-02-01")), 32);
-    assertEquals(datetime.dayOfYear(new Date("-000001-02-15")), 46);
-    assertEquals(datetime.dayOfYear(new Date("-000001-03-01")), 60);
-    assertEquals(datetime.dayOfYear(new Date("-000001-03-15")), 74);
-    assertEquals(datetime.dayOfYear(new Date("-000001-04-01")), 91);
-    assertEquals(datetime.dayOfYear(new Date("-000001-12-31")), 365);
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-01-01T00:00:00.000Z")),
+      1,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-01-15T00:00:00.000Z")),
+      15,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-02-01T00:00:00.000Z")),
+      32,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-02-15T00:00:00.000Z")),
+      46,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-03-01T00:00:00.000Z")),
+      60,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-03-15T00:00:00.000Z")),
+      74,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-04-01T00:00:00.000Z")),
+      91,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000001-12-31T00:00:00.000Z")),
+      365,
+    );
 
     // 400 BC tests (leap-year)
-    assertEquals(datetime.dayOfYear(new Date("-000400-01-01")), 1);
-    assertEquals(datetime.dayOfYear(new Date("-000400-01-15")), 15);
-    assertEquals(datetime.dayOfYear(new Date("-000400-02-01")), 32);
-    assertEquals(datetime.dayOfYear(new Date("-000400-02-15")), 46);
-    assertEquals(datetime.dayOfYear(new Date("-000400-03-01")), 61);
-    assertEquals(datetime.dayOfYear(new Date("-000400-03-15")), 75);
-    assertEquals(datetime.dayOfYear(new Date("-000400-04-01")), 92);
-    assertEquals(datetime.dayOfYear(new Date("-000400-12-31")), 366);
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-01-01T00:00:00.000Z")),
+      1,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-01-15T00:00:00.000Z")),
+      15,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-02-01T00:00:00.000Z")),
+      32,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-02-15T00:00:00.000Z")),
+      46,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-03-01T00:00:00.000Z")),
+      61,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-03-15T00:00:00.000Z")),
+      75,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-04-01T00:00:00.000Z")),
+      92,
+    );
+    assertEquals(
+      datetime.dayOfYear(new Date("-000400-12-31T00:00:00.000Z")),
+      366,
+    );
 
     // Special Cases
 
     // Gregorian calendar change (no effect)
-    assertEquals(datetime.dayOfYear(new Date("1582-10-04T03:24:00")), 277);
-    assertEquals(datetime.dayOfYear(new Date("1582-10-15T03:24:00")), 288);
+    assertEquals(datetime.dayOfYear(new Date("1582-10-04T03:24:00.000Z")), 277);
+    assertEquals(datetime.dayOfYear(new Date("1582-10-15T03:24:00.000Z")), 288);
   },
 });
 
 Deno.test({
   name: "[std/datetime] weekOfYear",
   fn: () => {
-    assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:00:00")), 1);
-    assertEquals(datetime.weekOfYear(new Date("2020-12-28T03:00:00")), 53); // 53 weeks in 2020
-    assertEquals(datetime.weekOfYear(new Date("2020-06-28T03:00:00")), 26);
+    assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:00:00.000Z")), 1);
+    assertEquals(datetime.weekOfYear(new Date("2020-12-28T03:00:00.000Z")), 53); // 53 weeks in 2020
+    assertEquals(datetime.weekOfYear(new Date("2020-06-28T03:00:00.000Z")), 26);
 
     // iso weeks year starting sunday
     assertEquals(datetime.weekOfYear(new Date(2012, 0, 1)), 52);
