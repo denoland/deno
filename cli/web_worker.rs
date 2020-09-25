@@ -146,7 +146,7 @@ impl WebWorker {
         deno_core::op_resources,
       );
       ops::errors::init(&mut web_worker.worker);
-      ops::timers::init(&mut web_worker.worker);
+      deno_timers::init(&mut web_worker.worker);
       ops::fetch::init(&mut web_worker.worker);
       ops::websocket::init(&mut web_worker.worker);
 

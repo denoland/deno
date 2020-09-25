@@ -3,7 +3,7 @@
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
-use crate::metrics::metrics_op;
+use deno_metrics::metrics_op;
 use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;

@@ -408,7 +408,9 @@ dependencies = [
  "deno_flags",
  "deno_fs",
  "deno_lint",
+ "deno_metrics",
  "deno_permissions",
+ "deno_timers",
  "deno_version",
  "deno_web",
  "dissimilar",
@@ -548,6 +550,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_metrics"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "deno_permissions"
 version = "0.1.0"
 dependencies = [
@@ -561,6 +570,18 @@ dependencies = [
  "log",
  "serde",
  "termcolor",
+]
+
+[[package]]
+name = "deno_timers"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_metrics",
+ "deno_permissions",
+ "futures",
+ "serde",
+ "tokio",
 ]
 
 [[package]]

@@ -33,7 +33,6 @@ mod js;
 mod lint;
 mod lockfile;
 mod media_type;
-mod metrics;
 mod module_graph;
 mod op_fetch_asset;
 pub mod ops;

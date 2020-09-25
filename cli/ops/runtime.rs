@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::metrics::Metrics;
+use deno_metrics::Metrics;
 use deno_permissions::Permissions;
 use crate::version;
 use crate::js;

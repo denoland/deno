@@ -21,7 +21,6 @@ pub mod repl;
 pub mod runtime;
 pub mod runtime_compiler;
 pub mod signal;
-pub mod timers;
 pub mod tls;
 pub mod tty;
 pub mod web_worker;
@@ -29,7 +28,7 @@ pub mod websocket;
 pub mod worker_host;
 
 use crate::global_state::GlobalState;
-use crate::metrics::metrics_op;
+use deno_metrics::metrics_op;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;

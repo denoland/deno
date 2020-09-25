@@ -4,10 +4,10 @@ use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::js;
-use crate::metrics::Metrics;
+use deno_metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use crate::ops::timers;
+use deno_timers as timers;
 use crate::ops::worker_host::WorkerId;
 use crate::ops::worker_host::WorkersTable;
 use deno_permissions::Permissions;
@@ -334,7 +334,7 @@ impl MainWorker {
       ops::reg_json_sync(&mut worker, "op_close", deno_core::op_close);
       ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
       ops::signal::init(&mut worker);
-      ops::timers::init(&mut worker);
+      timers::init(&mut worker);
       ops::tty::init(&mut worker);
       ops::worker_host::init(&mut worker);
     }

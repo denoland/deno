@@ -153,7 +153,7 @@ impl CompilerWorker {
     let response = Arc::new(Mutex::new(None));
     ops::runtime::init(&mut worker);
     ops::errors::init(&mut worker);
-    ops::timers::init(&mut worker);
+    deno_timers::init(&mut worker);
     ops::compiler::init(&mut worker, response.clone());
     Self { worker, response }
   }

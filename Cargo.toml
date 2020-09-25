@@ -2,12 +2,18 @@
 
 [workspace]
 members = [
-  "crates/*",
+  "crates/colors",
+  "crates/flags",
+  "crates/fs",
+  "crates/metrics",
+  "crates/permissions",
+  "crates/version",
   "cli",
   "core",
   "test_plugin",
   "test_util",
   "op_crates/fetch",
+  "op_crates/timers",
   "op_crates/web",
 ]
 exclude = [
