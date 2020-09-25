@@ -19,6 +19,7 @@ import { watch } from "./_fs/_fs_watch.ts";
 // not sure about those
 import { stat, statSync } from "./_fs/_fs_stat.ts";
 import { lstat, lstatSync } from "./_fs/_fs_lstat.ts";
+import { open, openSync } from "./_fs/_fs_open.ts";
 
 import * as promises from "./_fs/promises/mod.ts";
 
@@ -50,6 +51,8 @@ export {
   rmdirSync,
   mkdir,
   mkdirSync,
+  open,
+  openSync,
   unlink,
   unlinkSync,
   watch,
