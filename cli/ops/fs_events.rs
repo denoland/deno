@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;

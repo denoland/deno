@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
-use crate::flags::Flags;
-use crate::fs::resolve_from_cwd;
+use deno_flags::Flags;
+use deno_fs::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -21,6 +20,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::Mutex;
+use log::debug;
+#[cfg(test)]
+use lazy_static::lazy_static;
+extern crate deno_colors as colors;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 

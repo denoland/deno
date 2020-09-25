@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;

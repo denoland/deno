@@ -8,7 +8,7 @@
 //! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
-use deno_permissions::Permissions;
+use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;

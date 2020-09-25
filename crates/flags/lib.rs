@@ -9,6 +9,10 @@ use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+pub mod flags_allow_net;
+#[macro_use]
+extern crate lazy_static;
+use log::debug;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -219,12 +223,25 @@ To evaluate code in the shell:
   deno eval \"console.log(30933 + 404)\"
 ";
 
+fn ts_version() -> String {
+  std::fs::read_to_string("../../cli/tsc/00_typescript.js")
+    .unwrap()
+    .lines()
+    .find(|l| l.contains("ts.version = "))
+    .expect(
+      "Failed to find the pattern `ts.version = ` in typescript source code",
+    )
+    .chars()
+    .skip_while(|c| !char::is_numeric(*c))
+    .take_while(|c| *c != '"')
+    .collect::<String>()
+}
 lazy_static! {
   static ref LONG_VERSION: String = format!(
     "{}\nv8 {}\ntypescript {}",
-    crate::version::DENO,
-    crate::version::v8(),
-    crate::version::TYPESCRIPT
+    deno_version::DENO,
+    deno_version::v8(),
+    ts_version()
   );
 }
 
@@ -304,7 +321,7 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     // Disable clap's auto-detection of terminal width
     .set_term_width(0)
     // Disable each subcommand having its own version.
-    .version(crate::version::DENO)
+    .version(deno_version::DENO)
     .long_version(LONG_VERSION.as_str())
     .arg(
       Arg::with_name("unstable")
@@ -1096,7 +1113,7 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .use_delimiter(true)
         .require_equals(true)
         .help("Allow network access")
-        .validator(crate::flags_allow_net::validator),
+        .validator(flags_allow_net::validator),
     )
     .arg(
       Arg::with_name("allow-env")
@@ -1133,7 +1150,7 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(script_arg())
     .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
     .long_about(
-	  "Run a program given a filename or url to the module.
+    "Run a program given a filename or url to the module.
 
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
@@ -1486,7 +1503,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       flags.allow_net = true;
     } else {
       flags.net_allowlist =
-        crate::flags_allow_net::parse(raw_net_allowlist).unwrap();
+        flags_allow_net::parse(raw_net_allowlist).unwrap();
       debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }

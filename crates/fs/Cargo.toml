@@ -1,0 +1,21 @@
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_fs"
+version = "0.1.0"
+edition = "2018"
+description = "provides filesystem implementation for deno"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+atty = "0.2.14"
+deno_core = { version = "0.58.0", path = "../../core" }
+serde = { version = "1.0.116", features = ["derive"] }
+walkdir = "2.3.1"
+log = "0.4.11"

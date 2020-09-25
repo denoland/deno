@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs as deno_fs;
+use deno_fs;
 use crate::http_cache::url_to_filename;
 use deno_core::url::{Host, Url};
 use std::ffi::OsStr;

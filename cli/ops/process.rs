@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::signal::kill;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;

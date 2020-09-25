@@ -2,8 +2,9 @@
 
 use crate::colors;
 use crate::metrics::Metrics;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::version;
+use crate::js;
 use crate::DenoSubcommand;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -38,7 +39,7 @@ fn op_start(
     "ppid": ppid(),
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,
     "target": env!("TARGET"),
-    "tsVersion": version::TYPESCRIPT,
+    "tsVersion": js::TS_VERSION,
     "unstableFlag": gs.flags.unstable,
     "v8Version": version::v8(),
     "versionFlag": gs.flags.version,

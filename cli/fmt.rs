@@ -9,7 +9,7 @@
 
 use crate::colors;
 use crate::diff::diff;
-use crate::fs::files_in_subtree;
+use deno_fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;

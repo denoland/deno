@@ -12,6 +12,9 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 #[cfg(windows)]
 use termcolor::{BufferWriter, ColorChoice};
 
+#[macro_use]
+extern crate lazy_static;
+
 lazy_static! {
         // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
         // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.

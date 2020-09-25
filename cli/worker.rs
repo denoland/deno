@@ -10,7 +10,7 @@ use crate::ops::io::get_stdio;
 use crate::ops::timers;
 use crate::ops::worker_host::WorkerId;
 use crate::ops::worker_host::WorkersTable;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::state::CliModuleLoader;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -388,7 +388,7 @@ impl DerefMut for MainWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::flags;
+  use deno_flags;
   use crate::global_state::GlobalState;
   use crate::js;
   use crate::tokio_util;
@@ -402,7 +402,7 @@ mod tests {
       .join("cli/tests/esm_imports_a.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let global_state = GlobalState::new(flags::Flags::default()).unwrap();
+    let global_state = GlobalState::new(deno_flags::Flags::default()).unwrap();
     let global_state_ = global_state.clone();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new(
@@ -432,7 +432,7 @@ mod tests {
       .join("tests/circular1.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let global_state = GlobalState::new(flags::Flags::default()).unwrap();
+    let global_state = GlobalState::new(deno_flags::Flags::default()).unwrap();
     let global_state_ = global_state.clone();
     tokio_util::run_basic(async {
       let mut worker = MainWorker::new(
@@ -464,12 +464,12 @@ mod tests {
       .join("cli/tests/006_url_imports.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let flags = flags::Flags {
-      subcommand: flags::DenoSubcommand::Run {
+    let flags = deno_flags::Flags {
+      subcommand: deno_flags::DenoSubcommand::Run {
         script: module_specifier.to_string(),
       },
       reload: true,
-      ..flags::Flags::default()
+      ..deno_flags::Flags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
     let mut worker = MainWorker::new(

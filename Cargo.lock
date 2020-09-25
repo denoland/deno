@@ -401,10 +401,15 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "deno_colors",
  "deno_core",
  "deno_doc",
  "deno_fetch",
+ "deno_flags",
+ "deno_fs",
  "deno_lint",
+ "deno_permissions",
+ "deno_version",
  "deno_web",
  "dissimilar",
  "dlopen",
@@ -439,12 +444,23 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "uuid",
- "walkdir",
  "warp",
  "webpki",
  "webpki-roots",
  "winapi 0.3.9",
  "winres",
+]
+
+[[package]]
+name = "deno_colors"
+version = "0.1.0"
+dependencies = [
+ "atty",
+ "deno_core",
+ "lazy_static",
+ "regex",
+ "serde",
+ "termcolor",
 ]
 
 [[package]]
@@ -491,6 +507,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_flags"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "deno_core",
+ "deno_version",
+ "lazy_static",
+ "log",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
+name = "deno_fs"
+version = "0.1.0"
+dependencies = [
+ "atty",
+ "deno_core",
+ "log",
+ "serde",
+ "walkdir",
+]
+
+[[package]]
 name = "deno_lint"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -504,6 +544,32 @@ dependencies = [
  "swc_atoms",
  "swc_common",
  "swc_ecmascript",
+]
+
+[[package]]
+name = "deno_permissions"
+version = "0.1.0"
+dependencies = [
+ "atty",
+ "deno_colors",
+ "deno_core",
+ "deno_fetch",
+ "deno_flags",
+ "deno_fs",
+ "lazy_static",
+ "log",
+ "serde",
+ "termcolor",
+]
+
+[[package]]
+name = "deno_version"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "deno_core",
+ "log",
+ "serde",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);

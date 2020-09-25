@@ -6,7 +6,7 @@ use crate::http_util;
 use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::text_encoding;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -699,7 +699,7 @@ mod tests {
 
   #[test]
   fn test_cache_blocklist() {
-    let args = crate::flags::resolve_urls(vec![
+    let args = deno_flags::resolve_urls(vec![
       String::from("http://deno.land/std"),
       String::from("http://github.com/example/mod.ts"),
       String::from("http://fragment.com/mod.ts#fragment"),

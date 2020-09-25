@@ -3,7 +3,7 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;

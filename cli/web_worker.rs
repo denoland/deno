@@ -3,7 +3,7 @@
 use crate::global_state::GlobalState;
 use crate::js;
 use crate::ops;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::state::CliModuleLoader;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;

@@ -9,7 +9,7 @@ extern crate log;
 
 mod ast;
 mod checksum;
-pub mod colors;
+extern crate deno_colors as colors;
 mod coverage;
 pub mod deno_dir;
 pub mod diagnostics;
@@ -18,11 +18,8 @@ mod disk_cache;
 pub mod errors;
 mod file_fetcher;
 mod file_watcher;
-pub mod flags;
-mod flags_allow_net;
 mod fmt;
 pub mod fmt_errors;
-mod fs;
 pub mod global_state;
 mod global_timer;
 pub mod http_cache;
@@ -39,7 +36,6 @@ mod metrics;
 mod module_graph;
 mod op_fetch_asset;
 pub mod ops;
-pub mod permissions;
 mod repl;
 pub mod resolve_addr;
 pub mod signal;
@@ -51,19 +47,31 @@ mod tokio_util;
 mod tsc;
 mod tsc_config;
 mod upgrade;
-pub mod version;
+extern crate deno_version as version;
 mod web_worker;
 pub mod worker;
+
+pub static CLI_SNAPSHOT: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
+pub static COMPILER_SNAPSHOT: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
+pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
+pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
+pub static SHARED_GLOBALS_LIB: &str =
+  include_str!("dts/lib.deno.shared_globals.d.ts");
+pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
+pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
-use crate::fs as deno_fs;
+use deno_fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
-use crate::permissions::Permissions;
+pub(crate) use deno_permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -75,8 +83,8 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
-use flags::DenoSubcommand;
-use flags::Flags;
+use deno_flags::DenoSubcommand;
+use deno_flags::Flags;
 use global_state::exit_unstable;
 use log::Level;
 use log::LevelFilter;
@@ -624,7 +632,7 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  let flags = flags::flags_from_vec(args);
+  let flags = deno_flags::flags_from_vec(args);
 
   if let Some(ref v8_flags) = flags.v8_flags {
     let v8_flags_includes_help = v8_flags

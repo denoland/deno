@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::metrics::metrics_op;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::prelude::*;
 use deno_core::plugin_api;

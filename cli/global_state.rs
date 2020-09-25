@@ -2,14 +2,14 @@
 
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::flags;
+use deno_flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
@@ -33,7 +33,7 @@ pub fn exit_unstable(api_name: &str) {
 /// It is shared by all created workers (thus V8 isolates).
 pub struct GlobalState {
   /// Flags parsed from `argv` contents.
-  pub flags: flags::Flags,
+  pub flags: deno_flags::Flags,
   /// Permissions parsed from `flags`.
   pub permissions: Permissions,
   pub dir: deno_dir::DenoDir,
@@ -45,7 +45,7 @@ pub struct GlobalState {
 }
 
 impl GlobalState {
-  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+  pub fn new(flags: deno_flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -238,9 +238,9 @@ impl GlobalState {
   #[cfg(test)]
   pub fn mock(
     argv: Vec<String>,
-    maybe_flags: Option<flags::Flags>,
+    maybe_flags: Option<deno_flags::Flags>,
   ) -> Arc<GlobalState> {
-    GlobalState::new(flags::Flags {
+    GlobalState::new(deno_flags::Flags {
       argv,
       ..maybe_flags.unwrap_or_default()
     })

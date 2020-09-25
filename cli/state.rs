@@ -2,7 +2,7 @@
 
 use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
-use crate::permissions::Permissions;
+use deno_permissions::Permissions;
 use crate::tsc::TargetLib;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
