@@ -1,4 +1,4 @@
-const sleep = (n) => new Promise(r => setTimeout(r, n));
+const sleep = (n) => new Promise((r) => setTimeout(r, n));
 
 await sleep(100);
 
