@@ -2,6 +2,7 @@ use crate::ast;
 use crate::flags::Flags;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::{error::AnyError, ModuleSpecifier};
 use deno_doc::DocParser;
