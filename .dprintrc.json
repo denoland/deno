@@ -13,7 +13,12 @@
   "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
     ".cargo_home",
-    "cli/dts",
+    "cli/dts/lib.d.ts",
+    "cli/dts/lib.dom*",
+    "cli/dts/lib.es*",
+    "cli/dts/lib.scripthost.d.ts",
+    "cli/dts/lib.webworker*.d.ts",
+    "cli/dts/typescript.d.ts",
     "cli/tests/encoding",
     "cli/tsc/*typescript.js",
     "gh-pages",
