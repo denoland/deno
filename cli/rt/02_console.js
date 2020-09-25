@@ -193,6 +193,11 @@
   }
 
   function inspectFunction(value, _ctx) {
+    if (customInspect in value && typeof value[customInspect] === "function") {
+      try {
+        return String(value[customInspect]());
+      } catch {}
+    }
     // Might be Function/AsyncFunction/GeneratorFunction
     const cstrName = Object.getPrototypeOf(value).constructor.name;
     if (value.name && value.name !== "anonymous") {
