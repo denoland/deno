@@ -7,7 +7,7 @@ import {
   assertStringContains,
   assert,
 } from "../testing/asserts.ts";
-import { resolve, dirname, fromFileUrl } from "../path/mod.ts";
+import { dirname, fromFileUrl } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
 
