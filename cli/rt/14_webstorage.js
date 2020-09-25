@@ -1,13 +1,13 @@
 ((window) => {
   const { sendSync } = window.__bootstrap.dispatchJson;
 
-  function webStorage(temporary = false) {
+  function webStorage(session = false) {
     let rid;
 
     function getRid() {
       if (!rid) {
         rid = sendSync("op_localstorage_open", {
-          temporary,
+          session,
           location: "foobar"
         });
       }
@@ -52,21 +52,23 @@
       },
     };
 
-    const proxy = new Proxy(storage, {
+    return new Proxy(storage, {
       deleteProperty(target, prop) {
         target.removeItem(prop);
       },
-      get(target, p, receiver) {
+      get(target, p) {
         return target.getItem(p);
       },
-      set(target, p, value, receiver) {
+      set(target, p, value) {
+        if (p in target) {
+          return false;
+        }
+
         target.setItem(p, value);
 
         return true;
       }
     });
-
-    return proxy;
   }
 
   const localStorage = webStorage();

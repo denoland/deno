@@ -20,7 +20,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
-  temporary: bool,
+  session: bool,
   location: String,
 }
 
@@ -31,19 +31,26 @@ pub fn op_localstorage_open(
 ) -> Result<Value, ErrBox> {
   let args: OpenArgs = serde_json::from_value(args)?;
 
-  let cli_state = super::cli_state(&state);
-  let deno_dir = &cli_state.global_state.dir;
-  let path = deno_dir.root
-    .join("web_storage")
-    .join(checksum::gen(&[args.location.as_bytes()]));
+  let rid = if args.session {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute("CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)", params![]).unwrap();
+    state.resource_table.add("sessionStorage", Box::new(conn))
+  } else {
+    let cli_state = super::cli_state(&state);
+    let deno_dir = &cli_state.global_state.dir;
+    let path = deno_dir.root
+      .join("web_storage")
+      .join(checksum::gen(&[args.location.as_bytes()]));
 
-  std::fs::create_dir_all(&path).unwrap();
+    std::fs::create_dir_all(&path).unwrap();
 
-  let conn = Connection::open(path.join("local_storage")).unwrap();
+    let conn = Connection::open(path.join("local_storage")).unwrap();
 
-  conn.execute("CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)", params![]).unwrap();
+    conn.execute("CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)", params![]).unwrap();
 
-  let rid = state.resource_table.add("localStorage", Box::new(conn));
+    state.resource_table.add("localStorage", Box::new(conn))
+  };
+
   Ok(json!(rid))
 }
 
@@ -91,7 +98,7 @@ pub fn op_localstorage_key(
 
   let mut stmt = conn.prepare("SELECT key FROM data LIMIT 1 OFFSET ?").unwrap();
 
-  let key: Option<String> = stmt.query_row(&[args.index], |row| {
+  let key: Option<String> = stmt.query_row(params![args.index], |row| {
     row.get(0)
   }).optional().unwrap();
 
@@ -122,7 +129,7 @@ pub fn op_localstorage_set(
     .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-  conn.execute("INSERT or REPLACE INTO data (key, value) values (?1, ?2)", &[args.key_name, args.key_value]).unwrap();
+  conn.execute("INSERT or REPLACE INTO data (key, value) values (?, ?)", params![args.key_name, args.key_value]).unwrap();
 
   Ok(json!({}))
 }
@@ -177,7 +184,7 @@ pub fn op_localstorage_remove(
     .get_mut::<Connection>(args.rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
 
-  conn.execute("DELETE FROM data WHERE key = ?", &[args.key_name]).unwrap();
+  conn.execute("DELETE FROM data WHERE key = ?", params![args.key_name]).unwrap();
 
   Ok(json!({}))
 }
