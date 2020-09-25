@@ -8,128 +8,111 @@
 /// <reference lib="deno.fetch" />
 
 declare namespace WebAssembly {
-    interface CompileError {
-    }
+  export class CompileError {
+    constructor();
+  }
 
-    var CompileError: {
-        prototype: CompileError;
-        new(): CompileError;
-    };
+  export class Global {
+    constructor(descriptor: GlobalDescriptor, v?: any);
 
-    interface Global {
-        value: any;
-        valueOf(): any;
-    }
+    value: any;
+    valueOf(): any;
+  }
 
-    var Global: {
-        prototype: Global;
-        new(descriptor: GlobalDescriptor, v?: any): Global;
-    };
+  export class Instance {
+    constructor(module: Module, importObject?: Imports);
+    readonly exports: Exports;
+  }
 
-    interface Instance {
-        readonly exports: Exports;
-    }
+  export class LinkError {
+    constructor();
+  }
 
-    var Instance: {
-        prototype: Instance;
-        new(module: Module, importObject?: Imports): Instance;
-    };
+  export class Memory {
+    constructor(descriptor: MemoryDescriptor);
+    readonly buffer: ArrayBuffer;
+    grow(delta: number): number;
+  }
 
-    interface LinkError {
-    }
+  export class Module {
+    constructor(bytes: BufferSource);
+    static customSections(
+      moduleObject: Module,
+      sectionName: string,
+    ): ArrayBuffer[];
+    static exports(moduleObject: Module): ModuleExportDescriptor[];
+    static imports(moduleObject: Module): ModuleImportDescriptor[];
+  }
 
-    var LinkError: {
-        prototype: LinkError;
-        new(): LinkError;
-    };
+  export class RuntimeError {
+    constructor();
+  }
 
-    interface Memory {
-        readonly buffer: ArrayBuffer;
-        grow(delta: number): number;
-    }
+  export class Table {
+    constructor(descriptor: TableDescriptor);
+    readonly length: number;
+    get(index: number): Function | null;
+    grow(delta: number): number;
+    set(index: number, value: Function | null): void;
+  }
 
-    var Memory: {
-        prototype: Memory;
-        new(descriptor: MemoryDescriptor): Memory;
-    };
+  export interface GlobalDescriptor {
+    mutable?: boolean;
+    value: ValueType;
+  }
 
-    interface Module {
-    }
+  export interface MemoryDescriptor {
+    initial: number;
+    maximum?: number;
+  }
 
-    var Module: {
-        prototype: Module;
-        new(bytes: BufferSource): Module;
-        customSections(moduleObject: Module, sectionName: string): ArrayBuffer[];
-        exports(moduleObject: Module): ModuleExportDescriptor[];
-        imports(moduleObject: Module): ModuleImportDescriptor[];
-    };
+  export interface ModuleExportDescriptor {
+    kind: ImportExportKind;
+    name: string;
+  }
 
-    interface RuntimeError {
-    }
+  export interface ModuleImportDescriptor {
+    kind: ImportExportKind;
+    module: string;
+    name: string;
+  }
 
-    var RuntimeError: {
-        prototype: RuntimeError;
-        new(): RuntimeError;
-    };
+  export interface TableDescriptor {
+    element: TableKind;
+    initial: number;
+    maximum?: number;
+  }
 
-    interface Table {
-        readonly length: number;
-        get(index: number): Function | null;
-        grow(delta: number): number;
-        set(index: number, value: Function | null): void;
-    }
+  export interface WebAssemblyInstantiatedSource {
+    instance: Instance;
+    module: Module;
+  }
 
-    var Table: {
-        prototype: Table;
-        new(descriptor: TableDescriptor): Table;
-    };
-
-    interface GlobalDescriptor {
-        mutable?: boolean;
-        value: ValueType;
-    }
-
-    interface MemoryDescriptor {
-        initial: number;
-        maximum?: number;
-    }
-
-    interface ModuleExportDescriptor {
-        kind: ImportExportKind;
-        name: string;
-    }
-
-    interface ModuleImportDescriptor {
-        kind: ImportExportKind;
-        module: string;
-        name: string;
-    }
-
-    interface TableDescriptor {
-        element: TableKind;
-        initial: number;
-        maximum?: number;
-    }
-
-    interface WebAssemblyInstantiatedSource {
-        instance: Instance;
-        module: Module;
-    }
-
-    type ImportExportKind = "function" | "global" | "memory" | "table";
-    type TableKind = "anyfunc";
-    type ValueType = "f32" | "f64" | "i32" | "i64";
-    type ExportValue = Function | Global | Memory | Table;
-    type Exports = Record<string, ExportValue>;
-    type ImportValue = ExportValue | number;
-    type ModuleImports = Record<string, ImportValue>;
-    type Imports = Record<string, ModuleImports>;
-    function compile(bytes: BufferSource): Promise<Module>;
-    function compileStreaming(source: Response | Promise<Response>): Promise<Module>;
-    function instantiate(bytes: BufferSource, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
-    function instantiate(moduleObject: Module, importObject?: Imports): Promise<Instance>;
-    function instantiateStreaming(response: Response | PromiseLike<Response>, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
-    function validate(bytes: BufferSource): boolean;
+  export type ImportExportKind = "function" | "global" | "memory" | "table";
+  export type TableKind = "anyfunc";
+  export type ValueType = "f32" | "f64" | "i32" | "i64";
+  export type ExportValue = Function | Global | Memory | Table;
+  export type Exports = Record<string, ExportValue>;
+  export type ImportValue = ExportValue | number;
+  export type ModuleImports = Record<string, ImportValue>;
+  export type Imports = Record<string, ModuleImports>;
+  export function compile(bytes: BufferSource): Promise<Module>;
+  export function compileStreaming(
+    source: Response | Promise<Response>,
+  ): Promise<Module>;
+  export function instantiate(
+    bytes: BufferSource,
+    importObject?: Imports,
+  ): Promise<WebAssemblyInstantiatedSource>;
+  export function instantiate(
+    moduleObject: Module,
+    importObject?: Imports,
+  ): Promise<Instance>;
+  export function instantiateStreaming(
+    response: Response | PromiseLike<Response>,
+    importObject?: Imports,
+  ): Promise<WebAssemblyInstantiatedSource>;
+  export function validate(bytes: BufferSource): boolean;
 }
 
 /** Sets a timer which executes a function once after the timer expires. Returns
@@ -286,35 +269,12 @@ declare interface Crypto {
   ): T;
 }
 
+declare class URLSearchParams {
+  constructor(
+    init?: string[][] | Record<string, string> | string | URLSearchParams,
+  );
+  static toString(): string;
 
-interface ResponseInit {
-  headers?: HeadersInit;
-  status?: number;
-  statusText?: string;
-}
-
-type ResponseType =
-  | "basic"
-  | "cors"
-  | "default"
-  | "error"
-  | "opaque"
-  | "opaqueredirect";
-
-/** This Fetch API interface represents the response to a request. */
-interface Response extends Body {
-  readonly headers: Headers;
-  readonly ok: boolean;
-  readonly redirected: boolean;
-  readonly status: number;
-  readonly statusText: string;
-  readonly trailer: Promise<Headers>;
-  readonly type: ResponseType;
-  readonly url: string;
-  clone(): Response;
-}
-
-interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
    * ```ts
@@ -456,16 +416,12 @@ interface URLSearchParams {
   toString(): string;
 }
 
-declare const URLSearchParams: {
-  prototype: URLSearchParams;
-  new (
-    init?: string[][] | Record<string, string> | string | URLSearchParams,
-  ): URLSearchParams;
-  toString(): string;
-};
-
 /** The URL interface represents an object providing static methods used for creating object URLs. */
-interface URL {
+declare class URL {
+  constructor(url: string, base?: string | URL);
+  createObjectURL(object: any): string;
+  revokeObjectURL(url: string): void;
+
   hash: string;
   host: string;
   hostname: string;
@@ -481,13 +437,6 @@ interface URL {
   username: string;
   toJSON(): string;
 }
-
-declare const URL: {
-  prototype: URL;
-  new (url: string, base?: string | URL): URL;
-  createObjectURL(object: any): string;
-  revokeObjectURL(url: string): void;
-};
 
 interface MessageEventInit extends EventInit {
   data?: any;
@@ -593,7 +542,9 @@ declare class Worker extends EventTarget {
 
 declare type PerformanceEntryList = PerformanceEntry[];
 
-declare interface Performance {
+declare class Performance {
+  constructor();
+
   /** Removes the stored timestamp with the associated name. */
   clearMarks(markName?: string): void;
 
@@ -632,11 +583,6 @@ declare interface Performance {
    */
   now(): number;
 }
-
-declare const Performance: {
-  prototype: Performance;
-  new (): Performance;
-};
 
 declare const performance: Performance;
 
@@ -697,19 +643,15 @@ declare class PerformanceMeasure extends PerformanceEntry {
 /** Events measuring progress of an underlying process, like an HTTP request
  * (for an XMLHttpRequest, or the loading of the underlying resource of an
  * <img>, <audio>, <video>, <style> or <link>). */
-interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+  constructor(type: string, eventInitDict?: ProgressEventInit);
   readonly lengthComputable: boolean;
   readonly loaded: number;
   readonly target: T | null;
   readonly total: number;
 }
 
-declare var ProgressEvent: {
-  prototype: ProgressEvent;
-  new(type:string, eventInitDict?: ProgressEventInit): ProgressEvent;
-};
-
-interface CustomEventInit<T = any> extends EventInit {
+declare interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
 }
 
@@ -734,7 +676,8 @@ interface CloseEventInit extends EventInit {
   wasClean?: boolean;
 }
 
-interface CloseEvent extends Event {
+declare class CloseEvent extends Event {
+  constructor(type: string, eventInitDict?: CloseEventInit);
   /**
    * Returns the WebSocket connection close code provided by the server.
    */
@@ -749,20 +692,22 @@ interface CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
-declare var CloseEvent: {
-  prototype: CloseEvent;
-  new(type: string, eventInitDict?: CloseEventInit): CloseEvent;
-};
-
 interface WebSocketEventMap {
-  "close": CloseEvent;
-  "error": Event;
-  "message": MessageEvent;
-  "open": Event;
+  close: CloseEvent;
+  error: Event;
+  message: MessageEvent;
+  open: Event;
 }
 
 /** Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection. */
-interface WebSocket extends EventTarget {
+declare class WebSocket extends EventTarget {
+  constructor(url: string, protocols?: string | string[]);
+
+  static readonly CLOSED: number;
+  static readonly CLOSING: number;
+  static readonly CONNECTING: number;
+  static readonly OPEN: number;
+
   /**
    * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
    *
@@ -807,19 +752,26 @@ interface WebSocket extends EventTarget {
   readonly CLOSING: number;
   readonly CONNECTING: number;
   readonly OPEN: number;
-  addEventListener<K extends keyof WebSocketEventMap>(type: K, listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
-  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
-  removeEventListener<K extends keyof WebSocketEventMap>(type: K, listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
-  removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+  addEventListener<K extends keyof WebSocketEventMap>(
+    type: K,
+    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof WebSocketEventMap>(
+    type: K,
+    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
 }
-
-declare var WebSocket: {
-  prototype: WebSocket;
-  new(url: string, protocols?: string | string[]): WebSocket;
-  readonly CLOSED: number;
-  readonly CLOSING: number;
-  readonly CONNECTING: number;
-  readonly OPEN: number;
-};
 
 type BinaryType = "arraybuffer" | "blob";

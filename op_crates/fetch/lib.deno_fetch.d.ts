@@ -102,7 +102,7 @@ interface QueuingStrategy<T = any> {
 }
 
 /** This Streams API interface provides a built-in byte length queuing strategy
-   * that can be used when constructing streams. */
+ * that can be used when constructing streams. */
 declare class CountQueuingStrategy implements QueuingStrategy {
   constructor(options: { highWaterMark: number });
   highWaterMark: number;
@@ -117,8 +117,8 @@ declare class ByteLengthQueuingStrategy
 }
 
 /** This Streams API interface represents a readable stream of byte data. The
-   * Fetch API offers a concrete instance of a ReadableStream through the body
-   * property of a Response object. */
+ * Fetch API offers a concrete instance of a ReadableStream through the body
+ * property of a Response object. */
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
@@ -142,7 +142,7 @@ interface ReadableStream<R = any> {
   }): AsyncIterableIterator<R>;
 }
 
-declare var ReadableStream: {
+declare const ReadableStream: {
   prototype: ReadableStream;
   new (
     underlyingSource: UnderlyingByteSource,
@@ -183,8 +183,8 @@ interface UnderlyingSink<W = any> {
 }
 
 /** This Streams API interface provides a standard abstraction for writing
-   * streaming data to a destination, known as a sink. This object comes with
-   * built-in backpressure and queuing. */
+ * streaming data to a destination, known as a sink. This object comes with
+ * built-in backpressure and queuing. */
 declare class WritableStream<W = any> {
   constructor(
     underlyingSink?: UnderlyingSink<W>,
@@ -197,17 +197,17 @@ declare class WritableStream<W = any> {
 }
 
 /** This Streams API interface represents a controller allowing control of a
-   * WritableStream's state. When constructing a WritableStream, the underlying
-   * sink is given a corresponding WritableStreamDefaultController instance to
-   * manipulate. */
+ * WritableStream's state. When constructing a WritableStream, the underlying
+ * sink is given a corresponding WritableStreamDefaultController instance to
+ * manipulate. */
 interface WritableStreamDefaultController {
   error(error?: any): void;
 }
 
 /** This Streams API interface is the object returned by
-   * WritableStream.getWriter() and once created locks the < writer to the
-   * WritableStream ensuring that no other streams can write to the underlying
-   * sink. */
+ * WritableStream.getWriter() and once created locks the < writer to the
+ * WritableStream ensuring that no other streams can write to the underlying
+ * sink. */
 interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
   readonly desiredSize: number | null;
@@ -262,7 +262,9 @@ interface BlobPropertyBag {
 }
 
 /** A file-like object of immutable, raw data. Blobs represent data that isn't necessarily in a JavaScript-native format. The File interface is based on Blob, inheriting blob functionality and expanding it to support files on the user's system. */
-interface Blob {
+declare class Blob {
+  constructor(blobParts?: BlobPart[], options?: BlobPropertyBag);
+
   readonly size: number;
   readonly type: string;
   arrayBuffer(): Promise<ArrayBuffer>;
@@ -271,26 +273,22 @@ interface Blob {
   text(): Promise<string>;
 }
 
-declare const Blob: {
-  prototype: Blob;
-  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
-};
-
 interface FilePropertyBag extends BlobPropertyBag {
   lastModified?: number;
 }
 
 /** Provides information about files and allows JavaScript in a web page to
-   * access their content. */
-interface File extends Blob {
+ * access their content. */
+declare class File extends Blob {
+  constructor(
+    fileBits: BlobPart[],
+    fileName: string,
+    options?: FilePropertyBag,
+  );
+
   readonly lastModified: number;
   readonly name: string;
 }
-
-declare const File: {
-  prototype: File;
-  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
-};
 
 type FormDataEntryValue = File | string;
 
@@ -298,21 +296,26 @@ type FormDataEntryValue = File | string;
  * form fields and their values, which can then be easily sent using the
  * XMLHttpRequest.send() method. It uses the same format a form would use if the
  * encoding type were set to "multipart/form-data". */
-interface FormData extends DomIterable<string, FormDataEntryValue> {
+declare class FormData implements DomIterable<string, FormDataEntryValue> {
+  // TODO(ry) FormData constructor is non-standard.
+  // new(form?: HTMLFormElement): FormData;
+  constructor();
+
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
   getAll(name: string): FormDataEntryValue[];
   has(name: string): boolean;
   set(name: string, value: string | Blob, fileName?: string): void;
+  keys(): IterableIterator<string>;
+  values(): IterableIterator<string>;
+  entries(): IterableIterator<[string, FormDataEntryValue]>;
+  [Symbol.iterator](): IterableIterator<[string, FormDataEntryValue]>;
+  forEach(
+    callback: (value: FormDataEntryValue, key: string, parent: this) => void,
+    thisArg?: any,
+  ): void;
 }
-
-declare const FormData: {
-  prototype: FormData;
-  // TODO(ry) FormData constructor is non-standard.
-  // new(form?: HTMLFormElement): FormData;
-  new (): FormData;
-};
 
 interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
@@ -364,7 +367,9 @@ interface Headers {
   ): void;
 }
 
-interface Headers extends DomIterable<string, string> {
+declare class Headers implements DomIterable<string, string> {
+  constructor(init?: HeadersInit);
+
   /** Appends a new value onto an existing header inside a `Headers` object, or
    * adds the header if it does not already exist.
    */
@@ -405,11 +410,6 @@ interface Headers extends DomIterable<string, string> {
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
 }
-
-declare const Headers: {
-  prototype: Headers;
-  new (init?: HeadersInit): Headers;
-};
 
 type RequestInfo = Request | string;
 type RequestCache =
@@ -524,7 +524,9 @@ interface RequestInit {
 }
 
 /** This Fetch API interface represents a resource request. */
-interface Request extends Body {
+declare class Request implements Body {
+  constructor(input: RequestInfo, init?: RequestInit);
+
   /**
    * Returns the cache mode associated with request, which is a string
    * indicating how the request will interact with the browser's cache when
@@ -608,28 +610,101 @@ interface Request extends Body {
    */
   readonly url: string;
   clone(): Request;
+
+  /** A simple getter used to expose a `ReadableStream` of the body contents. */
+  readonly body: ReadableStream<Uint8Array> | null;
+  /** Stores a `Boolean` that declares whether the body has been used in a
+   * response yet.
+   */
+  readonly bodyUsed: boolean;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with an `ArrayBuffer`.
+   */
+  arrayBuffer(): Promise<ArrayBuffer>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `Blob`.
+   */
+  blob(): Promise<Blob>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `FormData` object.
+   */
+  formData(): Promise<FormData>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with the result of parsing the body text as JSON.
+   */
+  json(): Promise<any>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `USVString` (text).
+   */
+  text(): Promise<string>;
 }
 
-declare const Request: {
-  prototype: Request;
-  new (input: RequestInfo, init?: RequestInit): Request;
-};
+interface ResponseInit {
+  headers?: HeadersInit;
+  status?: number;
+  statusText?: string;
+}
 
-declare const Response: {
-  prototype: Response;
-  new (body?: BodyInit | null, init?: ResponseInit): Response;
-  error(): Response;
-  redirect(url: string, status?: number): Response;
-};
+type ResponseType =
+  | "basic"
+  | "cors"
+  | "default"
+  | "error"
+  | "opaque"
+  | "opaqueredirect";
+
+/** This Fetch API interface represents the response to a request. */
+declare class Response implements Body {
+  constructor(body?: BodyInit | null, init?: ResponseInit);
+  static error(): Response;
+  static redirect(url: string, status?: number): Response;
+
+  readonly headers: Headers;
+  readonly ok: boolean;
+  readonly redirected: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly trailer: Promise<Headers>;
+  readonly type: ResponseType;
+  readonly url: string;
+  clone(): Response;
+
+  /** A simple getter used to expose a `ReadableStream` of the body contents. */
+  readonly body: ReadableStream<Uint8Array> | null;
+  /** Stores a `Boolean` that declares whether the body has been used in a
+   * response yet.
+   */
+  readonly bodyUsed: boolean;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with an `ArrayBuffer`.
+   */
+  arrayBuffer(): Promise<ArrayBuffer>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `Blob`.
+   */
+  blob(): Promise<Blob>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `FormData` object.
+   */
+  formData(): Promise<FormData>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with the result of parsing the body text as JSON.
+   */
+  json(): Promise<any>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `USVString` (text).
+   */
+  text(): Promise<string>;
+}
 
 /** Fetch a resource from the network. It returns a Promise that resolves to the
-   * Response to that request, whether it is successful or not.
-   *
-   *     const response = await fetch("http://my.json.host/data.json");
-   *     console.log(response.status);  // e.g. 200
-   *     console.log(response.statusText); // e.g. "OK"
-   *     const jsonData = await response.json();
-   */
+ * Response to that request, whether it is successful or not.
+ *
+ *     const response = await fetch("http://my.json.host/data.json");
+ *     console.log(response.status);  // e.g. 200
+ *     console.log(response.statusText); // e.g. "OK"
+ *     const jsonData = await response.json();
+ */
 declare function fetch(
   input: Request | URL | string,
   init?: RequestInit,
