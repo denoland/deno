@@ -18,10 +18,41 @@ delete Object.prototype.__proto__;
 
 ((window) => {
   const core = window.Deno.core;
-  const { assert, log, notImplemented } = window.__bootstrap.util;
-  const util = window.__bootstrap.util;
-  const errorStack = window.__bootstrap.errorStack;
   const errors = window.__bootstrap.errors.errors;
+
+  let logDebug = false;
+  let logSource = "JS";
+
+  function setLogDebug(debug, source) {
+    logDebug = debug;
+    if (source) {
+      logSource = source;
+    }
+  }
+
+  function log(...args) {
+    if (logDebug) {
+      const stringifiedArgs = args.map(JSON.stringify).join(" ");
+      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
+    }
+  }
+
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
+
+  function notImplemented() {
+    throw new Error("not implemented");
+  }
 
   /**
    * @param {import("../dts/typescript").DiagnosticRelatedInformation} diagnostic
@@ -1303,8 +1334,7 @@ delete Object.prototype.__proto__;
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
     const s = core.jsonOpSync("op_start");
-    util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
+    setLogDebug(s.debugFlag, source);
     return s;
   }
 
