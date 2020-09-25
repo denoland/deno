@@ -2,17 +2,13 @@
 
 [workspace]
 members = [
+  "crates/*",
   "cli",
   "core",
   "test_plugin",
   "test_util",
   "op_crates/fetch",
   "op_crates/web",
-  "crates/colors",
-  "crates/flags",
-  "crates/fs",
-  "crates/permissions",
-  "crates/version",
 ]
 exclude = [
   "std/hash/_wasm"
