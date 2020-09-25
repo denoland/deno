@@ -12,6 +12,7 @@
 use crate::ast::DiagnosticBuffer;
 use crate::import_map::ImportMapError;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_fetch::reqwest;
@@ -132,7 +133,7 @@ fn get_request_error_class(error: &reqwest::Error) -> &'static str {
 fn get_serde_json_error_class(
   error: &serde_json::error::Error,
 ) -> &'static str {
-  use serde_json::error::*;
+  use deno_core::serde_json::error::*;
   match error.classify() {
     Category::Io => error
       .source()

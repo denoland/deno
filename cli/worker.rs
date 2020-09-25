@@ -13,16 +13,16 @@ use crate::ops::worker_host::WorkersTable;
 use crate::permissions::Permissions;
 use crate::state::CliModuleLoader;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::stream::StreamExt;
+use deno_core::futures::task::AtomicWaker;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
-use futures::channel::mpsc;
-use futures::future::FutureExt;
-use futures::stream::StreamExt;
-use futures::task::AtomicWaker;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::env;
@@ -155,13 +155,17 @@ impl Worker {
       op_state.put(main_module);
       op_state.put(global_state.clone());
     }
-    let inspector = {
-      global_state
-        .flags
-        .inspect
-        .or(global_state.flags.inspect_brk)
-        .filter(|_| !is_internal)
-        .map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
+
+    let inspector = if is_internal {
+      None
+    } else if let Some(inspector_server) = &global_state.maybe_inspector_server
+    {
+      Some(DenoInspector::new(
+        &mut isolate,
+        Some(inspector_server.clone()),
+      ))
+    } else {
+      None
     };
 
     let should_break_on_first_statement = inspector.is_some()

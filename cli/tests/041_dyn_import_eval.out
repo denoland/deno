@@ -1,1 +1,1 @@
-Module { isMod4: true, Symbol(Symbol.toStringTag): "Module" }
+Module { isMod4: true, [Symbol(Symbol.toStringTag)]: "Module" }

@@ -1,1 +1,1 @@
-Module { Symbol(Symbol.toStringTag): "Module" }
+Module { [Symbol(Symbol.toStringTag)]: "Module" }

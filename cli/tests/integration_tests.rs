@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use deno_core::futures;
+use deno_core::futures::prelude::*;
 use deno_core::url;
-use futures::prelude::*;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
@@ -1058,6 +1059,32 @@ fn repl_test_console_log() {
 }
 
 #[test]
+fn repl_test_object_literal() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{}", "{ foo: 'bar' }"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("{}\n{ foo: \"bar\" }\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_block_expression() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{};", "{\"\"}"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("undefined\n\"\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
 fn repl_cwd() {
   let (_out, err) = util::run_and_collect_output(
     true,
@@ -1480,6 +1507,39 @@ itest!(deno_test_only {
 });
 
 #[test]
+fn timeout_clear() {
+  // https://github.com/denoland/deno/issues/7599
+
+  use std::time::Duration;
+  use std::time::Instant;
+
+  let source_code = r#"
+const handle = setTimeout(() => {
+  console.log("timeout finish");
+}, 10000);
+clearTimeout(handle);
+console.log("finish");
+"#;
+
+  let mut p = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("run")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
+  let start = Instant::now();
+  let status = p.wait().unwrap();
+  let end = Instant::now();
+  assert!(status.success());
+  // check that program did not run for 10 seconds
+  // for timeout to clear
+  assert!(end - start < Duration::new(10, 0));
+}
+
+#[test]
 fn workers() {
   let _g = util::http_server();
   let status = util::deno_cmd()
@@ -1709,6 +1769,12 @@ itest!(_063_permissions_revoke {
 itest!(_064_permissions_revoke_global {
   args: "run --unstable --allow-read=foo,bar 064_permissions_revoke_global.ts",
   output: "064_permissions_revoke_global.ts.out",
+});
+
+itest!(_065_import_map_info {
+  args:
+    "info --quiet --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
+  output: "065_import_map_info.out",
 });
 
 itest!(js_import_detect {
@@ -2310,6 +2376,11 @@ itest!(fix_js_import_js {
 itest!(fix_js_imports {
   args: "run --quiet --reload fix_js_imports.ts",
   output: "fix_js_imports.ts.out",
+});
+
+itest!(fix_tsc_file_exists {
+  args: "run --quiet --reload tsc/test.js",
+  output: "fix_tsc_file_exists.out",
 });
 
 itest!(es_private_fields {
@@ -3082,7 +3153,7 @@ async fn inspector_pause() {
   async fn ws_read_msg(
     socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
   ) -> String {
-    use futures::stream::StreamExt;
+    use deno_core::futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
       // FIXME(bartlomieju): fails because there's a file loaded

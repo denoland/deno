@@ -6,8 +6,6 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde_json;
 
 mod ast;
 mod checksum;
@@ -28,6 +26,7 @@ pub mod fmt_errors;
 mod fs;
 pub mod global_state;
 mod global_timer;
+mod graph;
 pub mod http_cache;
 mod http_util;
 mod import_map;
@@ -47,6 +46,7 @@ mod repl;
 pub mod resolve_addr;
 pub mod signal;
 pub mod source_maps;
+mod specifier_handler;
 pub mod state;
 mod test_runner;
 mod text_encoding;
@@ -69,7 +69,10 @@ use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
-use deno_core::futures;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::Future;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
@@ -77,8 +80,6 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
-use futures::future::FutureExt;
-use futures::Future;
 use global_state::exit_unstable;
 use log::Level;
 use log::LevelFilter;
@@ -482,12 +483,20 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let module_graph = module_graph_loader.get_graph();
 
   // Find all local files in graph
-  let paths_to_watch: Vec<PathBuf> = module_graph
+  let mut paths_to_watch: Vec<PathBuf> = module_graph
     .values()
     .map(|f| Url::parse(&f.url).unwrap())
     .filter(|url| url.scheme() == "file")
     .map(|url| url.to_file_path().unwrap())
     .collect();
+
+  if let Some(import_map) = global_state.flags.import_map_path.clone() {
+    paths_to_watch.push(
+      Url::parse(&format!("file://{}", &import_map))?
+        .to_file_path()
+        .unwrap(),
+    );
+  }
 
   // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func(&paths_to_watch, move || {
@@ -619,19 +628,16 @@ async fn test_command(
   (&mut *worker).await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    let script_coverage = coverage_collector.take_precise_coverage().await?;
+    let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverage = coverage::filter_script_coverages(
-      script_coverage,
-      test_file_url,
-      test_modules,
-    );
+    let filtered_coverages =
+      coverage::filter_script_coverages(coverages, test_file_url, test_modules);
 
-    let pretty_coverage_reporter =
-      PrettyCoverageReporter::new(global_state, filtered_coverage);
-    let report = pretty_coverage_reporter.get_report();
-    print!("{}", report)
+    let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
+    for coverage in filtered_coverages {
+      coverage_reporter.visit_coverage(&coverage);
+    }
   }
 
   Ok(())
@@ -684,9 +690,11 @@ pub fn main() {
       target.push(':');
       target.push_str(&line_no.to_string());
     }
-    if record.level() >= Level::Info {
+    if record.level() <= Level::Info {
+      // Print ERROR, WARN, INFO logs as they are
       writeln!(buf, "{}", record.args())
     } else {
+      // Add prefix to DEBUG or TRACE logs
       writeln!(
         buf,
         "{} RS - {} - {}",

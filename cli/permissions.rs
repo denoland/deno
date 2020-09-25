@@ -733,6 +733,7 @@ fn permission_escalation_error() -> AnyError {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::serde_json;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {

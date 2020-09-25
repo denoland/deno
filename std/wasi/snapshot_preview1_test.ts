@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
@@ -52,6 +53,7 @@ const tests = [
   "testdata/wasi_fd_fdstat_get_stderr.wasm",
   "testdata/wasi_fd_fdstat_get_stdin.wasm",
   "testdata/wasi_fd_fdstat_get_stdout.wasm",
+  "testdata/wasi_fd_renumber.wasm",
   "testdata/wasi_fd_tell_file.wasm",
   "testdata/wasi_fd_write_file.wasm",
   "testdata/wasi_fd_write_stderr.wasm",

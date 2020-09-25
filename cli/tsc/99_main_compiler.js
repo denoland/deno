@@ -278,8 +278,9 @@ delete Object.prototype.__proto__;
 
     /* TypeScript CompilerHost APIs */
 
-    fileExists(_fileName) {
-      return notImplemented();
+    fileExists(fileName) {
+      log(`compiler::host.fileExists("${fileName}")`);
+      return false;
     }
 
     getCanonicalFileName(fileName) {

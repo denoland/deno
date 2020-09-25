@@ -1,7 +1,11 @@
-use serde_json::json;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use std::collections::BTreeMap;
 use std::io::Result;
 
+#[derive(Debug, Clone)]
 pub struct Lockfile {
   write: bool,
   map: BTreeMap<String, String>,

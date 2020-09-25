@@ -96,7 +96,7 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
     let mut s = op_state.borrow_mut();
     let metrics = s.borrow_mut::<Metrics>();
 
-    use futures::future::FutureExt;
+    use deno_core::futures::future::FutureExt;
 
     match op {
       Op::Sync(buf) => {

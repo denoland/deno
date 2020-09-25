@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   GlobOptions,
   SEP_PATTERN,
@@ -9,8 +10,8 @@ import {
 } from "../path/mod.ts";
 import {
   WalkEntry,
-  createWalkEntry,
-  createWalkEntrySync,
+  _createWalkEntry,
+  _createWalkEntrySync,
   walk,
   walkSync,
 } from "./walk.ts";
@@ -103,7 +104,7 @@ export async function* expandGlob(
 
   let fixedRootInfo: WalkEntry;
   try {
-    fixedRootInfo = await createWalkEntry(fixedRoot);
+    fixedRootInfo = await _createWalkEntry(fixedRoot);
   } catch (error) {
     return throwUnlessNotFound(error);
   }
@@ -118,7 +119,7 @@ export async function* expandGlob(
       const parentPath = joinGlobs([walkInfo.path, ".."], globOptions);
       try {
         if (shouldInclude(parentPath)) {
-          return yield await createWalkEntry(parentPath);
+          return yield await _createWalkEntry(parentPath);
         }
       } catch (error) {
         throwUnlessNotFound(error);
@@ -210,7 +211,7 @@ export function* expandGlobSync(
 
   let fixedRootInfo: WalkEntry;
   try {
-    fixedRootInfo = createWalkEntrySync(fixedRoot);
+    fixedRootInfo = _createWalkEntrySync(fixedRoot);
   } catch (error) {
     return throwUnlessNotFound(error);
   }
@@ -225,7 +226,7 @@ export function* expandGlobSync(
       const parentPath = joinGlobs([walkInfo.path, ".."], globOptions);
       try {
         if (shouldInclude(parentPath)) {
-          return yield createWalkEntrySync(parentPath);
+          return yield _createWalkEntrySync(parentPath);
         }
       } catch (error) {
         throwUnlessNotFound(error);

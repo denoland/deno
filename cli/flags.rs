@@ -479,6 +479,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
+  importmap_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info {
@@ -887,6 +888,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(ca_file_arg())
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hidden(true))
+    .arg(importmap_arg())
     .arg(
       Arg::with_name("json")
         .long("json")
@@ -1389,6 +1391,8 @@ fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
     .requires("unstable")
     .long("watch")
+    .conflicts_with("inspect")
+    .conflicts_with("inspect-brk")
     .help("Watch for file changes and restart process automatically")
     .long_help(
       "Watch for file changes and restart process automatically.
@@ -2375,6 +2379,27 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
+        },
+        import_map_path: Some("importmap.json".to_owned()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn info_importmap() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "info",
+      "--importmap=importmap.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Info {
+          file: Some("script.ts".to_string()),
+          json: false,
         },
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()

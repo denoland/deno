@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 Object.defineProperty(globalThis, Symbol.toStringTag, {
   value: "global",
   writable: false,

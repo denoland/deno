@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use jsonc_parser::JsonValue;
 use serde::Deserialize;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -15,9 +16,8 @@ impl fmt::Display for IgnoredCompilerOptions {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut codes = self.0.clone();
     codes.sort();
-    write!(f, "{}", codes.join(", "))?;
 
-    Ok(())
+    write!(f, "{}", codes.join(", "))
   }
 }
 
@@ -178,7 +178,7 @@ pub fn parse_config(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use serde_json::json;
+  use deno_core::serde_json::json;
 
   #[test]
   fn test_json_merge() {

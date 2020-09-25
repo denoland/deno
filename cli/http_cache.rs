@@ -7,6 +7,7 @@
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use serde::Deserialize;
 use serde::Serialize;
