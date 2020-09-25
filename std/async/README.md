@@ -1,11 +1,15 @@
 # async
+
 async is a module to provide help with aysncronous tasks.
 
 # usage
-The following functions are exposed in `mod.ts`
+
+The following functions and class are exposed in `mod.ts`
 
 ## deferred
+
 Creates a Promise with the `reject` and `resolve` functions.
+
 ```typescript
 import { deferred } from "https://deno.land.std/async/mod.ts";
 
@@ -15,7 +19,9 @@ p.resolve(42);
 ```
 
 ## delay
-Resolve a Promise after a given amount of milliseconds 
+
+Resolve a Promise after a given amount of milliseconds
+
 ```typescript
 import { delay } from "https://deno.land.std/async/mod.ts";
 
@@ -26,9 +32,14 @@ const result = await delayedPromise;
 ```
 
 ## MuxAsyncIterator
-The MuxAsyncIterator class multiplexes multiple async iterators into a single stream.
 
-The class makes an assumption that the final result (the value returned and not yielded from the iterator) does not matter. If there is any result, it is discarded.
+The MuxAsyncIterator class multiplexes multiple async iterators into a single
+stream.
+
+The class makes an assumption that the final result (the value returned and not
+yielded from the iterator) does not matter. If there is any result, it is
+discarded.
+
 ```typescript
 import { MuxAsyncIterator } from "https://deno.land.std/async/mod.ts";
 
@@ -48,13 +59,17 @@ const mux = new MuxAsyncIterator<number>();
 mux.add(gen123());
 mux.add(gen456());
 for await (const value of mux) {
-	// ...
+  // ...
 }
 // ..
 ```
 
 ## pooledMap
-Transform values from an (async) iterable into another async iterable. The transforms are done concurrently, with a max concurrency defined by the poolLimit.
+
+Transform values from an (async) iterable into another async iterable. The
+transforms are done concurrently, with a max concurrency defined by the
+poolLimit.
+
 ```typescript
 import { pooledMap } from "https://deno.land.std/async/mod.ts";
 
