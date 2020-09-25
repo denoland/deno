@@ -22,6 +22,7 @@ mod fmt;
 pub mod fmt_errors;
 pub mod global_state;
 mod global_timer;
+mod graph;
 pub mod http_cache;
 mod http_util;
 mod import_map;
@@ -40,6 +41,7 @@ mod repl;
 pub mod resolve_addr;
 pub mod signal;
 pub mod source_maps;
+mod specifier_handler;
 pub mod state;
 mod test_runner;
 mod text_encoding;
@@ -488,12 +490,20 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let module_graph = module_graph_loader.get_graph();
 
   // Find all local files in graph
-  let paths_to_watch: Vec<PathBuf> = module_graph
+  let mut paths_to_watch: Vec<PathBuf> = module_graph
     .values()
     .map(|f| Url::parse(&f.url).unwrap())
     .filter(|url| url.scheme() == "file")
     .map(|url| url.to_file_path().unwrap())
     .collect();
+
+  if let Some(import_map) = global_state.flags.import_map_path.clone() {
+    paths_to_watch.push(
+      Url::parse(&format!("file://{}", &import_map))?
+        .to_file_path()
+        .unwrap(),
+    );
+  }
 
   // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func(&paths_to_watch, move || {
@@ -609,19 +619,16 @@ async fn test_command(
   (&mut *worker).await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    let script_coverage = coverage_collector.collect().await?;
+    let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverage = coverage::filter_script_coverages(
-      script_coverage,
-      test_file_url,
-      test_modules,
-    );
+    let filtered_coverages =
+      coverage::filter_script_coverages(coverages, test_file_url, test_modules);
 
-    let pretty_coverage_reporter =
-      PrettyCoverageReporter::new(filtered_coverage);
-    let report = pretty_coverage_reporter.get_report();
-    print!("{}", report)
+    let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
+    for coverage in filtered_coverages {
+      coverage_reporter.visit_coverage(&coverage);
+    }
   }
 
   Ok(())

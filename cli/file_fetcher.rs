@@ -33,7 +33,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Structure representing a text document.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TextDocument {
   bytes: Vec<u8>,
   charset: Cow<'static, str>,
@@ -70,6 +70,18 @@ impl TextDocument {
 impl From<Vec<u8>> for TextDocument {
   fn from(bytes: Vec<u8>) -> Self {
     TextDocument::new(bytes, Option::<&str>::None)
+  }
+}
+
+impl From<String> for TextDocument {
+  fn from(s: String) -> Self {
+    TextDocument::new(s.as_bytes().to_vec(), Option::<&str>::None)
+  }
+}
+
+impl From<&str> for TextDocument {
+  fn from(s: &str) -> Self {
+    TextDocument::new(s.as_bytes().to_vec(), Option::<&str>::None)
   }
 }
 

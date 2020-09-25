@@ -2,7 +2,6 @@
 
 use crate::ast::parse;
 use crate::ast::Location;
-use crate::ast::TranspileOptions;
 use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::disk_cache::DiskCache;
@@ -338,13 +337,6 @@ impl CompiledFileMetadata {
   }
 }
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct TranspileSourceFile {
-  pub source_code: String,
-  pub file_name: String,
-}
-
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 fn source_code_version_hash(
@@ -418,16 +410,6 @@ struct CompileResponse {
   emit_map: HashMap<String, EmittedSource>,
   build_info: Option<String>,
   stats: Option<Vec<Stat>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TranspileTsOptions {
-  check_js: bool,
-  emit_decorator_metadata: bool,
-  jsx: String,
-  jsx_factory: String,
-  jsx_fragment_factory: String,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -786,80 +768,6 @@ impl TsCompiler {
     assert!(bundle_response.bundle_output.is_some());
     let output = bundle_response.bundle_output.unwrap();
     Ok(output)
-  }
-
-  pub async fn transpile(
-    &self,
-    module_graph: &ModuleGraph,
-  ) -> Result<(), AnyError> {
-    let mut source_files: Vec<TranspileSourceFile> = Vec::new();
-    for (_, value) in module_graph.iter() {
-      let url = Url::parse(&value.url).expect("Filename is not a valid url");
-      if !value.url.ends_with(".d.ts")
-        && (!self.use_disk_cache || !self.has_compiled_source(&url))
-      {
-        source_files.push(TranspileSourceFile {
-          source_code: value.source_code.clone(),
-          file_name: value.url.clone(),
-        });
-      }
-    }
-    if source_files.is_empty() {
-      return Ok(());
-    }
-
-    let mut emit_map = HashMap::new();
-
-    let mut compiler_options = json!({
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    });
-
-    let compiler_config = self.config.clone();
-
-    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
-
-    warn_ignored_options(
-      compiler_config.maybe_ignored_options,
-      compiler_config.path.as_ref().unwrap(),
-    );
-
-    let compiler_options: TranspileTsOptions =
-      serde_json::from_value(compiler_options)?;
-
-    let transpile_options = TranspileOptions {
-      emit_metadata: compiler_options.emit_decorator_metadata,
-      inline_source_map: true,
-      jsx_factory: compiler_options.jsx_factory,
-      jsx_fragment_factory: compiler_options.jsx_fragment_factory,
-      transform_jsx: compiler_options.jsx == "react",
-    };
-    let media_type = MediaType::TypeScript;
-    for source_file in source_files {
-      let specifier =
-        ModuleSpecifier::resolve_url_or_path(&source_file.file_name)?;
-      let parsed_module =
-        parse(&specifier, &source_file.source_code, &media_type)?;
-      let (stripped_source, _) = parsed_module.transpile(&transpile_options)?;
-
-      // TODO(bartlomieju): this is superfluous, just to make caching function happy
-      let emitted_filename = PathBuf::from(&source_file.file_name)
-        .with_extension("js")
-        .to_string_lossy()
-        .to_string();
-      let emitted_source = EmittedSource {
-        filename: source_file.file_name.to_string(),
-        contents: stripped_source,
-      };
-
-      emit_map.insert(emitted_filename, emitted_source);
-    }
-
-    self.cache_emitted_files(emit_map)?;
-    Ok(())
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -1735,73 +1643,6 @@ mod tests {
     assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
-    let mut lines: Vec<String> =
-      source_code.split('\n').map(|s| s.to_string()).collect();
-    let last_line = lines.pop().unwrap();
-    assert!(last_line
-      .starts_with("//# sourceMappingURL=data:application/json;base64"));
-  }
-
-  #[tokio::test]
-  async fn test_transpile() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/002_hello.ts");
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let out = SourceFile {
-      url: specifier.as_url().clone(),
-      filename: PathBuf::from(p.to_str().unwrap().to_string()),
-      media_type: MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
-      types_header: None,
-    };
-    let dir =
-      deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
-        .unwrap();
-    let http_cache = http_cache::HttpCache::new(&dir.root.join("deps"));
-    let mock_state = GlobalState::mock(
-      vec![String::from("deno"), String::from("hello.ts")],
-      None,
-    );
-    let file_fetcher = SourceFileFetcher::new(
-      http_cache,
-      true,
-      mock_state.flags.cache_blocklist.clone(),
-      false,
-      false,
-      None,
-    )
-    .unwrap();
-
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      file_fetcher.clone(),
-      None,
-      Permissions::allow_all(),
-      false,
-      false,
-    );
-    module_graph_loader
-      .add_to_graph(&specifier, None)
-      .await
-      .expect("Failed to create graph");
-    let module_graph = module_graph_loader.get_graph();
-
-    let ts_compiler = TsCompiler::new(
-      file_fetcher,
-      mock_state.flags.clone(),
-      dir.gen_cache.clone(),
-    )
-    .unwrap();
-
-    let result = ts_compiler.transpile(&module_graph).await;
-    assert!(result.is_ok());
-    let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
-    let source_code = compiled_file.code;
-    assert!(source_code
-      .as_bytes()
-      .starts_with(b"console.log(\"Hello World\");"));
     let mut lines: Vec<String> =
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();

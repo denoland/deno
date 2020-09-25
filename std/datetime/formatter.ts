@@ -5,6 +5,7 @@ import {
   TestFunction,
   TestResult,
   Tokenizer,
+  ReceiverResult,
 } from "./tokenizer.ts";
 
 function digits(value: string | number, count = 2): string {
@@ -52,7 +53,7 @@ function createMatchTestFunction(match: RegExp): TestFunction {
   };
 }
 
-// according to unicode symbols (http://userguide.icu-project.org/formatparse/datetime)
+// according to unicode symbols (http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table)
 const defaultRules = [
   {
     test: createLiteralTestFunction("yyyy"),
@@ -81,12 +82,28 @@ const defaultRules = [
   },
 
   {
-    test: createLiteralTestFunction("hh"),
+    test: createLiteralTestFunction("HH"),
     fn: (): CallbackResult => ({ type: "hour", value: "2-digit" }),
   },
   {
-    test: createLiteralTestFunction("h"),
+    test: createLiteralTestFunction("H"),
     fn: (): CallbackResult => ({ type: "hour", value: "numeric" }),
+  },
+  {
+    test: createLiteralTestFunction("hh"),
+    fn: (): CallbackResult => ({
+      type: "hour",
+      value: "2-digit",
+      hour12: true,
+    }),
+  },
+  {
+    test: createLiteralTestFunction("h"),
+    fn: (): CallbackResult => ({
+      type: "hour",
+      value: "numeric",
+      hour12: true,
+    }),
   },
   {
     test: createLiteralTestFunction("mm"),
@@ -143,7 +160,11 @@ const defaultRules = [
   },
 ];
 
-type FormatPart = { type: DateTimeFormatPartTypes; value: string | number };
+type FormatPart = {
+  type: DateTimeFormatPartTypes;
+  value: string | number;
+  hour12?: boolean;
+};
 type Format = FormatPart[];
 
 export class DateTimeFormatter {
@@ -151,19 +172,23 @@ export class DateTimeFormatter {
 
   constructor(formatString: string, rules: Rule[] = defaultRules) {
     const tokenizer = new Tokenizer(rules);
-    this.#format = tokenizer.tokenize(formatString, ({ type, value }) => ({
-      type,
-      value,
-    })) as Format;
+    this.#format = tokenizer.tokenize(
+      formatString,
+      ({ type, value, hour12 }) => {
+        const result = {
+          type,
+          value,
+        } as unknown as ReceiverResult;
+        if (hour12) result.hour12 = hour12 as boolean;
+        return result;
+      },
+    ) as Format;
   }
 
   format(date: Date, options: Options = {}): string {
     let string = "";
 
     const utc = options.timeZone === "UTC";
-    const hour12 = this.#format.find(
-      (token: FormatPart) => token.type === "dayPeriod",
-    );
 
     for (const token of this.#format) {
       const type = token.type;
@@ -225,7 +250,7 @@ export class DateTimeFormatter {
         }
         case "hour": {
           let value = utc ? date.getUTCHours() : date.getHours();
-          value -= hour12 && date.getHours() > 12 ? 12 : 0;
+          value -= token.hour12 && date.getHours() > 12 ? 12 : 0;
           switch (token.value) {
             case "numeric": {
               string += value;
@@ -290,7 +315,7 @@ export class DateTimeFormatter {
           // break
         }
         case "dayPeriod": {
-          string += hour12 ? (date.getHours() >= 12 ? "PM" : "AM") : "";
+          string += token.value ? (date.getHours() >= 12 ? "PM" : "AM") : "";
           break;
         }
         case "literal": {
@@ -377,10 +402,20 @@ export class DateTimeFormatter {
           switch (token.value) {
             case "numeric": {
               value = /^\d{1,2}/.exec(string)?.[0] as string;
+              if (token.hour12 && parseInt(value) > 12) {
+                console.error(
+                  `Trying to parse hour greater than 12. Use 'H' instead of 'h'.`,
+                );
+              }
               break;
             }
             case "2-digit": {
               value = /^\d{2}/.exec(string)?.[0] as string;
+              if (token.hour12 && parseInt(value) > 12) {
+                console.error(
+                  `Trying to parse hour greater than 12. Use 'HH' instead of 'hh'.`,
+                );
+              }
               break;
             }
             default:
@@ -425,9 +460,8 @@ export class DateTimeFormatter {
           break;
         }
         case "fractionalSecond": {
-          value = new RegExp(`^\\d{${token.value}}`).exec(
-            string,
-          )?.[0] as string;
+          value = new RegExp(`^\\d{${token.value}}`).exec(string)
+            ?.[0] as string;
           break;
         }
         case "timeZoneName": {
@@ -463,6 +497,7 @@ export class DateTimeFormatter {
         );
       }
       parts.push({ type, value });
+
       string = string.slice(value.length);
     }
 

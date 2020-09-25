@@ -116,7 +116,7 @@ impl InspectorInfo {
 
   fn get_frontend_url(&self) -> String {
     format!(
-      "chrome-devtools://devtools/bundled/inspector.html?v8only=true&ws={}/ws/{}",
+      "devtools://devtools/bundled/inspector.html?v8only=true&ws={}/ws/{}",
       &self.host, &self.uuid
     )
   }

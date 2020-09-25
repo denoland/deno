@@ -414,7 +414,7 @@
       case "undefined": // undefined is dim
         return dim(String(value));
       case "symbol": // Symbols are green
-        return green(String(value));
+        return green(maybeQuoteSymbol(value));
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
@@ -747,7 +747,7 @@
     }
     for (const key of symbolKeys) {
       entries.push(
-        `${maybeQuoteSymbol(key)}: ${
+        `[${maybeQuoteSymbol(key)}]: ${
           inspectValueWithQuotes(
             value[key],
             ctx,
