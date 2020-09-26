@@ -1,8 +1,8 @@
 import { asyncIterableToCallback } from "./_fs_watch.ts";
 
 type readDirOptions = {
-  encoding: string;
-  withFileTypes: boolean;
+  encoding?: string;
+  withFileTypes?: boolean;
 };
 
 type readDirCallback = (err: Error | undefined, files: string[]) => void;
@@ -10,18 +10,17 @@ type readDirCallback = (err: Error | undefined, files: string[]) => void;
 export function readdir(
   path: string | URL,
   options: readDirOptions,
-  callback: readDirCallback
+  callback: readDirCallback,
 ): void;
 export function readdir(path: string | URL, callback: readDirCallback): void;
 export function readdir(
   path: string | URL,
   optionsOrCallback: readDirOptions | readDirCallback,
-  maybeCallback?: readDirCallback
+  maybeCallback?: readDirCallback,
 ) {
-  const callback =
-    typeof optionsOrCallback === "function"
-      ? optionsOrCallback
-      : maybeCallback || undefined;
+  const callback = typeof optionsOrCallback === "function"
+    ? optionsOrCallback
+    : maybeCallback;
   // const options = typeof optionsOrCallback === "object" ? optionsOrCallback : null;
   const result: string[] = [];
 

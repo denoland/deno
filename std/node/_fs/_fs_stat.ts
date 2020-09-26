@@ -252,13 +252,14 @@ export function stat(
   maybeCallback?: statCallback | statCallbackBigInt
 ) {
   const callback =
-    typeof optionsOrCallback === "function"
-      ? optionsOrCallback
-      : maybeCallback || (() => {});
+    typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
   const options =
     typeof optionsOrCallback === "object"
       ? optionsOrCallback
       : { bigint: false };
+
+  if (!callback) throw new Error("No callback function supplied");
+
   Deno.stat(path)
     // @ts-ignore
     .then((stat) => callback(undefined, CFISBIS(stat, options.bigint)))
