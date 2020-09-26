@@ -455,6 +455,7 @@ impl TsCompiler {
   /// compiler.
   pub async fn compile(
     &self,
+    global_state: &Arc<GlobalState>,
     source_file: &SourceFile,
     target: TargetLib,
     module_graph: &ModuleGraph,
@@ -542,7 +543,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str = execute_in_tsc(req_msg).await?;
+    let json_str = execute_in_tsc(global_state, req_msg)?;
 
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
@@ -661,7 +662,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str = execute_in_tsc(req_msg).await?;
+    let json_str = execute_in_tsc(&global_state, req_msg)?;
 
     let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
 
@@ -953,11 +954,17 @@ impl TsCompiler {
   }
 }
 
-async fn execute_in_tsc(req: String) -> Result<String, AnyError> {
+fn execute_in_tsc(global_state: &Arc<GlobalState>, req: String) -> Result<String, AnyError> {
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(js::compiler_isolate_init()),
     ..Default::default()
   });
+  {
+    let op_state = js_runtime.op_state();
+    let mut op_state = op_state.borrow_mut();
+    // TODO(bartlomieju): needed only for runtime_start op
+    op_state.put(global_state.clone());
+  }
   let response = Arc::new(Mutex::new(None));
   {
     ops::runtime::init(&mut js_runtime);
@@ -983,8 +990,6 @@ async fn execute_in_tsc(req: String) -> Result<String, AnyError> {
   js_runtime.execute("<compiler>", "globalThis.bootstrapCompilerRuntime()")?;
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
   js_runtime.execute("<compiler>", &script)?;
-  // TODO(bartlomieju): compiler is fully synchronous - no need to await here?
-  js_runtime.await?;
   let mut maybe_response = response.lock().unwrap();
   assert!(
     maybe_response.is_some(),
@@ -1033,7 +1038,7 @@ async fn create_runtime_module_graph(
   Ok((root_names, module_graph_loader.get_graph()))
 }
 
-fn js_error_to_errbox(error: AnyError) -> AnyError {
+fn extract_js_error(error: AnyError) -> AnyError {
   match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
@@ -1129,7 +1134,7 @@ pub async fn runtime_compile(
 
   let compiler = global_state.ts_compiler.clone();
 
-  let json_str = execute_in_tsc(req_msg).await.map_err(js_error_to_errbox)?;
+  let json_str = execute_in_tsc(&global_state, req_msg).map_err(extract_js_error)?;
 
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
@@ -1236,7 +1241,7 @@ pub async fn runtime_bundle(
   })
   .to_string();
 
-  let json_str = execute_in_tsc(req_msg).await.map_err(js_error_to_errbox)?;
+  let json_str = execute_in_tsc(&global_state, req_msg).map_err(extract_js_error)?;
   let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
@@ -1246,6 +1251,7 @@ pub async fn runtime_bundle(
 
 /// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile(
+  global_state: Arc<GlobalState>,
   sources: &HashMap<String, String>,
   maybe_options: &Option<String>,
 ) -> Result<Value, AnyError> {
@@ -1271,7 +1277,7 @@ pub async fn runtime_transpile(
   })
   .to_string();
 
-  let json_str = execute_in_tsc(req_msg).await.map_err(js_error_to_errbox)?;
+  let json_str = execute_in_tsc(&global_state, req_msg).map_err(extract_js_error)?;
   let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
@@ -1554,7 +1560,7 @@ mod tests {
     .unwrap();
 
     let result = ts_compiler
-      .compile(&out, TargetLib::Main, &module_graph, false)
+      .compile(&mock_state, &out, TargetLib::Main, &module_graph, false)
       .await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();

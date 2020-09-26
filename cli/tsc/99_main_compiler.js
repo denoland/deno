@@ -1291,7 +1291,7 @@ delete Object.prototype.__proto__;
     core.jsonOpSync("op_compiler_respond", msg);
   }
 
-  async function tsCompilerOnMessage(msg) {
+  function tsCompilerOnMessage(msg) {
     const request = msg.data;
     switch (request.type) {
       case CompilerRequestType.Compile: {
@@ -1315,7 +1315,7 @@ delete Object.prototype.__proto__;
         break;
       }
       case CompilerRequestType.RuntimeTranspile: {
-        const result = await runtimeTranspile(request);
+        const result = runtimeTranspile(request);
         opCompilerRespond(result);
         break;
       }

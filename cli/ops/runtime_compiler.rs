@@ -79,6 +79,9 @@ async fn op_transpile(
   let cli_state = super::global_state2(&state);
   cli_state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let result = runtime_transpile(&args.sources, &args.options).await?;
+  let global_state = cli_state.clone();
+  let result =
+    runtime_transpile(global_state, &args.sources, &args.options)
+      .await?;
   Ok(result)
 }
