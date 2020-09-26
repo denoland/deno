@@ -112,7 +112,7 @@ pub struct Worker {
 impl Worker {
   pub fn new(
     name: String,
-    startup_snapshot: Option<Snapshot>,
+    startup_snapshot: Snapshot,
     global_state: Arc<GlobalState>,
     module_loader: Rc<CliModuleLoader>,
     is_main: bool,
@@ -121,7 +121,7 @@ impl Worker {
 
     let mut isolate = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
-      startup_snapshot,
+      startup_snapshot: Some(startup_snapshot),
       js_error_create_fn: Some(Box::new(move |core_js_error| {
         JsError::create(core_js_error, &global_state_.ts_compiler)
       })),
@@ -276,7 +276,7 @@ impl MainWorker {
     let loader = CliModuleLoader::new(global_state.maybe_import_map.clone());
     let mut worker = Worker::new(
       "main".to_string(),
-      Some(js::deno_isolate_init()),
+      js::deno_isolate_init(),
       global_state.clone(),
       loader,
       true,
@@ -292,10 +292,7 @@ impl MainWorker {
       // which shouldn't be the cause.
       op_state.put::<Arc<GlobalState>>(global_state.clone());
 
-      {
-        op_state.put::<Permissions>(global_state.permissions.clone());
-        ops::permissions::init(&mut op_state);
-      }
+      op_state.put::<Permissions>(global_state.permissions.clone());
 
       {
         op_state.put::<MainModule>(main_module);
@@ -338,25 +335,26 @@ impl MainWorker {
         "op_resources",
         deno_core::op_resources,
       );
-      ops::runtime_compiler::init(&mut op_state);
-      ops::errors::init(&mut op_state);
-      ops::websocket::init(&mut op_state);
-      ops::fs::init(&mut op_state);
-      ops::fs_events::init(&mut op_state);
       ops::reg_json_sync(
         &mut op_state,
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
+      ops::errors::init(&mut op_state);
+      ops::fs_events::init(&mut op_state);
+      ops::fs::init(&mut op_state);
       ops::io::init(&mut op_state);
-      ops::plugin::init(&mut op_state);
       ops::net::init(&mut op_state);
-      ops::tls::init(&mut op_state);
       ops::os::init(&mut op_state);
+      ops::permissions::init(&mut op_state);
+      ops::plugin::init(&mut op_state);
       ops::process::init(&mut op_state);
       ops::repl::init(&mut op_state);
+      ops::runtime_compiler::init(&mut op_state);
       ops::signal::init(&mut op_state);
+      ops::tls::init(&mut op_state);
       ops::tty::init(&mut op_state);
+      ops::websocket::init(&mut op_state);
     }
     {
       let op_state = worker.op_state();

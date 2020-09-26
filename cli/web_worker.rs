@@ -104,7 +104,7 @@ impl WebWorker {
     let loader = CliModuleLoader::new_for_worker();
     let mut worker = Worker::new(
       name,
-      Some(js::deno_isolate_init()),
+      js::deno_isolate_init(),
       global_state.clone(),
       loader,
       false,
@@ -143,14 +143,10 @@ impl WebWorker {
       // which shouldn't be the cause.
       op_state.put::<Arc<GlobalState>>(global_state.clone());
 
-      {
-        ops::web_worker::init(&mut op_state, sender, handle);
-      }
+      op_state.put::<Permissions>(permissions);
 
-      {
-        op_state.put::<Permissions>(permissions);
-        ops::permissions::init(&mut op_state);
-      }
+      // These ops are the means means to communicate with parent worker
+      ops::web_worker::init(&mut op_state, sender, handle);
 
       {
         op_state.put::<MainModule>(main_module);
@@ -179,20 +175,20 @@ impl WebWorker {
 
       // Ops that don't register state, or depend on
       // previously registered state
-      ops::errors::init(&mut op_state);
-      ops::io::init(&mut op_state);
       ops::reg_json_sync(&mut op_state, "op_close", deno_core::op_close);
       ops::reg_json_sync(
         &mut op_state,
         "op_resources",
         deno_core::op_resources,
       );
-      ops::websocket::init(&mut op_state);
       ops::reg_json_sync(
         &mut op_state,
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
+      ops::errors::init(&mut op_state);
+      ops::io::init(&mut op_state);
+      ops::websocket::init(&mut op_state);
 
       if has_deno_namespace {
         ops::fs_events::init(&mut op_state);
