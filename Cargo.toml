@@ -2,12 +2,7 @@
 
 [workspace]
 members = [
-  "crates/colors",
-  "crates/flags",
-  "crates/fs",
-  "crates/metrics",
-  "crates/permissions",
-  "crates/version",
+  "crates/*",
   "cli",
   "core",
   "test_plugin",

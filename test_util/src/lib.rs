@@ -643,7 +643,6 @@ pub fn run(
 ) {
   let mut process_builder = Command::new(cmd[0]);
   process_builder.args(&cmd[1..]).stdin(Stdio::piped());
-
   if let Some(dir) = current_dir {
     process_builder.current_dir(dir);
   }

@@ -223,18 +223,24 @@ To evaluate code in the shell:
   deno eval \"console.log(30933 + 404)\"
 ";
 
-fn ts_version() -> String {
-  std::fs::read_to_string("../../cli/tsc/00_typescript.js")
-    .unwrap()
-    .lines()
-    .find(|l| l.contains("ts.version = "))
-    .expect(
-      "Failed to find the pattern `ts.version = ` in typescript source code",
-    )
-    .chars()
-    .skip_while(|c| !char::is_numeric(*c))
-    .take_while(|c| *c != '"')
-    .collect::<String>()
+pub fn ts_version() -> String {
+  if let Some(version) = std::env::var_os("TS_VERSION") {
+    version.to_str().unwrap().to_string()
+  } else {
+    let mut manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    manifest_dir.push("../../cli/tsc/00_typescript.js");
+    std::fs::read_to_string(manifest_dir.into_os_string().to_str().unwrap())
+      .unwrap()
+      .lines()
+      .find(|l| l.contains("ts.version = "))
+      .expect(
+        "Failed to find the pattern `ts.version = ` in typescript source code",
+      )
+      .chars()
+      .skip_while(|c| !char::is_numeric(*c))
+      .take_while(|c| *c != '"')
+      .collect::<String>()
+  }
 }
 lazy_static! {
   static ref LONG_VERSION: String = format!(

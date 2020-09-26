@@ -24,6 +24,7 @@ deno_core = { path = "../core", version = "0.58.0" }
 deno_web = { path = "../op_crates/web", version = "0.9.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.1.0" }
 deno_timers = { path = "../op_crates/timers", version = "0.1.0" }
+deno_flags = { path = "../crates/flags", version = "0.1.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
