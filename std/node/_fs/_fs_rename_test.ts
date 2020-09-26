@@ -12,7 +12,7 @@ Deno.test({
         rename(Deno.makeTempDirSync(), "some_thing");
       },
       Error,
-      "No callback function supplied"
+      "No callback function supplied",
     );
   },
 });
