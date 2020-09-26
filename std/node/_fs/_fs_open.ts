@@ -109,7 +109,8 @@ export function open(
   const callback =
     typeof callbackOrMode === "function" ? callbackOrMode : maybeCallback;
   const mode = typeof callbackOrMode === "number" ? callbackOrMode : undefined;
-  if (!callback) return;
+
+  if (!callback) throw new Error("No callback function supplied");
 
   Deno.open(
     path,
