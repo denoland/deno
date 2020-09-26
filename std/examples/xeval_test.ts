@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { xeval } from "../xeval.ts";
-import { StringReader } from "../../io/readers.ts";
-import { decode, encode } from "../../encoding/utf8.ts";
+import { xeval } from "./xeval.ts";
+import { StringReader } from "../io/readers.ts";
+import { decode, encode } from "../encoding/utf8.ts";
 import {
   assertEquals,
   assertStringContains,
   assert,
-} from "../../testing/asserts.ts";
-import { resolve, dirname, fromFileUrl } from "../../path/mod.ts";
+} from "../testing/asserts.ts";
+import { dirname, fromFileUrl } from "../path/mod.ts";
 
-const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)), "..");
+const moduleDir = dirname(fromFileUrl(import.meta.url));
 
 Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];
