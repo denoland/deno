@@ -3,10 +3,6 @@
 ((window) => {
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
-  function isInvalidDate(x) {
-    return isNaN(x.getTime());
-  }
-
   function requiredArguments(
     name,
     length,
@@ -18,25 +14,6 @@
       }, but only ${length} present`;
       throw new TypeError(errMsg);
     }
-  }
-
-  function immutableDefine(
-    o,
-    p,
-    value,
-  ) {
-    Object.defineProperty(o, p, {
-      value,
-      configurable: false,
-      writable: false,
-    });
-  }
-
-  function hasOwnProperty(obj, v) {
-    if (obj == null) {
-      return false;
-    }
-    return Object.prototype.hasOwnProperty.call(obj, v);
   }
 
   const objectCloneMemo = new WeakMap();
@@ -136,24 +113,9 @@
     }
   }
 
-  /** A helper function which ensures accessors are enumerable, as they normally
- * are not. */
-  function defineEnumerableProps(
-    Ctor,
-    props,
-  ) {
-    for (const prop of props) {
-      Reflect.defineProperty(Ctor.prototype, prop, { enumerable: true });
-    }
-  }
-
   window.__bootstrap.webUtil = {
     illegalConstructorKey,
-    isInvalidDate,
     requiredArguments,
-    immutableDefine,
-    hasOwnProperty,
     cloneValue,
-    defineEnumerableProps,
   };
 })(this);
