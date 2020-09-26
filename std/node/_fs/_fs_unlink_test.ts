@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "../../testing/asserts.ts";
+import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { unlink, unlinkSync } from "./_fs_unlink.ts";
 
@@ -11,24 +11,31 @@ Deno.test({
         unlink(Deno.makeTempFileSync());
       },
       Error,
-      "No callback function supplied",
+      "No callback function supplied"
     );
   },
 });
 
 Deno.test({
-  name: "Test unlink",
-  fn() {
+  name: "ASYNC: deleting a file",
+  async fn() {
     const file = Deno.makeTempFileSync();
-    unlink(file, (err) => {
-      if (err) throw err;
-      assertEquals(existsSync(file), false);
-    });
+    await new Promise((resolve, reject) => {
+      unlink(file, (err) => {
+        if (err) reject(err);
+        resolve();
+      });
+    })
+      .then(() => assertEquals(existsSync(file), false))
+      .catch(() => fail())
+      .finally(() => {
+        if (existsSync(file)) Deno.removeSync(file);
+      });
   },
 });
 
 Deno.test({
-  name: "Test unlink (sync)",
+  name: "SYNC: Test deleting a file",
   fn() {
     const file = Deno.makeTempFileSync();
     unlinkSync(file);

@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "../../testing/asserts.ts";
+import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { readdir, readdirSync } from "./_fs_readdir.ts";
 import { join } from "../../path/mod.ts";
 
@@ -11,38 +11,50 @@ Deno.test({
         readdir(Deno.makeTempDirSync());
       },
       Error,
-      "No callback function supplied",
+      "No callback function supplied"
     );
   },
 });
 
 Deno.test({
-  name: "Test reading empty the directory",
-  fn() {
+  name: "ASYNC: reading empty directory",
+  async fn() {
     const dir = Deno.makeTempDirSync();
-    readdir(dir, (err, files) => {
-      if (err) throw err;
-      assertEquals(files, []);
-    });
+    await new Promise<string[]>((resolve, reject) => {
+      readdir(dir, (err, files) => {
+        if (err) reject(err);
+        resolve(files);
+      });
+    })
+      .then((files) => assertEquals(files, []))
+      .catch(() => fail())
+      .finally(() => Deno.removeSync(dir));
   },
 });
 
 Deno.test({
-  name: "Test reading a directory that's not empty",
-  fn() {
+  name: "ASYNC: reading non-empty directory",
+  async fn() {
     const dir = Deno.makeTempDirSync();
     Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
     Deno.writeTextFileSync(join(dir, "file2.txt"), "hi");
     Deno.mkdirSync(join(dir, "some_dir"));
-    readdir(dir, (err, files) => {
-      if (err) throw err;
-      assertEquals(files, ["file1.txt", "file2.txt", "some_dir"]);
-    });
+    await new Promise((resolve, reject) => {
+      readdir(dir, (err, files) => {
+        if (err) reject(err);
+        resolve(files);
+      });
+    })
+      .then((files) =>
+        assertEquals(files, ["file1.txt", "some_dir", "file2.txt"])
+      )
+      .catch(() => fail())
+      .finally(() => Deno.removeSync(dir, { recursive: true }));
   },
 });
 
 Deno.test({
-  name: "Test reading empty the directory (sync)",
+  name: "SYNC: reading empty the directory",
   fn() {
     const dir = Deno.makeTempDirSync();
     assertEquals(readdirSync(dir), []);
@@ -50,12 +62,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Test reading a directory that's not empty (sync)",
+  name: "SYNC: reading a non-empty directory",
   fn() {
     const dir = Deno.makeTempDirSync();
     Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
     Deno.writeTextFileSync(join(dir, "file2.txt"), "hi");
     Deno.mkdirSync(join(dir, "some_dir"));
-    assertEquals(readdirSync(dir), ["file1.txt", "file2.txt", "some_dir"]);
+    assertEquals(readdirSync(dir), ["file1.txt", "some_dir", "file2.txt"]);
   },
 });
