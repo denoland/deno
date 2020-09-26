@@ -29,7 +29,7 @@ unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
 
 unitTest({ perms: { run: true } }, async function runUrl(): Promise<void> {
   const q = Deno.run({
-    cmd: ["python", "-c", "import sys; print sys.executable"],
+    cmd: ["python", "-c", "import sys; print(sys.executable)"],
     stdout: "piped",
   });
   await q.status();
