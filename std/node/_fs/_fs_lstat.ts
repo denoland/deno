@@ -11,28 +11,28 @@ export function lstat(path: string | URL, callback: statCallback): void;
 export function lstat(
   path: string | URL,
   options: { bigint: false },
-  callback: statCallback
+  callback: statCallback,
 ): void;
 export function lstat(
   path: string | URL,
   options: { bigint: true },
-  callback: statCallbackBigInt
+  callback: statCallbackBigInt,
 ): void;
 export function lstat(
   path: string | URL,
   optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
-  maybeCallback?: statCallback | statCallbackBigInt
+  maybeCallback?: statCallback | statCallbackBigInt,
 ) {
-  const callback = (typeof optionsOrCallback === "function"
-    ? optionsOrCallback
-    : maybeCallback) as (
-    err: Error | undefined,
-    stat: BigIntStats | Stats
-  ) => void;
-  const options =
-    typeof optionsOrCallback === "object"
+  const callback =
+    (typeof optionsOrCallback === "function"
       ? optionsOrCallback
-      : { bigint: false };
+      : maybeCallback) as (
+        err: Error | undefined,
+        stat: BigIntStats | Stats,
+      ) => void;
+  const options = typeof optionsOrCallback === "object"
+    ? optionsOrCallback
+    : { bigint: false };
 
   if (!callback) throw new Error("No callback function supplied");
 
@@ -44,15 +44,15 @@ export function lstat(
 export function lstatSync(path: string | URL): Stats;
 export function lstatSync(
   path: string | URL,
-  options: { bigint: false }
+  options: { bigint: false },
 ): Stats;
 export function lstatSync(
   path: string | URL,
-  options: { bigint: true }
+  options: { bigint: true },
 ): BigIntStats;
 export function lstatSync(
   path: string | URL,
-  options?: statOptions
+  options?: statOptions,
 ): Stats | BigIntStats {
   const origin = Deno.lstatSync(path);
   return CFISBIS(origin, options?.bigint || false);
