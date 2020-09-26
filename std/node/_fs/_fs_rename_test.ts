@@ -1,21 +1,7 @@
-import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
 import { rename, renameSync } from "./_fs_rename.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { join, parse } from "../../path/mod.ts";
-
-Deno.test({
-  name: "No callback Fn results in Error",
-  fn() {
-    assertThrows(
-      () => {
-        // @ts-ignore
-        rename(Deno.makeTempDirSync(), "some_thing");
-      },
-      Error,
-      "No callback function supplied",
-    );
-  },
-});
 
 Deno.test({
   name: "ASYNC: renaming a file",

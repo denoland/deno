@@ -2,13 +2,12 @@ import { fromFileUrl } from "../path.ts";
 
 export function asyncIterableIteratorToCallback<T>(
   iterator: AsyncIterableIterator<T>,
-  callback: (val: T, done?: boolean) => void,
+  callback: (val: T, done?: boolean) => void
 ) {
   function next() {
     iterator.next().then((obj) => {
       if (obj.done) {
-        // @ts-ignore
-        callback(undefined, true);
+        callback(obj.value, true);
         return;
       }
       callback(obj.value);
@@ -20,14 +19,13 @@ export function asyncIterableIteratorToCallback<T>(
 
 export function asyncIterableToCallback<T>(
   iter: AsyncIterable<T>,
-  callback: (val: T, done?: boolean) => void,
+  callback: (val: T, done?: boolean) => void
 ) {
   const iterator = iter[Symbol.asyncIterator]();
   function next() {
     iterator.next().then((obj) => {
       if (obj.done) {
-        // @ts-ignore
-        callback(undefined, true);
+        callback(obj.value, true);
         return;
       }
       callback(obj.value);
@@ -48,32 +46,34 @@ type watchListener = (eventType: string, filename: string) => void;
 export function watch(
   filename: string | URL,
   options: watchOptions,
-  listener: watchListener,
+  listener: watchListener
 ): { close: () => void };
 export function watch(
   filename: string | URL,
-  listener: watchListener,
+  listener: watchListener
 ): { close: () => void };
 export function watch(
   filename: string | URL,
-  options: watchOptions,
+  options: watchOptions
 ): { close: () => void };
 export function watch(filename: string | URL): { close: () => void };
 export function watch(
   filename: string | URL,
   optionsOrListener?: watchOptions | watchListener,
-  optionsOrListener2?: watchOptions | watchListener,
+  optionsOrListener2?: watchOptions | watchListener
 ) {
-  const listener = typeof optionsOrListener === "function"
-    ? optionsOrListener
-    : typeof optionsOrListener2 === "function"
-    ? optionsOrListener2
-    : undefined;
-  const options = typeof optionsOrListener === "object"
-    ? optionsOrListener
-    : typeof optionsOrListener2 === "object"
-    ? optionsOrListener2
-    : undefined;
+  const listener =
+    typeof optionsOrListener === "function"
+      ? optionsOrListener
+      : typeof optionsOrListener2 === "function"
+      ? optionsOrListener2
+      : undefined;
+  const options =
+    typeof optionsOrListener === "object"
+      ? optionsOrListener
+      : typeof optionsOrListener2 === "object"
+      ? optionsOrListener2
+      : undefined;
   filename = filename instanceof URL ? fromFileUrl(filename) : filename;
 
   const iterator = Deno.watchFs(filename, {
@@ -88,8 +88,7 @@ export function watch(
 
   return {
     close() {
-      // @ts-ignore
-      iterator.return();
+      if (iterator.return) iterator.return();
     },
   };
 }

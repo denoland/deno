@@ -1,20 +1,6 @@
-import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { unlink, unlinkSync } from "./_fs_unlink.ts";
-
-Deno.test({
-  name: "No callback Fn results in Error",
-  fn() {
-    assertThrows(
-      () => {
-        // @ts-ignore
-        unlink(Deno.makeTempFileSync());
-      },
-      Error,
-      "No callback function supplied",
-    );
-  },
-});
 
 Deno.test({
   name: "ASYNC: deleting a file",
