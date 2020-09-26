@@ -11,7 +11,7 @@ The following functions and class are exposed in `mod.ts`
 Creates a Promise with the `reject` and `resolve` functions.
 
 ```typescript
-import { deferred } from "https://deno.land.std/async/mod.ts";
+import { deferred } from "https://deno.land/std/async/mod.ts";
 
 const p = deferred<number>();
 // ...
@@ -23,7 +23,7 @@ p.resolve(42);
 Resolve a Promise after a given amount of milliseconds
 
 ```typescript
-import { delay } from "https://deno.land.std/async/mod.ts";
+import { delay } from "https://deno.land/std/async/mod.ts";
 
 // ...
 const delayedPromise = delay(100);
@@ -41,7 +41,7 @@ yielded from the iterator) does not matter. If there is any result, it is
 discarded.
 
 ```typescript
-import { MuxAsyncIterator } from "https://deno.land.std/async/mod.ts";
+import { MuxAsyncIterator } from "https://deno.land/std/async/mod.ts";
 
 async function* gen123(): AsyncIterableIterator<number> {
   yield 1;
@@ -71,7 +71,7 @@ transforms are done concurrently, with a max concurrency defined by the
 poolLimit.
 
 ```typescript
-import { pooledMap } from "https://deno.land.std/async/mod.ts";
+import { pooledMap } from "https://deno.land/std/async/mod.ts";
 
 const results = pooledMap(
   2,

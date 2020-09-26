@@ -184,7 +184,6 @@ fn op_create_worker(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -196,7 +195,7 @@ fn op_create_worker(
   let args_name = args.name;
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
-    cli_state.check_unstable("Worker.deno");
+    super::check_unstable(state, "Worker.deno");
   }
   let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
@@ -204,6 +203,7 @@ fn op_create_worker(
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
+  let cli_state = super::global_state(state);
 
   let (join_handle, worker_handle) = run_worker_thread(
     worker_id,

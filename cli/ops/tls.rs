@@ -76,8 +76,7 @@ async fn op_start_tls(
     domain.push_str("localhost");
   }
   {
-    let cli_state = super::global_state2(&state);
-    cli_state.check_unstable("Deno.startTls");
+    super::check_unstable2(&state, "Deno.startTls");
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
     permissions.check_net(&domain, 0)?;
