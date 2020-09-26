@@ -1328,19 +1328,9 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function runtimeStart(source) {
-    core.ops();
-    // First we send an empty `Start` message to let the privileged side know we
-    // are ready. The response should be a `StartRes` message containing the CLI
-    // args and other info.
-    const s = core.jsonOpSync("op_start");
-    setLogDebug(s.debugFlag, source);
-    return s;
-  }
-
   let hasBootstrapped = false;
 
-  function bootstrapCompilerRuntime() {
+  function bootstrapCompilerRuntime({ debugFlag }) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
@@ -1367,7 +1357,8 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Other", Error);
     core.registerErrorClass("Busy", errors.Busy);
     delete globalThis.__bootstrap;
-    runtimeStart("TS");
+    core.ops();
+    setLogDebug(!!debugFlag, "TS");
   }
 
   globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;

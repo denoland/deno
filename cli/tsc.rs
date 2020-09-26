@@ -14,7 +14,6 @@ use crate::js;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
-use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::tsc_config;
@@ -969,16 +968,14 @@ fn execute_in_tsc(
     startup_snapshot: Some(js::compiler_isolate_init()),
     ..Default::default()
   });
-  {
-    let op_state = js_runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    // TODO(bartlomieju): needed only for runtime_start op, which is needed
-    // only to pass "debugFlag" to compiler...
-    op_state.put(global_state);
-  }
+
+  let debug_flag = global_state
+    .flags
+    .log_level
+    .map_or(false, |l| l == log::Level::Debug);
   let response = Arc::new(Mutex::new(None));
+
   {
-    ops::runtime::init(&mut js_runtime);
     js_runtime.register_op(
       "op_fetch_asset",
       crate::op_fetch_asset::op_fetch_asset(HashMap::default()),
@@ -997,15 +994,23 @@ fn execute_in_tsc(
       }),
     );
   }
-  js_runtime.execute("<compiler>", "globalThis.bootstrapCompilerRuntime()")?;
+
+  let bootstrap_script = format!(
+    "globalThis.bootstrapCompilerRuntime({{ debugFlag: {} }})",
+    debug_flag
+  );
+  js_runtime.execute("<compiler>", &bootstrap_script)?;
+
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
   js_runtime.execute("<compiler>", &script)?;
-  let mut maybe_response = response.lock().unwrap();
+
+  let maybe_response = response.lock().unwrap().take();
   assert!(
     maybe_response.is_some(),
     "Unexpected missing response from TS compiler"
   );
-  Ok(maybe_response.take().unwrap())
+
+  Ok(maybe_response.unwrap())
 }
 
 async fn create_runtime_module_graph(
