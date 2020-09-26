@@ -13,7 +13,7 @@ type openFlags =
   | "w+"
   | "wx+";
 
-type openCallback = (err: Error | undefined, fd: number) => any;
+type openCallback = (err: Error | undefined, fd: number) => void;
 
 function convertFlagAndModeToOptions(
   flag?: openFlags,

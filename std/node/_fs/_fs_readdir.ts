@@ -5,7 +5,7 @@ type readDirOptions = {
   withFileTypes: boolean;
 };
 
-type readDirCallback = (err: Error | undefined, files: string[]) => any;
+type readDirCallback = (err: Error | undefined, files: string[]) => void;
 
 export function readdir(
   path: string | URL,
@@ -21,9 +21,11 @@ export function readdir(
   const callback =
     typeof optionsOrCallback === "function"
       ? optionsOrCallback
-      : maybeCallback || (() => {});
+      : maybeCallback || undefined;
   // const options = typeof optionsOrCallback === "object" ? optionsOrCallback : null;
   const result: string[] = [];
+
+  if (!callback) throw new Error("No callback function supplied");
 
   try {
     asyncIterableToCallback(Deno.readDir(path), (val, done) => {
@@ -38,10 +40,11 @@ export function readdir(
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function readdirSync(path: string | URL, options?: readDirOptions) {
   const result = [];
 
-  for (let file of Deno.readDirSync(path)) {
+  for (const file of Deno.readDirSync(path)) {
     result.push(file.name);
   }
   return result;

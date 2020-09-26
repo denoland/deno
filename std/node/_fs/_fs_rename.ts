@@ -3,7 +3,7 @@ import { fromFileUrl } from "../path.ts";
 export function rename(
   oldPath: string | URL,
   newPath: string | URL,
-  callback: (err?: Error) => any
+  callback: (err?: Error) => void
 ) {
   oldPath = oldPath instanceof URL ? fromFileUrl(oldPath) : oldPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;

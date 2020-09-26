@@ -231,9 +231,9 @@ export function CFISBIS(fileInfo: Deno.FileInfo, bigInt: boolean) {
 export type statCallbackBigInt = (
   err: Error | undefined,
   stat: BigIntStats
-) => any;
+) => void;
 
-export type statCallback = (err: Error | undefined, stat: Stats) => any;
+export type statCallback = (err: Error | undefined, stat: Stats) => void;
 
 export function stat(path: string | URL, callback: statCallback): void;
 export function stat(
