@@ -13,8 +13,8 @@ def main():
         ["git", "status", "-uno", "--porcelain", "--ignore-submodules"],
         exit_on_fail=True)
     if result.out:
-        print "Run tools/format.py "
-        print result.out
+        print("Run tools/format.py ")
+        print(result.out)
         sys.exit(1)
 
 
