@@ -216,7 +216,7 @@ impl GlobalState {
       if should_compile {
         self
           .ts_compiler
-          .compile(self, &out, target_lib, permissions, &module_graph, allow_js)
+          .compile(self, &out, target_lib, &module_graph, allow_js)
           .await?;
       }
     }

@@ -1,3 +1,3 @@
 [WILDCARD]
-error: Uncaught TypeError: Cannot resolve extension for "[WILDCARD]config.json" with mediaType "Json".
+error: TypeError: Cannot resolve extension for "[WILDCARD]config.json" with mediaType "Json".
 [WILDCARD]

@@ -106,11 +106,6 @@ delete Object.prototype.__proto__;
     });
   }
 
-  function opNow() {
-    const res = core.jsonOpSync("op_now");
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
-  }
-
   // We really don't want to depend on JSON dispatch during snapshotting, so
   // this op exchanges strings with Rust as raw byte arrays.
   function getAsset(name) {
@@ -728,7 +723,7 @@ delete Object.prototype.__proto__;
   function performanceStart() {
     stats.length = 0;
     // TODO(kitsonk) replace with performance.mark() when landed
-    statsStart = opNow();
+    statsStart = new Date();
     ts.performance.enable();
   }
 
@@ -765,7 +760,7 @@ delete Object.prototype.__proto__;
 
   function performanceEnd() {
     // TODO(kitsonk) replace with performance.measure() when landed
-    const duration = opNow() - statsStart;
+    const duration = new Date() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
   }
@@ -1283,14 +1278,14 @@ delete Object.prototype.__proto__;
       );
       result[fileName] = { source, map };
     }
-    return Promise.resolve(result);
+    return result;
   }
 
   function opCompilerRespond(msg) {
     core.jsonOpSync("op_compiler_respond", msg);
   }
 
-  async function tsCompilerOnMessage(msg) {
+  function tsCompilerOnMessage(msg) {
     const request = msg.data;
     switch (request.type) {
       case CompilerRequestType.Compile: {
@@ -1314,7 +1309,7 @@ delete Object.prototype.__proto__;
         break;
       }
       case CompilerRequestType.RuntimeTranspile: {
-        const result = await runtimeTranspile(request);
+        const result = runtimeTranspile(request);
         opCompilerRespond(result);
         break;
       }
@@ -1327,24 +1322,16 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function runtimeStart(source) {
-    core.ops();
-    // First we send an empty `Start` message to let the privileged side know we
-    // are ready. The response should be a `StartRes` message containing the CLI
-    // args and other info.
-    const s = core.jsonOpSync("op_start");
-    setLogDebug(s.debugFlag, source);
-    return s;
-  }
-
   let hasBootstrapped = false;
 
-  function bootstrapCompilerRuntime() {
+  function bootstrapCompilerRuntime({ debugFlag }) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
     hasBootstrapped = true;
-    runtimeStart("TS");
+    delete globalThis.__bootstrap;
+    core.ops();
+    setLogDebug(!!debugFlag, "TS");
   }
 
   globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;
