@@ -10,17 +10,19 @@ export function rmdir(path: string | URL, callback: rmdirCallback): void;
 export function rmdir(
   path: string | URL,
   options: rmdirOptions,
-  callback: rmdirCallback
+  callback: rmdirCallback,
 ): void;
 export function rmdir(
   path: string | URL,
   optionsOrCallback: rmdirOptions | rmdirCallback,
-  maybeCallback?: rmdirCallback
+  maybeCallback?: rmdirCallback,
 ) {
-  const callback =
-    typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
-  const options =
-    typeof optionsOrCallback === "object" ? optionsOrCallback : undefined;
+  const callback = typeof optionsOrCallback === "function"
+    ? optionsOrCallback
+    : maybeCallback;
+  const options = typeof optionsOrCallback === "object"
+    ? optionsOrCallback
+    : undefined;
 
   if (!callback) throw new Error("No callback function supplied");
 

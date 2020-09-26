@@ -12,7 +12,7 @@ Deno.test({
         rmdir(Deno.makeTempDirSync());
       },
       Error,
-      "No callback function supplied"
+      "No callback function supplied",
     );
   },
 });

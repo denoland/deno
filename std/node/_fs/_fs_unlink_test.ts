@@ -11,7 +11,7 @@ Deno.test({
         unlink(Deno.makeTempFileSync());
       },
       Error,
-      "No callback function supplied"
+      "No callback function supplied",
     );
   },
 });
