@@ -80,12 +80,7 @@ async fn op_transpile(
   cli_state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   let global_state = cli_state.clone();
-  let permissions = {
-    let state = state.borrow();
-    state.borrow::<Permissions>().clone()
-  };
   let result =
-    runtime_transpile(&global_state, permissions, &args.sources, &args.options)
-      .await?;
+    runtime_transpile(global_state, &args.sources, &args.options).await?;
   Ok(result)
 }

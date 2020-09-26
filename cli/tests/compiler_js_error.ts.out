@@ -1,4 +1,4 @@
 Check [WILDCARD]compiler_js_error.ts
 error: Uncaught Error: Error in TS compiler:
-Uncaught AssertionError: Unexpected skip of the emit.
+AssertionError: Unexpected skip of the emit.
 [WILDCARD]
