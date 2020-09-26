@@ -12,9 +12,9 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_apply_source_map", op_apply_source_map);
-  super::reg_json_sync(rt, "op_format_diagnostic", op_format_diagnostic);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_sync(state, "op_apply_source_map", op_apply_source_map);
+  super::reg_json_sync(state, "op_format_diagnostic", op_format_diagnostic);
 }
 
 #[derive(Deserialize)]

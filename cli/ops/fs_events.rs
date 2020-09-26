@@ -24,9 +24,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_fs_events_open", op_fs_events_open);
-  super::reg_json_async(rt, "op_fs_events_poll", op_fs_events_poll);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_sync(state, "op_fs_events_open", op_fs_events_open);
+  super::reg_json_async(state, "op_fs_events_poll", op_fs_events_poll);
 }
 
 struct FsEventsResource {

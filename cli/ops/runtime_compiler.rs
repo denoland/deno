@@ -15,9 +15,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_compile", op_compile);
-  super::reg_json_async(rt, "op_transpile", op_transpile);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_async(state, "op_compile", op_compile);
+  super::reg_json_async(state, "op_transpile", op_transpile);
 }
 
 #[derive(Deserialize, Debug)]

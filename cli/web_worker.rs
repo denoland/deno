@@ -2,7 +2,13 @@
 
 use crate::global_state::GlobalState;
 use crate::js;
+use crate::metrics::Metrics;
 use crate::ops;
+use crate::ops::runtime::MainModule;
+use crate::ops::timers::GlobalTimer;
+use crate::ops::timers::StartTime;
+use crate::ops::worker_host::WorkerId;
+use crate::ops::worker_host::WorkersTable;
 use crate::permissions::Permissions;
 use crate::state::CliModuleLoader;
 use crate::worker::Worker;
@@ -14,6 +20,9 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_fetch::reqwest;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -97,8 +106,8 @@ impl WebWorker {
       name,
       Some(js::deno_isolate_init()),
       permissions,
-      main_module,
-      global_state,
+      main_module.clone(),
+      global_state.clone(),
       loader,
       false,
     );
@@ -123,45 +132,89 @@ impl WebWorker {
     };
 
     {
-      ops::runtime::init(&mut web_worker.worker);
-      let sender = web_worker.worker.internal_channels.sender.clone();
       let handle = web_worker.thread_safe_handle();
-      ops::web_worker::init(&mut web_worker.worker, sender, handle);
-      ops::worker_host::init(&mut web_worker.worker);
+      let sender = web_worker.worker.internal_channels.sender.clone();
+
+      let op_state = web_worker.op_state();
+      let mut op_state = op_state.borrow_mut();
+
+      // All ops registered in this function depend on Metrics
+      op_state.put::<Metrics>(Default::default());
+
+      // TODO(bartlomieju): Many ops still depend on GlobalState,
+      // which shouldn't be the cause.
+      op_state.put::<Arc<GlobalState>>(global_state.clone());
+
+      {
+        ops::web_worker::init(&mut op_state, sender, handle);
+      }
+
+      {
+        op_state.put::<Permissions>(global_state.permissions.clone());
+        ops::permissions::init(&mut op_state);
+      }
+
+      {
+        op_state.put::<MainModule>(main_module);
+        ops::runtime::init(&mut op_state);
+      }
+
+      {
+        op_state.put::<reqwest::Client>({
+          let ca_file = global_state.flags.ca_file.as_deref();
+          crate::http_util::create_http_client(ca_file).unwrap()
+        });
+        ops::fetch::init(&mut op_state);
+      }
+
+      {
+        op_state.put::<GlobalTimer>(GlobalTimer::default());
+        op_state.put::<StartTime>(StartTime::now());
+        ops::timers::init(&mut op_state);
+      }
+
+      {
+        op_state.put::<WorkersTable>(WorkersTable::default());
+        op_state.put::<WorkerId>(WorkerId::default());
+        ops::worker_host::init(&mut op_state);
+      }
+
+      // Ops that don't register state, or depend on
+      // previously registered state
+      ops::errors::init(&mut op_state);
+      ops::io::init(&mut op_state);
+      ops::reg_json_sync(&mut op_state, "op_close", deno_core::op_close);
       ops::reg_json_sync(
-        &mut web_worker.worker,
-        "op_domain_to_ascii",
-        deno_web::op_domain_to_ascii,
-      );
-      ops::io::init(&mut web_worker.worker);
-      ops::reg_json_sync(
-        &mut web_worker.worker,
-        "op_close",
-        deno_core::op_close,
-      );
-      ops::reg_json_sync(
-        &mut web_worker.worker,
+        &mut op_state,
         "op_resources",
         deno_core::op_resources,
       );
-      ops::errors::init(&mut web_worker.worker);
-      ops::timers::init(&mut web_worker.worker);
-      ops::fetch::init(&mut web_worker.worker);
-      ops::websocket::init(&mut web_worker.worker);
+      ops::websocket::init(&mut op_state);
+      ops::reg_json_sync(
+        &mut op_state,
+        "op_domain_to_ascii",
+        deno_web::op_domain_to_ascii,
+      );
 
       if has_deno_namespace {
-        ops::runtime_compiler::init(&mut web_worker.worker);
-        ops::fs::init(&mut web_worker.worker);
-        ops::fs_events::init(&mut web_worker.worker);
-        ops::plugin::init(&mut web_worker.worker);
-        ops::net::init(&mut web_worker.worker);
-        ops::tls::init(&mut web_worker.worker);
-        ops::os::init(&mut web_worker.worker);
-        ops::permissions::init(&mut web_worker.worker);
-        ops::process::init(&mut web_worker.worker);
-        ops::random::init(&mut web_worker.worker);
-        ops::signal::init(&mut web_worker.worker);
-        ops::tty::init(&mut web_worker.worker);
+        ops::fs_events::init(&mut op_state);
+        ops::fs::init(&mut op_state);
+        ops::net::init(&mut op_state);
+        ops::os::init(&mut op_state);
+        ops::permissions::init(&mut op_state);
+        ops::plugin::init(&mut op_state);
+        ops::process::init(&mut op_state);
+        {
+          if let Some(seed) = global_state.flags.seed {
+            let rng = StdRng::seed_from_u64(seed);
+            op_state.put::<StdRng>(rng);
+          }
+          ops::random::init(&mut op_state);
+        }
+        ops::runtime_compiler::init(&mut op_state);
+        ops::signal::init(&mut op_state);
+        ops::tls::init(&mut op_state);
+        ops::tty::init(&mut op_state);
       }
     }
 

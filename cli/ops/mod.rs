@@ -34,7 +34,6 @@ use deno_core::json_op_async;
 use deno_core::json_op_sync;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
@@ -42,20 +41,24 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub fn reg_json_async<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+pub fn reg_json_async<F, R>(state: &mut OpState, name: &'static str, op_fn: F)
 where
   F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
   R: Future<Output = Result<Value, AnyError>> + 'static,
 {
-  rt.register_op(name, metrics_op(json_op_async(op_fn)));
+  state
+    .op_table
+    .register_op(name, metrics_op(json_op_async(op_fn)));
 }
 
-pub fn reg_json_sync<F>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+pub fn reg_json_sync<F>(state: &mut OpState, name: &'static str, op_fn: F)
 where
   F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
     + 'static,
 {
-  rt.register_op(name, metrics_op(json_op_sync(op_fn)));
+  state
+    .op_table
+    .register_op(name, metrics_op(json_op_sync(op_fn)));
 }
 
 /// Helper for checking unstable features. Used for sync ops.

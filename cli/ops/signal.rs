@@ -23,10 +23,10 @@ use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_signal_bind", op_signal_bind);
-  super::reg_json_sync(rt, "op_signal_unbind", op_signal_unbind);
-  super::reg_json_async(rt, "op_signal_poll", op_signal_poll);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_sync(state, "op_signal_bind", op_signal_bind);
+  super::reg_json_sync(state, "op_signal_unbind", op_signal_unbind);
+  super::reg_json_async(state, "op_signal_poll", op_signal_poll);
 }
 
 #[cfg(unix)]

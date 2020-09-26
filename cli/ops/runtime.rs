@@ -14,11 +14,13 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::env;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_start", op_start);
-  super::reg_json_sync(rt, "op_main_module", op_main_module);
-  super::reg_json_sync(rt, "op_metrics", op_metrics);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_sync(state, "op_start", op_start);
+  super::reg_json_sync(state, "op_main_module", op_main_module);
+  super::reg_json_sync(state, "op_metrics", op_metrics);
 }
+
+pub type MainModule = ModuleSpecifier;
 
 fn op_start(
   state: &mut OpState,
@@ -50,7 +52,7 @@ fn op_main_module(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let main = state.borrow::<ModuleSpecifier>().to_string();
+  let main = state.borrow::<MainModule>().to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());

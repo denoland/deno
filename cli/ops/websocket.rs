@@ -33,11 +33,11 @@ use tokio_tungstenite::tungstenite::{
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_ws_create", op_ws_create);
-  super::reg_json_async(rt, "op_ws_send", op_ws_send);
-  super::reg_json_async(rt, "op_ws_close", op_ws_close);
-  super::reg_json_async(rt, "op_ws_next_event", op_ws_next_event);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_async(state, "op_ws_create", op_ws_create);
+  super::reg_json_async(state, "op_ws_send", op_ws_send);
+  super::reg_json_async(state, "op_ws_close", op_ws_close);
+  super::reg_json_async(state, "op_ws_next_event", op_ws_next_event);
 }
 
 type MaybeTlsStream =

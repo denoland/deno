@@ -16,9 +16,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_repl_start", op_repl_start);
-  super::reg_json_async(rt, "op_repl_readline", op_repl_readline);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_sync(state, "op_repl_start", op_repl_start);
+  super::reg_json_async(state, "op_repl_readline", op_repl_readline);
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);

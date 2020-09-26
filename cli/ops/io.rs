@@ -13,7 +13,6 @@ use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::ready;
 use deno_core::BufVec;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -89,9 +88,13 @@ lazy_static! {
   };
 }
 
-pub fn init(rt: &mut JsRuntime) {
-  rt.register_op("op_read", metrics_op(minimal_op(op_read)));
-  rt.register_op("op_write", metrics_op(minimal_op(op_write)));
+pub fn init(state: &mut OpState) {
+  state
+    .op_table
+    .register_op("op_read", metrics_op(minimal_op(op_read)));
+  state
+    .op_table
+    .register_op("op_write", metrics_op(minimal_op(op_write)));
 }
 
 pub fn get_stdio() -> (

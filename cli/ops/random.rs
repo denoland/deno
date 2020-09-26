@@ -9,8 +9,8 @@ use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_get_random_values", op_get_random_values);
+pub fn init(state: &mut deno_core::OpState) {
+  super::reg_json_sync(state, "op_get_random_values", op_get_random_values);
 }
 
 fn op_get_random_values(
