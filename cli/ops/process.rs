@@ -227,8 +227,7 @@ fn op_kill(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.kill");
+  super::check_unstable(state, "Deno.kill");
   state.borrow::<Permissions>().check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;
