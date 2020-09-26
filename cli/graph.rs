@@ -930,6 +930,9 @@ mod tests {
     );
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 1, "only one file should be emitted");
+    println!("{:?}", h.cache_calls[0]
+        .2
+        .to_string());
     assert!(
       h.cache_calls[0]
         .2

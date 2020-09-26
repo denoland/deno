@@ -16,11 +16,11 @@ path = "lib.rs"
 [dependencies]
 atty = "0.2.14"
 deno_colors = { version = "0.1.0", path = "../colors" }
-deno_core = { version = "0.58.0", path = "../../core" }
+deno_core = { version = "0.59.0", path = "../../core" }
 serde = { version = "1.0.116", features = ["derive"] }
 deno_flags = { version = "0.1.0", path = "../flags" }
 deno_fs = { version = "0.1.0", path = "../fs" }
-deno_fetch = { version = "0.1.0", path = "../../op_crates/fetch" }
+deno_fetch = { version = "0.2.0", path = "../../op_crates/fetch" }
 log = "0.4.11"
 termcolor = "1.1.0"
 

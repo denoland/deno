@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 atty = "0.2.14"
-deno_core = { version = "0.58.0", path = "../../core" }
+deno_core = { version = "0.59.0", path = "../../core" }
 regex = "1.3.9"
 lazy_static = "1.4.0"
 serde = { version = "1.0.116", features = ["derive"] }
