@@ -28,7 +28,7 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
 
 export function assertStatsBigInt(
   actual: BigIntStats,
-  expected: Deno.FileInfo
+  expected: Deno.FileInfo,
 ) {
   assert(actual.dev === BigInt(expected.dev));
   assert(actual.gid === BigInt(expected.gid));
@@ -67,7 +67,7 @@ Deno.test({
         stat(Deno.makeTempFileSync());
       },
       Error,
-      "No callback function supplied"
+      "No callback function supplied",
     );
   },
 });
