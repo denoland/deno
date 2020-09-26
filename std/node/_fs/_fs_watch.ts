@@ -2,7 +2,7 @@ import { fromFileUrl } from "../path.ts";
 
 export function asyncIterableIteratorToCallback<T>(
   iterator: AsyncIterableIterator<T>,
-  callback: (val: T, done?: boolean) => any
+  callback: (val: T, done?: boolean) => void
 ) {
   function next() {
     iterator.next().then((obj) => {
@@ -20,7 +20,7 @@ export function asyncIterableIteratorToCallback<T>(
 
 export function asyncIterableToCallback<T>(
   iter: AsyncIterable<T>,
-  callback: (val: T, done?: boolean) => any
+  callback: (val: T, done?: boolean) => void
 ) {
   const iterator = iter[Symbol.asyncIterator]();
   function next() {
@@ -43,7 +43,7 @@ type watchOptions = {
   encoding: string;
 };
 
-type watchListener = (eventType: string, filename: string) => any;
+type watchListener = (eventType: string, filename: string) => void;
 
 export function watch(
   filename: string | URL,

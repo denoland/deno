@@ -1,4 +1,4 @@
-export function unlink(path: string | URL, callback: (err?: Error) => any) {
+export function unlink(path: string | URL, callback: (err?: Error) => void) {
   Deno.remove(path)
     .then((_) => callback())
     .catch(callback);

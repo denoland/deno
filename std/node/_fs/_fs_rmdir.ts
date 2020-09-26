@@ -4,7 +4,7 @@ type rmdirOptions = {
   retryDelay: number;
 };
 
-type rmdirCallback = (err?: Error) => any;
+type rmdirCallback = (err?: Error) => void;
 
 export function rmdir(path: string | URL, callback: rmdirCallback): void;
 export function rmdir(
@@ -22,11 +22,9 @@ export function rmdir(
       ? optionsOrCallback
       : maybeCallback || (() => {});
   const options =
-    typeof optionsOrCallback === "object"
-      ? optionsOrCallback
-      : ({} as { [key: string]: any });
+    typeof optionsOrCallback === "object" ? optionsOrCallback : undefined;
 
-  Deno.remove(path, { recursive: options.recursive })
+  Deno.remove(path, { recursive: options?.recursive })
     .then((_) => callback())
     .catch(callback);
 }
