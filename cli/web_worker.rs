@@ -136,14 +136,12 @@ impl WebWorker {
       let op_state = web_worker.op_state();
       let mut op_state = op_state.borrow_mut();
 
-      // All ops registered in this function depend on Metrics
-      op_state.put::<Metrics>(Default::default());
-
-      // TODO(bartlomieju): Many ops still depend on GlobalState,
-      // which shouldn't be the cause.
-      op_state.put::<Arc<GlobalState>>(global_state.clone());
-
-      op_state.put::<Permissions>(permissions);
+      // All ops registered in this function depend on these
+      {
+        op_state.put::<Metrics>(Default::default());
+        op_state.put::<Arc<GlobalState>>(global_state.clone());
+        op_state.put::<Permissions>(permissions);
+      }
 
       // These ops are the means means to communicate with parent worker
       ops::web_worker::init(&mut op_state, sender, handle);
