@@ -699,7 +699,6 @@ declare namespace Deno {
       SeekerSync,
       Closer {
     readonly rid: number;
-    constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
     read(p: Uint8Array): Promise<number | null>;
