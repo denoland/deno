@@ -1516,7 +1516,7 @@ fn timeout_clear() {
   let source_code = r#"
 const handle = setTimeout(() => {
   console.log("timeout finish");
-}, 10000);
+}, 20000);
 clearTimeout(handle);
 console.log("finish");
 "#;
@@ -1536,7 +1536,7 @@ console.log("finish");
   assert!(status.success());
   // check that program did not run for 10 seconds
   // for timeout to clear
-  assert!(end - start < Duration::new(10, 0));
+  assert!(end - start < Duration::new(20, 0));
 }
 
 #[test]
