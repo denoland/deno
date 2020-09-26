@@ -7,7 +7,8 @@ use crate::js;
 use crate::metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use crate::ops::timers;
+use crate::ops::timers::GlobalTimer;
+use crate::ops::timers::StartTime;
 use crate::ops::worker_host::WorkerId;
 use crate::ops::worker_host::WorkersTable;
 use crate::permissions::Permissions;
@@ -23,6 +24,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_fetch::reqwest;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::env;
@@ -131,26 +133,24 @@ impl Worker {
       let mut op_state = op_state.borrow_mut();
       op_state.get_error_class_fn = &crate::errors::get_error_class_name;
 
-      let ca_file = global_state.flags.ca_file.as_deref();
-      let client = crate::http_util::create_http_client(ca_file).unwrap();
-      op_state.put(client);
+      op_state.put::<GlobalTimer>(GlobalTimer::default());
+      op_state.put::<StartTime>(StartTime::now());
+      op_state.put::<Metrics>(Default::default());
+      op_state.put::<WorkersTable>(WorkersTable::default());
+      op_state.put::<WorkerId>(WorkerId::default());
+      op_state.put::<Permissions>(permissions);
+      op_state.put::<ModuleSpecifier>(main_module);
+      op_state.put::<Arc<GlobalState>>(global_state.clone());
 
-      op_state.put(timers::GlobalTimer::default());
-      op_state.put(timers::StartTime::now());
+      op_state.put::<reqwest::Client>({
+        let ca_file = global_state.flags.ca_file.as_deref();
+        crate::http_util::create_http_client(ca_file).unwrap()
+      });
 
       if let Some(seed) = global_state.flags.seed {
-        op_state.put(StdRng::seed_from_u64(seed));
+        let rng = StdRng::seed_from_u64(seed);
+        op_state.put::<StdRng>(rng);
       }
-
-      op_state.put(Metrics::default());
-
-      op_state.put(WorkersTable::default());
-      op_state.put(WorkerId::default());
-
-      op_state.put(permissions);
-
-      op_state.put(main_module);
-      op_state.put(global_state.clone());
     }
 
     let inspector =
