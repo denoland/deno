@@ -51,15 +51,15 @@ Compile file:///dev/deno/main.ts
 Download https://deno.land/std@$STD_VERSION/fs/copy.ts
 Download https://deno.land/std@$STD_VERSION/fs/ensure_dir.ts
 Download https://deno.land/std@$STD_VERSION/fs/_util.ts
-error: TS2339 [ERROR]: Property 'utime' does not exist on type 'typeof Deno'.
+error: TS2339 [ERROR]: Property 'utime' does not exist on type 'typeof Deno'. 'Deno.utime' is an unstable API. Did you forget to run with the '--unstable' flag?
     await Deno.utime(dest, statInfo.atime, statInfo.mtime);
                ~~~~~
-    at https://deno.land/std@$STD_VERSION/fs/copy.ts:90:16
+    at https://deno.land/std@$STD_VERSION/fs/copy.ts:92:16
 
-TS2339 [ERROR]: Property 'utimeSync' does not exist on type 'typeof Deno'.
+TS2339 [ERROR]: Property 'utimeSync' does not exist on type 'typeof Deno'. 'Deno.utimeSync' is an unstable API. Did you forget to run with the '--unstable' flag?
     Deno.utimeSync(dest, statInfo.atime, statInfo.mtime);
          ~~~~~~~~~
-    at https://deno.land/std@$STD_VERSION/fs/copy.ts:101:10
+    at https://deno.land/std@$STD_VERSION/fs/copy.ts:103:10
 ```
 
 Solution to that problem requires adding `--unstable` flag:
