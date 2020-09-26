@@ -81,7 +81,6 @@ async fn op_transpile(
   let args: TranspileArgs = serde_json::from_value(args)?;
   let global_state = cli_state.clone();
   let result =
-    runtime_transpile(global_state, &args.sources, &args.options)
-      .await?;
+    runtime_transpile(global_state, &args.sources, &args.options).await?;
   Ok(result)
 }

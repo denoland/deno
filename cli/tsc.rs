@@ -21,6 +21,7 @@ use crate::tsc_config;
 use crate::version;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::json_op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -44,6 +45,7 @@ use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use swc_common::comments::Comment;
@@ -543,7 +545,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str = execute_in_tsc(global_state, req_msg)?;
+    let json_str = execute_in_tsc(global_state.clone(), req_msg)?;
 
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
@@ -662,7 +664,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str = execute_in_tsc(&global_state, req_msg)?;
+    let json_str = execute_in_tsc(global_state.clone(), req_msg)?;
 
     let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
 
@@ -954,7 +956,15 @@ impl TsCompiler {
   }
 }
 
-fn execute_in_tsc(global_state: &Arc<GlobalState>, req: String) -> Result<String, AnyError> {
+fn execute_in_tsc(
+  global_state: Arc<GlobalState>,
+  req: String,
+) -> Result<String, AnyError> {
+  // TODO(bartlomieju): this is only used in testing, I'm not sure it's
+  // worth keeping around
+  // Count how many times we start the compiler worker.
+  global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
+
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(js::compiler_isolate_init()),
     ..Default::default()
@@ -962,8 +972,9 @@ fn execute_in_tsc(global_state: &Arc<GlobalState>, req: String) -> Result<String
   {
     let op_state = js_runtime.op_state();
     let mut op_state = op_state.borrow_mut();
-    // TODO(bartlomieju): needed only for runtime_start op
-    op_state.put(global_state.clone());
+    // TODO(bartlomieju): needed only for runtime_start op, which is needed
+    // only to pass "debugFlag" to compiler...
+    op_state.put(global_state);
   }
   let response = Arc::new(Mutex::new(None));
   {
@@ -973,10 +984,9 @@ fn execute_in_tsc(global_state: &Arc<GlobalState>, req: String) -> Result<String
       crate::op_fetch_asset::op_fetch_asset(HashMap::default()),
     );
     let res = response.clone();
-    ops::reg_json_sync(
-      &mut js_runtime,
+    js_runtime.register_op(
       "op_compiler_respond",
-      move |_state, args, _bufs| {
+      json_op_sync(move |_state, args, _bufs| {
         let mut response_slot = res.lock().unwrap();
         let replaced_value = response_slot.replace(args.to_string());
         assert!(
@@ -984,7 +994,7 @@ fn execute_in_tsc(global_state: &Arc<GlobalState>, req: String) -> Result<String
           "op_compiler_respond found unexpected existing compiler output",
         );
         Ok(json!({}))
-      },
+      }),
     );
   }
   js_runtime.execute("<compiler>", "globalThis.bootstrapCompilerRuntime()")?;
@@ -1134,7 +1144,8 @@ pub async fn runtime_compile(
 
   let compiler = global_state.ts_compiler.clone();
 
-  let json_str = execute_in_tsc(&global_state, req_msg).map_err(extract_js_error)?;
+  let json_str =
+    execute_in_tsc(global_state.clone(), req_msg).map_err(extract_js_error)?;
 
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
@@ -1241,7 +1252,8 @@ pub async fn runtime_bundle(
   })
   .to_string();
 
-  let json_str = execute_in_tsc(&global_state, req_msg).map_err(extract_js_error)?;
+  let json_str =
+    execute_in_tsc(global_state.clone(), req_msg).map_err(extract_js_error)?;
   let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
@@ -1277,7 +1289,8 @@ pub async fn runtime_transpile(
   })
   .to_string();
 
-  let json_str = execute_in_tsc(&global_state, req_msg).map_err(extract_js_error)?;
+  let json_str =
+    execute_in_tsc(global_state, req_msg).map_err(extract_js_error)?;
   let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)

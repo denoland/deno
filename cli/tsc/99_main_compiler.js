@@ -1284,7 +1284,7 @@ delete Object.prototype.__proto__;
       );
       result[fileName] = { source, map };
     }
-    return Promise.resolve(result);
+    return result;
   }
 
   function opCompilerRespond(msg) {
