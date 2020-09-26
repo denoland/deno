@@ -634,8 +634,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str =
-      execute_in_same_thread(global_state, permissions, req_msg).await?;
+    let json_str = execute_in_same_thread(global_state, permissions, req_msg)?;
 
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
@@ -754,8 +753,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str =
-      execute_in_same_thread(global_state, permissions, req_msg).await?;
+    let json_str = execute_in_same_thread(global_state, permissions, req_msg)?;
 
     let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
 
@@ -1047,7 +1045,7 @@ impl TsCompiler {
   }
 }
 
-async fn execute_in_same_thread(
+fn execute_in_same_thread(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
   req: String,
@@ -1055,7 +1053,6 @@ async fn execute_in_same_thread(
   let mut worker = create_compiler_worker(&global_state, permissions);
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
   worker.execute2("<compiler>", &script)?;
-  (&mut *worker).await?;
   Ok(worker.get_response())
 }
 
@@ -1099,7 +1096,7 @@ async fn create_runtime_module_graph(
   Ok((root_names, module_graph_loader.get_graph()))
 }
 
-fn js_error_to_errbox(error: AnyError) -> AnyError {
+fn extract_js_error(error: AnyError) -> AnyError {
   match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
@@ -1196,8 +1193,7 @@ pub async fn runtime_compile(
   let compiler = global_state.ts_compiler.clone();
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
-    .await
-    .map_err(js_error_to_errbox)?;
+    .map_err(extract_js_error)?;
 
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
@@ -1305,8 +1301,7 @@ pub async fn runtime_bundle(
   .to_string();
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
-    .await
-    .map_err(js_error_to_errbox)?;
+    .map_err(extract_js_error)?;
   let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
@@ -1344,8 +1339,7 @@ pub async fn runtime_transpile(
   .to_string();
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
-    .await
-    .map_err(js_error_to_errbox)?;
+    .map_err(extract_js_error)?;
   let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
