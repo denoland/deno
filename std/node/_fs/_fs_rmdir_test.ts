@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "../../testing/asserts.ts";
+import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { rmdir, rmdirSync } from "./_fs_rmdir.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { join } from "../../path/mod.ts";
@@ -12,24 +12,31 @@ Deno.test({
         rmdir(Deno.makeTempDirSync());
       },
       Error,
-      "No callback function supplied",
+      "No callback function supplied"
     );
   },
 });
 
 Deno.test({
-  name: "Test removing empty folder",
-  fn() {
+  name: "ASYNC: removing empty folder",
+  async fn() {
     const dir = Deno.makeTempDirSync();
-    rmdir(dir, (err) => {
-      if (err) throw err;
-      assertEquals(existsSync(dir), false);
-    });
+    await new Promise((resolve, reject) => {
+      rmdir(dir, (err) => {
+        if (err) reject(err);
+        resolve();
+      });
+    })
+      .then(() => assertEquals(existsSync(dir), false))
+      .catch(() => fail())
+      .finally(() => {
+        if (existsSync(dir)) Deno.removeSync(dir);
+      });
   },
 });
 
 Deno.test({
-  name: "Test removing empty folder (sync)",
+  name: "SYNC: removing empty folder",
   fn() {
     const dir = Deno.makeTempDirSync();
     rmdirSync(dir);
@@ -38,22 +45,29 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Test removing non-empty folder",
-  fn() {
+  name: "ASYNC: removing non-empty folder",
+  async fn() {
     const dir = Deno.makeTempDirSync();
     Deno.createSync(join(dir, "file1.txt"));
     Deno.createSync(join(dir, "file2.txt"));
     Deno.mkdirSync(join(dir, "some_dir"));
     Deno.createSync(join(dir, "some_dir", "file.txt"));
-    rmdir(dir, { recursive: true }, (err) => {
-      if (err) throw err;
-      assertEquals(existsSync(dir), false);
-    });
+    await new Promise((resolve, reject) => {
+      rmdir(dir, { recursive: true }, (err) => {
+        if (err) reject(err);
+        resolve();
+      });
+    })
+      .then(() => assertEquals(existsSync(dir), false))
+      .catch(() => fail())
+      .finally(() => {
+        if (existsSync(dir)) Deno.removeSync(dir, { recursive: true });
+      });
   },
 });
 
 Deno.test({
-  name: "Test removing non-empty folder (sync)",
+  name: "SYNC: removing non-empty folder",
   fn() {
     const dir = Deno.makeTempDirSync();
     Deno.createSync(join(dir, "file1.txt"));

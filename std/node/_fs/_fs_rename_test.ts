@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "../../testing/asserts.ts";
+import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { rename, renameSync } from "./_fs_rename.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { join, parse } from "../../path/mod.ts";
@@ -12,26 +12,32 @@ Deno.test({
         rename(Deno.makeTempDirSync(), "some_thing");
       },
       Error,
-      "No callback function supplied",
+      "No callback function supplied"
     );
   },
 });
 
 Deno.test({
-  name: "Test renaming",
-  fn() {
+  name: "ASYNC: renaming a file",
+  async fn() {
     const file = Deno.makeTempFileSync();
     const newPath = join(parse(file).dir, `${parse(file).base}_renamed`);
-    rename(file, newPath, (err) => {
-      if (err) throw err;
-      assertEquals(existsSync(newPath), true);
-      assertEquals(existsSync(file), false);
-    });
+    await new Promise((resolve, reject) => {
+      rename(file, newPath, (err) => {
+        if (err) reject(err);
+      });
+    })
+      .then(() => {
+        assertEquals(existsSync(newPath), true);
+        assertEquals(existsSync(file), false);
+      })
+      .catch(() => fail())
+      .finally(() => Deno.removeSync(file));
   },
 });
 
 Deno.test({
-  name: "Test renaming (sync)",
+  name: "SYNC: renaming a file",
   fn() {
     const file = Deno.makeTempFileSync();
     const newPath = join(parse(file).dir, `${parse(file).base}_renamed`);
