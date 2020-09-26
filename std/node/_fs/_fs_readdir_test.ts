@@ -1,20 +1,6 @@
-import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
 import { readdir, readdirSync } from "./_fs_readdir.ts";
 import { join } from "../../path/mod.ts";
-
-Deno.test({
-  name: "No callback Fn results in Error",
-  fn() {
-    assertThrows(
-      () => {
-        // @ts-ignore
-        readdir(Deno.makeTempDirSync());
-      },
-      Error,
-      "No callback function supplied",
-    );
-  },
-});
 
 Deno.test({
   name: "ASYNC: reading empty directory",

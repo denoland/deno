@@ -1,21 +1,7 @@
 import { lstat, lstatSync } from "./_fs_lstat.ts";
-import { assertThrows, fail } from "../../testing/asserts.ts";
+import { fail } from "../../testing/asserts.ts";
 import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
 import type { BigIntStats, Stats } from "./_fs_stat.ts";
-
-Deno.test({
-  name: "No callback Fn results in Error",
-  fn() {
-    assertThrows(
-      () => {
-        // @ts-ignore
-        lstat(Deno.makeTempFileSync());
-      },
-      Error,
-      "No callback function supplied",
-    );
-  },
-});
 
 Deno.test({
   name: "ASYNC: get a file Stats (lstat)",

@@ -1,5 +1,5 @@
 import { BigIntStats, stat, Stats, statSync } from "./_fs_stat.ts";
-import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
 
 export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.dev, expected.dev);
@@ -28,7 +28,7 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
 
 export function assertStatsBigInt(
   actual: BigIntStats,
-  expected: Deno.FileInfo,
+  expected: Deno.FileInfo
 ) {
   assertEquals(actual.dev, BigInt(expected.dev));
   assertEquals(actual.gid, BigInt(expected.gid));
@@ -57,20 +57,6 @@ export function assertStatsBigInt(
   // assertEquals(Number(actual.ctimeMs) === expected.ctime?.getTime());
   // assertEquals(Number(actual.ctimeNs) / 1e+6 === expected.ctime?.getTime());
 }
-
-Deno.test({
-  name: "No callback Fn results in Error",
-  fn() {
-    assertThrows(
-      () => {
-        // @ts-ignore
-        stat(Deno.makeTempFileSync());
-      },
-      Error,
-      "No callback function supplied",
-    );
-  },
-});
 
 Deno.test({
   name: "ASYNC: get a file Stats",
