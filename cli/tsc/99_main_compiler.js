@@ -107,11 +107,6 @@ delete Object.prototype.__proto__;
     });
   }
 
-  function opNow() {
-    const res = core.jsonOpSync("op_now");
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
-  }
-
   // We really don't want to depend on JSON dispatch during snapshotting, so
   // this op exchanges strings with Rust as raw byte arrays.
   function getAsset(name) {
@@ -729,7 +724,7 @@ delete Object.prototype.__proto__;
   function performanceStart() {
     stats.length = 0;
     // TODO(kitsonk) replace with performance.mark() when landed
-    statsStart = opNow();
+    statsStart = new Date();
     ts.performance.enable();
   }
 
@@ -766,7 +761,7 @@ delete Object.prototype.__proto__;
 
   function performanceEnd() {
     // TODO(kitsonk) replace with performance.measure() when landed
-    const duration = opNow() - statsStart;
+    const duration = new Date() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
   }
