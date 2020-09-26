@@ -11,10 +11,10 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::path::Path;
 
-pub fn init(state: &mut deno_core::OpState) {
-  super::reg_json_sync(state, "op_query_permission", op_query_permission);
-  super::reg_json_sync(state, "op_revoke_permission", op_revoke_permission);
-  super::reg_json_sync(state, "op_request_permission", op_request_permission);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_query_permission", op_query_permission);
+  super::reg_json_sync(rt, "op_revoke_permission", op_revoke_permission);
+  super::reg_json_sync(rt, "op_request_permission", op_request_permission);
 }
 
 #[derive(Deserialize)]

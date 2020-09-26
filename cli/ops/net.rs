@@ -34,13 +34,13 @@ use super::net_unix;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init(state: &mut deno_core::OpState) {
-  super::reg_json_async(state, "op_accept", op_accept);
-  super::reg_json_async(state, "op_connect", op_connect);
-  super::reg_json_sync(state, "op_shutdown", op_shutdown);
-  super::reg_json_sync(state, "op_listen", op_listen);
-  super::reg_json_async(state, "op_datagram_receive", op_datagram_receive);
-  super::reg_json_async(state, "op_datagram_send", op_datagram_send);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_async(rt, "op_accept", op_accept);
+  super::reg_json_async(rt, "op_connect", op_connect);
+  super::reg_json_sync(rt, "op_shutdown", op_shutdown);
+  super::reg_json_sync(rt, "op_listen", op_listen);
+  super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
+  super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
 }
 
 #[derive(Deserialize)]

@@ -25,15 +25,21 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-pub fn init(state: &mut deno_core::OpState) {
-  super::reg_json_sync(state, "op_create_worker", op_create_worker);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<WorkersTable>(WorkersTable::default());
+    state.put::<WorkerId>(WorkerId::default());
+  }
+  super::reg_json_sync(rt, "op_create_worker", op_create_worker);
   super::reg_json_sync(
-    state,
+    rt,
     "op_host_terminate_worker",
     op_host_terminate_worker,
   );
-  super::reg_json_sync(state, "op_host_post_message", op_host_post_message);
-  super::reg_json_async(state, "op_host_get_message", op_host_get_message);
+  super::reg_json_sync(rt, "op_host_post_message", op_host_post_message);
+  super::reg_json_async(rt, "op_host_get_message", op_host_get_message);
 }
 
 pub type WorkersTable = HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>;

@@ -6,14 +6,14 @@ use deno_core::futures::channel::mpsc;
 use deno_core::serde_json::json;
 
 pub fn init(
-  state: &mut deno_core::OpState,
+  rt: &mut deno_core::JsRuntime,
   sender: mpsc::Sender<WorkerEvent>,
   handle: WebWorkerHandle,
 ) {
   // Post message to host as guest worker.
   let sender_ = sender.clone();
   super::reg_json_sync(
-    state,
+    rt,
     "op_worker_post_message",
     move |_state, _args, bufs| {
       assert_eq!(bufs.len(), 1, "Invalid number of arguments");
@@ -27,15 +27,11 @@ pub fn init(
   );
 
   // Notify host that guest worker closes.
-  super::reg_json_sync(
-    state,
-    "op_worker_close",
-    move |_state, _args, _bufs| {
-      // Notify parent that we're finished
-      sender.clone().close_channel();
-      // Terminate execution of current worker
-      handle.terminate();
-      Ok(json!({}))
-    },
-  );
+  super::reg_json_sync(rt, "op_worker_close", move |_state, _args, _bufs| {
+    // Notify parent that we're finished
+    sender.clone().close_channel();
+    // Terminate execution of current worker
+    handle.terminate();
+    Ok(json!({}))
+  });
 }

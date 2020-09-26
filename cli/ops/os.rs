@@ -12,17 +12,17 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 
-pub fn init(state: &mut deno_core::OpState) {
-  super::reg_json_sync(state, "op_exit", op_exit);
-  super::reg_json_sync(state, "op_env", op_env);
-  super::reg_json_sync(state, "op_exec_path", op_exec_path);
-  super::reg_json_sync(state, "op_set_env", op_set_env);
-  super::reg_json_sync(state, "op_get_env", op_get_env);
-  super::reg_json_sync(state, "op_delete_env", op_delete_env);
-  super::reg_json_sync(state, "op_hostname", op_hostname);
-  super::reg_json_sync(state, "op_loadavg", op_loadavg);
-  super::reg_json_sync(state, "op_os_release", op_os_release);
-  super::reg_json_sync(state, "op_system_memory_info", op_system_memory_info);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_exit", op_exit);
+  super::reg_json_sync(rt, "op_env", op_env);
+  super::reg_json_sync(rt, "op_exec_path", op_exec_path);
+  super::reg_json_sync(rt, "op_set_env", op_set_env);
+  super::reg_json_sync(rt, "op_get_env", op_get_env);
+  super::reg_json_sync(rt, "op_delete_env", op_delete_env);
+  super::reg_json_sync(rt, "op_hostname", op_hostname);
+  super::reg_json_sync(rt, "op_loadavg", op_loadavg);
+  super::reg_json_sync(rt, "op_os_release", op_os_release);
+  super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
 }
 
 fn op_exec_path(

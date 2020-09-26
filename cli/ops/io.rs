@@ -88,13 +88,9 @@ lazy_static! {
   };
 }
 
-pub fn init(state: &mut OpState) {
-  state
-    .op_table
-    .register_op("op_read", metrics_op(minimal_op(op_read)));
-  state
-    .op_table
-    .register_op("op_write", metrics_op(minimal_op(op_write)));
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  rt.register_op("op_read", metrics_op(minimal_op(op_read)));
+  rt.register_op("op_write", metrics_op(minimal_op(op_write)));
 }
 
 pub fn get_stdio() -> (

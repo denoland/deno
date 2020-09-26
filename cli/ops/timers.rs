@@ -66,11 +66,17 @@ impl GlobalTimer {
   }
 }
 
-pub fn init(state: &mut deno_core::OpState) {
-  super::reg_json_sync(state, "op_global_timer_stop", op_global_timer_stop);
-  super::reg_json_sync(state, "op_global_timer_start", op_global_timer_start);
-  super::reg_json_async(state, "op_global_timer", op_global_timer);
-  super::reg_json_sync(state, "op_now", op_now);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<GlobalTimer>(GlobalTimer::default());
+    state.put::<StartTime>(StartTime::now());
+  }
+  super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
+  super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
+  super::reg_json_async(rt, "op_global_timer", op_global_timer);
+  super::reg_json_sync(rt, "op_now", op_now);
 }
 
 fn op_global_timer_stop(

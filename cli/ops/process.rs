@@ -22,10 +22,10 @@ use tokio::process::Command;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(state: &mut deno_core::OpState) {
-  super::reg_json_sync(state, "op_run", op_run);
-  super::reg_json_async(state, "op_run_status", op_run_status);
-  super::reg_json_sync(state, "op_kill", op_kill);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_run", op_run);
+  super::reg_json_async(rt, "op_run_status", op_run_status);
+  super::reg_json_sync(rt, "op_kill", op_kill);
 }
 
 fn clone_file(

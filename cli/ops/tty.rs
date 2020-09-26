@@ -47,10 +47,10 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init(state: &mut deno_core::OpState) {
-  super::reg_json_sync(state, "op_set_raw", op_set_raw);
-  super::reg_json_sync(state, "op_isatty", op_isatty);
-  super::reg_json_sync(state, "op_console_size", op_console_size);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_set_raw", op_set_raw);
+  super::reg_json_sync(rt, "op_isatty", op_isatty);
+  super::reg_json_sync(rt, "op_console_size", op_console_size);
 }
 
 #[derive(Deserialize)]

@@ -23,8 +23,8 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub fn init(state: &mut OpState) {
-  super::reg_json_sync(state, "op_open_plugin", op_open_plugin);
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_open_plugin", op_open_plugin);
 }
 
 #[derive(Deserialize)]
