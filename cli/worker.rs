@@ -291,9 +291,6 @@ impl MainWorker {
       ops::timers::init(&mut worker);
       ops::worker_host::init(&mut worker);
       ops::random::init(&mut worker, global_state.flags.seed);
-
-      // Ops that don't register state, or depend on
-      // previously registered state
       ops::reg_json_sync(&mut worker, "op_close", deno_core::op_close);
       ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -461,16 +458,11 @@ impl WebWorker {
         op_state.put::<Permissions>(permissions);
       }
 
-      // These ops are the means means to communicate with parent worker
       ops::web_worker::init(&mut web_worker, sender, handle);
-
       ops::runtime::init(&mut web_worker, main_module);
       ops::fetch::init(&mut web_worker, global_state.flags.ca_file.as_deref());
       ops::timers::init(&mut web_worker);
       ops::worker_host::init(&mut web_worker);
-
-      // Ops that don't register state, or depend on
-      // previously registered state
       ops::reg_json_sync(&mut web_worker, "op_close", deno_core::op_close);
       ops::reg_json_sync(
         &mut web_worker,

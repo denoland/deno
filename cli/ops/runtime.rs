@@ -18,14 +18,12 @@ pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
-    state.put::<MainModule>(main_module);
+    state.put::<ModuleSpecifier>(main_module);
   }
   super::reg_json_sync(rt, "op_start", op_start);
   super::reg_json_sync(rt, "op_main_module", op_main_module);
   super::reg_json_sync(rt, "op_metrics", op_metrics);
 }
-
-pub type MainModule = ModuleSpecifier;
 
 fn op_start(
   state: &mut OpState,
@@ -57,7 +55,7 @@ fn op_main_module(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let main = state.borrow::<MainModule>().to_string();
+  let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
