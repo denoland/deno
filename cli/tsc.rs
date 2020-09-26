@@ -8,7 +8,6 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::js;
 use crate::media_type::MediaType;
@@ -20,6 +19,7 @@ use crate::tsc_config;
 use crate::version;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::json_op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -1151,7 +1151,6 @@ pub async fn runtime_compile(
 
   let json_str =
     execute_in_tsc(global_state.clone(), req_msg).map_err(extract_js_error)?;
-
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
   if response.diagnostics.0.is_empty() && sources.is_none() {
