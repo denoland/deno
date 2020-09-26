@@ -44,7 +44,6 @@ use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use swc_common::comments::Comment;
@@ -959,11 +958,6 @@ fn execute_in_tsc(
   global_state: Arc<GlobalState>,
   req: String,
 ) -> Result<String, AnyError> {
-  // TODO(bartlomieju): this is only used in testing, I'm not sure it's
-  // worth keeping around
-  // Count how many times we start the compiler worker.
-  global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
-
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(js::compiler_isolate_init()),
     ..Default::default()

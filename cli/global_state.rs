@@ -24,7 +24,6 @@ use std::env;
 use std::fs;
 use std::io;
 use std::rc::Rc;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -48,7 +47,6 @@ pub struct GlobalState {
   pub file_fetcher: SourceFileFetcher,
   pub ts_compiler: TsCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
-  pub compiler_starts: AtomicUsize,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
@@ -109,7 +107,6 @@ impl GlobalState {
       lockfile,
       maybe_import_map,
       maybe_inspector_server,
-      compiler_starts: AtomicUsize::new(0),
     };
     Ok(Arc::new(global_state))
   }
