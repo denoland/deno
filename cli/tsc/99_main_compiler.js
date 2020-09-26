@@ -1344,7 +1344,6 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
     hasBootstrapped = true;
-    delete globalThis.__bootstrap;
     runtimeStart("TS");
   }
 
