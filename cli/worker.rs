@@ -113,16 +113,14 @@ impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Option<Snapshot>,
-    _permissions: Permissions,
-    _main_module: ModuleSpecifier,
     global_state: Arc<GlobalState>,
-    state: Rc<CliModuleLoader>,
+    module_loader: Rc<CliModuleLoader>,
     is_main: bool,
   ) -> Self {
     let global_state_ = global_state.clone();
 
     let mut isolate = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(state),
+      module_loader: Some(module_loader),
       startup_snapshot,
       js_error_create_fn: Some(Box::new(move |core_js_error| {
         JsError::create(core_js_error, &global_state_.ts_compiler)
@@ -279,8 +277,6 @@ impl MainWorker {
     let mut worker = Worker::new(
       "main".to_string(),
       Some(js::deno_isolate_init()),
-      global_state.permissions.clone(),
-      main_module.clone(),
       global_state.clone(),
       loader,
       true,

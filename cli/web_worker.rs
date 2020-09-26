@@ -105,8 +105,6 @@ impl WebWorker {
     let mut worker = Worker::new(
       name,
       Some(js::deno_isolate_init()),
-      permissions,
-      main_module.clone(),
       global_state.clone(),
       loader,
       false,
@@ -150,7 +148,7 @@ impl WebWorker {
       }
 
       {
-        op_state.put::<Permissions>(global_state.permissions.clone());
+        op_state.put::<Permissions>(permissions);
         ops::permissions::init(&mut op_state);
       }
 
