@@ -9,6 +9,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
+use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
@@ -23,7 +24,7 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+pub fn init(rt: &mut JsRuntime) {
   super::reg_json_sync(rt, "op_open_plugin", op_open_plugin);
 }
 
