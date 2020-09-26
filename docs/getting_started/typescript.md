@@ -154,6 +154,7 @@ Following are the currently allowed settings and their default values in Deno:
     "generateCpuProfile": "profile.cpuprofile",
     "jsx": "react",
     "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
     "lib": [],
     "noFallthroughCasesInSwitch": false,
     "noImplicitAny": true,
