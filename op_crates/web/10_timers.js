@@ -1,8 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const assert = window.__bootstrap.util.assert;
   const core = window.Deno.core;
+
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new Error(msg);
+    }
+  }
 
   function opStopGlobalTimer() {
     core.jsonOpSync("op_global_timer_stop");
@@ -13,11 +18,7 @@
   }
 
   async function opWaitGlobalTimer() {
-    await core.jsonOpAsync("op_global_timer");
-  }
-
-  function opNow() {
-    return core.jsonOpSync("op_now");
+    await core.jsonOpAsync("op_wait_global_timer");
   }
 
   // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
@@ -542,8 +543,5 @@
     clearTimeout,
     setTimeout,
     handleTimerMacrotask,
-    opStopGlobalTimer,
-    opStartGlobalTimer,
-    opNow,
   };
 })(this);

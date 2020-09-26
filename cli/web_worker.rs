@@ -147,6 +147,21 @@ impl WebWorker {
       );
       ops::errors::init(&mut web_worker.worker);
       ops::timers::init(&mut web_worker.worker);
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_global_timer_stop",
+        deno_web::op_global_timer_stop,
+      );
+      ops::reg_json_sync(
+        &mut web_worker.worker,
+        "op_global_timer_start",
+        deno_web::op_global_timer_start,
+      );
+      ops::reg_json_async(
+        &mut web_worker.worker,
+        "op_wait_global_timer",
+        deno_web::op_wait_global_timer,
+      );
       ops::fetch::init(&mut web_worker.worker);
       ops::websocket::init(&mut web_worker.worker);
 

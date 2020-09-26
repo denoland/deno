@@ -138,7 +138,7 @@ impl Worker {
       let client = crate::http_util::create_http_client(ca_file).unwrap();
       op_state.put(client);
 
-      op_state.put(timers::GlobalTimer::default());
+      op_state.put(deno_web::GlobalTimer::default());
       op_state.put(timers::StartTime::now());
 
       if let Some(seed) = global_state.flags.seed {
@@ -339,6 +339,21 @@ impl MainWorker {
       ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
       ops::signal::init(&mut worker);
       ops::timers::init(&mut worker);
+      ops::reg_json_sync(
+        &mut worker,
+        "op_global_timer_stop",
+        deno_web::op_global_timer_stop,
+      );
+      ops::reg_json_sync(
+        &mut worker,
+        "op_global_timer_start",
+        deno_web::op_global_timer_start,
+      );
+      ops::reg_json_async(
+        &mut worker,
+        "op_wait_global_timer",
+        deno_web::op_wait_global_timer,
+      );
       ops::tty::init(&mut worker);
       ops::worker_host::init(&mut worker);
     }

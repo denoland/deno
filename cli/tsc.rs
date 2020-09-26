@@ -151,9 +151,24 @@ impl CompilerWorker {
       true,
     );
     let response = Arc::new(Mutex::new(None));
+    // TODO(bartlomieju): these ops are not needed anymore?
     ops::runtime::init(&mut worker);
     ops::errors::init(&mut worker);
-    ops::timers::init(&mut worker);
+    ops::reg_json_sync(
+      &mut worker,
+      "op_global_timer_stop",
+      deno_web::op_global_timer_stop,
+    );
+    ops::reg_json_sync(
+      &mut worker,
+      "op_global_timer_start",
+      deno_web::op_global_timer_start,
+    );
+    ops::reg_json_async(
+      &mut worker,
+      "op_wait_global_timer",
+      deno_web::op_wait_global_timer,
+    );
     ops::compiler::init(&mut worker, response.clone());
     Self { worker, response }
   }

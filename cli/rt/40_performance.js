@@ -1,8 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { opNow } = window.__bootstrap.timers;
+  const core = window.Deno.core;
   const { cloneValue, illegalConstructorKey } = window.__bootstrap.webUtil;
+
+  function opNow() {
+    return core.jsonOpSync("op_now");
+  }
 
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];

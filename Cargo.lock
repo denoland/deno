@@ -514,6 +514,7 @@ dependencies = [
  "futures",
  "idna",
  "serde",
+ "tokio",
 ]
 
 [[package]]

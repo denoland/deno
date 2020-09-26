@@ -17,6 +17,7 @@ path = "lib.rs"
 deno_core = { version = "0.59.0", path = "../../core" }
 idna = "0.2.0"
 serde = { version = "1.0.116", features = ["derive"] }
+tokio = { version = "0.2.22", features = ["full"] }
 
 [dev-dependencies]
 futures = "0.3.5"
