@@ -831,6 +831,17 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   );
 });
 
+unitTest(function consoleTestWithCustomInspectFunction(): void {
+  function a() {}
+  Object.assign(a, {
+    [customInspect]() {
+      return "b";
+    },
+  });
+
+  assertEquals(stringify(a), "b");
+});
+
 unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");

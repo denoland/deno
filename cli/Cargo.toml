@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.4.1"
+version = "1.4.2"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,9 +20,9 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.58.0" }
-deno_web = { path = "../op_crates/web", version = "0.9.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.1.0" }
+deno_core = { path = "../core", version = "0.59.0" }
+deno_web = { path = "../op_crates/web", version = "0.10.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.2.0" }
 deno_timers = { path = "../op_crates/timers", version = "0.1.0" }
 deno_flags = { path = "../crates/flags", version = "0.1.0" }
 
@@ -31,7 +31,7 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.58.0" }
+deno_core = { path = "../core", version = "0.59.0" }
 deno_flags = { path = "../crates/flags", version = "0.1.0" }
 deno_permissions = { path = "../crates/permissions", version = "0.1.0" }
 deno_metrics = { path = "../crates/metrics", version = "0.1.0" }
@@ -40,8 +40,8 @@ deno_version = { path = "../crates/version", version = "0.1.0" }
 deno_fs = { path = "../crates/fs", version = "0.1.0" }
 deno_doc = "0.1.9"
 deno_lint = { version = "0.2.0", features = ["json"] }
-deno_web = { path = "../op_crates/web", version = "0.9.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.1.0" }
+deno_web = { path = "../op_crates/web", version = "0.10.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.2.0" }
 deno_timers = { path = "../op_crates/timers", version = "0.1.0" }
 
 atty = "0.2.14"
