@@ -34,9 +34,9 @@ async fn op_compile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state2(&state);
-  cli_state.check_unstable("Deno.compile");
+  super::check_unstable2(&state, "Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
+  let cli_state = super::global_state2(&state);
   let global_state = cli_state.clone();
   let permissions = {
     let state = state.borrow();
@@ -76,9 +76,9 @@ async fn op_transpile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state2(&state);
-  cli_state.check_unstable("Deno.transpile");
+  super::check_unstable2(&state, "Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
+  let cli_state = super::global_state2(&state);
   let global_state = cli_state.clone();
   let result =
     runtime_transpile(global_state, &args.sources, &args.options).await?;

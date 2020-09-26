@@ -304,8 +304,7 @@ async fn op_connect(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" => {
       let address_path = Path::new(&args.path);
-      let cli_state = super::global_state2(&state);
-      cli_state.check_unstable("Deno.connect");
+      super::check_unstable2(&state, "Deno.connect");
       {
         let state_ = state.borrow();
         state_.borrow::<Permissions>().check_read(&address_path)?;
@@ -349,7 +348,7 @@ fn op_shutdown(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::global_state(state).check_unstable("Deno.shutdown");
+  super::check_unstable(state, "Deno.shutdown");
 
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
@@ -493,7 +492,6 @@ fn op_listen(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
   let permissions = state.borrow::<Permissions>();
   match serde_json::from_value(args)? {
     ListenArgs {
@@ -502,7 +500,7 @@ fn op_listen(
     } => {
       {
         if transport == "udp" {
-          cli_state.check_unstable("Deno.listenDatagram");
+          super::check_unstable(state, "Deno.listenDatagram");
         }
         permissions.check_net(&args.hostname, args.port)?;
       }
@@ -535,10 +533,10 @@ fn op_listen(
       let address_path = Path::new(&args.path);
       {
         if transport == "unix" {
-          cli_state.check_unstable("Deno.listen");
+          super::check_unstable(state, "Deno.listen");
         }
         if transport == "unixpacket" {
-          cli_state.check_unstable("Deno.listenDatagram");
+          super::check_unstable(state, "Deno.listenDatagram");
         }
         permissions.check_read(&address_path)?;
         permissions.check_write(&address_path)?;
