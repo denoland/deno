@@ -184,7 +184,7 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
 }
 
 export function convertFileInfoToBigIntStats(
-  origin: Deno.FileInfo
+  origin: Deno.FileInfo,
 ): BigIntStats {
   return {
     dev: BigInt(origin.dev),
@@ -230,7 +230,7 @@ export function CFISBIS(fileInfo: Deno.FileInfo, bigInt: boolean) {
 
 export type statCallbackBigInt = (
   err: Error | undefined,
-  stat: BigIntStats
+  stat: BigIntStats,
 ) => void;
 
 export type statCallback = (err: Error | undefined, stat: Stats) => void;
@@ -239,24 +239,24 @@ export function stat(path: string | URL, callback: statCallback): void;
 export function stat(
   path: string | URL,
   options: { bigint: false },
-  callback: statCallback
+  callback: statCallback,
 ): void;
 export function stat(
   path: string | URL,
   options: { bigint: true },
-  callback: statCallbackBigInt
+  callback: statCallbackBigInt,
 ): void;
 export function stat(
   path: string | URL,
   optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
-  maybeCallback?: statCallback | statCallbackBigInt
+  maybeCallback?: statCallback | statCallbackBigInt,
 ) {
-  const callback =
-    typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
-  const options =
-    typeof optionsOrCallback === "object"
-      ? optionsOrCallback
-      : { bigint: false };
+  const callback = typeof optionsOrCallback === "function"
+    ? optionsOrCallback
+    : maybeCallback;
+  const options = typeof optionsOrCallback === "object"
+    ? optionsOrCallback
+    : { bigint: false };
 
   if (!callback) throw new Error("No callback function supplied");
 
@@ -271,11 +271,11 @@ export function statSync(path: string | URL): Stats;
 export function statSync(path: string | URL, options: { bigint: false }): Stats;
 export function statSync(
   path: string | URL,
-  options: { bigint: true }
+  options: { bigint: true },
 ): BigIntStats;
 export function statSync(
   path: string | URL,
-  options: statOptions = { bigint: false }
+  options: statOptions = { bigint: false },
 ): Stats | BigIntStats {
   const origin = Deno.statSync(path);
   return CFISBIS(origin, options.bigint);
