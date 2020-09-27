@@ -229,7 +229,7 @@ pub fn ts_version() -> String {
   } else {
     let mut manifest_dir =
       PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    manifest_dir.push("../../cli/tsc/00_typescript.js");
+    manifest_dir.push("tsc/00_typescript.js");
     std::fs::read_to_string(manifest_dir.into_os_string().to_str().unwrap())
       .unwrap()
       .lines()
