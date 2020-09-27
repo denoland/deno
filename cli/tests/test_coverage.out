@@ -1,4 +1,4 @@
-Check [WILDCARD]
+Check [WILDCARD]/test_coverage.ts
 running 1 tests
 test returnsHiSuccess ... ok ([WILDCARD])
 
