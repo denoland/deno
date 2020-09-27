@@ -71,7 +71,6 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
-    coverage: bool,
   },
   Types,
   Upgrade {
@@ -607,7 +606,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     filter,
     allow_none,
-    coverage,
   };
 }
 
@@ -2857,7 +2855,6 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
-          coverage: false,
         },
         allow_net: true,
         ..Flags::default()
@@ -2877,7 +2874,6 @@ mod tests {
           quiet: false,
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
-          coverage: false,
         },
         ..Flags::default()
       }
@@ -2897,7 +2893,6 @@ mod tests {
           quiet: false,
           filter: Some("- foo".to_string()),
           include: Some(svec!["dir1"]),
-          coverage: false,
         },
         ..Flags::default()
       }
@@ -2922,7 +2917,6 @@ mod tests {
           quiet: false,
           filter: None,
           include: Some(svec!["dir1"]),
-          coverage: true,
         },
         cover: true,
         unstable: true,
