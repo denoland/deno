@@ -6,15 +6,15 @@ import {
   assertStringContains,
 } from "../testing/asserts.ts";
 import {
+  fromFileUrl,
   join,
   joinGlobs,
   normalize,
   relative,
-  fromFileUrl,
 } from "../path/mod.ts";
 import {
-  ExpandGlobOptions,
   expandGlob,
+  ExpandGlobOptions,
   expandGlobSync,
 } from "./expand_glob.ts";
 

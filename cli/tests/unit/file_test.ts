@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function testFirstArgument(arg1: any[], expectedSize: number): void {

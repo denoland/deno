@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { fail, assertEquals } from "../../testing/asserts.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
 import { chown, chownSync } from "./_fs_chown.ts";
 
 // chown is difficult to test.  Best we can do is set the existing user id/group

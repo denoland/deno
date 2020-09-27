@@ -4,13 +4,13 @@ import { fromFileUrl } from "../path.ts";
 import { Buffer } from "../buffer.ts";
 
 import {
-  Encodings,
-  WriteFileOptions,
   CallbackWithError,
-  isFileOptions,
-  getEncoding,
   checkEncoding,
+  Encodings,
+  getEncoding,
   getOpenOptions,
+  isFileOptions,
+  WriteFileOptions,
 } from "./_fs_common.ts";
 
 export function writeFile(

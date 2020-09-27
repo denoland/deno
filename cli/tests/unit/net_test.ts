@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
+  assertNotEquals,
   assertThrows,
   assertThrowsAsync,
   createResolvable,
-  assertNotEquals,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {

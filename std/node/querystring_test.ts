@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
-import { stringify, parse } from "./querystring.ts";
+import { parse, stringify } from "./querystring.ts";
 
 Deno.test({
   name: "stringify",
