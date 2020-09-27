@@ -2,13 +2,13 @@
 import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../_util/assert.ts";
-import { deferred, Deferred, MuxAsyncIterator } from "../async/mod.ts";
+import { Deferred, deferred, MuxAsyncIterator } from "../async/mod.ts";
 import {
   bodyReader,
   chunkedBodyReader,
   emptyReader,
-  writeResponse,
   readRequest,
+  writeResponse,
 } from "./_io.ts";
 
 export class ServerRequest {

@@ -1,22 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  assertThrowsAsync,
-  assertEquals,
   assert,
+  assertEquals,
   assertNotEquals,
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import {
   bodyReader,
   chunkedBodyReader,
-  writeTrailers,
-  readTrailers,
   parseHTTPVersion,
   readRequest,
+  readTrailers,
   writeResponse,
+  writeTrailers,
 } from "./_io.ts";
-import { encode, decode } from "../encoding/utf8.ts";
+import { decode, encode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
-import { ServerRequest, Response } from "./server.ts";
+import { Response, ServerRequest } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./_mock_conn.ts";
 

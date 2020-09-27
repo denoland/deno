@@ -6,15 +6,15 @@ export { colors };
 import { resolve } from "../../../std/path/mod.ts";
 export {
   assert,
-  assertThrows,
-  assertThrowsAsync,
   assertEquals,
   assertMatch,
   assertNotEquals,
   assertStrictEquals,
   assertStringContains,
-  unreachable,
+  assertThrows,
+  assertThrowsAsync,
   fail,
+  unreachable,
 } from "../../../std/testing/asserts.ts";
 export { readLines } from "../../../std/io/bufio.ts";
 export { parse as parseArgs } from "../../../std/flags/mod.ts";

@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   bench,
-  runBenchmarks,
   BenchmarkRunError,
-  clearBenchmarks,
   BenchmarkRunProgress,
+  clearBenchmarks,
   ProgressState,
+  runBenchmarks,
 } from "./bench.ts";
 import {
-  assertEquals,
   assert,
+  assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "./asserts.ts";

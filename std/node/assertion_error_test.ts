@@ -9,8 +9,8 @@ import {
 import {
   AssertionError,
   copyError,
-  inspectValue,
   createErrDiff,
+  inspectValue,
 } from "./assertion_error.ts";
 
 Deno.test({

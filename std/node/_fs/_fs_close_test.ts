@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { fail, assert, assertThrows } from "../../testing/asserts.ts";
+import { assert, assertThrows, fail } from "../../testing/asserts.ts";
 import { close, closeSync } from "./_fs_close.ts";
 
 Deno.test({

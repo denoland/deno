@@ -32,8 +32,8 @@ https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
 
 ```ts
 import {
-  assertEquals,
   assertArrayContains,
+  assertEquals,
 } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("hello world", () => {
