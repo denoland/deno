@@ -107,6 +107,7 @@ pub struct Flags {
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
+  pub cover: bool,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
@@ -585,9 +586,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let filter = matches.value_of("filter").map(String::from);
   let coverage = matches.is_present("coverage");
 
-  // Coverage implies `--inspect`
   if coverage {
-    flags.inspect = Some("127.0.0.1:9229".parse::<SocketAddr>().unwrap());
+    flags.cover = true;
   }
 
   let include = if matches.is_present("files") {
@@ -2924,7 +2924,7 @@ mod tests {
           include: Some(svec!["dir1"]),
           coverage: true,
         },
-        inspect: Some("127.0.0.1:9229".parse::<SocketAddr>().unwrap()),
+        cover: true,
         unstable: true,
         ..Flags::default()
       }
