@@ -5,14 +5,14 @@
 // license that can be found in the LICENSE file.
 import { assert, assertEquals, fail } from "../testing/asserts.ts";
 import {
+  BufferFullError,
   BufReader,
   BufWriter,
   BufWriterSync,
-  BufferFullError,
   PartialReadError,
   ReadLineResult,
-  readStringDelim,
   readLines,
+  readStringDelim,
 } from "./bufio.ts";
 import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";

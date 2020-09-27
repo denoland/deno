@@ -20,10 +20,7 @@ specified in full. You may not omit the file extension and there is no special
 handling of `index.js`.
 
 ```js
-import {
-  add,
-  multiply,
-} from "./arithmetic.ts";
+import { add, multiply } from "./arithmetic.ts";
 ```
 
 Dependencies are also imported directly, there is no package management

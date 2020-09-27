@@ -6,13 +6,13 @@
 
 import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import {
-  readMatrix,
-  parse,
   ERR_BARE_QUOTE,
-  ERR_QUOTE,
-  ERR_INVALID_DELIM,
   ERR_FIELD_COUNT,
+  ERR_INVALID_DELIM,
+  ERR_QUOTE,
+  parse,
   ParseError,
+  readMatrix,
 } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";

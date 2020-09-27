@@ -1,10 +1,10 @@
 // deno-lint-ignore-file no-undef
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import * as all from "./process.ts";
-import { env, argv } from "./process.ts";
+import { argv, env } from "./process.ts";
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assert } from "../testing/asserts.ts";
-import { fromStreamWriter, fromStreamReader } from "./streams.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
+import { fromStreamReader, fromStreamWriter } from "./streams.ts";
 
 function repeat(c: string, bytes: number): Uint8Array {
   assertEquals(c.length, 1);

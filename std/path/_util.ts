@@ -4,13 +4,13 @@
 
 import type { FormatInputPathObject } from "./_interface.ts";
 import {
-  CHAR_UPPERCASE_A,
-  CHAR_LOWERCASE_A,
-  CHAR_UPPERCASE_Z,
-  CHAR_LOWERCASE_Z,
+  CHAR_BACKWARD_SLASH,
   CHAR_DOT,
   CHAR_FORWARD_SLASH,
-  CHAR_BACKWARD_SLASH,
+  CHAR_LOWERCASE_A,
+  CHAR_LOWERCASE_Z,
+  CHAR_UPPERCASE_A,
+  CHAR_UPPERCASE_Z,
 } from "./_constants.ts";
 
 export function assertPath(path: string): void {

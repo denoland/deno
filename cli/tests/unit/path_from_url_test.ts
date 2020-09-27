@@ -1,4 +1,4 @@
-import { assertThrows, assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { pathFromURL } = Deno[Deno.internal];

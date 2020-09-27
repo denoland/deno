@@ -6,7 +6,7 @@
 import type { Schema, SchemaDefinition } from "../schema.ts";
 import { State } from "../state.ts";
 import type { StyleVariant, Type } from "../type.ts";
-import type { ArrayObject, Any } from "../utils.ts";
+import type { Any, ArrayObject } from "../utils.ts";
 
 const _hasOwnProperty = Object.prototype.hasOwnProperty;
 

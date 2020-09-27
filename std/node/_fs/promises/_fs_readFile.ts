@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import type {
-  FileOptionsArgument,
   BinaryOptionsArgument,
+  FileOptionsArgument,
   TextOptionsArgument,
 } from "../_fs_common.ts";
 import { readFile as readFileCallback } from "../_fs_readFile.ts";
