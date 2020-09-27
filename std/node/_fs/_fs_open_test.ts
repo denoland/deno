@@ -5,7 +5,7 @@ import {
   fail,
 } from "../../testing/asserts.ts";
 import { open, openSync } from "./_fs_open.ts";
-import { parse, join } from "../../path/mod.ts";
+import { join, parse } from "../../path/mod.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { closeSync } from "./_fs_close.ts";
 
