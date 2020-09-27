@@ -40,8 +40,9 @@ where
   loop {
     let func = error_handler(closure());
     let mut is_file_changed = false;
+    watch_paths(paths, &mut watcher).await?;
     select! {
-      _ = watch_paths(paths, &mut watcher, &receiver) => {
+      _ = reload_receiver(&receiver) => {
           is_file_changed = true;
           info!(
             "{} File change detected! Restarting!",
@@ -55,7 +56,7 @@ where
         "{} Process terminated! Restarting on file change...",
         colors::intense_blue("Watcher")
       );
-      watch_paths(paths, &mut watcher, &receiver).await?;
+      reload_receiver(&receiver).await?;
       info!(
         "{} File change detected! Restarting!",
         colors::intense_blue("Watcher")
@@ -64,15 +65,9 @@ where
   }
 }
 
-async fn watch_paths(
-  paths: &[PathBuf],
-  watcher: &mut RecommendedWatcher,
+async fn reload_receiver(
   receiver: &Mutex<Receiver<Result<NotifyEvent, AnyError>>>,
 ) -> Result<(), AnyError> {
-  for path in paths {
-    if let Ok(_) = watcher.unwatch(path) {};
-    watcher.watch(path, RecursiveMode::NonRecursive)?;
-  }
   while let Some(result) = receiver.lock().unwrap().next().await {
     let event = result?;
     match event.kind {
@@ -81,6 +76,17 @@ async fn watch_paths(
       EventKind::Remove(_) => break,
       _ => continue,
     }
+  }
+  Ok(())
+}
+
+async fn watch_paths(
+  paths: &[PathBuf],
+  watcher: &mut RecommendedWatcher,
+) -> Result<(), AnyError> {
+  for path in paths {
+    if watcher.unwatch(path).is_ok() {};
+    watcher.watch(path, RecursiveMode::NonRecursive)?;
   }
   Ok(())
 }
