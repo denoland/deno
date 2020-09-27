@@ -1,5 +1,8 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::fs as deno_fs;
 use crate::http_cache::url_to_filename;
+use deno_core::url::{Host, Url};
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -8,7 +11,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
-use url::{Host, Url};
 
 #[derive(Clone)]
 pub struct DiskCache {

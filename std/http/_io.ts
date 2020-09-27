@@ -1,8 +1,9 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../_util/assert.ts";
 import { encoder } from "../encoding/utf8.ts";
-import { ServerRequest, Response } from "./server.ts";
+import { Response, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 
 export function emptyReader(): Deno.Reader {

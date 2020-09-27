@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
-  assertThrows,
   assertEquals,
   assertStringContains,
+  assertThrows,
   unitTest,
 } from "./test_util.ts";
 
@@ -374,6 +374,30 @@ unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
   assertEquals(r, null);
   p.stderr.close();
 });
+
+unitTest(
+  { perms: { run: true } },
+  async function runKillAfterStatus(): Promise<void> {
+    const p = Deno.run({
+      cmd: ["python", "-c", 'print("hello")'],
+    });
+    await p.status();
+
+    // On Windows the underlying Rust API returns `ERROR_ACCESS_DENIED`,
+    // which serves kind of as a catch all error code. More specific
+    // error codes do exist, e.g. `ERROR_WAIT_NO_CHILDREN`; it's unclear
+    // why they're not returned.
+    const expectedErrorType = Deno.build.os === "windows"
+      ? Deno.errors.PermissionDenied
+      : Deno.errors.NotFound;
+    assertThrows(
+      () => p.kill(Deno.Signal.SIGTERM),
+      expectedErrorType,
+    );
+
+    p.close();
+  },
+);
 
 unitTest(function signalNumbers(): void {
   if (Deno.build.os === "darwin") {

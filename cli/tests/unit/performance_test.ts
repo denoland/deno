@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
+  assertThrows,
   createResolvable,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { hrtime: false } }, async function performanceNow(): Promise<
@@ -63,4 +64,20 @@ unitTest(function performanceMeasure() {
       resolve();
     }, 100);
   });
+});
+
+unitTest(function performanceIllegalConstructor() {
+  assertThrows(() => new Performance(), TypeError, "Illegal constructor.");
+});
+
+unitTest(function performanceEntryIllegalConstructor() {
+  assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor.");
+});
+
+unitTest(function performanceMeasureIllegalConstructor() {
+  assertThrows(
+    () => new PerformanceMeasure(),
+    TypeError,
+    "Illegal constructor.",
+  );
 });

@@ -4,16 +4,14 @@
   const core = window.Deno.core;
   const exit = window.__bootstrap.os.exit;
   const version = window.__bootstrap.version.version;
-  const dispatchJson = window.__bootstrap.dispatchJson;
-  const close = window.__bootstrap.resources.close;
   const inspectArgs = window.__bootstrap.console.inspectArgs;
 
   function opStartRepl(historyFile) {
-    return dispatchJson.sendSync("op_repl_start", { historyFile });
+    return core.jsonOpSync("op_repl_start", { historyFile });
   }
 
   function opReadline(rid, prompt) {
-    return dispatchJson.sendAsync("op_repl_readline", { rid, prompt });
+    return core.jsonOpAsync("op_repl_readline", { rid, prompt });
   }
 
   function replLog(...args) {
@@ -54,10 +52,21 @@
   // Evaluate code.
   // Returns true if code is consumed (no error/irrecoverable error).
   // Returns false if error is recoverable
-  function evaluate(code) {
+  function evaluate(code, preprocess = true) {
+    const rawCode = code;
+    if (preprocess) {
+      // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
+      // statement rather than an object literal so we interpret it as an expression statement
+      // to match the behavior found in a typical prompt including browser developer tools.
+      if (code.trimLeft().startsWith("{") && !code.trimRight().endsWith(";")) {
+        code = `(${code})`;
+      }
+    }
+
     // each evalContext is a separate function body, and we want strict mode to
     // work, so we should ensure that the code starts with "use strict"
     const [result, errInfo] = core.evalContext(`"use strict";\n\n${code}`);
+
     if (!errInfo) {
       // when a function is eval'ed with just "use strict" sometimes the result
       // is "use strict" which should be discarded
@@ -65,8 +74,10 @@
         ? undefined
         : result;
       if (!isCloseCalled()) {
-        replLog(lastEvalResult);
+        replLog("%o", lastEvalResult);
       }
+    } else if (errInfo.isCompileError && code.length != rawCode.length) {
+      return evaluate(rawCode, false);
     } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
       // Recoverable compiler error
       return false; // don't consume code.
@@ -91,7 +102,7 @@
     const quitRepl = (exitCode) => {
       // Special handling in case user calls deno.close(3).
       try {
-        close(rid); // close signals Drop on REPL and saves history.
+        core.close(rid); // close signals Drop on REPL and saves history.
       } catch {}
       exit(exitCode);
     };

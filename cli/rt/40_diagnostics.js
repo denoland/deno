@@ -6,19 +6,15 @@
 
 ((window) => {
   const DiagnosticCategory = {
-    0: "Log",
-    1: "Debug",
-    2: "Info",
-    3: "Error",
-    4: "Warning",
-    5: "Suggestion",
+    0: "Warning",
+    1: "Error",
+    2: "Suggestion",
+    3: "Message",
 
-    Log: 0,
-    Debug: 1,
-    Info: 2,
-    Error: 3,
-    Warning: 4,
-    Suggestion: 5,
+    Warning: 0,
+    Error: 1,
+    Suggestion: 2,
+    Message: 3,
   };
 
   window.__bootstrap.diagnostics = {

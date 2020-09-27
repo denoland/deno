@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
@@ -7,7 +8,6 @@ delete Object.prototype.__proto__;
   const core = Deno.core;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
-  const dispatchJson = window.__bootstrap.dispatchJson;
   const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -23,14 +23,9 @@ delete Object.prototype.__proto__;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
   const headers = window.__bootstrap.headers;
-  const queuingStrategy = window.__bootstrap.queuingStrategy;
   const streams = window.__bootstrap.streams;
-  const blob = window.__bootstrap.blob;
-  const domFile = window.__bootstrap.domFile;
-  const progressEvent = window.__bootstrap.progressEvent;
   const fileReader = window.__bootstrap.fileReader;
-  const formData = window.__bootstrap.formData;
-  const request = window.__bootstrap.request;
+  const webSocket = window.__bootstrap.webSocket;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
@@ -80,7 +75,7 @@ delete Object.prototype.__proto__;
 
   let isClosing = false;
   async function workerMessageRecvCallback(data) {
-    const msgEvent = new worker.MessageEvent("message", {
+    const msgEvent = new MessageEvent("message", {
       cancelable: false,
       data,
     });
@@ -128,29 +123,19 @@ delete Object.prototype.__proto__;
   }
 
   function opPostMessage(data) {
-    dispatchJson.sendSync("op_worker_post_message", {}, data);
+    core.jsonOpSync("op_worker_post_message", {}, data);
   }
 
   function opCloseWorker() {
-    dispatchJson.sendSync("op_worker_close");
+    core.jsonOpSync("op_worker_close");
   }
 
   function opStart() {
-    return dispatchJson.sendSync("op_start");
+    return core.jsonOpSync("op_start");
   }
 
   function opMainModule() {
-    return dispatchJson.sendSync("op_main_module");
-  }
-
-  function getAsyncHandler(opName) {
-    switch (opName) {
-      case "op_write":
-      case "op_read":
-        return dispatchMinimal.asyncMsgFromRust;
-      default:
-        return dispatchJson.asyncMsgFromRust;
-    }
+    return core.jsonOpSync("op_main_module");
   }
 
   // TODO(bartlomieju): temporary solution, must be fixed when moving
@@ -158,7 +143,9 @@ delete Object.prototype.__proto__;
   function initOps() {
     const opsMap = core.ops();
     for (const [name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, getAsyncHandler(name));
+      if (name === "op_write" || name === "op_read") {
+        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
+      }
     }
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
   }
@@ -205,63 +192,56 @@ delete Object.prototype.__proto__;
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
-  const windowOrWorkerGlobalScopeMethods = {
-    atob: util.writable(atob),
-    btoa: util.writable(btoa),
-    clearInterval: util.writable(timers.clearInterval),
-    clearTimeout: util.writable(timers.clearTimeout),
-    fetch: util.writable(fetch.fetch),
-    // queueMicrotask is bound in Rust
-    setInterval: util.writable(timers.setInterval),
-    setTimeout: util.writable(timers.setTimeout),
-  };
-
-  // Other properties shared between WindowScope and WorkerGlobalScope
-  const windowOrWorkerGlobalScopeProperties = {
-    console: util.writable(new Console(core.print)),
-    Blob: util.nonEnumerable(blob.Blob),
+  const windowOrWorkerGlobalScope = {
+    Blob: util.nonEnumerable(fetch.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
-      queuingStrategy.ByteLengthQueuingStrategy,
+      streams.ByteLengthQueuingStrategy,
     ),
+    CloseEvent: util.nonEnumerable(CloseEvent),
     CountQueuingStrategy: util.nonEnumerable(
-      queuingStrategy.CountQueuingStrategy,
+      streams.CountQueuingStrategy,
     ),
-    crypto: util.readOnly(crypto),
-    File: util.nonEnumerable(domFile.DomFile),
-    FileReader: util.nonEnumerable(fileReader.FileReader),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
+    File: util.nonEnumerable(fetch.DomFile),
+    FileReader: util.nonEnumerable(fileReader.FileReader),
+    FormData: util.nonEnumerable(fetch.FormData),
     Headers: util.nonEnumerable(headers.Headers),
-    FormData: util.nonEnumerable(formData.FormData),
-    ReadableStream: util.nonEnumerable(streams.ReadableStream),
-    Request: util.nonEnumerable(request.Request),
-    Response: util.nonEnumerable(fetch.Response),
-    performance: util.writable(new performance.Performance()),
+    MessageEvent: util.nonEnumerable(MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
-    ProgressEvent: util.nonEnumerable(progressEvent.ProgressEvent),
+    ProgressEvent: util.nonEnumerable(ProgressEvent),
+    ReadableStream: util.nonEnumerable(streams.ReadableStream),
+    Request: util.nonEnumerable(fetch.Request),
+    Response: util.nonEnumerable(fetch.Response),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
+    WebSocket: util.nonEnumerable(webSocket.WebSocket),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
-  };
-
-  const eventTargetProperties = {
-    addEventListener: util.readOnly(
-      EventTarget.prototype.addEventListener,
-    ),
+    addEventListener: util.readOnly(EventTarget.prototype.addEventListener),
+    atob: util.writable(atob),
+    btoa: util.writable(btoa),
+    clearInterval: util.writable(timers.clearInterval),
+    clearTimeout: util.writable(timers.clearTimeout),
+    console: util.writable(new Console(core.print)),
+    crypto: util.readOnly(crypto),
     dispatchEvent: util.readOnly(EventTarget.prototype.dispatchEvent),
+    fetch: util.writable(fetch.fetch),
+    performance: util.writable(performance.performance),
     removeEventListener: util.readOnly(
       EventTarget.prototype.removeEventListener,
     ),
+    setInterval: util.writable(timers.setInterval),
+    setTimeout: util.writable(timers.setTimeout),
   };
 
   const mainRuntimeGlobalProperties = {
@@ -296,9 +276,7 @@ delete Object.prototype.__proto__;
     delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
-    Object.defineProperties(globalThis, eventTargetProperties);
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
     eventTarget.setEventTargetData(globalThis);
     // Registers the handler for window.onload function.
@@ -325,6 +303,8 @@ delete Object.prototype.__proto__;
       core,
       internal: internalSymbol,
       [internalSymbol]: internalObject,
+      resources: core.resources,
+      close: core.close,
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {
@@ -364,10 +344,8 @@ delete Object.prototype.__proto__;
     delete globalThis.bootstrap;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
-    Object.defineProperties(globalThis, eventTargetProperties);
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
     eventTarget.setEventTargetData(globalThis);
     const { unstableFlag, pid, noColor, args } = runtimeStart(
@@ -380,6 +358,8 @@ delete Object.prototype.__proto__;
       core,
       internal: internalSymbol,
       [internalSymbol]: internalObject,
+      resources: core.resources,
+      close: core.close,
       ...denoNs,
     };
     if (useDenoNamespace) {

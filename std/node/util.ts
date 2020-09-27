@@ -1,16 +1,44 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 export { promisify } from "./_util/_util_promisify.ts";
 export { callbackify } from "./_util/_util_callbackify.ts";
+import { codes, errorMap } from "./_errors.ts";
 import * as types from "./_util/_util_types.ts";
-
 export { types };
 
+const NumberIsSafeInteger = Number.isSafeInteger;
+const {
+  ERR_OUT_OF_RANGE,
+  ERR_INVALID_ARG_TYPE,
+} = codes;
+
+const DEFAULT_INSPECT_OPTIONS = {
+  showHidden: false,
+  depth: 2,
+  colors: false,
+  customInspect: true,
+  showProxy: false,
+  maxArrayLength: 100,
+  maxStringLength: Infinity,
+  breakLength: 80,
+  compact: 3,
+  sorted: false,
+  getters: false,
+};
+
+inspect.defaultOptions = DEFAULT_INSPECT_OPTIONS;
+inspect.custom = Deno.customInspect;
+
+// TODO(schwarzkopfb): make it in-line with Node's implementation
+// Ref: https://nodejs.org/dist/latest-v14.x/docs/api/util.html#util_util_inspect_object_options
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function inspect(object: unknown, ...opts: any): string {
+  opts = { ...DEFAULT_INSPECT_OPTIONS, ...opts };
   return Deno.inspect(object, {
-    depth: opts.depth ?? 4,
-    iterableLimit: opts.iterableLimit ?? 100,
-    compact: !!(opts.compact ?? true),
-    sorted: !!(opts.sorted ?? false),
+    depth: opts.depth,
+    iterableLimit: opts.maxArrayLength,
+    compact: !!opts.compact,
+    sorted: !!opts.sorted,
+    showProxy: !!opts.showProxy,
   });
 }
 
@@ -66,6 +94,16 @@ export function isPrimitive(value: unknown): boolean {
   return (
     value === null || (typeof value !== "object" && typeof value !== "function")
   );
+}
+
+export function getSystemErrorName(code: number): string | undefined {
+  if (typeof code !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("err", "number", code);
+  }
+  if (code >= 0 || !NumberIsSafeInteger(code)) {
+    throw new ERR_OUT_OF_RANGE("err", "a negative integer", code);
+  }
+  return errorMap.get(code)?.[0];
 }
 
 import { _TextDecoder, _TextEncoder } from "./_utils.ts";

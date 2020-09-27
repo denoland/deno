@@ -1,0 +1,10 @@
+(ban-untagged-ignore) Ignore directive requires lint rule code
+// deno-lint-ignore
+^^^^^^^^^^^^^^^^^^^
+    at [WILDCARD]file1.js:1:0
+
+(no-empty) Empty block statement
+while (false) {}
+              ^^
+    at [WILDCARD]file1.js:2:14
+

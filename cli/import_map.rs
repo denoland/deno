@@ -1,14 +1,17 @@
-use deno_core::ErrBox;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::Map;
+use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
-use serde_json::Map;
-use serde_json::Value;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::io;
-use url::Url;
 
 #[derive(Debug)]
 pub struct ImportMapError {
@@ -46,7 +49,7 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn load(file_path: &str) -> Result<Self, ErrBox> {
+  pub fn load(file_path: &str) -> Result<Self, AnyError> {
     let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
     let resolved_path = std::env::current_dir().unwrap().join(file_path);
     debug!(
@@ -67,7 +70,7 @@ impl ImportMap {
       )
     })?;
     // The URL of the import map is the base URL for its values.
-    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::from)
+    ImportMap::from_json(&file_url, &json_string).map_err(AnyError::from)
   }
 
   pub fn from_json(
@@ -471,6 +474,7 @@ impl ImportMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::serde_json::json;
 
   #[test]
   fn load_nonexistent() {

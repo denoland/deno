@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // To run this test manually:
 //   cd test_plugin
 //   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug

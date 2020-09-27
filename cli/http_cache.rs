@@ -6,15 +6,16 @@
 /// at hand.
 use crate::fs as deno_fs;
 use crate::http_util::HeadersMap;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::url::Url;
+use serde::Deserialize;
 use serde::Serialize;
-use serde_derive::Deserialize;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-use url::Url;
 
 /// Turn base of url (scheme, hostname, port) into a valid filename.
 /// This method replaces port part with a special string token (because
@@ -58,7 +59,7 @@ pub fn url_to_filename(url: &Url) -> PathBuf {
 
   let mut rest_str = url.path().to_string();
   if let Some(query) = url.query() {
-    rest_str.push_str("?");
+    rest_str.push('?');
     rest_str.push_str(query);
   }
   // NOTE: fragment is omitted on purpose - it's not taken into
@@ -81,14 +82,14 @@ pub struct Metadata {
 }
 
 impl Metadata {
-  pub fn write(&self, cache_filename: &Path) -> Result<(), ErrBox> {
+  pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
     let metadata_filename = Self::filename(cache_filename);
     let json = serde_json::to_string_pretty(self)?;
     deno_fs::write_file(&metadata_filename, json, 0o666)?;
     Ok(())
   }
 
-  pub fn read(cache_filename: &Path) -> Result<Metadata, ErrBox> {
+  pub fn read(cache_filename: &Path) -> Result<Metadata, AnyError> {
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
     let metadata: Metadata = serde_json::from_str(&metadata)?;
@@ -135,7 +136,7 @@ impl HttpCache {
   // TODO(bartlomieju): this method should check headers file
   // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
-  pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
+  pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), AnyError> {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
     let file = File::open(cache_filename)?;
@@ -144,7 +145,7 @@ impl HttpCache {
     Ok((file, metadata.headers))
   }
 
-  pub fn get_metadata(&self, url: &Url) -> Result<Metadata, ErrBox> {
+  pub fn get_metadata(&self, url: &Url) -> Result<Metadata, AnyError> {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
@@ -157,7 +158,7 @@ impl HttpCache {
     url: &Url,
     headers_map: HeadersMap,
     content: &[u8],
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let cache_filename = self.location.join(url_to_filename(url));
     // Create parent directory
     let parent_filename = cache_filename

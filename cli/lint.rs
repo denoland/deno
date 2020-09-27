@@ -6,14 +6,14 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
+use crate::ast;
 use crate::colors;
-use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::msg;
-use crate::swc_util;
-use deno_core::ErrBox;
+use crate::media_type::MediaType;
+use deno_core::error::{generic_error, AnyError, JsStackFrame};
+use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
@@ -43,7 +43,7 @@ pub async fn lint_files(
   args: Vec<String>,
   ignore: Vec<String>,
   json: bool,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   if args.len() == 1 && args[0] == "-" {
     return lint_stdin(json);
   }
@@ -55,6 +55,7 @@ pub async fn lint_files(
     target_files.retain(|f| !ignore_files.contains(&f));
   }
   debug!("Found {} files", target_files.len());
+  let target_files_len = target_files.len();
 
   let has_error = Arc::new(AtomicBool::new(false));
 
@@ -77,7 +78,7 @@ pub async fn lint_files(
           sort_diagnostics(&mut file_diagnostics);
           for d in file_diagnostics.iter() {
             has_error.store(true, Ordering::Relaxed);
-            reporter.visit(&d, source.split('\n').collect());
+            reporter.visit_diagnostic(&d, source.split('\n').collect());
           }
         }
         Err(err) => {
@@ -92,7 +93,7 @@ pub async fn lint_files(
 
   let has_error = has_error.load(Ordering::Relaxed);
 
-  reporter_lock.lock().unwrap().close();
+  reporter_lock.lock().unwrap().close(target_files_len);
 
   if has_error {
     std::process::exit(1);
@@ -104,6 +105,8 @@ pub async fn lint_files(
 pub fn print_rules_list() {
   let lint_rules = rules::get_recommended_rules();
 
+  // The rules should still be printed even if `--quiet` option is enabled,
+  // so use `println!` here instead of `info!`.
   println!("Available rules:");
   for rule in lint_rules {
     println!(" - {}", rule.code());
@@ -127,11 +130,11 @@ fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
 
 fn lint_file(
   file_path: PathBuf,
-) -> Result<(Vec<LintDiagnostic>, String), ErrBox> {
+) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
-  let media_type = map_file_extension(&file_path);
-  let syntax = swc_util::get_syntax_for_media_type(media_type);
+  let media_type = MediaType::from(&file_path);
+  let syntax = ast::get_syntax(&media_type);
 
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
@@ -144,10 +147,10 @@ fn lint_file(
 /// Lint stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
-fn lint_stdin(json: bool) -> Result<(), ErrBox> {
+fn lint_stdin(json: bool) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(ErrBox::error("Failed to read from stdin"));
+    return Err(generic_error("Failed to read from stdin"));
   }
 
   let reporter_kind = if json {
@@ -157,7 +160,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
   };
   let mut reporter = create_reporter(reporter_kind);
   let lint_rules = rules::get_recommended_rules();
-  let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
+  let syntax = ast::get_syntax(&MediaType::TypeScript);
   let mut linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
@@ -168,7 +171,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
     Ok(diagnostics) => {
       for d in diagnostics {
         has_error = true;
-        reporter.visit(&d, source.split('\n').collect());
+        reporter.visit_diagnostic(&d, source.split('\n').collect());
       }
     }
     Err(err) => {
@@ -177,7 +180,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
     }
   }
 
-  reporter.close();
+  reporter.close(1);
 
   if has_error {
     std::process::exit(1);
@@ -187,9 +190,9 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
 }
 
 trait LintReporter {
-  fn visit(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>);
-  fn visit_error(&mut self, file_path: &str, err: &ErrBox);
-  fn close(&mut self);
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>);
+  fn visit_error(&mut self, file_path: &str, err: &AnyError);
+  fn close(&mut self, check_count: usize);
 }
 
 #[derive(Serialize)]
@@ -209,7 +212,7 @@ impl PrettyLintReporter {
 }
 
 impl LintReporter for PrettyLintReporter {
-  fn visit(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>) {
     self.lint_count += 1;
 
     let pretty_message =
@@ -219,26 +222,32 @@ impl LintReporter for PrettyLintReporter {
       &pretty_message,
       &source_lines,
       d.range.clone(),
-      &fmt_errors::format_location(
-        &d.filename,
-        d.range.start.line as i64,
-        d.range.start.col as i64,
-      ),
+      &fmt_errors::format_location(&JsStackFrame::from_location(
+        Some(d.filename.clone()),
+        Some(d.range.start.line as i64),
+        Some(d.range.start.col as i64),
+      )),
     );
 
     eprintln!("{}\n", message);
   }
 
-  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     eprintln!("Error linting: {}", file_path);
     eprintln!("   {}", err);
   }
 
-  fn close(&mut self) {
+  fn close(&mut self, check_count: usize) {
     match self.lint_count {
-      1 => eprintln!("Found 1 problem"),
-      n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      1 => info!("Found 1 problem"),
+      n if n > 1 => info!("Found {} problems", self.lint_count),
       _ => (),
+    }
+
+    match check_count {
+      n if n <= 1 => info!("Checked {} file", n),
+      n if n > 1 => info!("Checked {} files", n),
+      _ => unreachable!(),
     }
   }
 }
@@ -299,18 +308,18 @@ impl JsonLintReporter {
 }
 
 impl LintReporter for JsonLintReporter {
-  fn visit(&mut self, d: &LintDiagnostic, _source_lines: Vec<&str>) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source_lines: Vec<&str>) {
     self.diagnostics.push(d.clone());
   }
 
-  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     self.errors.push(LintError {
       file_path: file_path.to_string(),
       message: err.to_string(),
     });
   }
 
-  fn close(&mut self) {
+  fn close(&mut self, _check_count: usize) {
     sort_diagnostics(&mut self.diagnostics);
     let json = serde_json::to_string_pretty(&self);
     eprintln!("{}", json.unwrap());

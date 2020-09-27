@@ -1,35 +1,32 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::Value;
-use crate::state::State;
+
+use deno_core::error::AnyError;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
-use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
-use super::dispatch_json::Deserialize;
+use deno_core::error::bad_resource_id;
 #[cfg(unix)]
-use futures::future::poll_fn;
+use deno_core::futures::future::poll_fn;
+#[cfg(unix)]
+use deno_core::serde_json;
+#[cfg(unix)]
+use deno_core::serde_json::json;
+#[cfg(unix)]
+use serde::Deserialize;
 #[cfg(unix)]
 use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_signal_bind", s.stateful_json_op_sync(t, op_signal_bind));
-  i.register_op(
-    "op_signal_unbind",
-    s.stateful_json_op_sync(t, op_signal_unbind),
-  );
-  i.register_op(
-    "op_signal_poll",
-    s.stateful_json_op_async(t, op_signal_poll),
-  );
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_signal_bind", op_signal_bind);
+  super::reg_json_sync(rt, "op_signal_unbind", op_signal_unbind);
+  super::reg_json_async(rt, "op_signal_poll", op_signal_poll);
 }
 
 #[cfg(unix)]
@@ -51,14 +48,13 @@ struct SignalArgs {
 
 #[cfg(unix)]
 fn op_signal_bind(
-  state: &State,
-  resource_table: &mut ResourceTable,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.signal");
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let rid = resource_table.add(
+  let rid = state.resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
       signal(SignalKind::from_raw(args.signo)).expect(""),
@@ -72,19 +68,18 @@ fn op_signal_bind(
 
 #[cfg(unix)]
 async fn op_signal_poll(
-  state: Rc<State>,
-  resource_table: Rc<RefCell<ResourceTable>>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.signal");
+) -> Result<Value, AnyError> {
+  super::check_unstable2(&state, "Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let future = poll_fn(move |cx| {
-    let mut resource_table = resource_table.borrow_mut();
+    let mut state = state.borrow_mut();
     if let Some(mut signal) =
-      resource_table.get_mut::<SignalStreamResource>(rid)
+      state.resource_table.get_mut::<SignalStreamResource>(rid)
     {
       signal.1 = Some(cx.waker().clone());
       return signal.0.poll_recv(cx);
@@ -97,15 +92,14 @@ async fn op_signal_poll(
 
 #[cfg(unix)]
 pub fn op_signal_unbind(
-  state: &State,
-  resource_table: &mut ResourceTable,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.signal");
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let resource = resource_table.get::<SignalStreamResource>(rid);
+  let resource = state.resource_table.get_mut::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
       // Wakes up the pending poll if exists.
@@ -113,38 +107,36 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  resource_table
+  state
+    .resource_table
     .close(rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?;
   Ok(json!({}))
 }
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
-  _state: &State,
-  _resource_table: &mut ResourceTable,
+  _state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
-  _state: &State,
-  _resource_table: &mut ResourceTable,
+  _state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 async fn op_signal_poll(
-  _state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
+  _state: Rc<RefCell<OpState>>,
   _args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   unimplemented!();
 }

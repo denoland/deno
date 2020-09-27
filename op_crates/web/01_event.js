@@ -1011,6 +1011,55 @@
     "error",
   ]);
 
+  class CloseEvent extends Event {
+    #wasClean = "";
+    #code = "";
+    #reason = "";
+
+    get wasClean() {
+      return this.#wasClean;
+    }
+    get code() {
+      return this.#code;
+    }
+    get reason() {
+      return this.#reason;
+    }
+
+    constructor(type, {
+      bubbles,
+      cancelable,
+      composed,
+      wasClean = false,
+      code = 0,
+      reason = "",
+    } = {}) {
+      super(type, {
+        bubbles: bubbles,
+        cancelable: cancelable,
+        composed: composed,
+      });
+
+      this.#wasClean = wasClean;
+      this.#code = code;
+      this.#reason = reason;
+    }
+  }
+
+  class MessageEvent extends Event {
+    constructor(type, eventInitDict) {
+      super(type, {
+        bubbles: eventInitDict?.bubbles ?? false,
+        cancelable: eventInitDict?.cancelable ?? false,
+        composed: eventInitDict?.composed ?? false,
+      });
+
+      this.data = eventInitDict?.data ?? null;
+      this.origin = eventInitDict?.origin ?? "";
+      this.lastEventId = eventInitDict?.lastEventId ?? "";
+    }
+  }
+
   class CustomEvent extends Event {
     #detail = null;
 
@@ -1034,10 +1083,25 @@
     enumerable: true,
   });
 
+  // ProgressEvent could also be used in other DOM progress event emits.
+  // Current use is for FileReader.
+  class ProgressEvent extends Event {
+    constructor(type, eventInitDict = {}) {
+      super(type, eventInitDict);
+
+      this.lengthComputable = eventInitDict?.lengthComputable ?? false;
+      this.loaded = eventInitDict?.loaded ?? 0;
+      this.total = eventInitDict?.total ?? 0;
+    }
+  }
+
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
+  window.CloseEvent = CloseEvent;
+  window.MessageEvent = MessageEvent;
   window.CustomEvent = CustomEvent;
+  window.ProgressEvent = ProgressEvent;
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;
   window.addEventListener = EventTarget.prototype.addEventListener;
   window.removeEventListener = EventTarget.prototype.removeEventListener;

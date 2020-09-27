@@ -17,269 +17,93 @@
 delete Object.prototype.__proto__;
 
 ((window) => {
-  const core = Deno.core;
-  const { assert, log, notImplemented } = window.__bootstrap.util;
-  const dispatchJson = window.__bootstrap.dispatchJson;
-  const util = window.__bootstrap.util;
-  const errorStack = window.__bootstrap.errorStack;
-  const errors = window.__bootstrap.errors.errors;
+  const core = window.Deno.core;
 
-  function opNow() {
-    const res = dispatchJson.sendSync("op_now");
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
-  }
+  let logDebug = false;
+  let logSource = "JS";
 
-  const DiagnosticCategory = {
-    0: "Log",
-    1: "Debug",
-    2: "Info",
-    3: "Error",
-    4: "Warning",
-    5: "Suggestion",
-
-    Log: 0,
-    Debug: 1,
-    Info: 2,
-    Error: 3,
-    Warning: 4,
-    Suggestion: 5,
-  };
-
-  const unstableDenoGlobalProperties = [
-    "CompilerOptions",
-    "DatagramConn",
-    "Diagnostic",
-    "DiagnosticCategory",
-    "DiagnosticItem",
-    "DiagnosticMessageChain",
-    "EnvPermissionDescriptor",
-    "HrtimePermissionDescriptor",
-    "HttpClient",
-    "LinuxSignal",
-    "Location",
-    "MacOSSignal",
-    "NetPermissionDescriptor",
-    "PermissionDescriptor",
-    "PermissionName",
-    "PermissionState",
-    "PermissionStatus",
-    "Permissions",
-    "PluginPermissionDescriptor",
-    "ReadPermissionDescriptor",
-    "RunPermissionDescriptor",
-    "ShutdownMode",
-    "Signal",
-    "SignalStream",
-    "StartTlsOptions",
-    "SymlinkOptions",
-    "TranspileOnlyResult",
-    "UnixConnectOptions",
-    "UnixListenOptions",
-    "WritePermissionDescriptor",
-    "applySourceMap",
-    "bundle",
-    "compile",
-    "connect",
-    "consoleSize",
-    "createHttpClient",
-    "fdatasync",
-    "fdatasyncSync",
-    "formatDiagnostics",
-    "futime",
-    "futimeSync",
-    "fstat",
-    "fstatSync",
-    "fsync",
-    "fsyncSync",
-    "ftruncate",
-    "ftruncateSync",
-    "hostname",
-    "kill",
-    "link",
-    "linkSync",
-    "listen",
-    "listenDatagram",
-    "loadavg",
-    "mainModule",
-    "openPlugin",
-    "osRelease",
-    "permissions",
-    "ppid",
-    "setRaw",
-    "shutdown",
-    "signal",
-    "signals",
-    "startTls",
-    "symlink",
-    "symlinkSync",
-    "transpileOnly",
-    "umask",
-    "utime",
-    "utimeSync",
-  ];
-
-  function transformMessageText(messageText, code) {
-    switch (code) {
-      case 2339: {
-        const property = messageText
-          .replace(/^Property '/, "")
-          .replace(/' does not exist on type 'typeof Deno'\./, "");
-
-        if (
-          messageText.endsWith("on type 'typeof Deno'.") &&
-          unstableDenoGlobalProperties.includes(property)
-        ) {
-          return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
-        }
-        break;
-      }
-      case 2551: {
-        const suggestionMessagePattern = / Did you mean '(.+)'\?$/;
-        const property = messageText
-          .replace(/^Property '/, "")
-          .replace(/' does not exist on type 'typeof Deno'\./, "")
-          .replace(suggestionMessagePattern, "");
-        const suggestion = messageText.match(suggestionMessagePattern);
-        const replacedMessageText = messageText.replace(
-          suggestionMessagePattern,
-          "",
-        );
-        if (suggestion && unstableDenoGlobalProperties.includes(property)) {
-          const suggestedProperty = suggestion[1];
-          return `${replacedMessageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestedProperty}'?`;
-        }
-        break;
-      }
-    }
-
-    return messageText;
-  }
-
-  function fromDiagnosticCategory(category) {
-    switch (category) {
-      case ts.DiagnosticCategory.Error:
-        return DiagnosticCategory.Error;
-      case ts.DiagnosticCategory.Message:
-        return DiagnosticCategory.Info;
-      case ts.DiagnosticCategory.Suggestion:
-        return DiagnosticCategory.Suggestion;
-      case ts.DiagnosticCategory.Warning:
-        return DiagnosticCategory.Warning;
-      default:
-        throw new Error(
-          `Unexpected DiagnosticCategory: "${category}"/"${
-            ts.DiagnosticCategory[category]
-          }"`,
-        );
+  function setLogDebug(debug, source) {
+    logDebug = debug;
+    if (source) {
+      logSource = source;
     }
   }
 
-  function getSourceInformation(sourceFile, start, length) {
-    const scriptResourceName = sourceFile.fileName;
-    const {
-      line: lineNumber,
-      character: startColumn,
-    } = sourceFile.getLineAndCharacterOfPosition(start);
-    const endPosition = sourceFile.getLineAndCharacterOfPosition(
-      start + length,
-    );
-    const endColumn = lineNumber === endPosition.line
-      ? endPosition.character
-      : startColumn;
-    const lastLineInFile = sourceFile.getLineAndCharacterOfPosition(
-      sourceFile.text.length,
-    ).line;
-    const lineStart = sourceFile.getPositionOfLineAndCharacter(lineNumber, 0);
-    const lineEnd = lineNumber < lastLineInFile
-      ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
-      : sourceFile.text.length;
-    const sourceLine = sourceFile.text
-      .slice(lineStart, lineEnd)
-      .replace(/\s+$/g, "")
-      .replace("\t", " ");
-    return {
-      sourceLine,
-      lineNumber,
-      scriptResourceName,
-      startColumn,
-      endColumn,
-    };
-  }
-
-  function fromDiagnosticMessageChain(messageChain) {
-    if (!messageChain) {
-      return undefined;
+  function log(...args) {
+    if (logDebug) {
+      const stringifiedArgs = args.map(JSON.stringify).join(" ");
+      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
     }
-
-    return messageChain.map(({ messageText, code, category, next }) => {
-      const message = transformMessageText(messageText, code);
-      return {
-        message,
-        code,
-        category: fromDiagnosticCategory(category),
-        next: fromDiagnosticMessageChain(next),
-      };
-    });
   }
 
-  function parseDiagnostic(item) {
-    const {
-      messageText,
-      category: sourceCategory,
-      code,
-      file,
-      start: startPosition,
-      length,
-    } = item;
-    const sourceInfo = file && startPosition && length
-      ? getSourceInformation(file, startPosition, length)
-      : undefined;
-    const endPosition = startPosition && length
-      ? startPosition + length
-      : undefined;
-    const category = fromDiagnosticCategory(sourceCategory);
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
 
-    let message;
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
+
+  function notImplemented() {
+    throw new Error("not implemented");
+  }
+
+  /**
+   * @param {import("../dts/typescript").DiagnosticRelatedInformation} diagnostic
+   */
+  function fromRelatedInformation({
+    start,
+    length,
+    file,
+    messageText: msgText,
+    ...ri
+  }) {
+    let messageText;
     let messageChain;
-    if (typeof messageText === "string") {
-      message = transformMessageText(messageText, code);
+    if (typeof msgText === "object") {
+      messageChain = msgText;
     } else {
-      message = transformMessageText(messageText.messageText, messageText.code);
-      messageChain = fromDiagnosticMessageChain([messageText])[0];
+      messageText = msgText;
     }
-
-    const base = {
-      message,
-      messageChain,
-      code,
-      category,
-      startPosition,
-      endPosition,
-    };
-
-    return sourceInfo ? { ...base, ...sourceInfo } : base;
+    if (start !== undefined && length !== undefined && file) {
+      const startPos = file.getLineAndCharacterOfPosition(start);
+      const sourceLine = file.getFullText().split("\n")[startPos.line];
+      const fileName = file.fileName;
+      return {
+        start: startPos,
+        end: file.getLineAndCharacterOfPosition(start + length),
+        fileName,
+        messageChain,
+        messageText,
+        sourceLine,
+        ...ri,
+      };
+    } else {
+      return {
+        messageChain,
+        messageText,
+        ...ri,
+      };
+    }
   }
 
-  function parseRelatedInformation(relatedInformation) {
-    const result = [];
-    for (const item of relatedInformation) {
-      result.push(parseDiagnostic(item));
-    }
-    return result;
-  }
-
+  /**
+   * @param {import("../dts/typescript").Diagnostic[]} diagnostics 
+   */
   function fromTypeScriptDiagnostic(diagnostics) {
-    const items = [];
-    for (const sourceDiagnostic of diagnostics) {
-      const item = parseDiagnostic(sourceDiagnostic);
-      if (sourceDiagnostic.relatedInformation) {
-        item.relatedInformation = parseRelatedInformation(
-          sourceDiagnostic.relatedInformation,
-        );
-      }
-      items.push(item);
-    }
-    return { items };
+    return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
+      const value = fromRelatedInformation(diag);
+      value.relatedInformation = ri
+        ? ri.map(fromRelatedInformation)
+        : undefined;
+      value.source = source;
+      return value;
+    });
   }
 
   // We really don't want to depend on JSON dispatch during snapshotting, so
@@ -299,6 +123,7 @@ delete Object.prototype.__proto__;
   // it makes sense to use the same scheme here.
   const ASSETS = "asset://";
   const OUT_DIR = "deno://";
+  const CACHE = "cache:///";
   // This constant is passed to compiler settings when
   // doing incremental compiles. Contents of this
   // file are passed back to Rust and saved to $DENO_DIR.
@@ -330,16 +155,20 @@ delete Object.prototype.__proto__;
     0: "JavaScript",
     1: "JSX",
     2: "TypeScript",
-    3: "TSX",
-    4: "Json",
-    5: "Wasm",
-    6: "Unknown",
+    3: "Dts",
+    4: "TSX",
+    5: "Json",
+    6: "Wasm",
+    7: "BuildInfo",
+    8: "Unknown",
     JavaScript: 0,
     JSX: 1,
     TypeScript: 2,
-    TSX: 3,
-    Json: 4,
-    Wasm: 5,
+    Dts: 3,
+    TSX: 4,
+    Json: 5,
+    Wasm: 6,
+    BuildInfo: 7,
     Unknown: 6,
   };
 
@@ -382,13 +211,10 @@ delete Object.prototype.__proto__;
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
   function parseCompilerOptions(compilerOptions) {
-    // TODO(bartlomieju): using `/` and `/tsconfig.json` because
-    // otherwise TSC complains that some paths are relative
-    // and some are absolute
     const { options, errors } = ts.convertCompilerOptionsFromJson(
       compilerOptions,
-      "/",
-      "/tsconfig.json",
+      "",
+      "tsconfig.json",
     );
     return {
       options,
@@ -477,8 +303,9 @@ delete Object.prototype.__proto__;
 
     /* TypeScript CompilerHost APIs */
 
-    fileExists(_fileName) {
-      return notImplemented();
+    fileExists(fileName) {
+      log(`compiler::host.fileExists("${fileName}")`);
+      return false;
     }
 
     getCanonicalFileName(fileName) {
@@ -491,7 +318,7 @@ delete Object.prototype.__proto__;
     }
 
     getCurrentDirectory() {
-      return "";
+      return CACHE;
     }
 
     getDefaultLibFileName(_options) {
@@ -634,6 +461,7 @@ delete Object.prototype.__proto__;
   ts.libs.push("deno.ns", "deno.window", "deno.worker", "deno.shared_globals");
   ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
   ts.libMap.set("deno.web", "lib.deno.web.d.ts");
+  ts.libMap.set("deno.fetch", "lib.deno.fetch.d.ts");
   ts.libMap.set("deno.window", "lib.deno.window.d.ts");
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
@@ -647,6 +475,10 @@ delete Object.prototype.__proto__;
   );
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.web.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  SNAPSHOT_HOST.getSourceFile(
+    `${ASSETS}/lib.deno.fetch.d.ts`,
     ts.ScriptTarget.ESNext,
   );
   SNAPSHOT_HOST.getSourceFile(
@@ -878,13 +710,20 @@ delete Object.prototype.__proto__;
     7016,
   ];
 
+  const IGNORED_COMPILE_DIAGNOSTICS = [
+    // TS1208: All files must be modules when the '--isolatedModules' flag is
+    // provided.  We can ignore because we guarantuee that all files are
+    // modules.
+    1208,
+  ];
+
   const stats = [];
   let statsStart = 0;
 
   function performanceStart() {
     stats.length = 0;
     // TODO(kitsonk) replace with performance.mark() when landed
-    statsStart = opNow();
+    statsStart = new Date();
     ts.performance.enable();
   }
 
@@ -921,7 +760,7 @@ delete Object.prototype.__proto__;
 
   function performanceEnd() {
     // TODO(kitsonk) replace with performance.measure() when landed
-    const duration = opNow() - statsStart;
+    const duration = new Date() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
   }
@@ -1162,7 +1001,9 @@ delete Object.prototype.__proto__;
         ...program.getSemanticDiagnostics(),
       ];
       diagnostics = diagnostics.filter(
-        ({ code }) => !IGNORED_DIAGNOSTICS.includes(code),
+        ({ code }) =>
+          !IGNORED_DIAGNOSTICS.includes(code) &&
+          !IGNORED_COMPILE_DIAGNOSTICS.includes(code),
       );
 
       // We will only proceed with the emit if there are no diagnostics.
@@ -1324,7 +1165,6 @@ delete Object.prototype.__proto__;
       target,
       createRuntimeCompileWriteFile(state),
     );
-
     const program = ts.createProgram({
       rootNames,
       options: host.getCompilationSettings(),
@@ -1333,7 +1173,10 @@ delete Object.prototype.__proto__;
 
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+      .filter(({ code }) =>
+        !IGNORED_DIAGNOSTICS.includes(code) &&
+        !IGNORED_COMPILE_DIAGNOSTICS.includes(code)
+      );
 
     const emitResult = program.emit();
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
@@ -1344,7 +1187,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
@@ -1404,7 +1247,7 @@ delete Object.prototype.__proto__;
     });
 
     const maybeDiagnostics = diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics).items
+      ? fromTypeScriptDiagnostic(diagnostics)
       : [];
 
     return {
@@ -1435,14 +1278,14 @@ delete Object.prototype.__proto__;
       );
       result[fileName] = { source, map };
     }
-    return Promise.resolve(result);
+    return result;
   }
 
   function opCompilerRespond(msg) {
-    dispatchJson.sendSync("op_compiler_respond", msg);
+    core.jsonOpSync("op_compiler_respond", msg);
   }
 
-  async function tsCompilerOnMessage(msg) {
+  function tsCompilerOnMessage(msg) {
     const request = msg.data;
     switch (request.type) {
       case CompilerRequestType.Compile: {
@@ -1466,7 +1309,7 @@ delete Object.prototype.__proto__;
         break;
       }
       case CompilerRequestType.RuntimeTranspile: {
-        const result = await runtimeTranspile(request);
+        const result = runtimeTranspile(request);
         opCompilerRespond(result);
         break;
       }
@@ -1479,56 +1322,16 @@ delete Object.prototype.__proto__;
     }
   }
 
-  // TODO(bartlomieju): temporary solution, must be fixed when moving
-  // dispatches to separate crates
-  function initOps() {
-    const opsMap = core.ops();
-    for (const [_name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
-    }
-  }
-
-  function runtimeStart(source) {
-    initOps();
-    // First we send an empty `Start` message to let the privileged side know we
-    // are ready. The response should be a `StartRes` message containing the CLI
-    // args and other info.
-    const s = dispatchJson.sendSync("op_start");
-    util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
-    return s;
-  }
-
   let hasBootstrapped = false;
 
-  function bootstrapCompilerRuntime() {
+  function bootstrapCompilerRuntime({ debugFlag }) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
     hasBootstrapped = true;
-    core.registerErrorClass("NotFound", errors.NotFound);
-    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
-    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
-    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
-    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
-    core.registerErrorClass("NotConnected", errors.NotConnected);
-    core.registerErrorClass("AddrInUse", errors.AddrInUse);
-    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
-    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
-    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
-    core.registerErrorClass("InvalidData", errors.InvalidData);
-    core.registerErrorClass("TimedOut", errors.TimedOut);
-    core.registerErrorClass("Interrupted", errors.Interrupted);
-    core.registerErrorClass("WriteZero", errors.WriteZero);
-    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
-    core.registerErrorClass("BadResource", errors.BadResource);
-    core.registerErrorClass("Http", errors.Http);
-    core.registerErrorClass("URIError", URIError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("Other", Error);
-    core.registerErrorClass("Busy", errors.Busy);
     delete globalThis.__bootstrap;
-    runtimeStart("TS");
+    core.ops();
+    setLogDebug(!!debugFlag, "TS");
   }
 
   globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;

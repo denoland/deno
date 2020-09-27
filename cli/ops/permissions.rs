@@ -1,28 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
-use crate::state::State;
-use deno_core::CoreIsolate;
-use deno_core::ErrBox;
-use deno_core::ResourceTable;
+
+use crate::permissions::Permissions;
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
 use std::path::Path;
-use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op(
-    "op_query_permission",
-    s.stateful_json_op_sync(t, op_query_permission),
-  );
-  i.register_op(
-    "op_revoke_permission",
-    s.stateful_json_op_sync(t, op_revoke_permission),
-  );
-  i.register_op(
-    "op_request_permission",
-    s.stateful_json_op_sync(t, op_request_permission),
-  );
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_query_permission", op_query_permission);
+  super::reg_json_sync(rt, "op_revoke_permission", op_revoke_permission);
+  super::reg_json_sync(rt, "op_request_permission", op_request_permission);
 }
 
 #[derive(Deserialize)]
@@ -33,13 +25,12 @@ struct PermissionArgs {
 }
 
 pub fn op_query_permission(
-  state: &State,
-  _resource_table: &mut ResourceTable,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let permissions = state.permissions.borrow();
+  let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.query_read(&path.as_deref().map(Path::new)),
@@ -50,7 +41,7 @@ pub fn op_query_permission(
     "plugin" => permissions.query_plugin(),
     "hrtime" => permissions.query_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))
@@ -60,13 +51,12 @@ pub fn op_query_permission(
 }
 
 pub fn op_revoke_permission(
-  state: &State,
-  _resource_table: &mut ResourceTable,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut permissions = state.permissions.borrow_mut();
+  let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.revoke_read(&path.as_deref().map(Path::new)),
@@ -77,7 +67,7 @@ pub fn op_revoke_permission(
     "plugin" => permissions.revoke_plugin(),
     "hrtime" => permissions.revoke_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))
@@ -87,13 +77,12 @@ pub fn op_revoke_permission(
 }
 
 pub fn op_request_permission(
-  state: &State,
-  _resource_table: &mut ResourceTable,
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let permissions = &mut state.permissions.borrow_mut();
+  let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.request_read(&path.as_deref().map(Path::new)),
@@ -104,7 +93,7 @@ pub fn op_request_permission(
     "plugin" => permissions.request_plugin(),
     "hrtime" => permissions.request_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))

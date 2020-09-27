@@ -1,23 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, Value};
-use crate::futures::FutureExt;
-use crate::state::State;
+
+use crate::permissions::Permissions;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
+use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
-use deno_core::CoreIsolate;
-use deno_core::ErrBox;
-use deno_core::ResourceTable;
+use deno_core::OpState;
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_compile", s.stateful_json_op_async(t, op_compile));
-  i.register_op("op_transpile", s.stateful_json_op_async(t, op_transpile));
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_async(rt, "op_compile", op_compile);
+  super::reg_json_async(rt, "op_transpile", op_transpile);
 }
 
 #[derive(Deserialize, Debug)]
@@ -30,15 +30,18 @@ struct CompileArgs {
 }
 
 async fn op_compile(
-  state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _data: BufVec,
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.compile");
+) -> Result<Value, AnyError> {
+  super::check_unstable2(&state, "Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
-  let global_state = state.global_state.clone();
-  let permissions = state.permissions.borrow().clone();
+  let cli_state = super::global_state2(&state);
+  let global_state = cli_state.clone();
+  let permissions = {
+    let state = state.borrow();
+    state.borrow::<Permissions>().clone()
+  };
   let fut = if args.bundle {
     runtime_bundle(
       &global_state,
@@ -69,17 +72,15 @@ struct TranspileArgs {
 }
 
 async fn op_transpile(
-  state: Rc<State>,
-  _resource_table: Rc<RefCell<ResourceTable>>,
+  state: Rc<RefCell<OpState>>,
   args: Value,
   _data: BufVec,
-) -> Result<Value, ErrBox> {
-  state.check_unstable("Deno.transpile");
+) -> Result<Value, AnyError> {
+  super::check_unstable2(&state, "Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let global_state = state.global_state.clone();
-  let permissions = state.permissions.borrow().clone();
+  let cli_state = super::global_state2(&state);
+  let global_state = cli_state.clone();
   let result =
-    runtime_transpile(&global_state, permissions, &args.sources, &args.options)
-      .await?;
+    runtime_transpile(global_state, &args.sources, &args.options).await?;
   Ok(result)
 }

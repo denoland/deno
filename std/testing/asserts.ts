@@ -2,8 +2,8 @@
 /** This module is browser compatible. Do not rely on good formatting of values
  * for AssertionError messages in browsers. */
 
-import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
-import diff, { DiffType, DiffResult } from "./diff.ts";
+import { bold, gray, green, red, stripColor, white } from "../fmt/colors.ts";
+import diff, { DiffResult, DiffType } from "./diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
@@ -20,19 +20,15 @@ export class AssertionError extends Error {
 }
 
 export function _format(v: unknown): string {
-  let string = globalThis.Deno
-    ? Deno.inspect(v, {
+  return globalThis.Deno
+    ? stripColor(Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
       trailingComma: true,
       compact: false,
       iterableLimit: Infinity,
-    })
-    : String(v);
-  if (typeof v == "string") {
-    string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
-  }
-  return string;
+    }))
+    : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
 }
 
 function createColor(diffType: DiffType): (s: string) => string {
@@ -303,7 +299,7 @@ export function assertStrictEquals(
 }
 
 /**
- * Make an assertion that `actual` and `expected` are not strictly equal.  
+ * Make an assertion that `actual` and `expected` are not strictly equal.
  * If the values are strictly equal then throw.
  * ```ts
  * assertNotStrictEquals(1, 1)

@@ -5,18 +5,20 @@
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::futures::channel::mpsc::UnboundedSender;
+use deno_core::futures::channel::oneshot;
+use deno_core::futures::future::Future;
+use deno_core::futures::prelude::*;
+use deno_core::futures::select;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::task;
+use deno_core::futures::task::Context;
+use deno_core::futures::task::Poll;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::v8;
-use futures::channel::mpsc;
-use futures::channel::mpsc::UnboundedReceiver;
-use futures::channel::mpsc::UnboundedSender;
-use futures::channel::oneshot;
-use futures::future::Future;
-use futures::prelude::*;
-use futures::select;
-use futures::stream::FuturesUnordered;
-use futures::task;
-use futures::task::Context;
-use futures::task::Poll;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -33,54 +35,34 @@ use std::ptr;
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::Once;
 use std::thread;
 use uuid::Uuid;
 use warp::filters::ws;
 use warp::Filter;
 
-struct InspectorServer {
-  host: SocketAddr,
+pub struct InspectorServer {
+  pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
   _thread_handle: thread::JoinHandle<()>,
 }
 
 impl InspectorServer {
-  /// Registers an Inspector instance with the inspector server. If the server
-  /// is not running yet, it'll  be started first.
-  pub fn register_inspector(info: InspectorInfo) {
-    let self_ = Self::global(&info.host);
-    self_.register_inspector_tx.unbounded_send(info).unwrap();
-  }
-
-  /// Returns the global InspectorServer instance. If the server is not yet
-  /// running, this function starts it.
-  fn global(host: &SocketAddr) -> &'static InspectorServer {
-    let instance = unsafe {
-      static mut INSTANCE: Option<InspectorServer> = None;
-      static INIT: Once = Once::new();
-      INIT.call_once(|| {
-        INSTANCE.replace(Self::new(*host));
-      });
-      INSTANCE.as_ref().unwrap()
-    };
-    // We only start a single server, so all inspectors must bind to the same
-    // host:port combination.
-    assert_eq!(host, &instance.host);
-    instance
-  }
-
-  fn new(host: SocketAddr) -> Self {
+  pub fn new(host: SocketAddr) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
     let thread_handle = thread::spawn(move || {
       crate::tokio_util::run_basic(server(host, register_inspector_rx))
     });
+
     Self {
       host,
       register_inspector_tx,
       _thread_handle: thread_handle,
     }
+  }
+
+  fn register_inspector(&self, info: InspectorInfo) {
+    self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
 
@@ -95,7 +77,7 @@ struct InspectorInfo {
 }
 
 impl InspectorInfo {
-  fn get_json_metadata(&self) -> serde_json::Value {
+  fn get_json_metadata(&self) -> Value {
     json!({
       "description": "deno",
       "devtoolsFrontendUrl": self.get_frontend_url(),
@@ -114,7 +96,7 @@ impl InspectorInfo {
 
   fn get_frontend_url(&self) -> String {
     format!(
-      "chrome-devtools://devtools/bundled/inspector.html?v8only=true&ws={}/ws/{}",
+      "devtools://devtools/bundled/inspector.html?v8only=true&ws={}/ws/{}",
       &self.host, &self.uuid
     )
   }
@@ -136,9 +118,27 @@ async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
 ) {
-  // TODO: `inspector_map` in an Rc<RefCell<T>> instead. This is currently not
-  // possible because warp requires all filters to implement Send, which should
-  // not be necessary because we are using a single-threaded runtime.
+  // When the main thread shuts down, The Rust stdlib will call `WSACleanup()`,
+  // which shuts down the network stack. This thread will still be
+  // running at that time (because it never exits), but all attempts at network
+  // I/O will fail with a `WSANOTINITIALIZED` error, which causes a panic.
+  // To prevent this from happening, Winsock is initialized another time here;
+  // this increases Winsock's internal reference count, so it won't shut
+  // itself down when the main thread calls `WSACleanup()` upon exit.
+  // TODO: When the last `Inspector` instance is dropped, make it signal the
+  // server thread so it exits cleanly, then join it with the main thread.
+  #[cfg(windows)]
+  unsafe {
+    use winapi::um::winsock2::{WSAStartup, WSADATA};
+    let mut wsa_data = MaybeUninit::<WSADATA>::zeroed();
+    let r = WSAStartup(0x202 /* Winsock 2.2 */, wsa_data.as_mut_ptr());
+    assert_eq!(r, 0);
+  }
+
+  // TODO: put the `inspector_map` in an `Rc<RefCell<_>>` instead. This is
+  // currently not possible because warp requires all filters to implement
+  // `Send`, which should not be necessary because we are using the
+  // single-threaded Tokio runtime.
   let inspector_map = HashMap::<Uuid, InspectorInfo>::new();
   let inspector_map = Arc::new(Mutex::new(inspector_map));
 
@@ -303,7 +303,8 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
-  pub debugger_url: String,
+  pub server: Option<Arc<InspectorServer>>,
+  pub debugger_url: Option<String>,
 }
 
 impl Deref for DenoInspector {
@@ -372,25 +373,15 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut deno_core::CoreIsolate,
-    host: SocketAddr,
+    isolate: &mut deno_core::JsRuntime,
+    server: Option<Arc<InspectorServer>>,
   ) -> Box<Self> {
-    let core_state_rc = deno_core::CoreIsolate::state(isolate);
-    let core_state = core_state_rc.borrow();
-
+    let context = isolate.global_context();
     let scope = &mut v8::HandleScope::new(&mut **isolate);
 
     let (new_websocket_tx, new_websocket_rx) =
       mpsc::unbounded::<WebSocketProxy>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
-
-    let info = InspectorInfo {
-      host,
-      uuid: Uuid::new_v4(),
-      thread_name: thread::current().name().map(|n| n.to_owned()),
-      new_websocket_tx,
-      canary_rx,
-    };
 
     // Create DenoInspector instance.
     let mut self_ = new_box_with(|self_ptr| {
@@ -403,6 +394,22 @@ impl DenoInspector {
       let flags = InspectorFlags::new();
       let waker = InspectorWaker::new(scope.thread_safe_handle());
 
+      let debugger_url = if let Some(server) = server.clone() {
+        let info = InspectorInfo {
+          host: server.host,
+          uuid: Uuid::new_v4(),
+          thread_name: thread::current().name().map(|n| n.to_owned()),
+          new_websocket_tx,
+          canary_rx,
+        };
+
+        let debugger_url = info.get_websocket_debugger_url();
+        server.register_inspector(info);
+        Some(debugger_url)
+      } else {
+        None
+      };
+
       Self {
         v8_inspector_client,
         v8_inspector,
@@ -410,21 +417,15 @@ impl DenoInspector {
         flags,
         waker,
         _canary_tx: canary_tx,
-        debugger_url: info.get_websocket_debugger_url(),
+        server,
+        debugger_url,
       }
     });
 
     // Tell the inspector about the global context.
-    let context = core_state
-      .global_context
-      .as_ref()
-      .map(|context| v8::Local::new(scope, context))
-      .unwrap();
+    let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
-
-    // Register this inspector with the server thread.
-    InspectorServer::register_inspector(info);
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.

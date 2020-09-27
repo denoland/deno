@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::bindings;
 use rusty_v8 as v8;
 use smallvec::SmallVec;

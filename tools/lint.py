@@ -66,13 +66,14 @@ def eslint():
         ":!:cli/tests/swc_syntax_error.ts",
         ":!:std/**/testdata/*",
         ":!:std/**/node_modules/*",
+        ":!:cli/bench/node*.js",
         ":!:cli/compilers/wasm_wrap.js",
+        ":!:cli/dts/**",
+        ":!:cli/tests/encoding/**",
         ":!:cli/tests/error_syntax.js",
         ":!:cli/tests/lint/**",
-        ":!:cli/tests/encoding/**",
-        ":!:cli/dts/**",
+        ":!:cli/tests/tsc/**",
         ":!:cli/tsc/*typescript.js",
-        ":!:cli/bench/node*.js",
     ])
     if source_files:
         max_command_len = 30000

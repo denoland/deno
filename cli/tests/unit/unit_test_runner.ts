@@ -2,14 +2,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
-  REGISTERED_UNIT_TESTS,
   colors,
-  readLines,
-  permissionCombinations,
-  Permissions,
-  registerUnitTests,
   fmtPerms,
   parseArgs,
+  permissionCombinations,
+  Permissions,
+  readLines,
+  REGISTERED_UNIT_TESTS,
+  registerUnitTests,
   reportToConn,
 } from "./test_util.ts";
 

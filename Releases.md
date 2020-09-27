@@ -6,6 +6,104 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.2 / 2020.09.25
+
+- fix: Better formatting in console (#7642, #7641, #7553)
+- fix: Change log level to which prefix added (#7582)
+- fix: Change the Console class declaration to an interface (#7646)
+- fix: Clearing timers race condition (#7617)
+- fix: customInspect works on functions (#7670)
+- fix: Ignore fileExists in tsc host (#7635)
+- fix: Make --unstable a global flag (#7585)
+- fix: Make --watch and --inspect conflicting args (#7610)
+- fix: Make some web API constructors illegal at runtime (#7468)
+- fix: Replaced legacy chrome-devtools:// scheme. (#7659)
+- fix: Response.arrayBuffer() doesn't return promise (#7618)
+- fix: Update supported text encodings (#7668)
+- fix: Use class instead of var+interface in d.ts #7514
+- fix(coverage): print lines with no coverage to stdout (#7640)
+- fix(fmt,lint): do not print number of checked files when `--quiet` is enabled
+  (#7579)
+- fix(info): add --importmap flag (#7424)
+- fix(installer): Don't reload by default (#7596)
+- fix(repl): interpret object literals as expressions (#7591)
+- fix(watch): watch importmap file for changes (#7580)
+- refactor(core): support error stack, remove js_check (#7629, #7636)
+- refactor(coverage): Harden coverage collection (#7584, #7616, #7577)
+- upgrade: TypeScript to 4.0.3 (#7637)
+- example(core): Add hello world example (#7611)
+
+Changes in std version 0.71.0:
+
+- feat(std/node): implement getSystemErrorName() (#7624)
+- fix(std/datetime): 12 and 24 support (#7661)
+- fix(std/fs): mark createWalkEntry(Sync) as internal (#7643)
+- chore(std/hash): update crates (#7631)
+
+### 1.4.1 / 2020.09.18
+
+- fix(cli/console): escape special characters in strings and property names
+  (#7546, #7533, #7550)
+- fix(cli/fmt): canonicalize files in current dir (#7508)
+- fix(cli/fmt): make fmt output more readable (#7534)
+- fix(cli/install): revert "bundle before installation" (#7522)
+- fix(cli/js): disable URL.createObjectUrl (#7543)
+- fix(cli/js): use Buffer.writeSync in MultipartBuilder (#7542)
+- fix(cli/repl): disable rustyline logs (#7535)
+- fix(cli/repl): format evaluation results with the object specifier (#7561)
+- fix(cli/bundle,eval,repl): add missing flags (#7414)
+- refactor(cli): move fetch() implementation to op_crates/fetch (#7524, #7529)
+- refactor(cli): move FileReader and URL to op_crates/web (#7554, #7544)
+- refactor(cli): move op_resources and op_close to deno_core (#7539)
+- refactor(cli/info,unstable): deno info --json output (#7417)
+- refactor(cli/js): simplify global properties (#7502)
+- refactor(cli/js): use Symbol.for instead of Symbol (#7537)
+- refactor(core): remove JsRuntime::set_js_error_create_fn (#7478)
+- refactor(core): use the 'anyhow' crate instead of ErrBox (#7476)
+- upgrade: rust crates (#7454)
+- benchmark: add no_check_hello benchmark (#7458)
+
+Changes in std version 0.70.0:
+
+- feat(std/node): add AssertionError class (#7210)
+- fix(std/datetime): timezone bug (#7466)
+- fix(std/testing): assertion diff color (#7499)
+
+### 1.4.0 / 2020.09.13
+
+- feat: Implement WebSocket API (#7051, #7437)
+- feat(console): print proxy details (#7139)
+- feat(console): support CSS styling with "%c" (#7357)
+- feat(core): Add JSON ops (#7336)
+- feat(fmt, lint): show number of checked files (#7312)
+- feat(info): Dependency count and sizes (#6786, #7439)
+- feat(install): bundle before installation (#5276)
+- feat(op_crates/web): Add all single byte encodings to TextDecoder (#6178)
+- feat(unstable): Add Deno.systemMemoryInfo() (#7350)
+- feat(unstable): deno run --watch (#7382)
+- feat(unstable): deno test --coverage (#6901)
+- feat(unstable): enable importsNotUsedAsValues by default (#7413)
+- feat(unstable): enable isolatedModules by default (#7327)
+- fix: Empty Response body returns 0-byte array (#7387)
+- fix: panic on process.kill() after run (#7405)
+- fix: colors mismatch (#7367)
+- fix: compiler config resolution using relative paths (#7392)
+- fix(core): panic on big string allocation (#7395)
+- fix(op_crates/web): Use "deno:" URLs for internal script specifiers (#7383)
+- refactor: Improve placeholder module names (#7430)
+- refactor: improve tsc diagnostics (#7420)
+- refactor(core): merge CoreIsolate and EsIsolate into JsRuntime (#7370, #7373,
+  #7415)
+- refactor(core): Use gotham-like state for ops (#7385)
+- upgrade: deno_doc, deno_lint, dprint, swc (#7381, #7391, #7402, #7434)
+- upgrade: rusty_v8 0.10.0 / V8 8.7.75 (#7429)
+
+Changes in std version 0.69.0:
+
+- BREAKING(std/fs): remove writeJson and writeJsonSync (#7256)
+- BREAKING(std/fs): remove readJson and readJsonSync (#7255)
+- BREAKING(std/ws): remove connect method (#7403)
+
 ### 1.3.3 / 2020.09.04
 
 - feat(unstable): Add Deno.futime and Deno.futimeSync (#7266)

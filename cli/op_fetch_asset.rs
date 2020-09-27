@@ -2,11 +2,13 @@
 // Note: this module is used both in build.rs and main.rs.
 
 pub use deno_core::v8_set_flags;
-use deno_core::CoreIsolateState;
+use deno_core::BufVec;
 use deno_core::Op;
-use deno_core::ZeroCopyBuf;
+use deno_core::OpState;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 fn get_asset(name: &str) -> Option<&'static str> {
   macro_rules! inc {
@@ -81,18 +83,16 @@ fn get_asset(name: &str) -> Option<&'static str> {
 }
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
-/// CoreIsolate.
-pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
-  custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op {
+/// JsRuntime.
+pub fn op_fetch_asset(
+  custom_assets: HashMap<String, PathBuf>,
+) -> impl Fn(Rc<RefCell<OpState>>, BufVec) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |_state: &mut CoreIsolateState,
-        zero_copy_bufs: &mut [ZeroCopyBuf]|
-        -> Op {
-    assert_eq!(zero_copy_bufs.len(), 1, "Invalid number of arguments");
-    let name = std::str::from_utf8(&zero_copy_bufs[0]).unwrap();
+  move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+    assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+    let name = std::str::from_utf8(&bufs[0]).unwrap();
 
     let asset_code = if let Some(source_code) = get_asset(name) {
       source_code.to_string()

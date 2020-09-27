@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
   fail,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
@@ -736,6 +736,16 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.url, "");
   assertEquals(redir.headers.get("Location"), "example.com/newLocation");
   assertEquals(redir.type, "default");
+});
+
+unitTest(async function responseWithoutBody(): Promise<void> {
+  const response = new Response();
+  assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
+  assertEquals(await response.blob(), new Blob([]));
+  assertEquals(await response.text(), "");
+  await assertThrowsAsync(async () => {
+    await response.json();
+  });
 });
 
 unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<

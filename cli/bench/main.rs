@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use serde_json::{self, map::Map, Number, Value};
+use deno_core::serde_json::{self, map::Map, Number, Value};
 use std::{
   convert::From,
   env, fs,
@@ -11,12 +11,12 @@ use std::{
 mod http;
 mod throughput;
 
-fn read_json(filename: &str) -> Result<serde_json::Value> {
+fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
   Ok(serde_json::from_reader(f)?)
 }
 
-fn write_json(filename: &str, value: &serde_json::Value) -> Result<()> {
+fn write_json(filename: &str, value: &Value) -> Result<()> {
   let f = fs::File::create(filename)?;
   serde_json::to_writer(f, value)?;
   Ok(())
@@ -39,6 +39,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   (
     "cold_relative_import",
     &["run", "--reload", "cli/tests/003_relative_import.ts"],
+    None,
+  ),
+  (
+    "no_check_hello",
+    &["run", "--reload", "--no-check", "cli/tests/002_hello.ts"],
     None,
   ),
   (

@@ -1,32 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::Value;
+
 use crate::colors;
-use crate::state::State;
+use crate::metrics::Metrics;
+use crate::permissions::Permissions;
 use crate::version;
 use crate::DenoSubcommand;
-use deno_core::CoreIsolate;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use deno_core::ResourceTable;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::env;
-use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
-
-  i.register_op("op_start", s.stateful_json_op_sync(t, op_start));
-  i.register_op("op_main_module", s.stateful_json_op_sync(t, op_main_module));
-  i.register_op("op_metrics", s.stateful_json_op_sync(t, op_metrics));
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_start", op_start);
+  super::reg_json_sync(rt, "op_main_module", op_main_module);
+  super::reg_json_sync(rt, "op_metrics", op_metrics);
 }
 
 fn op_start(
-  state: &State,
-  _resource_table: &mut ResourceTable,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  let gs = &state.global_state;
+) -> Result<Value, AnyError> {
+  let gs = &super::global_state(state);
 
   Ok(json!({
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
@@ -47,27 +46,27 @@ fn op_start(
 }
 
 fn op_main_module(
-  state: &State,
-  _resource_table: &mut ResourceTable,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  let main = &state.main_module.to_string();
+) -> Result<Value, AnyError> {
+  let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
-    state.check_read_blind(&main_path, "main_module")?;
+    state
+      .borrow::<Permissions>()
+      .check_read_blind(&main_path, "main_module")?;
   }
   Ok(json!(&main))
 }
 
 fn op_metrics(
-  state: &State,
-  _resource_table: &mut ResourceTable,
+  state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  let m = &state.metrics.borrow();
+) -> Result<Value, AnyError> {
+  let m = state.borrow::<Metrics>();
 
   Ok(json!({
     "opsDispatched": m.ops_dispatched,
