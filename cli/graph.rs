@@ -270,7 +270,10 @@ impl Module {
 
     // Parse out all the syntactical dependencies for a module
     let dependencies = parsed_module.analyze_dependencies();
-    for desc in dependencies.iter() {
+    for desc in dependencies
+      .iter()
+      .filter(|desc| desc.kind != DependencyKind::Require)
+    {
       let location = Location {
         filename: self.specifier.to_string(),
         col: desc.col,
