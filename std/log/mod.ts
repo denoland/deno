@@ -4,9 +4,9 @@ import type { GenericFunction } from "./logger.ts";
 import {
   BaseHandler,
   ConsoleHandler,
-  WriterHandler,
   FileHandler,
   RotatingFileHandler,
+  WriterHandler,
 } from "./handlers.ts";
 import { assert } from "../_util/assert.ts";
 import type { LevelName } from "./levels.ts";

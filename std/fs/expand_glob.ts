@@ -1,18 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   GlobOptions,
-  SEP_PATTERN,
   globToRegExp,
   isAbsolute,
   isGlob,
   joinGlobs,
   normalize,
+  SEP_PATTERN,
 } from "../path/mod.ts";
 import {
-  WalkEntry,
   _createWalkEntry,
   _createWalkEntrySync,
   walk,
+  WalkEntry,
   walkSync,
 } from "./walk.ts";
 import { assert } from "../_util/assert.ts";

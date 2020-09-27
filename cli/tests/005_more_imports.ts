@@ -1,4 +1,4 @@
-import { returnsHi, returnsFoo2, printHello3 } from "./subdir/mod1.ts";
+import { printHello3, returnsFoo2, returnsHi } from "./subdir/mod1.ts";
 
 printHello3();
 

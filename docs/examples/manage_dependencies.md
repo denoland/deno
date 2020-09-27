@@ -55,10 +55,7 @@ local `deps.ts` module.
  * example.ts
  */
 
-import {
-  add,
-  multiply,
-} from "./deps.ts";
+import { add, multiply } from "./deps.ts";
 
 function totalCost(outbound: number, inbound: number, tax: number): number {
   return multiply(add(outbound, inbound), tax);

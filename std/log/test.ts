@@ -2,10 +2,10 @@
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as log from "./mod.ts";
 import {
-  LogLevelNames,
-  LevelName,
   getLevelByName,
   getLevelName,
+  LevelName,
+  LogLevelNames,
 } from "./levels.ts";
 
 class TestHandler extends log.handlers.BaseHandler {

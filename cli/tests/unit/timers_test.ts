@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
-  createResolvable,
   assert,
   assertEquals,
   assertNotEquals,
+  createResolvable,
+  unitTest,
 } from "./test_util.ts";
 
 function waitForMs(ms: number): Promise<number> {

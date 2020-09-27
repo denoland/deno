@@ -3,8 +3,8 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
-import { serveFile, FileServerArgs } from "./file_server.ts";
-import { resolve, dirname, join, fromFileUrl } from "../path/mod.ts";
+import { FileServerArgs, serveFile } from "./file_server.ts";
+import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
 type FileServerCfg = Omit<FileServerArgs, "_"> & { target?: string };

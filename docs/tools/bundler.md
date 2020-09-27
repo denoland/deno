@@ -31,7 +31,7 @@ export const bar = "bar";
 It could be imported like this:
 
 ```ts
-import { foo, bar } from "./lib.bundle.js";
+import { bar, foo } from "./lib.bundle.js";
 ```
 
 Bundles can also be loaded in the web browser. The bundle is a self-contained ES

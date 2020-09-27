@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "../testing/asserts.ts";
-import { NIL_UUID, isNil } from "./mod.ts";
+import { isNil, NIL_UUID } from "./mod.ts";
 
 Deno.test({
   name: "[UUID] isNil",

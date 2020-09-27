@@ -33,7 +33,7 @@ import * as nodeUtil from "./util.ts";
 
 import * as path from "../path/mod.ts";
 import { assert } from "../_util/assert.ts";
-import { pathToFileURL, fileURLToPath } from "./url.ts";
+import { fileURLToPath, pathToFileURL } from "./url.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
 const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);

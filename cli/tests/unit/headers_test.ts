@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertStringContains,
+  unitTest,
 } from "./test_util.ts";
 const {
   inspectArgs,
