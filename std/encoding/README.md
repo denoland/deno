@@ -42,8 +42,8 @@ Parse the CSV from the `reader` with the options provided and return
 Parse the CSV string/buffer with the options provided. The result of this
 function is as follows:
 
-- If you don't provide `opt.header`, `opt.parse`, and `opt.columns`, it
-  returns `string[][]`.
+- If you don't provide `opt.header`, `opt.parse`, and `opt.columns`, it returns
+  `string[][]`.
 - If you provide `opt.header` or `opt.columns` but not `opt.parse`, it returns
   `object[]`.
 - If you provide `opt.parse`, it returns an array where each element is the
