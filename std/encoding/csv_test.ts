@@ -602,6 +602,20 @@ const parseTestCases = [
       { super: "e", street: "f", fighter: "g" },
     ],
   },
+  {
+    name: "provides both opts.header and opts.columns",
+    in: "a,b,1\nc,d,2\ne,f,3",
+    header: true,
+    columns: [
+      { name: "foo" },
+      { name: "bar" },
+      { name: "baz", parse: (e: string) => Number(e) },
+    ],
+    result: [
+      { foo: "c", bar: "d", baz: 2 },
+      { foo: "e", bar: "f", baz: 3 },
+    ],
+  },
 ];
 
 for (const testCase of parseTestCases) {
