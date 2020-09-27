@@ -26,7 +26,7 @@ instead, used a version of the std library which is immutable and will not
 change:
 
 ```typescript
-// imports from v0.50.0 of std, never changes
+// imports from v$STD_VERSION of std, never changes
 import { copy } from "https://deno.land/std@$STD_VERSION/fs/copy.ts";
 ```
 
