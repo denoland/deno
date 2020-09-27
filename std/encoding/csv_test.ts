@@ -17,6 +17,7 @@ import {
 import { StringReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
 
+// Test cases for `readMatrix()`
 const testCases = [
   {
     Name: "Simple",
@@ -60,7 +61,7 @@ zzz,yyy,xxx`,
     Name: "Semicolon",
     Input: "a;b;c\n",
     Output: [["a", "b", "c"]],
-    Comma: ";",
+    Separator: ";",
   },
   {
     Name: "MultiLine",
@@ -334,14 +335,14 @@ x,,,
     Input: "a£b,c£ \td,e\n€ comment\n",
     Output: [["a", "b,c", "d,e"]],
     TrimLeadingSpace: true,
-    Comma: "£",
+    Separator: "£",
     Comment: "€",
   },
   {
     Name: "NonASCIICommaAndCommentWithQuotes",
     Input: 'a€"  b,"€ c\nλ comment\n',
     Output: [["a", "  b,", " c"]],
-    Comma: "€",
+    Separator: "€",
     Comment: "λ",
   },
   {
@@ -350,7 +351,7 @@ x,,,
     Name: "NonASCIICommaConfusion",
     Input: '"abθcd"λefθgh',
     Output: [["abθcd", "efθgh"]],
-    Comma: "λ",
+    Separator: "λ",
     Comment: "€",
   },
   {
@@ -415,17 +416,17 @@ x,,,
   },
   {
     Name: "BadComma1",
-    Comma: "\n",
+    Separator: "\n",
     Error: new Error(ERR_INVALID_DELIM),
   },
   {
     Name: "BadComma2",
-    Comma: "\r",
+    Separator: "\r",
     Error: new Error(ERR_INVALID_DELIM),
   },
   {
     Name: "BadComma3",
-    Comma: '"',
+    Separator: '"',
     Error: new Error(ERR_INVALID_DELIM),
   },
   {
@@ -440,7 +441,7 @@ x,,,
   },
   {
     Name: "BadCommaComment",
-    Comma: "X",
+    Separator: "X",
     Comment: "X",
     Error: new Error(ERR_INVALID_DELIM),
   },
@@ -449,13 +450,13 @@ for (const t of testCases) {
   Deno.test({
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
-      let comma = ",";
+      let separator = ",";
       let comment: string | undefined;
       let fieldsPerRec: number | undefined;
       let trim = false;
       let lazyquote = false;
-      if (t.Comma) {
-        comma = t.Comma;
+      if (t.Separator) {
+        separator = t.Separator;
       }
       if (t.Comment) {
         comment = t.Comment;
@@ -475,7 +476,7 @@ for (const t of testCases) {
           await readMatrix(
             new BufReader(new StringReader(t.Input ?? "")),
             {
-              comma: comma,
+              separator,
               comment: comment,
               trimLeadingSpace: trim,
               fieldsPerRecord: fieldsPerRec,
@@ -489,7 +490,7 @@ for (const t of testCases) {
         actual = await readMatrix(
           new BufReader(new StringReader(t.Input ?? "")),
           {
-            comma: comma,
+            separator,
             comment: comment,
             trimLeadingSpace: trim,
             fieldsPerRecord: fieldsPerRec,
@@ -507,19 +508,19 @@ const parseTestCases = [
   {
     name: "simple",
     in: "a,b,c",
-    header: false,
+    skipFirstRow: false,
     result: [["a", "b", "c"]],
   },
   {
     name: "simple Bufreader",
     in: new BufReader(new StringReader("a,b,c")),
-    header: false,
+    skipFirstRow: false,
     result: [["a", "b", "c"]],
   },
   {
     name: "multiline",
     in: "a,b,c\ne,f,g\n",
-    header: false,
+    skipFirstRow: false,
     result: [
       ["a", "b", "c"],
       ["e", "f", "g"],
@@ -528,13 +529,13 @@ const parseTestCases = [
   {
     name: "header mapping boolean",
     in: "a,b,c\ne,f,g\n",
-    header: true,
+    skipFirstRow: true,
     result: [{ a: "e", b: "f", c: "g" }],
   },
   {
     name: "header mapping array",
     in: "a,b,c\ne,f,g\n",
-    header: ["this", "is", "sparta"],
+    columns: ["this", "is", "sparta"],
     result: [
       { this: "a", is: "b", sparta: "c" },
       { this: "e", is: "f", sparta: "g" },
@@ -543,7 +544,7 @@ const parseTestCases = [
   {
     name: "header mapping object",
     in: "a,b,c\ne,f,g\n",
-    header: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
+    columns: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
     result: [
       { this: "a", is: "b", sparta: "c" },
       { this: "e", is: "f", sparta: "g" },
@@ -552,7 +553,7 @@ const parseTestCases = [
   {
     name: "header mapping parse entry",
     in: "a,b,c\ne,f,g\n",
-    header: [
+    columns: [
       {
         name: "this",
         parse: (e: string): string => {
@@ -583,7 +584,7 @@ const parseTestCases = [
     parse: (e: string[]): unknown => {
       return { super: e[0], street: e[1], fighter: e[2] };
     },
-    header: false,
+    skipFirstRow: false,
     result: [
       { super: "a", street: "b", fighter: "c" },
       { super: "e", street: "f", fighter: "g" },
@@ -592,13 +593,27 @@ const parseTestCases = [
   {
     name: "header mapping object parseline",
     in: "a,b,c\ne,f,g\n",
-    header: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
+    columns: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
     parse: (e: Record<string, unknown>): unknown => {
       return { super: e.this, street: e.is, fighter: e.sparta };
     },
     result: [
       { super: "a", street: "b", fighter: "c" },
       { super: "e", street: "f", fighter: "g" },
+    ],
+  },
+  {
+    name: "provides both opts.skipFirstRow and opts.columns",
+    in: "a,b,1\nc,d,2\ne,f,3",
+    skipFirstRow: true,
+    columns: [
+      { name: "foo" },
+      { name: "bar" },
+      { name: "baz", parse: (e: string) => Number(e) },
+    ],
+    result: [
+      { foo: "c", bar: "d", baz: 2 },
+      { foo: "e", bar: "f", baz: 3 },
     ],
   },
 ];
@@ -608,7 +623,8 @@ for (const testCase of parseTestCases) {
     name: `[CSV] Parse ${testCase.name}`,
     async fn(): Promise<void> {
       const r = await parse(testCase.in, {
-        header: testCase.header,
+        skipFirstRow: testCase.skipFirstRow,
+        columns: testCase.columns,
         parse: testCase.parse as (input: unknown) => unknown,
       });
       assertEquals(r, testCase.result);
