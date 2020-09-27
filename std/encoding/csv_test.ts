@@ -508,19 +508,19 @@ const parseTestCases = [
   {
     name: "simple",
     in: "a,b,c",
-    header: false,
+    skipFirstRow: false,
     result: [["a", "b", "c"]],
   },
   {
     name: "simple Bufreader",
     in: new BufReader(new StringReader("a,b,c")),
-    header: false,
+    skipFirstRow: false,
     result: [["a", "b", "c"]],
   },
   {
     name: "multiline",
     in: "a,b,c\ne,f,g\n",
-    header: false,
+    skipFirstRow: false,
     result: [
       ["a", "b", "c"],
       ["e", "f", "g"],
@@ -529,7 +529,7 @@ const parseTestCases = [
   {
     name: "header mapping boolean",
     in: "a,b,c\ne,f,g\n",
-    header: true,
+    skipFirstRow: true,
     result: [{ a: "e", b: "f", c: "g" }],
   },
   {
@@ -584,7 +584,7 @@ const parseTestCases = [
     parse: (e: string[]): unknown => {
       return { super: e[0], street: e[1], fighter: e[2] };
     },
-    header: false,
+    skipFirstRow: false,
     result: [
       { super: "a", street: "b", fighter: "c" },
       { super: "e", street: "f", fighter: "g" },
@@ -603,9 +603,9 @@ const parseTestCases = [
     ],
   },
   {
-    name: "provides both opts.header and opts.columns",
+    name: "provides both opts.skipFirstRow and opts.columns",
     in: "a,b,1\nc,d,2\ne,f,3",
-    header: true,
+    skipFirstRow: true,
     columns: [
       { name: "foo" },
       { name: "bar" },
@@ -623,7 +623,7 @@ for (const testCase of parseTestCases) {
     name: `[CSV] Parse ${testCase.name}`,
     async fn(): Promise<void> {
       const r = await parse(testCase.in, {
-        header: testCase.header,
+        skipFirstRow: testCase.skipFirstRow,
         columns: testCase.columns,
         parse: testCase.parse as (input: unknown) => unknown,
       });

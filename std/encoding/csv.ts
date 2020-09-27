@@ -343,10 +343,10 @@ export interface ColumnOptions {
 
 export interface ParseOptions extends ReadOptions {
   /**
-   * If you provide `header: true` and `columns`, the first line will be skipped.
-   * If you provide `header: true` but not `columns`, the first line will be skipped and used as header definitions.
+   * If you provide `skipFirstRow: true` and `columns`, the first line will be skipped.
+   * If you provide `skipFirstRow: true` but not `columns`, the first line will be skipped and used as header definitions.
    */
-  header?: boolean;
+  skipFirstRow?: boolean;
 
   /**
    * If you provide `string[]` or `ColumnOptions[]`, those names will be used for header definition.
@@ -356,7 +356,7 @@ export interface ParseOptions extends ReadOptions {
   /** Parse function for rows.
    * Example:
    *     const r = await parseFile('a,b,c\ne,f,g\n', {
-   *      header: ["this", "is", "sparta"],
+   *      columns: ["this", "is", "sparta"],
    *       parse: (e: Record<string, unknown>) => {
    *         return { super: e.this, street: e.is, fighter: e.sparta };
    *       }
@@ -376,14 +376,14 @@ export interface ParseOptions extends ReadOptions {
  * for columns and rows.
  * @param input Input to parse. Can be a string or BufReader.
  * @param opt options of the parser.
- * @returns If you don't provide `opt.header`, `opt.parse`, and `opt.columns`, it returns `string[][]`.
- *   If you provide `opt.header` or `opt.columns` but not `opt.parse`, it returns `object[]`.
+ * @returns If you don't provide `opt.skipFirstRow`, `opt.parse`, and `opt.columns`, it returns `string[][]`.
+ *   If you provide `opt.skipFirstRow` or `opt.columns` but not `opt.parse`, it returns `object[]`.
  *   If you provide `opt.parse`, it returns an array where each element is the value returned from `opt.parse`.
  */
 export async function parse(
   input: string | BufReader,
   opt: ParseOptions = {
-    header: false,
+    skipFirstRow: false,
   },
 ): Promise<unknown[]> {
   let r: string[][];
@@ -392,11 +392,11 @@ export async function parse(
   } else {
     r = await readMatrix(new BufReader(new StringReader(input)), opt);
   }
-  if (opt.header || opt.columns) {
+  if (opt.skipFirstRow || opt.columns) {
     let headers: ColumnOptions[] = [];
     let i = 0;
 
-    if (opt.header) {
+    if (opt.skipFirstRow) {
       const head = r.shift();
       assert(head != null);
       headers = head.map(
