@@ -1457,7 +1457,6 @@ mod tests {
   use crate::global_state::GlobalState;
   use crate::http_cache;
   use deno_core::ModuleSpecifier;
-  use deno_fs;
   use std::path::PathBuf;
   use tempfile::TempDir;
 
