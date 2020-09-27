@@ -1,10 +1,10 @@
 import {
+  BigIntStats,
+  CFISBIS,
   statCallback,
   statCallbackBigInt,
   statOptions,
-  CFISBIS,
   Stats,
-  BigIntStats,
 } from "./_fs_stat.ts";
 
 export function lstat(path: string | URL, callback: statCallback): void;
