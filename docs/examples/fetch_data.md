@@ -1,4 +1,4 @@
-# Fetch Data
+# Fetch data
 
 ## Concepts
 

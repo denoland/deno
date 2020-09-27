@@ -3,23 +3,29 @@
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
+use crate::graph::GraphBuilder;
+use crate::graph::TranspileOptions;
 use crate::http_cache;
 use crate::import_map::ImportMap;
+use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::permissions::Permissions;
+use crate::specifier_handler::FetchHandler;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use std::cell::RefCell;
 use std::env;
-use std::sync::atomic::AtomicUsize;
+use std::fs;
+use std::io;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tokio::sync::Mutex as AsyncMutex;
 
 pub fn exit_unstable(api_name: &str) {
   eprintln!(
@@ -41,9 +47,8 @@ pub struct GlobalState {
   pub file_fetcher: SourceFileFetcher,
   pub ts_compiler: TsCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
-  pub compiler_starts: AtomicUsize,
   pub maybe_import_map: Option<ImportMap>,
-  compile_lock: AsyncMutex<()>,
+  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
 impl GlobalState {
@@ -70,7 +75,7 @@ impl GlobalState {
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
-      let lockfile = Lockfile::new(filename.to_string(), flags.lock_write)?;
+      let lockfile = Lockfile::new(filename.clone(), flags.lock_write)?;
       Some(Mutex::new(lockfile))
     } else {
       None
@@ -87,6 +92,12 @@ impl GlobalState {
         }
       };
 
+    let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
+    let maybe_inspector_server = match maybe_inspect_host {
+      Some(host) => Some(Arc::new(InspectorServer::new(host))),
+      None => None,
+    };
+
     let global_state = GlobalState {
       dir,
       permissions: Permissions::from_flags(&flags),
@@ -95,8 +106,7 @@ impl GlobalState {
       ts_compiler,
       lockfile,
       maybe_import_map,
-      compiler_starts: AtomicUsize::new(0),
-      compile_lock: AsyncMutex::new(()),
+      maybe_inspector_server,
     };
     Ok(Arc::new(global_state))
   }
@@ -116,61 +126,94 @@ impl GlobalState {
   ) -> Result<(), AnyError> {
     let module_specifier = module_specifier.clone();
 
-    // TODO(ry) Try to lift compile_lock as high up in the call stack for
-    // sanity.
-    let compile_lock = self.compile_lock.lock().await;
+    if self.flags.no_check {
+      debug!("Transpiling root: {}", module_specifier);
+      let handler =
+        Rc::new(RefCell::new(FetchHandler::new(&self.flags, &permissions)?));
+      let mut builder = GraphBuilder::new(handler, maybe_import_map);
+      builder.insert(&module_specifier).await?;
+      let mut graph = builder.get_graph(&self.lockfile)?;
 
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      self.file_fetcher.clone(),
-      maybe_import_map,
-      permissions.clone(),
-      is_dyn_import,
-      false,
-    );
-    module_graph_loader
-      .add_to_graph(&module_specifier, maybe_referrer)
-      .await?;
-    let module_graph = module_graph_loader.get_graph();
+      // TODO(kitsonk) this needs to move, but CompilerConfig is way too
+      // complicated to use here.
+      let maybe_config = if let Some(path) = self.flags.config_path.clone() {
+        let cwd = std::env::current_dir()?;
+        let config_file = cwd.join(path);
+        let config_path = config_file.canonicalize().map_err(|_| {
+          io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+              "Could not find the config file: {}",
+              config_file.to_string_lossy()
+            ),
+          )
+        })?;
+        let config_str = fs::read_to_string(config_path)?;
 
-    let out = self
-      .file_fetcher
-      .fetch_cached_source_file(&module_specifier, permissions.clone())
-      .expect("Source file not found");
+        Some(config_str)
+      } else {
+        None
+      };
 
-    let module_graph_files = module_graph.values().collect::<Vec<_>>();
-    // Check integrity of every file in module graph
-    if let Some(ref lockfile) = self.lockfile {
-      let mut g = lockfile.lock().unwrap();
+      let (stats, maybe_ignored_options) =
+        graph.transpile(TranspileOptions {
+          debug: self.flags.log_level == Some(log::Level::Debug),
+          maybe_config,
+        })?;
 
-      for graph_file in &module_graph_files {
-        let check_passed =
-          g.check_or_insert(&graph_file.url, &graph_file.source_code);
+      debug!("{}", stats);
+      if let Some(ignored_options) = maybe_ignored_options {
+        println!("Some compiler options were ignored:\n  {}", ignored_options);
+      }
+    } else {
+      let mut module_graph_loader = ModuleGraphLoader::new(
+        self.file_fetcher.clone(),
+        maybe_import_map,
+        permissions.clone(),
+        is_dyn_import,
+        false,
+      );
+      module_graph_loader
+        .add_to_graph(&module_specifier, maybe_referrer)
+        .await?;
+      let module_graph = module_graph_loader.get_graph();
 
-        if !check_passed {
-          eprintln!(
-            "Subresource integrity check failed --lock={}\n{}",
-            g.filename, graph_file.url
-          );
-          std::process::exit(10);
+      let out = self
+        .file_fetcher
+        .fetch_cached_source_file(&module_specifier, permissions.clone())
+        .expect("Source file not found");
+
+      let module_graph_files = module_graph.values().collect::<Vec<_>>();
+      // Check integrity of every file in module graph
+      if let Some(ref lockfile) = self.lockfile {
+        let mut g = lockfile.lock().unwrap();
+
+        for graph_file in &module_graph_files {
+          let check_passed =
+            g.check_or_insert(&graph_file.url, &graph_file.source_code);
+
+          if !check_passed {
+            eprintln!(
+              "Subresource integrity check failed --lock={}\n{}",
+              g.filename, graph_file.url
+            );
+            std::process::exit(10);
+          }
         }
       }
-    }
 
-    // Check if we need to compile files.
-    let should_compile = needs_compilation(
-      self.ts_compiler.compile_js,
-      out.media_type,
-      &module_graph_files,
-    );
-    let allow_js = should_allow_js(&module_graph_files);
+      // Check if we need to compile files.
+      let should_compile = needs_compilation(
+        self.ts_compiler.compile_js,
+        out.media_type,
+        &module_graph_files,
+      );
+      let allow_js = should_allow_js(&module_graph_files);
 
-    if should_compile {
-      if self.flags.no_check {
-        self.ts_compiler.transpile(&module_graph).await?;
-      } else {
+      if should_compile {
         self
           .ts_compiler
-          .compile(self, &out, target_lib, permissions, &module_graph, allow_js)
+          .compile(self, &out, target_lib, &module_graph, allow_js)
           .await?;
       }
     }
@@ -179,8 +222,6 @@ impl GlobalState {
       let g = lockfile.lock().unwrap();
       g.write()?;
     }
-
-    drop(compile_lock);
 
     Ok(())
   }
@@ -195,16 +236,10 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, AnyError> {
-    let module_specifier = module_specifier.clone();
-
     let out = self
       .file_fetcher
       .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
       .expect("Cached source file doesn't exist");
-
-    // TODO(ry) Try to lift compile_lock as high up in the call stack for
-    // sanity.
-    let compile_lock = self.compile_lock.lock().await;
 
     // Check if we need to compile files
     let was_compiled = match out.media_type {
@@ -236,8 +271,6 @@ impl GlobalState {
         name: out.url.to_string(),
       }
     };
-
-    drop(compile_lock);
 
     Ok(compiled_module)
   }

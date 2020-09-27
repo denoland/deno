@@ -3,7 +3,6 @@
 mod dispatch_minimal;
 pub use dispatch_minimal::MinimalOp;
 
-pub mod compiler;
 pub mod errors;
 pub mod fetch;
 pub mod fs;
@@ -33,11 +32,11 @@ use crate::metrics::metrics_op;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
@@ -57,6 +56,17 @@ where
     + 'static,
 {
   rt.register_op(name, metrics_op(json_op_sync(op_fn)));
+}
+
+/// Helper for checking unstable features. Used for sync ops.
+pub fn check_unstable(state: &OpState, api_name: &str) {
+  state.borrow::<Arc<GlobalState>>().check_unstable(api_name)
+}
+
+/// Helper for checking unstable features. Used for async ops.
+pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
+  let state = state.borrow();
+  state.borrow::<Arc<GlobalState>>().check_unstable(api_name)
 }
 
 /// Helper for extracting the commonly used state. Used for sync ops.

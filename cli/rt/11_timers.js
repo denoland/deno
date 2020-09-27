@@ -8,8 +8,12 @@
     core.jsonOpSync("op_global_timer_stop");
   }
 
-  async function opStartGlobalTimer(timeout) {
-    await core.jsonOpAsync("op_global_timer", { timeout });
+  function opStartGlobalTimer(timeout) {
+    return core.jsonOpSync("op_global_timer_start", { timeout });
+  }
+
+  async function opWaitGlobalTimer() {
+    await core.jsonOpAsync("op_global_timer");
   }
 
   function opNow() {
@@ -314,7 +318,8 @@
     // some timeout/defer is put in place to allow promise resolution.
     // Ideally `clearGlobalTimeout` doesn't return until this op is resolved, but
     // I'm not if that's possible.
-    await opStartGlobalTimer(timeout);
+    opStartGlobalTimer(timeout);
+    await opWaitGlobalTimer();
     pendingEvents--;
     // eslint-disable-next-line @typescript-eslint/no-use-before-define
     prepareReadyTimers();

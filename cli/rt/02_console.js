@@ -14,10 +14,16 @@
     bold,
   } = window.__bootstrap.colors;
 
-  const {
-    isInvalidDate,
-    hasOwnProperty,
-  } = window.__bootstrap.webUtil;
+  function isInvalidDate(x) {
+    return isNaN(x.getTime());
+  }
+
+  function hasOwnProperty(obj, v) {
+    if (obj == null) {
+      return false;
+    }
+    return Object.prototype.hasOwnProperty.call(obj, v);
+  }
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
@@ -193,6 +199,11 @@
   }
 
   function inspectFunction(value, _ctx) {
+    if (customInspect in value && typeof value[customInspect] === "function") {
+      try {
+        return String(value[customInspect]());
+      } catch {}
+    }
     // Might be Function/AsyncFunction/GeneratorFunction
     const cstrName = Object.getPrototypeOf(value).constructor.name;
     if (value.name && value.name !== "anonymous") {
@@ -414,7 +425,7 @@
       case "undefined": // undefined is dim
         return dim(String(value));
       case "symbol": // Symbols are green
-        return green(String(value));
+        return green(maybeQuoteSymbol(value));
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
@@ -479,6 +490,19 @@
     }
 
     return quoteString(string);
+  }
+
+  // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
+  function maybeQuoteSymbol(symbol) {
+    if (symbol.description === undefined) {
+      return symbol.toString();
+    }
+
+    if (/^[a-zA-Z_][a-zA-Z_.0-9]*$/.test(symbol.description)) {
+      return symbol.toString();
+    }
+
+    return `Symbol(${quoteString(symbol.description)})`;
   }
 
   // Print strings when they are inside of arrays or objects with quotes
@@ -734,7 +758,7 @@
     }
     for (const key of symbolKeys) {
       entries.push(
-        `${replaceEscapeSequences(key.toString())}: ${
+        `[${maybeQuoteSymbol(key)}]: ${
           inspectValueWithQuotes(
             value[key],
             ctx,

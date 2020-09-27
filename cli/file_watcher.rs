@@ -1,7 +1,9 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::colors;
 use deno_core::error::AnyError;
-use futures::stream::StreamExt;
-use futures::Future;
+use deno_core::futures::stream::StreamExt;
+use deno_core::futures::Future;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;

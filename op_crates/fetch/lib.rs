@@ -6,7 +6,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::js_check;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -50,10 +49,12 @@ pub fn init(isolate: &mut JsRuntime) {
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
-    js_check(isolate.execute(
-      &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-      &std::fs::read_to_string(&file).unwrap(),
-    ));
+    isolate
+      .execute(
+        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+        &std::fs::read_to_string(&file).unwrap(),
+      )
+      .unwrap();
   }
 }
 

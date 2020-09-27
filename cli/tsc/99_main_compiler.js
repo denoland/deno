@@ -18,10 +18,40 @@ delete Object.prototype.__proto__;
 
 ((window) => {
   const core = window.Deno.core;
-  const { assert, log, notImplemented } = window.__bootstrap.util;
-  const util = window.__bootstrap.util;
-  const errorStack = window.__bootstrap.errorStack;
-  const errors = window.__bootstrap.errors.errors;
+
+  let logDebug = false;
+  let logSource = "JS";
+
+  function setLogDebug(debug, source) {
+    logDebug = debug;
+    if (source) {
+      logSource = source;
+    }
+  }
+
+  function log(...args) {
+    if (logDebug) {
+      const stringifiedArgs = args.map(JSON.stringify).join(" ");
+      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
+    }
+  }
+
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
+
+  function notImplemented() {
+    throw new Error("not implemented");
+  }
 
   /**
    * @param {import("../dts/typescript").DiagnosticRelatedInformation} diagnostic
@@ -74,11 +104,6 @@ delete Object.prototype.__proto__;
       value.source = source;
       return value;
     });
-  }
-
-  function opNow() {
-    const res = core.jsonOpSync("op_now");
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
   }
 
   // We really don't want to depend on JSON dispatch during snapshotting, so
@@ -278,8 +303,9 @@ delete Object.prototype.__proto__;
 
     /* TypeScript CompilerHost APIs */
 
-    fileExists(_fileName) {
-      return notImplemented();
+    fileExists(fileName) {
+      log(`compiler::host.fileExists("${fileName}")`);
+      return false;
     }
 
     getCanonicalFileName(fileName) {
@@ -697,7 +723,7 @@ delete Object.prototype.__proto__;
   function performanceStart() {
     stats.length = 0;
     // TODO(kitsonk) replace with performance.mark() when landed
-    statsStart = opNow();
+    statsStart = new Date();
     ts.performance.enable();
   }
 
@@ -734,7 +760,7 @@ delete Object.prototype.__proto__;
 
   function performanceEnd() {
     // TODO(kitsonk) replace with performance.measure() when landed
-    const duration = opNow() - statsStart;
+    const duration = new Date() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
   }
@@ -1252,14 +1278,14 @@ delete Object.prototype.__proto__;
       );
       result[fileName] = { source, map };
     }
-    return Promise.resolve(result);
+    return result;
   }
 
   function opCompilerRespond(msg) {
     core.jsonOpSync("op_compiler_respond", msg);
   }
 
-  async function tsCompilerOnMessage(msg) {
+  function tsCompilerOnMessage(msg) {
     const request = msg.data;
     switch (request.type) {
       case CompilerRequestType.Compile: {
@@ -1283,7 +1309,7 @@ delete Object.prototype.__proto__;
         break;
       }
       case CompilerRequestType.RuntimeTranspile: {
-        const result = await runtimeTranspile(request);
+        const result = runtimeTranspile(request);
         opCompilerRespond(result);
         break;
       }
@@ -1296,47 +1322,16 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function runtimeStart(source) {
-    core.ops();
-    // First we send an empty `Start` message to let the privileged side know we
-    // are ready. The response should be a `StartRes` message containing the CLI
-    // args and other info.
-    const s = core.jsonOpSync("op_start");
-    util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
-    return s;
-  }
-
   let hasBootstrapped = false;
 
-  function bootstrapCompilerRuntime() {
+  function bootstrapCompilerRuntime({ debugFlag }) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
     hasBootstrapped = true;
-    core.registerErrorClass("NotFound", errors.NotFound);
-    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
-    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
-    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
-    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
-    core.registerErrorClass("NotConnected", errors.NotConnected);
-    core.registerErrorClass("AddrInUse", errors.AddrInUse);
-    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
-    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
-    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
-    core.registerErrorClass("InvalidData", errors.InvalidData);
-    core.registerErrorClass("TimedOut", errors.TimedOut);
-    core.registerErrorClass("Interrupted", errors.Interrupted);
-    core.registerErrorClass("WriteZero", errors.WriteZero);
-    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
-    core.registerErrorClass("BadResource", errors.BadResource);
-    core.registerErrorClass("Http", errors.Http);
-    core.registerErrorClass("URIError", URIError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("Other", Error);
-    core.registerErrorClass("Busy", errors.Busy);
     delete globalThis.__bootstrap;
-    runtimeStart("TS");
+    core.ops();
+    setLogDebug(!!debugFlag, "TS");
   }
 
   globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;
