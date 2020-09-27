@@ -4,7 +4,6 @@ use crate::installer::is_remote_url;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_fs;
 use std::path::Path;
 use std::path::PathBuf;
 

@@ -2,7 +2,6 @@
 
 use crate::http_cache::url_to_filename;
 use deno_core::url::{Host, Url};
-use deno_fs;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;

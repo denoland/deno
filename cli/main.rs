@@ -72,7 +72,6 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use deno_flags::DenoSubcommand;
 use deno_flags::Flags;
-use deno_fs;
 pub(crate) use deno_permissions::Permissions;
 use global_state::exit_unstable;
 use log::Level;

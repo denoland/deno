@@ -8,7 +8,6 @@ use deno_core::url::Url;
 /// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
 /// Currently it's a very simplified version to fulfill Deno needs
 /// at hand.
-use deno_fs;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;

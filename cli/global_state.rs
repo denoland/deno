@@ -17,7 +17,6 @@ use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
-use deno_flags;
 use deno_permissions::Permissions;
 use std::cell::RefCell;
 use std::env;
