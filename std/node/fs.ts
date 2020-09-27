@@ -38,7 +38,7 @@ export {
   copyFile,
   copyFileSync,
   exists,
-  existsSync.
+  existsSync,
   readdir,
   readdirSync,
   readFile,
