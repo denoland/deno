@@ -12,6 +12,7 @@ use deno_core::futures::channel::oneshot;
 use deno_core::futures::future::Future;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
+use deno_core::futures::pin_mut;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::task;
 use deno_core::futures::task::Context;
@@ -143,7 +144,7 @@ async fn server(
   let inspector_map = Arc::new(Mutex::new(inspector_map));
 
   let inspector_map_ = inspector_map.clone();
-  let mut register_inspector_handler = register_inspector_rx
+  let register_inspector_handler = register_inspector_rx
     .map(|info| {
       eprintln!(
         "Debugger listening on {}",
@@ -157,7 +158,7 @@ async fn server(
     .collect::<()>();
 
   let inspector_map_ = inspector_map_.clone();
-  let mut deregister_inspector_handler = future::poll_fn(|cx| {
+  let deregister_inspector_handler = future::poll_fn(|cx| {
     let mut g = inspector_map_.lock().unwrap();
     g.retain(|_, info| info.canary_rx.poll_unpin(cx) == Poll::Pending);
     Poll::<Never>::Pending
@@ -208,7 +209,7 @@ async fn server(
 
   let server_routes =
     websocket_route.or(json_version_route).or(json_list_route);
-  let mut server_handler = warp::serve(server_routes)
+  let server_handler = warp::serve(server_routes)
     .try_bind_with_graceful_shutdown(host, async {
       shutdown_server_rx.await.ok();
     })
@@ -218,6 +219,10 @@ async fn server(
       process::exit(1);
     })
     .fuse();
+
+  pin_mut!(register_inspector_handler);
+  pin_mut!(deregister_inspector_handler);
+  pin_mut!(server_handler);
 
   select! {
     _ = register_inspector_handler => (),
