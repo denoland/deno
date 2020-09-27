@@ -1,3 +1,6 @@
+import { existsSync } from "../../fs/mod.ts";
+import { fromFileUrl } from "../path.ts";
+
 type openFlags =
   | "a"
   | "ax"
@@ -17,7 +20,7 @@ type openCallback = (err: Error | undefined, fd: number) => void;
 
 function convertFlagAndModeToOptions(
   flag?: openFlags,
-  mode?: number,
+  mode?: number
 ): Deno.OpenOptions {
   if (!flag) return {};
   if (flag === "a") {
@@ -100,36 +103,43 @@ export function open(path: string | URL, callback: openCallback): void;
 export function open(
   path: string | URL,
   flags: openFlags,
-  callback: openCallback,
+  callback: openCallback
 ): void;
 export function open(
   path: string | URL,
   flags: openFlags,
   mode: number,
-  callback: openCallback,
+  callback: openCallback
 ): void;
 export function open(
   path: string | URL,
   flagsOrCallback: openCallback | openFlags,
   callbackOrMode?: openCallback | number,
-  maybeCallback?: openCallback,
+  maybeCallback?: openCallback
 ) {
-  const flags = typeof flagsOrCallback === "string"
-    ? flagsOrCallback
-    : undefined;
-  const callback = typeof callbackOrMode === "function"
-    ? callbackOrMode
-    : maybeCallback;
+  const flags =
+    typeof flagsOrCallback === "string" ? flagsOrCallback : undefined;
+  const callback =
+    typeof flagsOrCallback === "function"
+      ? flagsOrCallback
+      : typeof callbackOrMode === "function"
+      ? callbackOrMode
+      : maybeCallback;
   const mode = typeof callbackOrMode === "number" ? callbackOrMode : undefined;
+  path = path instanceof URL ? fromFileUrl(path) : path;
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.open(
-    path,
-    ((flags || mode) && convertFlagAndModeToOptions(flags, mode)) || undefined,
-  )
-    .then((file) => callback(undefined, file.rid))
-    .catch((err) => callback(err, err));
+  if (["ax", "ax+", "wx", "wx+"].includes(flags || "") && existsSync(path)) {
+    const err = new Error(`EEXIST: file already exists, open '${path}'`) as any;
+    callback(err, err);
+  } else
+    Deno.open(
+      path,
+      ((flags || mode) && convertFlagAndModeToOptions(flags, mode)) || undefined
+    )
+      .then((file) => callback(undefined, file.rid))
+      .catch((err) => callback(err, err));
 }
 
 export function openSync(path: string | URL): number;
@@ -138,18 +148,22 @@ export function openSync(path: string | URL, mode: number): number;
 export function openSync(
   path: string | URL,
   flags: openFlags,
-  mode: number,
+  mode: number
 ): number;
 export function openSync(
   path: string | URL,
   flagsOrMode?: openFlags | number,
-  maybeMode?: number,
+  maybeMode?: number
 ) {
   const flags = typeof flagsOrMode === "string" ? flagsOrMode : undefined;
   const mode = typeof flagsOrMode === "number" ? flagsOrMode : maybeMode;
+  path = path instanceof URL ? fromFileUrl(path) : path;
+
+  if (["ax", "ax+", "wx", "wx+"].includes(flags || "") && existsSync(path))
+    throw new Error(`EEXIST: file already exists, open '${path}'`);
 
   return Deno.openSync(
     path,
-    ((flags || mode) && convertFlagAndModeToOptions(flags, mode)) || undefined,
+    ((flags || mode) && convertFlagAndModeToOptions(flags, mode)) || undefined
   ).rid;
 }

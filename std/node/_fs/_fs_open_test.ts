@@ -1,7 +1,13 @@
-import { assert, assertEquals, fail } from "../../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  fail,
+} from "../../testing/asserts.ts";
 import { open, openSync } from "./_fs_open.ts";
 import { parse, join } from "../../path/mod.ts";
 import { existsSync } from "../../fs/mod.ts";
+import { closeSync } from "./_fs_close.ts";
 
 const temp_dir = parse(Deno.makeTempFileSync()).dir;
 
@@ -9,15 +15,19 @@ Deno.test({
   name: "ASYNC: open file",
   async fn() {
     const file = Deno.makeTempFileSync();
+    let fd1: number;
     await new Promise<number>((resolve, reject) => {
       open(file, (err, fd) => {
         if (err) reject(err);
         resolve(fd);
       });
     })
-      .then((fd) => assert(Deno.resources()[fd]))
+      .then((fd) => {
+        fd1 = fd;
+        assert(Deno.resources()[fd], `${fd}`);
+      })
       .catch(() => fail())
-      .finally(() => Deno.removeSync(file));
+      .finally(() => closeSync(fd1));
   },
 });
 
@@ -27,7 +37,7 @@ Deno.test({
     const file = Deno.makeTempFileSync();
     const fd = openSync(file);
     assert(Deno.resources()[fd]);
-    Deno.removeSync(file);
+    closeSync(fd);
   },
 });
 
@@ -39,7 +49,7 @@ Deno.test({
     assertEquals(typeof fd, "number");
     assertEquals(existsSync(file), true);
     assert(Deno.resources()[fd]);
-    Deno.removeSync(file);
+    closeSync(fd);
   },
 });
 
@@ -47,14 +57,14 @@ Deno.test({
   name: "open with flag 'ax'",
   fn() {
     const file = Deno.makeTempFileSync();
-    let err;
-    try {
-      openSync(file, "ax");
-    } catch (error) {
-      err = error;
-    }
+    assertThrows(
+      () => {
+        openSync(file, "ax");
+      },
+      Error,
+      `EEXIST: file already exists, open '${file}'`
+    );
     Deno.removeSync(file);
-    assert(err);
   },
 });
 
@@ -65,7 +75,7 @@ Deno.test({
     const fd = openSync(file, "a+");
     assertEquals(typeof fd, "number");
     assertEquals(existsSync(file), true);
-    Deno.removeSync(file);
+    closeSync(fd);
   },
 });
 
@@ -73,14 +83,14 @@ Deno.test({
   name: "open with flag 'ax+'",
   fn() {
     const file = Deno.makeTempFileSync();
-    let err;
-    try {
-      openSync(file, "ax+");
-    } catch (error) {
-      err = error;
-    }
+    assertThrows(
+      () => {
+        openSync(file, "ax+");
+      },
+      Error,
+      `EEXIST: file already exists, open '${file}'`
+    );
     Deno.removeSync(file);
-    assert(err);
   },
 });
 
@@ -88,14 +98,13 @@ Deno.test({
   name: "open with flag 'r'",
   fn() {
     const file = join(temp_dir, "some_random_file3");
-    let err;
-    try {
-      openSync(file, "r");
-    } catch (error) {
-      err = error;
-    }
-    Deno.removeSync(file);
-    assert(err);
+    assertThrows(
+      () => {
+        openSync(file, "r");
+      },
+      Error,
+      "No such file or directory (os error 2)"
+    );
   },
 });
 
@@ -103,14 +112,13 @@ Deno.test({
   name: "open with flag 'r+'",
   fn() {
     const file = join(temp_dir, "some_random_file4");
-    let err;
-    try {
-      openSync(file, "r+");
-    } catch (error) {
-      err = error;
-    }
-    Deno.removeSync(err);
-    assert(err);
+    assertThrows(
+      () => {
+        openSync(file, "r+");
+      },
+      Error,
+      "No such file or directory (os error 2)"
+    );
   },
 });
 
@@ -122,13 +130,13 @@ Deno.test({
     const fd = openSync(file, "w");
     assertEquals(typeof fd, "number");
     assertEquals(Deno.readTextFileSync(file), "");
-    Deno.removeSync(file);
+    closeSync(fd);
 
     const file2 = join(temp_dir, "some_random_file5");
     const fd2 = openSync(file2, "w");
     assertEquals(typeof fd2, "number");
     assertEquals(existsSync(file2), true);
-    Deno.removeSync(file2);
+    closeSync(fd2);
   },
 });
 
@@ -137,18 +145,19 @@ Deno.test({
   fn() {
     const file = Deno.makeTempFileSync();
     Deno.writeTextFileSync(file, "hi there");
-    const fd = openSync(file, "wx");
+    const fd = openSync(file, "w");
     assertEquals(typeof fd, "number");
     assertEquals(Deno.readTextFileSync(file), "");
-    Deno.removeSync(file);
+    closeSync(fd);
 
     const file2 = Deno.makeTempFileSync();
-    let err;
-    try {
-      openSync(file2, "wx");
-    } catch (error) {
-      err = error;
-    }
+    assertThrows(
+      () => {
+        openSync(file2, "wx");
+      },
+      Error,
+      `EEXIST: file already exists, open '${file2}'`
+    );
   },
 });
 
@@ -160,13 +169,13 @@ Deno.test({
     const fd = openSync(file, "w+");
     assertEquals(typeof fd, "number");
     assertEquals(Deno.readTextFileSync(file), "");
-    Deno.removeSync(file);
+    closeSync(fd);
 
     const file2 = join(temp_dir, "some_random_file6");
-    openSync(file2, "w+");
-    assertEquals(typeof fd, "number");
+    const fd2 = openSync(file2, "w+");
+    assertEquals(typeof fd2, "number");
     assertEquals(existsSync(file2), true);
-    Deno.removeSync(file);
+    closeSync(fd2);
   },
 });
 
@@ -174,19 +183,13 @@ Deno.test({
   name: "open with flag 'wx+'",
   fn() {
     const file = Deno.makeTempFileSync();
-    Deno.writeTextFileSync(file, "hi there");
-    const fd = openSync(file, "wx+");
-    assertEquals(typeof fd, "number");
-    assertEquals(Deno.readTextFileSync(file), "");
+    assertThrows(
+      () => {
+        openSync(file, "wx+");
+      },
+      Error,
+      `EEXIST: file already exists, open '${file}'`
+    );
     Deno.removeSync(file);
-
-    const file2 = Deno.makeTempFileSync();
-    let err;
-    try {
-      openSync(file2, "wx+");
-    } catch (error) {
-      err = error;
-    }
-    Deno.removeSync(file2);
   },
 });
