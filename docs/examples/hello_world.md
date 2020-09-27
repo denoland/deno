@@ -3,7 +3,7 @@
 ## Concepts
 
 - Deno can run JavaScript or TypeScript out of the box with no additional tools
-  or config required
+  or config required.
 
 ## Overview
 
