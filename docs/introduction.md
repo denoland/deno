@@ -36,7 +36,7 @@ have been historically written with bash or python.
 ## Goals
 
 - Only ship a single executable (`deno`).
-- Provide Secure Defaults
+- Provide Secure Defaults.
   - Unless specifically allowed, scripts can't access files, the environment, or
     the network.
 - Browser compatible: The subset of Deno programs which are written completely
@@ -45,12 +45,12 @@ have been historically written with bash or python.
 - Provide built-in tooling like unit testing, code formatting, and linting to
   improve developer experience.
 - Does not leak V8 concepts into user land.
-- Be able to serve HTTP efficiently
+- Be able to serve HTTP efficiently.
 
 ## Comparison to Node.js
 
-- Deno does not use `npm`
-  - It uses modules referenced as URLs or file paths
+- Deno does not use `npm`.
+  - It uses modules referenced as URLs or file paths.
 - Deno does not use `package.json` in its module resolution algorithm.
 - All async actions in Deno return a promise. Thus Deno provides different APIs
   than Node.
