@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/// This module is meant to eventually implement HTTP cache
-/// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
-/// Currently it's a very simplified version to fulfill Deno needs
-/// at hand.
-use deno_fs as deno_fs;
 use crate::http_util::HeadersMap;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+/// This module is meant to eventually implement HTTP cache
+/// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
+/// Currently it's a very simplified version to fulfill Deno needs
+/// at hand.
+use deno_fs;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;

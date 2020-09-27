@@ -2,7 +2,6 @@
 
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
-use deno_flags;
 use crate::graph::GraphBuilder;
 use crate::graph::TranspileOptions;
 use crate::http_cache;
@@ -12,13 +11,14 @@ use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
-use deno_permissions::Permissions;
 use crate::specifier_handler::FetchHandler;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_flags;
+use deno_permissions::Permissions;
 use std::cell::RefCell;
 use std::env;
 use std::fs;

@@ -227,7 +227,8 @@ pub fn ts_version() -> String {
   if let Some(version) = std::env::var_os("TS_VERSION") {
     version.to_str().unwrap().to_string()
   } else {
-    let mut manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let mut manifest_dir =
+      PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
     manifest_dir.push("../../cli/tsc/00_typescript.js");
     std::fs::read_to_string(manifest_dir.into_os_string().to_str().unwrap())
       .unwrap()
@@ -1508,8 +1509,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
-      flags.net_allowlist =
-        flags_allow_net::parse(raw_net_allowlist).unwrap();
+      flags.net_allowlist = flags_allow_net::parse(raw_net_allowlist).unwrap();
       debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }

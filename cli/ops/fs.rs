@@ -2,7 +2,6 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use deno_permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -12,6 +11,7 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use deno_permissions::Permissions;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Deserialize;

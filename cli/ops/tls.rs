@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::io::{StreamResource, StreamResourceHolder};
-use deno_permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
@@ -15,6 +14,7 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use deno_permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;

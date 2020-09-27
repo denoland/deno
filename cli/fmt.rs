@@ -9,11 +9,11 @@
 
 use crate::colors;
 use crate::diff::diff;
-use deno_fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_fs::files_in_subtree;
 use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;

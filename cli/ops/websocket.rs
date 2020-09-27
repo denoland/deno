@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_permissions::Permissions;
 use core::task::Poll;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -14,6 +13,7 @@ use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_permissions::Permissions;
 use http::{Method, Request, Uri};
 use serde::Deserialize;
 use std::borrow::Cow;

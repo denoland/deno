@@ -4,15 +4,10 @@ use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::js;
-use deno_metrics::Metrics;
 use crate::ops;
 use crate::ops::io::get_stdio;
-use deno_timers as timers;
-use deno_timers::GlobalTimer;
-use deno_timers::StartTime;
 use crate::ops::worker_host::WorkerId;
 use crate::ops::worker_host::WorkersTable;
-use deno_permissions::Permissions;
 use crate::state::CliModuleLoader;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -26,6 +21,11 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_fetch::reqwest;
+use deno_metrics::Metrics;
+use deno_permissions::Permissions;
+use deno_timers as timers;
+use deno_timers::GlobalTimer;
+use deno_timers::StartTime;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::env;
@@ -371,9 +371,9 @@ impl DerefMut for MainWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::global_state::GlobalState;
   use deno_flags::DenoSubcommand;
   use deno_flags::Flags;
-  use crate::global_state::GlobalState;
 
   fn create_test_worker() -> MainWorker {
     let main_module =

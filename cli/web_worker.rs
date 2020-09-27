@@ -3,7 +3,6 @@
 use crate::global_state::GlobalState;
 use crate::js;
 use crate::ops;
-use deno_permissions::Permissions;
 use crate::state::CliModuleLoader;
 use crate::worker::Worker;
 use crate::worker::WorkerEvent;
@@ -14,6 +13,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_permissions::Permissions;
 use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;

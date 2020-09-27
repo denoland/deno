@@ -8,20 +8,20 @@
 //! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
-use deno_permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
+use deno_core::json_op_async;
+use deno_core::json_op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use deno_core::json_op_sync;
-use deno_core::json_op_async;
+use deno_permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::future::Future;
@@ -69,9 +69,18 @@ impl GlobalTimer {
 }
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  rt.register_op("op_global_timer_stop", deno_metrics::metrics_op(json_op_sync(op_global_timer_stop)));
-  rt.register_op("op_global_timer_start", deno_metrics::metrics_op(json_op_sync(op_global_timer_start)));
-  rt.register_op("op_global_timer", deno_metrics::metrics_op(json_op_async(op_global_timer)));
+  rt.register_op(
+    "op_global_timer_stop",
+    deno_metrics::metrics_op(json_op_sync(op_global_timer_stop)),
+  );
+  rt.register_op(
+    "op_global_timer_start",
+    deno_metrics::metrics_op(json_op_sync(op_global_timer_start)),
+  );
+  rt.register_op(
+    "op_global_timer",
+    deno_metrics::metrics_op(json_op_async(op_global_timer)),
+  );
   rt.register_op("op_now", deno_metrics::metrics_op(json_op_sync(op_now)));
 }
 

@@ -1,11 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_flags::Flags;
-use deno_fs::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::url;
+use deno_flags::Flags;
+use deno_fs::resolve_from_cwd;
+#[cfg(test)]
+use lazy_static::lazy_static;
+use log::debug;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::env::current_dir;
@@ -20,9 +23,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::Mutex;
-use log::debug;
-#[cfg(test)]
-use lazy_static::lazy_static;
 extern crate deno_colors as colors;
 
 const PERMISSION_EMOJI: &str = "⚠️";

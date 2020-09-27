@@ -3,7 +3,6 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
-use deno_permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
@@ -17,6 +16,7 @@ use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use deno_permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;

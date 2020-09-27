@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_metrics::metrics_op;
-use deno_permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
@@ -15,6 +13,8 @@ use deno_core::OpAsyncFuture;
 use deno_core::OpId;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use deno_metrics::metrics_op;
+use deno_permissions::Permissions;
 use dlopen::symbor::Library;
 use serde::Deserialize;
 use std::cell::RefCell;

@@ -4,9 +4,9 @@ use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
-use deno_flags::Flags;
 use crate::http_cache::HttpCache;
 use crate::media_type::MediaType;
+use deno_flags::Flags;
 use deno_permissions::Permissions;
 
 use deno_core::error::AnyError;

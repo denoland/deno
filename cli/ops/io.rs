@@ -3,7 +3,6 @@
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
-use deno_metrics::metrics_op;
 use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
@@ -15,6 +14,7 @@ use deno_core::futures::ready;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
+use deno_metrics::metrics_op;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::Pin;

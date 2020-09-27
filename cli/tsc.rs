@@ -7,14 +7,13 @@ use crate::diagnostics::Diagnostics;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use deno_flags::Flags;
 use crate::global_state::GlobalState;
 use crate::js;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
+use deno_flags::Flags;
 // use crate::ops;
-use deno_permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::tsc_config;
 use crate::version;
@@ -29,6 +28,7 @@ use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_permissions::Permissions;
 use log::debug;
 use log::info;
 use log::Level;
@@ -1454,10 +1454,10 @@ impl Serialize for CompilerRequestType {
 mod tests {
   use super::*;
   use crate::deno_dir;
-  use deno_fs as deno_fs;
   use crate::global_state::GlobalState;
   use crate::http_cache;
   use deno_core::ModuleSpecifier;
+  use deno_fs;
   use std::path::PathBuf;
   use tempfile::TempDir;
 

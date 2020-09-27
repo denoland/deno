@@ -27,7 +27,6 @@ pub mod websocket;
 pub mod worker_host;
 
 use crate::global_state::GlobalState;
-use deno_metrics::metrics_op;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
@@ -36,6 +35,7 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use deno_metrics::metrics_op;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;

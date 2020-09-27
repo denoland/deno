@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -8,6 +7,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use deno_permissions::Permissions;
 use serde::Deserialize;
 use std::path::Path;
 

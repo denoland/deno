@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_flags::Flags;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_flags::Flags;
 use log::Level;
 use regex::{Regex, RegexBuilder};
 use std::env;

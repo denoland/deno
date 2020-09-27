@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_permissions::Permissions;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
@@ -10,6 +9,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
