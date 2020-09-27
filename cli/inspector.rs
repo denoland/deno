@@ -10,9 +10,9 @@ use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future::Future;
+use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
-use deno_core::futures::pin_mut;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::task;
 use deno_core::futures::task::Context;
@@ -44,8 +44,8 @@ use warp::Filter;
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
-  shutdown_server_tx: oneshot::Sender<()>,
-  thread_handle: thread::JoinHandle<()>,
+  shutdown_server_tx: Option<oneshot::Sender<()>>,
+  thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl InspectorServer {
@@ -66,8 +66,8 @@ impl InspectorServer {
     Self {
       host,
       register_inspector_tx,
-      shutdown_server_tx,
-      thread_handle,
+      shutdown_server_tx: Some(shutdown_server_tx),
+      thread_handle: Some(thread_handle),
     }
   }
 
@@ -78,8 +78,15 @@ impl InspectorServer {
 
 impl Drop for InspectorServer {
   fn drop(&mut self) {
-    let _ = self.shutdown_server_tx.send(());
-    self.thread_handle.join();
+    if let Some(shutdown_server_tx) = self.shutdown_server_tx.take() {
+      shutdown_server_tx
+        .send(())
+        .expect("unable to send shutdown signal");
+    }
+
+    if let Some(thread_handle) = self.thread_handle.take() {
+      thread_handle.join().expect("unable to join thread");
+    }
   }
 }
 
