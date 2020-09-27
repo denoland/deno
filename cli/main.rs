@@ -559,7 +559,7 @@ async fn test_command(
     return Ok(());
   }
 
-  let test_file_path = cwd.join(".deno.test.ts");
+  let test_file_path = cwd.join("$deno$test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
   let test_file = test_runner::render_test_file(
