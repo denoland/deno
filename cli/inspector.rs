@@ -43,26 +43,42 @@ use warp::Filter;
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
-  _thread_handle: thread::JoinHandle<()>,
+  shutdown_server_tx: oneshot::Sender<()>,
+  thread_handle: thread::JoinHandle<()>,
 }
 
 impl InspectorServer {
   pub fn new(host: SocketAddr) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
+
+    let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
+
     let thread_handle = thread::spawn(move || {
-      crate::tokio_util::run_basic(server(host, register_inspector_rx))
+      crate::tokio_util::run_basic(server(
+        host,
+        register_inspector_rx,
+        shutdown_server_rx,
+      ))
     });
 
     Self {
       host,
       register_inspector_tx,
-      _thread_handle: thread_handle,
+      shutdown_server_tx,
+      thread_handle,
     }
   }
 
   fn register_inspector(&self, info: InspectorInfo) {
     self.register_inspector_tx.unbounded_send(info).unwrap();
+  }
+}
+
+impl Drop for InspectorServer {
+  fn drop(&mut self) {
+    let _ = self.shutdown_server_tx.send(());
+    self.thread_handle.join();
   }
 }
 
@@ -117,24 +133,8 @@ impl InspectorInfo {
 async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
+  shutdown_server_rx: oneshot::Receiver<()>,
 ) {
-  // When the main thread shuts down, The Rust stdlib will call `WSACleanup()`,
-  // which shuts down the network stack. This thread will still be
-  // running at that time (because it never exits), but all attempts at network
-  // I/O will fail with a `WSANOTINITIALIZED` error, which causes a panic.
-  // To prevent this from happening, Winsock is initialized another time here;
-  // this increases Winsock's internal reference count, so it won't shut
-  // itself down when the main thread calls `WSACleanup()` upon exit.
-  // TODO: When the last `Inspector` instance is dropped, make it signal the
-  // server thread so it exits cleanly, then join it with the main thread.
-  #[cfg(windows)]
-  unsafe {
-    use winapi::um::winsock2::{WSAStartup, WSADATA};
-    let mut wsa_data = MaybeUninit::<WSADATA>::zeroed();
-    let r = WSAStartup(0x202 /* Winsock 2.2 */, wsa_data.as_mut_ptr());
-    assert_eq!(r, 0);
-  }
-
   // TODO: put the `inspector_map` in an `Rc<RefCell<_>>` instead. This is
   // currently not possible because warp requires all filters to implement
   // `Send`, which should not be necessary because we are using the
@@ -209,7 +209,9 @@ async fn server(
   let server_routes =
     websocket_route.or(json_version_route).or(json_list_route);
   let mut server_handler = warp::serve(server_routes)
-    .try_bind_ephemeral(host)
+    .try_bind_with_graceful_shutdown(host, async {
+      shutdown_server_rx.await.ok();
+    })
     .map(|(_, fut)| fut)
     .unwrap_or_else(|err| {
       eprintln!("Cannot start inspector server: {}.", err);
@@ -220,7 +222,7 @@ async fn server(
   select! {
     _ = register_inspector_handler => (),
     _ = deregister_inspector_handler => unreachable!(),
-    _ = server_handler => unreachable!(),
+    _ = server_handler => (),
   }
 }
 
