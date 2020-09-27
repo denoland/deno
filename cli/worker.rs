@@ -160,10 +160,7 @@ impl Worker {
           Some(inspector_server.clone()),
         ))
       } else if global_state.flags.cover {
-          Some(DenoInspector::new(
-          &mut isolate,
-          None,
-        ))
+        Some(DenoInspector::new(&mut isolate, None))
       } else {
         None
       };
