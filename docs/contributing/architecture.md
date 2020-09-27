@@ -50,5 +50,5 @@ Metrics is Deno's internal counter for various statistics.
 
 ### Conference
 
-[Ryan Dahl - An interesting case with
-Deno](https://www.youtube.com/watch?v=1b7FoBwxc7E) - Deno Israel - May 27, 2020
+Ryan Dahl. (May 27, 2020). [An interesting case with
+Deno](https://www.youtube.com/watch?v=1b7FoBwxc7E). Deno Israel.
