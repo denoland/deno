@@ -101,7 +101,6 @@ impl WebWorker {
       global_state,
       loader,
       false,
-      false,
     );
 
     let terminated = Arc::new(AtomicBool::new(false));

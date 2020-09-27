@@ -14,18 +14,18 @@ import {
   assertThrowsAsync,
 } from "../testing/asserts.ts";
 import {
-  Response,
-  ServerRequest,
-  Server,
-  serve,
-  serveTLS,
   _parseAddrFromStr,
+  Response,
+  serve,
+  Server,
+  ServerRequest,
+  serveTLS,
 } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../async/delay.ts";
-import { encode, decode } from "../encoding/utf8.ts";
+import { decode, encode } from "../encoding/utf8.ts";
 import { mockConn } from "./_mock_conn.ts";
-import { resolve, dirname, join, fromFileUrl } from "../path/mod.ts";
+import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
 const testdataDir = resolve(moduleDir, "testdata");

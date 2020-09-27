@@ -14,10 +14,16 @@
     bold,
   } = window.__bootstrap.colors;
 
-  const {
-    isInvalidDate,
-    hasOwnProperty,
-  } = window.__bootstrap.webUtil;
+  function isInvalidDate(x) {
+    return isNaN(x.getTime());
+  }
+
+  function hasOwnProperty(obj, v) {
+    if (obj == null) {
+      return false;
+    }
+    return Object.prototype.hasOwnProperty.call(obj, v);
+  }
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js

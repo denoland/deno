@@ -1,4 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 [WILDCARD]
 declare namespace Deno [WILDCARD]
-declare const window: Window [WILDCARD]
+declare var window: Window [WILDCARD]

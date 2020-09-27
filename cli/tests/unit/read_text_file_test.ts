@@ -1,10 +1,10 @@
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
   pathToAbsoluteFileUrl,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function readTextFileSyncSuccess(): void {

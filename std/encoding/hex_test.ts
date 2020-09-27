@@ -7,14 +7,14 @@
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 import {
-  encodedLen,
-  encode,
-  encodeToString,
-  decodedLen,
   decode,
+  decodedLen,
   decodeString,
-  errLength,
+  encode,
+  encodedLen,
+  encodeToString,
   errInvalidByte,
+  errLength,
 } from "./hex.ts";
 
 function toByte(s: string): number {
