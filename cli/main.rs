@@ -587,7 +587,7 @@ async fn test_command(
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
 
-  let mut maybe_coverage_collector = if flags.cover {
+  let mut maybe_coverage_collector = if flags.coverage {
     let inspector = worker
       .inspector
       .as_mut()

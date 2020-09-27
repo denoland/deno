@@ -106,7 +106,7 @@ pub struct Flags {
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
-  pub cover: bool,
+  pub coverage: bool,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
@@ -586,7 +586,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let coverage = matches.is_present("coverage");
 
   if coverage {
-    flags.cover = true;
+    flags.coverage = true;
   }
 
   let include = if matches.is_present("files") {
