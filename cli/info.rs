@@ -16,6 +16,7 @@ use std::sync::Arc;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModuleDepInfo {
+  module: String,
   local: String,
   file_type: String,
   compiled: Option<String>,
@@ -70,6 +71,7 @@ impl ModuleDepInfo {
     let files = FileInfoDepFlatGraph::new(&module_graph);
 
     let info = Self {
+      module: module_specifier.to_string(),
       local: local_filename,
       file_type,
       compiled: compiled_filename,
