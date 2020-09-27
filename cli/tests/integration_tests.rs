@@ -2516,6 +2516,12 @@ itest!(info_type_import {
   output: "info_type_import.out",
 });
 
+itest!(ignore_require {
+  args: "cache --reload --no-check ignore_require.js",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
 #[test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
