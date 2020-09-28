@@ -21,13 +21,13 @@ export class AssertionError extends Error {
 
 export function _format(v: unknown): string {
   return globalThis.Deno
-    ? stripColor(Deno.inspect(v, {
+    ? Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
       trailingComma: true,
       compact: false,
       iterableLimit: Infinity,
-    }))
+    })
     : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
 }
 
