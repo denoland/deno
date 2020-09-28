@@ -141,5 +141,5 @@ Deno process.
 Devtools support is still immature. There is some functionality that is known to
 be missing or buggy:
 
-- autocomplete in Devtools' console causes the Deno process to exit
-- profiling and memory dumps might not work correctly
+- autocomplete in Devtools' console causes the Deno process to exit.
+- profiling and memory dumps might not work correctly.

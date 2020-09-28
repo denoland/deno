@@ -6,13 +6,13 @@
   [Deno.readTextFile](https://doc.deno.land/builtin/stable#Deno.readTextFile)
   and
   [Deno.writeTextFile](https://doc.deno.land/builtin/stable#Deno.writeTextFile)
-  asynchronous functions for reading and writing entire text files
+  asynchronous functions for reading and writing entire text files.
 - Like many of Deno's APIs, synchronous alternatives are also available. See
   [Deno.readTextFileSync](https://doc.deno.land/builtin/stable#Deno.readTextFileSync)
   and
-  [Deno.writeTextFileSync](https://doc.deno.land/builtin/stable#Deno.writeTextFileSync)
+  [Deno.writeTextFileSync](https://doc.deno.land/builtin/stable#Deno.writeTextFileSync).
 - Use `--allow-read` and `--allow-write` permissions to gain access to the file
-  system
+  system.
 
 ## Overview
 

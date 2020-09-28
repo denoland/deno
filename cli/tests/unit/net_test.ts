@@ -533,3 +533,14 @@ unitTest(
     await resolvable;
   },
 );
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  function netExplicitUndefinedHostname() {
+    const listener = Deno.listen({ hostname: undefined, port: 8080 });
+    assertEquals((listener.addr as Deno.NetAddr).hostname, "0.0.0.0");
+    listener.close();
+  },
+);
