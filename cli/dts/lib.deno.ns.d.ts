@@ -1954,6 +1954,8 @@ declare namespace Deno {
     iterableLimit?: number;
     /** Show a Proxy's target and handler. Defaults to false. */
     showProxy?: boolean;
+    /** Print output without ANSI color escapes. Defaults to the value of `Deno.noColor`. */
+    noColor?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

@@ -165,6 +165,8 @@
     compact: true,
     iterableLimit: 100,
     showProxy: false,
+    // TODO(TTtie): pick a sensible default
+    noColor: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -220,8 +222,10 @@
     options,
     inspectOptions,
   ) {
+    const allowColorfulOutput = !inspectOptions.noColor;
     if (level >= inspectOptions.depth) {
-      return cyan(`[${options.typeName}]`);
+      const typeName = `[${options.typeName}]`;
+      return allowColorfulOutput ? cyan(typeName) : typeName;
     }
     ctx.add(value);
 
@@ -407,6 +411,7 @@
     level,
     inspectOptions,
   ) {
+    const allowColorfulOutput = !inspectOptions.noColor;
     const proxyDetails = core.getProxyDetails(value);
     if (proxyDetails != null) {
       return inspectOptions.showProxy
@@ -415,35 +420,61 @@
     }
 
     switch (typeof value) {
-      case "string":
-        return green(quoteString(value));
-      case "number": // Numbers are yellow
+      case "string": {
+        const str = quoteString(value);
+        return allowColorfulOutput ? green(str) : str;
+      }
+      case "number": {
+        // Numbers are yellow
         // Special handling of -0
-        return yellow(Object.is(value, -0) ? "-0" : `${value}`);
-      case "boolean": // booleans are yellow
-        return yellow(String(value));
-      case "undefined": // undefined is dim
-        return dim(String(value));
-      case "symbol": // Symbols are green
-        return green(maybeQuoteSymbol(value));
-      case "bigint": // Bigints are yellow
-        return yellow(`${value}n`);
-      case "function": // Function string is cyan
-        return cyan(inspectFunction(value, ctx));
-      case "object": // null is bold
+        const num = Object.is(value, -0) ? "-0" : `${value}`;
+        return allowColorfulOutput ? yellow(num) : num;
+      }
+      case "boolean": {
+        // booleans are yellow
+        const bool = String(value);
+        return allowColorfulOutput ? yellow(bool) : bool;
+      }
+      case "undefined": {
+        const undef = String(value);
+        // undefined is dim
+        return allowColorfulOutput ? dim(undef) : undef;
+      }
+      case "symbol": {
+        const sym = maybeQuoteSymbol(value);
+        // Symbols are green
+        return allowColorfulOutput ? green(sym) : sym;
+      }
+      case "bigint": {
+        const bint = `${value}n`;
+        // Bigints are yellow
+        return allowColorfulOutput ? yellow(bint) : bint;
+      }
+      case "function": {
+        const func = inspectFunction(value, ctx);
+        // Function string is cyan
+        return allowColorfulOutput ? cyan(func) : func;
+      }
+      case "object": {
+        // null is bold
         if (value === null) {
-          return bold("null");
+          const nullStr = "null";
+          return allowColorfulOutput ? bold(nullStr) : nullStr;
         }
 
         if (ctx.has(value)) {
           // Circular string is cyan
-          return cyan("[Circular]");
+          const circular = "[Circular]";
+          return allowColorfulOutput ? cyan(circular) : circular;
         }
 
         return inspectObject(value, ctx, level, inspectOptions);
-      default:
+      }
+      default: {
+        const notImplementedStr = "[Not Implemented]";
         // Not implemented is red
-        return red("[Not Implemented]");
+        return allowColorfulOutput ? red(notImplementedStr) : notImplementedStr;
+      }
     }
   }
 
@@ -513,11 +544,14 @@
     inspectOptions,
   ) {
     switch (typeof value) {
-      case "string":
+      case "string": {
+        const allowColorfulOutput = !inspectOptions.noColor;
         const trunc = value.length > STR_ABBREVIATE_SIZE
           ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
           : value;
-        return green(quoteString(trunc)); // Quoted strings are green
+        const quotedString = quoteString(trunc);
+        return allowColorfulOutput ? green(quotedString) : quotedString; // Quoted strings are green
+      }
       default:
         return inspectValue(value, ctx, level, inspectOptions);
     }
@@ -529,6 +563,7 @@
     level,
     inspectOptions,
   ) {
+    const allowColorfulOutput = !inspectOptions.noColor;
     const options = {
       typeName: "Array",
       displayName: "",
@@ -544,7 +579,8 @@
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return dim(`<${emptyItems} empty item${ending}>`);
+          const emptyItemString = `<${emptyItems} empty item${ending}>`;
+          return allowColorfulOutput ? dim(emptyItemString) : emptyItemString;
         } else {
           return inspectValueWithQuotes(val, ctx, level, inspectOptions);
         }
@@ -630,33 +666,46 @@
     );
   }
 
-  function inspectWeakSet() {
-    return `WeakSet { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
+  const UNKNOWN_ITEM_STRING = "[items unknown]";
+
+  function inspectWeakSet(allowColorfulOutput) {
+    return `WeakSet { ${
+      allowColorfulOutput ? cyan(UNKNOWN_ITEM_STRING) : UNKNOWN_ITEM_STRING
+    } }`; // as seen in Node, with cyan color
   }
 
-  function inspectWeakMap() {
-    return `WeakMap { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
+  function inspectWeakMap(allowColorfulOutput) {
+    return `WeakMap { ${
+      allowColorfulOutput ? cyan(UNKNOWN_ITEM_STRING) : UNKNOWN_ITEM_STRING
+    } }`; // as seen in Node, with cyan color
   }
 
-  function inspectDate(value) {
+  function inspectDate(value, allowColorfulOutput) {
+    const dateString = isInvalidDate(value)
+      ? "Invalid Date"
+      : value.toISOString();
     // without quotes, ISO format, in magenta like before
-    return magenta(isInvalidDate(value) ? "Invalid Date" : value.toISOString());
+    return allowColorfulOutput ? magenta(dateString) : dateString;
   }
 
-  function inspectRegExp(value) {
-    return red(value.toString()); // RegExps are red
+  function inspectRegExp(value, allowColorfulOutput) {
+    const reString = value.toString();
+    return allowColorfulOutput ? red(reString) : reString; // RegExps are red
   }
 
-  function inspectStringObject(value) {
-    return cyan(`[String: "${value.toString()}"]`); // wrappers are in cyan
+  function inspectStringObject(value, allowColorfulOutput) {
+    const s = `[String: "${value.toString()}"]`;
+    return allowColorfulOutput ? cyan(s) : s; // wrappers are in cyan
   }
 
-  function inspectBooleanObject(value) {
-    return cyan(`[Boolean: ${value.toString()}]`); // wrappers are in cyan
+  function inspectBooleanObject(value, allowColorfulOutput) {
+    const b = `[Boolean: ${value.toString()}]`;
+    return allowColorfulOutput ? cyan(b) : b; // wrappers are in cyan
   }
 
-  function inspectNumberObject(value) {
-    return cyan(`[Number: ${value.toString()}]`); // wrappers are in cyan
+  function inspectNumberObject(value, allowColorfulOutput) {
+    const n = `[Number: ${value.toString()}]`;
+    return allowColorfulOutput ? cyan(n) : n; // wrappers are in cyan
   }
 
   const PromiseState = {
@@ -671,15 +720,18 @@
     level,
     inspectOptions,
   ) {
+    const allowColorfulOutput = !inspectOptions.noColor;
     const [state, result] = core.getPromiseDetails(value);
 
     if (state === PromiseState.Pending) {
-      return `Promise { ${cyan("<pending>")} }`;
+      return `Promise { ${
+        allowColorfulOutput ? cyan("<pending>") : "<pending>"
+      } }`;
     }
 
     const prefix = state === PromiseState.Fulfilled
       ? ""
-      : `${red("<rejected>")} `;
+      : `${allowColorfulOutput ? red("<rejected>") : "<rejected>"} `;
 
     const str = `${prefix}${
       inspectValueWithQuotes(
@@ -714,8 +766,9 @@
     level,
     inspectOptions,
   ) {
+    const allowColorfulOutput = !inspectOptions.noColor;
     if (level >= inspectOptions.depth) {
-      return cyan("[Object]"); // wrappers are in cyan
+      return allowColorfulOutput ? cyan("[Object]") : "[Object]"; // wrappers are in cyan
     }
     ctx.add(value);
 
@@ -817,30 +870,32 @@
         return String(value[nonUniqueCustomInspect]());
       } catch {}
     }
+
+    const allowColorfulOutput = !inspectOptions.noColor;
     if (value instanceof Error) {
       return String(value.stack);
     } else if (Array.isArray(value)) {
       return inspectArray(value, consoleContext, level, inspectOptions);
     } else if (value instanceof Number) {
-      return inspectNumberObject(value);
+      return inspectNumberObject(value, allowColorfulOutput);
     } else if (value instanceof Boolean) {
-      return inspectBooleanObject(value);
+      return inspectBooleanObject(value, allowColorfulOutput);
     } else if (value instanceof String) {
-      return inspectStringObject(value);
+      return inspectStringObject(value, allowColorfulOutput);
     } else if (value instanceof Promise) {
       return inspectPromise(value, consoleContext, level, inspectOptions);
     } else if (value instanceof RegExp) {
-      return inspectRegExp(value);
+      return inspectRegExp(value, allowColorfulOutput);
     } else if (value instanceof Date) {
-      return inspectDate(value);
+      return inspectDate(value, allowColorfulOutput);
     } else if (value instanceof Set) {
       return inspectSet(value, consoleContext, level, inspectOptions);
     } else if (value instanceof Map) {
       return inspectMap(value, consoleContext, level, inspectOptions);
     } else if (value instanceof WeakSet) {
-      return inspectWeakSet();
+      return inspectWeakSet(allowColorfulOutput);
     } else if (value instanceof WeakMap) {
-      return inspectWeakMap();
+      return inspectWeakMap(allowColorfulOutput);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
         Object.getPrototypeOf(value).constructor.name,
