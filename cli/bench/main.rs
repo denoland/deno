@@ -221,8 +221,7 @@ fn bundle_benchmark(deno_exe: &PathBuf) -> Result<Value> {
     );
 
     let file = PathBuf::from(path);
-    // assert!(file.is_file());
-    println!("{:?}", &file);
+    assert!(file.is_file());
     sizes.insert(
       name.to_string(),
       Value::Number(Number::from(file.metadata()?.len())),
