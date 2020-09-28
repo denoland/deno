@@ -6,10 +6,15 @@ const UUID_RE = new RegExp(
   "i",
 );
 
+/**
+ * Validates the UUID v4
+ * @param id UUID value
+ */
 export function validate(id: string): boolean {
   return UUID_RE.test(id);
 }
 
+/** Generates a RFC4122 v4 UUID (pseudo-randomly-based) */
 export function generate(): string {
   const rnds = crypto.getRandomValues(new Uint8Array(16));
 
