@@ -971,6 +971,7 @@ fn bundle_import_map() {
 
 #[test]
 fn bundle_js_watch() {
+  use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -997,6 +998,8 @@ fn bundle_js_watch() {
 
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
   assert!(stderr_lines.next().unwrap().contains("Process terminated!"));
 
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1009,6 +1012,8 @@ fn bundle_js_watch() {
     .unwrap()
     .contains("File change detected!"));
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
   assert!(stderr_lines.next().unwrap().contains("Process terminated!"));
 
   deno.kill().unwrap();
