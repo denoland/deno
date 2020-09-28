@@ -354,7 +354,7 @@ async fn bundle_command(
 
     file_watcher::watch_func(&paths_to_watch, move || save_to_output()).await?;
   } else {
-      save_to_output().await?;
+    save_to_output().await?;
   }
   Ok(())
 }
