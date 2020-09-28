@@ -9,6 +9,7 @@ use test_util as util;
 
 #[test]
 fn std_tests() {
+  std::env::set_var("TZ", "UTC");
   let dir = TempDir::new().expect("tempdir fail");
   let std_config = util::root_path().join("std/tsconfig_test.json");
   let status = util::deno_cmd()
