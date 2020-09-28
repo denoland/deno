@@ -54,7 +54,6 @@ mod tsc;
 mod tsc_config;
 mod upgrade;
 pub mod version;
-mod web_worker;
 pub mod worker;
 
 use crate::coverage::CoverageCollector;
