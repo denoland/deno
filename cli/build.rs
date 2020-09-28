@@ -91,20 +91,6 @@ fn create_compiler_snapshot(
   create_snapshot(isolate, snapshot_path, files);
 }
 
-fn ts_version() -> String {
-  std::fs::read_to_string("tsc/00_typescript.js")
-    .unwrap()
-    .lines()
-    .find(|l| l.contains("ts.version = "))
-    .expect(
-      "Failed to find the pattern `ts.version = ` in typescript source code",
-    )
-    .chars()
-    .skip_while(|c| !char::is_numeric(*c))
-    .take_while(|c| *c != '"')
-    .collect::<String>()
-}
-
 fn main() {
   // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
   if env::var_os("RUSTDOCFLAGS").is_some() {
@@ -114,7 +100,7 @@ fn main() {
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
-  println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  println!("cargo:rustc-env=TS_VERSION={}", deno_version::ts_version());
   println!(
     "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
     deno_web::get_declaration().display()
