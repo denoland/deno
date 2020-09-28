@@ -1255,19 +1255,19 @@ export default class Context {
         }
 
         if ((fdflags & FDFLAGS_DSYNC) != 0) {
-          // TODO (caspervonb) rememoryView if we can emulate this.
+          // TODO (caspervonb) review if we can emulate this.
         }
 
         if ((fdflags & FDFLAGS_NONBLOCK) != 0) {
-          // TODO (caspervonb) rememoryView if we can emulate this.
+          // TODO (caspervonb) review if we can emulate this.
         }
 
         if ((fdflags & FDFLAGS_RSYNC) != 0) {
-          // TODO (caspervonb) rememoryView if we can emulate this.
+          // TODO (caspervonb) review if we can emulate this.
         }
 
         if ((fdflags & FDFLAGS_SYNC) != 0) {
-          // TODO (caspervonb) rememoryView if we can emulate this.
+          // TODO (caspervonb) review if we can emulate this.
         }
 
         if (!options.read && !options.write && !options.truncate) {
