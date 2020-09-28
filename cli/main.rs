@@ -290,7 +290,7 @@ async fn bundle_command(
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
-  let global_state = GlobalState::new(flags)?;
+  let global_state = GlobalState::new(flags.clone())?;
 
   info!(
     "{} {}",
@@ -298,25 +298,64 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = global_state
-    .ts_compiler
-    .bundle(&global_state, module_specifier)
-    .await?;
+  let save_to_output = || {
+    let gs = GlobalState::new(flags.clone()).unwrap();
+    let _module_specifier = module_specifier.clone();
+    let _out_file = out_file.clone();
+    async move {
+      let output = gs.ts_compiler.bundle(&gs, _module_specifier).await?;
 
-  debug!(">>>>> bundle END");
+      debug!(">>>>> bundle END");
 
-  if let Some(out_file_) = out_file.as_ref() {
-    let output_bytes = output.as_bytes();
-    let output_len = output_bytes.len();
-    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
-    info!(
-      "{} {:?} ({})",
-      colors::green("Emit"),
-      out_file_,
-      colors::gray(&info::human_size(output_len as f64))
+      if let Some(out_file_) = _out_file.clone().as_ref() {
+        let output_bytes = output.as_bytes();
+        let output_len = output_bytes.len();
+        deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+        info!(
+          "{} {:?} ({})",
+          colors::green("Emit"),
+          out_file_,
+          colors::gray(&info::human_size(output_len as f64))
+        );
+      } else {
+        println!("{}", output);
+      }
+      Ok(())
+    }
+    .boxed_local()
+  };
+
+  if flags.watch {
+    let mut module_graph_loader = module_graph::ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      global_state.maybe_import_map.clone(),
+      Permissions::allow_all(),
+      false,
+      false,
     );
+    module_graph_loader
+      .add_to_graph(&module_specifier, None)
+      .await?;
+
+    let mut paths_to_watch: Vec<PathBuf> = module_graph_loader
+      .get_graph()
+      .values()
+      .map(|f| Url::parse(&f.url).unwrap())
+      .filter(|url| url.scheme() == "file")
+      .map(|url| url.to_file_path().unwrap())
+      .collect();
+
+    if let Some(import_map) = global_state.flags.import_map_path.clone() {
+      paths_to_watch.push(
+        Url::parse(&format!("file://{}", &import_map))?
+          .to_file_path()
+          .unwrap(),
+      );
+    }
+
+    file_watcher::watch_func(&paths_to_watch, move || save_to_output()).await?;
   } else {
-    println!("{}", output);
+    save_to_output();
   }
   Ok(())
 }

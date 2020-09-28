@@ -970,6 +970,52 @@ fn bundle_import_map() {
 }
 
 #[test]
+fn bundle_js_watch() {
+  // Test strategy extends this of test bundle_js by adding watcher
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "console.log('Hello world');")
+    .expect("error writing file");
+  assert!(file_to_watch.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(file_to_watch.clone())
+    .arg(&bundle)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated!"));
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  std::fs::write(&file_to_watch, "console.log('Hello world2');")
+    .expect("error writing file");
+
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated!"));
+
+  deno.kill().unwrap();
+  drop(t);
+}
+
+#[test]
 fn info_with_compiled_source() {
   let _g = util::http_server();
   let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";

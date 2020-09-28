@@ -424,6 +424,8 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  flags.watch = matches.is_present("watch");
+
   flags.subcommand = DenoSubcommand::Bundle {
     source_file,
     out_file,
@@ -787,6 +789,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("bundle")
     // TODO(nayeemrmn): Replace the next couple lines with `compile_args()` once
     // `deno bundle --no-check` is supported.
+    .arg(watch_arg())
     .arg(importmap_arg())
     .arg(no_remote_arg())
     .arg(config_arg())
