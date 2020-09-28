@@ -33,7 +33,12 @@ use std::rc::Rc;
 
 pub use reqwest; // Re-export reqwest
 
-fn init(isolate: &mut JsRuntime, build_time: bool) {
+/// Execute this crates' JS source files.
+///
+/// Second parameter indicates if it's running during
+/// build time. In that case relevant "cargo" directives
+/// will be printed.
+pub fn init(isolate: &mut JsRuntime, build_time: bool) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let files = vec![
     manifest_dir.join("01_fetch_util.js"),
@@ -59,14 +64,6 @@ fn init(isolate: &mut JsRuntime, build_time: bool) {
       )
       .unwrap();
   }
-}
-
-pub fn init_buildtime(isolate: &mut JsRuntime) {
-  init(isolate, true)
-}
-
-pub fn init_runtime(isolate: &mut JsRuntime) {
-  init(isolate, false)
 }
 
 pub trait FetchPermissions {
