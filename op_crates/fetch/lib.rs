@@ -67,6 +67,14 @@ pub fn init(isolate: &mut JsRuntime, build_time: bool) {
 }
 
 pub trait FetchPermissions {
+  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
+  fn check_read(&self, _p: &PathBuf) -> Result<(), AnyError>;
+}
+
+/// For use with `op_fetch` when the user does not want permissions.
+pub struct NoFetchPermissions;
+
+impl FetchPermissions for NoFetchPermissions {
   fn check_net_url(&self, _url: &Url) -> Result<(), AnyError> {
     Ok(())
   }
