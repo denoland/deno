@@ -543,7 +543,6 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
-  coverage: bool,
 ) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -587,7 +586,7 @@ async fn test_command(
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
 
-  let mut maybe_coverage_collector = if coverage {
+  let mut maybe_coverage_collector = if flags.coverage {
     let inspector = worker
       .inspector
       .as_mut()
@@ -737,11 +736,8 @@ pub fn main() {
       include,
       allow_none,
       filter,
-      coverage,
-    } => test_command(
-      flags, include, fail_fast, quiet, allow_none, filter, coverage,
-    )
-    .boxed_local(),
+    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
+      .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
