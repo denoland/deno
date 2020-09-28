@@ -46,7 +46,6 @@ fn op_start(
     "tsVersion": version::TYPESCRIPT,
     "unstableFlag": gs.flags.unstable,
     "v8Version": version::v8(),
-    "versionFlag": gs.flags.version,
   }))
 }
 
