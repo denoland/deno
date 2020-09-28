@@ -33,7 +33,7 @@ use std::rc::Rc;
 
 pub use reqwest; // Re-export reqwest
 
-pub fn init(isolate: &mut JsRuntime) {
+fn init(isolate: &mut JsRuntime, build_time: bool) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let files = vec![
     manifest_dir.join("01_fetch_util.js"),
@@ -46,7 +46,10 @@ pub fn init(isolate: &mut JsRuntime) {
   // workspace root.
   let display_root = manifest_dir.parent().unwrap().parent().unwrap();
   for file in files {
-    println!("cargo:rerun-if-changed={}", file.display());
+    if build_time {
+      println!("cargo:rerun-if-changed={}", file.display());
+    }
+
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
     isolate
@@ -58,9 +61,22 @@ pub fn init(isolate: &mut JsRuntime) {
   }
 }
 
+pub fn init_buildtime(isolate: &mut JsRuntime) {
+  init(isolate, true)
+}
+
+pub fn init_runtime(isolate: &mut JsRuntime) {
+  init(isolate, false)
+}
+
 pub trait FetchPermissions {
-  fn check_net_url(&self, url: &Url) -> Result<(), AnyError>;
-  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError>;
+  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn check_read(&self, _p: &PathBuf) -> Result<(), AnyError> {
+    Ok(())
+  }
 }
 
 pub fn get_declaration() -> PathBuf {

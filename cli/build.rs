@@ -15,7 +15,7 @@ fn create_snapshot(
   files: Vec<PathBuf>,
 ) {
   deno_web::init(&mut isolate);
-  deno_fetch::init(&mut isolate);
+  deno_fetch::init_buildtime(&mut isolate);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
