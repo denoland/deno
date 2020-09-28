@@ -688,7 +688,11 @@ export default class Context {
           const dataLength = memoryView.getUint32(iovsOffset, true);
           iovsOffset += 4;
 
-          const data = new Uint8Array(this.memory.buffer, dataOffset, dataLength);
+          const data = new Uint8Array(
+            this.memory.buffer,
+            dataOffset,
+            dataLength,
+          );
           nread += Deno.readSync(entry.rid!, data) as number;
         }
 
@@ -765,7 +769,11 @@ export default class Context {
           const dataLength = memoryView.getUint32(iovsOffset, true);
           iovsOffset += 4;
 
-          const data = new Uint8Array(this.memory.buffer, dataOffset, dataLength);
+          const data = new Uint8Array(
+            this.memory.buffer,
+            dataOffset,
+            dataLength,
+          );
           nwritten += Deno.writeSync(entry.rid!, data) as number;
         }
 
@@ -796,7 +804,11 @@ export default class Context {
           const dataLength = memoryView.getUint32(iovsOffset, true);
           iovsOffset += 4;
 
-          const data = new Uint8Array(this.memory.buffer, dataOffset, dataLength);
+          const data = new Uint8Array(
+            this.memory.buffer,
+            dataOffset,
+            dataLength,
+          );
           nread += Deno.readSync(entry.rid!, data) as number;
         }
 
@@ -968,7 +980,11 @@ export default class Context {
           const dataLength = memoryView.getUint32(iovsOffset, true);
           iovsOffset += 4;
 
-          const data = new Uint8Array(this.memory.buffer, dataOffset, dataLength);
+          const data = new Uint8Array(
+            this.memory.buffer,
+            dataOffset,
+            dataLength,
+          );
           nwritten += Deno.writeSync(entry.rid!, data) as number;
         }
 
