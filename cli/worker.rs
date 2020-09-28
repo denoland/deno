@@ -134,6 +134,8 @@ impl Worker {
           &mut isolate,
           Some(inspector_server.clone()),
         ))
+      } else if global_state.flags.coverage {
+        Some(DenoInspector::new(&mut isolate, None))
       } else {
         None
       };

@@ -452,6 +452,11 @@ impl DenoInspector {
     &self,
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
+    // Short-circuit if there is no server
+    if self.server.is_none() {
+      return Ok(Poll::Ready(()));
+    }
+
     // The futures this function uses do not have re-entrant poll() functions.
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
     // when an interrupt request is honored while the inspector future is polled
