@@ -20,10 +20,10 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import {
+  CHAR_BACKWARD_SLASH,
+  CHAR_FORWARD_SLASH,
   CHAR_LOWERCASE_A,
   CHAR_LOWERCASE_Z,
-  CHAR_FORWARD_SLASH,
-  CHAR_BACKWARD_SLASH,
 } from "../path/_constants.ts";
 import * as path from "./path.ts";
 

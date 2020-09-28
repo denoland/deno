@@ -3,9 +3,9 @@ import { xeval } from "./xeval.ts";
 import { StringReader } from "../io/readers.ts";
 import { decode, encode } from "../encoding/utf8.ts";
 import {
+  assert,
   assertEquals,
   assertStringContains,
-  assert,
 } from "../testing/asserts.ts";
 import { dirname, fromFileUrl } from "../path/mod.ts";
 

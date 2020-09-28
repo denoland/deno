@@ -5,12 +5,12 @@
 
 ## Concepts
 
-- Use the `--unstable` flag to access new or unstable features in Deno
+- Use the `--unstable` flag to access new or unstable features in Deno.
 - [Deno.signal](https://doc.deno.land/builtin/unstable#Deno.signal) can be used
-  to capture and monitor OS signals
+  to capture and monitor OS signals.
 - Use the `dispose()` function of the Deno.signal
   [SignalStream](https://doc.deno.land/builtin/unstable#Deno.SignalStream) to
-  stop watching the signal
+  stop watching the signal.
 
 ## Async iterator example
 

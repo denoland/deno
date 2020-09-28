@@ -9,9 +9,9 @@
  * **to run this test**
  * deno run --allow-read archive/tar_test.ts
  */
-import { assertEquals, assert } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
 
-import { resolve, dirname, fromFileUrl } from "../path/mod.ts";
+import { dirname, fromFileUrl, resolve } from "../path/mod.ts";
 import { Tar, Untar } from "./tar.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));

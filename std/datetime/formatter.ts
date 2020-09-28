@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   CallbackResult,
+  ReceiverResult,
   Rule,
   TestFunction,
   TestResult,
   Tokenizer,
-  ReceiverResult,
 } from "./tokenizer.ts";
 
 function digits(value: string | number, count = 2): string {

@@ -2,10 +2,10 @@
 import {
   assert as denoAssert,
   assertEquals,
-  assertNotEquals,
-  assertStrictEquals,
-  assertNotStrictEquals,
   assertMatch,
+  assertNotEquals,
+  assertNotStrictEquals,
+  assertStrictEquals,
   assertThrows,
   fail as denoFail,
 } from "../testing/asserts.ts";
@@ -13,16 +13,16 @@ import {
 import AssertionError from "./assertion_error.ts";
 
 import assert, {
-  ok,
   assert as assert_,
-  deepStrictEqual,
-  notDeepStrictEqual,
-  strictEqual,
-  notStrictEqual,
-  match,
-  throws,
-  fail,
   AssertionError as AssertionError_,
+  deepStrictEqual,
+  fail,
+  match,
+  notDeepStrictEqual,
+  notStrictEqual,
+  ok,
+  strictEqual,
+  throws,
 } from "./assert.ts";
 
 Deno.test("API should be exposed", () => {

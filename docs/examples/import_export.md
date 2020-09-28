@@ -5,10 +5,10 @@
 - [import](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import)
   allows you to include and use modules held elsewhere, on your local file
   system or remotely.
-- Imports are URLs or file system paths
+- Imports are URLs or file system paths.
 - [export](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
   allows you to specify which parts of your module are accessible to users who
-  import your module
+  import your module.
 
 ## Overview
 
@@ -20,10 +20,7 @@ specified in full. You may not omit the file extension and there is no special
 handling of `index.js`.
 
 ```js
-import {
-  add,
-  multiply,
-} from "./arithmetic.ts";
+import { add, multiply } from "./arithmetic.ts";
 ```
 
 Dependencies are also imported directly, there is no package management

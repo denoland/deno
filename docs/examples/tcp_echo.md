@@ -3,9 +3,9 @@
 ## Concepts
 
 - Listening for TCP port connections with
-  [Deno.listen](https://doc.deno.land/builtin/stable#Deno.listen)
+  [Deno.listen](https://doc.deno.land/builtin/stable#Deno.listen).
 - Use [Deno.copy](https://doc.deno.land/builtin/stable#Deno.copy) to take
-  inbound data and redirect it to be outbound data
+  inbound data and redirect it to be outbound data.
 
 ## Example
 

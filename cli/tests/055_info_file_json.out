@@ -1,4 +1,5 @@
 {
+  "module": "file://[WILDCARD]005_more_imports.ts",
   "local": "[WILDCARD]005_more_imports.ts",
   "fileType": "TypeScript",
   "compiled": null,

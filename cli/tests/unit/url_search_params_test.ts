@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function urlSearchParamsWithMultipleSpaces(): void {
   const init = { str: "this string has spaces in it" };

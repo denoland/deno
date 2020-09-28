@@ -9,11 +9,11 @@ import {
   readVarnum,
   sizeof,
   varbig,
+  varbigBytes,
   varnum,
+  varnumBytes,
   writeVarbig,
   writeVarnum,
-  varbigBytes,
-  varnumBytes,
 } from "./binary.ts";
 
 Deno.test("testGetNBytes", async function (): Promise<void> {
