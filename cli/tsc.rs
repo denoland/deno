@@ -267,18 +267,21 @@ fn maybe_log_stats(maybe_stats: Option<Vec<Stat>>) {
 }
 
 pub struct TsCompilerInner {
-  pub file_fetcher: SourceFileFetcher,
-  pub flags: Flags,
-  pub config: CompilerConfig,
-  pub disk_cache: DiskCache,
+  file_fetcher: SourceFileFetcher,
+  config: CompilerConfig,
+  disk_cache: DiskCache,
   /// Set of all URLs that have been compiled. This prevents double
   /// compilation of module.
-  pub compiled: Mutex<HashSet<Url>>,
+  compiled: Mutex<HashSet<Url>>,
   /// This setting is controlled by `--reload` flag. Unless the flag
   /// is provided disk cache is used.
-  pub use_disk_cache: bool,
+  use_disk_cache: bool,
   /// This setting is controlled by `compilerOptions.checkJs`
   pub compile_js: bool,
+  /// Allow to use "unstable" APIs in compiled code.
+  unstable: bool,
+  /// Track performance of TSC
+  performance: bool,
 }
 
 #[derive(Clone)]
@@ -349,12 +352,13 @@ impl TsCompiler {
 
     Ok(TsCompiler(Arc::new(TsCompilerInner {
       file_fetcher,
-      flags,
       disk_cache,
       compile_js: config.compile_js,
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
+      performance: matches!(flags.log_level, Some(Level::Debug)),
+      unstable: flags.unstable,
     })))
   }
 
@@ -485,8 +489,7 @@ impl TsCompiler {
       TargetLib::Worker => "worker",
     };
     let root_names = vec![module_url.to_string()];
-    let unstable = self.flags.unstable;
-    let performance = matches!(self.flags.log_level, Some(Level::Debug));
+    let unstable = self.unstable;
     let compiler_config = self.config.clone();
 
     // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
@@ -535,7 +538,7 @@ impl TsCompiler {
       "type": CompilerRequestType::Compile,
       "target": target,
       "rootNames": root_names,
-      "performance": performance,
+      "performance": self.performance,
       "compilerOptions": compiler_options,
       "sourceFileMap": module_graph_json,
       "buildInfo": if self.use_disk_cache { build_info } else { None },
@@ -611,9 +614,7 @@ impl TsCompiler {
 
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
-    let performance =
-      matches!(global_state.flags.log_level, Some(Level::Debug));
-    let unstable = self.flags.unstable;
+    let unstable = self.unstable;
 
     let mut lib = if target == "main" {
       vec!["deno.window"]
@@ -655,7 +656,7 @@ impl TsCompiler {
       "type": CompilerRequestType::Bundle,
       "target": target,
       "rootNames": root_names,
-      "performance": performance,
+      "performance": self.performance,
       "compilerOptions": compiler_options,
       "sourceFileMap": module_graph_json,
     });
@@ -1540,15 +1541,9 @@ mod tests {
       vec![String::from("deno"), String::from("hello.ts")],
       None,
     );
-    let file_fetcher = SourceFileFetcher::new(
-      http_cache,
-      true,
-      mock_state.flags.cache_blocklist.clone(),
-      false,
-      false,
-      None,
-    )
-    .unwrap();
+    let file_fetcher =
+      SourceFileFetcher::new(http_cache, true, vec![], false, false, None)
+        .unwrap();
 
     let mut module_graph_loader = ModuleGraphLoader::new(
       file_fetcher.clone(),
