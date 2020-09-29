@@ -129,10 +129,6 @@ impl CoverageCollector {
       .await?;
 
     self
-      .post_message("Runtime.enable".to_string(), None)
-      .await?;
-
-    self
       .post_message("Profiler.enable".to_string(), None)
       .await?;
 
@@ -183,9 +179,6 @@ impl CoverageCollector {
       .await?;
     self
       .post_message("Profiler.disable".to_string(), None)
-      .await?;
-    self
-      .post_message("Runtime.disable".to_string(), None)
       .await?;
     self
       .post_message("Debugger.disable".to_string(), None)
