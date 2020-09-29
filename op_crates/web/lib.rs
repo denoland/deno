@@ -37,7 +37,7 @@ pub fn op_domain_to_ascii(
   .map(|domain| json!(domain))
 }
 
-pub fn init(isolate: &mut JsRuntime) {
+pub fn init(isolate: &mut JsRuntime, build_time: bool) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let files = vec![
     manifest_dir.join("00_dom_exception.js"),
@@ -51,7 +51,9 @@ pub fn init(isolate: &mut JsRuntime) {
   // workspace root.
   let display_root = manifest_dir.parent().unwrap().parent().unwrap();
   for file in files {
-    println!("cargo:rerun-if-changed={}", file.display());
+    if build_time {
+      println!("cargo:rerun-if-changed={}", file.display());
+    }
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
     isolate
