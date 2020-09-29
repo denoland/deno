@@ -65,6 +65,7 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
+use crate::specifier_handler::FetchHandler;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -81,12 +82,14 @@ use flags::Flags;
 use global_state::exit_unstable;
 use log::Level;
 use log::LevelFilter;
+use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use upgrade::upgrade_command;
 
@@ -289,7 +292,7 @@ async fn bundle_command(
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
-  let global_state = GlobalState::new(flags)?;
+  let global_state = GlobalState::new(flags.clone())?;
 
   info!(
     "{} {}",
@@ -297,10 +300,37 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = global_state
-    .ts_compiler
-    .bundle(&global_state, module_specifier)
-    .await?;
+  let output = if flags.no_check {
+    let handler = Rc::new(RefCell::new(FetchHandler::new(
+      &global_state,
+      Permissions::allow_all(),
+    )?));
+    let mut builder = module_graph_2::GraphBuilder::new(
+      handler,
+      global_state.maybe_import_map.clone(),
+    );
+    builder.insert(&module_specifier).await?;
+    let graph = builder.get_graph(&global_state.lockfile)?;
+
+    let (s, stats, maybe_ignored_options) =
+      graph.bundle(module_graph_2::BundleOptions {
+        check: false,
+        debug: flags.log_level == Some(Level::Debug),
+        maybe_config_path: flags.config_path,
+      })?;
+
+    debug!("{}", stats);
+    if let Some(ignored_options) = maybe_ignored_options {
+      println!("{}", ignored_options);
+    }
+
+    s
+  } else {
+    global_state
+      .ts_compiler
+      .bundle(&global_state, module_specifier)
+      .await?
+  };
 
   debug!(">>>>> bundle END");
 
