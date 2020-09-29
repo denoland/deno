@@ -191,7 +191,7 @@
   }
 
   function maybeColor(fn, inspectOptions) {
-    return maybeColor(fn, inspectOptions);
+    return inspectOptions.colors ? fn : (s) => s;
   }
 
   function inspectFunction(value, _ctx) {
