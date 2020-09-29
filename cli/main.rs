@@ -275,6 +275,8 @@ async fn eval_command(
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
   debug!("main_module {}", &main_module);
+
+  // worker.load_module();
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;

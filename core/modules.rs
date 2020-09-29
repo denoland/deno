@@ -339,7 +339,11 @@ impl Stream for RecursiveModuleLoad {
 pub struct ModuleInfo {
   pub main: bool,
   pub name: String,
-  pub handle: v8::Global<v8::Module>,
+  pub handle: Option<v8::Global<v8::Module>>,
+  pub state: LoadState {
+    Loading(shared_future),
+    Loaded,
+  },
   pub import_specifiers: Vec<ModuleSpecifier>,
 }
 

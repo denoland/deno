@@ -524,6 +524,14 @@ impl Future for JsRuntime {
   }
 }
 
+HashMap<Url, LoadState>
+
+enum LoadState {
+  Loading(future),
+  Loaded(Global<Value>)
+}
+
+
 impl JsRuntimeState {
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn module_resolve_cb(
@@ -750,6 +758,10 @@ impl JsRuntime {
         state.pending_promise_exceptions.remove(&promise_id);
         // FIXME(bartlomieju): this promise should be awaited
         assert!(promise.state() != v8::PromiseState::Pending);
+        // stick in the table
+        // return bye for now
+        // start polling event loop
+        // - 
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
