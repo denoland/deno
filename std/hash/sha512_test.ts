@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { HmacSha512, Message, Sha512 } from "./sha512.ts";
+import { HmacSha512, Message, SHA512 } from "./sha512.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
@@ -283,7 +283,7 @@ for (const method of methods) {
       Deno.test({
         name: `sha512/224.${method}() - ${name} - #${i++}`,
         fn() {
-          const algorithm = new Sha512(224);
+          const algorithm = new SHA512(224);
           algorithm.update(message);
           const actual = method === "hex"
             ? algorithm[method]()
@@ -302,7 +302,7 @@ for (const method of methods) {
       Deno.test({
         name: `sha512/256.${method}() - ${name} - #${i++}`,
         fn() {
-          const algorithm = new Sha512(256);
+          const algorithm = new SHA512(256);
           algorithm.update(message);
           const actual = method === "hex"
             ? algorithm[method]()
@@ -321,7 +321,7 @@ for (const method of methods) {
       Deno.test({
         name: `sha512.${method}() - ${name} - #${i++}`,
         fn() {
-          const algorithm = new Sha512();
+          const algorithm = new SHA512();
           algorithm.update(message);
           const actual = method === "hex"
             ? algorithm[method]()
@@ -392,7 +392,7 @@ for (const method of methods) {
 
 Deno.test("[hash/sha512] test Uint8Array from Reader", async () => {
   const data = await Deno.readFile(join(testdataDir, "hashtest"));
-  const hash = new Sha512().update(data).hex();
+  const hash = new SHA512().update(data).hex();
   assertEquals(
     hash,
     "ee26b0dd4af7e749aa1a8ee3c10ae9923f618980772e473f8819a5d4940e0db27ac185f8a0e1d5f84f88bc887fd67b143732c304cc5fa9ad8e6f57f50028a8ff",

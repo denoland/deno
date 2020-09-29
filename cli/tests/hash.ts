@@ -3,10 +3,10 @@
 const { args } = Deno;
 import { createHash, SupportedAlgorithm } from "../../std/hash/mod.ts";
 import { Md5 } from "../../std/hash/md5.ts";
-import { Sha1 } from "../../std/hash/sha1.ts";
-import { Sha256 } from "../../std/hash/sha256.ts";
-import { Sha512 } from "../../std/hash/sha512.ts";
-import { Sha3_224, Sha3_256, Sha3_384, Sha3_512 } from "../../std/hash/sha3.ts";
+import { SHA1 } from "../../std/hash/sha1.ts";
+import { SHA256 } from "../../std/hash/sha256.ts";
+import { SHA512 } from "../../std/hash/sha512.ts";
+import { SHA3_225, SHA3_256, SHA3_384, SHA3_512 } from "../../std/hash/sha3.ts";
 
 if (args.length < 3) Deno.exit(0);
 
@@ -19,21 +19,21 @@ function getJsHash(alg: string): any {
     case "md5":
       return new Md5();
     case "sha1":
-      return new Sha1();
+      return new SHA1();
     case "sha224":
-      return new Sha256(true);
+      return new SHA256(true);
     case "sha256":
-      return new Sha256();
+      return new SHA256();
     case "sha3-224":
-      return new Sha3_224();
+      return new SHA3_225();
     case "sha3-256":
-      return new Sha3_256();
+      return new SHA3_256();
     case "sha3-384":
-      return new Sha3_384();
+      return new SHA3_384();
     case "sha3-512":
-      return new Sha3_512();
+      return new SHA3_512();
     case "sha512":
-      return new Sha512();
+      return new SHA512();
     default:
       return null;
   }

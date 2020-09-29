@@ -32,7 +32,7 @@ const K = [
 
 const blocks: number[] = [];
 
-export class Sha256 {
+export class SHA256 {
   #block!: number;
   #blocks!: number[];
   #bytes!: number;
@@ -467,7 +467,7 @@ export class Sha256 {
   }
 }
 
-export class HmacSha256 extends Sha256 {
+export class HmacSha256 extends SHA256 {
   #inner: boolean;
   #is224: boolean;
   #oKeyPad: number[];
@@ -511,7 +511,7 @@ export class HmacSha256 extends Sha256 {
     }
 
     if (key.length > 64) {
-      key = new Sha256(is224, true).update(key).array();
+      key = new SHA256(is224, true).update(key).array();
     }
 
     const oKeyPad: number[] = [];

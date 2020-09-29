@@ -16,7 +16,7 @@ const SHIFT = [24, 16, 8, 0] as const;
 
 const blocks: number[] = [];
 
-export class Sha1 {
+export class SHA1 {
   #blocks!: number[];
   #block!: number;
   #start!: number;

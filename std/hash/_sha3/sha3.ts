@@ -4,7 +4,7 @@ import { Sponge } from "./sponge.ts";
 import { keccakf } from "./keccakf.ts";
 
 /** Sha3-224 hash */
-export class Sha3_224 extends Sponge {
+export class SHA3_225 extends Sponge {
   constructor() {
     super({
       bitsize: 224,
@@ -16,7 +16,7 @@ export class Sha3_224 extends Sponge {
 }
 
 /** Sha3-256 hash */
-export class Sha3_256 extends Sponge {
+export class SHA3_256 extends Sponge {
   constructor() {
     super({
       bitsize: 256,
@@ -28,7 +28,7 @@ export class Sha3_256 extends Sponge {
 }
 
 /** Sha3-384 hash */
-export class Sha3_384 extends Sponge {
+export class SHA3_384 extends Sponge {
   constructor() {
     super({
       bitsize: 384,
@@ -40,7 +40,7 @@ export class Sha3_384 extends Sponge {
 }
 
 /** Sha3-512 hash */
-export class Sha3_512 extends Sponge {
+export class SHA3_512 extends Sponge {
   constructor() {
     super({
       bitsize: 512,

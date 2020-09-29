@@ -6,10 +6,10 @@ import {
   Keccak256,
   Keccak384,
   Keccak512,
-  Sha3_224,
-  Sha3_256,
-  Sha3_384,
-  Sha3_512,
+  SHA3_225,
+  SHA3_256,
+  SHA3_384,
+  SHA3_512,
   Shake128,
   Shake256,
 } from "./sha3.ts";
@@ -261,7 +261,7 @@ function s2b(data: string): Uint8Array {
 
 Deno.test("[hash/sha3] testSha3-224Raw", () => {
   const sha3sum = (data: ArrayBuffer): ArrayBuffer => {
-    const sha3 = new Sha3_224();
+    const sha3 = new SHA3_225();
     return sha3.update(data).digest();
   };
 
@@ -273,7 +273,7 @@ Deno.test("[hash/sha3] testSha3-224Raw", () => {
 
 Deno.test("[hash/sha3] testSha3-224String", () => {
   const sha3sum = (data: string): string => {
-    const sha3 = new Sha3_224();
+    const sha3 = new SHA3_225();
     return sha3.update(data).toString();
   };
 
@@ -284,7 +284,7 @@ Deno.test("[hash/sha3] testSha3-224String", () => {
 
 Deno.test("[hash/sha3] testSha3-256Raw", () => {
   const sha3sum = (data: ArrayBuffer): ArrayBuffer => {
-    const sha3 = new Sha3_256();
+    const sha3 = new SHA3_256();
     return sha3.update(data).digest();
   };
 
@@ -296,7 +296,7 @@ Deno.test("[hash/sha3] testSha3-256Raw", () => {
 
 Deno.test("[hash/sha3] testSha3-256String", () => {
   const sha3sum = (data: string): string => {
-    const sha3 = new Sha3_256();
+    const sha3 = new SHA3_256();
     return sha3.update(data).toString();
   };
 
@@ -307,7 +307,7 @@ Deno.test("[hash/sha3] testSha3-256String", () => {
 
 Deno.test("[hash/sha3] testSha3-384Raw", () => {
   const sha3sum = (data: ArrayBuffer): ArrayBuffer => {
-    const sha3 = new Sha3_384();
+    const sha3 = new SHA3_384();
     return sha3.update(data).digest();
   };
 
@@ -319,7 +319,7 @@ Deno.test("[hash/sha3] testSha3-384Raw", () => {
 
 Deno.test("[hash/sha3] testSha3-384String", () => {
   const sha3sum = (data: string): string => {
-    const sha3 = new Sha3_384();
+    const sha3 = new SHA3_384();
     return sha3.update(data).toString();
   };
 
@@ -330,7 +330,7 @@ Deno.test("[hash/sha3] testSha3-384String", () => {
 
 Deno.test("[hash/sha3] testSha3-512Raw", () => {
   const sha3sum = (data: ArrayBuffer): ArrayBuffer => {
-    const sha3 = new Sha3_512();
+    const sha3 = new SHA3_512();
     return sha3.update(data).digest();
   };
 
@@ -342,7 +342,7 @@ Deno.test("[hash/sha3] testSha3-512Raw", () => {
 
 Deno.test("[hash/sha3] testSha3-512String", () => {
   const sha3sum = (data: string): string => {
-    const sha3 = new Sha3_512();
+    const sha3 = new SHA3_512();
     return sha3.update(data).toString();
   };
 
@@ -545,7 +545,7 @@ Deno.test("[hash/sha3] testSHAKE-256-512", () => {
 });
 
 Deno.test("[hash/sha3] testSha3-256Chain", () => {
-  const sha3 = new Sha3_256();
+  const sha3 = new SHA3_256();
   const output = sha3
     .update(s2b("a"))
     .update(s2b("b"))
@@ -561,7 +561,7 @@ Deno.test("[hash/sha3] testSha3-256Chain", () => {
 Deno.test("[hash/sha3] testSha3UpdateFinalized", () => {
   assertThrows(
     () => {
-      const sha3 = new Sha3_256();
+      const sha3 = new SHA3_256();
       const hash = sha3.update(s2b("a")).digest();
       const hash2 = sha3.update(s2b("a")).digest();
       assertEquals(hash, hash2);

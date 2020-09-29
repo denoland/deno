@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { HmacSha256, Message, Sha256 } from "./sha256.ts";
+import { HmacSha256, Message, SHA256 } from "./sha256.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
@@ -217,7 +217,7 @@ for (const method of methods) {
       Deno.test({
         name: `sha256.${method}() - ${name} - #${i++}`,
         fn() {
-          const algorithm = new Sha256();
+          const algorithm = new SHA256();
           algorithm.update(message);
           const actual = method === "hex"
             ? algorithm[method]()
@@ -236,7 +236,7 @@ for (const method of methods) {
       Deno.test({
         name: `sha224.${method}() - ${name} - #${i++}`,
         fn() {
-          const algorithm = new Sha256(true);
+          const algorithm = new SHA256(true);
           algorithm.update(message);
           const actual = method === "hex"
             ? algorithm[method]()
@@ -289,7 +289,7 @@ for (const method of methods) {
 Deno.test("[hash/sha256] test Uint8Array from Reader", async () => {
   const data = await Deno.readFile(join(testdataDir, "hashtest"));
 
-  const hash = new Sha256().update(data).hex();
+  const hash = new SHA256().update(data).hex();
   assertEquals(
     hash,
     "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",

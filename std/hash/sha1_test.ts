@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
-import { Message, Sha1 } from "./sha1.ts";
+import { Message, SHA1 } from "./sha1.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
@@ -72,7 +72,7 @@ for (const method of methods) {
       Deno.test({
         name: `sha1.${method}() - ${name} - #${i++}`,
         fn() {
-          const algorithm = new Sha1();
+          const algorithm = new SHA1();
           algorithm.update(message);
           const actual = method === "hex"
             ? algorithm[method]()
@@ -91,7 +91,7 @@ for (const method of methods) {
       Deno.test({
         name: `sha1.${method}() - ${name} - #${i++}`,
         fn() {
-          const algorithm = new Sha1(true);
+          const algorithm = new SHA1(true);
           algorithm.update(message);
           const actual = method === "hex"
             ? algorithm[method]()
@@ -106,6 +106,6 @@ for (const method of methods) {
 Deno.test("[hash/sha1] test Uint8Array from Reader", async () => {
   const data = await Deno.readFile(join(testdataDir, "hashtest"));
 
-  const hash = new Sha1().update(data).hex();
+  const hash = new SHA1().update(data).hex();
   assertEquals(hash, "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3");
 });

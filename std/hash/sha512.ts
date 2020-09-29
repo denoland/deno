@@ -39,7 +39,7 @@ const K = [
 const blocks: number[] = [];
 
 // deno-fmt-ignore
-export class Sha512 {
+export class SHA512 {
   #blocks!: number[];
   #block!: number;
   #bits!: number;
@@ -718,7 +718,7 @@ export class Sha512 {
   }
 }
 
-export class HmacSha512 extends Sha512 {
+export class HmacSha512 extends SHA512 {
   #inner: boolean;
   #bits: number;
   #oKeyPad: number[];
@@ -761,7 +761,7 @@ export class HmacSha512 extends Sha512 {
       key = secretKey;
     }
     if (key.length > 128) {
-      key = new Sha512(bits, true).update(key).array();
+      key = new SHA512(bits, true).update(key).array();
     }
     const oKeyPad: number[] = [];
     const iKeyPad: number[] = [];
