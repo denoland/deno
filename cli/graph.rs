@@ -905,11 +905,8 @@ mod tests {
       })
       .unwrap();
     assert_eq!(
-      maybe_ignored_options,
-      Some(IgnoredCompilerOptions {
-        items: vec!["target".to_string()],
-        path: fixtures.join("tsconfig.json"),
-      }),
+      maybe_ignored_options.unwrap().items,
+      vec!["target".to_string()],
       "the 'target' options should have been ignored"
     );
     let h = handler.borrow();
