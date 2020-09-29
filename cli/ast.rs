@@ -1,14 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::file_fetcher::TextDocument;
+use crate::graph::ModuleProvider;
 use crate::media_type::MediaType;
 
+use deno_core::error::bail;
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
-use std::result;
 use std::sync::Arc;
 use std::sync::RwLock;
 use swc_common::chain;
@@ -22,10 +24,14 @@ use swc_common::errors::HandlerFlags;
 use swc_common::FileName;
 use swc_common::Globals;
 use swc_common::Loc;
+use swc_common::SourceFile;
 use swc_common::SourceMap;
 use swc_common::Span;
+use swc_ecmascript::ast::Expr;
+use swc_ecmascript::ast::Lit;
 use swc_ecmascript::ast::Module;
 use swc_ecmascript::ast::Program;
+use swc_ecmascript::ast::Str;
 use swc_ecmascript::codegen::text_writer::JsWriter;
 use swc_ecmascript::codegen::Node;
 use swc_ecmascript::dep_graph::analyze_dependencies;
@@ -39,12 +45,10 @@ use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::helpers;
 use swc_ecmascript::transforms::pass::Optional;
-use swc_ecmascript::transforms::proposals::decorators;
+use swc_ecmascript::transforms::proposals;
 use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
-
-type Result<V> = result::Result<V, AnyError>;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
@@ -72,6 +76,27 @@ impl Into<Location> for swc_common::Loc {
     }
   }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum AstError {
+  /// An unexpected specifier was requested.
+  MissingFilename(FileName),
+}
+use AstError::*;
+
+impl fmt::Display for AstError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      MissingFilename(ref filename) => write!(
+        f,
+        "A missing filename was requested.\n  Filename: {}",
+        filename
+      ),
+    }
+  }
+}
+
+impl Error for AstError {}
 
 /// A buffer for collecting diagnostic messages from the AST parser.
 #[derive(Debug)]
@@ -174,7 +199,10 @@ pub fn get_syntax(media_type: &MediaType) -> Syntax {
 
 /// Options which can be adjusted when transpiling a module.
 #[derive(Debug, Clone)]
-pub struct TranspileOptions {
+pub struct EmitOptions {
+  /// Indicate if JavaScript is being checked/transformed as well, or if it is
+  /// only TypeScript.
+  pub check_js: bool,
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -191,9 +219,10 @@ pub struct TranspileOptions {
   pub transform_jsx: bool,
 }
 
-impl Default for TranspileOptions {
+impl Default for EmitOptions {
   fn default() -> Self {
-    TranspileOptions {
+    EmitOptions {
+      check_js: false,
       emit_metadata: false,
       inline_source_map: true,
       jsx_factory: "React.createElement".into(),
@@ -246,8 +275,8 @@ impl ParsedModule {
   /// The result is a tuple of the code and optional source map as strings.
   pub fn transpile(
     self,
-    options: &TranspileOptions,
-  ) -> Result<(TextDocument, Option<TextDocument>)> {
+    options: &EmitOptions,
+  ) -> Result<(TextDocument, Option<TextDocument>), AnyError> {
     let program = Program::Module(self.module);
 
     let jsx_pass = react::react(
@@ -264,7 +293,7 @@ impl ParsedModule {
     );
     let mut passes = chain!(
       Optional::new(jsx_pass, options.transform_jsx),
-      decorators::decorators(decorators::Config {
+      proposals::decorators::decorators(proposals::decorators::Config {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
@@ -330,7 +359,7 @@ pub fn parse(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: &MediaType,
-) -> Result<ParsedModule> {
+) -> Result<ParsedModule, AnyError> {
   let source_map = SourceMap::default();
   let source_file = source_map.new_source_file(
     FileName::Custom(specifier.to_string()),
@@ -371,6 +400,139 @@ pub fn parse(
     source_map: Rc::new(source_map),
     comments,
   })
+}
+
+pub struct BundleHook;
+
+impl swc_bundler::Hook for BundleHook {
+  fn get_import_meta_url(
+    &self,
+    span: Span,
+    file: &FileName,
+  ) -> Result<Option<Expr>, AnyError> {
+    Ok(Some(Expr::Lit(Lit::Str(Str {
+      span,
+      value: file.to_string().into(),
+      has_escape: false,
+    }))))
+  }
+}
+
+pub struct BundleLoader<'a> {
+  emit_options: &'a EmitOptions,
+  cm: Rc<SourceMap>,
+  provider: &'a dyn ModuleProvider,
+}
+
+impl<'a> BundleLoader<'a> {
+  pub fn new(
+    provider: &'a dyn ModuleProvider,
+    cm: Rc<SourceMap>,
+    emit_options: &'a EmitOptions,
+  ) -> Self {
+    BundleLoader {
+      cm,
+      emit_options,
+      provider,
+    }
+  }
+}
+
+impl swc_bundler::Load for BundleLoader<'_> {
+  fn load(
+    &self,
+    file: &FileName,
+  ) -> Result<(Rc<SourceFile>, Module), AnyError> {
+    match file {
+      FileName::Custom(filename) => {
+        let specifier = ModuleSpecifier::resolve_url_or_path(filename)
+          .context("Failed to convert swc FileName to ModuleSpecifier.")?;
+        if let Some(src) = self.provider.get_source(&specifier) {
+          let comments = SingleThreadedComments::default();
+          let media_type = self
+            .provider
+            .get_media_type(&specifier)
+            .context("Failed to lookup media type in BundleLoader")?;
+          let syntax = get_syntax(&media_type);
+          let source_file = self
+            .cm
+            .new_source_file(FileName::Custom(filename.clone()), src);
+          let lexer = Lexer::new(
+            syntax,
+            TARGET,
+            StringInput::from(&*source_file),
+            Some(&comments),
+          );
+          let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
+          // TODO(kitsonk) this seems to be a problem with the type of result
+          // from `.parse_module` that cannot be coerced.
+          let module = match parser.parse_module() {
+            Ok(m) => m,
+            Err(err) => bail!("Parsing failed: {:?}", err),
+          };
+
+          // TODO(@kitsonk) DRY-up with ::transpile()
+          let jsx_pass = react::react(
+            self.cm.clone(),
+            Some(&comments),
+            react::Options {
+              pragma: self.emit_options.jsx_factory.clone(),
+              pragma_frag: self.emit_options.jsx_fragment_factory.clone(),
+              // this will use `Object.assign()` instead of the `_extends` helper
+              // when spreading props.
+              use_builtins: true,
+              ..Default::default()
+            },
+          );
+          let mut passes = chain!(
+            Optional::new(jsx_pass, self.emit_options.transform_jsx),
+            proposals::decorators::decorators(proposals::decorators::Config {
+              legacy: true,
+              emit_metadata: self.emit_options.emit_metadata
+            }),
+            // TODO(@kitsonk) remove when swc-project/swc#1137 is resolved
+            proposals::export(),
+            typescript::strip(),
+            fixer(Some(&comments)),
+          );
+          let module = module.fold_with(&mut passes);
+
+          Ok((source_file, module))
+        } else {
+          Err(MissingFilename(file.clone()).into())
+        }
+      }
+      _ => unreachable!("Received request for unsupported filename {:?}", file),
+    }
+  }
+}
+
+pub struct BundleResolver<'a> {
+  provider: &'a dyn ModuleProvider,
+}
+
+impl<'a> BundleResolver<'a> {
+  pub fn new(provider: &'a dyn ModuleProvider) -> Self {
+    BundleResolver { provider }
+  }
+}
+
+impl swc_bundler::Resolve for BundleResolver<'_> {
+  fn resolve(
+    &self,
+    referrer: &FileName,
+    specifier: &str,
+  ) -> Result<FileName, AnyError> {
+    let referrer = if let FileName::Custom(referrer) = referrer {
+      ModuleSpecifier::resolve_url_or_path(referrer)
+        .context("Cannot resolve swc FileName to a module specifier")?
+    } else {
+      unreachable!("A non-string referrer was passed: {:?}", referrer)
+    };
+    let specifier = self.provider.resolve(specifier, &referrer)?;
+
+    Ok(FileName::Custom(specifier.to_string()))
+  }
 }
 
 #[cfg(test)]
@@ -437,7 +599,7 @@ mod tests {
     let module = parse(&specifier, source, &MediaType::TypeScript)
       .expect("could not parse module");
     let (code, maybe_map) = module
-      .transpile(&TranspileOptions::default())
+      .transpile(&EmitOptions::default())
       .expect("could not strip types");
     assert!(code
       .to_string()
@@ -465,7 +627,7 @@ mod tests {
     let module = parse(&specifier, source, &MediaType::TSX)
       .expect("could not parse module");
     let (code, _) = module
-      .transpile(&TranspileOptions::default())
+      .transpile(&EmitOptions::default())
       .expect("could not strip types");
     assert!(code
       .to_string()
@@ -499,7 +661,7 @@ mod tests {
     let module = parse(&specifier, source, &MediaType::TypeScript)
       .expect("could not parse module");
     let (code, _) = module
-      .transpile(&TranspileOptions::default())
+      .transpile(&EmitOptions::default())
       .expect("could not strip types");
     assert!(code
       .to_string()

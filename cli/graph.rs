@@ -1,7 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
 use crate::ast::parse;
+use crate::ast::BundleHook;
+use crate::ast::BundleLoader;
+use crate::ast::BundleResolver;
 use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::file_fetcher::TextDocument;
@@ -19,6 +21,7 @@ use crate::tsc_config::TsConfig;
 use crate::version;
 use crate::AnyError;
 
+use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json::json;
@@ -110,6 +113,7 @@ impl Error for GraphError {}
 /// A trait, implemented by `Graph` that provides the interfaces that the
 /// compiler ops require to be able to retrieve information about the graph.
 pub trait ModuleProvider {
+  fn get_media_type(&self, specifier: &ModuleSpecifier) -> Option<MediaType>;
   /// Get the source for a given module specifier.  If the module is not part
   /// of the graph, the result will be `None`.
   fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String>;
@@ -120,7 +124,7 @@ pub trait ModuleProvider {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<(ModuleSpecifier, MediaType), AnyError>;
+  ) -> Result<ModuleSpecifier, AnyError>;
 }
 
 /// An enum which represents the parsed out values of references in source code.
@@ -398,15 +402,40 @@ impl<'de> Deserialize<'de> for Stats {
 
 impl fmt::Display for Stats {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "Stats:")?;
     for (key, value) in self.0.clone() {
-      write!(f, "{}: {}", key, value)?;
+      writeln!(f, "  {}: {}", key, value)?;
     }
 
     Ok(())
   }
 }
 
-/// A structure which provides options when transpiling modules.
+/// A structure which provides options when bundling a graph.
+#[derive(Debug)]
+pub struct BundleOptions {
+  /// Should the graph be type checked before the bundle is generated.  Defaults
+  /// to `true`.
+  pub check: bool,
+  /// If `true` then debug logging will be output from the isolate.
+  pub debug: bool,
+  /// An optional string that points to a user supplied TypeScript configuration
+  /// file that augments the the default configuration passed to the TypeScript
+  /// compiler.
+  pub maybe_config_path: Option<String>,
+}
+
+impl Default for BundleOptions {
+  fn default() -> Self {
+    BundleOptions {
+      check: true,
+      debug: false,
+      maybe_config_path: None,
+    }
+  }
+}
+
+/// A structure which provides options when transpiling a graph.
 #[derive(Debug, Default)]
 pub struct TranspileOptions {
   /// If `true` then debug logging will be output from the isolate.
@@ -442,6 +471,80 @@ impl Graph {
       modules: HashMap::new(),
       roots: Vec::new(),
     }
+  }
+
+  pub fn bundle(
+    &self,
+    options: BundleOptions,
+  ) -> Result<(String, Stats, Option<IgnoredCompilerOptions>), AnyError> {
+    if self.roots.len() != 1 {
+      return Err(
+        NotSupported(format!(
+          "Bundling only supports a single root module.  Found {}.",
+          self.roots.len()
+        ))
+        .into(),
+      );
+    }
+
+    let start = Instant::now();
+    let root_specifier = self.roots[0].clone();
+    let mut ts_config = TsConfig::new(json!({
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+    }));
+    let maybe_ignored_options =
+      ts_config.merge_user_config(options.maybe_config_path)?;
+    let emit_options = ts_config.as_emit_options()?;
+    let cm = Rc::new(swc_common::SourceMap::new(
+      swc_common::FilePathMapping::empty(),
+    ));
+    let loader = BundleLoader::new(self, cm.clone(), &emit_options);
+    let resolver = BundleResolver::new(self);
+    let hook = Box::new(BundleHook);
+    let globals = swc_common::Globals::new();
+    let bundler = swc_bundler::Bundler::new(
+      &globals,
+      cm.clone(),
+      loader,
+      resolver,
+      swc_bundler::Config::default(),
+      hook,
+    );
+    let mut entries = HashMap::new();
+    entries.insert(
+      "bundle".to_string(),
+      swc_common::FileName::Custom(root_specifier.to_string()),
+    );
+    let output = bundler.bundle(entries).context("Failed to bundle graph.")?;
+    let mut buf = Vec::new();
+    {
+      let mut emitter = swc_ecmascript::codegen::Emitter {
+        cfg: swc_ecmascript::codegen::Config { minify: false },
+        cm: cm.clone(),
+        comments: None,
+        wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
+          cm, "\n", &mut buf, None,
+        )),
+      };
+
+      emitter
+        .emit_module(&output[0].module)
+        .context("Failed to emit bundle")?;
+    }
+
+    let s =
+      String::from_utf8(buf).context("Bundle is an invalid utf-8 string.")?;
+
+    let stats = Stats(vec![
+      ("Files".to_string(), self.modules.len() as u128),
+      ("Total time".to_string(), start.elapsed().as_millis()),
+    ]);
+
+    Ok((s, stats, maybe_ignored_options))
   }
 
   /// Update the handler with any modules that are marked as _dirty_ and update
@@ -527,17 +630,7 @@ impl Graph {
 
     let maybe_ignored_options =
       ts_config.merge_user_config(options.maybe_config_path)?;
-
-    let compiler_options = ts_config.as_transpile_config()?;
-    let check_js = compiler_options.check_js;
-    let transform_jsx = compiler_options.jsx == "react";
-    let emit_options = ast::TranspileOptions {
-      emit_metadata: compiler_options.emit_decorator_metadata,
-      inline_source_map: true,
-      jsx_factory: compiler_options.jsx_factory,
-      jsx_fragment_factory: compiler_options.jsx_fragment_factory,
-      transform_jsx,
-    };
+    let emit_options = ts_config.as_emit_options()?;
 
     let mut emit_count: u128 = 0;
     for (_, module) in self.modules.iter_mut() {
@@ -551,7 +644,7 @@ impl Graph {
       }
       // if we don't have check_js enabled, we won't touch non TypeScript
       // modules
-      if !(check_js
+      if !(emit_options.check_js
         || module.media_type == MediaType::TSX
         || module.media_type == MediaType::TypeScript)
       {
@@ -584,7 +677,15 @@ impl Graph {
   }
 }
 
-impl<'a> ModuleProvider for Graph {
+impl ModuleProvider for Graph {
+  fn get_media_type(&self, specifier: &ModuleSpecifier) -> Option<MediaType> {
+    if let Some(module) = self.modules.get(specifier) {
+      Some(module.media_type)
+    } else {
+      None
+    }
+  }
+
   fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
     if let Some(module) = self.modules.get(specifier) {
       if let Ok(source) = module.source.to_string() {
@@ -601,7 +702,7 @@ impl<'a> ModuleProvider for Graph {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if !self.modules.contains_key(referrer) {
       return Err(MissingSpecifier(referrer.to_owned()).into());
     }
@@ -636,15 +737,15 @@ impl<'a> ModuleProvider for Graph {
     // then the `maybe_types` specifier will be populated and we should use that
     // instead.
     let result = if let Some((_, types)) = dep_module.maybe_types.clone() {
-      if let Some(types_module) = self.modules.get(&types) {
-        (types, types_module.media_type)
+      if self.modules.contains_key(&types) {
+        types
       } else {
         return Err(
           MissingDependency(referrer.to_owned(), types.to_string()).into(),
         );
       }
     } else {
-      (resolved_specifier, dep_module.media_type)
+      resolved_specifier
     };
 
     Ok(result)
@@ -875,11 +976,9 @@ mod tests {
     let actual = graph
       .resolve("./a.ts", &specifier)
       .expect("module to resolve");
-    let expected = (
+    let expected =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a.ts")
-        .expect("unable to resolve"),
-      MediaType::TypeScript,
-    );
+        .expect("unable to resolve");
     assert_eq!(actual, expected);
   }
 
@@ -913,21 +1012,40 @@ mod tests {
     let actual_jquery = graph
       .resolve("jquery", &specifier)
       .expect("module to resolve");
-    let expected_jquery = (
+    let expected_jquery =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/jquery.js")
-        .expect("unable to resolve"),
-      MediaType::JavaScript,
-    );
+        .expect("unable to resolve");
     assert_eq!(actual_jquery, expected_jquery);
     let actual_lodash = graph
       .resolve("lodash", &specifier)
       .expect("module to resolve");
-    let expected_lodash = (
+    let expected_lodash =
       ModuleSpecifier::resolve_url_or_path("https://unpkg.com/lodash/index.js")
-        .expect("unable to resolve"),
-      MediaType::JavaScript,
-    );
+        .expect("unable to resolve");
     assert_eq!(actual_lodash, expected_lodash);
+  }
+
+  #[tokio::test]
+  async fn test_graph_bundle() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..MockSpecifierHandler::default()
+    }));
+    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/bundle.ts")
+        .expect("could not resolve module");
+    builder
+      .insert(&specifier)
+      .await
+      .expect("module not inserted");
+    let graph = builder.get_graph(&None).expect("could not get graph");
+    let (s, _, _) = graph
+      .bundle(BundleOptions::default())
+      .expect("failed to bundle");
+    println!("{}", s);
   }
 
   #[tokio::test]
