@@ -14,7 +14,7 @@ fn create_snapshot(
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
-  deno_web::init(&mut isolate);
+  deno_web::init(&mut isolate, true);
   deno_fetch::init(&mut isolate, true);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
