@@ -13,7 +13,7 @@ const context = new Context({
 });
 
 const instance = new WebAssembly.Instance(module, {
-  wasi_snapshot_preview1: context.exports,
+  "wasi_snapshot_preview1": context.exports,
 });
 
 const memory = instance.exports.memory as WebAssembly.Memory;
