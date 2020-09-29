@@ -41,7 +41,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::ops::Deref;
-use std::path::Path;
 use std::path::PathBuf;
 use std::str;
 use std::sync::Arc;
@@ -141,14 +140,9 @@ lazy_static! {
 
 fn warn_ignored_options(
   maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
-  config_path: &Path,
 ) {
   if let Some(ignored_options) = maybe_ignored_options {
-    eprintln!(
-      "Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}",
-      config_path.to_string_lossy(),
-      ignored_options
-    );
+    eprintln!("{}", ignored_options);
   }
 }
 
@@ -210,7 +204,7 @@ impl CompilerConfig {
     let (options, maybe_ignored_options) = if config_str.is_empty() {
       (json!({}), None)
     } else {
-      tsc_config::parse_config(&config_str)?
+      tsc_config::parse_config(&config_str, &config_path)?
     };
 
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
@@ -526,10 +520,7 @@ impl TsCompiler {
 
     tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
 
-    warn_ignored_options(
-      compiler_config.maybe_ignored_options,
-      compiler_config.path.as_ref().unwrap(),
-    );
+    warn_ignored_options(compiler_config.maybe_ignored_options);
 
     let j = json!({
       "type": CompilerRequestType::Compile,
@@ -646,10 +637,7 @@ impl TsCompiler {
 
     tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
 
-    warn_ignored_options(
-      compiler_config.maybe_ignored_options,
-      compiler_config.path.as_ref().unwrap(),
-    );
+    warn_ignored_options(compiler_config.maybe_ignored_options);
 
     let j = json!({
       "type": CompilerRequestType::Bundle,

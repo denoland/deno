@@ -21,8 +21,6 @@ use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::cell::RefCell;
 use std::env;
-use std::fs;
-use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -134,37 +132,17 @@ impl GlobalState {
       builder.insert(&module_specifier).await?;
       let mut graph = builder.get_graph(&self.lockfile)?;
 
-      // TODO(kitsonk) this needs to move, but CompilerConfig is way too
-      // complicated to use here.
-      let maybe_config = if let Some(path) = self.flags.config_path.clone() {
-        let cwd = std::env::current_dir()?;
-        let config_file = cwd.join(path);
-        let config_path = config_file.canonicalize().map_err(|_| {
-          io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-              "Could not find the config file: {}",
-              config_file.to_string_lossy()
-            ),
-          )
-        })?;
-        let config_str = fs::read_to_string(config_path)?;
-
-        Some(config_str)
-      } else {
-        None
-      };
-
       let (stats, maybe_ignored_options) =
         graph.transpile(TranspileOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
-          maybe_config,
+          maybe_config_path: self.flags.config_path.clone(),
         })?;
 
-      debug!("{}", stats);
       if let Some(ignored_options) = maybe_ignored_options {
-        println!("Some compiler options were ignored:\n  {}", ignored_options);
+        eprintln!("{}", ignored_options);
       }
+
+      debug!("{}", stats);
     } else {
       let mut module_graph_loader = ModuleGraphLoader::new(
         self.file_fetcher.clone(),

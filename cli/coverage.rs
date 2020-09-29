@@ -27,11 +27,6 @@ impl CoverageCollector {
 
     self
       .session
-      .post_message("Runtime.enable".to_string(), None)
-      .await?;
-
-    self
-      .session
       .post_message("Profiler.enable".to_string(), None)
       .await?;
 
@@ -87,10 +82,6 @@ impl CoverageCollector {
     self
       .session
       .post_message("Profiler.disable".to_string(), None)
-      .await?;
-    self
-      .session
-      .post_message("Runtime.disable".to_string(), None)
       .await?;
     self
       .session
