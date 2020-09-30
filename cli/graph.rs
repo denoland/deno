@@ -16,6 +16,7 @@ use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc_config::IgnoredCompilerOptions;
 use crate::tsc_config::TsConfig;
+use crate::version;
 use crate::AnyError;
 
 use deno_core::futures::stream::FuturesUnordered;
@@ -163,6 +164,17 @@ fn parse_deno_types(comment: &str) -> Option<String> {
   }
 }
 
+/// A hashing function that takes the source code, version and optionally a
+/// user provided config and generates a string hash which can be stored to
+/// determine if the cached emit is valid or not.
+fn get_version(source: &TextDocument, version: &str, config: &[u8]) -> String {
+  crate::checksum::gen(&[
+    source.to_str().unwrap().as_bytes(),
+    version.as_bytes(),
+    config,
+  ])
+}
+
 /// A logical representation of a module within a graph.
 #[derive(Debug, Clone)]
 struct Module {
@@ -174,6 +186,7 @@ struct Module {
   maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
   maybe_parsed_module: Option<ParsedModule>,
   maybe_types: Option<(String, ModuleSpecifier)>,
+  maybe_version: Option<String>,
   media_type: MediaType,
   specifier: ModuleSpecifier,
   source: TextDocument,
@@ -190,6 +203,7 @@ impl Default for Module {
       maybe_import_map: None,
       maybe_parsed_module: None,
       maybe_types: None,
+      maybe_version: None,
       media_type: MediaType::Unknown,
       specifier: ModuleSpecifier::resolve_url("https://deno.land/x/").unwrap(),
       source: TextDocument::new(Vec::new(), Option::<&str>::None),
@@ -206,6 +220,16 @@ impl Module {
       specifier,
       maybe_import_map,
       ..Module::default()
+    }
+  }
+
+  /// Return `true` if the current hash of the module matches the stored
+  /// version.
+  pub fn emit_valid(&self, config: &[u8]) -> bool {
+    if let Some(version) = self.maybe_version.clone() {
+      version == get_version(&self.source, version::DENO, config)
+    } else {
+      false
     }
   }
 
@@ -230,6 +254,7 @@ impl Module {
     };
     self.is_dirty = false;
     self.emits = cached_module.emits;
+    self.maybe_version = cached_module.maybe_version;
     self.is_hydrated = true;
   }
 
@@ -351,6 +376,11 @@ impl Module {
 
     Ok(specifier)
   }
+
+  /// Calculate the hashed version of the module and update the `maybe_version`.
+  pub fn set_version(&mut self, config: &[u8]) {
+    self.maybe_version = Some(get_version(&self.source, version::DENO, config))
+  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -428,6 +458,9 @@ impl Graph {
           maybe_map.clone(),
         )?;
         module.is_dirty = false;
+        if let Some(version) = &module.maybe_version {
+          handler.set_version(&module.specifier, version.clone())?;
+        }
       }
     }
     for root_specifier in self.roots.iter() {
@@ -508,12 +541,12 @@ impl Graph {
 
     let mut emit_count: u128 = 0;
     for (_, module) in self.modules.iter_mut() {
+      // TODO(kitsonk) a lot of this logic should be refactored into `Module` as
+      // we start to support other methods on the graph.  Especially managing
+      // the dirty state is something the module itself should "own".
+
       // if the module is a Dts file we should skip it
       if module.media_type == MediaType::Dts {
-        continue;
-      }
-      // skip modules that already have a valid emit
-      if module.emits.contains_key(&emit_type) {
         continue;
       }
       // if we don't have check_js enabled, we won't touch non TypeScript
@@ -524,6 +557,11 @@ impl Graph {
       {
         continue;
       }
+      let config = ts_config.as_bytes();
+      // skip modules that already have a valid emit
+      if module.emits.contains_key(&emit_type) && module.emit_valid(&config) {
+        continue;
+      }
       if module.maybe_parsed_module.is_none() {
         module.parse()?;
       }
@@ -531,6 +569,7 @@ impl Graph {
       let emit = parsed_module.transpile(&emit_options)?;
       emit_count += 1;
       module.emits.insert(emit_type.clone(), emit);
+      module.set_version(&config);
       module.is_dirty = true;
     }
     self.flush(&emit_type)?;
@@ -735,6 +774,86 @@ mod tests {
   use std::env;
   use std::path::PathBuf;
   use std::sync::Mutex;
+
+  #[test]
+  fn test_get_version() {
+    let doc_a =
+      TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
+    let version_a = get_version(&doc_a, "1.2.3", b"");
+    let doc_b =
+      TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
+    let version_b = get_version(&doc_b, "1.2.3", b"");
+    assert_eq!(version_a, version_b);
+
+    let version_c = get_version(&doc_a, "1.2.3", b"options");
+    assert_ne!(version_a, version_c);
+
+    let version_d = get_version(&doc_b, "1.2.3", b"options");
+    assert_eq!(version_c, version_d);
+
+    let version_e = get_version(&doc_a, "1.2.4", b"");
+    assert_ne!(version_a, version_e);
+
+    let version_f = get_version(&doc_b, "1.2.4", b"");
+    assert_eq!(version_e, version_f);
+  }
+
+  #[test]
+  fn test_module_emit_valid() {
+    let source =
+      TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
+    let maybe_version = Some(get_version(&source, version::DENO, b""));
+    let module = Module {
+      source,
+      maybe_version,
+      ..Module::default()
+    };
+    assert!(module.emit_valid(b""));
+
+    let source =
+      TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
+    let old_source =
+      TextDocument::new(b"console.log(43);".to_vec(), Option::<&str>::None);
+    let maybe_version = Some(get_version(&old_source, version::DENO, b""));
+    let module = Module {
+      source,
+      maybe_version,
+      ..Module::default()
+    };
+    assert!(!module.emit_valid(b""));
+
+    let source =
+      TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
+    let maybe_version = Some(get_version(&source, "0.0.0", b""));
+    let module = Module {
+      source,
+      maybe_version,
+      ..Module::default()
+    };
+    assert!(!module.emit_valid(b""));
+
+    let source =
+      TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
+    let module = Module {
+      source,
+      ..Module::default()
+    };
+    assert!(!module.emit_valid(b""));
+  }
+
+  #[test]
+  fn test_module_set_version() {
+    let source =
+      TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
+    let expected = Some(get_version(&source, version::DENO, b""));
+    let mut module = Module {
+      source,
+      ..Module::default()
+    };
+    assert!(module.maybe_version.is_none());
+    module.set_version(b"");
+    assert_eq!(module.maybe_version, expected);
+  }
 
   #[tokio::test]
   async fn test_graph_builder() {

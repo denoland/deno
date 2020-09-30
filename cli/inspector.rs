@@ -5,6 +5,8 @@
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -17,6 +19,7 @@ use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::task;
 use deno_core::futures::task::Context;
 use deno_core::futures::task::Poll;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::v8;
@@ -813,6 +816,116 @@ impl Future for DenoInspectorSession {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     self.websocket_rx_handler.poll_unpin(cx)
+  }
+}
+
+/// A local inspector session that can be used to send and receive protocol messages directly on
+/// the same thread as an isolate.
+pub struct InspectorSession {
+  v8_channel: v8::inspector::ChannelBase,
+  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
+  next_message_id: i32,
+}
+
+impl Deref for InspectorSession {
+  type Target = v8::inspector::V8InspectorSession;
+  fn deref(&self) -> &Self::Target {
+    &self.v8_session
+  }
+}
+
+impl DerefMut for InspectorSession {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.v8_session
+  }
+}
+
+impl v8::inspector::ChannelImpl for InspectorSession {
+  fn base(&self) -> &v8::inspector::ChannelBase {
+    &self.v8_channel
+  }
+
+  fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
+    &mut self.v8_channel
+  }
+
+  fn send_response(
+    &mut self,
+    call_id: i32,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+    let raw_message = message.unwrap().string().to_string();
+    let message = serde_json::from_str(&raw_message).unwrap();
+    self
+      .response_tx_map
+      .remove(&call_id)
+      .unwrap()
+      .send(message)
+      .unwrap();
+  }
+
+  fn send_notification(
+    &mut self,
+    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+  }
+
+  fn flush_protocol_notifications(&mut self) {}
+}
+
+impl InspectorSession {
+  const CONTEXT_GROUP_ID: i32 = 1;
+
+  pub fn new(inspector_ptr: *mut DenoInspector) -> Box<Self> {
+    new_box_with(move |self_ptr| {
+      let v8_channel = v8::inspector::ChannelBase::new::<Self>();
+      let v8_session = unsafe { &mut *inspector_ptr }.connect(
+        Self::CONTEXT_GROUP_ID,
+        unsafe { &mut *self_ptr },
+        v8::inspector::StringView::empty(),
+      );
+
+      let response_tx_map = HashMap::new();
+      let next_message_id = 0;
+
+      Self {
+        v8_channel,
+        v8_session,
+        response_tx_map,
+        next_message_id,
+      }
+    })
+  }
+
+  pub async fn post_message(
+    &mut self,
+    method: String,
+    params: Option<serde_json::Value>,
+  ) -> Result<serde_json::Value, AnyError> {
+    let id = self.next_message_id;
+    self.next_message_id += 1;
+
+    let (response_tx, response_rx) = oneshot::channel::<serde_json::Value>();
+    self.response_tx_map.insert(id, response_tx);
+
+    let message = json!({
+        "id": id,
+        "method": method,
+        "params": params,
+    });
+
+    let raw_message = serde_json::to_string(&message).unwrap();
+    let raw_message = v8::inspector::StringView::from(raw_message.as_bytes());
+    self.v8_session.dispatch_protocol_message(raw_message);
+
+    let response = response_rx.await.unwrap();
+    if let Some(error) = response.get("error") {
+      return Err(generic_error(format!("{}", error)));
+    }
+
+    let result = response.get("result").unwrap().clone();
+    Ok(result)
   }
 }
 
