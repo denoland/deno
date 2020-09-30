@@ -11,6 +11,8 @@ use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Editor;
 use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
+use std::fs::create_dir_all;
+use std::fs::OpenOptions;
 
 #[derive(Completer, Helper, Highlighter, Hinter)]
 struct Helper {
@@ -34,6 +36,8 @@ pub async fn run(
   let context_id: u32 = 1;
 
   let history_file = global_state.dir.root.join("deno_history.txt");
+  create_dir_all(history_file.parent().unwrap())?;
+  OpenOptions::new().append(true).open(&history_file)?;
 
   session
     .post_message("Runtime.enable".to_string(), None)
