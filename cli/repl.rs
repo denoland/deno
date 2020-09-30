@@ -95,23 +95,23 @@ pub async fn run(
 
   loop {
     let is_closing = session
-    .post_message(
-      "Runtime.evaluate".to_string(),
-      Some(json!({
-        "expression": "(globalThis.closed)",
-        "contextId": context_id,
-      })),
-    )
-    .await?
-    .get("result")
-    .unwrap()
-    .get("value")
-    .unwrap()
-    .as_bool()
-    .unwrap();
+      .post_message(
+        "Runtime.evaluate".to_string(),
+        Some(json!({
+          "expression": "(globalThis.closed)",
+          "contextId": context_id,
+        })),
+      )
+      .await?
+      .get("result")
+      .unwrap()
+      .get("value")
+      .unwrap()
+      .as_bool()
+      .unwrap();
 
     if is_closing {
-        break;
+      break;
     }
 
     let line = editor.readline("> ");
