@@ -1,73 +1,78 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::deno_dir::DenoDir;
+use crate::global_state::GlobalState;
+use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
+use deno_core::serde_json::json;
+use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use std::fs;
-use std::path::PathBuf;
 
-pub struct Repl {
-  editor: Editor<()>,
-  history_file: PathBuf,
-}
+pub async fn run(
+  _global_state: &GlobalState,
+  mut session: Box<InspectorSession>,
+) -> Result<(), AnyError> {
+  // Our inspector is unable to default to the default context id so we have to specify it here.
+  let context_id: u32 = 1;
 
-impl Repl {
-  pub fn new(history_file: PathBuf) -> Self {
-    let mut repl = Self {
-      editor: Editor::<()>::new(),
-      history_file,
-    };
+  session
+    .post_message("Runtime.enable".to_string(), None)
+    .await?;
 
-    repl.load_history();
-    repl
+  let mut editor = Editor::<()>::new();
+
+  println!("Deno {}", crate::version::DENO);
+  println!("exit using ctrl+d or close()");
+
+  loop {
+    let line = editor.readline("> ");
+    match line {
+      Ok(line) => {
+        let evaluate_response = session
+          .post_message(
+            "Runtime.evaluate".to_string(),
+            Some(json!({
+                "expression": line,
+                "contextId": context_id,
+                // Set repl mode to true to enable const redeclarations and top level await
+                "replMode": false,
+            })),
+          )
+          .await?;
+
+        let evaluate_result = evaluate_response.get("result").unwrap();
+
+        // TODO(caspervonb) we should investigate using previews here but to keep things
+        // consistent with the previous implementation we just get the preview result from
+        // Deno.inspectArgs.
+        let inspect_response = session.post_message("Runtime.callFunctionOn".to_string(), Some(json!({
+                "executionContextId": context_id,
+                "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object]); }",
+                "arguments": [
+                    evaluate_result,
+                ],
+            }))).await?;
+
+        let inspect_result = inspect_response.get("result").unwrap();
+        println!("{}", inspect_result.get("value").unwrap().as_str().unwrap());
+
+        editor.add_history_entry(line.as_str());
+      }
+      Err(ReadlineError::Interrupted) => {
+        println!("ctrl-c");
+        break;
+      }
+      Err(ReadlineError::Eof) => {
+        println!("ctrl-d");
+        break;
+      }
+      Err(err) => {
+        println!("Error: {:?}", err);
+        break;
+      }
+    }
   }
 
-  fn load_history(&mut self) {
-    debug!("Loading REPL history: {:?}", self.history_file);
-    self
-      .editor
-      .load_history(&self.history_file.to_str().unwrap())
-      .map_err(|e| {
-        debug!("Unable to load history file: {:?} {}", self.history_file, e)
-      })
-      // ignore this error (e.g. it occurs on first load)
-      .unwrap_or(())
-  }
+  // TODO(caspervonb) save history file
 
-  fn save_history(&mut self) -> Result<(), AnyError> {
-    fs::create_dir_all(self.history_file.parent().unwrap())?;
-    self
-      .editor
-      .save_history(&self.history_file.to_str().unwrap())
-      .map(|_| debug!("Saved REPL history to: {:?}", self.history_file))
-      .map_err(|e| {
-        eprintln!("Unable to save REPL history: {:?} {}", self.history_file, e);
-        e.into()
-      })
-  }
-
-  pub fn readline(&mut self, prompt: &str) -> Result<String, AnyError> {
-    self
-      .editor
-      .readline(&prompt)
-      .map(|line| {
-        self.editor.add_history_entry(line.clone());
-        line
-      })
-      .map_err(AnyError::from)
-
-    // Forward error to TS side for processing
-  }
-}
-
-impl Drop for Repl {
-  fn drop(&mut self) {
-    self.save_history().unwrap();
-  }
-}
-
-pub fn history_path(dir: &DenoDir, history_file: &str) -> PathBuf {
-  let mut p: PathBuf = dir.root.clone();
-  p.push(history_file);
-  p
+  Ok(())
 }
