@@ -293,8 +293,7 @@ delete Object.prototype.__proto__;
       }
     });
 
-    const { args, cwd, noColor, pid, ppid, unstableFlag } =
-      runtimeStart();
+    const { args, cwd, noColor, pid, ppid, unstableFlag } = runtimeStart();
 
     registerErrors();
 
