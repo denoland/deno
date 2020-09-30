@@ -657,14 +657,14 @@ delete Object.prototype.__proto__;
   function createBundleWriteFile(state) {
     return function writeFile(_fileName, data, sourceFiles) {
       assert(sourceFiles != null);
-      assert(state.host);
+      assert(state.options);
       // we only support single root names for bundles
       assert(state.rootNames.length === 1);
       state.bundleOutput = buildBundle(
         state.rootNames[0],
         data,
         sourceFiles,
-        state.host.options.target ?? ts.ScriptTarget.ESNext,
+        state.options.target ?? ts.ScriptTarget.ESNext,
       );
     };
   }
@@ -1091,7 +1091,7 @@ delete Object.prototype.__proto__;
 
     legacyHostState.target = target;
     legacyHostState.writeFile = createBundleWriteFile(state);
-    state.host = host;
+    state.options = options;
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1231,7 +1231,6 @@ delete Object.prototype.__proto__;
 
     legacyHostState.target = target;
     legacyHostState.writeFile = createBundleWriteFile(state);
-    state.host = host;
 
     const program = ts.createProgram({
       rootNames,
