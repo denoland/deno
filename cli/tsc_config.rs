@@ -202,20 +202,16 @@ pub fn parse_config(
 
 /// A structure for managing the configuration of TypeScript
 #[derive(Debug, Clone)]
-pub struct TsConfig {
-  value: Value,
-  /// The bytes of any user config, which is used in generating hashes of
-  /// emitted files for cache invalidation purposes.
-  pub maybe_user_config: Option<Vec<u8>>,
-}
+pub struct TsConfig(Value);
 
 impl TsConfig {
   /// Create a new `TsConfig` with the base being the `value` supplied.
   pub fn new(value: Value) -> Self {
-    TsConfig {
-      value,
-      maybe_user_config: None,
-    }
+    TsConfig(value)
+  }
+
+  pub fn as_bytes(&self) -> Vec<u8> {
+    self.0.to_string().as_bytes().to_owned()
   }
 
   /// Take an optional string representing a user provided TypeScript config file
@@ -245,8 +241,7 @@ impl TsConfig {
       let config_text = std::str::from_utf8(&config_bytes)?;
       let (value, maybe_ignored_options) =
         parse_config(&config_text, &config_path)?;
-      json_merge(&mut self.value, &value);
-      self.maybe_user_config = Some(config_bytes);
+      json_merge(&mut self.0, &value);
 
       Ok(maybe_ignored_options)
     } else {
@@ -259,7 +254,7 @@ impl TsConfig {
     &self,
   ) -> Result<TranspileConfigOptions, AnyError> {
     let options: TranspileConfigOptions =
-      serde_json::from_value(self.value.clone())?;
+      serde_json::from_value(self.0.clone())?;
     Ok(options)
   }
 }
@@ -270,7 +265,7 @@ impl Serialize for TsConfig {
   where
     S: Serializer,
   {
-    Serialize::serialize(&self.value, serializer)
+    Serialize::serialize(&self.0, serializer)
   }
 }
 

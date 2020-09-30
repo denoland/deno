@@ -167,23 +167,12 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 /// A hashing function that takes the source code, version and optionally a
 /// user provided config and generates a string hash which can be stored to
 /// determine if the cached emit is valid or not.
-fn get_version(
-  source: &TextDocument,
-  version: &str,
-  maybe_config: &Option<Vec<u8>>,
-) -> String {
-  if let Some(config) = maybe_config {
-    crate::checksum::gen(&[
-      source.to_str().unwrap().as_bytes(),
-      version.as_bytes(),
-      config,
-    ])
-  } else {
-    crate::checksum::gen(&[
-      source.to_str().unwrap().as_bytes(),
-      version.as_bytes(),
-    ])
-  }
+fn get_version(source: &TextDocument, version: &str, config: &[u8]) -> String {
+  crate::checksum::gen(&[
+    source.to_str().unwrap().as_bytes(),
+    version.as_bytes(),
+    config,
+  ])
 }
 
 /// A logical representation of a module within a graph.
@@ -236,9 +225,9 @@ impl Module {
 
   /// Return `true` if the current hash of the module matches the stored
   /// version.
-  pub fn emit_valid(&self, maybe_config: &Option<Vec<u8>>) -> bool {
+  pub fn emit_valid(&self, config: &[u8]) -> bool {
     if let Some(version) = self.maybe_version.clone() {
-      version == get_version(&self.source, version::DENO, maybe_config)
+      version == get_version(&self.source, version::DENO, config)
     } else {
       false
     }
@@ -389,9 +378,8 @@ impl Module {
   }
 
   /// Calculate the hashed version of the module and update the `maybe_version`.
-  pub fn set_version(&mut self, maybe_config: &Option<Vec<u8>>) {
-    self.maybe_version =
-      Some(get_version(&self.source, version::DENO, maybe_config))
+  pub fn set_version(&mut self, config: &[u8]) {
+    self.maybe_version = Some(get_version(&self.source, version::DENO, config))
   }
 }
 
@@ -569,10 +557,9 @@ impl Graph {
       {
         continue;
       }
+      let config = ts_config.as_bytes();
       // skip modules that already have a valid emit
-      if module.emits.contains_key(&emit_type)
-        && module.emit_valid(&ts_config.maybe_user_config)
-      {
+      if module.emits.contains_key(&emit_type) && module.emit_valid(&config) {
         continue;
       }
       if module.maybe_parsed_module.is_none() {
@@ -582,7 +569,7 @@ impl Graph {
       let emit = parsed_module.transpile(&emit_options)?;
       emit_count += 1;
       module.emits.insert(emit_type.clone(), emit);
-      module.set_version(&ts_config.maybe_user_config);
+      module.set_version(&config);
       module.is_dirty = true;
     }
     self.flush(&emit_type)?;
@@ -792,22 +779,22 @@ mod tests {
   fn test_get_version() {
     let doc_a =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
-    let version_a = get_version(&doc_a, "1.2.3", &None);
+    let version_a = get_version(&doc_a, "1.2.3", b"");
     let doc_b =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
-    let version_b = get_version(&doc_b, "1.2.3", &None);
+    let version_b = get_version(&doc_b, "1.2.3", b"");
     assert_eq!(version_a, version_b);
 
-    let version_c = get_version(&doc_a, "1.2.3", &Some(b"options".to_vec()));
+    let version_c = get_version(&doc_a, "1.2.3", b"options");
     assert_ne!(version_a, version_c);
 
-    let version_d = get_version(&doc_b, "1.2.3", &Some(b"options".to_vec()));
+    let version_d = get_version(&doc_b, "1.2.3", b"options");
     assert_eq!(version_c, version_d);
 
-    let version_e = get_version(&doc_a, "1.2.4", &None);
+    let version_e = get_version(&doc_a, "1.2.4", b"");
     assert_ne!(version_a, version_e);
 
-    let version_f = get_version(&doc_b, "1.2.4", &None);
+    let version_f = get_version(&doc_b, "1.2.4", b"");
     assert_eq!(version_e, version_f);
   }
 
@@ -815,35 +802,35 @@ mod tests {
   fn test_module_emit_valid() {
     let source =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
-    let maybe_version = Some(get_version(&source, version::DENO, &None));
+    let maybe_version = Some(get_version(&source, version::DENO, b""));
     let module = Module {
       source,
       maybe_version,
       ..Module::default()
     };
-    assert!(module.emit_valid(&None));
+    assert!(module.emit_valid(b""));
 
     let source =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
     let old_source =
       TextDocument::new(b"console.log(43);".to_vec(), Option::<&str>::None);
-    let maybe_version = Some(get_version(&old_source, version::DENO, &None));
+    let maybe_version = Some(get_version(&old_source, version::DENO, b""));
     let module = Module {
       source,
       maybe_version,
       ..Module::default()
     };
-    assert!(!module.emit_valid(&None));
+    assert!(!module.emit_valid(b""));
 
     let source =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
-    let maybe_version = Some(get_version(&source, "0.0.0", &None));
+    let maybe_version = Some(get_version(&source, "0.0.0", b""));
     let module = Module {
       source,
       maybe_version,
       ..Module::default()
     };
-    assert!(!module.emit_valid(&None));
+    assert!(!module.emit_valid(b""));
 
     let source =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
@@ -851,20 +838,20 @@ mod tests {
       source,
       ..Module::default()
     };
-    assert!(!module.emit_valid(&None));
+    assert!(!module.emit_valid(b""));
   }
 
   #[test]
   fn test_module_set_version() {
     let source =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
-    let expected = Some(get_version(&source, version::DENO, &None));
+    let expected = Some(get_version(&source, version::DENO, b""));
     let mut module = Module {
       source,
       ..Module::default()
     };
     assert!(module.maybe_version.is_none());
-    module.set_version(&None);
+    module.set_version(b"");
     assert_eq!(module.maybe_version, expected);
   }
 
