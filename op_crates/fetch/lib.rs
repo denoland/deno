@@ -41,28 +41,39 @@ pub use reqwest; // Re-export reqwest
 pub fn init(isolate: &mut JsRuntime, build_time: bool) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let files = vec![
-    manifest_dir.join("01_fetch_util.js"),
-    manifest_dir.join("03_dom_iterable.js"),
-    manifest_dir.join("11_streams.js"),
-    manifest_dir.join("20_headers.js"),
-    manifest_dir.join("26_fetch.js"),
+    (
+      manifest_dir.join("01_fetch_util.js"),
+      include_str!("01_fetch_util.js"),
+    ),
+    (
+      manifest_dir.join("03_dom_iterable.js"),
+      include_str!("03_dom_iterable.js"),
+    ),
+    (
+      manifest_dir.join("11_streams.js"),
+      include_str!("11_streams.js"),
+    ),
+    (
+      manifest_dir.join("20_headers.js"),
+      include_str!("20_headers.js"),
+    ),
+    (
+      manifest_dir.join("26_fetch.js"),
+      include_str!("26_fetch.js"),
+    ),
   ];
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = manifest_dir.parent().unwrap().parent().unwrap();
-  for file in files {
+  for (file, source_code) in files {
     if build_time {
       println!("cargo:rerun-if-changed={}", file.display());
     }
 
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
-    isolate
-      .execute(
-        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-        &std::fs::read_to_string(&file).unwrap(),
-      )
-      .unwrap();
+    let url = "deno:".to_string() + &display_path_str.replace('\\', "/");
+    isolate.execute(&url, source_code).unwrap();
   }
 }
 
