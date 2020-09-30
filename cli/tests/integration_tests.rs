@@ -1292,7 +1292,7 @@ fn repl_test_save_last_thrown() {
     false,
   );
   assert!(out.ends_with("1\n"));
-  assert_eq!(err, "Thrown: 1\n");
+  assert_eq!(err, "Uncaught 1\n");
 }
 
 #[test]
@@ -1322,7 +1322,7 @@ fn repl_test_assign_underscore_error() {
   assert!(
     out.ends_with("Last thrown error is no longer saved to _error.\n1\n1\n")
   );
-  assert_eq!(err, "Thrown: 2\n");
+  assert_eq!(err, "Uncaught 2\n");
 }
 
 #[test]

@@ -52,6 +52,47 @@ pub async fn run(
   println!("Deno {}", crate::version::DENO);
   println!("exit using ctrl+d or close()");
 
+  let prelude = r#"
+    Object.defineProperty(globalThis, "_", {
+      configurable: true,
+      get: () => Deno[Deno.internal].lastEvalResult,
+      set: (value) => {
+       Object.defineProperty(globalThis, "_", {
+         value: value,
+         writable: true,
+         enumerable: true,
+         configurable: true,
+       });
+       console.log("Last evaluation result is no longer saved to _.");
+      },
+    });
+
+    Object.defineProperty(globalThis, "_error", {
+      configurable: true,
+      get: () => Deno[Deno.internal].lastThrownError,
+      set: (value) => {
+       Object.defineProperty(globalThis, "_error", {
+         value: value,
+         writable: true,
+         enumerable: true,
+         configurable: true,
+       });
+
+       console.log("Last thrown error is no longer saved to _error.");
+      },
+    });
+  "#;
+
+  session
+    .post_message(
+      "Runtime.evaluate".to_string(),
+      Some(json!({
+        "expression": prelude,
+        "contextId": context_id,
+      })),
+    )
+    .await?;
+
   loop {
     let line = editor.readline("> ");
     match line {
@@ -72,6 +113,30 @@ pub async fn run(
         let evaluate_result = evaluate_response.get("result").unwrap();
         let evaluate_exception_details =
           evaluate_response.get("exceptionDetails");
+
+        if evaluate_exception_details.is_some() {
+          session
+            .post_message(
+            "Runtime.callFunctionOn".to_string(),
+            Some(json!({
+              "executionContextId": context_id,
+              "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
+              "arguments": [
+                evaluate_result,
+              ],
+            }))).await?;
+        } else {
+          session
+            .post_message(
+            "Runtime.callFunctionOn".to_string(),
+            Some(json!({
+              "executionContextId": context_id,
+              "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+              "arguments": [
+                evaluate_result,
+              ],
+            }))).await?;
+        }
 
         // TODO(caspervonb) we should investigate using previews here but to keep things
         // consistent with the previous implementation we just get the preview result from
