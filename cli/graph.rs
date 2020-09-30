@@ -792,23 +792,23 @@ mod tests {
   fn test_get_version() {
     let doc_a =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
-    let a = get_version(&doc_a, "1.2.3", &None);
+    let version_a = get_version(&doc_a, "1.2.3", &None);
     let doc_b =
       TextDocument::new(b"console.log(42);".to_vec(), Option::<&str>::None);
-    let b = get_version(&doc_b, "1.2.3", &None);
-    assert_eq!(a, b);
+    let version_b = get_version(&doc_b, "1.2.3", &None);
+    assert_eq!(version_a, version_b);
 
-    let c = get_version(&doc_a, "1.2.3", &Some(b"options".to_vec()));
-    assert_ne!(a, c);
+    let version_c = get_version(&doc_a, "1.2.3", &Some(b"options".to_vec()));
+    assert_ne!(version_a, version_c);
 
-    let d = get_version(&doc_b, "1.2.3", &Some(b"options".to_vec()));
-    assert_eq!(c, d);
+    let version_d = get_version(&doc_b, "1.2.3", &Some(b"options".to_vec()));
+    assert_eq!(version_c, version_d);
 
-    let e = get_version(&doc_a, "1.2.4", &None);
-    assert_ne!(a, e);
+    let version_e = get_version(&doc_a, "1.2.4", &None);
+    assert_ne!(version_a, version_e);
 
-    let f = get_version(&doc_b, "1.2.4", &None);
-    assert_eq!(e, f);
+    let version_f = get_version(&doc_b, "1.2.4", &None);
+    assert_eq!(version_e, version_f);
   }
 
   #[test]
