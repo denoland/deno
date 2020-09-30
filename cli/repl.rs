@@ -33,7 +33,8 @@ pub async fn run(
             Some(json!({
                 "expression": line,
                 "contextId": context_id,
-                // Set repl mode to true to enable const redeclarations and top level await
+                // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
+                // level await
                 "replMode": false,
             })),
           )
