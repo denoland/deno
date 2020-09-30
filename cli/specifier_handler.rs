@@ -204,7 +204,10 @@ pub struct FetchHandler {
 }
 
 impl FetchHandler {
-  pub fn new(global_state: &Arc<GlobalState>) -> Result<Self> {
+  pub fn new(
+    global_state: &Arc<GlobalState>,
+    permissions: Permissions,
+  ) -> Result<Self> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
     let disk_cache = deno_dir.gen_cache;
@@ -213,7 +216,7 @@ impl FetchHandler {
     Ok(FetchHandler {
       disk_cache,
       file_fetcher,
-      permissions: Permissions::allow_all(),
+      permissions,
     })
   }
 }
