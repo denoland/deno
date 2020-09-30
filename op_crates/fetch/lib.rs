@@ -27,7 +27,6 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -35,37 +34,30 @@ pub use reqwest; // Re-export reqwest
 
 /// Execute this crates' JS source files.
 pub fn init(isolate: &mut JsRuntime) {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let files = vec![
     (
-      manifest_dir.join("01_fetch_util.js"),
+      "deno:op_crates/fetch/01_fetch_util.js",
       include_str!("01_fetch_util.js"),
     ),
     (
-      manifest_dir.join("03_dom_iterable.js"),
+      "deno:op_crates/fetch/03_dom_iterable.js",
       include_str!("03_dom_iterable.js"),
     ),
     (
-      manifest_dir.join("11_streams.js"),
+      "deno:op_crates/fetch/11_streams.js",
       include_str!("11_streams.js"),
     ),
     (
-      manifest_dir.join("20_headers.js"),
+      "deno:op_crates/fetch/20_headers.js",
       include_str!("20_headers.js"),
     ),
     (
-      manifest_dir.join("26_fetch.js"),
+      "deno:op_crates/fetch/26_fetch.js",
       include_str!("26_fetch.js"),
     ),
   ];
-  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-  // workspace root.
-  let display_root = manifest_dir.parent().unwrap().parent().unwrap();
-  for (file, source_code) in files {
-    let display_path = file.strip_prefix(display_root).unwrap();
-    let display_path_str = display_path.display().to_string();
-    let url = "deno:".to_string() + &display_path_str.replace('\\', "/");
-    isolate.execute(&url, source_code).unwrap();
+  for (url, source_code) in files {
+    isolate.execute(url, source_code).unwrap();
   }
 }
 

@@ -10,7 +10,7 @@ use deno_core::ZeroCopyBuf;
 use idna::domain_to_ascii;
 use idna::domain_to_ascii_strict;
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub fn op_domain_to_ascii(
   _state: &mut deno_core::OpState,
@@ -39,38 +39,31 @@ pub fn op_domain_to_ascii(
 
 /// Load and execute the javascript code.
 pub fn init(isolate: &mut JsRuntime) {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let files = vec![
     (
-      manifest_dir.join("00_dom_exception.js"),
+      "deno:op_crates/web/00_dom_exception.js",
       include_str!("00_dom_exception.js"),
     ),
     (
-      manifest_dir.join("01_event.js"),
+      "deno:op_crates/web/01_event.js",
       include_str!("01_event.js"),
     ),
     (
-      manifest_dir.join("02_abort_signal.js"),
+      "deno:op_crates/web/02_abort_signal.js",
       include_str!("02_abort_signal.js"),
     ),
     (
-      manifest_dir.join("08_text_encoding.js"),
+      "deno:op_crates/web/08_text_encoding.js",
       include_str!("08_text_encoding.js"),
     ),
-    (manifest_dir.join("11_url.js"), include_str!("11_url.js")),
+    ("deno:op_crates/web/11_url.js", include_str!("11_url.js")),
     (
-      manifest_dir.join("21_filereader.js"),
+      "deno:op_crates/web/21_filereader.js",
       include_str!("21_filereader.js"),
     ),
   ];
-  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-  // workspace root.
-  let display_root = manifest_dir.parent().unwrap().parent().unwrap();
-  for (file, source_code) in files {
-    let display_path = file.strip_prefix(display_root).unwrap();
-    let display_path_str = display_path.display().to_string();
-    let url = "deno:".to_string() + &display_path_str.replace('\\', "/");
-    isolate.execute(&url, source_code).unwrap();
+  for (url, source_code) in files {
+    isolate.execute(url, source_code).unwrap();
   }
 }
 
