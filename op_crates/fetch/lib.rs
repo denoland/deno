@@ -38,7 +38,7 @@ pub use reqwest; // Re-export reqwest
 /// Second parameter indicates if it's running during
 /// build time. In that case relevant "cargo" directives
 /// will be printed.
-pub fn init(isolate: &mut JsRuntime, build_time: bool) {
+pub fn init(isolate: &mut JsRuntime) {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let files = vec![
     (
@@ -66,10 +66,6 @@ pub fn init(isolate: &mut JsRuntime, build_time: bool) {
   // workspace root.
   let display_root = manifest_dir.parent().unwrap().parent().unwrap();
   for (file, source_code) in files {
-    if build_time {
-      println!("cargo:rerun-if-changed={}", file.display());
-    }
-
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
     let url = "deno:".to_string() + &display_path_str.replace('\\', "/");
