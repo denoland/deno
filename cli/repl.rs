@@ -101,7 +101,7 @@ pub async fn run(
           .post_message(
             "Runtime.evaluate".to_string(),
             Some(json!({
-              "expression": line,
+              "expression": format!("({})", line),
               "contextId": context_id,
               // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
               // level await
@@ -109,6 +109,25 @@ pub async fn run(
             })),
           )
           .await?;
+
+        // Retry without wrapping if there is an error
+        let evaluate_response =
+          if evaluate_response.get("exceptionDetails").is_some() {
+            session
+              .post_message(
+                "Runtime.evaluate".to_string(),
+                Some(json!({
+                  "expression": line,
+                  "contextId": context_id,
+                  // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
+                  // level await
+                  "replMode": false,
+                })),
+              )
+              .await?
+          } else {
+            evaluate_response
+          };
 
         let is_closing = session
           .post_message(
