@@ -20,15 +20,12 @@ use std::env;
 use std::error::Error;
 use std::fmt;
 use std::pin::Pin;
-use std::result;
 use std::sync::Arc;
-
-type Result<V> = result::Result<V, AnyError>;
 
 pub type DependencyMap = HashMap<String, Dependency>;
 pub type EmitMap = HashMap<EmitType, (TextDocument, Option<TextDocument>)>;
 pub type FetchFuture =
-  Pin<Box<(dyn Future<Output = Result<CachedModule>> + 'static)>>;
+  Pin<Box<(dyn Future<Output = Result<CachedModule, AnyError>> + 'static)>>;
 
 #[derive(Debug, Clone)]
 pub struct CachedModule {
@@ -89,7 +86,7 @@ pub struct Dependency {
 
 pub trait SpecifierHandler {
   /// Instructs the handler to fetch a specifier or retrieve its value from the
-  /// cache if there is a valid cached version.
+  /// cache.
   fn fetch(&mut self, specifier: ModuleSpecifier) -> FetchFuture;
 
   /// Get the optional build info from the cache for a given module specifier.
@@ -101,7 +98,7 @@ pub trait SpecifierHandler {
     &self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-  ) -> Result<Option<TextDocument>>;
+  ) -> Result<Option<TextDocument>, AnyError>;
 
   /// Set the emitted code (and maybe map) for a given module specifier.  The
   /// cache type indicates what form the emit is related to.
@@ -111,7 +108,7 @@ pub trait SpecifierHandler {
     emit_type: &EmitType,
     code: TextDocument,
     maybe_map: Option<TextDocument>,
-  ) -> Result<()>;
+  ) -> Result<(), AnyError>;
 
   /// When parsed out of a JavaScript module source, the triple slash reference
   /// to the types should be stored in the cache.
@@ -119,7 +116,7 @@ pub trait SpecifierHandler {
     &mut self,
     specifier: &ModuleSpecifier,
     types: String,
-  ) -> Result<()>;
+  ) -> Result<(), AnyError>;
 
   /// Set the build info for a module specifier, also providing the cache type.
   fn set_build_info(
@@ -127,22 +124,22 @@ pub trait SpecifierHandler {
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
     build_info: TextDocument,
-  ) -> Result<()>;
+  ) -> Result<(), AnyError>;
 
   /// Set the graph dependencies for a given module specifier.
   fn set_deps(
     &mut self,
     specifier: &ModuleSpecifier,
     dependencies: DependencyMap,
-  ) -> Result<()>;
+  ) -> Result<(), AnyError>;
 
   /// Set the version of the source for a given module, which is used to help
-  /// determine if a module needs to be re-type-checked.
+  /// determine if a module needs to be re-emitted.
   fn set_version(
     &mut self,
     specifier: &ModuleSpecifier,
     version: String,
-  ) -> Result<()>;
+  ) -> Result<(), AnyError>;
 }
 
 impl fmt::Debug for dyn SpecifierHandler {
@@ -185,11 +182,12 @@ pub struct CompiledFileMetadata {
 }
 
 impl CompiledFileMetadata {
-  pub fn from_json_string(metadata_string: &str) -> Result<Self> {
+  pub fn from_bytes(bytes: &[u8]) -> Result<Self, AnyError> {
+    let metadata_string = std::str::from_utf8(bytes)?;
     serde_json::from_str::<Self>(metadata_string).map_err(|e| e.into())
   }
 
-  pub fn to_json_string(&self) -> Result<String> {
+  pub fn to_json_string(&self) -> Result<String, AnyError> {
     serde_json::to_string(self).map_err(|e| e.into())
   }
 }
@@ -207,7 +205,7 @@ impl FetchHandler {
   pub fn new(
     global_state: &Arc<GlobalState>,
     permissions: Permissions,
-  ) -> Result<Self> {
+  ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
     let disk_cache = deno_dir.gen_cache;
@@ -234,14 +232,10 @@ impl SpecifierHandler for FetchHandler {
       let url = source_file.url;
       let filename = disk_cache.get_cache_filename_with_extension(&url, "meta");
       let maybe_version = if let Ok(bytes) = disk_cache.get(&filename) {
-        if let Ok(metadata_string) = std::str::from_utf8(&bytes) {
-          if let Ok(compiled_file_metadata) =
-            CompiledFileMetadata::from_json_string(metadata_string)
-          {
-            Some(compiled_file_metadata.version_hash)
-          } else {
-            None
-          }
+        if let Ok(compiled_file_metadata) =
+          CompiledFileMetadata::from_bytes(&bytes)
+        {
+          Some(compiled_file_metadata.version_hash)
         } else {
           None
         }
@@ -280,7 +274,7 @@ impl SpecifierHandler for FetchHandler {
     &self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-  ) -> Result<Option<TextDocument>> {
+  ) -> Result<Option<TextDocument>, AnyError> {
     if emit_type != &EmitType::Cli {
       return Err(UnsupportedEmitType(emit_type.clone()).into());
     }
@@ -299,7 +293,7 @@ impl SpecifierHandler for FetchHandler {
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
     build_info: TextDocument,
-  ) -> Result<()> {
+  ) -> Result<(), AnyError> {
     if emit_type != &EmitType::Cli {
       return Err(UnsupportedEmitType(emit_type.clone()).into());
     }
@@ -318,7 +312,7 @@ impl SpecifierHandler for FetchHandler {
     emit_type: &EmitType,
     code: TextDocument,
     maybe_map: Option<TextDocument>,
-  ) -> Result<()> {
+  ) -> Result<(), AnyError> {
     if emit_type != &EmitType::Cli {
       return Err(UnsupportedEmitType(emit_type.clone()).into());
     }
@@ -341,7 +335,7 @@ impl SpecifierHandler for FetchHandler {
     &mut self,
     _specifier: &ModuleSpecifier,
     _dependencies: DependencyMap,
-  ) -> Result<()> {
+  ) -> Result<(), AnyError> {
     // file_fetcher doesn't have the concept of caching dependencies
     Ok(())
   }
@@ -350,7 +344,7 @@ impl SpecifierHandler for FetchHandler {
     &mut self,
     _specifier: &ModuleSpecifier,
     _types: String,
-  ) -> Result<()> {
+  ) -> Result<(), AnyError> {
     // file_fetcher doesn't have the concept of caching of the types
     Ok(())
   }
@@ -359,7 +353,7 @@ impl SpecifierHandler for FetchHandler {
     &mut self,
     specifier: &ModuleSpecifier,
     version_hash: String,
-  ) -> Result<()> {
+  ) -> Result<(), AnyError> {
     let compiled_file_metadata = CompiledFileMetadata { version_hash };
     let filename = self
       .disk_cache
@@ -408,7 +402,10 @@ pub mod tests {
   impl MockSpecifierHandler {}
 
   impl MockSpecifierHandler {
-    fn get_cache(&self, specifier: ModuleSpecifier) -> Result<CachedModule> {
+    fn get_cache(
+      &self,
+      specifier: ModuleSpecifier,
+    ) -> Result<CachedModule, AnyError> {
       let specifier_text = specifier
         .to_string()
         .replace(":///", "_")
@@ -449,7 +446,7 @@ pub mod tests {
       &self,
       specifier: &ModuleSpecifier,
       _cache_type: &EmitType,
-    ) -> Result<Option<TextDocument>> {
+    ) -> Result<Option<TextDocument>, AnyError> {
       Ok(self.build_info.get(specifier).cloned())
     }
     fn set_cache(
@@ -458,7 +455,7 @@ pub mod tests {
       cache_type: &EmitType,
       code: TextDocument,
       maybe_map: Option<TextDocument>,
-    ) -> Result<()> {
+    ) -> Result<(), AnyError> {
       self.cache_calls.push((
         specifier.clone(),
         cache_type.clone(),
@@ -471,7 +468,7 @@ pub mod tests {
       &mut self,
       specifier: &ModuleSpecifier,
       types: String,
-    ) -> Result<()> {
+    ) -> Result<(), AnyError> {
       self.types_calls.push((specifier.clone(), types));
       Ok(())
     }
@@ -480,7 +477,7 @@ pub mod tests {
       specifier: &ModuleSpecifier,
       cache_type: &EmitType,
       build_info: TextDocument,
-    ) -> Result<()> {
+    ) -> Result<(), AnyError> {
       self
         .build_info
         .insert(specifier.clone(), build_info.clone());
@@ -495,7 +492,7 @@ pub mod tests {
       &mut self,
       specifier: &ModuleSpecifier,
       dependencies: DependencyMap,
-    ) -> Result<()> {
+    ) -> Result<(), AnyError> {
       self.deps_calls.push((specifier.clone(), dependencies));
       Ok(())
     }
@@ -503,7 +500,7 @@ pub mod tests {
       &mut self,
       specifier: &ModuleSpecifier,
       version: String,
-    ) -> Result<()> {
+    ) -> Result<(), AnyError> {
       self.version_calls.push((specifier.clone(), version));
       Ok(())
     }

@@ -210,6 +210,10 @@ impl TsConfig {
     TsConfig(value)
   }
 
+  pub fn as_bytes(&self) -> Vec<u8> {
+    self.0.to_string().as_bytes().to_owned()
+  }
+
   /// Take an optional string representing a user provided TypeScript config file
   /// which was passed in via the `--config` compiler option and merge it with
   /// the configuration.  Returning the result which optionally contains any
@@ -233,7 +237,8 @@ impl TsConfig {
           ),
         )
       })?;
-      let config_text = std::fs::read_to_string(config_path.clone())?;
+      let config_bytes = std::fs::read(config_path.clone())?;
+      let config_text = std::str::from_utf8(&config_bytes)?;
       let (value, maybe_ignored_options) =
         parse_config(&config_text, &config_path)?;
       json_merge(&mut self.0, &value);
