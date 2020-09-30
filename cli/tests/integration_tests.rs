@@ -345,6 +345,88 @@ fn cache_test() {
 }
 
 #[test]
+fn cache_invalidation_test() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
+}
+
+#[test]
+fn cache_invalidation_test_no_check() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
+}
+
+#[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
