@@ -942,6 +942,11 @@ impl TsCompiler {
   }
 }
 
+#[derive(Debug, Deserialize)]
+struct CreateHashArgs {
+  data: String,
+}
+
 fn execute_in_tsc(
   global_state: Arc<GlobalState>,
   req: String,
@@ -973,6 +978,14 @@ fn execute_in_tsc(
           "op_compiler_respond found unexpected existing compiler output",
         );
         Ok(json!({}))
+      }),
+    );
+    js_runtime.register_op(
+      "op_create_hash",
+      json_op_sync(move |_s, args, _bufs| {
+        let v: CreateHashArgs = serde_json::from_value(args)?;
+        let hash = crate::checksum::gen(&[v.data.as_bytes()]);
+        Ok(json!({ "hash": hash }))
       }),
     );
   }
