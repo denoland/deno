@@ -2144,6 +2144,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         allow_net: true,
         allow_env: true,
@@ -2164,6 +2165,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
