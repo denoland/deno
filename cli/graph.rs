@@ -570,8 +570,8 @@ impl Graph {
         continue;
       }
       // skip modules that already have a valid emit
-      if module.emit_valid(&ts_config.maybe_user_config)
-        && module.emits.contains_key(&emit_type)
+      if module.emits.contains_key(&emit_type)
+        && module.emit_valid(&ts_config.maybe_user_config)
       {
         continue;
       }
