@@ -58,10 +58,7 @@ pub fn init(isolate: &mut JsRuntime, build_time: bool) {
       manifest_dir.join("08_text_encoding.js"),
       include_str!("08_text_encoding.js"),
     ),
-    (
-      manifest_dir.join("11_url.js"),
-      include_str!("08_text_encoding.js"),
-    ),
+    (manifest_dir.join("11_url.js"), include_str!("11_url.js")),
     (
       manifest_dir.join("21_filereader.js"),
       include_str!("21_filereader.js"),
