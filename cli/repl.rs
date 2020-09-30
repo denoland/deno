@@ -6,6 +6,22 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use rustyline::validate::Validator;
+use rustyline::validate::ValidationContext;
+use rustyline::validate::ValidationResult;
+use rustyline::validate::MatchingBracketValidator;
+use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
+
+#[derive(Completer, Helper, Highlighter, Hinter)]
+struct Helper {
+  validator: MatchingBracketValidator,
+}
+
+impl Validator for Helper {
+    fn validate(&self, ctx: &mut ValidationContext) -> Result<ValidationResult, ReadlineError> {
+      self.validator.validate(ctx)
+    }
+}
 
 pub async fn run(
   _global_state: &GlobalState,
@@ -18,7 +34,12 @@ pub async fn run(
     .post_message("Runtime.enable".to_string(), None)
     .await?;
 
-  let mut editor = Editor::<()>::new();
+  let helper = Helper {
+    validator: MatchingBracketValidator::new(),
+  };
+
+  let mut editor = Editor::new();
+  editor.set_helper(Some(helper));
 
   println!("Deno {}", crate::version::DENO);
   println!("exit using ctrl+d or close()");
