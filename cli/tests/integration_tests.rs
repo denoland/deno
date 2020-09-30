@@ -1157,6 +1157,7 @@ fn repl_test_function() {
 }
 
 #[test]
+#[ignore]
 fn repl_test_multiline() {
   let (out, err) = util::run_and_collect_output(
     true,
