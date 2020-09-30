@@ -83,11 +83,9 @@ pub async fn run(
         editor.add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
-        println!("ctrl-c");
         break;
       }
       Err(ReadlineError::Eof) => {
-        println!("ctrl-d");
         break;
       }
       Err(err) => {
