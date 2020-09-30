@@ -1231,6 +1231,7 @@ delete Object.prototype.__proto__;
 
     legacyHostState.target = target;
     legacyHostState.writeFile = createBundleWriteFile(state);
+    state.options = options;
 
     const program = ts.createProgram({
       rootNames,
