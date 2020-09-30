@@ -41,7 +41,6 @@ fn op_start(
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "ppid": ppid(),
-    "repl": gs.flags.subcommand == DenoSubcommand::Repl,
     "target": env!("TARGET"),
     "tsVersion": version::TYPESCRIPT,
     "unstableFlag": gs.flags.unstable,
