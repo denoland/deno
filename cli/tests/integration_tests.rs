@@ -1506,6 +1506,12 @@ itest!(deno_test_only {
   output: "deno_test_only.ts.out",
 });
 
+itest!(deno_test_no_check {
+  args: "test --no-check test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test.out",
+});
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
