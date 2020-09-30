@@ -101,7 +101,7 @@ pub async fn run(
           .post_message(
             "Runtime.evaluate".to_string(),
             Some(json!({
-              "expression": format!("({})", line),
+              "expression": format!("'use strict'; void 0;\n({})", line),
               "contextId": context_id,
               // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
               // level await
@@ -117,7 +117,7 @@ pub async fn run(
               .post_message(
                 "Runtime.evaluate".to_string(),
                 Some(json!({
-                  "expression": line,
+                  "expression": format!("'use strict'; void 0;\n{}", line),
                   "contextId": context_id,
                   // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
                   // level await
