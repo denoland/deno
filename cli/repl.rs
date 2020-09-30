@@ -27,11 +27,13 @@ impl Validator for Helper {
 }
 
 pub async fn run(
-  _global_state: &GlobalState,
+  global_state: &GlobalState,
   mut session: Box<InspectorSession>,
 ) -> Result<(), AnyError> {
   // Our inspector is unable to default to the default context id so we have to specify it here.
   let context_id: u32 = 1;
+
+  let history_file = global_state.dir.root.join("deno_history.txt");
 
   session
     .post_message("Runtime.enable".to_string(), None)
@@ -43,6 +45,7 @@ pub async fn run(
 
   let mut editor = Editor::new();
   editor.set_helper(Some(helper));
+  editor.load_history(history_file.to_str().unwrap())?;
 
   println!("Deno {}", crate::version::DENO);
   println!("exit using ctrl+d or close()");
@@ -95,7 +98,7 @@ pub async fn run(
     }
   }
 
-  // TODO(caspervonb) save history file
+  editor.save_history(history_file.to_str().unwrap())?;
 
   Ok(())
 }
