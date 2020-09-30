@@ -60,30 +60,45 @@ pub async fn run(
           .post_message(
             "Runtime.evaluate".to_string(),
             Some(json!({
-                "expression": line,
-                "contextId": context_id,
-                // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
-                // level await
-                "replMode": false,
+              "expression": line,
+              "contextId": context_id,
+              // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
+              // level await
+              "replMode": false,
             })),
           )
           .await?;
 
         let evaluate_result = evaluate_response.get("result").unwrap();
+        let evaluate_exception_details =
+          evaluate_response.get("exceptionDetails");
 
         // TODO(caspervonb) we should investigate using previews here but to keep things
         // consistent with the previous implementation we just get the preview result from
         // Deno.inspectArgs.
-        let inspect_response = session.post_message("Runtime.callFunctionOn".to_string(), Some(json!({
-                "executionContextId": context_id,
-                "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object]); }",
-                "arguments": [
-                    evaluate_result,
-                ],
+        let inspect_response = session
+          .post_message(
+            "Runtime.callFunctionOn".to_string(),
+            Some(json!({
+              "executionContextId": context_id,
+              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object]); }",
+              "arguments": [
+                evaluate_result,
+              ],
             }))).await?;
 
         let inspect_result = inspect_response.get("result").unwrap();
-        println!("{}", inspect_result.get("value").unwrap().as_str().unwrap());
+
+        match evaluate_exception_details {
+          Some(_) => eprintln!(
+            "Uncaught {}",
+            inspect_result.get("value").unwrap().as_str().unwrap()
+          ),
+          None => println!(
+            "{}",
+            inspect_result.get("value").unwrap().as_str().unwrap()
+          ),
+        }
 
         editor.add_history_entry(line.as_str());
       }
