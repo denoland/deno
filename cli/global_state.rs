@@ -126,8 +126,10 @@ impl GlobalState {
 
     if self.flags.no_check {
       debug!("Transpiling root: {}", module_specifier);
+      // TODO(kitsonk) note that self.permissions != permissions, which is
+      // something that should be handled better in the future.
       let handler =
-        Rc::new(RefCell::new(FetchHandler::new(&self.flags, &permissions)?));
+        Rc::new(RefCell::new(FetchHandler::new(self, permissions.clone())?));
       let mut builder = GraphBuilder::new(handler, maybe_import_map);
       builder.insert(&module_specifier).await?;
       let mut graph = builder.get_graph(&self.lockfile)?;

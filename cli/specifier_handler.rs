@@ -4,8 +4,7 @@ use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
-use crate::flags::Flags;
-use crate::http_cache::HttpCache;
+use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 
@@ -22,6 +21,7 @@ use std::error::Error;
 use std::fmt;
 use std::pin::Pin;
 use std::result;
+use std::sync::Arc;
 
 type Result<V> = result::Result<V, AnyError>;
 
@@ -204,27 +204,19 @@ pub struct FetchHandler {
 }
 
 impl FetchHandler {
-  pub fn new(flags: &Flags, permissions: &Permissions) -> Result<Self> {
+  pub fn new(
+    global_state: &Arc<GlobalState>,
+    permissions: Permissions,
+  ) -> Result<Self> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
-    let deps_cache_location = deno_dir.root.join("deps");
-    let http_cache = HttpCache::new(&deps_cache_location);
-    let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
-
-    let file_fetcher = SourceFileFetcher::new(
-      http_cache,
-      !flags.reload,
-      flags.cache_blocklist.clone(),
-      flags.no_remote,
-      flags.cached_only,
-      ca_file.as_deref(),
-    )?;
     let disk_cache = deno_dir.gen_cache;
+    let file_fetcher = global_state.file_fetcher.clone();
 
     Ok(FetchHandler {
       disk_cache,
       file_fetcher,
-      permissions: permissions.clone(),
+      permissions,
     })
   }
 }
@@ -386,6 +378,8 @@ impl SpecifierHandler for FetchHandler {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+
+  use crate::http_cache::HttpCache;
 
   use deno_core::futures::future;
   use std::fs;
