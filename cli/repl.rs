@@ -108,14 +108,22 @@ pub async fn run(
 
     match line {
       Ok(line) => {
-        // Things like `{}` will be evaluated as a block statement which is suprising as most
-        // repl's treat everything as an expression, so we first try to evaluate the input as an
-        // expression by wrapping it in parens.
+        // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
+        // statement rather than an object literal so we interpret it as an expression statement
+        // to match the behavior found in a typical prompt including browser developer tools.
+        let wrapped_line = if line.trim_start().starts_with("{")
+          && !line.trim_end().ends_with(";")
+        {
+          format!("({})", &line)
+        } else {
+          line.clone()
+        };
+
         let evaluate_response = session
           .post_message(
             "Runtime.evaluate".to_string(),
             Some(json!({
-              "expression": format!("'use strict'; void 0;\n({})", line),
+              "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
               "contextId": context_id,
               // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
               // level await
@@ -127,12 +135,14 @@ pub async fn run(
         // If that fails, we retry it without wrapping in parens letting the error bubble up to the
         // user if it is still an error.
         let evaluate_response =
-          if evaluate_response.get("exceptionDetails").is_some() {
+          if evaluate_response.get("exceptionDetails").is_some()
+            && &wrapped_line != &line
+          {
             session
               .post_message(
                 "Runtime.evaluate".to_string(),
                 Some(json!({
-                  "expression": format!("'use strict'; void 0;\n{}", line),
+                  "expression": format!("'use strict'; void 0;\n{}", &line),
                   "contextId": context_id,
                   // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
                   // level await
