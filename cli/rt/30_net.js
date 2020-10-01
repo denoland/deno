@@ -203,10 +203,10 @@
     }
   }
 
-  function listen(options) {
+  function listen({ hostname, ...options }) {
     const res = opListen({
       transport: "tcp",
-      hostname: "0.0.0.0",
+      hostname: typeof hostname === "undefined" ? "0.0.0.0" : hostname,
       ...options,
     });
 

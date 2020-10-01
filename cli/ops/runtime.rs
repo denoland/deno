@@ -6,13 +6,20 @@ use crate::permissions::Permissions;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_json::Value;
 use std::env;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<ModuleSpecifier>(main_module);
+  }
   super::reg_json_sync(rt, "op_start", op_start);
   super::reg_json_sync(rt, "op_main_module", op_main_module);
   super::reg_json_sync(rt, "op_metrics", op_metrics);

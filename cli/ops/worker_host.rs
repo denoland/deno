@@ -5,17 +5,19 @@ use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
+use crate::worker::WebWorker;
+use crate::worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::error::AnyError;
+use deno_core::futures::future::FutureExt;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::FutureExt;
 use serde::Deserialize;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
@@ -24,6 +26,12 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<WorkersTable>(WorkersTable::default());
+    state.put::<WorkerId>(WorkerId::default());
+  }
   super::reg_json_sync(rt, "op_create_worker", op_create_worker);
   super::reg_json_sync(
     rt,
@@ -182,7 +190,6 @@ fn op_create_worker(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -194,7 +201,7 @@ fn op_create_worker(
   let args_name = args.name;
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
-    cli_state.check_unstable("Worker.deno");
+    super::check_unstable(state, "Worker.deno");
   }
   let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
@@ -202,6 +209,7 @@ fn op_create_worker(
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
+  let cli_state = super::global_state(state);
 
   let (join_handle, worker_handle) = run_worker_thread(
     worker_id,

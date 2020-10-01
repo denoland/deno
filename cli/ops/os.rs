@@ -2,11 +2,13 @@
 
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 
@@ -120,8 +122,7 @@ fn op_loadavg(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.loadavg");
+  super::check_unstable(state, "Deno.loadavg");
   state.borrow::<Permissions>().check_env()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(json!([loadavg.one, loadavg.five, loadavg.fifteen])),
@@ -134,8 +135,7 @@ fn op_hostname(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.hostname");
+  super::check_unstable(state, "Deno.hostname");
   state.borrow::<Permissions>().check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(json!(hostname))
@@ -146,8 +146,7 @@ fn op_os_release(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.osRelease");
+  super::check_unstable(state, "Deno.osRelease");
   state.borrow::<Permissions>().check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(json!(release))
@@ -158,8 +157,7 @@ fn op_system_memory_info(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.systemMemoryInfo");
+  super::check_unstable(state, "Deno.systemMemoryInfo");
   state.borrow::<Permissions>().check_env()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(json!({

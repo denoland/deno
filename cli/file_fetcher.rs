@@ -12,11 +12,12 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::futures::future::FutureExt;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_fetch::reqwest;
-use futures::future::FutureExt;
 use log::info;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -32,7 +33,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Structure representing a text document.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TextDocument {
   bytes: Vec<u8>,
   charset: Cow<'static, str>,
@@ -69,6 +70,18 @@ impl TextDocument {
 impl From<Vec<u8>> for TextDocument {
   fn from(bytes: Vec<u8>) -> Self {
     TextDocument::new(bytes, Option::<&str>::None)
+  }
+}
+
+impl From<String> for TextDocument {
+  fn from(s: String) -> Self {
+    TextDocument::new(s.as_bytes().to_vec(), Option::<&str>::None)
+  }
+}
+
+impl From<&str> for TextDocument {
+  fn from(s: &str) -> Self {
+    TextDocument::new(s.as_bytes().to_vec(), Option::<&str>::None)
   }
 }
 

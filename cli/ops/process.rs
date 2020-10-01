@@ -6,13 +6,15 @@ use crate::signal::kill;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::future::FutureExt;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
-use futures::future::FutureExt;
 use serde::Deserialize;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::process::Command;
@@ -225,8 +227,7 @@ fn op_kill(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.kill");
+  super::check_unstable(state, "Deno.kill");
   state.borrow::<Permissions>().check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;

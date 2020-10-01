@@ -1,7 +1,8 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 #[macro_use]
 extern crate log;
 
-use deno_core::js_check;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
@@ -261,7 +262,7 @@ fn main() {
       .unwrap();
     isolate.await
   };
-  js_check(runtime.block_on(future));
+  runtime.block_on(future).unwrap();
 }
 
 #[test]

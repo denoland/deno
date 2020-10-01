@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { stripColor } from "../fmt/colors.ts";
 import {
   assert,
@@ -8,8 +9,8 @@ import {
 import {
   AssertionError,
   copyError,
-  inspectValue,
   createErrDiff,
+  inspectValue,
 } from "./assertion_error.ts";
 
 Deno.test({

@@ -7,12 +7,15 @@ use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::futures::future::poll_fn;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
 use serde::Deserialize;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::From;
 use std::fs::File;
@@ -73,8 +76,7 @@ async fn op_start_tls(
     domain.push_str("localhost");
   }
   {
-    let cli_state = super::global_state2(&state);
-    cli_state.check_unstable("Deno.startTls");
+    super::check_unstable2(&state, "Deno.startTls");
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
     permissions.check_net(&domain, 0)?;

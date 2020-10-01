@@ -4,7 +4,7 @@
 import { assert } from "../_util/assert.ts";
 import { basename, join, normalize } from "../path/mod.ts";
 
-export function createWalkEntrySync(path: string): WalkEntry {
+export function _createWalkEntrySync(path: string): WalkEntry {
   path = normalize(path);
   const name = basename(path);
   const info = Deno.statSync(path);
@@ -17,7 +17,7 @@ export function createWalkEntrySync(path: string): WalkEntry {
   };
 }
 
-export async function createWalkEntry(path: string): Promise<WalkEntry> {
+export async function _createWalkEntry(path: string): Promise<WalkEntry> {
   path = normalize(path);
   const name = basename(path);
   const info = await Deno.stat(path);
@@ -98,7 +98,7 @@ export async function* walk(
     return;
   }
   if (includeDirs && include(root, exts, match, skip)) {
-    yield await createWalkEntry(root);
+    yield await _createWalkEntry(root);
   }
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
@@ -151,7 +151,7 @@ export function* walkSync(
     return;
   }
   if (includeDirs && include(root, exts, match, skip)) {
-    yield createWalkEntrySync(root);
+    yield _createWalkEntrySync(root);
   }
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;

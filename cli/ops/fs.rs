@@ -6,13 +6,15 @@ use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Deserialize;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
@@ -280,10 +282,7 @@ fn op_fdatasync_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  {
-    let cli_state = super::global_state(state);
-    cli_state.check_unstable("Deno.fdatasync");
-  }
+  super::check_unstable(state, "Deno.fdatasync");
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
@@ -298,7 +297,7 @@ async fn op_fdatasync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::global_state2(&state).check_unstable("Deno.fdatasync");
+  super::check_unstable2(&state, "Deno.fdatasync");
 
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -320,10 +319,7 @@ fn op_fsync_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  {
-    let cli_state = super::global_state(state);
-    cli_state.check_unstable("Deno.fsync");
-  }
+  super::check_unstable(state, "Deno.fsync");
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
@@ -338,7 +334,7 @@ async fn op_fsync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::global_state2(&state).check_unstable("Deno.fsync");
+  super::check_unstable2(&state, "Deno.fsync");
 
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -360,10 +356,7 @@ fn op_fstat_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  {
-    let cli_state = super::global_state(state);
-    cli_state.check_unstable("Deno.fstat");
-  }
+  super::check_unstable(state, "Deno.fstat");
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let metadata = std_file_resource(state, rid, |r| match r {
@@ -378,7 +371,7 @@ async fn op_fstat_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::global_state2(&state).check_unstable("Deno.fstat");
+  super::check_unstable2(&state, "Deno.fstat");
 
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -402,10 +395,7 @@ fn op_umask(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  {
-    let cli_state = super::global_state(state);
-    cli_state.check_unstable("Deno.umask");
-  }
+  super::check_unstable(state, "Deno.umask");
   let args: UmaskArgs = serde_json::from_value(args)?;
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
@@ -1132,8 +1122,7 @@ fn op_link_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.link");
+  super::check_unstable(state, "Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1152,8 +1141,7 @@ async fn op_link_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state2(&state);
-  cli_state.check_unstable("Deno.link");
+  super::check_unstable2(&state, "Deno.link");
 
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1196,8 +1184,7 @@ fn op_symlink_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.symlink");
+  super::check_unstable(state, "Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1248,8 +1235,7 @@ async fn op_symlink_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state2(&state);
-  cli_state.check_unstable("Deno.symlink");
+  super::check_unstable2(&state, "Deno.symlink");
 
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1354,10 +1340,7 @@ fn op_ftruncate_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  {
-    let cli_state = super::global_state(state);
-    cli_state.check_unstable("Deno.ftruncate");
-  }
+  super::check_unstable(state, "Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
@@ -1373,7 +1356,7 @@ async fn op_ftruncate_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::global_state2(&state).check_unstable("Deno.ftruncate");
+  super::check_unstable2(&state, "Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
@@ -1626,10 +1609,7 @@ fn op_futime_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  {
-    let cli_state = super::global_state(state);
-    cli_state.check_unstable("Deno.futimeSync");
-  }
+  super::check_unstable(state, "Deno.futimeSync");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
@@ -1654,8 +1634,7 @@ async fn op_futime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
-  let cli_state = super::global_state(&state);
-  cli_state.check_unstable("Deno.futime");
+  super::check_unstable(&state, "Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
@@ -1687,8 +1666,7 @@ fn op_utime_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let cli_state = super::global_state(state);
-  cli_state.check_unstable("Deno.utime");
+  super::check_unstable(state, "Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
@@ -1706,8 +1684,7 @@ async fn op_utime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let state = state.borrow();
-  let cli_state = super::global_state(&state);
-  cli_state.check_unstable("Deno.utime");
+  super::check_unstable(&state, "Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);

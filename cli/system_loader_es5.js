@@ -94,8 +94,8 @@ var System, __instantiate;
   function gE(exp) {
     return function (id, v) {
       var _a;
-      v = typeof id === "string" ? ((_a = {}), (_a[id] = v), _a) : id;
-      for (var _i = 0, _b = Object.entries(v); _i < _b.length; _i++) {
+      var e = typeof id === "string" ? ((_a = {}), (_a[id] = v), _a) : id;
+      for (var _i = 0, _b = Object.entries(e); _i < _b.length; _i++) {
         var _c = _b[_i],
           id_1 = _c[0],
           value = _c[1];
@@ -105,6 +105,7 @@ var System, __instantiate;
           enumerable: true,
         });
       }
+      return v;
     };
   }
   function rF(main) {

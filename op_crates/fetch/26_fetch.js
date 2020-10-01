@@ -869,7 +869,7 @@
       if (this._bodySource instanceof ReadableStream) {
         return bufferFromStream(this._bodySource.getReader(), this.#size);
       }
-      return bodyToArrayBuffer(this._bodySource);
+      return Promise.resolve(bodyToArrayBuffer(this._bodySource));
     }
   }
 

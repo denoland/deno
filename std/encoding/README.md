@@ -37,25 +37,29 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 Parse the CSV from the `reader` with the options provided and return
 `string[][]`.
 
-#### `parse(input: string | BufReader, opt: ParseOptions = { header: false }): Promise<unknown[]>`:
+#### `parse(input: string | BufReader, opt: ParseOptions = { skipFirstRow: false }): Promise<unknown[]>`:
 
 Parse the CSV string/buffer with the options provided. The result of this
 function is as follows:
 
-- If you don't provide both `opt.header` and `opt.parse`, it returns
-  `string[][]`.
-- If you provide `opt.header` but not `opt.parse`, it returns `object[]`.
+- If you don't provide `opt.skipFirstRow`, `opt.parse`, and `opt.columns`, it
+  returns `string[][]`.
+- If you provide `opt.skipFirstRow` or `opt.columns` but not `opt.parse`, it
+  returns `object[]`.
 - If you provide `opt.parse`, it returns an array where each element is the
   value returned from `opt.parse`.
 
 ##### `ParseOptions`
 
-- **`header: boolean | string[] | HeaderOptions[];`**: If a boolean is provided,
-  the first line will be used as Header definitions. If `string[]` or
-  `HeaderOptions[]` those names will be used for header definition.
+- **`skipFirstRow: boolean;`**: If you provide `skipFirstRow: true` and
+  `columns`, the first line will be skipped. If you provide `skipFirstRow: true`
+  but not `columns`, the first line will be skipped and used as header
+  definitions.
+- **`columns: string[] | HeaderOptions[];`**: If you provide `string[]` or
+  `ColumnOptions[]`, those names will be used for header definition.
 - **`parse?: (input: unknown) => unknown;`**: Parse function for the row, which
   will be executed after parsing of all columns. Therefore if you don't provide
-  header and parse function with headers, input will be `string[]`.
+  `skipFirstRow`, `columns`, and `parse` function, input will be `string[]`.
 
 ##### `HeaderOptions`
 
@@ -308,7 +312,7 @@ for Deno
 decodes the given RFC4648 base32 representation to a `Uint8Array`.
 
 ```ts
-import { encode, decode } from "https://deno.land/std/encoding/base32.ts";
+import { decode, encode } from "https://deno.land/std/encoding/base32.ts";
 
 const b32Repr = "RC2E6GA=";
 
@@ -330,7 +334,7 @@ Ascii85/base85 encoder and decoder with support for multiple standards
 decodes the given ascii85 representation to a `Uint8Array`.
 
 ```ts
-import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+import { decode, encode } from "https://deno.land/std/encoding/ascii85.ts";
 
 const a85Repr = "LpTqp";
 
@@ -359,7 +363,7 @@ supported by other encodings.)
 encoding examples:
 
 ```ts
-import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+import { decode, encode } from "https://deno.land/std/encoding/ascii85.ts";
 const binaryData = new Uint8Array([136, 180, 79, 24]);
 console.log(encode(binaryData));
 // => LpTqp

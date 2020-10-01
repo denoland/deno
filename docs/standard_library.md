@@ -26,7 +26,7 @@ instead, used a version of the std library which is immutable and will not
 change:
 
 ```typescript
-// imports from v0.50.0 of std, never changes
+// imports from v$STD_VERSION of std, never changes
 import { copy } from "https://deno.land/std@$STD_VERSION/fs/copy.ts";
 ```
 
@@ -51,15 +51,15 @@ Compile file:///dev/deno/main.ts
 Download https://deno.land/std@$STD_VERSION/fs/copy.ts
 Download https://deno.land/std@$STD_VERSION/fs/ensure_dir.ts
 Download https://deno.land/std@$STD_VERSION/fs/_util.ts
-error: TS2339 [ERROR]: Property 'utime' does not exist on type 'typeof Deno'.
+error: TS2339 [ERROR]: Property 'utime' does not exist on type 'typeof Deno'. 'Deno.utime' is an unstable API. Did you forget to run with the '--unstable' flag?
     await Deno.utime(dest, statInfo.atime, statInfo.mtime);
                ~~~~~
-    at https://deno.land/std@$STD_VERSION/fs/copy.ts:90:16
+    at https://deno.land/std@$STD_VERSION/fs/copy.ts:92:16
 
-TS2339 [ERROR]: Property 'utimeSync' does not exist on type 'typeof Deno'.
+TS2339 [ERROR]: Property 'utimeSync' does not exist on type 'typeof Deno'. 'Deno.utimeSync' is an unstable API. Did you forget to run with the '--unstable' flag?
     Deno.utimeSync(dest, statInfo.atime, statInfo.mtime);
          ~~~~~~~~~
-    at https://deno.land/std@$STD_VERSION/fs/copy.ts:101:10
+    at https://deno.land/std@$STD_VERSION/fs/copy.ts:103:10
 ```
 
 Solution to that problem requires adding `--unstable` flag:
@@ -69,7 +69,7 @@ deno run --allow-read --allow-write --unstable main.ts
 ```
 
 To make sure that API producing error is unstable check
-[`lib.deno.unstable.d.ts`](https://github.com/denoland/deno/blob/master/cli/dts/lib.deno.unstable.d.ts)
+[`lib.deno.unstable.d.ts`](https://github.com/denoland/deno/blob/$CLI_VERSION/cli/dts/lib.deno.unstable.d.ts)
 declaration.
 
 This problem should be fixed in the near future. Feel free to omit the flag if

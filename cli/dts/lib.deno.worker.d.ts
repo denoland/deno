@@ -18,9 +18,9 @@ declare interface DedicatedWorkerGlobalScope {
   Deno: typeof Deno;
 }
 
-declare const self: DedicatedWorkerGlobalScope & typeof globalThis;
-declare let onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
-declare let onerror:
+declare var self: DedicatedWorkerGlobalScope & typeof globalThis;
+declare var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
+declare var onerror:
   | ((
     msg: string,
     source: string,
@@ -29,9 +29,9 @@ declare let onerror:
     e: Event,
   ) => boolean | void)
   | undefined;
-declare const close: typeof __workerMain.close;
-declare const name: typeof __workerMain.name;
-declare const postMessage: typeof __workerMain.postMessage;
+declare var close: typeof __workerMain.close;
+declare var name: typeof __workerMain.name;
+declare var postMessage: typeof __workerMain.postMessage;
 
 declare namespace __workerMain {
   export let onmessage: (e: { data: any }) => void;

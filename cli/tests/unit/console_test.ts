@@ -8,7 +8,12 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringContains,
+  unitTest,
+} from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
 
 const customInspect = Deno.customInspect;
@@ -106,9 +111,53 @@ unitTest(
     );
     assertEquals(
       stringify(
+        [
+          Symbol(),
+          Symbol(""),
+          Symbol("foo\b"),
+          Symbol("foo\f"),
+          Symbol("foo\n"),
+          Symbol("foo\r"),
+          Symbol("foo\t"),
+          Symbol("foo\v"),
+          Symbol("foo\0"),
+        ],
+      ),
+      `[
+  Symbol(),
+  Symbol(""),
+  Symbol("foo\\b"),
+  Symbol("foo\\f"),
+  Symbol("foo\\n"),
+  Symbol("foo\\r"),
+  Symbol("foo\\t"),
+  Symbol("foo\\v"),
+  Symbol("foo\\x00")
+]`,
+    );
+    assertEquals(
+      stringify(
         { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
       ),
       `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
+    );
+    assertEquals(
+      stringify(
+        {
+          [Symbol("foo\b")]: `Symbol("foo\n")`,
+          [Symbol("bar\n")]: `Symbol("bar\n")`,
+          [Symbol("bar\r")]: `Symbol("bar\r")`,
+          [Symbol("baz\t")]: `Symbol("baz\t")`,
+          [Symbol("qux\0")]: `Symbol("qux\0")`,
+        },
+      ),
+      `{
+  [Symbol("foo\\b")]: 'Symbol("foo\\n\")',
+  [Symbol("bar\\n")]: 'Symbol("bar\\n\")',
+  [Symbol("bar\\r")]: 'Symbol("bar\\r\")',
+  [Symbol("baz\\t")]: 'Symbol("baz\\t\")',
+  [Symbol("qux\\x00")]: 'Symbol(\"qux\\x00")'
+}`,
     );
     assertEquals(
       stringify(new Set(["foo\n", "foo\r", "foo\0"])),
@@ -229,7 +278,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
   assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
-  assertEquals(stringify(Symbol(1)), "Symbol(1)");
+  assertEquals(stringify(Symbol(1)), `Symbol("1")`);
   assertEquals(stringify(null), "null");
   assertEquals(stringify(undefined), "undefined");
   assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");
@@ -259,7 +308,10 @@ unitTest(function consoleTestStringifyCircular(): void {
     "{ a: { b: { c: { d: [Set] } } } }",
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
-  assertEquals(stringify(JSON), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
+  assertEquals(
+    stringify(JSON),
+    'JSON { [Symbol(Symbol.toStringTag)]: "JSON" }',
+  );
   assertEquals(
     stringify(console),
     `{
@@ -283,12 +335,12 @@ unitTest(function consoleTestStringifyCircular(): void {
   clear: [Function: clear],
   trace: [Function: trace],
   indentLevel: 0,
-  Symbol(isConsoleInstance): true
+  [Symbol(isConsoleInstance)]: true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
-    'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }',
+    'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
@@ -780,8 +832,19 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ Symbol(Deno.customInspect): [Function: [Deno.customInspect]] }",
+    "{ [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
   );
+});
+
+unitTest(function consoleTestWithCustomInspectFunction(): void {
+  function a() {}
+  Object.assign(a, {
+    [customInspect]() {
+      return "b";
+    },
+  });
+
+  assertEquals(stringify(a), "b");
 });
 
 unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
@@ -1591,4 +1654,9 @@ unitTest(function inspectProxy(): void {
     )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
   );
+});
+
+unitTest(function inspectColors(): void {
+  assertEquals(Deno.inspect(1), "1");
+  assertStringContains(Deno.inspect(1, { colors: true }), "\x1b[");
 });
