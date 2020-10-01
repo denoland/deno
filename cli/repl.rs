@@ -108,6 +108,9 @@ pub async fn run(
 
     match line {
       Ok(line) => {
+        // Things like `{}` will be evaluated as a block statement which is suprising as most
+        // repl's treat everything as an expression, so we first try to evaluate the input as an
+        // expression by wrapping it in parens.
         let evaluate_response = session
           .post_message(
             "Runtime.evaluate".to_string(),
@@ -121,7 +124,8 @@ pub async fn run(
           )
           .await?;
 
-        // Retry without wrapping if there is an error
+        // If that fails, we retry it without wrapping in parens letting the error bubble up to the
+        // user if it is still an error.
         let evaluate_response =
           if evaluate_response.get("exceptionDetails").is_some() {
             session
