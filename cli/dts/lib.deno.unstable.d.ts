@@ -169,29 +169,24 @@ declare namespace Deno {
 
   /** **Unstable** new API. yet to be vetted.
    *
-   * Returns the total number of logical cpus in the system
+   * Returns the total number of logical cpus in the system along with
+   * the speed measured in MHz
    *
    * ```ts
-   * console.log(Deno.systemCpuNum());
+   * console.log(Deno.systemCpuInfo());
    * ```
    *
    * Requires `allow-env` permission.
    *
    */
-  export function systemCpuNum(): number;
+  export function systemCpuInfo(): SystemCpuInfo;
 
-  /** **Unstable** new API. yet to be vetted.
-   *
-   * Returns the cpu speed in MHz
-   *
-   * ```ts
-   * console.log(Deno.systemCpuSpeed());
-   * ```
-   *
-   * Requires `allow-env` permission.
-   *
-   */
-  export function systemCpuSpeed(): number;
+  export interface SystemCpuInfo {
+    /** Total number of logical cpus in the system */
+    cores: number;
+    /** The speed of the cpu measured in MHz */
+    free: number;
+  }
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *

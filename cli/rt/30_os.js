@@ -19,12 +19,8 @@
     return core.jsonOpSync("op_system_memory_info");
   }
 
-  function systemCpuNum() {
-    return sendSync("op_system_cpu_num")[0];
-  }
-
-  function systemCpuSpeed() {
-    return sendSync("op_system_cpu_speed")[0];
+  function systemCpuInfo() {
+    return core.jsonOpSync("op_system_cpu_info");
   }
 
   function exit(code = 0) {
@@ -63,8 +59,7 @@
     exit,
     osRelease,
     systemMemoryInfo,
-    systemCpuNum,
-    systemCpuSpeed,
+    systemCpuInfo,
     hostname,
     loadavg,
   };

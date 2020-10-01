@@ -189,12 +189,8 @@ unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
   assert(info.swapFree >= 0);
 });
 
-unitTest({ perms: { env: true } }, function systemCpuNum(): void {
-  const num = Deno.systemCpuNum();
-  assert(num >= 0);
-});
-
-unitTest({ perms: { env: true } }, function systemCpuSpeed(): void {
-  const speed = Deno.systemCpuSpeed();
+unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
+  const { cores, speed } = Deno.systemCpuInfo();
+  assert(cores >= 0);
   assert(speed >= 0);
 });

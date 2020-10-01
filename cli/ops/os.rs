@@ -23,8 +23,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_loadavg", op_loadavg);
   super::reg_json_sync(rt, "op_os_release", op_os_release);
   super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
-  super::reg_json_sync(rt, "op_system_cpu_num", op_system_cpu_num);
-  super::reg_json_sync(rt, "op_system_cpu_speed", op_system_cpu_speed);
+  super::reg_json_sync(rt, "op_system_cpu_info", op_system_cpu_info);
 }
 
 fn op_exec_path(
@@ -175,30 +174,26 @@ fn op_system_memory_info(
   }
 }
 
-fn op_system_cpu_num(
+fn op_system_cpu_info(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  let cli_state = super::cli_state(state);
-  cli_state.check_unstable("Deno.systemCpuNum");
-  cli_state.check_env()?;
-  match sys_info::cpu_num() {
-    Ok(num) => Ok(json!([num])),
-    Err(_) => Ok(json!({})),
-  }
-}
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.systemCpuInfo");
+  state.borrow::<Permissions>().check_env()?;
 
-fn op_system_cpu_speed(
-  state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
-  let cli_state = super::cli_state(state);
-  cli_state.check_unstable("Deno.systemCpuSpeed");
-  cli_state.check_env()?;
-  match sys_info::cpu_speed() {
-    Ok(num) => Ok(json!([num])),
-    Err(_) => Ok(json!({})),
-  }
+  let cores = match sys_info::cpu_num() {
+    Ok(num) => num,
+    Err(_) => return Ok(json!({})),
+  };
+
+  let speed = match sys_info::cpu_speed() {
+    Ok(speed) => speed,
+    Err(_) => return Ok(json!({})),
+  };
+
+  Ok(json!({
+    "cores": cores,
+    "speed": speed
+  }))
 }
