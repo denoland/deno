@@ -762,29 +762,33 @@
       );
     }
 
+    const red = maybeColor(colors.red, inspectOptions);
+
     for (const key of stringKeys) {
-      entries.push(
-        `${maybeQuoteString(key)}: ${
-          inspectValueWithQuotes(
-            value[key],
-            ctx,
-            level + 1,
-            inspectOptions,
-          )
-        }`,
-      );
+      let propertyValue;
+      let error = null;
+      try {
+        propertyValue = value[key];
+      } catch (error_) {
+        error = error_;
+      }
+      const inspectedValue = error == null
+        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
+        : red(`[Thrown ${error.name}: ${error.message}]`);
+      entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
     }
     for (const key of symbolKeys) {
-      entries.push(
-        `[${maybeQuoteSymbol(key)}]: ${
-          inspectValueWithQuotes(
-            value[key],
-            ctx,
-            level + 1,
-            inspectOptions,
-          )
-        }`,
-      );
+      let propertyValue;
+      let error;
+      try {
+        propertyValue = value[key];
+      } catch (error_) {
+        error = error_;
+      }
+      const inspectedValue = error == null
+        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
+        : red(`Thrown ${error.name}: ${error.message}`);
+      entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
     }
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +

@@ -1498,6 +1498,17 @@ unitTest(function inspectString(): void {
   );
 });
 
+unitTest(function inspectGetterError(): void {
+  assertEquals(
+    Deno.inspect({
+      get foo() {
+        throw new Error("bar");
+      },
+    }),
+    "{ foo: [Thrown Error: bar] }",
+  );
+});
+
 unitTest(function inspectSorted(): void {
   assertEquals(
     stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
