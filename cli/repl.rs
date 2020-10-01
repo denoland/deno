@@ -14,6 +14,7 @@ use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
 use std::sync::Arc;
 use std::sync::Mutex;
 
+// Provides syntax specific helpers to the editor like validation for multi-line edits.
 #[derive(Completer, Helper, Highlighter, Hinter)]
 struct Helper {
   validator: MatchingBracketValidator,
