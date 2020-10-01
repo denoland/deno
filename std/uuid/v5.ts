@@ -11,6 +11,10 @@ import { assert } from "../_util/assert.ts";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * Validates the UUID v5
+ * @param id UUID value
+ */
 export function validate(id: string): boolean {
   return UUID_RE.test(id);
 }
@@ -20,6 +24,12 @@ interface V5Options {
   namespace: string | number[];
 }
 
+/**
+ * Generates a RFC4122 v5 UUID (SHA-1 namespace-based)
+ * @param options Can use a namespace and value to creat SHA-1 hash
+ * @param buf Can allow the UUID to be written in byte-form starting at the offset
+ * @param offset Index to start writing on the UUID bytes in buffer
+ */
 export function generate(
   options: V5Options,
   buf?: number[],
