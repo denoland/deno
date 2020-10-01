@@ -11,6 +11,8 @@ use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Editor;
 use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 #[derive(Completer, Helper, Highlighter, Hinter)]
 struct Helper {
@@ -43,9 +45,11 @@ pub async fn run(
     validator: MatchingBracketValidator::new(),
   };
 
-  let mut editor = Editor::<()>::new();
+  let editor = Arc::new(Mutex::new(Editor::<()>::new()));
   // editor.set_helper(Some(helper));
   editor
+    .lock()
+    .unwrap()
     .load_history(history_file.to_str().unwrap())
     .unwrap_or(());
 
@@ -94,7 +98,12 @@ pub async fn run(
     .await?;
 
   loop {
-    let line = editor.readline("> ");
+    let editor2 = editor.clone();
+    let line = tokio::task::spawn_blocking(move || {
+      editor2.lock().unwrap().readline("> ")
+    })
+    .await?;
+
     match line {
       Ok(line) => {
         let evaluate_response = session
@@ -204,7 +213,7 @@ pub async fn run(
           ),
         }
 
-        editor.add_history_entry(line.as_str());
+        editor.lock().unwrap().add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
         break;
@@ -220,7 +229,10 @@ pub async fn run(
   }
 
   std::fs::create_dir_all(history_file.parent().unwrap())?;
-  editor.save_history(history_file.to_str().unwrap())?;
+  editor
+    .lock()
+    .unwrap()
+    .save_history(history_file.to_str().unwrap())?;
 
   Ok(())
 }
