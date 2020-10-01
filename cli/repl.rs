@@ -47,7 +47,7 @@ pub async fn run(
 
   let editor = Arc::new(Mutex::new(Editor::new()));
 
-  editor.lock().unwrap().set_helper(helper);
+  editor.lock().unwrap().set_helper(Some(helper));
 
   editor
     .lock()
