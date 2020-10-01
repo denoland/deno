@@ -1343,7 +1343,7 @@
   function getConsoleInspectOptions() {
     return {
       ...DEFAULT_INSPECT_OPTIONS,
-      colors: !globalThis.Deno?.noColor,
+      colors: !(globalThis.Deno?.noColor ?? true),
     };
   }
 
