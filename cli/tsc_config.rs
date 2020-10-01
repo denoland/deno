@@ -237,8 +237,7 @@ impl TsConfig {
           ),
         )
       })?;
-      let config_bytes = std::fs::read(config_path.clone())?;
-      let config_text = std::str::from_utf8(&config_bytes)?;
+      let config_text = std::fs::read_to_string(config_path.clone())?;
       let (value, maybe_ignored_options) =
         parse_config(&config_text, &config_path)?;
       json_merge(&mut self.0, &value);
