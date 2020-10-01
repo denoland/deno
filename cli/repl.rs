@@ -41,12 +41,14 @@ pub async fn run(
     .post_message("Runtime.enable".to_string(), None)
     .await?;
 
-  let _helper = Helper {
+  let helper = Helper {
     validator: MatchingBracketValidator::new(),
   };
 
-  let editor = Arc::new(Mutex::new(Editor::<()>::new()));
-  // editor.set_helper(Some(helper));
+  let editor = Arc::new(Mutex::new(Editor::new()));
+
+  editor.lock().unwrap().set_helper(helper);
+
   editor
     .lock()
     .unwrap()
