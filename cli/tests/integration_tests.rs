@@ -13,6 +13,7 @@ fn std_tests() {
   let std_config = util::root_path().join("std/tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
+    .env("TZ", "UTC")
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
