@@ -100,7 +100,6 @@ fn new_watcher(
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 
   for path in paths {
-    if watcher.unwatch(path).is_ok() {};
     watcher.watch(path, RecursiveMode::NonRecursive)?;
   }
 
