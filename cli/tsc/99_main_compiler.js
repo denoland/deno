@@ -22,6 +22,11 @@ delete Object.prototype.__proto__;
   let logDebug = false;
   let logSource = "JS";
 
+  /** Instructs the host to behave in a legacy fashion, with the legacy
+   * pipeline for handling code.  Setting the value to `true` will cause the
+   * host to behave in the modern way. */
+  let legacy = true;
+
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -29,9 +34,9 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function log(...args) {
+  function debug(...args) {
     if (logDebug) {
-      const stringifiedArgs = args.map(JSON.stringify).join(" ");
+      const stringifiedArgs = args.map((arg) => JSON.stringify(arg)).join(" ");
       core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
     }
   }
@@ -47,10 +52,6 @@ delete Object.prototype.__proto__;
     if (!cond) {
       throw new AssertionError(msg);
     }
-  }
-
-  function notImplemented() {
-    throw new Error("not implemented");
   }
 
   /**
@@ -121,7 +122,7 @@ delete Object.prototype.__proto__;
   // paths must be either relative or absolute. Since
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
-  const ASSETS = "asset://";
+  const ASSETS = "asset:///";
   const OUT_DIR = "deno://";
   const CACHE = "cache:///";
   // This constant is passed to compiler settings when
@@ -281,180 +282,202 @@ delete Object.prototype.__proto__;
     });
   }
 
-  class Host {
-    #options;
-    #target;
-    #writeFile;
-    /* Deno specific APIs */
+  /** There was some private state in the legacy host, that is moved out to
+   * here which can then be refactored out later. */
+  const legacyHostState = {
+    buildInfo: "",
+    target: CompilerHostTarget.Main,
+    writeFile: (_fileName, _data, _sourceFiles) => {},
+  };
 
-    constructor(
-      options,
-      target,
-      writeFile,
-    ) {
-      this.#target = target;
-      this.#writeFile = writeFile;
-      this.#options = options;
-    }
-
-    get options() {
-      return this.#options;
-    }
-
-    /* TypeScript CompilerHost APIs */
-
+  /** @type {import("../dts/typescript").CompilerHost} */
+  const host = {
     fileExists(fileName) {
-      log(`compiler::host.fileExists("${fileName}")`);
+      debug(`host.fileExists("${fileName}")`);
       return false;
-    }
-
-    getCanonicalFileName(fileName) {
-      return fileName;
-    }
-
-    getCompilationSettings() {
-      log("compiler::host.getCompilationSettings()");
-      return this.#options;
-    }
-
-    getCurrentDirectory() {
-      return CACHE;
-    }
-
-    getDefaultLibFileName(_options) {
-      log("compiler::host.getDefaultLibFileName()");
-      switch (this.#target) {
-        case CompilerHostTarget.Main:
-        case CompilerHostTarget.Runtime:
-          return `${ASSETS}/lib.deno.window.d.ts`;
-        case CompilerHostTarget.Worker:
-          return `${ASSETS}/lib.deno.worker.d.ts`;
+    },
+    readFile(fileName) {
+      debug(`host.readFile("${fileName}")`);
+      if (legacy) {
+        if (fileName == TS_BUILD_INFO) {
+          return legacyHostState.buildInfo;
+        }
+        return unreachable();
+      } else {
+        return core.jsonOpSync("op_read_file", { fileName }).data;
       }
-    }
-
-    getNewLine() {
-      return "\n";
-    }
-
+    },
     getSourceFile(
-      fileName,
+      specifier,
       languageVersion,
       onError,
       shouldCreateNewSourceFile,
     ) {
-      log("compiler::host.getSourceFile", fileName);
-      try {
-        assert(!shouldCreateNewSourceFile);
-        const sourceFile = fileName.startsWith(ASSETS)
-          ? getAssetInternal(fileName)
-          : SourceFile.getCached(fileName);
-        assert(sourceFile != null);
-        if (!sourceFile.tsSourceFile) {
-          assert(sourceFile.sourceCode != null);
-          const tsSourceFileName = fileName.startsWith(ASSETS)
-            ? sourceFile.filename
-            : fileName;
+      debug(
+        `host.getSourceFile("${specifier}", ${
+          ts.ScriptTarget[languageVersion]
+        })`,
+      );
+      if (legacy) {
+        try {
+          assert(!shouldCreateNewSourceFile);
+          const sourceFile = specifier.startsWith(ASSETS)
+            ? getAssetInternal(specifier)
+            : SourceFile.getCached(specifier);
+          assert(sourceFile != null);
+          if (!sourceFile.tsSourceFile) {
+            assert(sourceFile.sourceCode != null);
+            const tsSourceFileName = specifier.startsWith(ASSETS)
+              ? sourceFile.filename
+              : specifier;
 
-          sourceFile.tsSourceFile = ts.createSourceFile(
-            tsSourceFileName,
-            sourceFile.sourceCode,
-            languageVersion,
-          );
-          sourceFile.tsSourceFile.version = sourceFile.versionHash;
-          delete sourceFile.sourceCode;
-        }
-        return sourceFile.tsSourceFile;
-      } catch (e) {
-        if (onError) {
-          onError(String(e));
-        } else {
-          throw e;
-        }
-        return undefined;
-      }
-    }
-
-    readFile(_fileName) {
-      return notImplemented();
-    }
-
-    resolveModuleNames(moduleNames, containingFile) {
-      log("compiler::host.resolveModuleNames", {
-        moduleNames,
-        containingFile,
-      });
-      const resolved = moduleNames.map((specifier) => {
-        const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
-
-        log("compiler::host.resolveModuleNames maybeUrl", {
-          specifier,
-          maybeUrl,
-        });
-
-        let sourceFile = undefined;
-
-        if (specifier.startsWith(ASSETS)) {
-          sourceFile = getAssetInternal(specifier);
-        } else if (typeof maybeUrl !== "undefined") {
-          sourceFile = SourceFile.getCached(maybeUrl);
-        }
-
-        if (!sourceFile) {
+            sourceFile.tsSourceFile = ts.createSourceFile(
+              tsSourceFileName,
+              sourceFile.sourceCode,
+              languageVersion,
+            );
+            sourceFile.tsSourceFile.version = sourceFile.versionHash;
+            delete sourceFile.sourceCode;
+          }
+          return sourceFile.tsSourceFile;
+        } catch (e) {
+          if (onError) {
+            onError(String(e));
+          } else {
+            throw e;
+          }
           return undefined;
         }
+      } else {
+        const sourceFile = sourceFileCache.get(specifier);
+        if (sourceFile) {
+          return sourceFile;
+        }
 
-        return {
-          resolvedFileName: sourceFile.url,
-          isExternalLibraryImport: specifier.startsWith(ASSETS),
-          extension: sourceFile.extension,
-        };
-      });
-      log(resolved);
-      return resolved;
-    }
-
+        try {
+          /** @type {{ data: string; hash: string; }} */
+          const { data, hash } = core.jsonOpSync(
+            "op_load_module",
+            { specifier },
+          );
+          const sourceFile = ts.createSourceFile(
+            specifier,
+            data,
+            languageVersion,
+          );
+          sourceFile.moduleName = specifier;
+          sourceFile.version = hash;
+          sourceFileCache.set(specifier, sourceFile);
+          return sourceFile;
+        } catch (err) {
+          const message = err instanceof Error
+            ? err.message
+            : JSON.stringify(err);
+          debug(`  !! error: ${message}`);
+          if (onError) {
+            onError(message);
+          } else {
+            throw err;
+          }
+        }
+      }
+    },
+    getDefaultLibFileName() {
+      if (legacy) {
+        switch (legacyHostState.target) {
+          case CompilerHostTarget.Main:
+          case CompilerHostTarget.Runtime:
+            return `${ASSETS}/lib.deno.window.d.ts`;
+          case CompilerHostTarget.Worker:
+            return `${ASSETS}/lib.deno.worker.d.ts`;
+        }
+      } else {
+        return `lib.esnext.d.ts`;
+      }
+    },
+    getDefaultLibLocation() {
+      return ASSETS;
+    },
+    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
+      debug(`host.writeFile("${fileName}")`);
+      if (legacy) {
+        legacyHostState.writeFile(fileName, data, sourceFiles);
+      } else {
+        let maybeModuleName;
+        if (sourceFiles) {
+          assert(sourceFiles.length === 1, "unexpected number of source files");
+          const [sourceFile] = sourceFiles;
+          maybeModuleName = sourceFile.moduleName;
+          debug(`  moduleName: ${maybeModuleName}`);
+        }
+        return core.jsonOpSync(
+          "op_write_file",
+          { maybeModuleName, fileName, data },
+        );
+      }
+    },
+    getCurrentDirectory() {
+      return CACHE;
+    },
+    getCanonicalFileName(fileName) {
+      return fileName;
+    },
     useCaseSensitiveFileNames() {
       return true;
-    }
+    },
+    getNewLine() {
+      return "\n";
+    },
+    resolveModuleNames(specifiers, base) {
+      debug(`host.resolveModuleNames()`);
+      debug(`  base: ${base}`);
+      debug(`  specifiers: ${specifiers.join(", ")}`);
+      if (legacy) {
+        const resolved = specifiers.map((specifier) => {
+          const maybeUrl = SourceFile.getResolvedUrl(specifier, base);
 
-    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
-      log("compiler::host.writeFile", fileName);
-      this.#writeFile(fileName, data, sourceFiles);
-    }
-  }
+          debug("compiler::host.resolveModuleNames maybeUrl", {
+            specifier,
+            maybeUrl,
+          });
 
-  class IncrementalCompileHost extends Host {
-    #buildInfo = "";
+          let sourceFile = undefined;
 
-    constructor(
-      options,
-      target,
-      writeFile,
-      buildInfo,
-    ) {
-      super(options, target, writeFile);
-      if (buildInfo) {
-        this.#buildInfo = buildInfo;
+          if (specifier.startsWith(ASSETS)) {
+            sourceFile = getAssetInternal(specifier);
+          } else if (typeof maybeUrl !== "undefined") {
+            sourceFile = SourceFile.getCached(maybeUrl);
+          }
+
+          if (!sourceFile) {
+            return undefined;
+          }
+
+          return {
+            resolvedFileName: sourceFile.url,
+            isExternalLibraryImport: specifier.startsWith(ASSETS),
+            extension: sourceFile.extension,
+          };
+        });
+        debug(resolved);
+        return resolved;
+      } else {
+        /** @type {Array<[string, import("../dts/typescript").Extension]>} */
+        const resolved = core.jsonOpSync("op_resolve_specifiers", {
+          specifiers,
+          base,
+        });
+        return resolved.map(([resolvedFileName, extension]) => ({
+          resolvedFileName,
+          extension,
+          isExternalLibraryImport: false,
+        }));
       }
-    }
-
-    readFile(fileName) {
-      if (fileName == TS_BUILD_INFO) {
-        return this.#buildInfo;
-      }
-      throw new Error("unreachable");
-    }
-  }
-
-  // NOTE: target doesn't really matter here,
-  // this is in fact a mock host created just to
-  // load all type definitions and snapshot them.
-  let SNAPSHOT_HOST = new Host(
-    DEFAULT_COMPILE_OPTIONS,
-    CompilerHostTarget.Main,
-    () => {},
-  );
-  const SNAPSHOT_COMPILER_OPTIONS = SNAPSHOT_HOST.getCompilationSettings();
+    },
+    createHash(data) {
+      return core.jsonOpSync("op_create_hash", { data }).hash;
+    },
+  };
 
   // This is a hacky way of adding our libs to the libs available in TypeScript()
   // as these are internal APIs of TypeScript which maintain valid libs
@@ -469,32 +492,32 @@ delete Object.prototype.__proto__;
 
   // this pre-populates the cache at snapshot time of our library files, so they
   // are available in the future when needed.
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.ns.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.ns.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.web.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.web.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.fetch.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.fetch.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.window.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.window.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.worker.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.worker.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.shared_globals.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.shared_globals.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.unstable.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.unstable.d.ts`,
     ts.ScriptTarget.ESNext,
   );
 
@@ -502,13 +525,10 @@ delete Object.prototype.__proto__;
   // during snapshotting to hydrate and populate
   // source file cache with lib declaration files.
   const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
-    rootNames: [`${ASSETS}/bootstrap.ts`],
-    options: SNAPSHOT_COMPILER_OPTIONS,
-    host: SNAPSHOT_HOST,
+    rootNames: [`${ASSETS}bootstrap.ts`],
+    options: DEFAULT_COMPILE_OPTIONS,
+    host,
   });
-
-  // Derference the snapshot host so it can be GCed
-  SNAPSHOT_HOST = undefined;
 
   // This function is called only during snapshotting process
   const SYSTEM_LOADER = getAsset("system_loader.js");
@@ -637,14 +657,14 @@ delete Object.prototype.__proto__;
   function createBundleWriteFile(state) {
     return function writeFile(_fileName, data, sourceFiles) {
       assert(sourceFiles != null);
-      assert(state.host);
+      assert(state.options);
       // we only support single root names for bundles
       assert(state.rootNames.length === 1);
       state.bundleOutput = buildBundle(
         state.rootNames[0],
         data,
         sourceFiles,
-        state.host.options.target ?? ts.ScriptTarget.ESNext,
+        state.options.target ?? ts.ScriptTarget.ESNext,
       );
     };
   }
@@ -949,7 +969,7 @@ delete Object.prototype.__proto__;
     if (performance) {
       performanceStart();
     }
-    log(">>> compile start", { rootNames, type: CompilerRequestType[type] });
+    debug(">>> compile start", { rootNames, type: CompilerRequestType[type] });
 
     // When a programme is emitted, TypeScript will call `writeFile` with
     // each file that needs to be emitted.  The Deno compiler host delegates
@@ -974,18 +994,14 @@ delete Object.prototype.__proto__;
     // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
     options.allowNonTsExtensions = true;
 
-    const host = new IncrementalCompileHost(
-      options,
-      target,
-      createCompileWriteFile(state),
-      buildInfo,
-    );
+    legacyHostState.target = target;
+    legacyHostState.writeFile = createCompileWriteFile(state);
+    legacyHostState.buildInfo = buildInfo;
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
     // to generate the program and possibly emit it.
     if (diagnostics.length === 0) {
-      const options = host.getCompilationSettings();
       const program = ts.createIncrementalProgram({
         rootNames,
         options,
@@ -1025,7 +1041,7 @@ delete Object.prototype.__proto__;
       performanceProgram({ program });
     }
 
-    log("<<< compile end", { rootNames, type: CompilerRequestType[type] });
+    debug("<<< compile end", { rootNames, type: CompilerRequestType[type] });
     const stats = performance ? performanceEnd() : undefined;
 
     return {
@@ -1047,7 +1063,7 @@ delete Object.prototype.__proto__;
     if (performance) {
       performanceStart();
     }
-    log(">>> bundle start", {
+    debug(">>> bundle start", {
       rootNames,
       type: CompilerRequestType[type],
     });
@@ -1073,18 +1089,14 @@ delete Object.prototype.__proto__;
     // however stuff breaks if it's not passed (type_directives_js_main.js)
     options.allowNonTsExtensions = true;
 
-    const host = new Host(
-      options,
-      target,
-      createBundleWriteFile(state),
-    );
-    state.host = host;
+    legacyHostState.target = target;
+    legacyHostState.writeFile = createBundleWriteFile(state);
+    state.options = options;
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
     // to generate the program and possibly emit it.
     if (diagnostics.length === 0) {
-      const options = host.getCompilationSettings();
       const program = ts.createProgram({
         rootNames,
         options,
@@ -1129,7 +1141,7 @@ delete Object.prototype.__proto__;
       stats,
     };
 
-    log("<<< bundle end", {
+    debug("<<< bundle end", {
       rootNames,
       type: CompilerRequestType[type],
     });
@@ -1140,7 +1152,7 @@ delete Object.prototype.__proto__;
   function runtimeCompile(request) {
     const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
-    log(">>> runtime compile start", {
+    debug(">>> runtime compile start", {
       rootNames,
     });
 
@@ -1160,14 +1172,11 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
-    const host = new Host(
-      options,
-      target,
-      createRuntimeCompileWriteFile(state),
-    );
+    legacyHostState.target = target;
+    legacyHostState.writeFile = createRuntimeCompileWriteFile(state);
     const program = ts.createProgram({
       rootNames,
-      options: host.getCompilationSettings(),
+      options,
       host,
     });
 
@@ -1181,7 +1190,7 @@ delete Object.prototype.__proto__;
     const emitResult = program.emit();
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
-    log("<<< runtime compile finish", {
+    debug("<<< runtime compile finish", {
       rootNames,
       emitMap: Object.keys(state.emitMap),
     });
@@ -1199,7 +1208,7 @@ delete Object.prototype.__proto__;
   function runtimeBundle(request) {
     const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
-    log(">>> runtime bundle start", {
+    debug(">>> runtime bundle start", {
       rootNames,
     });
 
@@ -1220,16 +1229,13 @@ delete Object.prototype.__proto__;
       bundleOutput: undefined,
     };
 
-    const host = new Host(
-      options,
-      target,
-      createBundleWriteFile(state),
-    );
-    state.host = host;
+    legacyHostState.target = target;
+    legacyHostState.writeFile = createBundleWriteFile(state);
+    state.options = options;
 
     const program = ts.createProgram({
       rootNames,
-      options: host.getCompilationSettings(),
+      options,
       host,
     });
 
@@ -1242,7 +1248,7 @@ delete Object.prototype.__proto__;
 
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
-    log("<<< runtime bundle finish", {
+    debug("<<< runtime bundle finish", {
       rootNames,
     });
 
