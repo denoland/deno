@@ -111,8 +111,8 @@ pub async fn run(
         // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
         // statement rather than an object literal so we interpret it as an expression statement
         // to match the behavior found in a typical prompt including browser developer tools.
-        let wrapped_line = if line.trim_start().starts_with("{")
-          && !line.trim_end().ends_with(";")
+        let wrapped_line = if line.trim_start().starts_with('{')
+          && !line.trim_end().ends_with(';')
         {
           format!("({})", &line)
         } else {
