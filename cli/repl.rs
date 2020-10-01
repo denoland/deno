@@ -136,7 +136,7 @@ pub async fn run(
         // user if it is still an error.
         let evaluate_response =
           if evaluate_response.get("exceptionDetails").is_some()
-            && &wrapped_line != &line
+            && wrapped_line != line
           {
             session
               .post_message(
