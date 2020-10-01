@@ -4,7 +4,6 @@ use crate::colors;
 use crate::metrics::Metrics;
 use crate::permissions::Permissions;
 use crate::version;
-use crate::DenoSubcommand;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -41,7 +40,6 @@ fn op_start(
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "ppid": ppid(),
-    "repl": gs.flags.subcommand == DenoSubcommand::Repl,
     "target": env!("TARGET"),
     "tsVersion": version::TYPESCRIPT,
     "unstableFlag": gs.flags.unstable,

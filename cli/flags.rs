@@ -120,6 +120,7 @@ pub struct Flags {
   pub no_remote: bool,
   pub read_allowlist: Vec<PathBuf>,
   pub reload: bool,
+  pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
   pub v8_flags: Option<Vec<String>>,
@@ -447,6 +448,7 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false);
+  flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -2142,6 +2144,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         allow_net: true,
         allow_env: true,
@@ -2162,6 +2165,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),

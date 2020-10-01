@@ -63,6 +63,7 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
+use crate::inspector::InspectorSession;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
@@ -428,9 +429,26 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::new(&global_state, main_module);
+  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  (&mut *worker).await?;
+
+  let inspector = worker
+    .inspector
+    .as_mut()
+    .expect("Inspector is not created.");
+
+  let inspector_session = InspectorSession::new(&mut **inspector);
+  let repl = repl::run(&global_state, inspector_session);
+
+  tokio::pin!(repl);
+
   loop {
-    (&mut *worker).await?;
+    tokio::select! {
+      result = &mut repl => {
+          return result;
+      }
+      _ = &mut *worker => {}
+    }
   }
 }
 

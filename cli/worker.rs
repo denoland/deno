@@ -134,7 +134,7 @@ impl Worker {
           &mut isolate,
           Some(inspector_server.clone()),
         ))
-      } else if global_state.flags.coverage {
+      } else if global_state.flags.coverage || global_state.flags.repl {
         Some(DenoInspector::new(&mut isolate, None))
       } else {
         None
@@ -309,7 +309,6 @@ impl MainWorker {
       ops::permissions::init(&mut worker);
       ops::plugin::init(&mut worker);
       ops::process::init(&mut worker);
-      ops::repl::init(&mut worker);
       ops::runtime_compiler::init(&mut worker);
       ops::signal::init(&mut worker);
       ops::tls::init(&mut worker);
