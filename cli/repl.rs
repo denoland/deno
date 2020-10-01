@@ -43,7 +43,7 @@ pub async fn run(
     validator: MatchingBracketValidator::new(),
   };
 
-  let mut editor = Editor::new();
+  let mut editor = Editor::<()>::new();
   // editor.set_helper(Some(helper));
   editor
     .load_history(history_file.to_str().unwrap())
