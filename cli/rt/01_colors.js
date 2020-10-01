@@ -10,9 +10,7 @@
   }
 
   function run(str, code) {
-    return !globalThis || !globalThis.Deno || globalThis.Deno.noColor
-      ? str
-      : `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
+    return `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
   }
 
   function bold(str) {

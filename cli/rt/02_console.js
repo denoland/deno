@@ -1340,10 +1340,12 @@
   const timerMap = new Map();
   const isConsoleInstance = Symbol("isConsoleInstance");
 
-  const CONSOLE_INSPECT_OPTIONS = {
-    ...DEFAULT_INSPECT_OPTIONS,
-    colors: true,
-  };
+  function getConsoleInspectOptions() {
+    return {
+      ...DEFAULT_INSPECT_OPTIONS,
+      colors: !globalThis.Deno?.noColor,
+    };
+  }
 
   class Console {
     #printFunc = null;
@@ -1366,7 +1368,7 @@
     log = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
-          ...CONSOLE_INSPECT_OPTIONS,
+          ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
         false,
@@ -1378,7 +1380,8 @@
 
     dir = (obj, options = {}) => {
       this.#printFunc(
-        inspectArgs([obj], { ...CONSOLE_INSPECT_OPTIONS, ...options }) + "\n",
+        inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
+          "\n",
         false,
       );
     };
@@ -1388,7 +1391,7 @@
     warn = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
-          ...CONSOLE_INSPECT_OPTIONS,
+          ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
         true,
@@ -1594,7 +1597,7 @@
     trace = (...args) => {
       const message = inspectArgs(
         args,
-        { ...CONSOLE_INSPECT_OPTIONS, indentLevel: 0 },
+        { ...getConsoleInspectOptions(), indentLevel: 0 },
       );
       const err = {
         name: "Trace",
