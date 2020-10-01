@@ -44,7 +44,14 @@ function match(
 Deno.test({
   name: "[path] globToRegExp() Basic RegExp",
   fn(): void {
-    assertEquals(globToRegExp(""), /^$/);
+    assertEquals(globToRegExp("*.js", { os: "linux" }), /^[^/]*\.js\/*$/);
+  },
+});
+
+Deno.test({
+  name: "[path] globToRegExp() Empty glob",
+  fn(): void {
+    assertEquals(globToRegExp(""), /(?!)/);
     assertEquals(globToRegExp("*.js", { os: "linux" }), /^[^/]*\.js\/*$/);
   },
 });
@@ -109,47 +116,54 @@ Deno.test({
       ),
     );
     assert(
-      match(
-        "[[:digit:]]/bar.txt",
-        "1/bar.txt",
-        { extended: false, globstar: false },
-      ),
-    );
-    assert(
-      match(
-        "[[:digit:]b]/bar.txt",
-        "b/bar.txt",
-        { extended: false, globstar: false },
-      ),
-    );
-    assert(
-      match(
-        "[![:digit:]b]/bar.txt",
-        "a/bar.txt",
-        { extended: false, globstar: false },
-      ),
-    );
-    assert(
       !match(
         "[[:alnum:]]/bar.txt",
         "!/bar.txt",
         { extended: false, globstar: false },
       ),
     );
-    assert(
-      !match(
-        "[[:digit:]]/bar.txt",
-        "a/bar.txt",
-        { extended: false, globstar: false },
-      ),
-    );
-    assert(
-      !match(
-        "[[:digit:]b]/bar.txt",
-        "a/bar.txt",
-        { extended: false, globstar: false },
-      ),
-    );
+    for (const c of "09AGZagz") {
+      assert(match("[[:alnum:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "AGZagz") {
+      assert(match("[[:alpha:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "\x00\x20\x7F") {
+      assert(match("[[:ascii:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "\t ") {
+      assert(match("[[:blank:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "\x00\x1F\x7F") {
+      assert(match("[[:cntrl:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "09") {
+      assert(match("[[:digit:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "\x21\x7E") {
+      assert(match("[[:graph:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "az") {
+      assert(match("[[:lower:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "\x20\x7E") {
+      assert(match("[[:print:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "!\"#$%&'()*+,-./:;<=>?@[\\]^_‘{|}~") {
+      assert(match("[[:punct:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "\t\n\v\f\r ") {
+      assert(match("[[:space:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "AZ") {
+      assert(match("[[:upper:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "09AZaz_") {
+      assert(match("[[:word:]]", c, { extended: false, globstar: false }), c);
+    }
+    for (const c of "09AFaf") {
+      assert(match("[[:xdigit:]]", c, { extended: false, globstar: false }), c);
+    }
   },
 });
 
@@ -367,8 +381,11 @@ Deno.test({
   name: "[path] globToRegExp() Special RegExp characters in range",
   fn(): void {
     // Excluding characters checked in the previous test.
-    assertEquals(globToRegExp("[\\$^.=]", { os: "linux" }), /^[\\$^.=]\/*$/);
-    assertEquals(globToRegExp("[!\\$^.=]", { os: "linux" }), /^[^\\$^.=]\/*$/);
+    assertEquals(globToRegExp("[\\\\$^.=]", { os: "linux" }), /^[\\$^.=]\/*$/);
+    assertEquals(
+      globToRegExp("[!\\\\$^.=]", { os: "linux" }),
+      /^[^\\$^.=]\/*$/,
+    );
     assertEquals(globToRegExp("[^^]", { os: "linux" }), /^[\^^]\/*$/);
   },
 });
@@ -406,6 +423,53 @@ Deno.test({
     assert(match("**/bar", "foo\\bar", { os: "windows" }));
     assert(match("**\\bar", "foo/bar", { os: "windows" }));
     assert(match("**\\bar", "foo\\bar", { os: "windows" }));
+  },
+});
+
+Deno.test({
+  name: "[path] globToRegExp() Unclosed groups",
+  fn() {
+    assert(match("{foo,bar}/[ab", "foo/[ab"));
+    assert(match("{foo,bar}/{foo,bar", "foo/{foo,bar"));
+    assert(match("{foo,bar}/?(foo|bar", "foo/?(foo|bar"));
+    assert(match("{foo,bar}/@(foo|bar", "foo/@(foo|bar"));
+    assert(match("{foo,bar}/*(foo|bar", "foo/*(foo|bar"));
+    assert(match("{foo,bar}/+(foo|bar", "foo/+(foo|bar"));
+    assert(match("{foo,bar}/!(foo|bar", "foo/!(foo|bar"));
+    assert(match("{foo,bar}/?({)}", "foo/?({)}"));
+    assert(match("{foo,bar}/{?(})", "foo/{?(})"));
+  },
+});
+
+Deno.test({
+  name: "[path] globToRegExp() Escape glob characters",
+  fn() {
+    assert(match("\\[ab]", "[ab]", { os: "linux" }));
+    assert(match("`[ab]", "[ab]", { os: "windows" }));
+    assert(match("\\{foo,bar}", "{foo,bar}", { os: "linux" }));
+    assert(match("`{foo,bar}", "{foo,bar}", { os: "windows" }));
+    assert(match("\\?(foo|bar)", "?(foo|bar)", { os: "linux" }));
+    assert(match("`?(foo|bar)", "?(foo|bar)", { os: "windows" }));
+    assert(match("\\@(foo|bar)", "@(foo|bar)", { os: "linux" }));
+    assert(match("`@(foo|bar)", "@(foo|bar)", { os: "windows" }));
+    assert(match("\\*(foo|bar)", "*(foo|bar)", { os: "linux" }));
+    assert(match("`*(foo|bar)", "*(foo|bar)", { os: "windows" }));
+    assert(match("\\+(foo|bar)", "+(foo|bar)", { os: "linux" }));
+    assert(match("`+(foo|bar)", "+(foo|bar)", { os: "windows" }));
+    assert(match("\\!(foo|bar)", "!(foo|bar)", { os: "linux" }));
+    assert(match("`!(foo|bar)", "!(foo|bar)", { os: "windows" }));
+    assert(match("@\\(foo|bar)", "@(foo|bar)", { os: "linux" }));
+    assert(match("@`(foo|bar)", "@(foo|bar)", { os: "windows" }));
+    assert(match("{foo,bar}/[ab]\\", "foo/[ab]\\", { os: "linux" }));
+    assert(match("{foo,bar}/[ab]`", "foo/[ab]`", { os: "windows" }));
+  },
+});
+
+Deno.test({
+  name: "[path] globToRegExp() Dangling escape prefix",
+  fn() {
+    assert(match("{foo,bar}/[ab]\\", "foo/[ab]\\", { os: "linux" }));
+    assert(match("{foo,bar}/[ab]`", "foo/[ab]`", { os: "windows" }));
   },
 });
 
