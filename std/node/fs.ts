@@ -17,7 +17,6 @@ import { rmdir, rmdirSync } from "./_fs/_fs_rmdir.ts";
 import { unlink, unlinkSync } from "./_fs/_fs_unlink.ts";
 import { watch } from "./_fs/_fs_watch.ts";
 import { open, openSync } from "./_fs/_fs_open.ts";
-// not sure about those
 import { stat, statSync } from "./_fs/_fs_stat.ts";
 import { lstat, lstatSync } from "./_fs/_fs_lstat.ts";
 
