@@ -39,12 +39,12 @@ pub async fn run(
     .post_message("Runtime.enable".to_string(), None)
     .await?;
 
-  let helper = Helper {
+  let _helper = Helper {
     validator: MatchingBracketValidator::new(),
   };
 
   let mut editor = Editor::new();
-  editor.set_helper(Some(helper));
+  // editor.set_helper(Some(helper));
   editor
     .load_history(history_file.to_str().unwrap())
     .unwrap_or(());
