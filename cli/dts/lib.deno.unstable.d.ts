@@ -185,7 +185,7 @@ declare namespace Deno {
     /** Total number of logical cpus in the system */
     cores: number;
     /** The speed of the cpu measured in MHz */
-    free: number;
+    speed: number;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
