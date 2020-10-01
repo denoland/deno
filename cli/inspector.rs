@@ -5,17 +5,21 @@
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future::Future;
+use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::task;
 use deno_core::futures::task::Context;
 use deno_core::futures::task::Poll;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::v8;
@@ -43,26 +47,49 @@ use warp::Filter;
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
-  _thread_handle: thread::JoinHandle<()>,
+  shutdown_server_tx: Option<oneshot::Sender<()>>,
+  thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl InspectorServer {
   pub fn new(host: SocketAddr) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
+
+    let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
+
     let thread_handle = thread::spawn(move || {
-      crate::tokio_util::run_basic(server(host, register_inspector_rx))
+      crate::tokio_util::run_basic(server(
+        host,
+        register_inspector_rx,
+        shutdown_server_rx,
+      ))
     });
 
     Self {
       host,
       register_inspector_tx,
-      _thread_handle: thread_handle,
+      shutdown_server_tx: Some(shutdown_server_tx),
+      thread_handle: Some(thread_handle),
     }
   }
 
   fn register_inspector(&self, info: InspectorInfo) {
     self.register_inspector_tx.unbounded_send(info).unwrap();
+  }
+}
+
+impl Drop for InspectorServer {
+  fn drop(&mut self) {
+    if let Some(shutdown_server_tx) = self.shutdown_server_tx.take() {
+      shutdown_server_tx
+        .send(())
+        .expect("unable to send shutdown signal");
+    }
+
+    if let Some(thread_handle) = self.thread_handle.take() {
+      thread_handle.join().expect("unable to join thread");
+    }
   }
 }
 
@@ -117,24 +144,8 @@ impl InspectorInfo {
 async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
+  shutdown_server_rx: oneshot::Receiver<()>,
 ) {
-  // When the main thread shuts down, The Rust stdlib will call `WSACleanup()`,
-  // which shuts down the network stack. This thread will still be
-  // running at that time (because it never exits), but all attempts at network
-  // I/O will fail with a `WSANOTINITIALIZED` error, which causes a panic.
-  // To prevent this from happening, Winsock is initialized another time here;
-  // this increases Winsock's internal reference count, so it won't shut
-  // itself down when the main thread calls `WSACleanup()` upon exit.
-  // TODO: When the last `Inspector` instance is dropped, make it signal the
-  // server thread so it exits cleanly, then join it with the main thread.
-  #[cfg(windows)]
-  unsafe {
-    use winapi::um::winsock2::{WSAStartup, WSADATA};
-    let mut wsa_data = MaybeUninit::<WSADATA>::zeroed();
-    let r = WSAStartup(0x202 /* Winsock 2.2 */, wsa_data.as_mut_ptr());
-    assert_eq!(r, 0);
-  }
-
   // TODO: put the `inspector_map` in an `Rc<RefCell<_>>` instead. This is
   // currently not possible because warp requires all filters to implement
   // `Send`, which should not be necessary because we are using the
@@ -143,7 +154,7 @@ async fn server(
   let inspector_map = Arc::new(Mutex::new(inspector_map));
 
   let inspector_map_ = inspector_map.clone();
-  let mut register_inspector_handler = register_inspector_rx
+  let register_inspector_handler = register_inspector_rx
     .map(|info| {
       eprintln!(
         "Debugger listening on {}",
@@ -157,7 +168,7 @@ async fn server(
     .collect::<()>();
 
   let inspector_map_ = inspector_map_.clone();
-  let mut deregister_inspector_handler = future::poll_fn(|cx| {
+  let deregister_inspector_handler = future::poll_fn(|cx| {
     let mut g = inspector_map_.lock().unwrap();
     g.retain(|_, info| info.canary_rx.poll_unpin(cx) == Poll::Pending);
     Poll::<Never>::Pending
@@ -208,8 +219,10 @@ async fn server(
 
   let server_routes =
     websocket_route.or(json_version_route).or(json_list_route);
-  let mut server_handler = warp::serve(server_routes)
-    .try_bind_ephemeral(host)
+  let server_handler = warp::serve(server_routes)
+    .try_bind_with_graceful_shutdown(host, async {
+      shutdown_server_rx.await.ok();
+    })
     .map(|(_, fut)| fut)
     .unwrap_or_else(|err| {
       eprintln!("Cannot start inspector server: {}.", err);
@@ -217,10 +230,14 @@ async fn server(
     })
     .fuse();
 
+  pin_mut!(register_inspector_handler);
+  pin_mut!(deregister_inspector_handler);
+  pin_mut!(server_handler);
+
   select! {
     _ = register_inspector_handler => (),
     _ = deregister_inspector_handler => unreachable!(),
-    _ = server_handler => unreachable!(),
+    _ = server_handler => (),
   }
 }
 
@@ -438,6 +455,11 @@ impl DenoInspector {
     &self,
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
+    // Short-circuit if there is no server
+    if self.server.is_none() {
+      return Ok(Poll::Ready(()));
+    }
+
     // The futures this function uses do not have re-entrant poll() functions.
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
     // when an interrupt request is honored while the inspector future is polled
@@ -794,6 +816,116 @@ impl Future for DenoInspectorSession {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     self.websocket_rx_handler.poll_unpin(cx)
+  }
+}
+
+/// A local inspector session that can be used to send and receive protocol messages directly on
+/// the same thread as an isolate.
+pub struct InspectorSession {
+  v8_channel: v8::inspector::ChannelBase,
+  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
+  next_message_id: i32,
+}
+
+impl Deref for InspectorSession {
+  type Target = v8::inspector::V8InspectorSession;
+  fn deref(&self) -> &Self::Target {
+    &self.v8_session
+  }
+}
+
+impl DerefMut for InspectorSession {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.v8_session
+  }
+}
+
+impl v8::inspector::ChannelImpl for InspectorSession {
+  fn base(&self) -> &v8::inspector::ChannelBase {
+    &self.v8_channel
+  }
+
+  fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
+    &mut self.v8_channel
+  }
+
+  fn send_response(
+    &mut self,
+    call_id: i32,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+    let raw_message = message.unwrap().string().to_string();
+    let message = serde_json::from_str(&raw_message).unwrap();
+    self
+      .response_tx_map
+      .remove(&call_id)
+      .unwrap()
+      .send(message)
+      .unwrap();
+  }
+
+  fn send_notification(
+    &mut self,
+    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
+  }
+
+  fn flush_protocol_notifications(&mut self) {}
+}
+
+impl InspectorSession {
+  const CONTEXT_GROUP_ID: i32 = 1;
+
+  pub fn new(inspector_ptr: *mut DenoInspector) -> Box<Self> {
+    new_box_with(move |self_ptr| {
+      let v8_channel = v8::inspector::ChannelBase::new::<Self>();
+      let v8_session = unsafe { &mut *inspector_ptr }.connect(
+        Self::CONTEXT_GROUP_ID,
+        unsafe { &mut *self_ptr },
+        v8::inspector::StringView::empty(),
+      );
+
+      let response_tx_map = HashMap::new();
+      let next_message_id = 0;
+
+      Self {
+        v8_channel,
+        v8_session,
+        response_tx_map,
+        next_message_id,
+      }
+    })
+  }
+
+  pub async fn post_message(
+    &mut self,
+    method: String,
+    params: Option<serde_json::Value>,
+  ) -> Result<serde_json::Value, AnyError> {
+    let id = self.next_message_id;
+    self.next_message_id += 1;
+
+    let (response_tx, response_rx) = oneshot::channel::<serde_json::Value>();
+    self.response_tx_map.insert(id, response_tx);
+
+    let message = json!({
+        "id": id,
+        "method": method,
+        "params": params,
+    });
+
+    let raw_message = serde_json::to_string(&message).unwrap();
+    let raw_message = v8::inspector::StringView::from(raw_message.as_bytes());
+    self.v8_session.dispatch_protocol_message(raw_message);
+
+    let response = response_rx.await.unwrap();
+    if let Some(error) = response.get("error") {
+      return Err(generic_error(format!("{}", error)));
+    }
+
+    let result = response.get("result").unwrap().clone();
+    Ok(result)
   }
 }
 

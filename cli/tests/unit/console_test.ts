@@ -8,7 +8,12 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringContains,
+  unitTest,
+} from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
 
 const customInspect = Deno.customInspect;
@@ -1493,6 +1498,17 @@ unitTest(function inspectString(): void {
   );
 });
 
+unitTest(function inspectGetterError(): void {
+  assertEquals(
+    Deno.inspect({
+      get foo() {
+        throw new Error("bar");
+      },
+    }),
+    "{ foo: [Thrown Error: bar] }",
+  );
+});
+
 unitTest(function inspectSorted(): void {
   assertEquals(
     stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
@@ -1649,4 +1665,9 @@ unitTest(function inspectProxy(): void {
     )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
   );
+});
+
+unitTest(function inspectColors(): void {
+  assertEquals(Deno.inspect(1), "1");
+  assertStringContains(Deno.inspect(1, { colors: true }), "\x1b[");
 });

@@ -7,10 +7,10 @@ import {
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import {
-  MultipartReader,
-  MultipartWriter,
   isFormFile,
   matchAfterPrefix,
+  MultipartReader,
+  MultipartWriter,
   scanUntilBoundary,
 } from "./multipart.ts";
 import { StringWriter } from "../io/writers.ts";

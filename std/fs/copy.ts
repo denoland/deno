@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
-import { isSubdir, getFileInfoType } from "./_util.ts";
+import { getFileInfoType, isSubdir } from "./_util.ts";
 import { assert } from "../_util/assert.ts";
 
 const isWindows = Deno.build.os === "windows";

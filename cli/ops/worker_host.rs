@@ -5,8 +5,8 @@ use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
+use crate::worker::WebWorker;
+use crate::worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -26,6 +26,12 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<WorkersTable>(WorkersTable::default());
+    state.put::<WorkerId>(WorkerId::default());
+  }
   super::reg_json_sync(rt, "op_create_worker", op_create_worker);
   super::reg_json_sync(
     rt,

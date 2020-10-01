@@ -14,7 +14,12 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::env;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<ModuleSpecifier>(main_module);
+  }
   super::reg_json_sync(rt, "op_start", op_start);
   super::reg_json_sync(rt, "op_main_module", op_main_module);
   super::reg_json_sync(rt, "op_metrics", op_metrics);

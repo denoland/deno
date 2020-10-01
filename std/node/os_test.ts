@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as os from "./os.ts";
 
 Deno.test({

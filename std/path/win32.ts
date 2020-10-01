@@ -4,18 +4,18 @@
 
 import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import {
-  CHAR_DOT,
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
+  CHAR_DOT,
   CHAR_QUESTION_MARK,
 } from "./_constants.ts";
 
 import {
+  _format,
   assertPath,
   isPathSeparator,
   isWindowsDeviceRoot,
   normalizeString,
-  _format,
 } from "./_util.ts";
 import { assert } from "../_util/assert.ts";
 

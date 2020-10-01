@@ -17,13 +17,13 @@ jobs:
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ubuntu-latest-xl
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
             kind: test_release
-          - os: ubuntu-latest-xl
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
             kind: test_debug
-          - os: ubuntu-latest-xl
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
             kind: bench
-          - os: ubuntu-latest-xl
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
             kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
@@ -31,8 +31,7 @@ jobs:
       # e.g. a flaky test.
       # Don't fast-fail on tag build because publishing binaries shouldn't be
       # prevented if 'cargo publish' fails (which can be a false negative).
-      fail-fast:
-        ${{ github.event_name == 'pull_request' || (github.ref !=
+      fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
         'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
@@ -115,8 +114,7 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-          key:
-            ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+          key: ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ matrix.os }}-${{ matrix.kind }}-
 

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { Sha512, HmacSha512, Message } from "./sha512.ts";
+import { HmacSha512, Message, Sha512 } from "./sha512.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { dirname, join, resolve, fromFileUrl } from "../path/mod.ts";
+import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
 const testdataDir = resolve(moduleDir, "testdata");

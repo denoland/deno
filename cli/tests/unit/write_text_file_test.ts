@@ -1,9 +1,9 @@
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest(

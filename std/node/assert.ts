@@ -1,19 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
-  assertNotEquals,
-  assertStrictEquals,
-  assertNotStrictEquals,
   assertMatch,
+  assertNotEquals,
+  assertNotStrictEquals,
+  assertStrictEquals,
   assertThrows,
 } from "../testing/asserts.ts";
 
 export { AssertionError } from "./assertion_error.ts";
 
 export {
+  assert,
   assert as default,
   assert as ok,
-  assert,
   fail,
 } from "../testing/asserts.ts";
 

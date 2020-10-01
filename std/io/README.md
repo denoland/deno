@@ -101,9 +101,9 @@ Create a `Writer` object for `string`.
 
 ```ts
 import {
-  StringWriter,
-  StringReader,
   copyN,
+  StringReader,
+  StringWriter,
 } from "https://deno.land/std/io/mod.ts";
 
 const w = new StringWriter("base");
