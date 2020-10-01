@@ -70,6 +70,10 @@
     return string.replace(ANSI_PATTERN, "");
   }
 
+  function maybeColor(fn) {
+    return !(globalThis.Deno?.noColor ?? true) ? fn : (s) => s;
+  }
+
   window.__bootstrap.colors = {
     bold,
     italic,
@@ -83,5 +87,6 @@
     magenta,
     dim,
     stripColor,
+    maybeColor,
   };
 })(this);

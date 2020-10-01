@@ -12,10 +12,6 @@
 
   const disabledConsole = new Console(() => {});
 
-  function maybeColor(fn) {
-    return !globalThis.Deno?.noColor ? fn : (s) => s;
-  }
-
   function delay(ms) {
     return new Promise((resolve) => {
       setTimeout(resolve, ms);
@@ -23,8 +19,8 @@
   }
 
   function formatDuration(time = 0) {
-    const gray = maybeColor(colors.gray);
-    const italic = maybeColor(colors.italic);
+    const gray = colors.maybeColor(colors.gray);
+    const italic = colors.maybeColor(colors.italic);
     const timeStr = `(${time}ms)`;
     return gray(italic(timeStr));
   }
@@ -145,9 +141,9 @@ finishing test case.`;
   }
 
   function reportToConsole(message) {
-    const green = maybeColor(colors.green);
-    const red = maybeColor(colors.red);
-    const yellow = maybeColor(colors.yellow);
+    const green = colors.maybeColor(colors.green);
+    const red = colors.maybeColor(colors.red);
+    const yellow = colors.maybeColor(colors.yellow);
     const redFailed = red("FAILED");
     const greenOk = green("ok");
     const yellowIgnored = yellow("ignored");
