@@ -82,18 +82,15 @@ pub fn op_localstorage_open(
       ) // kind: 0 create, 1 replace, 2 delete, 3 clear
       .unwrap();
 
-    let (sender, receiver) = mpsc::channel::<Value>(16);
-    let sender = Mutex::new(sender);
+    let (mut sender, receiver) = mpsc::channel::<Value>(16);
     let mutex_conn = Arc::new(Mutex::new(conn));
 
     let conn_clone = mutex_conn.clone();
 
-    let foo = mutex_conn.lock().unwrap();
-    foo.update_hook(Some(move |_, _, table_name, row_id| {
+    mutex_conn.lock().unwrap().update_hook(Some(move |_, _: &str, table_name: &str, row_id| {
       if table_name == "events" {
-        let mut stmt = conn_clone
-          .lock()
-          .unwrap()
+        let conn = conn_clone.lock().unwrap();
+        let mut stmt = conn
           .prepare("SELECT * FROM events WHERE rowid = ?")
           .unwrap();
 
@@ -110,14 +107,12 @@ pub fn op_localstorage_open(
           .unwrap();
 
         if event.created_by != std::process::id() {
-          let mut sender = sender.lock().unwrap();
-
           sender.try_send(json!({
-          "key": event.key,
-          "oldValue": event.old_value,
-          "newValue": event.new_value,
-          "kind": event.kind,
-        }));
+            "key": event.key,
+            "oldValue": event.old_value,
+            "newValue": event.new_value,
+            "kind": event.kind,
+          })).unwrap();
         }
       }
     }));
@@ -231,25 +226,20 @@ pub fn op_localstorage_set(
     )
     .unwrap();
 
-  let event_params = match old_value {
-    Some(val) => {
-      params![std::process::id(), args.key_name, val, args.key_value, 1]
-    }
-    None => params![
-      std::process::id(),
-      args.key_name,
-      rusqlite::types::Null,
-      args.key_value,
-      0
-    ],
+  let pid = std::process::id();
+  let insert = |event_params: &[&dyn rusqlite::ToSql]| {
+    conn
+      .execute(
+        "INSERT INTO events (createdBy, key, oldValue, newValue, kind) VALUES (?, ?, ?, ?, ?)",
+        event_params,
+      )
+      .unwrap()
   };
 
-  conn
-    .execute(
-      "INSERT INTO events (createdBy, key, oldValue, newValue, kind) VALUES (?, ?, ?, ?, ?)",
-      event_params,
-    )
-    .unwrap();
+  match old_value {
+    Some(val) => insert(params![pid, args.key_name, val, args.key_value, 1]),
+    None => insert(params![pid, args.key_name, rusqlite::types::Null, args.key_value, 0]),
+  };
 
   Ok(json!({}))
 }
