@@ -1,4 +1,6 @@
-import { assertEquals } from "./test_deps.ts";
+import {
+  assertEquals,
+} from "../../testing/asserts.ts";
 import {
   convertBase64ToBase64url,
   convertBase64urlToBase64,

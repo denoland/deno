@@ -3,7 +3,7 @@ import {
   makeSignature,
   convertHexToBase64url,
   setExpiration,
-} from "../create.ts";
+} from "./create.ts";
 import {
   validate,
   validateObject,
@@ -11,23 +11,23 @@ import {
   parseAndDecode,
   isExpired,
   Handlers,
-} from "../validate.ts";
+} from "./validate.ts";
 import {
   convertBase64urlToBase64,
   convertBase64ToBase64url,
-} from "../base64/base64url.ts";
+} from "./base64/base64url.ts";
 import {
   convertBase64ToUint8Array,
   convertUint8ArrayToBase64,
-} from "../base64/base64.ts";
+} from "./base64/base64.ts";
+import {
+  encodeToString as convertUint8ArrayToHex,
+  decodeString as convertHexToUint8Array,
+} from "../encoding/hex.ts";
 import {
   assertEquals,
   assertThrows,
-  convertUint8ArrayToHex,
-  convertHexToUint8Array,
-  dirname,
-  fromFileUrl,
-} from "./test_deps.ts";
+} from "../testing/asserts.ts";
 
 const key = "your-secret";
 

@@ -1,4 +1,7 @@
-import { assertEquals } from "./test_deps.ts";
+import {
+  assertEquals,
+} from "../../testing/asserts.ts";
+
 import {
   convertBase64ToUint8Array,
   convertUint8ArrayToBase64,
