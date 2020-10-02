@@ -34,12 +34,12 @@ def run_benchmark(deno_exe, method, input_file):
         (out, _) = p.communicate()
 
         elapsed = out.split(':')[1].strip()
-        print "[{}] {}".format(alg, elapsed)
+        print("[{}] {}".format(alg, elapsed))
 
 
 def main():
     if len(sys.argv) < 4:
-        print "Usage ./tools/hash_benchmark.py path/to/deno method input"
+        print("Usage ./tools/hash_benchmark.py path/to/deno method input")
         sys.exit(1)
 
     run_benchmark(sys.argv[1], sys.argv[2], sys.argv[3])
