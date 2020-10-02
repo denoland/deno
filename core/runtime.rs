@@ -609,7 +609,7 @@ impl JsRuntimeState {
     let referrer = self.modules.get_name(referrer_id).unwrap();
     let specifier = self
       .loader
-      .resolve(specifier, referrer, false)
+      .resolve(self.op_state.clone(), specifier, referrer, false)
       .expect("Module should have been already resolved");
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
@@ -814,8 +814,12 @@ impl JsRuntime {
       let import_specifier =
         module.get_module_request(i).to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
-      let module_specifier =
-        state.loader.resolve(&import_specifier, name, false)?;
+      let module_specifier = state.loader.resolve(
+        state.op_state.clone(),
+        &import_specifier,
+        name,
+        false,
+      )?;
       import_specifiers.push(module_specifier);
     }
 
@@ -1918,6 +1922,7 @@ pub mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -2030,6 +2035,7 @@ pub mod tests {
     impl ModuleLoader for DynImportErrLoader {
       fn resolve(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -2092,6 +2098,7 @@ pub mod tests {
   impl ModuleLoader for DynImportOkLoader {
     fn resolve(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       specifier: &str,
       referrer: &str,
       _is_main: bool,
@@ -2220,6 +2227,7 @@ pub mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
