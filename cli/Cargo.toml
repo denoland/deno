@@ -77,7 +77,7 @@ walkdir = "2.3.1"
 warp = { version = "0.2.4", features = ["tls"] }
 semver-parser = "0.9.0"
 uuid = { version = "0.8.1", features = ["v4"] }
-rusqlite = { version = "0.24.0" } #, features = ["unlock_notify"]
+rusqlite = { version = "0.24.0", features = ["hooks"] } # unlock_notify
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }

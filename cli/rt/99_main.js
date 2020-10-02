@@ -236,6 +236,7 @@ delete Object.prototype.__proto__;
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     CloseEvent: util.nonEnumerable(CloseEvent),
     MessageEvent: util.nonEnumerable(MessageEvent),
+    StorageEvent: util.nonEnumerable(StorageEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
     Headers: util.nonEnumerable(headers.Headers),
@@ -320,6 +321,13 @@ delete Object.prototype.__proto__;
       const { onunload } = globalThis;
       if (typeof onunload === "function") {
         onunload(e);
+      }
+    });
+    // Registers the handler for window.onstorage function.
+    globalThis.addEventListener("storage", (e) => {
+      const { onstorage } = globalThis;
+      if (typeof onstorage === "function") {
+        onstorage(e);
       }
     });
 

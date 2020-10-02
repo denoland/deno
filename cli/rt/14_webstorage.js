@@ -1,15 +1,33 @@
 ((window) => {
-  const { sendSync } = window.__bootstrap.dispatchJson;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+
+  async function eventLoop(rid) {
+    const {key, newValue, oldValue} = await sendAsync("op_localstorage_events_poll", { rid });
+    const event = new StorageEvent("storage", {
+      key,
+      newValue,
+      oldValue,
+      storageArea: localStorage,
+    });
+    window.dispatchEvent("storage", event);
+    window.onstorage?.(event);
+    eventLoop(rid);
+  }
 
   function webStorage(session = false) {
     let rid;
 
     function getRid() {
       if (!rid) {
-        rid = sendSync("op_localstorage_open", {
+        const data = sendSync("op_localstorage_open", {
           session,
-          location: "foobar"
+          location: "foobar",
         });
+        rid = data.rid;
+
+        if (data.eventRid) {
+          eventLoop(data.eventRid);
+        }
       }
       return rid;
     }
@@ -57,17 +75,21 @@
         target.removeItem(prop);
       },
       get(target, p) {
-        return target.getItem(p);
+        if (p in target) {
+          return Reflect.get(...arguments);
+        } else {
+          return target.getItem(p);
+        }
       },
       set(target, p, value) {
         if (p in target) {
           return false;
+        } else {
+          target.setItem(p, value);
+
+          return true;
         }
-
-        target.setItem(p, value);
-
-        return true;
-      }
+      },
     });
   }
 
