@@ -11,7 +11,7 @@ type JwtObjectWithUnknownProps = {
 };
 type JwtValidation =
   | (JwtObject & { jwt: string; isValid: true; critResult?: unknown[] })
-  | { jwt: unknown; error: JwtError; isValid: false; isExpired: boolean };
+  | { jwt: unknown; error: Error; isValid: false; isExpired: boolean };
 type Validation = {
   jwt: string;
   key: string;
@@ -21,17 +21,6 @@ type Validation = {
 type Handlers = {
   [key: string]: (header: JsonValue) => unknown;
 };
-
-class JwtError extends Error {
-  readonly message: string;
-  readonly date: Date;
-  constructor(message: string) {
-    super(message);
-    this.message = message;
-    this.name = this.constructor.name;
-    this.date = new Date();
-  }
-}
 
 function isObject(obj: unknown): obj is object {
   return (
@@ -82,12 +71,12 @@ function checkHeaderCrit(
     !Array.isArray(header.crit) ||
     header.crit.some((str: string) => typeof str !== "string" || !str)
   ) {
-    throw Error(
+    throw new Error(
       "header parameter 'crit' must be an array of non-empty strings",
     );
   }
   if (header.crit.some((str: string) => reservedWords.has(str))) {
-    throw Error("the 'crit' list contains a non-extension header parameter");
+    throw new Error("the 'crit' list contains a non-extension header parameter");
   }
   if (
     header.crit.some(
@@ -96,7 +85,7 @@ function checkHeaderCrit(
         typeof handlers?.[str] !== "function",
     )
   ) {
-    throw Error("critical extension header parameters are not understood");
+    throw new Error("critical extension header parameters are not understood");
   }
   return Promise.all(
     header.crit.map((str: string) => handlers![str](header[str] as JsonValue)),
@@ -167,7 +156,7 @@ function validateAlgorithm(
 ): boolean {
   if (Array.isArray(algorithm)) {
     if (algorithm.length > 1 && algorithm.includes("none")) {
-      throw Error("algorithm 'none' must be used alone");
+      throw new Error("algorithm 'none' must be used alone");
     } else return algorithm.includes(jwtAlg);
   } else {
     return algorithm === jwtAlg;
@@ -208,7 +197,7 @@ async function validate({
       critHandlers,
     );
     if (!validateAlgorithm(algorithm, oldJwtObject.header.alg)) {
-      throw Error("no matching algorithm: " + oldJwtObject.header.alg);
+      throw new Error("no matching algorithm: " + oldJwtObject.header.alg);
     }
     if (
       !(await verifySignature({
@@ -218,13 +207,13 @@ async function validate({
         signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
       }))
     ) {
-      throw Error("signatures don't match");
+      throw new Error("signatures don't match");
     }
     return { ...oldJwtObject, jwt, critResult, isValid: true };
   } catch (err) {
     return {
       jwt,
-      error: new JwtError(err.message),
+      error: new Error(err.message),
       isValid: false,
       isExpired: err.message === "the jwt is expired" ? true : false,
     };

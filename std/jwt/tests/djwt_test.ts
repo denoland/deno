@@ -211,7 +211,7 @@ Deno.test("makeCreationAndValidationTest", async function (): Promise<void> {
     key: "",
     algorithm: "HS256",
   });
-  if (invalidatedJwt.isValid) throw Error("jwt should be invalid");
+  if (invalidatedJwt.isValid) throw new Error("jwt should be invalid");
   else {
     assertEquals(invalidatedJwt.error.message, "no matching algorithm: HS384");
   }
@@ -257,7 +257,7 @@ Deno.test("testExpiredJwt", async function (): Promise<void> {
   const jwt = await create({ header, payload, key });
 
   const validatedJwt = await validate({ jwt, key, algorithm: "HS256" });
-  if (validatedJwt.isValid) throw Error("jwt should be invalid");
+  if (validatedJwt.isValid) throw new Error("jwt should be invalid");
   else {
     assertEquals(validatedJwt.error.message, "the jwt is expired");
     assertEquals(validatedJwt.isExpired, true);
@@ -325,7 +325,7 @@ Deno.test("makeHeaderCritTest", async function (): Promise<void> {
   }
 
   const failing = await validate({ jwt, key, algorithm: "HS256" });
-  if (failing.isValid) throw Error("jwt should be invalid");
+  if (failing.isValid) throw new Error("jwt should be invalid");
   else {
     assertEquals(
       failing.error.message,
