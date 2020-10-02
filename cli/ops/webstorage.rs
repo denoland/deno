@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use deno_core::BufVec;
 use tokio::sync::mpsc;
 use futures::future::poll_fn;
+use std::sync::{Arc, Mutex};
 
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -82,11 +83,17 @@ pub fn op_localstorage_open(
       .unwrap();
 
     let (sender, receiver) = mpsc::channel::<Value>(16);
-    let sender = std::sync::Mutex::new(sender);
+    let sender = Mutex::new(sender);
+    let mutex_conn = Arc::new(Mutex::new(conn));
 
-    conn.update_hook(Some(|_, _, table_name, row_id| {
+    let conn_clone = mutex_conn.clone();
+
+    let foo = mutex_conn.lock().unwrap();
+    foo.update_hook(Some(move |_, _, table_name, row_id| {
       if table_name == "events" {
-        let mut stmt = conn
+        let mut stmt = conn_clone
+          .lock()
+          .unwrap()
           .prepare("SELECT * FROM events WHERE rowid = ?")
           .unwrap();
 
@@ -116,7 +123,7 @@ pub fn op_localstorage_open(
     }));
 
     let event_rid = state.resource_table.add("localStorageEvents", Box::new(receiver));
-    let storage_rid = state.resource_table.add("localStorage", Box::new(conn));
+    let storage_rid = state.resource_table.add("localStorage", Box::new(mutex_conn));
     Ok(json!({
       "eventRid": event_rid,
       "rid": storage_rid,
@@ -138,8 +145,10 @@ pub fn op_localstorage_length(
   let args: LengthArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
-    .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .get_mut::<Arc<Mutex<Connection>>>(args.rid)
+    .ok_or_else(ErrBox::bad_resource_id)?
+    .lock()
+    .unwrap();
 
   let mut stmt = conn.prepare("SELECT COUNT(*) FROM data").unwrap();
 
@@ -163,8 +172,10 @@ pub fn op_localstorage_key(
   let args: KeyArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
-    .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .get_mut::<Arc<Mutex<Connection>>>(args.rid)
+    .ok_or_else(ErrBox::bad_resource_id)?
+    .lock()
+    .unwrap();
 
   let mut stmt = conn
     .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")
@@ -199,8 +210,10 @@ pub fn op_localstorage_set(
   let args: SetArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
-    .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .get_mut::<Arc<Mutex<Connection>>>(args.rid)
+    .ok_or_else(ErrBox::bad_resource_id)?
+    .lock()
+    .unwrap();
 
   let mut stmt = conn
     .prepare("SELECT value FROM data WHERE key = ?")
@@ -256,8 +269,10 @@ pub fn op_localstorage_get(
   let args: GetArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
-    .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .get_mut::<Arc<Mutex<Connection>>>(args.rid)
+    .ok_or_else(ErrBox::bad_resource_id)?
+    .lock()
+    .unwrap();
 
   let mut stmt = conn
     .prepare("SELECT value FROM data WHERE key = ?")
@@ -291,8 +306,10 @@ pub fn op_localstorage_remove(
   let args: RemoveArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
-    .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .get_mut::<Arc<Mutex<Connection>>>(args.rid)
+    .ok_or_else(ErrBox::bad_resource_id)?
+    .lock()
+    .unwrap();
 
   let mut stmt = conn
     .prepare("SELECT value FROM data WHERE key = ?")
@@ -333,8 +350,10 @@ pub fn op_localstorage_clear(
   let args: ClearArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
-    .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .get_mut::<Arc<Mutex<Connection>>>(args.rid)
+    .ok_or_else(ErrBox::bad_resource_id)?
+    .lock()
+    .unwrap();
 
   conn.execute("DROP data", params![]).unwrap();
   conn
