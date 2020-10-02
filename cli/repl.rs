@@ -126,7 +126,9 @@ pub async fn run(
             Some(json!({
               "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
               "contextId": context_id,
-              "replMode": true,
+              // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
+              // level await
+              "replMode": false,
             })),
           )
           .await?;
@@ -143,7 +145,9 @@ pub async fn run(
                 Some(json!({
                   "expression": format!("'use strict'; void 0;\n{}", &line),
                   "contextId": context_id,
-                  "replMode": true,
+                  // TODO(caspervonb) set repl mode to true to enable const redeclarations and top
+                  // level await
+                  "replMode": false,
                 })),
               )
               .await?
