@@ -65,7 +65,6 @@ pub trait ModuleLoader {
   /// apply import map for child imports.
   fn resolve(
     &self,
-    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     _is_main: bool,
@@ -110,7 +109,6 @@ pub(crate) struct NoopModuleLoader;
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     _specifier: &str,
     _referrer: &str,
     _is_main: bool,
@@ -209,23 +207,14 @@ impl RecursiveModuleLoad {
   pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        let spec =
-          match self
-            .loader
-            .resolve(self.op_state.clone(), specifier, ".", true)
-          {
-            Ok(spec) => spec,
-            Err(e) => return (self.id, Err(e)),
-          };
+        let spec = match self.loader.resolve(specifier, ".", true) {
+          Ok(spec) => spec,
+          Err(e) => return (self.id, Err(e)),
+        };
         (spec, None)
       }
       LoadState::ResolveImport(ref specifier, ref referrer) => {
-        let spec = match self.loader.resolve(
-          self.op_state.clone(),
-          specifier,
-          referrer,
-          false,
-        ) {
+        let spec = match self.loader.resolve(specifier, referrer, false) {
           Ok(spec) => spec,
           Err(e) => return (self.id, Err(e)),
         };
@@ -254,13 +243,11 @@ impl RecursiveModuleLoad {
   fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        self
-          .loader
-          .resolve(self.op_state.clone(), specifier, ".", true)?
+        self.loader.resolve(specifier, ".", true)?
       }
-      LoadState::ResolveImport(ref specifier, ref referrer) => self
-        .loader
-        .resolve(self.op_state.clone(), specifier, referrer, false)?,
+      LoadState::ResolveImport(ref specifier, ref referrer) => {
+        self.loader.resolve(specifier, referrer, false)?
+      }
 
       _ => unreachable!(),
     };
@@ -584,7 +571,6 @@ mod tests {
   impl ModuleLoader for MockLoader {
     fn resolve(
       &self,
-      _op_state: Rc<RefCell<OpState>>,
       specifier: &str,
       referrer: &str,
       _is_root: bool,
