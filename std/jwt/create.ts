@@ -6,7 +6,6 @@ import { convertHexToUint8Array, HmacSha256, HmacSha512 } from "./deps.ts";
 type Payload = PayloadObject | unknown;
 type Algorithm = "none" | "HS256" | "HS512";
 
-
 interface JwtInput {
   key: string;
   header: Jose;

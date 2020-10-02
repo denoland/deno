@@ -31,7 +31,7 @@ import {
 
 const key = "your-secret";
 
-Deno.test("makeSetAndCheckExpirationTest", function (): void {
+Deno.test("makeSetAndCheckExpiration", function (): void {
   // A specific date:
   const t1 = setExpiration(new Date("2020-01-01"));
   const t2 = setExpiration(new Date("2099-01-01"));
@@ -54,7 +54,7 @@ Deno.test("makeSetAndCheckExpirationTest", function (): void {
   assertEquals(setExpiration(10), setExpiration(new Date(Date.now() + 10000)));
 });
 
-Deno.test("makeDataConversionTest", function (): void {
+Deno.test("makeDataConversion", function (): void {
   const hex1 =
     "a4a99a8e21149ccbc5c5aabd310e5d5208b12db90dff749171d5014b688ce808";
   const hex2 = convertUint8ArrayToHex(
@@ -97,7 +97,7 @@ Deno.test("makeSignatureTests", async function (): Promise<void> {
   );
 });
 
-Deno.test("makevalidateObjectTest", async function (): Promise<void> {
+Deno.test("makevalidateObject", async  function (): Promise<void> {
   const header = {
     alg: "HS256" as const,
     typ: "JWT",
@@ -178,7 +178,7 @@ Deno.test("parseAndDecodeTests", async function (): Promise<void> {
   );
 });
 
-Deno.test("makeCreationAndValidationTest", async function (): Promise<void> {
+Deno.test("makeCreationAndValidation", async  function (): Promise<void> {
   const header = {
     alg: "HS256" as const,
     typ: "JWT",
@@ -264,7 +264,7 @@ Deno.test("testExpiredJwt", async function (): Promise<void> {
   }
 });
 
-Deno.test("makeCheckHeaderCritTest", async function (): Promise<void> {
+Deno.test("makeCheckHeaderCrit", async  function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -288,7 +288,7 @@ Deno.test("makeCheckHeaderCritTest", async function (): Promise<void> {
   assertEquals(result, [100, 200]);
 });
 
-Deno.test("makeHeaderCritTest", async function (): Promise<void> {
+Deno.test("makeHeaderCrit", async  function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -336,7 +336,7 @@ Deno.test("makeHeaderCritTest", async function (): Promise<void> {
 });
 
 // https://tools.ietf.org/html/rfc7519#section-6
-Deno.test("makeUnsecuredJwtTest", async function (): Promise<void> {
+Deno.test("makeUnsecuredJwt", async  function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -360,7 +360,7 @@ Deno.test("makeUnsecuredJwtTest", async function (): Promise<void> {
   }
 });
 
-Deno.test("makeHmacSha512Test", async function (): Promise<void> {
+Deno.test("makeHmacSha512", async  function (): Promise<void> {
   const header = { alg: "HS512" as const, typ: "JWT" };
   const payload = {
     sub: "1234567890",
