@@ -38,7 +38,7 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
   let mut builder = Client::builder()
     .redirect(Policy::none())
     .default_headers(headers)
-    .use_rustls_tls();
+    .use_native_tls();
 
   if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();

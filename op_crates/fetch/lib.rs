@@ -251,7 +251,7 @@ where
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
-  let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
+  let mut builder = Client::builder().redirect(Policy::none()).use_native_tls();
   if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
