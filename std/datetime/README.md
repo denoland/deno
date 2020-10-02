@@ -71,7 +71,7 @@ format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd"); // output : "today: 2019-0
 Returns the number of the day in the year.
 
 ```ts
-import { dayOfYear } from "https://deno.land/std@0.70.0/datetime/mod.ts";
+import { dayOfYear } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
 dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
 ```
@@ -81,7 +81,7 @@ dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
 Returns the ISO week number of the provided date (1-53)
 
 ```ts
-import { weekOfYear } from "https://deno.land/std@0.70.0/datetime/mod.ts";
+import { weekOfYear } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
 weekOfYear(new Date("2020-12-28T03:24:00")); // Returns 53
 ```

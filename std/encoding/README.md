@@ -82,7 +82,7 @@ function is as follows:
 ### Usage
 
 ```ts
-import { parse } from "https://deno.land/std@0.70.0/encoding/csv.ts";
+import { parse } from "https://deno.land/std@$STD_VERSION/encoding/csv.ts";
 const string = "a,b,c\nd,e,f";
 
 console.log(
@@ -190,7 +190,7 @@ will output:
 import {
   parse,
   stringify,
-} from "https://deno.land/std@0.70.0/encoding/toml.ts";
+} from "https://deno.land/std@$STD_VERSION/encoding/toml.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
@@ -242,7 +242,7 @@ string.
 import {
   parse,
   stringify,
-} from "https://deno.land/std@0.70.0/encoding/yaml.ts";
+} from "https://deno.land/std@$STD_VERSION/encoding/yaml.ts";
 
 const data = parse(`
 foo: bar
@@ -266,7 +266,7 @@ If your YAML contains multiple documents in it, you can use `parseAll` for
 handling it.
 
 ```ts
-import { parseAll } from "https://deno.land/std@0.70.0/encoding/yaml.ts";
+import { parseAll } from "https://deno.land/std@$STD_VERSION/encoding/yaml.ts";
 
 const data = parseAll(`
 ---
@@ -321,7 +321,7 @@ decodes the given RFC4648 base32 representation to a `Uint8Array`.
 import {
   encode,
   decode,
-} from "https://deno.land/std@0.70.0/encoding/base32.ts";
+} from "https://deno.land/std@$STD_VERSION/encoding/base32.ts";
 
 const b32Repr = "RC2E6GA=";
 
@@ -346,7 +346,7 @@ decodes the given ascii85 representation to a `Uint8Array`.
 import {
   encode,
   decode,
-} from "https://deno.land/std@0.70.0/encoding/ascii85.ts";
+} from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 
 const a85Repr = "LpTqp";
 
@@ -378,7 +378,7 @@ encoding examples:
 import {
   encode,
   decode,
-} from "https://deno.land/std@0.70.0/encoding/ascii85.ts";
+} from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 const binaryData = new Uint8Array([136, 180, 79, 24]);
 console.log(encode(binaryData));
 // => LpTqp
