@@ -46,10 +46,23 @@ impl CliModuleLoader {
 impl ModuleLoader for CliModuleLoader {
   fn resolve(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
+    let global_state = {
+      let state = op_state.borrow();
+      state.borrow::<Arc<GlobalState>>().clone()
+    };
+
+    // FIXME(bartlomieju): hacky way to provide compatibility with repl
+    let referrer = if referrer.is_empty() && global_state.flags.repl {
+      "<unknown>"
+    } else {
+      referrer
+    };
+
     if !is_main {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
@@ -58,6 +71,7 @@ impl ModuleLoader for CliModuleLoader {
         }
       }
     }
+
     let module_specifier =
       ModuleSpecifier::resolve_import(specifier, referrer)?;
 
