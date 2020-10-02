@@ -6,6 +6,43 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.3 / 2020.10.02
+
+- feat(unstable): Add module specifier to deno info --json output (#7725)
+- fix: Bundle loader returns exported value (#7764)
+- fix: Check cached versions during transpile (#7760)
+- fix: Net listen crashes on explicit undefined hostname (#7706)
+- fix: --no-check recognizes require (#7720)
+- fix: Use $deno$test.ts instead of .deno.test.ts (#7717)
+- fix: Use global_state file_fetcher when using SpecifierHandler (#7748)
+- fix(console): Catch and format getter errors (#7766)
+- fix(dts): Use var instead of const and let for globals (#7680)
+- fix(inspector): Shutdown server gracefully on drop (#7716)
+- fix(repl): Enable await and let re-declarations (#7784)
+- fix(repl): Use a default referrer when empty (#7794)
+- fix(test): Do not start inspector server when collecting coverage (#7718)
+- fix(websocket): Add missing close events and remove extra error event (#7606)
+- refactor: Add concept of 'legacy' compiler to enable non-breaking refactoring
+  (#7762)
+- refactor: Combine MainWorker::new and MainWorker::create (#7693)
+- refactor: Extract inspector session (#7756, #7763)
+- refactor: Factor out check_unstable op helper (#7695)
+- refactor: Improve graph and tsc_config (#7747)
+- refactor: Improve op crate interfaces for other consumers (#7745)
+- refactor: Move op state registration to workers (#7696)
+- refactor: Use JsRuntime to implement TSC (#7691)
+- refactor: Add Deno.InspectOptions::colors (#7742)
+- upgrade: swc, deno_doc, deno_lint, dprint (#7711, #7793)
+
+Changes in std version 0.72.0:
+
+- BREAKING(std/encoding/csv): Improve the definition of ParseOptions (#7714)
+- feat(std/path): Align globToRegExp() with bash glob expansion (#7209)
+- fix(std/datetime): Add timezone to date strings in tests (#7675)
+- refactor(std/example): Inconsistencies in the example tests (#7684)
+- refactor(std/testing): Get rid of default export and make std/testing/diff.ts
+  private (#7592)
+
 ### 1.4.2 / 2020.09.25
 
 - fix: Better formatting in console (#7642, #7641, #7553)
