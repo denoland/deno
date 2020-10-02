@@ -1,7 +1,7 @@
-import { encrypt, assertNever } from "./create.ts";
-import type { Jose, Payload, Algorithm } from "./create.ts";
+import { encrypt } from "./create.ts";
+import type { Algorithm, Jose, Payload } from "./create.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
-import { convertUint8ArrayToHex, convertHexToUint8Array } from "./deps.ts";
+import { convertHexToUint8Array, convertUint8ArrayToHex } from "./deps.ts";
 
 type JwtObject = { header: Jose; payload: Payload; signature: string };
 type JwtObjectWithUnknownProps = {
@@ -76,7 +76,9 @@ function checkHeaderCrit(
     );
   }
   if (header.crit.some((str: string) => reservedWords.has(str))) {
-    throw new Error("the 'crit' list contains a non-extension header parameter");
+    throw new Error(
+      "the 'crit' list contains a non-extension header parameter",
+    );
   }
   if (
     header.crit.some(
@@ -92,9 +94,7 @@ function checkHeaderCrit(
   );
 }
 
-function validateObject(
-  maybeJwtObject: JwtObjectWithUnknownProps,
-): JwtObject {
+function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
   if (typeof maybeJwtObject.signature !== "string") {
     throw ReferenceError("the signature is no string");
   }
@@ -181,7 +181,7 @@ async function verifySignature({
       return signature === (await encrypt(alg, key, signingInput));
     }
     default:
-      assertNever(alg, "no matching crypto alg in the header: " + alg);
+      throw new RangeError("no matching crypto alg in the header: " + alg);
   }
 }
 
@@ -221,14 +221,14 @@ async function validate({
 }
 
 export {
+  checkHeaderCrit,
+  hasProperty,
+  isExpired,
+  isObject,
+  parseAndDecode,
   validate,
   validateObject,
   verifySignature,
-  checkHeaderCrit,
-  parseAndDecode,
-  isExpired,
-  isObject,
-  hasProperty,
 };
 
-export type { Jose, Payload, Handlers, JwtObject, JwtValidation, Validation };
+export type { Handlers, Jose, JwtObject, JwtValidation, Payload, Validation };
