@@ -13,7 +13,7 @@ type JwtObjectWithUnknownProps = {
 export type Validation = {
   jwt: string;
   key: string;
-  algorithm: Algorithm | Algorithm[];
+  algorithm?: Algorithm | Algorithm[];
   critHandlers?: Handlers;
 };
 export type Handlers = {
@@ -157,7 +157,7 @@ export async function validate({
   jwt,
   key,
   critHandlers,
-  algorithm,
+  algorithm="HS512",
 }: Validation): Promise<Payload> {
 
   const object = validateObject(parseAndDecode(jwt));

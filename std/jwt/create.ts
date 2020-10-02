@@ -8,8 +8,8 @@ export type Algorithm = "none" | "HS256" | "HS512";
 
 export interface Config {
   key: string;
-  header: Header;
   payload: Payload;
+  header?: Header;
 }
 
 interface PayloadObject {
@@ -64,7 +64,7 @@ async function makeSignature(
   return convertHexToBase64url(await encrypt(alg, key, input));
 }
 
-async function create({ key, header, payload }: Config): Promise<string> {
+async function create({ key, payload, header = { alg: "HS512", typ: "JWT" }, }: Config): Promise<string> {
   try {
     const signingInput = makeSigningInput(header, payload);
     return `${signingInput}.${await makeSignature(
