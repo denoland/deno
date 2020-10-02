@@ -1,5 +1,6 @@
 import { encrypt } from "./create.ts";
 import type { Algorithm, Header, Payload } from "./create.ts";
+import { hasProperty, isExpired, isObject } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import { convertHexToUint8Array, convertUint8ArrayToHex } from "./deps.ts";
 
@@ -18,23 +19,6 @@ type Validation = {
 type Handlers = {
   [key: string]: (header: unknown) => unknown;
 };
-
-function isObject(obj: unknown): obj is object {
-  return (
-    obj !== null && typeof obj === "object" && Array.isArray(obj) === false
-  );
-}
-
-function hasProperty<K extends string>(
-  key: K,
-  x: object,
-): x is { [key in K]: unknown } {
-  return key in x;
-}
-
-function isExpired(exp: number, leeway = 0): boolean {
-  return exp + leeway < Date.now() / 1000;
-}
 
 // A present 'crit' header parameter indicates that the JWS signature validator
 // must understand and process additional claims (JWS §4.1.11)
