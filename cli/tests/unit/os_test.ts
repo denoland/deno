@@ -191,6 +191,6 @@ unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
 
 unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
   const { cores, speed } = Deno.systemCpuInfo();
-  assert(cores >= 0);
-  assert(speed >= 0);
+  assert(cores > 0);
+  assert(speed > 0);
 });
