@@ -149,7 +149,7 @@ export async function verifySignature({
       return signature === (await encrypt(alg, key, signingInput));
     }
     default:
-      throw new RangeError("no matching crypto alg in the header: " + alg);
+      throw new RangeError(`no matching crypto alg in the header: ${alg}`);
   }
 }
 

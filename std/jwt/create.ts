@@ -51,7 +51,7 @@ async function encrypt(
       return new HmacSha512(key).update(msg).toString();
     default:
       throw new RangeError(
-        "no matching crypto algorithm in the header: " + alg,
+        `no matching crypto algorithm in the header: ${alg}`,
       );
   }
 }
