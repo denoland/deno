@@ -1,5 +1,5 @@
 import { encrypt, assertNever } from "./create.ts";
-import type { Jose, Payload, JsonValue, Algorithm } from "./create.ts";
+import type { Jose, Payload, Algorithm } from "./create.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import { convertUint8ArrayToHex, convertHexToUint8Array } from "./deps.ts";
 
@@ -19,7 +19,7 @@ type Validation = {
   critHandlers?: Handlers;
 };
 type Handlers = {
-  [key: string]: (header: JsonValue) => unknown;
+  [key: string]: (header: unknown) => unknown;
 };
 
 function isObject(obj: unknown): obj is object {
@@ -88,7 +88,7 @@ function checkHeaderCrit(
     throw new Error("critical extension header parameters are not understood");
   }
   return Promise.all(
-    header.crit.map((str: string) => handlers![str](header[str] as JsonValue)),
+    header.crit.map((str: string) => handlers![str](header[str] as unknown)),
   );
 }
 

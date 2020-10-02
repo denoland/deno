@@ -3,12 +3,9 @@ import { convertHexToUint8Array, HmacSha256, HmacSha512 } from "./deps.ts";
 
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
 // The payload can be any content and need not be a representation of a JSON object
-type Payload = PayloadObject | JsonPrimitive | JsonArray;
+type Payload = PayloadObject | unknown;
 type Algorithm = "none" | "HS256" | "HS512";
-type JsonPrimitive = string | number | boolean | null;
-type JsonObject = { [member: string]: JsonValue };
-type JsonArray = JsonValue[];
-type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+
 
 interface JwtInput {
   key: string;
@@ -24,13 +21,13 @@ interface PayloadObject {
   nbf?: number;
   iat?: number;
   jti?: string;
-  [key: string]: JsonValue | undefined;
+  [key: string]: unknown;
 }
 
 interface Jose {
   alg: Algorithm;
   crit?: string[];
-  [key: string]: JsonValue | undefined;
+  [key: string]: unknown;
 }
 
 function assertNever(alg: never, message: string): never {
@@ -110,4 +107,4 @@ export {
   assertNever,
 };
 
-export type { Algorithm, Payload, PayloadObject, Jose, JwtInput, JsonValue };
+export type { Algorithm, Payload, PayloadObject, Jose, JwtInput };
