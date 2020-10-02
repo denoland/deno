@@ -319,8 +319,8 @@ decodes the given RFC4648 base32 representation to a `Uint8Array`.
 
 ```ts
 import {
-  encode,
   decode,
+  encode,
 } from "https://deno.land/std@$STD_VERSION/encoding/base32.ts";
 
 const b32Repr = "RC2E6GA=";
@@ -344,8 +344,8 @@ decodes the given ascii85 representation to a `Uint8Array`.
 
 ```ts
 import {
-  encode,
   decode,
+  encode,
 } from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 
 const a85Repr = "LpTqp";
@@ -376,8 +376,8 @@ encoding examples:
 
 ```ts
 import {
-  encode,
   decode,
+  encode,
 } from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 const binaryData = new Uint8Array([136, 180, 79, 24]);
 console.log(encode(binaryData));

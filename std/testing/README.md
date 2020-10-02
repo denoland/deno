@@ -157,8 +157,8 @@ benchmarks and log the results in the commandline.
 
 ```ts
 import {
-  runBenchmarks,
   bench,
+  runBenchmarks,
 } from "https://deno.land/std@$STD_VERSION/testing/bench.ts";
 
 bench(function forIncrementX1e9(b): void {

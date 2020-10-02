@@ -14,7 +14,10 @@ is not empty. If the directory does not exist, it is created. The directory
 itself is not deleted.
 
 ```ts
-import { emptyDir, emptyDirSync } from "https://deno.land/std@$STD_VERSION/fs/mod.ts";
+import {
+  emptyDir,
+  emptyDirSync,
+} from "https://deno.land/std@$STD_VERSION/fs/mod.ts";
 
 emptyDir("./foo"); // returns a promise
 emptyDirSync("./foo"); // void
@@ -92,7 +95,10 @@ format(CRLFinput, EOL.LF); // output "deno\nis not\nnode"
 Test whether or not the given path exists by checking with the file system
 
 ```ts
-import { exists, existsSync } from "https://deno.land/std@$STD_VERSION/fs/mod.ts";
+import {
+  exists,
+  existsSync,
+} from "https://deno.land/std@$STD_VERSION/fs/mod.ts";
 
 exists("./foo"); // returns a Promise<boolean>
 existsSync("./foo"); // returns boolean

@@ -39,7 +39,10 @@ To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`
 
 ```ts
 import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
-import { Cookie, setCookie } from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
+import {
+  Cookie,
+  setCookie,
+} from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
 
 let response: Response = {};
 const cookie: Cookie = { name: "Space", value: "Cat" };

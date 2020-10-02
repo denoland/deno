@@ -54,7 +54,7 @@ parse("01-20-2019 16:34:23.123", "MM-dd-yyyy HH:mm:ss.SSS") // output : new Date
 Takes an input `date` and a `formatString` to format to a `string`.
 
 ```ts
-import { format } from 'https://deno.land/std@0.69.0/datetime/mod.ts'
+import { format } from "https://deno.land/std@0.69.0/datetime/mod.ts";
 
 format(new Date(2019, 0, 20), "dd-MM-yyyy"); // output : "20-01-2019"
 format(new Date(2019, 0, 20), "yyyy-MM-dd"); // output : "2019-01-20"
