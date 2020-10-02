@@ -29,10 +29,6 @@ interface Jose {
   [key: string]: unknown;
 }
 
-function assertNever(alg: never, message: string): never {
-  throw new RangeError(message);
-}
-
 // Helper function: setExpiration()
 // returns the number of seconds since January 1, 1970, 00:00:00 UTC
 function setExpiration(exp: number | Date): number {
@@ -70,7 +66,9 @@ async function encrypt(
     case "HS512":
       return new HmacSha512(key).update(msg).toString();
     default:
-      assertNever(alg, "no matching crypto algorithm in the header: " + alg);
+      throw new RangeError(
+        "no matching crypto algorithm in the header: " + alg,
+      );
   }
 }
 
@@ -97,13 +95,12 @@ async function create({ key, header, payload }: Config): Promise<string> {
 }
 
 export {
-  create,
-  encrypt,
-  setExpiration,
-  makeSignature,
   convertHexToBase64url,
   convertStringToBase64url,
-  assertNever,
+  create,
+  encrypt,
+  makeSignature,
+  setExpiration,
 };
 
-export type { Algorithm, Payload, PayloadObject, Jose };
+export type { Algorithm, Jose, Payload, PayloadObject };

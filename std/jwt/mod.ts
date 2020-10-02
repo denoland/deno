@@ -1,29 +1,24 @@
 export {
-  create,
-  encrypt,
-  setExpiration,
-  makeSignature,
+  assertNever,
   convertHexToBase64url,
   convertStringToBase64url,
-  assertNever,
+  create,
+  encrypt,
+  makeSignature,
+  setExpiration,
 } from "./create.ts";
 
-export type {
-  Algorithm,
-  Payload,
-  PayloadObject,
-  Jose,
-} from "./create.ts";
+export type { Algorithm, Jose, Payload, PayloadObject } from "./create.ts";
 
 export {
+  checkHeaderCrit,
+  hasProperty,
+  isExpired,
+  isObject,
+  parseAndDecode,
   validate,
   validateObject,
   verifySignature,
-  checkHeaderCrit,
-  parseAndDecode,
-  isExpired,
-  isObject,
-  hasProperty,
 } from "./validate.ts";
 
 export type {
