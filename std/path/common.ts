@@ -6,7 +6,7 @@ import { SEP } from "./separator.ts";
 /** Determines the common path from a set of paths, using an optional separator,
  * which defaults to the OS default separator.
  *
- *       import { common } from "https://deno.land/std@0.70.0/path/mod.ts";
+ *       import { common } from "https://deno.land/std/path/mod.ts";
  *       const p = common([
  *         "./deno/std/path/mod.ts",
  *         "./deno/std/fs/mod.ts",

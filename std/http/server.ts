@@ -272,7 +272,7 @@ export function _parseAddrFromStr(addr: string): HTTPOptions {
 /**
  * Create a HTTP server
  *
- *     import { serve } from "https://deno.land/std@0.70.0/http/server.ts";
+ *     import { serve } from "https://deno.land/std/http/server.ts";
  *     const body = "Hello World\n";
  *     const server = serve({ port: 8000 });
  *     for await (const req of server) {
