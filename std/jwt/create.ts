@@ -1,4 +1,5 @@
 import { convertUint8ArrayToBase64url } from "./base64/base64url.ts";
+import { setExpiration } from "./_util.ts";
 import { convertHexToUint8Array, HmacSha256, HmacSha512 } from "./deps.ts";
 
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
@@ -27,14 +28,6 @@ interface Header {
   alg: Algorithm;
   crit?: string[];
   [key: string]: unknown;
-}
-
-// Helper function: setExpiration()
-// returns the number of seconds since January 1, 1970, 00:00:00 UTC
-function setExpiration(exp: number | Date): number {
-  return Math.round(
-    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
-  );
 }
 
 function convertHexToBase64url(input: string): string {
