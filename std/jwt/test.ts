@@ -77,7 +77,7 @@ Deno.test("makeDataConversion", function (): void {
   assertEquals(hex1, hex2);
 });
 
-Deno.test("makeSignatureTests", async function (): Promise<void> {
+Deno.test("makeSignature", async function (): Promise<void> {
   // https://www.freeformatter.com/hmac-generator.html
   const computedHmacInHex =
     "2b9e6619fa7f2c8d8b3565c88365376b75b1b0e5d87e41218066fd1986f2c056";
@@ -130,7 +130,7 @@ Deno.test("makevalidateObject", async  function (): Promise<void> {
   );
 });
 
-Deno.test("parseAndDecodeTests", async function (): Promise<void> {
+Deno.test("parseAndDecode", async function (): Promise<void> {
   assertEquals(
     parseAndDecode(
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.TVCeFl1nnZWUMQkAQKuSo_I97YeIZAS8T1gOkErT7F8",
