@@ -1,7 +1,7 @@
 import { serve } from "./example_deps.ts";
 import { encode, decode } from "./example_deps.ts";
-import { makeJwt } from "../create.ts";
-import { validateJwt } from "../validate.ts";
+import { create } from "../create.ts";
+import { validate } from "../validate.ts";
 
 const jwtInput = {
   header: { typ: "JWT", alg: "HS256" as const },
@@ -13,11 +13,11 @@ console.log("server is listening at 0.0.0.0:8000");
 for await (const req of serve("0.0.0.0:8000")) {
   if (req.method === "GET") {
     req.respond({
-      body: encode((await makeJwt(jwtInput)) + "\n"),
+      body: encode((await create(jwtInput)) + "\n"),
     });
   } else {
     (
-        await validateJwt({
+        await validate({
           jwt: decode(await Deno.readAll(req.body)),
           key: "abc123",
           algorithm: "HS256",

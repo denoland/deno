@@ -1,5 +1,5 @@
-import { makeJwt, setExpiration } from "../create.ts";
-import { validateJwt } from "../validate.ts";
+import { create, setExpiration } from "../create.ts";
+import { validate } from "../validate.ts";
 
 const payload = {
   iss: "joe",
@@ -19,9 +19,9 @@ const critHandlers = {
 };
 const key = "abc123";
 
-const jwt = await makeJwt({ header, payload, key });
+const jwt = await create({ header, payload, key });
 console.log("JWT:", jwt);
-const validatedJwt = await validateJwt({
+const validatedJwt = await validate({
   jwt,
   key,
   critHandlers,

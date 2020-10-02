@@ -1,5 +1,5 @@
 export {
-  makeJwt,
+  create,
   encrypt,
   setExpiration,
   makeSignature,
@@ -18,8 +18,8 @@ export type {
 } from "./create.ts";
 
 export {
-  validateJwt,
-  validateJwtObject,
+  validate,
+  validateObject,
   verifySignature,
   checkHeaderCrit,
   parseAndDecode,

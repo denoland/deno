@@ -103,7 +103,7 @@ function checkHeaderCrit(
   );
 }
 
-function validateJwtObject(
+function validateObject(
   maybeJwtObject: JwtObjectWithUnknownProps,
 ): JwtObject {
   if (typeof maybeJwtObject.signature !== "string") {
@@ -203,7 +203,7 @@ async function verifySignature({
   }
 }
 
-async function validateJwt({
+async function validate({
   jwt,
   key,
   critHandlers,
@@ -211,7 +211,7 @@ async function validateJwt({
 }: Validation): Promise<JwtValidation> {
   try {
     const [oldJwtObject, critResult] = await handleJwtObject(
-      validateJwtObject(parseAndDecode(jwt)),
+      validateObject(parseAndDecode(jwt)),
       critHandlers,
     );
     if (!validateAlgorithm(algorithm, oldJwtObject.header.alg)) {
@@ -239,8 +239,8 @@ async function validateJwt({
 }
 
 export {
-  validateJwt,
-  validateJwtObject,
+  validate,
+  validateObject,
   verifySignature,
   checkHeaderCrit,
   parseAndDecode,

@@ -57,16 +57,16 @@ to see how the **crit** header parameter works.
 
 ## API
 
-The API consists mostly of the two functions `makeJwt` and `validateJwt`,
+The API consists mostly of the two functions `create` and `validate`,
 generating and validating a JWT, respectively.
 
-#### makeJwt({ key: string, header: Jose, payload: Payload }): Promise\<string>
+#### create({ key: string, header: Jose, payload: Payload }): Promise\<string>
 
-The function `makeJwt` returns the url-safe encoded JWT as promise.
+The function `create` returns the url-safe encoded JWT as promise.
 
-#### validateJwt({ jwt: string, key: string, algorithm: Algorithm | Algorithm[], critHandlers?: Handlers }): Promise\<JwtValidation>
+#### validate({ jwt: string, key: string, algorithm: Algorithm | Algorithm[], critHandlers?: Handlers }): Promise\<JwtValidation>
 
-The function `validateJwt` returns a _promise_. This promise resolves to an
+The function `validate` returns a _promise_. This promise resolves to an
 _object_ with a _union type_ where the boolean property `isValid` serves as
 [discriminant](https://www.typescriptlang.org/docs/handbook/advanced-types.html#discriminated-unions).  
 If the JWT is valid (`.isValid === true`), the _type_ of the resolved promise
@@ -111,8 +111,8 @@ example `https://deno.land/x/djwt@v1.2/create.ts`.
 
 ```typescript
 import { serve } from "https://deno.land/std/http/server.ts";
-import { validateJwt } from "https://deno.land/x/djwt/validate.ts";
-import { makeJwt, setExpiration, Jose, Payload } from "https://deno.land/x/djwt/create.ts";
+import { validate } from "https://deno.land/x/djwt/validate.ts";
+import { create, setExpiration, Jose, Payload } from "https://deno.land/x/djwt/create.ts";
 
 const key = "your-secret";
 const payload: Payload = {
@@ -127,10 +127,10 @@ const header: Jose = {
 console.log("server is listening at 0.0.0.0:8000");
 for await (const req of serve("0.0.0.0:8000")) {
   if (req.method === "GET") {
-    req.respond({ body: (await makeJwt({ header, payload, key })) + "\n" });
+    req.respond({ body: (await create({ header, payload, key })) + "\n" });
   } else {
     const jwt = new TextDecoder().decode(await Deno.readAll(req.body));
-    (await validateJwt({ jwt, key, algorithm: "HS256" })).isValid
+    (await validate({ jwt, key, algorithm: "HS256" })).isValid
       ? req.respond({ body: "Valid JWT\n" })
       : req.respond({ body: "Invalid JWT\n", status: 401 });
   }

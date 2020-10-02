@@ -90,7 +90,7 @@ async function makeSignature(
   return convertHexToBase64url(await encrypt(alg, key, input));
 }
 
-async function makeJwt({ key, header, payload }: JwtInput): Promise<string> {
+async function create({ key, header, payload }: JwtInput): Promise<string> {
   try {
     const signingInput = makeSigningInput(header, payload);
     return `${signingInput}.${await makeSignature(
@@ -105,7 +105,7 @@ async function makeJwt({ key, header, payload }: JwtInput): Promise<string> {
 }
 
 export {
-  makeJwt,
+  create,
   encrypt,
   setExpiration,
   makeSignature,

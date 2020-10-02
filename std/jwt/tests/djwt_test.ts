@@ -1,12 +1,12 @@
 import {
-  makeJwt,
+  create,
   makeSignature,
   convertHexToBase64url,
   setExpiration,
 } from "../create.ts";
 import {
-  validateJwt,
-  validateJwtObject,
+  validate,
+  validateObject,
   checkHeaderCrit,
   parseAndDecode,
   isExpired,
@@ -97,7 +97,7 @@ Deno.test("makeSignatureTests", async function (): Promise<void> {
   );
 });
 
-Deno.test("makeValidateJwtObjectTest", async function (): Promise<void> {
+Deno.test("makevalidateObjectTest", async function (): Promise<void> {
   const header = {
     alg: "HS256" as const,
     typ: "JWT",
@@ -108,7 +108,7 @@ Deno.test("makeValidateJwtObjectTest", async function (): Promise<void> {
     iat: 1516239022,
   };
   const signature = "SARsBE5x_ua2ye823r2zKpQNaew3Daq8riKz5A4h3o4";
-  const jwtObject = validateJwtObject({
+  const jwtObject = validateObject({
     header,
     payload,
     signature,
@@ -116,7 +116,7 @@ Deno.test("makeValidateJwtObjectTest", async function (): Promise<void> {
   assertEquals(jwtObject.payload, payload);
   assertThrows(
     (): void => {
-      const jwtObject = validateJwtObject({
+      const jwtObject = validateObject({
         header: {
           alg: 10,
           typ: "JWT",
@@ -173,7 +173,7 @@ Deno.test("parseAndDecodeTests", async function (): Promise<void> {
       "49f94ac7044948c78a285d904f87f0a4c7897f7e8f3a4eb2255fda750b2cc397",
   });
   assertEquals(
-    await makeJwt({ header, payload, key: "your-256-bit-secret" }),
+    await create({ header, payload, key: "your-256-bit-secret" }),
     jwt,
   );
 });
@@ -188,8 +188,8 @@ Deno.test("makeCreationAndValidationTest", async function (): Promise<void> {
     name: "John Doe",
     iat: 1516239022,
   };
-  const jwt = await makeJwt({ header, payload, key });
-  const validatedJwt = await validateJwt({ jwt, key, algorithm: "HS256" });
+  const jwt = await create({ header, payload, key });
+  const validatedJwt = await validate({ jwt, key, algorithm: "HS256" });
   assertEquals(
     jwt,
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SARsBE5x_ua2ye823r2zKpQNaew3Daq8riKz5A4h3o4",
@@ -206,7 +206,7 @@ Deno.test("makeCreationAndValidationTest", async function (): Promise<void> {
   }
   const invalidJwt = // jwt with not supported crypto algorithm in alg header:
     "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.bQTnz6AuMJvmXXQsVPrxeQNvzDkimo7VNXxHeSBfClLufmCVZRUuyTwJF311JHuh";
-  const invalidatedJwt = await validateJwt({
+  const invalidatedJwt = await validate({
     jwt: invalidJwt,
     key: "",
     algorithm: "HS256",
@@ -225,8 +225,8 @@ Deno.test(
       typ: "JWT",
     };
     const payload = [3, 4, 5];
-    const jwt = await makeJwt({ header, payload, key });
-    const validatedJwt = await validateJwt({ jwt, key, algorithm: "HS256" });
+    const jwt = await create({ header, payload, key });
+    const validatedJwt = await validate({ jwt, key, algorithm: "HS256" });
     assertEquals(
       jwt,
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.WzMsNCw1XQ.YlYdV_MrGWOv2Q_-9kpzjU2A1Payyg8gofvnYyUqz7M",
@@ -254,9 +254,9 @@ Deno.test("testExpiredJwt", async function (): Promise<void> {
     alg: "HS256" as const,
     dummy: 100,
   };
-  const jwt = await makeJwt({ header, payload, key });
+  const jwt = await create({ header, payload, key });
 
-  const validatedJwt = await validateJwt({ jwt, key, algorithm: "HS256" });
+  const validatedJwt = await validate({ jwt, key, algorithm: "HS256" });
   if (validatedJwt.isValid) throw Error("jwt should be invalid");
   else {
     assertEquals(validatedJwt.error.message, "the jwt is expired");
@@ -305,8 +305,8 @@ Deno.test("makeHeaderCritTest", async function (): Promise<void> {
     },
   };
 
-  const jwt = await makeJwt({ header, payload, key });
-  const validatedJwt = await validateJwt({
+  const jwt = await create({ header, payload, key });
+  const validatedJwt = await validate({
     jwt,
     key,
     critHandlers,
@@ -324,7 +324,7 @@ Deno.test("makeHeaderCritTest", async function (): Promise<void> {
     throw new Error("invalid JWT");
   }
 
-  const failing = await validateJwt({ jwt, key, algorithm: "HS256" });
+  const failing = await validate({ jwt, key, algorithm: "HS256" });
   if (failing.isValid) throw Error("jwt should be invalid");
   else {
     assertEquals(
@@ -345,8 +345,8 @@ Deno.test("makeUnsecuredJwtTest", async function (): Promise<void> {
     alg: "none" as const,
     dummy: 100,
   };
-  const jwt = await makeJwt({ header, payload, key });
-  const validatedJwt = await validateJwt({
+  const jwt = await create({ header, payload, key });
+  const validatedJwt = await validate({
     jwt,
     key: "keyIsIgnored",
     algorithm: "none",
@@ -371,8 +371,8 @@ Deno.test("makeHmacSha512Test", async function (): Promise<void> {
   const key = "your-512-bit-secret";
   const externallyVerifiedJwt =
     "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.VFb0qJ1LRg_4ujbZoRMXnVkUgiuKq5KxWqNdbKq_G9Vvz-S1zZa9LPxtHWKa64zDl2ofkT8F6jBt_K4riU-fPg";
-  const jwt = await makeJwt({ header, payload, key });
-  const validatedJwt = await validateJwt({ jwt, key, algorithm: "HS512" });
+  const jwt = await create({ header, payload, key });
+  const validatedJwt = await validate({ jwt, key, algorithm: "HS512" });
   if (validatedJwt.isValid) {
     assertEquals(jwt, externallyVerifiedJwt);
     assertEquals(validatedJwt.payload, payload);
@@ -395,8 +395,8 @@ Deno.test("makeRS256Test", async function (): Promise<void> {
   const privateKey = Deno.readTextFileSync(moduleDir + "/private.pem");
   const externallyVerifiedJwt =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.POstGetfAytaZS82wHcjoTyoqhMyxXiWdR7Nn7A29DNSl0EiXLdwJ6xC6AfgZWF1bOsS_TuYI3OG85AmiExREkrS6tDfTQ2B3WXlrr-wp5AokiRbz3_oB4OxG-W9KcEEbDRcZc0nH3L7LzYptiy1PtAylQGxHTWZXtGz4ht0bAecBgmpdgXMguEIcoqPJ1n3pIWk_dUZegpqx0Lka21H6XxUTxiy8OcaarA8zdnPUnV6AmNP3ecFawIFYdvJB_cm-GvpCSbr8G8y_Mllj8f4x9nBH8pQux89_6gUY618iYv7tuPWBFfEbLxtF2pZS6YC1aSfLQxeNe8djT9YjpvRZA";
-  const jwt = await makeJwt({ header, payload, key: privateKey });
-  const validatedJwt = await validateJwt({
+  const jwt = await create({ header, payload, key: privateKey });
+  const validatedJwt = await validate({
     jwt,
     key: publicKey,
     algorithm: "RS256",
