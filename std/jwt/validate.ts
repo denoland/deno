@@ -9,9 +9,6 @@ type JwtObjectWithUnknownProps = {
   payload: unknown;
   signature: unknown;
 };
-type JwtValidation =
-  | (JwtObject & { jwt: string; isValid: true; critResult?: unknown[] })
-  | { jwt: unknown; error: Error; isValid: false; isExpired: boolean };
 type Validation = {
   jwt: string;
   key: string;
@@ -44,7 +41,7 @@ function isExpired(exp: number, leeway = 0): boolean {
 function checkHeaderCrit(
   header: Header,
   handlers?: Handlers,
-): Promise<unknown[]> {
+): void {
   const reservedWords = new Set([
     "alg",
     "jku",
@@ -67,6 +64,7 @@ function checkHeaderCrit(
     "p2s",
     "p2c",
   ]);
+  if (!header["crit"]) { return }
   if (
     !Array.isArray(header.crit) ||
     header.crit.some((str: string) => typeof str !== "string" || !str)
@@ -89,9 +87,7 @@ function checkHeaderCrit(
   ) {
     throw new Error("critical extension header parameters are not understood");
   }
-  return Promise.all(
-    header.crit.map((str: string) => handlers![str](header[str] as unknown)),
-  );
+
 }
 
 function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
@@ -119,15 +115,6 @@ function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
     }
   }
   return maybeJwtObject as JwtObject;
-}
-
-async function handleJwtObject(
-  jwtObject: JwtObject,
-  critHandlers?: Handlers,
-): Promise<unknown[] | undefined> {
-  return jwtObject.header["crit"]
-    ? await checkHeaderCrit(jwtObject.header, critHandlers)
-    : undefined;
 }
 
 function parseAndDecode(jwt: string): JwtObjectWithUnknownProps {
@@ -187,14 +174,14 @@ async function validate({
   key,
   critHandlers,
   algorithm,
-}: Validation): Promise<JwtValidation> {
-  const object = validateObject(parseAndDecode(jwt));
-  const critResult = await handleJwtObject(object, critHandlers);
+}: Validation): Promise<Payload> {
 
+  const object = validateObject(parseAndDecode(jwt));
+  
+  await checkHeaderCrit(object.header, critHandlers)
+  
   const validAlgorithm = validateAlgorithm(algorithm, object.header.alg);
-  if (!validAlgorithm) {
-    throw new Error("no matching algorithm: " + object.header.alg);
-  }
+  if (!validAlgorithm) { throw new Error("no matching algorithm: " + object.header.alg); }
   const validSignature = await verifySignature({
     signature: object.signature,
     key,
@@ -202,7 +189,8 @@ async function validate({
     signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
   });
   if (!validSignature) throw new Error("signatures don't match");
-  return { ...object, jwt, critResult, isValid: true };
+  
+  return object.payload;
 }
 
 export {
@@ -216,4 +204,4 @@ export {
   verifySignature,
 };
 
-export type { Handlers, Header, JwtObject, JwtValidation, Payload, Validation };
+export type { Handlers, Header, JwtObject, Payload, Validation };

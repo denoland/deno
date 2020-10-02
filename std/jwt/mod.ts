@@ -23,6 +23,5 @@ export {
 export type {
   Handlers,
   JwtObject,
-  JwtValidation,
   Validation,
 } from "./validate.ts";
