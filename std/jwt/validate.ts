@@ -124,13 +124,10 @@ function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
 async function handleJwtObject(
   jwtObject: JwtObject,
   critHandlers?: Handlers,
-): Promise<[JwtObject, unknown[] | undefined]> {
-  return [
-    jwtObject,
-    "crit" in jwtObject.header
-      ? await checkHeaderCrit(jwtObject.header, critHandlers)
-      : undefined,
-  ];
+): Promise<unknown[] | undefined> {
+  return jwtObject.header["crit"]
+    ? await checkHeaderCrit(jwtObject.header, critHandlers)
+    : undefined;
 }
 
 function parseAndDecode(jwt: string): JwtObjectWithUnknownProps {
@@ -191,33 +188,21 @@ async function validate({
   critHandlers,
   algorithm,
 }: Validation): Promise<JwtValidation> {
-  try {
-    const [oldJwtObject, critResult] = await handleJwtObject(
-      validateObject(parseAndDecode(jwt)),
-      critHandlers,
-    );
-    if (!validateAlgorithm(algorithm, oldJwtObject.header.alg)) {
-      throw new Error("no matching algorithm: " + oldJwtObject.header.alg);
-    }
-    if (
-      !(await verifySignature({
-        signature: oldJwtObject.signature,
-        key,
-        alg: oldJwtObject.header.alg,
-        signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
-      }))
-    ) {
-      throw new Error("signatures don't match");
-    }
-    return { ...oldJwtObject, jwt, critResult, isValid: true };
-  } catch (err) {
-    return {
-      jwt,
-      error: new Error(err.message),
-      isValid: false,
-      isExpired: err.message === "the jwt is expired" ? true : false,
-    };
+  const object = validateObject(parseAndDecode(jwt));
+  const critResult = await handleJwtObject(object, critHandlers);
+
+  const validAlgorithm = validateAlgorithm(algorithm, object.header.alg);
+  if (!validAlgorithm) {
+    throw new Error("no matching algorithm: " + object.header.alg);
   }
+  const validSignature = await verifySignature({
+    signature: object.signature,
+    key,
+    alg: object.header.alg,
+    signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
+  });
+  if (!validSignature) throw new Error("signatures don't match");
+  return { ...object, jwt, critResult, isValid: true };
 }
 
 export {

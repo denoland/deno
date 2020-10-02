@@ -1,33 +1,30 @@
 import {
+  convertHexToBase64url,
   create,
   makeSignature,
-  convertHexToBase64url,
   setExpiration,
 } from "./create.ts";
 import {
+  checkHeaderCrit,
+  Handlers,
+  isExpired,
+  parseAndDecode,
   validate,
   validateObject,
-  checkHeaderCrit,
-  parseAndDecode,
-  isExpired,
-  Handlers,
 } from "./validate.ts";
 import {
-  convertBase64urlToBase64,
   convertBase64ToBase64url,
+  convertBase64urlToBase64,
 } from "./base64/base64url.ts";
 import {
   convertBase64ToUint8Array,
   convertUint8ArrayToBase64,
 } from "./base64/base64.ts";
 import {
-  encodeToString as convertUint8ArrayToHex,
   decodeString as convertHexToUint8Array,
+  encodeToString as convertUint8ArrayToHex,
 } from "../encoding/hex.ts";
-import {
-  assertEquals,
-  assertThrows,
-} from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 const key = "your-secret";
 
@@ -97,7 +94,7 @@ Deno.test("makeSignature", async function (): Promise<void> {
   );
 });
 
-Deno.test("makevalidateObject", async  function (): Promise<void> {
+Deno.test("makevalidateObject", async function (): Promise<void> {
   const header = {
     alg: "HS256" as const,
     typ: "JWT",
@@ -178,7 +175,7 @@ Deno.test("parseAndDecode", async function (): Promise<void> {
   );
 });
 
-Deno.test("makeCreationAndValidation", async  function (): Promise<void> {
+Deno.test("makeCreationAndValidation", async function (): Promise<void> {
   const header = {
     alg: "HS256" as const,
     typ: "JWT",
@@ -204,16 +201,16 @@ Deno.test("makeCreationAndValidation", async  function (): Promise<void> {
   } else {
     throw new Error("invalid JWT");
   }
-  const invalidJwt = // jwt with not supported crypto algorithm in alg header:
-    "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.bQTnz6AuMJvmXXQsVPrxeQNvzDkimo7VNXxHeSBfClLufmCVZRUuyTwJF311JHuh";
-  const invalidatedJwt = await validate({
-    jwt: invalidJwt,
-    key: "",
-    algorithm: "HS256",
-  });
-  if (invalidatedJwt.isValid) throw new Error("jwt should be invalid");
-  else {
-    assertEquals(invalidatedJwt.error.message, "no matching algorithm: HS384");
+  try {
+    const invalidJwt = // jwt with not supported crypto algorithm in alg header:
+      "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.bQTnz6AuMJvmXXQsVPrxeQNvzDkimo7VNXxHeSBfClLufmCVZRUuyTwJF311JHuh";
+    await validate({
+      jwt: invalidJwt,
+      key: "",
+      algorithm: "HS256",
+    });
+  } catch (error) {
+    assertEquals(error.message, "no matching algorithm: HS384");
   }
 });
 
@@ -256,15 +253,14 @@ Deno.test("testExpiredJwt", async function (): Promise<void> {
   };
   const jwt = await create({ header, payload, key });
 
-  const validatedJwt = await validate({ jwt, key, algorithm: "HS256" });
-  if (validatedJwt.isValid) throw new Error("jwt should be invalid");
-  else {
-    assertEquals(validatedJwt.error.message, "the jwt is expired");
-    assertEquals(validatedJwt.isExpired, true);
+  try {
+    await validate({ jwt, key, algorithm: "HS256" });
+  } catch (error) {
+    assertEquals(error.message, "the jwt is expired");
   }
 });
 
-Deno.test("makeCheckHeaderCrit", async  function (): Promise<void> {
+Deno.test("makeCheckHeaderCrit", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -288,7 +284,7 @@ Deno.test("makeCheckHeaderCrit", async  function (): Promise<void> {
   assertEquals(result, [100, 200]);
 });
 
-Deno.test("makeHeaderCrit", async  function (): Promise<void> {
+Deno.test("makeHeaderCrit", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -324,19 +320,18 @@ Deno.test("makeHeaderCrit", async  function (): Promise<void> {
     throw new Error("invalid JWT");
   }
 
-  const failing = await validate({ jwt, key, algorithm: "HS256" });
-  if (failing.isValid) throw new Error("jwt should be invalid");
-  else {
+  try {
+    await validate({ jwt, key, algorithm: "HS256" });
+  } catch (error) {
     assertEquals(
-      failing.error.message,
+      error.message,
       "critical extension header parameters are not understood",
     );
-    assertEquals(failing.isExpired, false);
   }
 });
 
 // https://tools.ietf.org/html/rfc7519#section-6
-Deno.test("makeUnsecuredJwt", async  function (): Promise<void> {
+Deno.test("makeUnsecuredJwt", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -360,7 +355,7 @@ Deno.test("makeUnsecuredJwt", async  function (): Promise<void> {
   }
 });
 
-Deno.test("makeHmacSha512", async  function (): Promise<void> {
+Deno.test("makeHmacSha512", async function (): Promise<void> {
   const header = { alg: "HS512" as const, typ: "JWT" };
   const payload = {
     sub: "1234567890",
