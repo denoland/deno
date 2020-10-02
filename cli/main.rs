@@ -430,6 +430,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
+  (&mut *worker).await?;
 
   let inspector = worker
     .inspector
