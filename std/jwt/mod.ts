@@ -13,7 +13,6 @@ export type {
   Payload,
   PayloadObject,
   Jose,
-  JwtInput,
 } from "./create.ts";
 
 export {

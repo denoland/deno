@@ -6,7 +6,7 @@ import { convertHexToUint8Array, HmacSha256, HmacSha512 } from "./deps.ts";
 type Payload = PayloadObject | unknown;
 type Algorithm = "none" | "HS256" | "HS512";
 
-interface JwtInput {
+interface Config {
   key: string;
   header: Jose;
   payload: Payload;
@@ -82,7 +82,7 @@ async function makeSignature(
   return convertHexToBase64url(await encrypt(alg, key, input));
 }
 
-async function create({ key, header, payload }: JwtInput): Promise<string> {
+async function create({ key, header, payload }: Config): Promise<string> {
   try {
     const signingInput = makeSigningInput(header, payload);
     return `${signingInput}.${await makeSignature(
@@ -106,4 +106,4 @@ export {
   assertNever,
 };
 
-export type { Algorithm, Payload, PayloadObject, Jose, JwtInput };
+export type { Algorithm, Payload, PayloadObject, Jose };
