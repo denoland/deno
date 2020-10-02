@@ -646,6 +646,15 @@ interface ProgressEventInit extends EventInit {
   total?: number;
 }
 
+interface AbstractWorkerEventMap {
+  "error": ErrorEvent;
+}
+
+interface WorkerEventMap extends AbstractWorkerEventMap {
+  "message": MessageEvent;
+  "messageerror": MessageEvent;
+}
+
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
