@@ -71,7 +71,7 @@
   }
 
   function maybeColor(fn) {
-    return !(globalThis.Deno?.noColor ?? true) ? fn : (s) => s;
+    return !(globalThis.Deno?.noColor ?? false) ? fn : (s) => s;
   }
 
   window.__bootstrap.colors = {
