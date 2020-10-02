@@ -1,6 +1,4 @@
 export {
-  convertHexToBase64url,
-  convertStringToBase64url,
   create,
   encrypt,
   makeSignature,

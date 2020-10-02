@@ -79,8 +79,6 @@ async function create({ key, header, payload }: Config): Promise<string> {
 }
 
 export {
-  convertHexToBase64url,
-  convertStringToBase64url,
   create,
   encrypt,
   makeSignature,

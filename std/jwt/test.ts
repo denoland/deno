@@ -1,5 +1,4 @@
 import {
-  convertHexToBase64url,
   create,
   makeSignature,
   setExpiration,
@@ -24,7 +23,7 @@ import {
   encodeToString as convertUint8ArrayToHex,
 } from "../encoding/hex.ts";
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import { isExpired } from "./_util.ts"
+import { convertHexToBase64url, isExpired } from "./_util.ts"
 
 const key = "your-secret";
 
