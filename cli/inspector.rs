@@ -857,7 +857,6 @@ impl v8::inspector::ChannelImpl for InspectorSession {
   ) {
     let raw_message = message.unwrap().string().to_string();
     let message = serde_json::from_str(&raw_message).unwrap();
-
     self
       .response_tx_map
       .remove(&call_id)
