@@ -1,13 +1,12 @@
-import { convertUint8ArrayToBase64url } from "./base64/base64url.ts";
-import { setExpiration } from "./_util.ts";
-import { convertHexToUint8Array, HmacSha256, HmacSha512 } from "./deps.ts";
+import { convertHexToBase64url, convertStringToBase64url, setExpiration } from "./_util.ts";
+import { HmacSha256, HmacSha512 } from "./deps.ts";
 
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
 // The payload can be any content and need not be a representation of a JSON object
-type Payload = PayloadObject | unknown;
-type Algorithm = "none" | "HS256" | "HS512";
+export type Payload = PayloadObject | unknown;
+export type Algorithm = "none" | "HS256" | "HS512";
 
-interface Config {
+export interface Config {
   key: string;
   header: Header;
   payload: Payload;
@@ -24,18 +23,10 @@ interface PayloadObject {
   [key: string]: unknown;
 }
 
-interface Header {
+export interface Header {
   alg: Algorithm;
   crit?: string[];
   [key: string]: unknown;
-}
-
-function convertHexToBase64url(input: string): string {
-  return convertUint8ArrayToBase64url(convertHexToUint8Array(input));
-}
-
-function convertStringToBase64url(input: string): string {
-  return convertUint8ArrayToBase64url(new TextEncoder().encode(input));
 }
 
 function makeSigningInput(header: Header, payload: Payload): string {
@@ -95,5 +86,3 @@ export {
   makeSignature,
   setExpiration,
 };
-
-export type { Algorithm, Header, Payload, PayloadObject };

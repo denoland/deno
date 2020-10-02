@@ -7,13 +7,10 @@ export {
   setExpiration,
 } from "./create.ts";
 
-export type { Payload, PayloadObject } from "./create.ts";
+export type { Payload } from "./create.ts";
 
 export {
   checkHeaderCrit,
-  hasProperty,
-  isExpired,
-  isObject,
   parseAndDecode,
   validate,
   validateObject,
@@ -22,6 +19,5 @@ export {
 
 export type {
   Handlers,
-  JwtObject,
   Validation,
 } from "./validate.ts";

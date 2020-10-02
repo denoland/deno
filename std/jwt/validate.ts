@@ -2,7 +2,7 @@ import { encrypt } from "./create.ts";
 import type { Algorithm, Header, Payload } from "./create.ts";
 import { hasProperty, isExpired, isObject } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
-import { convertHexToUint8Array, convertUint8ArrayToHex } from "./deps.ts";
+import { convertUint8ArrayToHex } from "./deps.ts";
 
 type JwtObject = { header: Header; payload: Payload; signature: string };
 type JwtObjectWithUnknownProps = {
@@ -10,19 +10,19 @@ type JwtObjectWithUnknownProps = {
   payload: unknown;
   signature: unknown;
 };
-type Validation = {
+export type Validation = {
   jwt: string;
   key: string;
   algorithm: Algorithm | Algorithm[];
   critHandlers?: Handlers;
 };
-type Handlers = {
+export type Handlers = {
   [key: string]: (header: unknown) => unknown;
 };
 
 // A present 'crit' header parameter indicates that the JWS signature validator
 // must understand and process additional claims (JWS §4.1.11)
-function checkHeaderCrit(
+export function checkHeaderCrit(
   header: Header,
   handlers?: Handlers,
 ): void {
@@ -74,7 +74,7 @@ function checkHeaderCrit(
 
 }
 
-function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
+export function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
   if (typeof maybeJwtObject.signature !== "string") {
     throw ReferenceError("the signature is no string");
   }
@@ -101,7 +101,7 @@ function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
   return maybeJwtObject as JwtObject;
 }
 
-function parseAndDecode(jwt: string): JwtObjectWithUnknownProps {
+export function parseAndDecode(jwt: string): JwtObjectWithUnknownProps {
   const parsedArray = jwt
     .split(".")
     .map(convertBase64urlToUint8Array)
@@ -118,7 +118,7 @@ function parseAndDecode(jwt: string): JwtObjectWithUnknownProps {
   };
 }
 
-function validateAlgorithm(
+export function validateAlgorithm(
   algorithm: Algorithm | Algorithm[],
   jwtAlg: Algorithm,
 ): boolean {
@@ -131,7 +131,7 @@ function validateAlgorithm(
   }
 }
 
-async function verifySignature({
+export async function verifySignature({
   signature,
   key,
   alg,
@@ -153,7 +153,7 @@ async function verifySignature({
   }
 }
 
-async function validate({
+export async function validate({
   jwt,
   key,
   critHandlers,
@@ -176,16 +176,3 @@ async function validate({
   
   return object.payload;
 }
-
-export {
-  checkHeaderCrit,
-  hasProperty,
-  isExpired,
-  isObject,
-  parseAndDecode,
-  validate,
-  validateObject,
-  verifySignature,
-};
-
-export type { Handlers, Header, JwtObject, Payload, Validation };

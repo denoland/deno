@@ -1,3 +1,5 @@
+import { convertUint8ArrayToBase64url } from "./base64/base64url.ts";
+import { convertHexToUint8Array } from "./deps.ts";
 // Helper function: setExpiration()
 // returns the number of seconds since January 1, 1970, 00:00:00 UTC
 export function setExpiration(exp: number | Date): number {
@@ -21,4 +23,12 @@ export function hasProperty<K extends string>(
 
 export function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
+}
+
+export function convertHexToBase64url(input: string): string {
+  return convertUint8ArrayToBase64url(convertHexToUint8Array(input));
+}
+
+export function convertStringToBase64url(input: string): string {
+  return convertUint8ArrayToBase64url(new TextEncoder().encode(input));
 }

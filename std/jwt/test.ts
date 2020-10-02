@@ -7,7 +7,6 @@ import {
 import {
   checkHeaderCrit,
   Handlers,
-  isExpired,
   parseAndDecode,
   validate,
   validateObject,
@@ -25,6 +24,7 @@ import {
   encodeToString as convertUint8ArrayToHex,
 } from "../encoding/hex.ts";
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import { isExpired } from "./_util.ts"
 
 const key = "your-secret";
 
