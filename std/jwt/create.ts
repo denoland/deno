@@ -8,7 +8,7 @@ type Algorithm = "none" | "HS256" | "HS512";
 
 interface Config {
   key: string;
-  header: Jose;
+  header: Header;
   payload: Payload;
 }
 
@@ -23,7 +23,7 @@ interface PayloadObject {
   [key: string]: unknown;
 }
 
-interface Jose {
+interface Header {
   alg: Algorithm;
   crit?: string[];
   [key: string]: unknown;
@@ -45,7 +45,7 @@ function convertStringToBase64url(input: string): string {
   return convertUint8ArrayToBase64url(new TextEncoder().encode(input));
 }
 
-function makeSigningInput(header: Jose, payload: Payload): string {
+function makeSigningInput(header: Header, payload: Payload): string {
   return `${
     convertStringToBase64url(
       JSON.stringify(header),
@@ -103,4 +103,4 @@ export {
   setExpiration,
 };
 
-export type { Algorithm, Jose, Payload, PayloadObject };
+export type { Algorithm, Header, Payload, PayloadObject };

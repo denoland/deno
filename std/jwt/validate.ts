@@ -1,9 +1,9 @@
 import { encrypt } from "./create.ts";
-import type { Algorithm, Jose, Payload } from "./create.ts";
+import type { Algorithm, Header, Payload } from "./create.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import { convertHexToUint8Array, convertUint8ArrayToHex } from "./deps.ts";
 
-type JwtObject = { header: Jose; payload: Payload; signature: string };
+type JwtObject = { header: Header; payload: Payload; signature: string };
 type JwtObjectWithUnknownProps = {
   header: unknown;
   payload: unknown;
@@ -42,7 +42,7 @@ function isExpired(exp: number, leeway = 0): boolean {
 // A present 'crit' header parameter indicates that the JWS signature validator
 // must understand and process additional claims (JWS §4.1.11)
 function checkHeaderCrit(
-  header: Jose,
+  header: Header,
   handlers?: Handlers,
 ): Promise<unknown[]> {
   const reservedWords = new Set([
@@ -231,4 +231,4 @@ export {
   verifySignature,
 };
 
-export type { Handlers, Jose, JwtObject, JwtValidation, Payload, Validation };
+export type { Handlers, Header, JwtObject, JwtValidation, Payload, Validation };

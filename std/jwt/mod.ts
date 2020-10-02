@@ -1,5 +1,4 @@
 export {
-  assertNever,
   convertHexToBase64url,
   convertStringToBase64url,
   create,
@@ -8,7 +7,7 @@ export {
   setExpiration,
 } from "./create.ts";
 
-export type { Algorithm, Jose, Payload, PayloadObject } from "./create.ts";
+export type { Payload, PayloadObject } from "./create.ts";
 
 export {
   checkHeaderCrit,
