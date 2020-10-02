@@ -1253,7 +1253,7 @@ fn repl_test_multiline() {
 }
 
 #[test]
-fn repl_test_await_import() {
+fn repl_test_import() {
   let (out, _) = util::run_and_collect_output(
     true,
     "repl",
