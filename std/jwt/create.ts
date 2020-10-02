@@ -1,10 +1,10 @@
 import { convertUint8ArrayToBase64url } from "./base64/base64url.ts";
-import { convertHexToUint8Array, HmacSha256, HmacSha512, RSA } from "./deps.ts";
+import { convertHexToUint8Array, HmacSha256, HmacSha512 } from "./deps.ts";
 
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
 // The payload can be any content and need not be a representation of a JSON object
 type Payload = PayloadObject | JsonPrimitive | JsonArray;
-type Algorithm = "none" | "HS256" | "HS512" | "RS256";
+type Algorithm = "none" | "HS256" | "HS512";
 type JsonPrimitive = string | number | boolean | null;
 type JsonObject = { [member: string]: JsonValue };
 type JsonArray = JsonValue[];
@@ -73,10 +73,6 @@ async function encrypt(
       return new HmacSha256(key).update(msg).toString();
     case "HS512":
       return new HmacSha512(key).update(msg).toString();
-    case "RS256":
-      return (
-        await new RSA(RSA.parseKey(key)).sign(msg, { hash: "sha256" })
-      ).hex();
     default:
       assertNever(alg, "no matching crypto algorithm in the header: " + alg);
   }

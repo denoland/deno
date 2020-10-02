@@ -1,7 +1,7 @@
 import { encrypt, assertNever } from "./create.ts";
 import type { Jose, Payload, JsonValue, Algorithm } from "./create.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
-import { convertUint8ArrayToHex, convertHexToUint8Array, RSA } from "./deps.ts";
+import { convertUint8ArrayToHex, convertHexToUint8Array } from "./deps.ts";
 
 type JwtObject = { header: Jose; payload: Payload; signature: string };
 type JwtObjectWithUnknownProps = {
@@ -190,13 +190,6 @@ async function verifySignature({
     case "HS256":
     case "HS512": {
       return signature === (await encrypt(alg, key, signingInput));
-    }
-    case "RS256": {
-      return await new RSA(RSA.parseKey(key)).verify(
-        convertHexToUint8Array(signature),
-        signingInput,
-        { hash: "sha256" },
-      );
     }
     default:
       assertNever(alg, "no matching crypto alg in the header: " + alg);
