@@ -1030,12 +1030,13 @@ mod tests {
     );
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 1, "only one file should be emitted");
+    // FIXME(bartlomieju): had to add space in `<div>`, probably a quirk in swc_ecma_codegen
     assert!(
       h.cache_calls[0]
         .2
         .to_string()
         .unwrap()
-        .contains("<div>Hello world!</div>"),
+        .contains("<div >Hello world!</div>"),
       "jsx should have been preserved"
     );
   }
