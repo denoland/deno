@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
-import { encode, decode, Ascii85Standard } from "./ascii85.ts";
+import { Ascii85Standard, decode, encode } from "./ascii85.ts";
 type TestCases = Partial<{ [index in Ascii85Standard]: string[][] }>;
 const utf8encoder = new TextEncoder();
 const testCasesNoDelimeter: TestCases = {

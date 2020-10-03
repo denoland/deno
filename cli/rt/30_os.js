@@ -1,52 +1,52 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const sendSync = window.__bootstrap.dispatchJson.sendSync;
+  const core = window.Deno.core;
 
   function loadavg() {
-    return sendSync("op_loadavg");
+    return core.jsonOpSync("op_loadavg");
   }
 
   function hostname() {
-    return sendSync("op_hostname");
+    return core.jsonOpSync("op_hostname");
   }
 
   function osRelease() {
-    return sendSync("op_os_release");
+    return core.jsonOpSync("op_os_release");
   }
 
   function systemMemoryInfo() {
-    return sendSync("op_system_memory_info");
+    return core.jsonOpSync("op_system_memory_info");
   }
 
   function exit(code = 0) {
-    sendSync("op_exit", { code });
+    core.jsonOpSync("op_exit", { code });
     throw new Error("Code not reachable");
   }
 
   function setEnv(key, value) {
-    sendSync("op_set_env", { key, value });
+    core.jsonOpSync("op_set_env", { key, value });
   }
 
   function getEnv(key) {
-    return sendSync("op_get_env", { key })[0];
+    return core.jsonOpSync("op_get_env", { key })[0];
   }
 
   function deleteEnv(key) {
-    sendSync("op_delete_env", { key });
+    core.jsonOpSync("op_delete_env", { key });
   }
 
   const env = {
     get: getEnv,
     toObject() {
-      return sendSync("op_env");
+      return core.jsonOpSync("op_env");
     },
     set: setEnv,
     delete: deleteEnv,
   };
 
   function execPath() {
-    return sendSync("op_exec_path");
+    return core.jsonOpSync("op_exec_path");
   }
 
   window.__bootstrap.os = {

@@ -32,8 +32,8 @@ https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
 
 ```ts
 import {
-  assertEquals,
   assertArrayContains,
+  assertEquals,
 } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("hello world", () => {
@@ -209,8 +209,11 @@ deno test --failfast
 
 Deno will automatically determine test coverage for your code if you specify the
 `--coverage` flag when starting `deno test`. Coverage is determined on a line by
-line basis, and is acquired directly from the JavaScript runtime (V8). Because
-of this, this coverage is very accurate.
+line basis for modules that share the parent directory with at-least one test
+module that is being executed.
+
+This coverage information is acquired directly from the JavaScript engine (V8).
+Because of this, the coverage reports are very accurate.
 
 When all tests are done running a summary of coverage per file is printed to
 stdout. In the future there will be support for `lcov` output too.
@@ -219,7 +222,7 @@ stdout. In the future there will be support for `lcov` output too.
 $ git clone git@github.com:denosaurs/deno_brotli.git && cd deno_brotli
 $ deno test --coverage --unstable
 Debugger listening on ws://127.0.0.1:9229/ws/5a593019-d185-478b-a928-ebc33e5834be
-Check file:///home/deno/deno_brotli/.deno.test.ts
+Check file:///home/deno/deno_brotli/$deno$test.ts
 running 2 tests
 test compress ... ok (26ms)
 test decompress ... ok (13ms)

@@ -40,11 +40,11 @@
   "examples": {
     "name": "Examples",
     "children": {
-      "hello_world": "Hello World",
-      "import_export": "Import and Export Modules",
-      "manage_dependencies": "Manage Dependencies",
-      "fetch_data": "Fetch Data",
-      "read_write_files": "Read and Write Files",
+      "hello_world": "Hello world",
+      "import_export": "Import and export modules",
+      "manage_dependencies": "Manage dependencies",
+      "fetch_data": "Fetch data",
+      "read_write_files": "Read and write files",
       "unix_cat": "Unix cat program",
       "http_server": "HTTP web server",
       "file_server": "File server",

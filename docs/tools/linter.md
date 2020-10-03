@@ -119,6 +119,16 @@ function foo(): any {
 }
 ```
 
+You can also ignore certain diagnostics in the whole file
+
+```ts
+// deno-lint-ignore-file no-explicit-any no-empty
+
+function foo(): any {
+  // ...
+}
+```
+
 #### Diagnostics
 
 To ignore certain diagnostic `// deno-lint-ignore <codes...>` directive should

@@ -1,134 +1,288 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+// Documentation partially adapted from [MDN](https://developer.mozilla.org/),
+// by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
+
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-var */
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.web" />
+/// <reference lib="deno.fetch" />
 
 declare namespace WebAssembly {
-    interface CompileError {
-    }
+  /**
+   * The `WebAssembly.CompileError` object indicates an error during WebAssembly decoding or validation.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/CompileError)
+   */
+  export class CompileError extends Error {
+    /** Creates a new `WebAssembly.CompileError` object. */
+    constructor();
+  }
 
-    var CompileError: {
-        prototype: CompileError;
-        new(): CompileError;
-    };
+  /**
+   * A `WebAssembly.Global` object represents a global variable instance, accessible from
+   * both JavaScript and importable/exportable across one or more `WebAssembly.Module`
+   * instances. This allows dynamic linking of multiple modules.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Global)
+   */
+  export class Global {
+    /** Creates a new `Global` object. */
+    constructor(descriptor: GlobalDescriptor, v?: any);
 
-    interface Global {
-        value: any;
-        valueOf(): any;
-    }
+    /**
+     * The value contained inside the global variable — this can be used to directly set
+     * and get the global's value.
+     */
+    value: any;
 
-    var Global: {
-        prototype: Global;
-        new(descriptor: GlobalDescriptor, v?: any): Global;
-    };
+    /** Old-style method that returns the value contained inside the global variable. */
+    valueOf(): any;
+  }
 
-    interface Instance {
-        readonly exports: Exports;
-    }
+  /**
+   * A `WebAssembly.Instance` object is a stateful, executable instance of a `WebAssembly.Module`.
+   * Instance objects contain all the Exported WebAssembly functions that allow calling into
+   * WebAssembly code from JavaScript.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Instance)
+   */
+  export class Instance {
+    /** Creates a new Instance object. */
+    constructor(module: Module, importObject?: Imports);
 
-    var Instance: {
-        prototype: Instance;
-        new(module: Module, importObject?: Imports): Instance;
-    };
+    /**
+     * Returns an object containing as its members all the functions exported from the
+     * WebAssembly module instance, to allow them to be accessed and used by JavaScript.
+     * Read-only.
+     */
+    readonly exports: Exports;
+  }
 
-    interface LinkError {
-    }
+  /**
+   * The `WebAssembly.LinkError` object indicates an error during module instantiation
+   * (besides traps from the start function).
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/LinkError)
+   */
+  export class LinkError extends Error {
+    /** Creates a new WebAssembly.LinkError object. */
+    constructor();
+  }
 
-    var LinkError: {
-        prototype: LinkError;
-        new(): LinkError;
-    };
+  /**
+   * The `WebAssembly.Memory` object is a resizable `ArrayBuffer` or `SharedArrayBuffer` that
+   * holds the raw bytes of memory accessed by a WebAssembly Instance.
+   *
+   * A memory created by JavaScript or in WebAssembly code will be accessible and mutable
+   * from both JavaScript and WebAssembly.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Memory)
+   */
+  export class Memory {
+    /** Creates a new `Memory` object. */
+    constructor(descriptor: MemoryDescriptor);
 
-    interface Memory {
-        readonly buffer: ArrayBuffer;
-        grow(delta: number): number;
-    }
+    /** An accessor property that returns the buffer contained in the memory. */
+    readonly buffer: ArrayBuffer;
 
-    var Memory: {
-        prototype: Memory;
-        new(descriptor: MemoryDescriptor): Memory;
-    };
+    /**
+     * Increases the size of the memory instance by a specified number of WebAssembly
+     * pages (each one is 64KB in size).
+     */
+    grow(delta: number): number;
+  }
 
-    interface Module {
-    }
+  /**
+   * A `WebAssembly.Module` object contains stateless WebAssembly code that has already been compiled
+   * by the browser — this can be efficiently shared with Workers, and instantiated multiple times.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Module)
+   */
+  export class Module {
+    /** Creates a new `Module` object. */
+    constructor(bytes: BufferSource);
 
-    var Module: {
-        prototype: Module;
-        new(bytes: BufferSource): Module;
-        customSections(moduleObject: Module, sectionName: string): ArrayBuffer[];
-        exports(moduleObject: Module): ModuleExportDescriptor[];
-        imports(moduleObject: Module): ModuleImportDescriptor[];
-    };
+    /**
+     * Given a `Module` and string, returns a copy of the contents of all custom sections in the
+     * module with the given string name.
+     * */
+    static customSections(
+      moduleObject: Module,
+      sectionName: string,
+    ): ArrayBuffer[];
 
-    interface RuntimeError {
-    }
+    /** Given a `Module`, returns an array containing descriptions of all the declared exports. */
+    static exports(moduleObject: Module): ModuleExportDescriptor[];
 
-    var RuntimeError: {
-        prototype: RuntimeError;
-        new(): RuntimeError;
-    };
+    /** Given a `Module`, returns an array containing descriptions of all the declared imports. */
+    static imports(moduleObject: Module): ModuleImportDescriptor[];
+  }
 
-    interface Table {
-        readonly length: number;
-        get(index: number): Function | null;
-        grow(delta: number): number;
-        set(index: number, value: Function | null): void;
-    }
+  /**
+   * The `WebAssembly.RuntimeError` object is the error type that is thrown whenever WebAssembly
+   * specifies a trap.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/RuntimeError)
+   */
+  export class RuntimeError extends Error {
+    /** Creates a new `WebAssembly.RuntimeError` object. */
+    constructor();
+  }
 
-    var Table: {
-        prototype: Table;
-        new(descriptor: TableDescriptor): Table;
-    };
+  /**
+   * The `WebAssembly.Table()` object is a JavaScript wrapper object — an array-like structure
+   * representing a WebAssembly Table, which stores function references. A table created by
+   * JavaScript or in WebAssembly code will be accessible and mutable from both JavaScript
+   * and WebAssembly.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Table)
+   */
+  export class Table {
+    /** Creates a new `Table` object. */
+    constructor(descriptor: TableDescriptor);
 
-    interface GlobalDescriptor {
-        mutable?: boolean;
-        value: ValueType;
-    }
+    /** Returns the length of the table, i.e. the number of elements. */
+    readonly length: number;
 
-    interface MemoryDescriptor {
-        initial: number;
-        maximum?: number;
-    }
+    /** Accessor function — gets the element stored at a given index. */
+    get(index: number): Function | null;
 
-    interface ModuleExportDescriptor {
-        kind: ImportExportKind;
-        name: string;
-    }
+    /** Increases the size of the `Table` instance by a specified number of elements. */
+    grow(delta: number): number;
 
-    interface ModuleImportDescriptor {
-        kind: ImportExportKind;
-        module: string;
-        name: string;
-    }
+    /** Sets an element stored at a given index to a given value. */
+    set(index: number, value: Function | null): void;
+  }
 
-    interface TableDescriptor {
-        element: TableKind;
-        initial: number;
-        maximum?: number;
-    }
+  /** The `GlobalDescriptor` describes the options you can pass to `new WebAssembly.Global()`. */
+  export interface GlobalDescriptor {
+    mutable?: boolean;
+    value: ValueType;
+  }
 
-    interface WebAssemblyInstantiatedSource {
-        instance: Instance;
-        module: Module;
-    }
+  /** The `MemoryDescriptor` describes the options you can pass to `new WebAssembly.Memory()`. */
+  export interface MemoryDescriptor {
+    initial: number;
+    maximum?: number;
+  }
 
-    type ImportExportKind = "function" | "global" | "memory" | "table";
-    type TableKind = "anyfunc";
-    type ValueType = "f32" | "f64" | "i32" | "i64";
-    type ExportValue = Function | Global | Memory | Table;
-    type Exports = Record<string, ExportValue>;
-    type ImportValue = ExportValue | number;
-    type ModuleImports = Record<string, ImportValue>;
-    type Imports = Record<string, ModuleImports>;
-    function compile(bytes: BufferSource): Promise<Module>;
-    function compileStreaming(source: Response | Promise<Response>): Promise<Module>;
-    function instantiate(bytes: BufferSource, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
-    function instantiate(moduleObject: Module, importObject?: Imports): Promise<Instance>;
-    function instantiateStreaming(response: Response | PromiseLike<Response>, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
-    function validate(bytes: BufferSource): boolean;
+  /** A `ModuleExportDescriptor` is the description of a declared export in a `WebAssembly.Module`. */
+  export interface ModuleExportDescriptor {
+    kind: ImportExportKind;
+    name: string;
+  }
+
+  /** A `ModuleImportDescriptor` is the description of a declared import in a `WebAssembly.Module`. */
+  export interface ModuleImportDescriptor {
+    kind: ImportExportKind;
+    module: string;
+    name: string;
+  }
+
+  /** The `TableDescriptor` describes the options you can pass to `new WebAssembly.Table()`. */
+  export interface TableDescriptor {
+    element: TableKind;
+    initial: number;
+    maximum?: number;
+  }
+
+  /** The value returned from `WebAssembly.instantiate` and `WebAssembly.instantiateStreaming`. */
+  export interface WebAssemblyInstantiatedSource {
+    /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
+    instance: Instance;
+
+    /**
+     * A `WebAssembly.Module` object representing the compiled WebAssembly module.
+     * This `Module` can be instantiated again, or shared via postMessage().
+     */
+    module: Module;
+  }
+
+  export type ImportExportKind = "function" | "global" | "memory" | "table";
+  export type TableKind = "anyfunc";
+  export type ValueType = "f32" | "f64" | "i32" | "i64";
+  export type ExportValue = Function | Global | Memory | Table;
+  export type Exports = Record<string, ExportValue>;
+  export type ImportValue = ExportValue | number;
+  export type ModuleImports = Record<string, ImportValue>;
+  export type Imports = Record<string, ModuleImports>;
+
+  /**
+   * The `WebAssembly.compile()` function compiles WebAssembly binary code into a
+   * `WebAssembly.Module` object. This function is useful if it is necessary to compile
+   * a module before it can be instantiated (otherwise, the `WebAssembly.instantiate()`
+   * function should be used).
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compile)
+   */
+  export function compile(bytes: BufferSource): Promise<Module>;
+
+  /**
+   * The `WebAssembly.compileStreaming()` function compiles a `WebAssembly.Module`
+   * directly from a streamed underlying source.  This function is useful if it
+   * is necessary to a compile a module before it can be instantiated (otherwise,
+   * the `WebAssembly.instantiateStreaming()` function should be used).
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compileStreaming)
+   */
+  export function compileStreaming(
+    source: Response | Promise<Response>,
+  ): Promise<Module>;
+
+  /**
+   * The WebAssembly.instantiate() function allows you to compile and instantiate
+   * WebAssembly code.
+   *
+   * This overload takes the WebAssembly binary code, in the form of a typed
+   * array or ArrayBuffer, and performs both compilation and instantiation in one step.
+   * The returned Promise resolves to both a compiled WebAssembly.Module and its first
+   * WebAssembly.Instance.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate)
+   */
+  export function instantiate(
+    bytes: BufferSource,
+    importObject?: Imports,
+  ): Promise<WebAssemblyInstantiatedSource>;
+
+  /**
+   * The WebAssembly.instantiate() function allows you to compile and instantiate
+   * WebAssembly code.
+   *
+   * This overload takes an already-compiled WebAssembly.Module and returns
+   * a Promise that resolves to an Instance of that Module. This overload is useful
+   * if the Module has already been compiled.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate)
+   */
+  export function instantiate(
+    moduleObject: Module,
+    importObject?: Imports,
+  ): Promise<Instance>;
+
+  /**
+   * The `WebAssembly.instantiateStreaming()` function compiles and instantiates a
+   * WebAssembly module directly from a streamed underlying source. This is the most
+   * efficient, optimized way to load WebAssembly code.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiateStreaming)
+   */
+  export function instantiateStreaming(
+    response: Response | PromiseLike<Response>,
+    importObject?: Imports,
+  ): Promise<WebAssemblyInstantiatedSource>;
+
+  /**
+   * The `WebAssembly.validate()` function validates a given typed array of
+   * WebAssembly binary code, returning whether the bytes form a valid wasm
+   * module (`true`) or not (`false`).
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/validate)
+   */
+  export function validate(bytes: BufferSource): boolean;
 }
 
 /** Sets a timer which executes a function once after the timer expires. Returns
@@ -190,7 +344,6 @@ interface VoidFunction {
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
-declare var console: Console;
 declare var crypto: Crypto;
 
 /** Registers an event listener in the global scope, which will be called
@@ -227,255 +380,6 @@ declare function removeEventListener(
   options?: boolean | EventListenerOptions | undefined,
 ): void;
 
-interface DomIterable<K, V> {
-  keys(): IterableIterator<K>;
-  values(): IterableIterator<V>;
-  entries(): IterableIterator<[K, V]>;
-  [Symbol.iterator](): IterableIterator<[K, V]>;
-  forEach(
-    callback: (value: V, key: K, parent: this) => void,
-    thisArg?: any,
-  ): void;
-}
-
-interface ReadableStreamReadDoneResult<T> {
-  done: true;
-  value?: T;
-}
-
-interface ReadableStreamReadValueResult<T> {
-  done: false;
-  value: T;
-}
-
-type ReadableStreamReadResult<T> =
-  | ReadableStreamReadValueResult<T>
-  | ReadableStreamReadDoneResult<T>;
-
-interface ReadableStreamDefaultReader<R = any> {
-  readonly closed: Promise<void>;
-  cancel(reason?: any): Promise<void>;
-  read(): Promise<ReadableStreamReadResult<R>>;
-  releaseLock(): void;
-}
-
-interface ReadableStreamReader<R = any> {
-  cancel(): Promise<void>;
-  read(): Promise<ReadableStreamReadResult<R>>;
-  releaseLock(): void;
-}
-
-interface ReadableByteStreamControllerCallback {
-  (controller: ReadableByteStreamController): void | PromiseLike<void>;
-}
-
-interface UnderlyingByteSource {
-  autoAllocateChunkSize?: number;
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableByteStreamControllerCallback;
-  start?: ReadableByteStreamControllerCallback;
-  type: "bytes";
-}
-
-interface UnderlyingSource<R = any> {
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableStreamDefaultControllerCallback<R>;
-  start?: ReadableStreamDefaultControllerCallback<R>;
-  type?: undefined;
-}
-
-interface ReadableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
-}
-
-interface ReadableStreamDefaultControllerCallback<R> {
-  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
-}
-
-interface ReadableStreamDefaultController<R = any> {
-  readonly desiredSize: number | null;
-  close(): void;
-  enqueue(chunk: R): void;
-  error(error?: any): void;
-}
-
-interface ReadableByteStreamController {
-  readonly byobRequest: undefined;
-  readonly desiredSize: number | null;
-  close(): void;
-  enqueue(chunk: ArrayBufferView): void;
-  error(error?: any): void;
-}
-
-interface PipeOptions {
-  preventAbort?: boolean;
-  preventCancel?: boolean;
-  preventClose?: boolean;
-  signal?: AbortSignal;
-}
-
-interface QueuingStrategySizeCallback<T = any> {
-  (chunk: T): number;
-}
-
-interface QueuingStrategy<T = any> {
-  highWaterMark?: number;
-  size?: QueuingStrategySizeCallback<T>;
-}
-
-/** This Streams API interface provides a built-in byte length queuing strategy
- * that can be used when constructing streams. */
-declare class CountQueuingStrategy implements QueuingStrategy {
-  constructor(options: { highWaterMark: number });
-  highWaterMark: number;
-  size(chunk: any): 1;
-}
-
-declare class ByteLengthQueuingStrategy
-  implements QueuingStrategy<ArrayBufferView> {
-  constructor(options: { highWaterMark: number });
-  highWaterMark: number;
-  size(chunk: ArrayBufferView): number;
-}
-
-/** This Streams API interface represents a readable stream of byte data. The
- * Fetch API offers a concrete instance of a ReadableStream through the body
- * property of a Response object. */
-interface ReadableStream<R = any> {
-  readonly locked: boolean;
-  cancel(reason?: any): Promise<void>;
-  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
-  // getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
-  getReader(): ReadableStreamDefaultReader<R>;
-  pipeThrough<T>(
-    {
-      writable,
-      readable,
-    }: {
-      writable: WritableStream<R>;
-      readable: ReadableStream<T>;
-    },
-    options?: PipeOptions,
-  ): ReadableStream<T>;
-  pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
-  tee(): [ReadableStream<R>, ReadableStream<R>];
-  [Symbol.asyncIterator](options?: {
-    preventCancel?: boolean;
-  }): AsyncIterableIterator<R>;
-}
-
-declare var ReadableStream: {
-  prototype: ReadableStream;
-  new (
-    underlyingSource: UnderlyingByteSource,
-    strategy?: { highWaterMark?: number; size?: undefined },
-  ): ReadableStream<Uint8Array>;
-  new <R = any>(
-    underlyingSource?: UnderlyingSource<R>,
-    strategy?: QueuingStrategy<R>,
-  ): ReadableStream<R>;
-};
-
-interface WritableStreamDefaultControllerCloseCallback {
-  (): void | PromiseLike<void>;
-}
-
-interface WritableStreamDefaultControllerStartCallback {
-  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
-}
-
-interface WritableStreamDefaultControllerWriteCallback<W> {
-  (chunk: W, controller: WritableStreamDefaultController):
-    | void
-    | PromiseLike<
-      void
-    >;
-}
-
-interface WritableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
-}
-
-interface UnderlyingSink<W = any> {
-  abort?: WritableStreamErrorCallback;
-  close?: WritableStreamDefaultControllerCloseCallback;
-  start?: WritableStreamDefaultControllerStartCallback;
-  type?: undefined;
-  write?: WritableStreamDefaultControllerWriteCallback<W>;
-}
-
-/** This Streams API interface provides a standard abstraction for writing
- * streaming data to a destination, known as a sink. This object comes with
- * built-in backpressure and queuing. */
-declare class WritableStream<W = any> {
-  constructor(
-    underlyingSink?: UnderlyingSink<W>,
-    strategy?: QueuingStrategy<W>,
-  );
-  readonly locked: boolean;
-  abort(reason?: any): Promise<void>;
-  close(): Promise<void>;
-  getWriter(): WritableStreamDefaultWriter<W>;
-}
-
-/** This Streams API interface represents a controller allowing control of a
- * WritableStream's state. When constructing a WritableStream, the underlying
- * sink is given a corresponding WritableStreamDefaultController instance to
- * manipulate. */
-interface WritableStreamDefaultController {
-  error(error?: any): void;
-}
-
-/** This Streams API interface is the object returned by
- * WritableStream.getWriter() and once created locks the < writer to the
- * WritableStream ensuring that no other streams can write to the underlying
- * sink. */
-interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<void>;
-  readonly desiredSize: number | null;
-  readonly ready: Promise<void>;
-  abort(reason?: any): Promise<void>;
-  close(): Promise<void>;
-  releaseLock(): void;
-  write(chunk: W): Promise<void>;
-}
-
-declare class TransformStream<I = any, O = any> {
-  constructor(
-    transformer?: Transformer<I, O>,
-    writableStrategy?: QueuingStrategy<I>,
-    readableStrategy?: QueuingStrategy<O>,
-  );
-  readonly readable: ReadableStream<O>;
-  readonly writable: WritableStream<I>;
-}
-
-interface TransformStreamDefaultController<O = any> {
-  readonly desiredSize: number | null;
-  enqueue(chunk: O): void;
-  error(reason?: any): void;
-  terminate(): void;
-}
-
-interface Transformer<I = any, O = any> {
-  flush?: TransformStreamDefaultControllerCallback<O>;
-  readableType?: undefined;
-  start?: TransformStreamDefaultControllerCallback<O>;
-  transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
-  writableType?: undefined;
-}
-
-interface TransformStreamDefaultControllerCallback<O> {
-  (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
-}
-
-interface TransformStreamDefaultControllerTransformCallback<I, O> {
-  (
-    chunk: I,
-    controller: TransformStreamDefaultController<O>,
-  ): void | PromiseLike<void>;
-}
-
 interface DOMStringList {
   /** Returns the number of strings in strings. */
   readonly length: number;
@@ -487,151 +391,31 @@ interface DOMStringList {
 }
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
-type BlobPart = BufferSource | Blob | string;
 
-interface BlobPropertyBag {
-  type?: string;
-  ending?: "transparent" | "native";
+declare interface Console {
+  assert(condition?: boolean, ...data: any[]): void;
+  clear(): void;
+  count(label?: string): void;
+  countReset(label?: string): void;
+  debug(...data: any[]): void;
+  dir(item?: any, options?: any): void;
+  dirxml(...data: any[]): void;
+  error(...data: any[]): void;
+  group(...data: any[]): void;
+  groupCollapsed(...data: any[]): void;
+  groupEnd(): void;
+  info(...data: any[]): void;
+  log(...data: any[]): void;
+  table(tabularData?: any, properties?: string[]): void;
+  time(label?: string): void;
+  timeEnd(label?: string): void;
+  timeLog(label?: string, ...data: any[]): void;
+  timeStamp(label?: string): void;
+  trace(...data: any[]): void;
+  warn(...data: any[]): void;
 }
 
-/** A file-like object of immutable, raw data. Blobs represent data that isn't necessarily in a JavaScript-native format. The File interface is based on Blob, inheriting blob functionality and expanding it to support files on the user's system. */
-interface Blob {
-  readonly size: number;
-  readonly type: string;
-  arrayBuffer(): Promise<ArrayBuffer>;
-  slice(start?: number, end?: number, contentType?: string): Blob;
-  stream(): ReadableStream;
-  text(): Promise<string>;
-}
-
-declare const Blob: {
-  prototype: Blob;
-  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
-};
-
-interface FilePropertyBag extends BlobPropertyBag {
-  lastModified?: number;
-}
-
-/** Provides information about files and allows JavaScript in a web page to
- * access their content. */
-interface File extends Blob {
-  readonly lastModified: number;
-  readonly name: string;
-}
-
-declare const File: {
-  prototype: File;
-  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
-};
-
-interface FileReaderEventMap {
-  "abort": ProgressEvent<FileReader>;
-  "error": ProgressEvent<FileReader>;
-  "load": ProgressEvent<FileReader>;
-  "loadend": ProgressEvent<FileReader>;
-  "loadstart": ProgressEvent<FileReader>;
-  "progress": ProgressEvent<FileReader>;
-}
-
-/** Lets web applications asynchronously read the contents of files (or raw data buffers) stored on the user's computer, using File or Blob objects to specify the file or data to read. */
-interface FileReader extends EventTarget {
-  readonly error: DOMException | null;
-  onabort: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
-  onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
-  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
-  onloadend: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
-  onloadstart: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
-  onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
-  readonly readyState: number;
-  readonly result: string | ArrayBuffer | null;
-  abort(): void;
-  readAsArrayBuffer(blob: Blob): void;
-  readAsBinaryString(blob: Blob): void;
-  readAsDataURL(blob: Blob): void;
-  readAsText(blob: Blob, encoding?: string): void;
-  readonly DONE: number;
-  readonly EMPTY: number;
-  readonly LOADING: number;
-  addEventListener<K extends keyof FileReaderEventMap>(type: K, listener: (this: FileReader, ev: FileReaderEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
-  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
-  removeEventListener<K extends keyof FileReaderEventMap>(type: K, listener: (this: FileReader, ev: FileReaderEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
-  removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
-}
-
-declare var FileReader: {
-  prototype: FileReader;
-  new(): FileReader;
-  readonly DONE: number;
-  readonly EMPTY: number;
-  readonly LOADING: number;
-};
-
-declare const isConsoleInstance: unique symbol;
-
-declare class Console {
-  indentLevel: number;
-  [isConsoleInstance]: boolean;
-  /** Writes the arguments to stdout */
-  log: (...args: unknown[]) => void;
-  /** Writes the arguments to stdout */
-  debug: (...args: unknown[]) => void;
-  /** Writes the arguments to stdout */
-  info: (...args: unknown[]) => void;
-  /** Writes the properties of the supplied `obj` to stdout */
-  dir: (
-    obj: unknown,
-    options?: Partial<{
-      depth: number;
-      indentLevel: number;
-    }>,
-  ) => void;
-
-  /** Displays an interactive tree of the descendant elements of
-   * the specified XML/HTML element. If it is not possible to display
-   * as an element the JavaScript Object view is shown instead.
-   * The output is presented as a hierarchical listing of expandable
-   * nodes that let you see the contents of child nodes.
-   *
-   * Since we write to stdout, we can't display anything interactive
-   * we just fall back to `console.dir`.
-   *
-   * > [Console.dirxml](https://developer.mozilla.org/en-US/docs/Web/API/Console/dirxml)
-   * > by Mozilla Contributors is licensed under CC-BY-SA 2.5.
-   */
-  dirxml: (
-    obj: unknown,
-    options?: Partial<{
-      showHidden: boolean;
-      depth: number;
-      colors: boolean;
-      indentLevel: number;
-    }>,
-  ) => void;
-
-  /** Writes the arguments to stdout */
-  warn: (...args: unknown[]) => void;
-  /** Writes the arguments to stdout */
-  error: (...args: unknown[]) => void;
-  /** Writes an error message to stdout if the assertion is `false`. If the
-   * assertion is `true`, nothing happens.
-   *
-   * ref: https://console.spec.whatwg.org/#assert
-   */
-  assert: (condition?: boolean, ...args: unknown[]) => void;
-  count: (label?: string) => void;
-  countReset: (label?: string) => void;
-  table: (data: unknown, properties?: string[] | undefined) => void;
-  time: (label?: string) => void;
-  timeLog: (label?: string, ...args: unknown[]) => void;
-  timeEnd: (label?: string) => void;
-  group: (...label: unknown[]) => void;
-  groupCollapsed: (...label: unknown[]) => void;
-  groupEnd: () => void;
-  clear: () => void;
-  trace: (...args: unknown[]) => void;
-  static [Symbol.hasInstance](instance: Console): boolean;
-}
+declare var console: Console;
 
 declare interface Crypto {
   readonly subtle: null;
@@ -653,377 +437,12 @@ declare interface Crypto {
   ): T;
 }
 
-type FormDataEntryValue = File | string;
+declare class URLSearchParams {
+  constructor(
+    init?: string[][] | Record<string, string> | string | URLSearchParams,
+  );
+  static toString(): string;
 
-/** Provides a way to easily construct a set of key/value pairs representing
- * form fields and their values, which can then be easily sent using the
- * XMLHttpRequest.send() method. It uses the same format a form would use if the
- * encoding type were set to "multipart/form-data". */
-interface FormData extends DomIterable<string, FormDataEntryValue> {
-  append(name: string, value: string | Blob, fileName?: string): void;
-  delete(name: string): void;
-  get(name: string): FormDataEntryValue | null;
-  getAll(name: string): FormDataEntryValue[];
-  has(name: string): boolean;
-  set(name: string, value: string | Blob, fileName?: string): void;
-}
-
-declare const FormData: {
-  prototype: FormData;
-  // TODO(ry) FormData constructor is non-standard.
-  // new(form?: HTMLFormElement): FormData;
-  new (): FormData;
-};
-
-interface Body {
-  /** A simple getter used to expose a `ReadableStream` of the body contents. */
-  readonly body: ReadableStream<Uint8Array> | null;
-  /** Stores a `Boolean` that declares whether the body has been used in a
-   * response yet.
-   */
-  readonly bodyUsed: boolean;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with an `ArrayBuffer`.
-   */
-  arrayBuffer(): Promise<ArrayBuffer>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `Blob`.
-   */
-  blob(): Promise<Blob>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `FormData` object.
-   */
-  formData(): Promise<FormData>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with the result of parsing the body text as JSON.
-   */
-  json(): Promise<any>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
-   * that resolves with a `USVString` (text).
-   */
-  text(): Promise<string>;
-}
-
-type HeadersInit = Headers | string[][] | Record<string, string>;
-
-/** This Fetch API interface allows you to perform various actions on HTTP
- * request and response headers. These actions include retrieving, setting,
- * adding to, and removing. A Headers object has an associated header list,
- * which is initially empty and consists of zero or more name and value pairs.
- *  You can add to this using methods like append() (see Examples.) In all
- * methods of this interface, header names are matched by case-insensitive byte
- * sequence. */
-interface Headers {
-  append(name: string, value: string): void;
-  delete(name: string): void;
-  get(name: string): string | null;
-  has(name: string): boolean;
-  set(name: string, value: string): void;
-  forEach(
-    callbackfn: (value: string, key: string, parent: Headers) => void,
-    thisArg?: any,
-  ): void;
-}
-
-interface Headers extends DomIterable<string, string> {
-  /** Appends a new value onto an existing header inside a `Headers` object, or
-   * adds the header if it does not already exist.
-   */
-  append(name: string, value: string): void;
-  /** Deletes a header from a `Headers` object. */
-  delete(name: string): void;
-  /** Returns an iterator allowing to go through all key/value pairs
-   * contained in this Headers object. The both the key and value of each pairs
-   * are ByteString objects.
-   */
-  entries(): IterableIterator<[string, string]>;
-  /** Returns a `ByteString` sequence of all the values of a header within a
-   * `Headers` object with a given name.
-   */
-  get(name: string): string | null;
-  /** Returns a boolean stating whether a `Headers` object contains a certain
-   * header.
-   */
-  has(name: string): boolean;
-  /** Returns an iterator allowing to go through all keys contained in
-   * this Headers object. The keys are ByteString objects.
-   */
-  keys(): IterableIterator<string>;
-  /** Sets a new value for an existing header inside a Headers object, or adds
-   * the header if it does not already exist.
-   */
-  set(name: string, value: string): void;
-  /** Returns an iterator allowing to go through all values contained in
-   * this Headers object. The values are ByteString objects.
-   */
-  values(): IterableIterator<string>;
-  forEach(
-    callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any,
-  ): void;
-  /** The Symbol.iterator well-known symbol specifies the default
-   * iterator for this Headers object
-   */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-}
-
-declare const Headers: {
-  prototype: Headers;
-  new (init?: HeadersInit): Headers;
-};
-
-type RequestInfo = Request | string;
-type RequestCache =
-  | "default"
-  | "force-cache"
-  | "no-cache"
-  | "no-store"
-  | "only-if-cached"
-  | "reload";
-type RequestCredentials = "include" | "omit" | "same-origin";
-type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
-type RequestRedirect = "error" | "follow" | "manual";
-type ReferrerPolicy =
-  | ""
-  | "no-referrer"
-  | "no-referrer-when-downgrade"
-  | "origin"
-  | "origin-when-cross-origin"
-  | "same-origin"
-  | "strict-origin"
-  | "strict-origin-when-cross-origin"
-  | "unsafe-url";
-type BodyInit =
-  | Blob
-  | BufferSource
-  | FormData
-  | URLSearchParams
-  | ReadableStream<Uint8Array>
-  | string;
-type RequestDestination =
-  | ""
-  | "audio"
-  | "audioworklet"
-  | "document"
-  | "embed"
-  | "font"
-  | "image"
-  | "manifest"
-  | "object"
-  | "paintworklet"
-  | "report"
-  | "script"
-  | "sharedworker"
-  | "style"
-  | "track"
-  | "video"
-  | "worker"
-  | "xslt";
-
-interface RequestInit {
-  /**
-   * A BodyInit object or null to set request's body.
-   */
-  body?: BodyInit | null;
-  /**
-   * A string indicating how the request will interact with the browser's cache
-   * to set request's cache.
-   */
-  cache?: RequestCache;
-  /**
-   * A string indicating whether credentials will be sent with the request
-   * always, never, or only when sent to a same-origin URL. Sets request's
-   * credentials.
-   */
-  credentials?: RequestCredentials;
-  /**
-   * A Headers object, an object literal, or an array of two-item arrays to set
-   * request's headers.
-   */
-  headers?: HeadersInit;
-  /**
-   * A cryptographic hash of the resource to be fetched by request. Sets
-   * request's integrity.
-   */
-  integrity?: string;
-  /**
-   * A boolean to set request's keepalive.
-   */
-  keepalive?: boolean;
-  /**
-   * A string to set request's method.
-   */
-  method?: string;
-  /**
-   * A string to indicate whether the request will use CORS, or will be
-   * restricted to same-origin URLs. Sets request's mode.
-   */
-  mode?: RequestMode;
-  /**
-   * A string indicating whether request follows redirects, results in an error
-   * upon encountering a redirect, or returns the redirect (in an opaque
-   * fashion). Sets request's redirect.
-   */
-  redirect?: RequestRedirect;
-  /**
-   * A string whose value is a same-origin URL, "about:client", or the empty
-   * string, to set request's referrer.
-   */
-  referrer?: string;
-  /**
-   * A referrer policy to set request's referrerPolicy.
-   */
-  referrerPolicy?: ReferrerPolicy;
-  /**
-   * An AbortSignal to set request's signal.
-   */
-  signal?: AbortSignal | null;
-  /**
-   * Can only be null. Used to disassociate request from any Window.
-   */
-  window?: any;
-}
-
-/** This Fetch API interface represents a resource request. */
-interface Request extends Body {
-  /**
-   * Returns the cache mode associated with request, which is a string
-   * indicating how the request will interact with the browser's cache when
-   * fetching.
-   */
-  readonly cache: RequestCache;
-  /**
-   * Returns the credentials mode associated with request, which is a string
-   * indicating whether credentials will be sent with the request always, never,
-   * or only when sent to a same-origin URL.
-   */
-  readonly credentials: RequestCredentials;
-  /**
-   * Returns the kind of resource requested by request, e.g., "document" or "script".
-   */
-  readonly destination: RequestDestination;
-  /**
-   * Returns a Headers object consisting of the headers associated with request.
-   * Note that headers added in the network layer by the user agent will not be
-   * accounted for in this object, e.g., the "Host" header.
-   */
-  readonly headers: Headers;
-  /**
-   * Returns request's subresource integrity metadata, which is a cryptographic
-   * hash of the resource being fetched. Its value consists of multiple hashes
-   * separated by whitespace. [SRI]
-   */
-  readonly integrity: string;
-  /**
-   * Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-forward navigation).
-   */
-  readonly isHistoryNavigation: boolean;
-  /**
-   * Returns a boolean indicating whether or not request is for a reload
-   * navigation.
-   */
-  readonly isReloadNavigation: boolean;
-  /**
-   * Returns a boolean indicating whether or not request can outlive the global
-   * in which it was created.
-   */
-  readonly keepalive: boolean;
-  /**
-   * Returns request's HTTP method, which is "GET" by default.
-   */
-  readonly method: string;
-  /**
-   * Returns the mode associated with request, which is a string indicating
-   * whether the request will use CORS, or will be restricted to same-origin
-   * URLs.
-   */
-  readonly mode: RequestMode;
-  /**
-   * Returns the redirect mode associated with request, which is a string
-   * indicating how redirects for the request will be handled during fetching. A
-   * request will follow redirects by default.
-   */
-  readonly redirect: RequestRedirect;
-  /**
-   * Returns the referrer of request. Its value can be a same-origin URL if
-   * explicitly set in init, the empty string to indicate no referrer, and
-   * "about:client" when defaulting to the global's default. This is used during
-   * fetching to determine the value of the `Referer` header of the request
-   * being made.
-   */
-  readonly referrer: string;
-  /**
-   * Returns the referrer policy associated with request. This is used during
-   * fetching to compute the value of the request's referrer.
-   */
-  readonly referrerPolicy: ReferrerPolicy;
-  /**
-   * Returns the signal associated with request, which is an AbortSignal object
-   * indicating whether or not request has been aborted, and its abort event
-   * handler.
-   */
-  readonly signal: AbortSignal;
-  /**
-   * Returns the URL of request as a string.
-   */
-  readonly url: string;
-  clone(): Request;
-}
-
-declare const Request: {
-  prototype: Request;
-  new (input: RequestInfo, init?: RequestInit): Request;
-};
-
-interface ResponseInit {
-  headers?: HeadersInit;
-  status?: number;
-  statusText?: string;
-}
-
-type ResponseType =
-  | "basic"
-  | "cors"
-  | "default"
-  | "error"
-  | "opaque"
-  | "opaqueredirect";
-
-/** This Fetch API interface represents the response to a request. */
-interface Response extends Body {
-  readonly headers: Headers;
-  readonly ok: boolean;
-  readonly redirected: boolean;
-  readonly status: number;
-  readonly statusText: string;
-  readonly trailer: Promise<Headers>;
-  readonly type: ResponseType;
-  readonly url: string;
-  clone(): Response;
-}
-
-declare const Response: {
-  prototype: Response;
-  new (body?: BodyInit | null, init?: ResponseInit): Response;
-  error(): Response;
-  redirect(url: string, status?: number): Response;
-};
-
-/** Fetch a resource from the network. It returns a Promise that resolves to the
- * Response to that request, whether it is successful or not.
- *
- *     const response = await fetch("http://my.json.host/data.json");
- *     console.log(response.status);  // e.g. 200
- *     console.log(response.statusText); // e.g. "OK"
- *     const jsonData = await response.json();
- */
-declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit,
-): Promise<Response>;
-
-interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
    * ```ts
@@ -1165,16 +584,12 @@ interface URLSearchParams {
   toString(): string;
 }
 
-declare const URLSearchParams: {
-  prototype: URLSearchParams;
-  new (
-    init?: string[][] | Record<string, string> | string | URLSearchParams,
-  ): URLSearchParams;
-  toString(): string;
-};
-
 /** The URL interface represents an object providing static methods used for creating object URLs. */
-interface URL {
+declare class URL {
+  constructor(url: string, base?: string | URL);
+  createObjectURL(object: any): string;
+  revokeObjectURL(url: string): void;
+
   hash: string;
   host: string;
   hostname: string;
@@ -1190,13 +605,6 @@ interface URL {
   username: string;
   toJSON(): string;
 }
-
-declare const URL: {
-  prototype: URL;
-  new (url: string, base?: string | URL): URL;
-  createObjectURL(object: any): string;
-  revokeObjectURL(url: string): void;
-};
 
 interface MessageEventInit extends EventInit {
   data?: any;
@@ -1236,6 +644,15 @@ interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
   total?: number;
+}
+
+interface AbstractWorkerEventMap {
+  "error": ErrorEvent;
+}
+
+interface WorkerEventMap extends AbstractWorkerEventMap {
+  "message": MessageEvent;
+  "messageerror": MessageEvent;
 }
 
 declare class Worker extends EventTarget {
@@ -1297,12 +714,34 @@ declare class Worker extends EventTarget {
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;
+  addEventListener<K extends keyof WorkerEventMap>(
+    type: K,
+    listener: (this: Worker, ev: WorkerEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof WorkerEventMap>(
+    type: K,
+    listener: (this: Worker, ev: WorkerEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
   terminate(): void;
 }
 
 declare type PerformanceEntryList = PerformanceEntry[];
 
-declare interface Performance {
+declare class Performance {
+  constructor();
+
   /** Removes the stored timestamp with the associated name. */
   clearMarks(markName?: string): void;
 
@@ -1342,12 +781,7 @@ declare interface Performance {
   now(): number;
 }
 
-declare const Performance: {
-  prototype: Performance;
-  new (): Performance;
-};
-
-declare const performance: Performance;
+declare var performance: Performance;
 
 declare interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
@@ -1406,19 +840,15 @@ declare class PerformanceMeasure extends PerformanceEntry {
 /** Events measuring progress of an underlying process, like an HTTP request
  * (for an XMLHttpRequest, or the loading of the underlying resource of an
  * <img>, <audio>, <video>, <style> or <link>). */
-interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+  constructor(type: string, eventInitDict?: ProgressEventInit);
   readonly lengthComputable: boolean;
   readonly loaded: number;
   readonly target: T | null;
   readonly total: number;
 }
 
-declare var ProgressEvent: {
-  prototype: ProgressEvent;
-  new(type:string, eventInitDict?: ProgressEventInit): ProgressEvent;
-};
-
-interface CustomEventInit<T = any> extends EventInit {
+declare interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
 }
 
@@ -1443,7 +873,8 @@ interface CloseEventInit extends EventInit {
   wasClean?: boolean;
 }
 
-interface CloseEvent extends Event {
+declare class CloseEvent extends Event {
+  constructor(type: string, eventInitDict?: CloseEventInit);
   /**
    * Returns the WebSocket connection close code provided by the server.
    */
@@ -1458,20 +889,22 @@ interface CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
-declare var CloseEvent: {
-  prototype: CloseEvent;
-  new(type: string, eventInitDict?: CloseEventInit): CloseEvent;
-};
-
 interface WebSocketEventMap {
-  "close": CloseEvent;
-  "error": Event;
-  "message": MessageEvent;
-  "open": Event;
+  close: CloseEvent;
+  error: Event;
+  message: MessageEvent;
+  open: Event;
 }
 
 /** Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection. */
-interface WebSocket extends EventTarget {
+declare class WebSocket extends EventTarget {
+  constructor(url: string, protocols?: string | string[]);
+
+  static readonly CLOSED: number;
+  static readonly CLOSING: number;
+  static readonly CONNECTING: number;
+  static readonly OPEN: number;
+
   /**
    * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
    *
@@ -1516,19 +949,26 @@ interface WebSocket extends EventTarget {
   readonly CLOSING: number;
   readonly CONNECTING: number;
   readonly OPEN: number;
-  addEventListener<K extends keyof WebSocketEventMap>(type: K, listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
-  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
-  removeEventListener<K extends keyof WebSocketEventMap>(type: K, listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
-  removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+  addEventListener<K extends keyof WebSocketEventMap>(
+    type: K,
+    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof WebSocketEventMap>(
+    type: K,
+    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
 }
-
-declare var WebSocket: {
-  prototype: WebSocket;
-  new(url: string, protocols?: string | string[]): WebSocket;
-  readonly CLOSED: number;
-  readonly CLOSING: number;
-  readonly CONNECTING: number;
-  readonly OPEN: number;
-};
 
 type BinaryType = "arraybuffer" | "blob";

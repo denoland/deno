@@ -1,4 +1,4 @@
-import { unitTest, assertEquals } from "./test_util.ts";
+import { assertEquals, unitTest } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { createFilterFn } = Deno[Deno.internal];

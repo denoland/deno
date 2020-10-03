@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
   createResolvable,
+  unitTest,
 } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {

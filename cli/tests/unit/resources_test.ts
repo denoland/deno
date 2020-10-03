@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assert, assertThrows } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function resourcesCloseBadArgs(): void {
   assertThrows(() => {
     Deno.close((null as unknown) as number);
-  }, Deno.errors.InvalidData);
+  }, TypeError);
 });
 
 unitTest(function resourcesStdio(): void {

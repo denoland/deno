@@ -10,17 +10,20 @@ repository = "https://github.com/denoland/deno"
 crate-type = ["cdylib"]
 
 [dependencies]
-digest = "0.8.1"
-md2 = "0.8"
-md4 = "0.8"
-md-5 = "0.8"
-ripemd160 = "0.8.0"
-ripemd320 = "0.8.0"
-sha-1 = "0.8.2"
-sha2 = "0.8.2"
-sha3 = "0.8.2"
-wasm-bindgen = "0.2.63"
+digest = "0.9.0"
+md2 = "0.9.0"
+md4 = "0.9.0"
+md-5 = "0.9.1"
+ripemd160 = "0.9.1"
+ripemd320 = "0.9.0"
+sha-1 = "0.9.1"
+sha2 = "0.9.1"
+sha3 = "0.9.1"
+wasm-bindgen = "0.2.68"
 
 [profile.release]
 lto = true
 opt-level = 3
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O", "--enable-mutable-globals"]

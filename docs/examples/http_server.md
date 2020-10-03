@@ -3,7 +3,7 @@
 ## Concepts
 
 - Use the std library [http module](https://deno.land/std@$STD_VERSION/http) to
-  run your own web server
+  run your own web server.
 
 ## Overview
 
@@ -12,11 +12,11 @@ over the response status, request headers and more.
 
 ## Sample web server
 
-In this example, the user-agent of the client is returned to the client
+In this example, the user-agent of the client is returned to the client:
 
 ```typescript
-/** 
- * webserver.ts 
+/**
+ * webserver.ts
  */
 import { serve } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 

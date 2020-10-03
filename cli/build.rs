@@ -2,7 +2,6 @@
 
 mod op_fetch_asset;
 
-use deno_core::js_check;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use std::collections::HashMap;
@@ -16,6 +15,7 @@ fn create_snapshot(
   files: Vec<PathBuf>,
 ) {
   deno_web::init(&mut isolate);
+  deno_fetch::init(&mut isolate);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -23,10 +23,12 @@ fn create_snapshot(
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
-    js_check(isolate.execute(
-      &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-      &std::fs::read_to_string(&file).unwrap(),
-    ));
+    isolate
+      .execute(
+        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+        &std::fs::read_to_string(&file).unwrap(),
+      )
+      .unwrap();
   }
 
   let snapshot = isolate.snapshot();
@@ -52,6 +54,10 @@ fn create_compiler_snapshot(
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs
     .insert("lib.deno.web.d.ts".to_string(), deno_web::get_declaration());
+  custom_libs.insert(
+    "lib.deno.fetch.d.ts".to_string(),
+    deno_fetch::get_declaration(),
+  );
   custom_libs.insert(
     "lib.deno.window.d.ts".to_string(),
     cwd.join("dts/lib.deno.window.d.ts"),
@@ -111,6 +117,10 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
     deno_web::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
+    deno_fetch::get_declaration().display()
   );
 
   println!(

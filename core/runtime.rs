@@ -3,8 +3,10 @@
 use rusty_v8 as v8;
 
 use crate::bindings;
-use crate::errors::attach_handle_to_error;
-use crate::errors::ErrWithV8Handle;
+use crate::error::attach_handle_to_error;
+use crate::error::AnyError;
+use crate::error::ErrWithV8Handle;
+use crate::error::JsError;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -20,8 +22,6 @@ use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::BufVec;
-use crate::ErrBox;
-use crate::JsError;
 use crate::OpState;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -52,9 +52,10 @@ pub enum Snapshot {
   Boxed(Box<[u8]>),
 }
 
-type JsErrorCreateFn = dyn Fn(JsError) -> ErrBox;
+type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
 
-pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e ErrBox) -> &'static str;
+pub type GetErrorClassFn =
+  &'static dyn for<'e> Fn(&'e AnyError) -> &'static str;
 
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
@@ -85,7 +86,7 @@ pub struct JsRuntime {
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub struct JsRuntimeState {
+pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
@@ -156,7 +157,6 @@ pub unsafe fn v8_init() {
     "--wasm-test-streaming".to_string(),
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
-    "--experimental-wasm-bigint".to_string(),
   ];
   v8::V8::set_flags_from_command_line(argv);
 }
@@ -179,6 +179,11 @@ pub struct HeapLimits {
 
 #[derive(Default)]
 pub struct RuntimeOptions {
+  /// Allows a callback to be set whenever a V8 exception is made. This allows
+  /// the caller to wrap the JsError into an error. By default this callback
+  /// is set to `JsError::create()`.
+  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
@@ -265,6 +270,9 @@ impl JsRuntime {
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
+    let js_error_create_fn = options
+      .js_error_create_fn
+      .unwrap_or_else(|| Box::new(JsError::create));
     let op_state = OpState::default();
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
@@ -273,7 +281,7 @@ impl JsRuntime {
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
-      js_error_create_fn: Box::new(JsError::create),
+      js_error_create_fn,
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -296,6 +304,12 @@ impl JsRuntime {
     }
   }
 
+  pub fn global_context(&self) -> v8::Global<v8::Context> {
+    let state = Self::state(self);
+    let state = state.borrow();
+    state.global_context.clone().unwrap()
+  }
+
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
@@ -308,7 +322,7 @@ impl JsRuntime {
     isolate
   }
 
-  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
   }
@@ -317,7 +331,7 @@ impl JsRuntime {
   pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
-      js_check(self.execute("core.js", include_str!("core.js")));
+      self.execute("core.js", include_str!("core.js")).unwrap();
     }
   }
 
@@ -329,14 +343,14 @@ impl JsRuntime {
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn execute(
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     self.shared_init();
 
     let state_rc = Self::state(self);
@@ -376,9 +390,9 @@ impl JsRuntime {
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
     let state = Self::state(self);
@@ -466,7 +480,7 @@ where
 }
 
 impl Future for JsRuntime {
-  type Output = Result<(), ErrBox>;
+  type Output = Result<(), AnyError>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let runtime = self.get_mut();
@@ -585,16 +599,6 @@ impl Future for JsRuntime {
 }
 
 impl JsRuntimeState {
-  /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the JsError into an error. By default this callback
-  /// is set to JsError::create.
-  pub fn set_js_error_create_fn(
-    &mut self,
-    f: impl Fn(JsError) -> ErrBox + 'static,
-  ) {
-    self.js_error_create_fn = Box::new(f);
-  }
-
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn module_resolve_cb(
     &mut self,
@@ -604,7 +608,7 @@ impl JsRuntimeState {
     let referrer = self.modules.get_name(referrer_id).unwrap();
     let specifier = self
       .loader
-      .resolve(specifier, referrer, false)
+      .resolve(self.op_state.clone(), specifier, referrer, false)
       .expect("Module should have been already resolved");
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
@@ -619,6 +623,7 @@ impl JsRuntimeState {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
     let load = RecursiveModuleLoad::dynamic_import(
+      self.op_state.clone(),
       specifier,
       referrer,
       self.loader.clone(),
@@ -633,7 +638,7 @@ impl JsRuntimeState {
 fn async_op_response<'s>(
   scope: &mut v8::HandleScope<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
   let js_recv_cb = JsRuntime::state(scope)
@@ -662,7 +667,9 @@ fn async_op_response<'s>(
   }
 }
 
-fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
+fn drain_macrotasks<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> Result<(), AnyError> {
   let context = scope.get_current_context();
   let global: v8::Local<v8::Value> = context.global(scope).into();
 
@@ -699,7 +706,7 @@ fn drain_macrotasks<'s>(scope: &mut v8::HandleScope<'s>) -> Result<(), ErrBox> {
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
-) -> Result<T, ErrBox> {
+) -> Result<T, AnyError> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
   let is_terminating_exception =
@@ -738,7 +745,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 fn check_promise_exceptions<'s>(
   scope: &mut v8::HandleScope<'s>,
-) -> Result<(), ErrBox> {
+) -> Result<(), AnyError> {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -750,13 +757,6 @@ fn check_promise_exceptions<'s>(
   } else {
     Ok(())
   }
-}
-
-pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
-  if let Err(e) = r {
-    panic!(e.to_string());
-  }
-  r.unwrap()
 }
 
 fn boxed_slice_to_uint8array<'sc>(
@@ -782,7 +782,7 @@ impl JsRuntime {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self);
     let scope = &mut v8::HandleScope::with_context(
       &mut **self,
@@ -813,8 +813,12 @@ impl JsRuntime {
       let import_specifier =
         module.get_module_request(i).to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
-      let module_specifier =
-        state.loader.resolve(&import_specifier, name, false)?;
+      let module_specifier = state.loader.resolve(
+        state.op_state.clone(),
+        &import_specifier,
+        name,
+        false,
+      )?;
       import_specifiers.push(module_specifier);
     }
 
@@ -831,10 +835,10 @@ impl JsRuntime {
 
   /// Instantiates a ES module
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
-  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
     let scope = &mut v8::HandleScope::with_context(
@@ -867,10 +871,10 @@ impl JsRuntime {
 
   /// Evaluates an already instantiated ES module.
   ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JsError, however it may be a
-  /// different type if JsRuntime::set_js_error_create_fn() has been used.
-  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  /// `AnyError` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     self.shared_init();
 
     let state_rc = Self::state(self);
@@ -939,8 +943,8 @@ impl JsRuntime {
   fn dyn_import_error(
     &mut self,
     id: ModuleLoadId,
-    err: ErrBox,
-  ) -> Result<(), ErrBox> {
+    err: AnyError,
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
 
     let scope = &mut v8::HandleScope::with_context(
@@ -973,7 +977,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleLoadId,
     mod_id: ModuleId,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
@@ -1010,7 +1014,7 @@ impl JsRuntime {
   fn prepare_dyn_imports(
     &mut self,
     cx: &mut Context,
-  ) -> Poll<Result<(), ErrBox>> {
+  ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
 
     loop {
@@ -1041,7 +1045,10 @@ impl JsRuntime {
     }
   }
 
-  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+  fn poll_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
     loop {
       let poll_result = {
@@ -1100,7 +1107,7 @@ impl JsRuntime {
     &mut self,
     info: ModuleSource,
     load: &mut RecursiveModuleLoad,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<(), AnyError> {
     let ModuleSource {
       code,
       module_url_specified,
@@ -1189,7 +1196,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
-  ) -> Result<ModuleId, ErrBox> {
+  ) -> Result<ModuleId, AnyError> {
     self.shared_init();
     let loader = {
       let state_rc = Self::state(self);
@@ -1197,7 +1204,12 @@ impl JsRuntime {
       state.loader.clone()
     };
 
-    let load = RecursiveModuleLoad::main(&specifier.to_string(), code, loader);
+    let load = RecursiveModuleLoad::main(
+      self.op_state(),
+      &specifier.to_string(),
+      code,
+      loader,
+    );
     let (_load_id, prepare_result) = load.prepare().await;
 
     let mut load = prepare_result?;
@@ -1343,16 +1355,18 @@ pub mod tests {
 
     runtime.register_op("test", dispatch);
 
-    js_check(runtime.execute(
-      "setup.js",
-      r#"
+    runtime
+      .execute(
+        "setup.js",
+        r#"
         function assert(cond) {
           if (!cond) {
             throw Error("assert");
           }
         }
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     (runtime, dispatch_count)
   }
@@ -1360,9 +1374,10 @@ pub mod tests {
   #[test]
   fn test_dispatch() {
     let (mut runtime, dispatch_count) = setup(Mode::Async);
-    js_check(runtime.execute(
-      "filename.js",
-      r#"
+    runtime
+      .execute(
+        "filename.js",
+        r#"
         let control = new Uint8Array([42]);
         Deno.core.send(1, control);
         async function main() {
@@ -1370,40 +1385,45 @@ pub mod tests {
         }
         main();
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
   }
 
   #[test]
   fn test_dispatch_no_zero_copy_buf() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(0));
-    js_check(runtime.execute(
-      "filename.js",
-      r#"
+    runtime
+      .execute(
+        "filename.js",
+        r#"
         Deno.core.send(1);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn test_dispatch_stack_zero_copy_bufs() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
-    js_check(runtime.execute(
-      "filename.js",
-      r#"
+    runtime
+      .execute(
+        "filename.js",
+        r#"
         let zero_copy_a = new Uint8Array([0]);
         let zero_copy_b = new Uint8Array([1]);
         Deno.core.send(1, zero_copy_a, zero_copy_b);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn test_dispatch_heap_zero_copy_bufs() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(5));
-    js_check(runtime.execute(
+    runtime.execute(
       "filename.js",
       r#"
         let zero_copy_a = new Uint8Array([0]);
@@ -1413,7 +1433,7 @@ pub mod tests {
         let zero_copy_e = new Uint8Array([4]);
         Deno.core.send(1, zero_copy_a, zero_copy_b, zero_copy_c, zero_copy_d, zero_copy_e);
         "#,
-    ));
+    ).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1422,39 +1442,45 @@ pub mod tests {
     run_in_task(|cx| {
       let (mut runtime, dispatch_count) = setup(Mode::Async);
 
-      js_check(runtime.execute(
-        "setup2.js",
-        r#"
+      runtime
+        .execute(
+          "setup2.js",
+          r#"
          let nrecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            nrecv++;
          });
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-      js_check(runtime.execute(
-        "check1.js",
-        r#"
+      runtime
+        .execute(
+          "check1.js",
+          r#"
          assert(nrecv == 0);
          let control = new Uint8Array([42]);
          Deno.core.send(1, control);
          assert(nrecv == 0);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      js_check(runtime.execute(
-        "check2.js",
-        r#"
+      runtime
+        .execute(
+          "check2.js",
+          r#"
          assert(nrecv == 1);
          Deno.core.send(1, control);
          assert(nrecv == 1);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
-      js_check(runtime.execute("check3.js", "assert(nrecv == 2)"));
+      runtime.execute("check3.js", "assert(nrecv == 2)").unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
@@ -1465,9 +1491,10 @@ pub mod tests {
   fn test_poll_async_optional_ops() {
     run_in_task(|cx| {
       let (mut runtime, dispatch_count) = setup(Mode::AsyncUnref);
-      js_check(runtime.execute(
-        "check1.js",
-        r#"
+      runtime
+        .execute(
+          "check1.js",
+          r#"
           Deno.core.setAsyncHandler(1, (buf) => {
             // This handler will never be called
             assert(false);
@@ -1475,7 +1502,8 @@ pub mod tests {
           let control = new Uint8Array([42]);
           Deno.core.send(1, control);
         "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       // The above op never finish, but runtime can finish
       // because the op is an unreffed async op.
@@ -1504,7 +1532,7 @@ pub mod tests {
     match isolate.execute("infinite_loop.js", "for(;;) {}") {
       Ok(_) => panic!("execution should be terminated"),
       Err(e) => {
-        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated\n")
       }
     };
 
@@ -1545,9 +1573,10 @@ pub mod tests {
   #[test]
   fn overflow_req_sync() {
     let (mut runtime, dispatch_count) = setup(Mode::OverflowReqSync);
-    js_check(runtime.execute(
-      "overflow_req_sync.js",
-      r#"
+    runtime
+      .execute(
+        "overflow_req_sync.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
@@ -1558,7 +1587,8 @@ pub mod tests {
         assert(response[0] == 43);
         assert(asyncRecv == 0);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1567,9 +1597,10 @@ pub mod tests {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
     let (mut runtime, dispatch_count) = setup(Mode::OverflowResSync);
-    js_check(runtime.execute(
-      "overflow_res_sync.js",
-      r#"
+    runtime
+      .execute(
+        "overflow_res_sync.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
@@ -1580,7 +1611,8 @@ pub mod tests {
         assert(response[0] == 99);
         assert(asyncRecv == 0);
         "#,
-    ));
+      )
+      .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1588,9 +1620,10 @@ pub mod tests {
   fn overflow_req_async() {
     run_in_task(|cx| {
       let (mut runtime, dispatch_count) = setup(Mode::OverflowReqAsync);
-      js_check(runtime.execute(
-        "overflow_req_async.js",
-        r#"
+      runtime
+        .execute(
+          "overflow_req_async.js",
+          r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 1);
@@ -1604,10 +1637,13 @@ pub mod tests {
          assert(response == null);
          assert(asyncRecv == 0);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
-      js_check(runtime.execute("check.js", "assert(asyncRecv == 1);"));
+      runtime
+        .execute("check.js", "assert(asyncRecv == 1);")
+        .unwrap();
     });
   }
 
@@ -1617,9 +1653,10 @@ pub mod tests {
       // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
       // should optimize this.
       let (mut runtime, dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(runtime.execute(
-        "overflow_res_async.js",
-        r#"
+      runtime
+        .execute(
+          "overflow_res_async.js",
+          r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 100 * 1024 * 1024);
@@ -1632,10 +1669,13 @@ pub mod tests {
          assert(response == null);
          assert(asyncRecv == 0);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       poll_until_ready(&mut runtime, 3).unwrap();
-      js_check(runtime.execute("check.js", "assert(asyncRecv == 1);"));
+      runtime
+        .execute("check.js", "assert(asyncRecv == 1);")
+        .unwrap();
     });
   }
 
@@ -1645,9 +1685,10 @@ pub mod tests {
     // should optimize this.
     run_in_task(|_cx| {
       let (mut runtime, dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(runtime.execute(
-        "overflow_res_multiple_dispatch_async.js",
-        r#"
+      runtime
+        .execute(
+          "overflow_res_multiple_dispatch_async.js",
+          r#"
          let asyncRecv = 0;
          Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 100 * 1024 * 1024);
@@ -1663,10 +1704,13 @@ pub mod tests {
          // are done even if shared space overflows
          Deno.core.dispatch(1, control);
          "#,
-      ));
+        )
+        .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       poll_until_ready(&mut runtime, 3).unwrap();
-      js_check(runtime.execute("check.js", "assert(asyncRecv == 2);"));
+      runtime
+        .execute("check.js", "assert(asyncRecv == 2);")
+        .unwrap();
     });
   }
 
@@ -1674,9 +1718,10 @@ pub mod tests {
   fn test_pre_dispatch() {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::OverflowResAsync);
-      js_check(runtime.execute(
-        "bad_op_id.js",
-        r#"
+      runtime
+        .execute(
+          "bad_op_id.js",
+          r#"
           let thrown;
           try {
             Deno.core.dispatch(100);
@@ -1685,7 +1730,8 @@ pub mod tests {
           }
           assert(String(thrown) === "TypeError: Unknown op id: 100");
          "#,
-      ));
+        )
+        .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -1696,7 +1742,9 @@ pub mod tests {
   fn core_test_js() {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      js_check(runtime.execute("core_test.js", include_str!("core_test.js")));
+      runtime
+        .execute("core_test.js", include_str!("core_test.js"))
+        .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -1717,10 +1765,12 @@ pub mod tests {
   fn test_encode_decode() {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      js_check(runtime.execute(
-        "encode_decode_test.js",
-        include_str!("encode_decode_test.js"),
-      ));
+      runtime
+        .execute(
+          "encode_decode_test.js",
+          include_str!("encode_decode_test.js"),
+        )
+        .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -1734,7 +1784,7 @@ pub mod tests {
         will_snapshot: true,
         ..Default::default()
       });
-      js_check(runtime.execute("a.js", "a = 1 + 2"));
+      runtime.execute("a.js", "a = 1 + 2").unwrap();
       runtime.snapshot()
     };
 
@@ -1743,7 +1793,9 @@ pub mod tests {
       startup_snapshot: Some(snapshot),
       ..Default::default()
     });
-    js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
+    runtime2
+      .execute("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
   }
 
   #[test]
@@ -1753,7 +1805,7 @@ pub mod tests {
         will_snapshot: true,
         ..Default::default()
       });
-      js_check(runtime.execute("a.js", "a = 1 + 2"));
+      runtime.execute("a.js", "a = 1 + 2").unwrap();
       let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
@@ -1763,7 +1815,9 @@ pub mod tests {
       startup_snapshot: Some(snapshot),
       ..Default::default()
     });
-    js_check(runtime2.execute("check.js", "if (a != 3) throw Error('x')"));
+    runtime2
+      .execute("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
   }
 
   #[test]
@@ -1867,10 +1921,11 @@ pub mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
@@ -1880,6 +1935,7 @@ pub mod tests {
 
       fn load(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -1909,16 +1965,18 @@ pub mod tests {
     });
     runtime.register_op("test", dispatcher);
 
-    js_check(runtime.execute(
-      "setup.js",
-      r#"
+    runtime
+      .execute(
+        "setup.js",
+        r#"
         function assert(cond) {
           if (!cond) {
             throw Error("assert");
           }
         }
         "#,
-    ));
+      )
+      .unwrap();
 
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
@@ -1955,14 +2013,14 @@ pub mod tests {
       assert_eq!(imports.len(), 0);
     }
 
-    js_check(runtime.mod_instantiate(mod_b));
+    runtime.mod_instantiate(mod_b).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    js_check(runtime.mod_instantiate(mod_a));
+    runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    js_check(runtime.mod_evaluate(mod_a));
+    runtime.mod_evaluate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1976,10 +2034,11 @@ pub mod tests {
     impl ModuleLoader for DynImportErrLoader {
       fn resolve(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
@@ -1989,6 +2048,7 @@ pub mod tests {
 
       fn load(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -2006,14 +2066,16 @@ pub mod tests {
         ..Default::default()
       });
 
-      js_check(runtime.execute(
-        "file:///dyn_import2.js",
-        r#"
+      runtime
+        .execute(
+          "file:///dyn_import2.js",
+          r#"
         (async () => {
           await import("/foo.js");
         })();
         "#,
-      ));
+        )
+        .unwrap();
 
       assert_eq!(count.load(Ordering::Relaxed), 0);
       // We should get an error here.
@@ -2035,10 +2097,11 @@ pub mod tests {
   impl ModuleLoader for DynImportOkLoader {
     fn resolve(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       specifier: &str,
       referrer: &str,
       _is_main: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
+    ) -> Result<ModuleSpecifier, AnyError> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
       assert!(c < 4);
       assert_eq!(specifier, "./b.js");
@@ -2049,6 +2112,7 @@ pub mod tests {
 
     fn load(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,
@@ -2064,11 +2128,12 @@ pub mod tests {
 
     fn prepare_load(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       _load_id: ModuleLoadId,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
       self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
       async { Ok(()) }.boxed_local()
     }
@@ -2087,9 +2152,10 @@ pub mod tests {
       });
 
       // Dynamically import mod_b
-      js_check(runtime.execute(
-        "file:///dyn_import3.js",
-        r#"
+      runtime
+        .execute(
+          "file:///dyn_import3.js",
+          r#"
           (async () => {
             let mod = await import("./b.js");
             if (mod.b() !== 'b') {
@@ -2102,7 +2168,8 @@ pub mod tests {
             }
           })();
           "#,
-      ));
+        )
+        .unwrap();
 
       // First poll runs `prepare_load` hook.
       assert!(matches!(runtime.poll_unpin(cx), Poll::Pending));
@@ -2128,9 +2195,10 @@ pub mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      js_check(runtime.execute(
-        "file:///dyn_import3.js",
-        r#"
+      runtime
+        .execute(
+          "file:///dyn_import3.js",
+          r#"
           (async () => {
             let mod = await import("./b.js");
             if (mod.b() !== 'b') {
@@ -2140,7 +2208,8 @@ pub mod tests {
             Deno.core.ops();
           })();
           "#,
-      ));
+        )
+        .unwrap();
       // First poll runs `prepare_load` hook.
       let _ = runtime.poll_unpin(cx);
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
@@ -2157,10 +2226,11 @@ pub mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
+      ) -> Result<ModuleSpecifier, AnyError> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
@@ -2169,6 +2239,7 @@ pub mod tests {
 
       fn load(
         &self,
+        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -2192,8 +2263,94 @@ pub mod tests {
     )
     .unwrap();
 
-    js_check(runtime.mod_evaluate(module_id));
+    runtime.mod_evaluate(module_id).unwrap();
 
     let _snapshot = runtime.snapshot();
+  }
+
+  #[test]
+  fn test_error_without_stack() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    // SyntaxError
+    let result = runtime.execute(
+      "error_without_stack.js",
+      r#"
+function main() {
+  console.log("asdf);
+}
+
+main();
+"#,
+    );
+    let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
+    at error_without_stack.js:3:14
+"#;
+    assert_eq!(result.unwrap_err().to_string(), expected_error);
+  }
+
+  #[test]
+  fn test_error_stack() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let result = runtime.execute(
+      "error_stack.js",
+      r#"
+function assert(cond) {
+  if (!cond) {
+    throw Error("assert");
+  }
+}
+
+function main() {
+  assert(false);
+}
+
+main();
+        "#,
+    );
+    let expected_error = r#"Error: assert
+    at assert (error_stack.js:4:11)
+    at main (error_stack.js:9:3)
+    at error_stack.js:12:1
+"#;
+    assert_eq!(result.unwrap_err().to_string(), expected_error);
+  }
+
+  #[test]
+  fn test_error_async_stack() {
+    run_in_task(|cx| {
+      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+      runtime
+        .execute(
+          "error_async_stack.js",
+          r#"
+(async () => {
+  const p = (async () => {
+    await Promise.resolve().then(() => {
+      throw new Error("async");
+    });
+  })();
+
+  try {
+    await p;
+  } catch (error) {
+    console.log(error.stack);
+    throw error;
+  }
+})();"#,
+        )
+        .unwrap();
+      let expected_error = r#"Error: async
+    at error_async_stack.js:5:13
+    at async error_async_stack.js:4:5
+    at async error_async_stack.js:10:5
+"#;
+
+      match runtime.poll_unpin(cx) {
+        Poll::Ready(Err(e)) => {
+          assert_eq!(e.to_string(), expected_error);
+        }
+        _ => panic!(),
+      };
+    })
   }
 }

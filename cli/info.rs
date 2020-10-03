@@ -1,12 +1,14 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::colors;
 use crate::global_state::GlobalState;
 use crate::module_graph::{ModuleGraph, ModuleGraphFile, ModuleGraphLoader};
-use crate::msg;
 use crate::ModuleSpecifier;
 use crate::Permissions;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use serde::ser::Serializer;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 // TODO(bartlomieju): rename
@@ -14,12 +16,16 @@ use std::sync::Arc;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModuleDepInfo {
+  module: String,
   local: String,
   file_type: String,
   compiled: Option<String>,
   map: Option<String>,
   dep_count: usize,
+  #[serde(skip_serializing)]
   deps: FileInfoDepTree,
+  total_size: Option<usize>,
+  files: FileInfoDepFlatGraph,
 }
 
 impl ModuleDepInfo {
@@ -27,7 +33,7 @@ impl ModuleDepInfo {
   pub async fn new(
     global_state: &Arc<GlobalState>,
     module_specifier: ModuleSpecifier,
-  ) -> Result<ModuleDepInfo, ErrBox> {
+  ) -> Result<Self, AnyError> {
     // First load module as if it was to be executed by worker
     // including compilation step
     let mut module_graph_loader = ModuleGraphLoader::new(
@@ -56,18 +62,24 @@ impl ModuleDepInfo {
       .get_source_map_file(&module_specifier)
       .ok()
       .map(|file| file.filename.to_string_lossy().to_string());
-    let file_type = msg::enum_name_media_type(out.media_type).to_string();
+    let file_type =
+      crate::media_type::enum_name_media_type(out.media_type).to_string();
 
     let deps = FileInfoDepTree::new(&module_graph, &module_specifier);
+    let total_size = deps.total_size;
     let dep_count = get_unique_dep_count(&module_graph) - 1;
+    let files = FileInfoDepFlatGraph::new(&module_graph);
 
     let info = Self {
+      module: module_specifier.to_string(),
       local: local_filename,
       file_type,
       compiled: compiled_filename,
       map: map_filename,
       dep_count,
       deps,
+      total_size,
+      files,
     };
 
     Ok(info)
@@ -223,6 +235,54 @@ impl FileInfoDepTree {
   }
 }
 
+/// Flat graph vertex with all shallow dependencies
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileInfoVertex {
+  size: usize,
+  deps: Vec<String>,
+}
+
+impl FileInfoVertex {
+  /// Creates new `FileInfoVertex` that is a single vertex dependency module
+  fn new(size: usize, deps: Vec<String>) -> Self {
+    Self { size, deps }
+  }
+}
+
+struct FileInfoDepFlatGraph(HashMap<String, FileInfoVertex>);
+
+impl FileInfoDepFlatGraph {
+  /// Creates new `FileInfoDepFlatGraph`, flat graph of a shallow module dependencies
+  ///
+  /// Each graph vertex represents unique dependency with its all shallow dependencies
+  fn new(module_graph: &ModuleGraph) -> Self {
+    let mut inner = HashMap::new();
+    module_graph
+      .iter()
+      .for_each(|(module_name, module_graph_file)| {
+        let size = module_graph_file.size();
+        let mut deps = Vec::new();
+        module_graph_file.imports.iter().for_each(|import| {
+          deps.push(import.resolved_specifier.to_string());
+        });
+        inner.insert(module_name.clone(), FileInfoVertex::new(size, deps));
+      });
+    Self(inner)
+  }
+}
+
+impl Serialize for FileInfoDepFlatGraph {
+  /// Serializes inner hash map which is ordered by the key
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let ordered: BTreeMap<_, _> = self.0.iter().collect();
+    ordered.serialize(serializer)
+  }
+}
+
 /// Returns a `ModuleGraphFile` associated to the provided `ModuleSpecifier`.
 ///
 /// If the `specifier` is associated with a file that has a populated redirect field,
@@ -349,9 +409,10 @@ pub fn human_size(bytse: f64) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::ast::Location;
+  use crate::media_type::MediaType;
   use crate::module_graph::ImportDescriptor;
-  use crate::swc_util::Location;
-  use crate::MediaType;
+  use deno_core::url::Url;
 
   #[test]
   fn human_size_test() {
@@ -374,7 +435,7 @@ mod test {
   }
 
   #[test]
-  fn get_new_prefix_adds_a_vertial_bar_if_not_is_last() {
+  fn get_new_prefix_adds_a_vertical_bar_if_not_is_last() {
     let prefix = get_new_prefix("", false);
 
     assert_eq!(prefix, "│ ".to_string());
@@ -385,9 +446,8 @@ mod test {
     imports: Vec<ModuleSpecifier>,
     redirect: Option<ModuleSpecifier>,
   ) -> (ModuleGraphFile, ModuleSpecifier) {
-    let spec = ModuleSpecifier::from(
-      url::Url::parse(&format!("http://{}", name)).unwrap(),
-    );
+    let spec =
+      ModuleSpecifier::from(Url::parse(&format!("http://{}", name)).unwrap());
     let file = ModuleGraphFile {
       filename: "name".to_string(),
       imports: imports

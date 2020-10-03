@@ -2,12 +2,15 @@
 
 use rusty_v8 as v8;
 
+use crate::error::generic_error;
+use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
-use crate::ErrBox;
+use crate::OpState;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::Future;
@@ -48,8 +51,9 @@ pub struct ModuleSource {
 }
 
 pub type PrepareLoadFuture =
-  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, ErrBox>)>;
-pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, AnyError>)>;
+pub type ModuleSourceFuture =
+  dyn Future<Output = Result<ModuleSource, AnyError>>;
 
 pub trait ModuleLoader {
   /// Returns an absolute URL.
@@ -61,10 +65,11 @@ pub trait ModuleLoader {
   /// apply import map for child imports.
   fn resolve(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox>;
+  ) -> Result<ModuleSpecifier, AnyError>;
 
   /// Given ModuleSpecifier, load its source code.
   ///
@@ -72,6 +77,7 @@ pub trait ModuleLoader {
   /// dynamic imports altogether.
   fn load(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
@@ -87,11 +93,12 @@ pub trait ModuleLoader {
   /// It's not required to implement this method.
   fn prepare_load(
     &self,
+    _op_state: Rc<RefCell<OpState>>,
     _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     async { Ok(()) }.boxed_local()
   }
 }
@@ -103,20 +110,22 @@ pub(crate) struct NoopModuleLoader;
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
     &self,
+    _op_state: Rc<RefCell<OpState>>,
     _specifier: &str,
     _referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, ErrBox> {
-    Err(ErrBox::error("Module loading is not supported"))
+  ) -> Result<ModuleSpecifier, AnyError> {
+    Err(generic_error("Module loading is not supported"))
   }
 
   fn load(
     &self,
+    _op_state: Rc<RefCell<OpState>>,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async { Err(ErrBox::error("Module loading is not supported")) }
+    async { Err(generic_error("Module loading is not supported")) }
       .boxed_local()
   }
 }
@@ -138,6 +147,7 @@ pub enum LoadState {
 
 /// This future is used to implement parallel async module loading.
 pub struct RecursiveModuleLoad {
+  op_state: Rc<RefCell<OpState>>,
   kind: Kind,
   // TODO(bartlomieju): in future this value should
   // be randomized
@@ -152,16 +162,18 @@ pub struct RecursiveModuleLoad {
 impl RecursiveModuleLoad {
   /// Starts a new parallel load of the given URL of the main module.
   pub fn main(
+    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     code: Option<String>,
     loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
-    Self::new(kind, state, loader)
+    Self::new(op_state, kind, state, loader)
   }
 
   pub fn dynamic_import(
+    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     loader: Rc<dyn ModuleLoader>,
@@ -169,17 +181,23 @@ impl RecursiveModuleLoad {
     let kind = Kind::DynamicImport;
     let state =
       LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(kind, state, loader)
+    Self::new(op_state, kind, state, loader)
   }
 
   pub fn is_dynamic_import(&self) -> bool {
     self.kind != Kind::Main
   }
 
-  fn new(kind: Kind, state: LoadState, loader: Rc<dyn ModuleLoader>) -> Self {
+  fn new(
+    op_state: Rc<RefCell<OpState>>,
+    kind: Kind,
+    state: LoadState,
+    loader: Rc<dyn ModuleLoader>,
+  ) -> Self {
     Self {
       id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
       root_module_id: None,
+      op_state,
       kind,
       state,
       loader,
@@ -188,17 +206,26 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, ErrBox>) {
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        let spec = match self.loader.resolve(specifier, ".", true) {
-          Ok(spec) => spec,
-          Err(e) => return (self.id, Err(e)),
-        };
+        let spec =
+          match self
+            .loader
+            .resolve(self.op_state.clone(), specifier, ".", true)
+          {
+            Ok(spec) => spec,
+            Err(e) => return (self.id, Err(e)),
+          };
         (spec, None)
       }
       LoadState::ResolveImport(ref specifier, ref referrer) => {
-        let spec = match self.loader.resolve(specifier, referrer, false) {
+        let spec = match self.loader.resolve(
+          self.op_state.clone(),
+          specifier,
+          referrer,
+          false,
+        ) {
           Ok(spec) => spec,
           Err(e) => return (self.id, Err(e)),
         };
@@ -210,6 +237,7 @@ impl RecursiveModuleLoad {
     let prepare_result = self
       .loader
       .prepare_load(
+        self.op_state.clone(),
         self.id,
         &module_specifier,
         maybe_referrer,
@@ -223,14 +251,16 @@ impl RecursiveModuleLoad {
     }
   }
 
-  fn add_root(&mut self) -> Result<(), ErrBox> {
+  fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        self.loader.resolve(specifier, ".", true)?
+        self
+          .loader
+          .resolve(self.op_state.clone(), specifier, ".", true)?
       }
-      LoadState::ResolveImport(ref specifier, ref referrer) => {
-        self.loader.resolve(specifier, referrer, false)?
-      }
+      LoadState::ResolveImport(ref specifier, ref referrer) => self
+        .loader
+        .resolve(self.op_state.clone(), specifier, referrer, false)?,
 
       _ => unreachable!(),
     };
@@ -246,7 +276,12 @@ impl RecursiveModuleLoad {
       }
       _ => self
         .loader
-        .load(&module_specifier, None, self.is_dynamic_import())
+        .load(
+          self.op_state.clone(),
+          &module_specifier,
+          None,
+          self.is_dynamic_import(),
+        )
         .boxed_local(),
     };
 
@@ -262,10 +297,12 @@ impl RecursiveModuleLoad {
     referrer: ModuleSpecifier,
   ) {
     if !self.is_pending.contains(&specifier) {
-      let fut =
-        self
-          .loader
-          .load(&specifier, Some(referrer), self.is_dynamic_import());
+      let fut = self.loader.load(
+        self.op_state.clone(),
+        &specifier,
+        Some(referrer),
+        self.is_dynamic_import(),
+      );
       self.pending.push(fut.boxed_local());
       self.is_pending.insert(specifier);
     }
@@ -273,7 +310,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<ModuleSource, ErrBox>;
+  type Item = Result<ModuleSource, AnyError>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -361,6 +398,7 @@ impl ModuleNameMap {
   }
 
   /// Check if a name is an alias to another module.
+  #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
     let cond = self.inner.get(name);
     matches!(cond, Some(SymbolicModule::Alias(_)))
@@ -425,6 +463,7 @@ impl Modules {
     self.by_name.alias(name.to_owned(), target.to_owned());
   }
 
+  #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
     self.by_name.is_alias(name)
   }
@@ -440,7 +479,6 @@ impl Modules {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::js_check;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use futures::future::FutureExt;
@@ -518,7 +556,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Output = Result<ModuleSource, ErrBox>;
+    type Output = Result<ModuleSource, AnyError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
       let inner = self.get_mut();
@@ -546,10 +584,11 @@ mod tests {
   impl ModuleLoader for MockLoader {
     fn resolve(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
+    ) -> Result<ModuleSpecifier, AnyError> {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -573,6 +612,7 @@ mod tests {
 
     fn load(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,
@@ -627,7 +667,7 @@ mod tests {
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    js_check(runtime.mod_evaluate(a_id));
+    runtime.mod_evaluate(a_id).unwrap();
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -694,7 +734,7 @@ mod tests {
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      js_check(runtime.mod_evaluate(circular1_id));
+      runtime.mod_evaluate(circular1_id).unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -771,7 +811,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      js_check(runtime.mod_evaluate(redirect1_id));
+      runtime.mod_evaluate(redirect1_id).unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -921,7 +961,7 @@ mod tests {
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    js_check(runtime.mod_evaluate(main_id));
+    runtime.mod_evaluate(main_id).unwrap();
 
     let l = loads.lock().unwrap();
     assert_eq!(

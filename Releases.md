@@ -6,6 +6,106 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.4.3 / 2020.10.02
+
+- feat(unstable): Add module specifier to deno info --json output (#7725)
+- fix: Bundle loader returns exported value (#7764)
+- fix: Check cached versions during transpile (#7760)
+- fix: Net listen crashes on explicit undefined hostname (#7706)
+- fix: --no-check recognizes require (#7720)
+- fix: Use $deno$test.ts instead of .deno.test.ts (#7717)
+- fix: Use global_state file_fetcher when using SpecifierHandler (#7748)
+- fix(console): Catch and format getter errors (#7766)
+- fix(dts): Use var instead of const and let for globals (#7680)
+- fix(inspector): Shutdown server gracefully on drop (#7716)
+- fix(repl): Enable await and let re-declarations (#7784)
+- fix(repl): Use a default referrer when empty (#7794)
+- fix(test): Do not start inspector server when collecting coverage (#7718)
+- fix(websocket): Add missing close events and remove extra error event (#7606)
+- refactor: Add concept of 'legacy' compiler to enable non-breaking refactoring
+  (#7762)
+- refactor: Combine MainWorker::new and MainWorker::create (#7693)
+- refactor: Extract inspector session (#7756, #7763)
+- refactor: Factor out check_unstable op helper (#7695)
+- refactor: Improve graph and tsc_config (#7747)
+- refactor: Improve op crate interfaces for other consumers (#7745)
+- refactor: Move op state registration to workers (#7696)
+- refactor: Use JsRuntime to implement TSC (#7691)
+- refactor: Add Deno.InspectOptions::colors (#7742)
+- upgrade: swc, deno_doc, deno_lint, dprint (#7711, #7793)
+
+Changes in std version 0.72.0:
+
+- BREAKING(std/encoding/csv): Improve the definition of ParseOptions (#7714)
+- feat(std/path): Align globToRegExp() with bash glob expansion (#7209)
+- fix(std/datetime): Add timezone to date strings in tests (#7675)
+- refactor(std/example): Inconsistencies in the example tests (#7684)
+- refactor(std/testing): Get rid of default export and make std/testing/diff.ts
+  private (#7592)
+
+### 1.4.2 / 2020.09.25
+
+- fix: Better formatting in console (#7642, #7641, #7553)
+- fix: Change log level to which prefix added (#7582)
+- fix: Change the Console class declaration to an interface (#7646)
+- fix: Clearing timers race condition (#7617)
+- fix: customInspect works on functions (#7670)
+- fix: Ignore fileExists in tsc host (#7635)
+- fix: Make --unstable a global flag (#7585)
+- fix: Make --watch and --inspect conflicting args (#7610)
+- fix: Make some web API constructors illegal at runtime (#7468)
+- fix: Replaced legacy chrome-devtools:// scheme. (#7659)
+- fix: Response.arrayBuffer() doesn't return promise (#7618)
+- fix: Update supported text encodings (#7668)
+- fix: Use class instead of var+interface in d.ts #7514
+- fix(coverage): print lines with no coverage to stdout (#7640)
+- fix(fmt,lint): do not print number of checked files when `--quiet` is enabled
+  (#7579)
+- fix(info): add --importmap flag (#7424)
+- fix(installer): Don't reload by default (#7596)
+- fix(repl): interpret object literals as expressions (#7591)
+- fix(watch): watch importmap file for changes (#7580)
+- refactor(core): support error stack, remove js_check (#7629, #7636)
+- refactor(coverage): Harden coverage collection (#7584, #7616, #7577)
+- upgrade: TypeScript to 4.0.3 (#7637)
+- example(core): Add hello world example (#7611)
+
+Changes in std version 0.71.0:
+
+- feat(std/node): implement getSystemErrorName() (#7624)
+- fix(std/datetime): 12 and 24 support (#7661)
+- fix(std/fs): mark createWalkEntry(Sync) as internal (#7643)
+- chore(std/hash): update crates (#7631)
+
+### 1.4.1 / 2020.09.18
+
+- fix(cli/console): escape special characters in strings and property names
+  (#7546, #7533, #7550)
+- fix(cli/fmt): canonicalize files in current dir (#7508)
+- fix(cli/fmt): make fmt output more readable (#7534)
+- fix(cli/install): revert "bundle before installation" (#7522)
+- fix(cli/js): disable URL.createObjectUrl (#7543)
+- fix(cli/js): use Buffer.writeSync in MultipartBuilder (#7542)
+- fix(cli/repl): disable rustyline logs (#7535)
+- fix(cli/repl): format evaluation results with the object specifier (#7561)
+- fix(cli/bundle,eval,repl): add missing flags (#7414)
+- refactor(cli): move fetch() implementation to op_crates/fetch (#7524, #7529)
+- refactor(cli): move FileReader and URL to op_crates/web (#7554, #7544)
+- refactor(cli): move op_resources and op_close to deno_core (#7539)
+- refactor(cli/info,unstable): deno info --json output (#7417)
+- refactor(cli/js): simplify global properties (#7502)
+- refactor(cli/js): use Symbol.for instead of Symbol (#7537)
+- refactor(core): remove JsRuntime::set_js_error_create_fn (#7478)
+- refactor(core): use the 'anyhow' crate instead of ErrBox (#7476)
+- upgrade: rust crates (#7454)
+- benchmark: add no_check_hello benchmark (#7458)
+
+Changes in std version 0.70.0:
+
+- feat(std/node): add AssertionError class (#7210)
+- fix(std/datetime): timezone bug (#7466)
+- fix(std/testing): assertion diff color (#7499)
+
 ### 1.4.0 / 2020.09.13
 
 - feat: Implement WebSocket API (#7051, #7437)
