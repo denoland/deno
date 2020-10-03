@@ -13,7 +13,7 @@
 declare namespace WebAssembly {
   /**
    * The `WebAssembly.CompileError` object indicates an error during WebAssembly decoding or validation.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/CompileError)
    */
   export class CompileError extends Error {
@@ -25,7 +25,7 @@ declare namespace WebAssembly {
    * A `WebAssembly.Global` object represents a global variable instance, accessible from
    * both JavaScript and importable/exportable across one or more `WebAssembly.Module`
    * instances. This allows dynamic linking of multiple modules.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Global)
    */
   export class Global {
@@ -46,7 +46,7 @@ declare namespace WebAssembly {
    * A `WebAssembly.Instance` object is a stateful, executable instance of a `WebAssembly.Module`.
    * Instance objects contain all the Exported WebAssembly functions that allow calling into
    * WebAssembly code from JavaScript.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Instance)
    */
   export class Instance {
@@ -64,7 +64,7 @@ declare namespace WebAssembly {
   /**
    * The `WebAssembly.LinkError` object indicates an error during module instantiation
    * (besides traps from the start function).
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/LinkError)
    */
   export class LinkError extends Error {
@@ -75,10 +75,10 @@ declare namespace WebAssembly {
   /**
    * The `WebAssembly.Memory` object is a resizable `ArrayBuffer` or `SharedArrayBuffer` that
    * holds the raw bytes of memory accessed by a WebAssembly Instance.
-   * 
+   *
    * A memory created by JavaScript or in WebAssembly code will be accessible and mutable
    * from both JavaScript and WebAssembly.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Memory)
    */
   export class Memory {
@@ -98,7 +98,7 @@ declare namespace WebAssembly {
   /**
    * A `WebAssembly.Module` object contains stateless WebAssembly code that has already been compiled
    * by the browser — this can be efficiently shared with Workers, and instantiated multiple times.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Module)
    */
   export class Module {
@@ -124,7 +124,7 @@ declare namespace WebAssembly {
   /**
    * The `WebAssembly.RuntimeError` object is the error type that is thrown whenever WebAssembly
    * specifies a trap.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/RuntimeError)
    */
   export class RuntimeError extends Error {
@@ -137,7 +137,7 @@ declare namespace WebAssembly {
    * representing a WebAssembly Table, which stores function references. A table created by
    * JavaScript or in WebAssembly code will be accessible and mutable from both JavaScript
    * and WebAssembly.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Table)
    */
   export class Table {
@@ -210,12 +210,12 @@ declare namespace WebAssembly {
   export type ModuleImports = Record<string, ImportValue>;
   export type Imports = Record<string, ModuleImports>;
 
-  /** 
+  /**
    * The `WebAssembly.compile()` function compiles WebAssembly binary code into a
    * `WebAssembly.Module` object. This function is useful if it is necessary to compile
    * a module before it can be instantiated (otherwise, the `WebAssembly.instantiate()`
    * function should be used).
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compile)
    */
   export function compile(bytes: BufferSource): Promise<Module>;
@@ -225,7 +225,7 @@ declare namespace WebAssembly {
    * directly from a streamed underlying source.  This function is useful if it
    * is necessary to a compile a module before it can be instantiated (otherwise,
    * the `WebAssembly.instantiateStreaming()` function should be used).
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compileStreaming)
    */
   export function compileStreaming(
@@ -235,13 +235,13 @@ declare namespace WebAssembly {
   /**
    * The WebAssembly.instantiate() function allows you to compile and instantiate
    * WebAssembly code.
-   * 
+   *
    * This overload takes the WebAssembly binary code, in the form of a typed
    * array or ArrayBuffer, and performs both compilation and instantiation in one step.
    * The returned Promise resolves to both a compiled WebAssembly.Module and its first
    * WebAssembly.Instance.
-   * 
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate) 
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate)
    */
   export function instantiate(
     bytes: BufferSource,
@@ -251,12 +251,12 @@ declare namespace WebAssembly {
   /**
    * The WebAssembly.instantiate() function allows you to compile and instantiate
    * WebAssembly code.
-   * 
+   *
    * This overload takes an already-compiled WebAssembly.Module and returns
    * a Promise that resolves to an Instance of that Module. This overload is useful
    * if the Module has already been compiled.
-   * 
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate) 
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate)
    */
   export function instantiate(
     moduleObject: Module,
@@ -267,7 +267,7 @@ declare namespace WebAssembly {
    * The `WebAssembly.instantiateStreaming()` function compiles and instantiates a
    * WebAssembly module directly from a streamed underlying source. This is the most
    * efficient, optimized way to load WebAssembly code.
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiateStreaming)
    */
   export function instantiateStreaming(
@@ -279,7 +279,7 @@ declare namespace WebAssembly {
    * The `WebAssembly.validate()` function validates a given typed array of
    * WebAssembly binary code, returning whether the bytes form a valid wasm
    * module (`true`) or not (`false`).
-   * 
+   *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/validate)
    */
   export function validate(bytes: BufferSource): boolean;
@@ -646,6 +646,15 @@ interface ProgressEventInit extends EventInit {
   total?: number;
 }
 
+interface AbstractWorkerEventMap {
+  "error": ErrorEvent;
+}
+
+interface WorkerEventMap extends AbstractWorkerEventMap {
+  "message": MessageEvent;
+  "messageerror": MessageEvent;
+}
+
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
@@ -705,6 +714,26 @@ declare class Worker extends EventTarget {
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;
+  addEventListener<K extends keyof WorkerEventMap>(
+    type: K,
+    listener: (this: Worker, ev: WorkerEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof WorkerEventMap>(
+    type: K,
+    listener: (this: Worker, ev: WorkerEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
   terminate(): void;
 }
 
