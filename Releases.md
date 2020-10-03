@@ -1,9 +1,9 @@
 # Releases
 
-Binary releases can be downloaded manually at
+Binary releases can be downloaded manually at:
 https://github.com/denoland/deno/releases
 
-We also have one-line install commands at
+We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
 ### 1.4.4 / 2020.10.03

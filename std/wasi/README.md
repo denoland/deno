@@ -1,6 +1,6 @@
 # wasi
 
-This module provides an implementation of the WebAssembly System Interface
+This module provides an implementation of the WebAssembly System Interface.
 
 ## Supported Syscalls
 

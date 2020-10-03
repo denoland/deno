@@ -14,20 +14,20 @@ log.warning(true);
 log.error({ foo: "bar", fizz: "bazz" });
 log.critical("500 Internal server error");
 
-// custom configuration with 2 loggers (the default and `tasks` loggers)
+// custom configuration with 2 loggers (the default and `tasks` loggers).
 await log.setup({
   handlers: {
     console: new log.handlers.ConsoleHandler("DEBUG"),
 
     file: new log.handlers.FileHandler("WARNING", {
       filename: "./log.txt",
-      // you can change format of output message using any keys in `LogRecord`
+      // you can change format of output message using any keys in `LogRecord`.
       formatter: "{levelName} {msg}",
     }),
   },
 
   loggers: {
-    // configure default logger available via short-hand methods above
+    // configure default logger available via short-hand methods above.
     default: {
       level: "DEBUG",
       handlers: ["console", "file"],
@@ -42,19 +42,19 @@ await log.setup({
 
 let logger;
 
-// get default logger
+// get default logger.
 logger = log.getLogger();
-logger.debug("fizz"); // logs to `console`, because `file` handler requires "WARNING" level
-logger.warning(41256); // logs to both `console` and `file` handlers
+logger.debug("fizz"); // logs to `console`, because `file` handler requires "WARNING" level.
+logger.warning(41256); // logs to both `console` and `file` handlers.
 
 // get custom logger
 logger = log.getLogger("tasks");
-logger.debug("fizz"); // won't get output because this logger has "ERROR" level
-logger.error({ productType: "book", value: "126.11" }); // log to `console`
+logger.debug("fizz"); // won't get output because this logger has "ERROR" level.
+logger.error({ productType: "book", value: "126.11" }); // log to `console`.
 
 // if you try to use a logger that hasn't been configured
 // you're good to go, it gets created automatically with level set to 0
-// so no message is logged
+// so no message is logged.
 const unknownLogger = log.getLogger("mystery");
 unknownLogger.info("foobar"); // no-op
 ```
@@ -124,11 +124,11 @@ interface FileHandlerOptions {
 Behavior of the log modes is as follows:
 
 - `'a'` - Default mode. Appends new log messages to the end of an existing log
-  file, or create a new log file if none exists
+  file, or create a new log file if none exists.
 - `'w'` - Upon creation of the handler, any existing log file will be removed
   and a new one created.
 - `'x'` - This will create a new log file and throw an error if one already
-  exists
+  exists.
 
 This handler requires `--allow-write` permission on the log file.
 
@@ -177,7 +177,7 @@ Additional notes on `mode` as described above:
   cause any existing backups (up to `maxBackupCount`) to be deleted on setup
   giving a fully clean slate.
 - `'x'` requires that neither `filename`, nor any backups (up to
-  `maxBackupCount`), exist before setup
+  `maxBackupCount`), exist before setup.
 
 This handler requires both `--allow-read` and `--allow-write` permissions on the
 log files.
@@ -227,16 +227,16 @@ await log.setup({
   }
 })
 
-// calling
+// calling:
 log.debug("Hello, world!", 1, "two", [3, 4, 5]);
 // results in:
-[DEBUG] Hello, world! // output from "stringFmt" handler
-10 Hello, world!, arg0: 1, arg1: two, arg3: [3, 4, 5] // output from "functionFmt" formatter
+[DEBUG] Hello, world! // output from "stringFmt" handler.
+10 Hello, world!, arg0: 1, arg1: two, arg3: [3, 4, 5] // output from "functionFmt" formatter.
 
-// calling
+// calling:
 log.getLogger("dataLogger").error("oh no!");
 // results in:
-[dataLogger] - ERROR oh no! // output from anotherFmt handler
+[dataLogger] - ERROR oh no! // output from anotherFmt handler.
 ```
 
 #### Custom handlers
@@ -278,7 +278,7 @@ log evaluation to prevent the computation taking place if the logger won't log
 the message.
 
 ```ts
-// `expensiveFn(5)` is only evaluated if this logger is configured for debug logging
+// `expensiveFn(5)` is only evaluated if this logger is configured for debug logging.
 logger.debug(() => `this is expensive: ${expensiveFn(5)}`);
 ```
 
@@ -303,7 +303,7 @@ await log.setup({
   },
 });
 
-// not logged, as debug < error
+// not logged, as debug < error.
 const data: string | undefined = logger.debug(() => someExpenseFn(5, true));
 console.log(data); // undefined
 ```
