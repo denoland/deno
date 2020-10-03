@@ -39,11 +39,16 @@ const tabRegEx = /\t/g;
 const _url = URL;
 export { _url as URL };
 
+/**
+ * Get fully resolved platform-specific file path from the given URL string/ object
+ * @param {(string | URL)} path The file URL string or URL object to convert to a path.
+ * @return {string} The fully-resolved platform-specific file path
+ */
 export function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);
   else if (!(path instanceof URL)) {
     throw new Deno.errors.InvalidData(
-      "invalid argument path , must be a string or URL",
+      "invalid argument path , must be a string or URL"
     );
   }
   if (path.protocol !== "file:") {
@@ -64,7 +69,7 @@ function getPathFromURLWin(url: URL): string {
       ) {
         // 5c 5C \
         throw new Deno.errors.InvalidData(
-          "must not include encoded \\ or / characters",
+          "must not include encoded \\ or / characters"
         );
       }
     }
@@ -100,7 +105,7 @@ function getPathFromURLPosix(url: URL): string {
       const third = pathname.codePointAt(n + 2) || 0x20;
       if (pathname[n + 1] === "2" && third === 102) {
         throw new Deno.errors.InvalidData(
-          "must not include encoded / characters",
+          "must not include encoded / characters"
         );
       }
     }
@@ -108,6 +113,11 @@ function getPathFromURLPosix(url: URL): string {
   return decodeURIComponent(pathname);
 }
 
+/**
+ * Get fully resolved platform-specific File URL from the given file path
+ * @param {string} filepath The path to convert to a File URL
+ * @return {URL} The file URL object
+ */
 export function pathToFileURL(filepath: string): URL {
   let resolved = path.resolve(filepath);
   // path.resolve strips trailing slashes so we must add them back
