@@ -1,8 +1,8 @@
 ((window) => {
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
 
   async function eventLoop(eventRid, rid) {
-    const { key, oldValue, newValue } = await sendAsync(
+    const { key, oldValue, newValue } = await core.jsonOpAsync(
       "op_localstorage_events_poll",
       {
         eventRid,
@@ -27,7 +27,7 @@
 
     function getRid() {
       if (!rid) {
-        const data = sendSync("op_localstorage_open", {
+        const data = core.jsonOpSync("op_localstorage_open", {
           session,
           location: "foobar",
         });
@@ -42,37 +42,37 @@
 
     const storage = {
       get length() {
-        return sendSync("op_localstorage_length", {
+        return core.jsonOpSync("op_localstorage_length", {
           rid: getRid(),
         });
       },
       key(index) {
-        return sendSync("op_localstorage_key", {
+        return core.jsonOpSync("op_localstorage_key", {
           rid: getRid(),
           index: Number(index),
         });
       },
       setItem(keyName, keyValue) {
-        sendSync("op_localstorage_set", {
+        core.jsonOpSync("op_localstorage_set", {
           rid: getRid(),
           keyName: String(keyName),
           keyValue: String(keyValue),
         });
       },
       getItem(keyName) {
-        return sendSync("op_localstorage_get", {
+        return core.jsonOpSync("op_localstorage_get", {
           rid: getRid(),
           keyName: String(keyName),
         });
       },
       removeItem(keyName) {
-        sendSync("op_localstorage_remove", {
+        core.jsonOpSync("op_localstorage_remove", {
           rid: getRid(),
           keyName: String(keyName),
         });
       },
       clear() {
-        sendSync("op_localstorage_clear", {
+        core.jsonOpSync("op_localstorage_clear", {
           rid: getRid(),
         });
       },

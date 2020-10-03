@@ -1,11 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::checksum;
-use deno_core::{BufVec, ErrBox, OpState, ZeroCopyBuf};
-use futures::future::poll_fn;
+use deno_core::{BufVec, OpState, ZeroCopyBuf};
+use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
+use deno_core::futures::future::poll_fn;
 use rusqlite::{params, Connection, OptionalExtension};
-use serde_derive::Deserialize;
-use serde_json::Value;
+use serde::Deserialize;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::sync::mpsc;
@@ -36,7 +40,7 @@ pub fn op_localstorage_open(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: OpenArgs = serde_json::from_value(args)?;
 
   if args.session {
@@ -51,8 +55,8 @@ pub fn op_localstorage_open(
       state.resource_table.add("sessionStorage", Box::new(conn));
     Ok(json!({ "rid": session_rid }))
   } else {
-    let cli_state = super::cli_state(&state);
-    let deno_dir = &cli_state.global_state.dir;
+    let cli_state = super::global_state(&state);
+    let deno_dir = &cli_state.dir;
     let path = deno_dir
       .root
       .join("web_storage")
@@ -104,12 +108,12 @@ pub fn op_localstorage_length(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: LengthArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
     .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?;
 
   let mut stmt = conn.prepare("SELECT COUNT(*) FROM data").unwrap();
 
@@ -129,12 +133,12 @@ pub fn op_localstorage_key(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: KeyArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
     .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?;
 
   let mut stmt = conn
     .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")
@@ -165,12 +169,12 @@ pub fn op_localstorage_set(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: SetArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
     .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?;
 
   let mut stmt = conn
     .prepare("SELECT value FROM data WHERE key = ?")
@@ -222,12 +226,12 @@ pub fn op_localstorage_get(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: GetArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
     .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?;
 
   let mut stmt = conn
     .prepare("SELECT value FROM data WHERE key = ?")
@@ -252,12 +256,12 @@ pub fn op_localstorage_remove(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: RemoveArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
     .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?;
 
   let mut stmt = conn
     .prepare("SELECT value FROM data WHERE key = ?")
@@ -294,12 +298,12 @@ pub fn op_localstorage_clear(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: ClearArgs = serde_json::from_value(args)?;
   let conn = state
     .resource_table
     .get_mut::<Connection>(args.rid)
-    .ok_or_else(ErrBox::bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?;
 
   conn.execute("DROP TABLE data", params![]).unwrap();
   conn
@@ -337,20 +341,20 @@ pub async fn op_localstorage_events_poll(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: EventLoopArgs = serde_json::from_value(args)?;
   poll_fn(move |cx| {
     let mut state = state.borrow_mut();
     let receiver = state
       .resource_table
       .get_mut::<mpsc::UnboundedReceiver<i64>>(args.event_rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
 
     receiver.poll_recv(cx).map(|val| {
       let conn = state
         .resource_table
         .get_mut::<Connection>(args.rid)
-        .ok_or_else(ErrBox::bad_resource_id)?;
+        .ok_or_else(bad_resource_id)?;
 
       let mut stmt = conn
         .prepare("SELECT * FROM events WHERE rowid = ?")
