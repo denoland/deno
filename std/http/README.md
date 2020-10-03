@@ -11,7 +11,7 @@ for await (const req of server) {
 
 ### File Server
 
-A small program for serving local files over HTTP
+A small program for serving local files over HTTP.
 
 ```sh
 deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
@@ -35,7 +35,7 @@ console.log("cookies:", cookies);
 // cookies: { full: "of", tasty: "chocolate" }
 ```
 
-To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`
+To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`:
 
 ```ts
 import { Response } from "https://deno.land/std/http/server.ts";

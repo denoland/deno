@@ -1,3 +1,3 @@
 # deno web
 
-Op crate that implements Event, TextEncoder, TextDecoder
+Op crate that implements Event, TextEncoder, TextDecoder.

@@ -18,5 +18,5 @@ globToRegExp("foo/**/*.json", {
   flags: "g",
   extended: true,
   globstar: true,
-}); // returns the regex to find all .json files in the folder foo
+}); // returns the regex to find all .json files in the folder foo.
 ```

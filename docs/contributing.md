@@ -25,7 +25,7 @@ Before submitting, please make sure the following is done:
 1. That there is a related issue and it is referenced in the PR text.
 2. There are tests that cover the changes.
 3. Ensure `cargo test` passes.
-4. Format your code with `./tools/format.py`
+4. Format your code with `./tools/format.py`.
 5. Make sure `./tools/lint.py` passes.
 
 ## Changes to `third_party`
@@ -69,4 +69,4 @@ and are denoted by a leading `/**` before terminating with a `*/`. For example:
 export const FOO = "foo";
 ```
 
-Find more at https://jsdoc.app/
+Find more at: https://jsdoc.app/

@@ -6,7 +6,7 @@
 
 ### readLines
 
-Read reader[like file], line by line
+Read reader[like file], line by line:
 
 ```ts title="readLines"
 import { readLines } from "https://deno.land/std/io/mod.ts";
@@ -128,7 +128,7 @@ base0123456789
 
 ### fromStreamReader
 
-Creates a `Reader` from a `ReadableStreamDefaultReader`
+Creates a `Reader` from a `ReadableStreamDefaultReader`.
 
 ```ts
 import { fromStreamReader } from "https://deno.land/std/io/mod.ts";
@@ -142,7 +142,7 @@ file.close();
 
 ### fromStreamWriter
 
-Creates a `Writer` from a `WritableStreamDefaultWriter`
+Creates a `Writer` from a `WritableStreamDefaultWriter`.
 
 ```ts
 import { fromStreamWriter } from "https://deno.land/std/io/mod.ts";

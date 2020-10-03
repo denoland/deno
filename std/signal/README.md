@@ -1,10 +1,10 @@
 # signal
 
-signal is a module used to capture and monitor OS signals
+signal is a module used to capture and monitor OS signals.
 
 # usage
 
-The following functions are exposed in `mod.ts`
+The following functions are exposed in `mod.ts`:
 
 ## signal
 
@@ -14,7 +14,7 @@ Generates an AsyncIterable which can be awaited on for one or more signals.
 ```typescript
 import { signal } from "https://deno.land/std/signal/mod.ts";
 const sig = signal(Deno.Signal.SIGUSR1, Deno.Signal.SIGINT);
-setTimeout(() => {}, 5000); // Prevents exiting immediately
+setTimeout(() => {}, 5000); // Prevents exiting immediately.
 
 for await (const _ of sig) {
   // ..
@@ -33,6 +33,6 @@ import { onSignal } from "https://deno.land/std/signal/mod.ts";
 
 const handle = onSignal(Deno.Signal.SIGINT, () => {
   // ...
-  handle.dispose(); // de-register from receiving further events
+  handle.dispose(); // de-register from receiving further events.
 });
 ```
