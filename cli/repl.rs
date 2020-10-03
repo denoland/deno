@@ -58,12 +58,12 @@ impl Highlighter for Helper {
 }
 
 struct SyntaxHighlighter {
-  lexer: Regex,
+  regex: Regex,
 }
 
 impl SyntaxHighlighter {
   fn new() -> Self {
-    let lexer = Regex::new(
+    let regex = Regex::new(
       r#"(?x)
       (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
       (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
@@ -77,14 +77,14 @@ impl SyntaxHighlighter {
       )
       .unwrap();
 
-    Self { lexer }
+    Self { regex }
   }
 }
 
 impl Highlighter for SyntaxHighlighter {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     self
-      .lexer
+      .regex
       .replace_all(&line.to_string(), |caps: &Captures<'_>| {
         if let Some(cap) = caps.name("comment") {
           format!("{}", colors::gray(cap.as_str()))
