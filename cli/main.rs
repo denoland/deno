@@ -447,7 +447,9 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
       result = &mut repl => {
           return result;
       }
-      _ = &mut *worker => {}
+      _ = &mut *worker => {
+          tokio::time::delay_for(tokio::time::Duration::from_millis(10)).await;
+      }
     }
   }
 }
