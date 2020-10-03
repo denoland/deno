@@ -18,9 +18,7 @@ export function errInvalidByte(byte: number): Error {
   );
 }
 
-/**
- * ErrLength returns an error about odd string length.
- */
+/** ErrLength returns an error about odd string length. */
 export function errLength(): Error {
   return new Error("encoding/hex: odd length hex string");
 }
