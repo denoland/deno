@@ -1,8 +1,8 @@
-import { encrypt } from "./create.ts";
-import type { Algorithm, Header, Payload } from "./create.ts";
+import { Algorithm, encrypt } from "./_util.ts";
+import type { Header, Payload } from "./create.ts";
 import { hasProperty, isExpired, isObject } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
-import { convertUint8ArrayToHex } from "./deps.ts";
+import {  encodeToString as convertUint8ArrayToHex, } from "../encoding/hex.ts";
 
 type JwtObject = { header: Header; payload: Payload; signature: string };
 type JwtObjectWithUnknownProps = {
@@ -10,12 +10,13 @@ type JwtObjectWithUnknownProps = {
   payload: unknown;
   signature: unknown;
 };
-export type Validation = {
+type Validation = {
   jwt: string;
   key: string;
   algorithm?: Algorithm | Algorithm[];
   critHandlers?: Handlers;
 };
+
 export type Handlers = {
   [key: string]: (header: unknown) => unknown;
 };

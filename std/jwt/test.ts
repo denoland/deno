@@ -1,9 +1,15 @@
-import { create, makeSignature, setExpiration } from "./create.ts";
+import {
+  create,
+  validate,
+  setExpiration,
+} from "./mod.ts";
+import {
+  makeSignature,
+} from "./create.ts";
 import {
   checkHeaderCrit,
   Handlers,
   parseAndDecode,
-  validate,
   validateObject,
 } from "./validate.ts";
 import {

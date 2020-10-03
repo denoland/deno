@@ -1,12 +1,7 @@
-import { convertHexToBase64url, convertStringToBase64url } from "./_util.ts";
-import { HmacSha256, HmacSha512 } from "./deps.ts";
-
-export { setExpiration } from "./_util.ts";
-
+import { Algorithm, convertHexToBase64url, convertStringToBase64url, encrypt } from "./_util.ts";
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
 // The payload can be any content and need not be a representation of a JSON object
 export type Payload = PayloadObject | unknown;
-export type Algorithm = "none" | "HS256" | "HS512";
 
 export interface Config {
   key: string;
@@ -39,26 +34,7 @@ export function makeSigningInput(header: Header, payload: Payload): string {
   }.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
 
-export async function encrypt(
-  alg: Algorithm,
-  key: string,
-  msg: string,
-): Promise<string> {
-  switch (alg) {
-    case "none":
-      return "";
-    case "HS256":
-      return new HmacSha256(key).update(msg).toString();
-    case "HS512":
-      return new HmacSha512(key).update(msg).toString();
-    default:
-      throw new RangeError(
-        `no matching crypto algorithm in the header: ${alg}`,
-      );
-  }
-}
-
-export async function makeSignature(
+async function makeSignature(
   alg: Algorithm,
   key: string,
   input: string,
@@ -83,3 +59,7 @@ export async function create({
     throw err;
   }
 }
+
+export {
+  makeSignature,
+};

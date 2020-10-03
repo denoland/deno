@@ -1,5 +1,8 @@
 import { convertUint8ArrayToBase64url } from "./base64/base64url.ts";
-import { convertHexToUint8Array } from "./deps.ts";
+import { decodeString as convertHexToUint8Array } from "../encoding/hex.ts";
+import { HmacSha256 } from "../hash/sha256.ts";
+import { HmacSha512 } from "../hash/sha512.ts";
+
 // Helper function: setExpiration()
 // returns the number of seconds since January 1, 1970, 00:00:00 UTC
 export function setExpiration(exp: number | Date): number {
@@ -31,4 +34,25 @@ export function convertHexToBase64url(input: string): string {
 
 export function convertStringToBase64url(input: string): string {
   return convertUint8ArrayToBase64url(new TextEncoder().encode(input));
+}
+
+export type Algorithm = "none" | "HS256" | "HS512";
+
+export async function encrypt(
+  alg: Algorithm,
+  key: string,
+  msg: string,
+): Promise<string> {
+  switch (alg) {
+    case "none":
+      return "";
+    case "HS256":
+      return new HmacSha256(key).update(msg).toString();
+    case "HS512":
+      return new HmacSha512(key).update(msg).toString();
+    default:
+      throw new RangeError(
+        `no matching crypto algorithm in the header: ${alg}`,
+      );
+  }
 }
