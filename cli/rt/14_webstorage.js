@@ -1,17 +1,22 @@
 ((window) => {
   const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
 
-  async function eventLoop(rid) {
-    const {key, newValue, oldValue} = await sendAsync("op_localstorage_events_poll", { rid });
-    const event = new StorageEvent("storage", {
-      key,
-      newValue,
-      oldValue,
-      storageArea: localStorage,
+  async function eventLoop(eventRid, rid) {
+    const {key, newValue, oldValue} = await sendAsync("op_localstorage_events_poll", {
+      eventRid,
+      rid,
     });
-    window.dispatchEvent("storage", event);
-    window.onstorage?.(event);
-    eventLoop(rid);
+    if (key !== undefined) {
+      const event = new StorageEvent("storage", {
+        key,
+        newValue,
+        oldValue,
+        storageArea: localStorage,
+      });
+      window.dispatchEvent("storage", event);
+      window.onstorage?.(event);
+    }
+    eventLoop(eventRid, rid);
   }
 
   function webStorage(session = false) {
@@ -25,8 +30,11 @@
         });
         rid = data.rid;
 
-        if (data.eventRid) {
-          //eventLoop(data.eventRid);
+        if (!session) {
+          eventLoop({
+            eventRid: data.eventRid,
+            rid: data.rid,
+          });
         }
       }
       return rid;

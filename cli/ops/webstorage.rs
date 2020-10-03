@@ -30,7 +30,6 @@ struct Event {
   key: Option<String>,
   old_value: Option<String>,
   new_value: Option<String>,
-  kind: u32,
 }
 
 #[derive(Deserialize)]
@@ -77,43 +76,17 @@ pub fn op_localstorage_open(
       .unwrap();
     conn
       .execute(
-        "CREATE TABLE IF NOT EXISTS events (createdBy INT, key VARCHAR, oldValue VARCHAR, newValue VARCHAR, kind INT)",
+        "CREATE TABLE IF NOT EXISTS events (createdBy INT, key VARCHAR, oldValue VARCHAR, newValue VARCHAR)",
         params![],
-      ) // kind: 0 create, 1 replace, 2 delete, 3 clear
+      )
       .unwrap();
 
-    let (mut sender, receiver) = mpsc::channel::<Value>(16);
+    let (mut sender, receiver) = mpsc::channel::<i64>(16);
     let mutex_conn = Arc::new(Mutex::new(conn));
-
-    let conn_clone = mutex_conn.clone();
 
     mutex_conn.lock().unwrap().update_hook(Some(move |_, _: &str, table_name: &str, row_id| {
       if table_name == "events" {
-        let conn = conn_clone.lock().unwrap();
-        let mut stmt = conn
-          .prepare("SELECT * FROM events WHERE rowid = ?")
-          .unwrap();
-
-        let event = stmt
-          .query_row(params![row_id], |row| {
-            Ok(Event {
-              created_by: row.get_unwrap(0),
-              key: row.get_unwrap(1),
-              old_value: row.get_unwrap(2),
-              new_value: row.get_unwrap(3),
-              kind: row.get_unwrap(4),
-            })
-          })
-          .unwrap();
-
-        if event.created_by != std::process::id() {
-          sender.try_send(json!({
-            "key": event.key,
-            "oldValue": event.old_value,
-            "newValue": event.new_value,
-            "kind": event.kind,
-          })).unwrap();
-        }
+        sender.try_send(row_id).unwrap();
       }
     }));
 
@@ -230,15 +203,15 @@ pub fn op_localstorage_set(
   let insert = |event_params: &[&dyn rusqlite::ToSql]| {
     conn
       .execute(
-        "INSERT INTO events (createdBy, key, oldValue, newValue, kind) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO events (createdBy, key, oldValue, newValue) VALUES (?, ?, ?, ?)",
         event_params,
       )
       .unwrap()
   };
 
   match old_value {
-    Some(val) => insert(params![pid, args.key_name, val, args.key_value, 1]),
-    None => insert(params![pid, args.key_name, rusqlite::types::Null, args.key_value, 0]),
+    Some(val) => insert(params![pid, args.key_name, val, args.key_value]),
+    None => insert(params![pid, args.key_name, rusqlite::types::Null, args.key_value]),
   };
 
   Ok(json!({}))
@@ -317,7 +290,7 @@ pub fn op_localstorage_remove(
   if let Some(val) = old_value {
     conn
       .execute(
-        "INSERT INTO events (createdBy, key, oldValue, kind) VALUES (?, ?, ?, 2)",
+        "INSERT INTO events (createdBy, key, oldValue) VALUES (?, ?, ?)",
         params![std::process::id(), args.key_name, val],
       )
       .unwrap();
@@ -355,7 +328,7 @@ pub fn op_localstorage_clear(
 
   conn
     .execute(
-      "INSERT INTO events (createdBy, kind) VALUES (?, 3)",
+      "INSERT INTO events (createdBy) VALUES (?)",
       params![std::process::id()],
     )
     .unwrap();
@@ -366,6 +339,7 @@ pub fn op_localstorage_clear(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EventLoopArgs {
+  event_rid: u32,
   rid: u32,
 }
 
@@ -379,10 +353,42 @@ pub async fn op_localstorage_events_poll(
     let mut state = state.borrow_mut();
     let receiver = state
       .resource_table
-      .get_mut::<mpsc::Receiver<Value>>(args.rid)
+      .get_mut::<mpsc::Receiver<i64>>(args.event_rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
 
-    receiver.poll_recv(cx).map(|val| Ok(val.unwrap()))
+    receiver.poll_recv(cx).map(|val| {
+      let conn = state
+        .resource_table
+        .get_mut::<Arc<Mutex<Connection>>>(args.rid)
+        .ok_or_else(ErrBox::bad_resource_id)?
+        .lock()
+        .unwrap();
+
+      let mut stmt = conn
+        .prepare("SELECT * FROM events WHERE rowid = ?")
+        .unwrap();
+
+      let event = stmt
+        .query_row(params![val.unwrap()], |row| {
+          Ok(Event {
+            created_by: row.get_unwrap(0),
+            key: row.get_unwrap(1),
+            old_value: row.get_unwrap(2),
+            new_value: row.get_unwrap(3),
+          })
+        })
+        .unwrap();
+
+      Ok(if event.created_by != std::process::id() {
+        json!({
+          "key": event.key,
+          "oldValue": event.old_value,
+          "newValue": event.new_value,
+        })
+      } else {
+        json!({})
+      })
+    })
   })
   .await
 }
