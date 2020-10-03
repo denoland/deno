@@ -67,7 +67,7 @@ impl SyntaxHighlighter {
       r#"(?x)
       (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
       (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
-      (?P<regexp>/(?:(?:\\/|[^\n/]))*?/) |
+      (?P<regexp>/(?:(?:\\/|[^\n/]))*?/[gimsuy]*) |
       (?P<number>\d+(?:\.\d+)*(?:e[+-]?\d+)*n*) |
       (?P<boolean>\b(?:true|false)\b) |
       (?P<null>\b(?:null)\b) |
