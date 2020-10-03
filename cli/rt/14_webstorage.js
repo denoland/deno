@@ -2,7 +2,7 @@
   const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
 
   async function eventLoop(eventRid, rid) {
-    const { key, newValue, oldValue } = await sendAsync(
+    const { key, oldValue, newValue } = await sendAsync(
       "op_localstorage_events_poll",
       {
         eventRid,
@@ -34,10 +34,7 @@
         rid = data.rid;
 
         if (!session) {
-          eventLoop({
-            eventRid: data.eventRid,
-            rid: data.rid,
-          });
+          eventLoop(data.eventRid, data.rid);
         }
       }
       return rid;
@@ -52,26 +49,26 @@
       key(index) {
         return sendSync("op_localstorage_key", {
           rid: getRid(),
-          index,
+          index: Number(index),
         });
       },
       setItem(keyName, keyValue) {
         sendSync("op_localstorage_set", {
           rid: getRid(),
-          keyName,
-          keyValue,
+          keyName: String(keyName),
+          keyValue: String(keyValue),
         });
       },
       getItem(keyName) {
         return sendSync("op_localstorage_get", {
           rid: getRid(),
-          keyName,
+          keyName: String(keyName),
         });
       },
       removeItem(keyName) {
         sendSync("op_localstorage_remove", {
           rid: getRid(),
-          keyName,
+          keyName: String(keyName),
         });
       },
       clear() {
