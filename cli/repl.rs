@@ -72,7 +72,7 @@ impl SyntaxHighlighter {
       (?P<boolean>\b(?:true|false)\b) |
       (?P<null>\b(?:null)\b) |
       (?P<undefined>\b(?:undefined)\b) |
-      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch)\b) |
+      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch)\b) |
       "#,
       )
       .unwrap();
