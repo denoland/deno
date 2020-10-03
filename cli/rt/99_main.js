@@ -323,13 +323,6 @@ delete Object.prototype.__proto__;
         onunload(e);
       }
     });
-    // Registers the handler for window.onstorage function.
-    globalThis.addEventListener("storage", (e) => {
-      const { onstorage } = globalThis;
-      if (typeof onstorage === "function") {
-        onstorage(e);
-      }
-    });
 
     const { args, cwd, noColor, pid, ppid, repl, unstableFlag } =
       runtimeStart();

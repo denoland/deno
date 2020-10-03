@@ -26,7 +26,7 @@
         rid = data.rid;
 
         if (data.eventRid) {
-          eventLoop(data.eventRid);
+          //eventLoop(data.eventRid);
         }
       }
       return rid;
