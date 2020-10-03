@@ -1,18 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::checksum;
-use deno_core::ErrBox;
-use deno_core::{OpState, ZeroCopyBuf};
+use deno_core::{BufVec, ErrBox, OpState, ZeroCopyBuf};
+use futures::future::poll_fn;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_derive::Deserialize;
 use serde_json::Value;
-use std::rc::Rc;
 use std::cell::RefCell;
-use deno_core::BufVec;
-use tokio::sync::mpsc;
-use futures::future::poll_fn;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-
+use tokio::sync::mpsc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_localstorage_open", op_localstorage_open);
@@ -22,14 +19,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_localstorage_get", op_localstorage_get);
   super::reg_json_sync(rt, "op_localstorage_remove", op_localstorage_remove);
   super::reg_json_sync(rt, "op_localstorage_clear", op_localstorage_clear);
-  super::reg_json_async(rt, "op_localstorage_events_poll", op_localstorage_events_poll);
-}
-
-struct Event {
-  created_by: u32,
-  key: Option<String>,
-  old_value: Option<String>,
-  new_value: Option<String>,
+  super::reg_json_async(
+    rt,
+    "op_localstorage_events_poll",
+    op_localstorage_events_poll,
+  );
 }
 
 #[derive(Deserialize)]
@@ -54,8 +48,9 @@ pub fn op_localstorage_open(
         params![],
       )
       .unwrap();
-    let session_rid = state.resource_table.add("sessionStorage", Box::new(conn));
-    Ok(json!({"rid": session_rid}))
+    let session_rid =
+      state.resource_table.add("sessionStorage", Box::new(conn));
+    Ok(json!({ "rid": session_rid }))
   } else {
     let cli_state = super::cli_state(&state);
     let deno_dir = &cli_state.global_state.dir;
@@ -84,14 +79,20 @@ pub fn op_localstorage_open(
     let (mut sender, receiver) = mpsc::channel::<i64>(16);
     let mutex_conn = Arc::new(Mutex::new(conn));
 
-    mutex_conn.lock().unwrap().update_hook(Some(move |_, _: &str, table_name: &str, row_id| {
-      if table_name == "events" {
-        sender.try_send(row_id).unwrap();
-      }
-    }));
+    mutex_conn.lock().unwrap().update_hook(Some(
+      move |_, _: &str, table_name: &str, row_id| {
+        if table_name == "events" {
+          sender.try_send(row_id).unwrap();
+        }
+      },
+    ));
 
-    let event_rid = state.resource_table.add("localStorageEvents", Box::new(receiver));
-    let storage_rid = state.resource_table.add("localStorage", Box::new(mutex_conn));
+    let event_rid = state
+      .resource_table
+      .add("localStorageEvents", Box::new(receiver));
+    let storage_rid = state
+      .resource_table
+      .add("localStorage", Box::new(mutex_conn));
     Ok(json!({
       "eventRid": event_rid,
       "rid": storage_rid,
@@ -211,7 +212,12 @@ pub fn op_localstorage_set(
 
   match old_value {
     Some(val) => insert(params![pid, args.key_name, val, args.key_value]),
-    None => insert(params![pid, args.key_name, rusqlite::types::Null, args.key_value]),
+    None => insert(params![
+      pid,
+      args.key_name,
+      rusqlite::types::Null,
+      args.key_value
+    ]),
   };
 
   Ok(json!({}))
@@ -246,12 +252,7 @@ pub fn op_localstorage_get(
     .optional()
     .unwrap();
 
-  let res = match val {
-    Some(val) => json!(val),
-    None => Value::Null,
-  };
-
-  Ok(res)
+  Ok(json!(val))
 }
 
 #[derive(Deserialize)]
@@ -334,6 +335,13 @@ pub fn op_localstorage_clear(
     .unwrap();
 
   Ok(json!({}))
+}
+
+struct Event {
+  created_by: u32,
+  key: Option<String>,
+  old_value: Option<String>,
+  new_value: Option<String>,
 }
 
 #[derive(Deserialize)]

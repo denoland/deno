@@ -2,10 +2,13 @@
   const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
 
   async function eventLoop(eventRid, rid) {
-    const {key, newValue, oldValue} = await sendAsync("op_localstorage_events_poll", {
-      eventRid,
-      rid,
-    });
+    const { key, newValue, oldValue } = await sendAsync(
+      "op_localstorage_events_poll",
+      {
+        eventRid,
+        rid,
+      },
+    );
     if (key !== undefined) {
       const event = new StorageEvent("storage", {
         key,
