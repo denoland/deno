@@ -77,7 +77,7 @@ impl SyntaxHighlighter {
       )
       .unwrap();
 
-    return Self { lexer };
+    Self { lexer }
   }
 }
 
