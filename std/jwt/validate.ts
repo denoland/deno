@@ -48,7 +48,7 @@ export function checkHeaderCrit(
     "p2s",
     "p2c",
   ]);
-  if (!header["crit"]) { return }
+  if (!header["crit"]) return;
   if (
     !Array.isArray(header.crit) ||
     header.crit.some((str: string) => typeof str !== "string" || !str)
@@ -71,10 +71,11 @@ export function checkHeaderCrit(
   ) {
     throw new Error("critical extension header parameters are not understood");
   }
-
 }
 
-export function validateObject(maybeJwtObject: JwtObjectWithUnknownProps): JwtObject {
+export function validateObject(
+  maybeJwtObject: JwtObjectWithUnknownProps,
+): JwtObject {
   if (typeof maybeJwtObject.signature !== "string") {
     throw ReferenceError("the signature is no string");
   }
@@ -157,15 +158,16 @@ export async function validate({
   jwt,
   key,
   critHandlers,
-  algorithm="HS512",
+  algorithm = "HS512",
 }: Validation): Promise<Payload> {
-
   const object = validateObject(parseAndDecode(jwt));
-  
-  await checkHeaderCrit(object.header, critHandlers)
-  
+
+  await checkHeaderCrit(object.header, critHandlers);
+
   const validAlgorithm = validateAlgorithm(algorithm, object.header.alg);
-  if (!validAlgorithm) { throw new Error("no matching algorithm: " + object.header.alg); }
+  if (!validAlgorithm) {
+    throw new Error("no matching algorithm: " + object.header.alg);
+  }
   const validSignature = await verifySignature({
     signature: object.signature,
     key,
@@ -173,6 +175,6 @@ export async function validate({
     signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
   });
   if (!validSignature) throw new Error("signatures don't match");
-  
+
   return object.payload;
 }

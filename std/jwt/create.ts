@@ -1,5 +1,7 @@
-import { convertHexToBase64url, convertStringToBase64url, setExpiration } from "./_util.ts";
+import { convertHexToBase64url, convertStringToBase64url } from "./_util.ts";
 import { HmacSha256, HmacSha512 } from "./deps.ts";
+
+export { setExpiration } from "./_util.ts";
 
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
 // The payload can be any content and need not be a representation of a JSON object
@@ -29,7 +31,7 @@ export interface Header {
   [key: string]: unknown;
 }
 
-function makeSigningInput(header: Header, payload: Payload): string {
+export function makeSigningInput(header: Header, payload: Payload): string {
   return `${
     convertStringToBase64url(
       JSON.stringify(header),
@@ -37,7 +39,7 @@ function makeSigningInput(header: Header, payload: Payload): string {
   }.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
 
-async function encrypt(
+export async function encrypt(
   alg: Algorithm,
   key: string,
   msg: string,
@@ -56,7 +58,7 @@ async function encrypt(
   }
 }
 
-async function makeSignature(
+export async function makeSignature(
   alg: Algorithm,
   key: string,
   input: string,
@@ -64,7 +66,11 @@ async function makeSignature(
   return convertHexToBase64url(await encrypt(alg, key, input));
 }
 
-async function create({ key, payload, header = { alg: "HS512", typ: "JWT" }, }: Config): Promise<string> {
+export async function create({
+  key,
+  payload,
+  header = { alg: "HS512", typ: "JWT" },
+}: Config): Promise<string> {
   try {
     const signingInput = makeSigningInput(header, payload);
     return `${signingInput}.${await makeSignature(
@@ -77,10 +83,3 @@ async function create({ key, payload, header = { alg: "HS512", typ: "JWT" }, }: 
     throw err;
   }
 }
-
-export {
-  create,
-  encrypt,
-  makeSignature,
-  setExpiration,
-};

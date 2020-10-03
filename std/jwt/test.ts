@@ -1,8 +1,4 @@
-import {
-  create,
-  makeSignature,
-  setExpiration,
-} from "./create.ts";
+import { create, makeSignature, setExpiration } from "./create.ts";
 import {
   checkHeaderCrit,
   Handlers,
@@ -23,7 +19,7 @@ import {
   encodeToString as convertUint8ArrayToHex,
 } from "../encoding/hex.ts";
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import { convertHexToBase64url, isExpired } from "./_util.ts"
+import { convertHexToBase64url, isExpired } from "./_util.ts";
 
 const key = "your-secret";
 
@@ -204,7 +200,8 @@ Deno.test("makeCreationAndValidation", async function (): Promise<void> {
   }
 });
 
-Deno.test("makeCreationAndValidationTestWithOtherJsonPayload",
+Deno.test(
+  "makeCreationAndValidationTestWithOtherJsonPayload",
   async function (): Promise<void> {
     const header = {
       alg: "HS256" as const,

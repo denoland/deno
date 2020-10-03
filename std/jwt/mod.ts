@@ -1,9 +1,4 @@
-export {
-  create,
-  encrypt,
-  makeSignature,
-  setExpiration,
-} from "./create.ts";
+export { create, encrypt, makeSignature, setExpiration } from "./create.ts";
 
 export type { Payload } from "./create.ts";
 
@@ -15,7 +10,4 @@ export {
   verifySignature,
 } from "./validate.ts";
 
-export type {
-  Handlers,
-  Validation,
-} from "./validate.ts";
+export type { Handlers, Validation } from "./validate.ts";
