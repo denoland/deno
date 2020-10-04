@@ -2,7 +2,7 @@
 
 /**
  * Encodes a given string into RFC4648 base64 representation
- * @param string
+ * @param str
  */
 export function encodeString(str: string): string {
   return btoa(
