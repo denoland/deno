@@ -492,109 +492,61 @@ impl Future for JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    let has_preparing = {
-      let state = state_rc.borrow();
-      !state.preparing_dyn_imports.is_empty()
-    };
-    if has_preparing {
+    // Dynamic module loading - ie. modules loaded using "import()"
+    {
       let poll_imports = runtime.prepare_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
-    }
 
-    let has_pending = {
-      let state = state_rc.borrow();
-      !state.pending_dyn_imports.is_empty()
-    };
-    if has_pending {
       let poll_imports = runtime.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
+
+      runtime.check_promise_exceptions()?;
     }
 
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **runtime,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
-
-    check_promise_exceptions(scope)?;
-
-    let mut overflow_response: Option<(OpId, Box<[u8]>)> = None;
-
-    loop {
-      let mut state = state_rc.borrow_mut();
-      // Now handle actual ops.
-      state.have_unpolled_ops.set(false);
-
-      let pending_r = state.pending_ops.poll_next_unpin(cx);
-      match pending_r {
-        Poll::Ready(None) => break,
-        Poll::Pending => break,
-        Poll::Ready(Some((op_id, buf))) => {
-          let successful_push = state.shared.push(op_id, &buf);
-          if !successful_push {
-            // If we couldn't push the response to the shared queue, because
-            // there wasn't enough size, we will return the buffer via the
-            // legacy route, using the argument of deno_respond.
-            overflow_response = Some((op_id, buf));
-            break;
-          }
-        }
-      };
-    }
-
-    loop {
-      let mut state = state_rc.borrow_mut();
-      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
-      #[allow(clippy::match_wild_err_arm)]
-      match unref_r {
-        Poll::Ready(None) => break,
-        Poll::Pending => break,
-        Poll::Ready(Some((op_id, buf))) => {
-          let successful_push = state.shared.push(op_id, &buf);
-          if !successful_push {
-            // If we couldn't push the response to the shared queue, because
-            // there wasn't enough size, we will return the buffer via the
-            // legacy route, using the argument of deno_respond.
-            overflow_response = Some((op_id, buf));
-            break;
-          }
-        }
-      };
-    }
-
+    // Ops
     {
-      let state = state_rc.borrow();
-      if state.shared.size() > 0 {
-        drop(state);
-        async_op_response(scope, None)?;
-        // The other side should have shifted off all the messages.
+      let mut overflow_response = runtime.poll_pending_ops(cx);
+      let shared_queue_size = {
         let state = state_rc.borrow();
-        assert_eq!(state.shared.size(), 0);
-      }
-    }
+        state.shared.size()
+      };
 
-    {
+      if shared_queue_size > 0 {
+        runtime.async_op_response(None)?;
+        // The other side should have shifted off all the messages.
+        let shared_queue_size = {
+          let state = state_rc.borrow();
+          state.shared.size()
+        };
+        assert_eq!(shared_queue_size, 0);
+      }
+
       if let Some((op_id, buf)) = overflow_response.take() {
-        async_op_response(scope, Some((op_id, buf)))?;
+        runtime.async_op_response(Some((op_id, buf)))?;
       }
 
-      drain_macrotasks(scope)?;
-
-      check_promise_exceptions(scope)?;
+      runtime.drain_macrotasks()?;
+      runtime.check_promise_exceptions()?;
     }
 
     let state = state_rc.borrow();
-    // We're idle if pending_ops is empty.
-    if state.pending_ops.is_empty()
-      && state.pending_dyn_imports.is_empty()
-      && state.preparing_dyn_imports.is_empty()
-    {
-      Poll::Ready(Ok(()))
-    } else {
-      if state.have_unpolled_ops.get() {
-        state.waker.wake();
-      }
-      Poll::Pending
+    let is_idle = {
+      state.pending_ops.is_empty()
+        && state.pending_dyn_imports.is_empty()
+        && state.preparing_dyn_imports.is_empty()
+    };
+
+    if is_idle {
+      return Poll::Ready(Ok(()));
     }
+
+    // Check if more async ops have been dispatched
+    // during this turn of event loop.
+    if state.have_unpolled_ops.get() {
+      state.waker.wake();
+    }
+
+    Poll::Pending
   }
 }
 
@@ -635,74 +587,6 @@ impl JsRuntimeState {
   }
 }
 
-fn async_op_response<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  maybe_buf: Option<(OpId, Box<[u8]>)>,
-) -> Result<(), AnyError> {
-  let context = scope.get_current_context();
-  let global: v8::Local<v8::Value> = context.global(scope).into();
-  let js_recv_cb = JsRuntime::state(scope)
-    .borrow()
-    .js_recv_cb
-    .as_ref()
-    .map(|cb| v8::Local::new(scope, cb))
-    .expect("Deno.core.recv has not been called.");
-
-  let tc_scope = &mut v8::TryCatch::new(scope);
-
-  match maybe_buf {
-    Some((op_id, buf)) => {
-      let op_id: v8::Local<v8::Value> =
-        v8::Integer::new(tc_scope, op_id as i32).into();
-      let ui8: v8::Local<v8::Value> =
-        boxed_slice_to_uint8array(tc_scope, buf).into();
-      js_recv_cb.call(tc_scope, global, &[op_id, ui8])
-    }
-    None => js_recv_cb.call(tc_scope, global, &[]),
-  };
-
-  match tc_scope.exception() {
-    None => Ok(()),
-    Some(exception) => exception_to_err_result(tc_scope, exception),
-  }
-}
-
-fn drain_macrotasks<'s>(
-  scope: &mut v8::HandleScope<'s>,
-) -> Result<(), AnyError> {
-  let context = scope.get_current_context();
-  let global: v8::Local<v8::Value> = context.global(scope).into();
-
-  let js_macrotask_cb = match JsRuntime::state(scope)
-    .borrow_mut()
-    .js_macrotask_cb
-    .as_ref()
-  {
-    Some(cb) => v8::Local::new(scope, cb),
-    None => return Ok(()),
-  };
-
-  // Repeatedly invoke macrotask callback until it returns true (done),
-  // such that ready microtasks would be automatically run before
-  // next macrotask is processed.
-  let tc_scope = &mut v8::TryCatch::new(scope);
-
-  loop {
-    let is_done = js_macrotask_cb.call(tc_scope, global, &[]);
-
-    if let Some(exception) = tc_scope.exception() {
-      return exception_to_err_result(tc_scope, exception);
-    }
-
-    let is_done = is_done.unwrap();
-    if is_done.is_true() {
-      break;
-    }
-  }
-
-  Ok(())
-}
-
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
@@ -741,22 +625,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
   }
 
   Err(js_error)
-}
-
-fn check_promise_exceptions<'s>(
-  scope: &mut v8::HandleScope<'s>,
-) -> Result<(), AnyError> {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-
-  if let Some(&key) = state.pending_promise_exceptions.keys().next() {
-    let handle = state.pending_promise_exceptions.remove(&key).unwrap();
-    drop(state);
-    let exception = v8::Local::new(scope, handle);
-    exception_to_err_result(scope, exception)
-  } else {
-    Ok(())
-  }
 }
 
 fn boxed_slice_to_uint8array<'sc>(
@@ -1017,6 +885,10 @@ impl JsRuntime {
   ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
 
+    if state_rc.borrow().preparing_dyn_imports.is_empty() {
+      return Poll::Ready(Ok(()));
+    }
+
     loop {
       let r = {
         let mut state = state_rc.borrow_mut();
@@ -1050,6 +922,11 @@ impl JsRuntime {
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self);
+
+    if state_rc.borrow().pending_dyn_imports.is_empty() {
+      return Poll::Ready(Ok(()));
+    }
+
     loop {
       let poll_result = {
         let mut state = state_rc.borrow_mut();
@@ -1221,6 +1098,157 @@ impl JsRuntime {
 
     let root_id = load.root_module_id.expect("Root module id empty");
     self.mod_instantiate(root_id).map(|_| root_id)
+  }
+
+  fn poll_pending_ops(
+    &mut self,
+    cx: &mut Context,
+  ) -> Option<(OpId, Box<[u8]>)> {
+    let state_rc = Self::state(self);
+    let mut overflow_response: Option<(OpId, Box<[u8]>)> = None;
+
+    loop {
+      let mut state = state_rc.borrow_mut();
+      // Now handle actual ops.
+      state.have_unpolled_ops.set(false);
+
+      let pending_r = state.pending_ops.poll_next_unpin(cx);
+      match pending_r {
+        Poll::Ready(None) => break,
+        Poll::Pending => break,
+        Poll::Ready(Some((op_id, buf))) => {
+          let successful_push = state.shared.push(op_id, &buf);
+          if !successful_push {
+            // If we couldn't push the response to the shared queue, because
+            // there wasn't enough size, we will return the buffer via the
+            // legacy route, using the argument of deno_respond.
+            overflow_response = Some((op_id, buf));
+            break;
+          }
+        }
+      };
+    }
+
+    loop {
+      let mut state = state_rc.borrow_mut();
+      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
+      #[allow(clippy::match_wild_err_arm)]
+      match unref_r {
+        Poll::Ready(None) => break,
+        Poll::Pending => break,
+        Poll::Ready(Some((op_id, buf))) => {
+          let successful_push = state.shared.push(op_id, &buf);
+          if !successful_push {
+            // If we couldn't push the response to the shared queue, because
+            // there wasn't enough size, we will return the buffer via the
+            // legacy route, using the argument of deno_respond.
+            overflow_response = Some((op_id, buf));
+            break;
+          }
+        }
+      };
+    }
+
+    overflow_response
+  }
+
+  fn check_promise_exceptions(&mut self) -> Result<(), AnyError> {
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+
+    if state.pending_promise_exceptions.is_empty() {
+      return Ok(());
+    }
+
+    let key = { *state.pending_promise_exceptions.keys().next().unwrap() };
+    let handle = state.pending_promise_exceptions.remove(&key).unwrap();
+
+    let scope = &mut v8::HandleScope::with_context(
+      &mut **self,
+      state.global_context.as_ref().unwrap(),
+    );
+    drop(state);
+
+    let exception = v8::Local::new(scope, handle);
+    exception_to_err_result(scope, exception)
+  }
+
+  // TODO(bartlomieju): could be optimized by
+  // calling shared queue and maybe_buf in a single method
+  fn async_op_response(
+    &mut self,
+    maybe_buf: Option<(OpId, Box<[u8]>)>,
+  ) -> Result<(), AnyError> {
+    let state_rc = Self::state(self);
+    let scope = &mut v8::HandleScope::with_context(
+      &mut **self,
+      state_rc.borrow().global_context.as_ref().unwrap(),
+    );
+    let context = scope.get_current_context();
+    let global: v8::Local<v8::Value> = context.global(scope).into();
+    let js_recv_cb = JsRuntime::state(scope)
+      .borrow()
+      .js_recv_cb
+      .as_ref()
+      .map(|cb| v8::Local::new(scope, cb))
+      .expect("Deno.core.recv has not been called.");
+
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    match maybe_buf {
+      Some((op_id, buf)) => {
+        let op_id: v8::Local<v8::Value> =
+          v8::Integer::new(tc_scope, op_id as i32).into();
+        let ui8: v8::Local<v8::Value> =
+          boxed_slice_to_uint8array(tc_scope, buf).into();
+        js_recv_cb.call(tc_scope, global, &[op_id, ui8])
+      }
+      None => js_recv_cb.call(tc_scope, global, &[]),
+    };
+
+    match tc_scope.exception() {
+      None => Ok(()),
+      Some(exception) => exception_to_err_result(tc_scope, exception),
+    }
+  }
+
+  fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
+    let state_rc = Self::state(self);
+    let scope = &mut v8::HandleScope::with_context(
+      &mut **self,
+      state_rc.borrow().global_context.as_ref().unwrap(),
+    );
+    let context = scope.get_current_context();
+    let global: v8::Local<v8::Value> = context.global(scope).into();
+
+    let js_macrotask_cb = match JsRuntime::state(scope)
+      .borrow_mut()
+      .js_macrotask_cb
+      .as_ref()
+    {
+      Some(cb) => v8::Local::new(scope, cb),
+      None => return Ok(()),
+    };
+
+    // Repeatedly invoke macrotask callback until it returns true (done),
+    // such that ready microtasks would be automatically run before
+    // next macrotask is processed.
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    loop {
+      let is_done = js_macrotask_cb.call(tc_scope, global, &[]);
+
+      if let Some(exception) = tc_scope.exception() {
+        return exception_to_err_result(tc_scope, exception);
+      }
+
+      let is_done = is_done.unwrap();
+      if is_done.is_true() {
+        break;
+      }
+    }
+
+    Ok(())
   }
 }
 
