@@ -332,7 +332,7 @@ impl JsRuntime {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  pub fn shared_init(&mut self) {
+  fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       self.execute("core.js", include_str!("core.js")).unwrap();
@@ -497,26 +497,8 @@ impl Future for JsRuntime {
 
     // Ops
     {
-      let mut overflow_response = runtime.poll_pending_ops(cx);
-      let shared_queue_size = {
-        let state = state_rc.borrow();
-        state.shared.size()
-      };
-
-      if shared_queue_size > 0 {
-        runtime.async_op_response(None)?;
-        // The other side should have shifted off all the messages.
-        let shared_queue_size = {
-          let state = state_rc.borrow();
-          state.shared.size()
-        };
-        assert_eq!(shared_queue_size, 0);
-      }
-
-      if let Some((op_id, buf)) = overflow_response.take() {
-        runtime.async_op_response(Some((op_id, buf)))?;
-      }
-
+      let overflow_response = runtime.poll_pending_ops(cx);
+      runtime.async_op_response(overflow_response)?;
       runtime.drain_macrotasks()?;
       runtime.check_promise_exceptions()?;
     }
@@ -1141,17 +1123,28 @@ impl JsRuntime {
     exception_to_err_result(scope, exception)
   }
 
-  // TODO(bartlomieju): could be optimized by
-  // calling shared queue and maybe_buf in a single method
+  // Respond using shared queue and optionally overflown response
   fn async_op_response(
     &mut self,
-    maybe_buf: Option<(OpId, Box<[u8]>)>,
+    maybe_overflown_response: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), AnyError> {
-    let js_recv_cb_handle = Self::state(self)
+    let state_rc = Self::state(self);
+
+    let shared_queue_size = state_rc.borrow().shared.size();
+
+    if shared_queue_size == 0 && maybe_overflown_response.is_none() {
+      return Ok(());
+    }
+
+    // FIXME(bartlomieju): without check above this call would panic
+    // because of lazy initialization in core.js. It seems this lazy initialization
+    // hides unnecessary complexity.
+    let js_recv_cb_handle = state_rc
       .borrow()
       .js_recv_cb
       .clone()
       .expect("Deno.core.recv has not been called.");
+
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let context = scope.get_current_context();
@@ -1160,16 +1153,21 @@ impl JsRuntime {
 
     let tc_scope = &mut v8::TryCatch::new(scope);
 
-    match maybe_buf {
-      Some((op_id, buf)) => {
-        let op_id: v8::Local<v8::Value> =
-          v8::Integer::new(tc_scope, op_id as i32).into();
-        let ui8: v8::Local<v8::Value> =
-          bindings::boxed_slice_to_uint8array(tc_scope, buf).into();
-        js_recv_cb.call(tc_scope, global, &[op_id, ui8])
-      }
-      None => js_recv_cb.call(tc_scope, global, &[]),
-    };
+    if shared_queue_size > 0 {
+      js_recv_cb.call(tc_scope, global, &[]);
+      // The other side should have shifted off all the messages.
+      let shared_queue_size = state_rc.borrow().shared.size();
+      assert_eq!(shared_queue_size, 0);
+    }
+
+    if let Some(overflown_response) = maybe_overflown_response {
+      let (op_id, buf) = overflown_response;
+      let op_id: v8::Local<v8::Value> =
+        v8::Integer::new(tc_scope, op_id as i32).into();
+      let ui8: v8::Local<v8::Value> =
+        bindings::boxed_slice_to_uint8array(tc_scope, buf).into();
+      js_recv_cb.call(tc_scope, global, &[op_id, ui8]);
+    }
 
     match tc_scope.exception() {
       None => Ok(()),
