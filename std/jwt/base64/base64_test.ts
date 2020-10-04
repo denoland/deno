@@ -14,7 +14,7 @@ const str2 = "Man Ё𤭢";
 const uint8Array1 = new TextEncoder().encode(str1);
 const uint8Array2 = new TextEncoder().encode(str2);
 
-Deno.test("convertBase64ToUint8ArrayAndBack", function (): void {
+Deno.test("[jwt] convertBase64ToUint8ArrayAndBack", function (): void {
   assertEquals(
     uint8Array1,
     convertBase64ToUint8Array(convertUint8ArrayToBase64(uint8Array1)),
@@ -25,12 +25,12 @@ Deno.test("convertBase64ToUint8ArrayAndBack", function (): void {
   );
 });
 
-Deno.test("convertBase64ToStringAndBack", function (): void {
+Deno.test("[jwt] convertBase64ToStringAndBack", function (): void {
   assertEquals(str1, convertBase64ToString(convertStringToBase64(str1)));
   assertEquals(str2, convertBase64ToString(convertStringToBase64(str2)));
 });
 
-Deno.test("convertMultiByteCharacters", function (): void {
+Deno.test("[jwt] convertMultiByteCharacters", function (): void {
   assertEquals(
     convertBase64ToString(
       convertUint8ArrayToBase64(

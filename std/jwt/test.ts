@@ -19,7 +19,7 @@ import { convertHexToBase64url, isExpired } from "./_util.ts";
 
 const key = "your-secret";
 
-Deno.test("isExpired", function (): void {
+Deno.test("[jwt] isExpired", function (): void {
   // A specific date:
   const t1 = setExpiration(new Date("2020-01-01"));
   const t2 = setExpiration(new Date("2099-01-01"));
@@ -42,11 +42,11 @@ Deno.test("isExpired", function (): void {
   assertEquals(setExpiration(10), setExpiration(new Date(Date.now() + 10000)));
 });
 
-Deno.test("setExpiration", function (): void {
+Deno.test("[jwt] setExpiration", function (): void {
   assertEquals(setExpiration(10), setExpiration(new Date(Date.now() + 10000)));
 });
 
-Deno.test("makeSignature", async function (): Promise<void> {
+Deno.test("[jwt] makeSignature", async function (): Promise<void> {
   // https://www.freeformatter.com/hmac-generator.html
   const computedHmacInHex =
     "2b9e6619fa7f2c8d8b3565c88365376b75b1b0e5d87e41218066fd1986f2c056";
@@ -66,7 +66,7 @@ Deno.test("makeSignature", async function (): Promise<void> {
   );
 });
 
-Deno.test("isTokenObject", async function (): Promise<void> {
+Deno.test("[jwt] isTokenObject", async function (): Promise<void> {
   const header:Header = {
     alg: "HS256",
     typ: "JWT",
@@ -85,7 +85,7 @@ Deno.test("isTokenObject", async function (): Promise<void> {
   assertEquals(valid, true);
 });
 
-Deno.test("parse", async function (): Promise<void> {
+Deno.test("[jwt] parse", async function (): Promise<void> {
   assertEquals(
     parse(
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.TVCeFl1nnZWUMQkAQKuSo_I97YeIZAS8T1gOkErT7F8",
@@ -129,7 +129,7 @@ Deno.test("parse", async function (): Promise<void> {
   );
 });
 
-Deno.test("JSON Payload",
+Deno.test("[jwt] JSON Payload",
   async function (): Promise<void> {
     const header:Header = {
       alg: "HS256",
@@ -146,7 +146,7 @@ Deno.test("JSON Payload",
   },
 );
 
-Deno.test("expiredToken", async function (): Promise<void> {
+Deno.test("[jwt] expiredToken", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -165,7 +165,7 @@ Deno.test("expiredToken", async function (): Promise<void> {
   }
 });
 
-Deno.test("checkHeaderCrit", async function (): Promise<void> {
+Deno.test("[jwt] checkHeaderCrit", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -188,7 +188,7 @@ Deno.test("checkHeaderCrit", async function (): Promise<void> {
   await checkHeaderCrit(header, critHandlers);
 });
 
-Deno.test("critHandlers", async function (): Promise<void> {
+Deno.test("[jwt] critHandlers", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -225,7 +225,7 @@ Deno.test("critHandlers", async function (): Promise<void> {
 });
 
 // https://tools.ietf.org/html/rfc7519#section-6
-Deno.test("none algorithm", async function (): Promise<void> {
+Deno.test("[jwt] none algorithm", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -243,7 +243,7 @@ Deno.test("none algorithm", async function (): Promise<void> {
   assertEquals(validatedPayload, payload);
 });
 
-Deno.test("HS256 algorithm", async function (): Promise<void> {
+Deno.test("[jwt] HS256 algorithm", async function (): Promise<void> {
   const header:Header = {
     alg: "HS256",
     typ: "JWT",
@@ -273,7 +273,7 @@ Deno.test("HS256 algorithm", async function (): Promise<void> {
   }
 });
 
-Deno.test("HS512 algorithm", async function (): Promise<void> {
+Deno.test("[jwt] HS512 algorithm", async function (): Promise<void> {
   const header:Header = { alg: "HS512", typ: "JWT" };
   const payload = {
     sub: "1234567890",
