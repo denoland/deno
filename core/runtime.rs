@@ -1147,16 +1147,16 @@ impl JsRuntime {
     &mut self,
     maybe_buf: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), AnyError> {
+    let js_recv_cb_handle = Self::state(self)
+      .borrow()
+      .js_recv_cb
+      .clone()
+      .expect("Deno.core.recv has not been called.");
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let context = scope.get_current_context();
     let global: v8::Local<v8::Value> = context.global(scope).into();
-    let js_recv_cb = JsRuntime::state(scope)
-      .borrow()
-      .js_recv_cb
-      .as_ref()
-      .map(|cb| v8::Local::new(scope, cb))
-      .expect("Deno.core.recv has not been called.");
+    let js_recv_cb = js_recv_cb_handle.get(scope);
 
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -1178,19 +1178,17 @@ impl JsRuntime {
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
+    let js_macrotask_cb_handle =
+      match &Self::state(self).borrow().js_macrotask_cb {
+        Some(handle) => handle.clone(),
+        None => return Ok(()),
+      };
+
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let context = scope.get_current_context();
     let global: v8::Local<v8::Value> = context.global(scope).into();
-
-    let js_macrotask_cb = match JsRuntime::state(scope)
-      .borrow_mut()
-      .js_macrotask_cb
-      .as_ref()
-    {
-      Some(cb) => v8::Local::new(scope, cb),
-      None => return Ok(()),
-    };
+    let js_macrotask_cb = js_macrotask_cb_handle.get(scope);
 
     // Repeatedly invoke macrotask callback until it returns true (done),
     // such that ready microtasks would be automatically run before
