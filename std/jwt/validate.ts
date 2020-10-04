@@ -21,34 +21,35 @@ export type Handlers = {
   [key: string]: (header: unknown) => unknown;
 };
 
+const reservedWords = new Set([
+  "alg",
+  "jku",
+  "jwk",
+  "kid",
+  "x5u",
+  "x5c",
+  "x5t",
+  "x5t#S256",
+  "typ",
+  "cty",
+  "crit",
+  "enc",
+  "zip",
+  "epk",
+  "apu",
+  "apv",
+  "iv",
+  "tag",
+  "p2s",
+  "p2c",
+]);
+
 // A present 'crit' header parameter indicates that the JWS signature validator
 // must understand and process additional claims (JWS §4.1.11)
 export function checkHeaderCrit(
   header: Header,
   handlers?: Handlers,
 ): void {
-  const reservedWords = new Set([
-    "alg",
-    "jku",
-    "jwk",
-    "kid",
-    "x5u",
-    "x5c",
-    "x5t",
-    "x5t#S256",
-    "typ",
-    "cty",
-    "crit",
-    "enc",
-    "zip",
-    "epk",
-    "apu",
-    "apv",
-    "iv",
-    "tag",
-    "p2s",
-    "p2c",
-  ]);
   if (!header["crit"]) return;
   if (
     !Array.isArray(header.crit) ||
