@@ -310,6 +310,10 @@ impl JsRuntime {
     state.global_context.clone().unwrap()
   }
 
+  fn v8_isolate(&mut self) -> &mut v8::OwnedIsolate {
+    self.v8_isolate.as_mut().unwrap()
+  }
+
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
@@ -328,7 +332,7 @@ impl JsRuntime {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  pub(crate) fn shared_init(&mut self) {
+  pub fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       self.execute("core.js", include_str!("core.js")).unwrap();
@@ -355,10 +359,7 @@ impl JsRuntime {
 
     let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(
-      self.v8_isolate.as_mut().unwrap(),
-      context,
-    );
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let source = v8::String::new(scope, js_source).unwrap();
     let name = v8::String::new(scope, js_filename).unwrap();
@@ -439,16 +440,12 @@ impl JsRuntime {
       .replace((boxed_cb, near_heap_limit_callback::<C>));
     if let Some((_, prev_cb)) = prev {
       self
-        .v8_isolate
-        .as_mut()
-        .unwrap()
+        .v8_isolate()
         .remove_near_heap_limit_callback(prev_cb, 0);
     }
 
     self
-      .v8_isolate
-      .as_mut()
-      .unwrap()
+      .v8_isolate()
       .add_near_heap_limit_callback(near_heap_limit_callback::<C>, data);
   }
 
@@ -456,9 +453,7 @@ impl JsRuntime {
     if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data.take()
     {
       self
-        .v8_isolate
-        .as_mut()
-        .unwrap()
+        .v8_isolate()
         .remove_near_heap_limit_callback(cb, heap_limit);
     }
   }
@@ -1524,8 +1519,7 @@ pub mod tests {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
     // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
     // should not require a mutable reference to `struct rusty_v8::Isolate`.
-    let v8_isolate_handle =
-      isolate.v8_isolate.as_mut().unwrap().thread_safe_handle();
+    let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
 
     let terminator_thread = std::thread::spawn(move || {
       // allow deno to boot and run
@@ -1549,9 +1543,7 @@ pub mod tests {
     // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
     // also be implemented on `struct Isolate`.
     let ok = isolate
-      .v8_isolate
-      .as_mut()
-      .unwrap()
+      .v8_isolate()
       .thread_safe_handle()
       .cancel_terminate_execution();
     assert!(ok);
@@ -1571,7 +1563,7 @@ pub mod tests {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
       // should not require a mutable reference to `struct rusty_v8::Isolate`.
-      runtime.v8_isolate.as_mut().unwrap().thread_safe_handle()
+      runtime.v8_isolate().thread_safe_handle()
     };
 
     // this should not SEGFAULT
