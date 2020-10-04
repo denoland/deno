@@ -53,7 +53,7 @@
       const ErrorClass = core.getErrorClass(res.err.className);
       if (!ErrorClass) {
         throw new Error(
-          `Unregistered Deno core error class: ${res.err.className}\n  ${res.err.message}`,
+          `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
         );
       }
       throw new ErrorClass(res.err.message);
