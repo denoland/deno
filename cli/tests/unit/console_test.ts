@@ -982,7 +982,7 @@ unitTest(function consoleParseCss(): void {
   );
 });
 
-unitTest({ only: true }, function consoleCssToAnsi(): void {
+unitTest(function consoleCssToAnsi(): void {
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
     "_[48;2;200;201;202m",
