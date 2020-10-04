@@ -206,6 +206,6 @@ mod tests {
     assert!(check_true);
 
     let check_false = lockfile.check_or_insert("https://deno.land/std@0.71.0/textproto/mod.ts", "This is new Source code");
-    assert!(check_false == false);    
+    assert!(!check_false);    
   }    
 }
