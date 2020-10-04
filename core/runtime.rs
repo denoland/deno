@@ -619,19 +619,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
   Err(js_error)
 }
 
-fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut v8::HandleScope<'sc>,
-  buf: Box<[u8]>,
-) -> v8::Local<'sc, v8::Uint8Array> {
-  assert!(!buf.is_empty());
-  let buf_len = buf.len();
-  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let backing_store_shared = backing_store.make_shared();
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
-}
-
 // Related to module loading
 impl JsRuntime {
   /// Low-level module creation.
@@ -1178,7 +1165,7 @@ impl JsRuntime {
         let op_id: v8::Local<v8::Value> =
           v8::Integer::new(tc_scope, op_id as i32).into();
         let ui8: v8::Local<v8::Value> =
-          boxed_slice_to_uint8array(tc_scope, buf).into();
+          bindings::boxed_slice_to_uint8array(tc_scope, buf).into();
         js_recv_cb.call(tc_scope, global, &[op_id, ui8])
       }
       None => js_recv_cb.call(tc_scope, global, &[]),
