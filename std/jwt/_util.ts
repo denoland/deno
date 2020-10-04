@@ -25,6 +25,24 @@ export function convertStringToBase64url(input: string): string {
 
 export type Algorithm = "none" | "HS256" | "HS512";
 
+export interface Payload {
+  iss?: string;
+  sub?: string;
+  aud?: string[] | string;
+  exp?: number;
+  nbf?: number;
+  iat?: number;
+  jti?: string;
+  [key: string]: unknown;
+}
+
+export interface Header {
+  alg: Algorithm;
+  crit?: string[];
+  [key: string]: unknown;
+}
+
+
 export async function encrypt(
   alg: Algorithm,
   key: string,

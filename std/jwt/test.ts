@@ -4,7 +4,6 @@ import {
   setExpiration,
 } from "./mod.ts";
 import {
-  Header,
   makeSignature,
 } from "./create.ts";
 import {
@@ -15,7 +14,7 @@ import {
 } from "./validate.ts";
 
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import { convertHexToBase64url } from "./_util.ts";
+import { convertHexToBase64url, Header } from "./_util.ts";
 
 const key = "your-secret";
 

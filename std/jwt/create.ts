@@ -1,4 +1,4 @@
-import { Algorithm, convertHexToBase64url, convertStringToBase64url, encrypt } from "./_util.ts";
+import { Algorithm, convertHexToBase64url, convertStringToBase64url, encrypt, Header, Payload } from "./_util.ts";
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
 // The payload can be any content and need not be a representation of a JSON object
 
@@ -6,23 +6,6 @@ export interface Config {
   key: string;
   payload: Payload | unknown;
   header?: Header;
-}
-
-export interface Payload {
-  iss?: string;
-  sub?: string;
-  aud?: string[] | string;
-  exp?: number;
-  nbf?: number;
-  iat?: number;
-  jti?: string;
-  [key: string]: unknown;
-}
-
-export interface Header {
-  alg: Algorithm;
-  crit?: string[];
-  [key: string]: unknown;
 }
 
 export function makeSigningInput(header: Header, payload: Payload | unknown): string {
@@ -48,11 +31,12 @@ export async function create({
 }: Config): Promise<string> {
   try {
     const signingInput = makeSigningInput(header, payload);
-    return `${signingInput}.${await makeSignature(
+    const signature = await makeSignature(
       header.alg,
       key,
       signingInput,
-    )}`;
+    )
+    return `${signingInput}.${signature}`;
   } catch (err) {
     err.message = `Failed to create JWT: ${err.message}`;
     throw err;

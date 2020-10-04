@@ -1,5 +1,4 @@
-import { Algorithm, encrypt } from "./_util.ts";
-import type { Header, Payload } from "./create.ts";
+import { Algorithm, encrypt, Header, Payload } from "./_util.ts";
 import { isExpired } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import {  encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
