@@ -495,6 +495,8 @@ impl Future for JsRuntime {
       let poll_imports = runtime.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
 
+      runtime.poll_dyn_imports_evaluate(cx)?;
+
       runtime.check_promise_exceptions()?;
     }
 
@@ -511,6 +513,7 @@ impl Future for JsRuntime {
       state.pending_ops.is_empty()
         && state.pending_dyn_imports.is_empty()
         && state.preparing_dyn_imports.is_empty()
+        && state.pending_dyn_mod_evaluate.is_empty()
     };
 
     if is_idle {
@@ -716,19 +719,22 @@ impl JsRuntime {
     self.shared_init();
 
     let state_rc = Self::state(self);
+    let context = self.global_context();
+    let context1 = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
-
-    let module = state_rc
+    let module_handle = state_rc
       .borrow()
       .modules
       .get_info(id)
-      .map(|info| v8::Local::new(scope, &info.handle))
-      .expect("ModuleInfo not found");
-    let mut status = module.get_status();
+      .expect("ModuleInfo not found")
+      .handle
+      .clone();
+
+    let status = {
+      let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+      let module = module_handle.get(scope);
+      module.get_status()
+    };
 
     if status == v8::ModuleStatus::Instantiated {
       // IMPORTANT: Top-level-await is enabled, which means that return value
@@ -747,10 +753,12 @@ impl JsRuntime {
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
       // https://v8.dev/features/top-level-await#module-execution-order
+      let scope = &mut v8::HandleScope::with_context(&mut **self, context1);
+      let module = v8::Local::new(scope, &module_handle);
       let maybe_value = module.evaluate(scope);
 
       // Update status after evaluating.
-      status = module.get_status();
+      let status = module.get_status();
 
       if let Some(value) = maybe_value {
         assert!(
@@ -759,6 +767,10 @@ impl JsRuntime {
         );
         let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
+        debug!(
+          "dyn_mod_evaluate promise {}",
+          promise.state() == v8::PromiseState::Pending
+        );
         let promise_id = promise.get_identity_hash();
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_id);
@@ -770,6 +782,10 @@ impl JsRuntime {
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
+    }
+
+    if status == v8::ModuleStatus::Evaluated {
+      self.dyn_import_done(load_id, id)?;
     }
 
     Ok(())
@@ -1017,7 +1033,7 @@ impl JsRuntime {
             // Load is done.
             let module_id = load.root_module_id.unwrap();
             self.mod_instantiate(module_id)?;
-
+            debug!("dyn_mod_evaluate {} {}", dyn_import_id, module_id);
             self.dyn_mod_evaluate(dyn_import_id, module_id)?;
           }
         }
@@ -1030,55 +1046,65 @@ impl JsRuntime {
     _cx: &mut Context,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
 
-    let maybe_result = {
-      let scope = &mut v8::HandleScope::with_context(
-        &mut **self,
-        state.global_context.as_ref().unwrap(),
-      );
+    loop {
+      let context = self.global_context();
+      let maybe_result = {
+        let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
-      if let Some(&dyn_import_id) = state.pending_dyn_mod_evaluate.keys().next()
-      {
-        let handle = state
-          .pending_dyn_mod_evaluate
-          .remove(&dyn_import_id)
-          .unwrap();
-        let module_id = handle.0;
-        let promise = handle.1.get(scope);
-        let _module = handle.2.get(scope);
+        let mut state = state_rc.borrow_mut();
+        debug!(
+          "poll dyn imports evaluate {}",
+          state.pending_dyn_mod_evaluate.keys().len()
+        );
+        if let Some(&dyn_import_id) =
+          state.pending_dyn_mod_evaluate.keys().next()
+        {
+          let handle = state
+            .pending_dyn_mod_evaluate
+            .remove(&dyn_import_id)
+            .unwrap();
+          drop(state);
 
-        let promise_state = promise.state();
+          let module_id = handle.0;
+          let promise = handle.1.get(scope);
+          let _module = handle.2.get(scope);
 
-        match promise_state {
-          v8::PromiseState::Pending => {
-            state.pending_dyn_mod_evaluate.insert(dyn_import_id, handle);
-            None
+          let promise_state = promise.state();
+
+          match promise_state {
+            v8::PromiseState::Pending => {
+              state_rc
+                .borrow_mut()
+                .pending_dyn_mod_evaluate
+                .insert(dyn_import_id, handle);
+              None
+            }
+            v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
+            v8::PromiseState::Rejected => {
+              let exception = promise.result(scope);
+              let err1 = exception_to_err_result::<()>(scope, exception)
+                .map_err(|err| attach_handle_to_error(scope, err, exception))
+                .unwrap_err();
+              Some(Err((dyn_import_id, err1)))
+            }
           }
-          v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
-          v8::PromiseState::Rejected => {
-            let exception = promise.result(scope);
-            let err1 = exception_to_err_result::<()>(scope, exception)
-              .map_err(|err| attach_handle_to_error(scope, err, exception))
-              .unwrap_err();
-            Some(Err((dyn_import_id, err1)))
+        } else {
+          None
+        }
+      };
+
+      if let Some(result) = maybe_result {
+        match result {
+          Ok((dyn_import_id, module_id)) => {
+            self.dyn_import_done(dyn_import_id, module_id)?;
+          }
+          Err((dyn_import_id, err1)) => {
+            self.dyn_import_error(dyn_import_id, err1)?;
           }
         }
       } else {
-        None
-      }
-    };
-
-    drop(state);
-
-    if let Some(result) = maybe_result {
-      match result {
-        Ok((dyn_import_id, module_id)) => {
-          self.dyn_import_done(dyn_import_id, module_id)?;
-        }
-        Err((dyn_import_id, err1)) => {
-          self.dyn_import_error(dyn_import_id, err1)?;
-        }
+        break;
       }
     }
 
