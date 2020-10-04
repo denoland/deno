@@ -23,6 +23,8 @@ use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::BufVec;
 use crate::OpState;
+use futures::channel::mpsc;
+use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
@@ -94,6 +96,16 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate:
     HashMap<i32, (ModuleId, v8::Global<v8::Promise>, v8::Global<v8::Module>)>,
+  #[allow(clippy::type_complexity)]
+  pub(crate) pending_mod_evaluate: HashMap<
+    i32,
+    (
+      ModuleId,
+      v8::Global<v8::Promise>,
+      v8::Global<v8::Module>,
+      mpsc::Sender<Result<(), AnyError>>,
+    ),
+  >,
   pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
@@ -281,6 +293,7 @@ impl JsRuntime {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: HashMap::new(),
+      pending_mod_evaluate: HashMap::new(),
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
@@ -487,6 +500,9 @@ impl Future for JsRuntime {
       state.waker.register(cx.waker());
     }
 
+    debug!("main poll");
+    runtime.poll_mod_evaluate(cx)?;
+
     // Dynamic module loading - ie. modules loaded using "import()"
     {
       let poll_imports = runtime.prepare_dyn_imports(cx)?;
@@ -514,6 +530,7 @@ impl Future for JsRuntime {
         && state.pending_dyn_imports.is_empty()
         && state.preparing_dyn_imports.is_empty()
         && state.pending_dyn_mod_evaluate.is_empty()
+        && state.pending_mod_evaluate.is_empty()
     };
 
     if is_idle {
@@ -796,7 +813,10 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
+  pub fn mod_evaluate(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<mpsc::Receiver<Result<(), AnyError>>, AnyError> {
     self.shared_init();
 
     let state_rc = Self::state(self);
@@ -811,6 +831,8 @@ impl JsRuntime {
       .map(|info| v8::Local::new(scope, &info.handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
+
+    let (sender, receiver) = mpsc::channel(1);
 
     if status == v8::ModuleStatus::Instantiated {
       // IMPORTANT: Top-level-await is enabled, which means that return value
@@ -844,35 +866,48 @@ impl JsRuntime {
         let promise_id = promise.get_identity_hash();
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_id);
-      // FIXME(bartlomieju): this promise should be awaited
-      // assert!(promise.state() != v8::PromiseState::Pending);
-      // stick in the table
-      // return bye for now
-      // start polling event loop
-      // -
-      // let promise_global = v8::Global::new(scope, promise);
-      // state.pending_mod_evaluate.insert(id, promise_global);
+        debug!(
+          "mod_evaluate promise state pending {}",
+          promise.state() == v8::PromiseState::Pending
+        );
+        let promise_global = v8::Global::new(scope, promise);
+        let module_global = v8::Global::new(scope, module);
+        state
+          .pending_mod_evaluate
+          .insert(0, (id, promise_global, module_global, sender));
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
     }
 
-    match status {
-      v8::ModuleStatus::Evaluated => Ok(()),
-      v8::ModuleStatus::Errored => {
-        let exception = module.get_exception();
-        exception_to_err_result(scope, exception)
-          .map_err(|err| attach_handle_to_error(scope, err, exception))
-      }
-      other => panic!("Unexpected module status {:?}", other),
-    }
+    Ok(receiver)
+
+    // match status {
+    //   v8::ModuleStatus::Evaluated => Ok(()),
+    //   v8::ModuleStatus::Errored => {
+    //     let exception = module.get_exception();
+    //     exception_to_err_result(scope, exception)
+    //       .map_err(|err| attach_handle_to_error(scope, err, exception))
+    //   }
+    //   other => panic!("Unexpected module status {:?}", other),
+    // }
   }
 
   pub async fn mod_evaluate_async(
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    self.mod_evaluate(id)
+    let mut receiver = self.mod_evaluate(id)?;
+
+    poll_fn(|cx| {
+      if let Poll::Ready(result) = receiver.poll_next_unpin(cx) {
+        debug!("received module evaluate");
+        return Poll::Ready(result.unwrap());
+      }
+      let _r = self.poll_unpin(cx)?;
+      Poll::Pending
+    })
+    .await
   }
 
   fn dyn_import_error(
@@ -1039,6 +1074,53 @@ impl JsRuntime {
         }
       }
     }
+  }
+
+  fn poll_mod_evaluate(&mut self, _cx: &mut Context) -> Result<(), AnyError> {
+    let state_rc = Self::state(self);
+
+    let context = self.global_context();
+    {
+      let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+
+      let mut state = state_rc.borrow_mut();
+      debug!(
+        "poll mod evaluate {}",
+        state.pending_mod_evaluate.keys().len()
+      );
+      if let Some(&load_id) = state.pending_mod_evaluate.keys().next() {
+        let handle = state.pending_mod_evaluate.remove(&load_id).unwrap();
+        drop(state);
+
+        let _module_id = handle.0;
+        let promise = handle.1.get(scope);
+        let _module = handle.2.get(scope);
+        let mut sender = handle.3.clone();
+
+        let promise_state = promise.state();
+
+        match promise_state {
+          v8::PromiseState::Pending => {
+            state_rc
+              .borrow_mut()
+              .pending_mod_evaluate
+              .insert(load_id, handle);
+          }
+          v8::PromiseState::Fulfilled => {
+            sender.try_send(Ok(())).unwrap();
+          }
+          v8::PromiseState::Rejected => {
+            let exception = promise.result(scope);
+            let err1 = exception_to_err_result::<()>(scope, exception)
+              .map_err(|err| attach_handle_to_error(scope, err, exception))
+              .unwrap_err();
+            sender.try_send(Err(err1)).unwrap();
+          }
+        }
+      }
+    };
+
+    Ok(())
   }
 
   fn poll_dyn_imports_evaluate(

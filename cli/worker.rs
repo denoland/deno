@@ -204,7 +204,7 @@ impl Worker {
       .load_module(module_specifier, Some(code))
       .await?;
     self.wait_for_inspector_session();
-    self.isolate.mod_evaluate(id)
+    self.isolate.mod_evaluate_async(id).await
   }
 
   /// Returns a way to communicate with the Worker from other threads.
