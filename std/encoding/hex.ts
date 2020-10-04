@@ -7,6 +7,10 @@
 
 const hextable = new TextEncoder().encode("0123456789abcdef");
 
+/**
+ * ErrInvalidByte takes an invalid byte and returns an Error.
+ * @param byte
+ */
 export function errInvalidByte(byte: number): Error {
   return new Error(
     "encoding/hex: invalid byte: " +
@@ -14,6 +18,7 @@ export function errInvalidByte(byte: number): Error {
   );
 }
 
+/** ErrLength returns an error about odd string length. */
 export function errLength(): Error {
   return new Error("encoding/hex: odd length hex string");
 }

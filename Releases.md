@@ -1,10 +1,16 @@
 # Releases
 
-Binary releases can be downloaded manually at
+Binary releases can be downloaded manually at:
 https://github.com/denoland/deno/releases
 
-We also have one-line install commands at
+We also have one-line install commands at:
 https://github.com/denoland/deno_install
+
+### 1.4.4 / 2020.10.03
+
+- fix(cli): Update type definitions to align to TS dom (#7791)
+- fix(cli/repl): Fix hot loop in REPL (#7804)
+- fix(cli/repl): Enable colors on inspected values (#7798)
 
 ### 1.4.3 / 2020.10.02
 

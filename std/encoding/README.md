@@ -70,12 +70,12 @@ function is as follows:
 
 ##### `ReadOptions`
 
-- **`comma?: string;`**: Character which separates values. Default: `','`
-- **`comment?: string;`**: Character to start a comment. Default: `'#'`
+- **`comma?: string;`**: Character which separates values. Default: `','`.
+- **`comment?: string;`**: Character to start a comment. Default: `'#'`.
 - **`trimLeadingSpace?: boolean;`**: Flag to trim the leading space of the
-  value. Default: `false`
+  value. Default: `false`.
 - **`lazyQuotes?: boolean;`**: Allow unquoted quote in a quoted field or non
-  double quoted quotes in quoted field. Default: 'false`
+  double quoted quotes in quoted field. Default: `false`.
 - **`fieldsPerRecord?`**: Enabling the check of fields for each row. If == 0,
   first row is used as referral for the number of fields.
 
@@ -226,9 +226,9 @@ console.log(tomlObject);
 
 ## YAML
 
-YAML parser / dumper for Deno
+YAML parser / dumper for Deno.
 
-Heavily inspired from [js-yaml]
+Heavily inspired from [js-yaml].
 
 ### Basic usage
 
@@ -294,17 +294,17 @@ Serializes `object` as a YAML document.
 
 ### :warning: Limitations
 
-- `binary` type is currently not stable
-- `function`, `regexp`, and `undefined` type are currently not supported
+- `binary` type is currently not stable.
+- `function`, `regexp`, and `undefined` type are currently not supported.
 
 ### More example
 
-See https://github.com/nodeca/js-yaml.
+See: https://github.com/nodeca/js-yaml
 
 ## base32
 
 [RFC4648 base32](https://tools.ietf.org/html/rfc4648#section-6) encoder/decoder
-for Deno
+for Deno.
 
 ### Basic usage
 
@@ -326,7 +326,7 @@ console.log(encode(binaryData));
 
 ## ascii85
 
-Ascii85/base85 encoder and decoder with support for multiple standards
+Ascii85/base85 encoder and decoder with support for multiple standards.
 
 ### Basic usage
 

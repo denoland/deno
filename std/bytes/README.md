@@ -4,7 +4,7 @@ bytes module is made to provide helpers to manipulation of bytes slice.
 
 # usage
 
-All the following functions are exposed in `mod.ts`
+All the following functions are exposed in `mod.ts`.
 
 ## findIndex
 

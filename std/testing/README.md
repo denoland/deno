@@ -34,8 +34,8 @@ pretty-printed diff of failing assertion.
   function will throw asynchronously. Also compares any errors thrown to an
   optional expected `Error` class and checks that the error `.message` includes
   an optional string.
-- `unimplemented()` - Use this to stub out methods that will throw when invoked
-- `unreachable()` - Used to assert unreachable code
+- `unimplemented()` - Use this to stub out methods that will throw when invoked.
+- `unreachable()` - Used to assert unreachable code.
 
 Basic usage:
 
@@ -96,7 +96,7 @@ Deno.test("doesThrow", function (): void {
   );
 });
 
-// This test will not pass
+// This test will not pass.
 Deno.test("fails", function (): void {
   assertThrows((): void => {
     console.log("Hello world");
@@ -130,7 +130,7 @@ Deno.test("doesThrow", async function (): Promise<void> {
   );
 });
 
-// This test will not pass
+// This test will not pass.
 Deno.test("fails", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
@@ -199,7 +199,7 @@ runBenchmarks()
     console.log(results);
   })
   .catch((error: Error) => {
-    // ... errors if benchmark was badly constructed
+    // ... errors if benchmark was badly constructed.
   });
 ```
 
@@ -213,7 +213,7 @@ commandline.
 
 ```ts
 runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
-  // initial progress data
+  // initial progress data.
   if (p.state === ProgressState.BenchmarkingStart) {
     console.log(
       `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`,

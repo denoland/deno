@@ -5,8 +5,8 @@ currently (unfortunately) have a rather manual process for upgrading TypeScript.
 It works like this currently:
 
 1. Checkout typescript repo in a seperate directory.
-2. Copy typescript.js into Deno repo
-3. Copy d.ts files into dts directory
+2. Copy typescript.js into Deno repo.
+3. Copy d.ts files into dts directory.
 
 So that might look something like this:
 
