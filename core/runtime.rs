@@ -645,7 +645,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self);
     let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -700,7 +700,7 @@ impl JsRuntime {
     let state_rc = Self::state(self);
     let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let tc_scope = &mut v8::TryCatch::new(scope);
 
     let state = state_rc.borrow();
@@ -737,7 +737,7 @@ impl JsRuntime {
     let state_rc = Self::state(self);
     let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let module = state_rc
       .borrow()
@@ -803,7 +803,7 @@ impl JsRuntime {
     let state_rc = Self::state(self);
     let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let resolver_handle = state_rc
       .borrow_mut()
@@ -836,7 +836,7 @@ impl JsRuntime {
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let resolver_handle = state_rc
       .borrow_mut()
@@ -1148,7 +1148,7 @@ impl JsRuntime {
     drop(state);
 
     let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception)
@@ -1161,7 +1161,7 @@ impl JsRuntime {
     maybe_buf: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), AnyError> {
     let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let context = scope.get_current_context();
     let global: v8::Local<v8::Value> = context.global(scope).into();
     let js_recv_cb = JsRuntime::state(scope)
@@ -1192,7 +1192,7 @@ impl JsRuntime {
 
   fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
     let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let context = scope.get_current_context();
     let global: v8::Local<v8::Value> = context.global(scope).into();
 
