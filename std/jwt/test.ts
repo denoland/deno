@@ -5,54 +5,10 @@ import {
   Header,
   parse
 } from "./mod.ts";
-import {
-  create as createSignature,
-} from "./signature.ts";
 
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import { convertHexToBase64url, isTokenObject } from "./_util.ts";
-import { Handlers, verifyHeaderCrit } from "./header.ts"
 
 const key = "your-secret";
-
-Deno.test("[jwt] createSignature", async function (): Promise<void> {
-  // https://www.freeformatter.com/hmac-generator.html
-  const computedHmacInHex =
-    "2b9e6619fa7f2c8d8b3565c88365376b75b1b0e5d87e41218066fd1986f2c056";
-  const anotherVerifiedSignatureInBase64Url =
-    "p2KneqJhji8T0PDlVxcG4DROyzTgWXbDhz_mcTVojXo";
-  assertEquals(
-    await createSignature("HS256", "m$y-key", "thisTextWillBeEncrypted"),
-    convertHexToBase64url(computedHmacInHex),
-  );
-  assertEquals(
-    await createSignature(
-      "HS256",
-      "m$y-key",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ",
-    ),
-    anotherVerifiedSignatureInBase64Url,
-  );
-});
-
-Deno.test("[jwt] isTokenObject", async function (): Promise<void> {
-  const header:Header = {
-    alg: "HS256",
-    typ: "JWT",
-  };
-  const payload = {
-    sub: "1234567890",
-    name: "John Doe",
-    iat: 1516239022,
-  };
-  const signature = "SARsBE5x_ua2ye823r2zKpQNaew3Daq8riKz5A4h3o4";
-  const valid = isTokenObject({
-    header,
-    payload,
-    signature,
-  });
-  assertEquals(valid, true);
-});
 
 Deno.test("[jwt] parse", async function (): Promise<void> {
   assertEquals(
@@ -115,7 +71,7 @@ Deno.test("[jwt] JSON Payload",
   },
 );
 
-Deno.test("[jwt] expiredToken", async function (): Promise<void> {
+Deno.test("[jwt] expired token", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -134,66 +90,6 @@ Deno.test("[jwt] expiredToken", async function (): Promise<void> {
   }
 });
 
-Deno.test("[jwt] verifyHeaderCrit", async function (): Promise<void> {
-  const payload = {
-    iss: "joe",
-    jti: "123456789abc",
-    exp: setExpiration(1),
-  };
-  const header:Header = {
-    alg: "HS256",
-    crit: ["dummy", "asyncDummy"],
-    dummy: 100,
-    asyncDummy: 200,
-  };
-  const critHandlers: Handlers = {
-    dummy(value) {
-      return value;
-    },
-    async asyncDummy(value) {
-      return value;
-    },
-  };
-  await verifyHeaderCrit(header, critHandlers);
-});
-
-Deno.test("[jwt] critHandlers", async function (): Promise<void> {
-  const payload = {
-    iss: "joe",
-    jti: "123456789abc",
-    exp: setExpiration(1),
-  };
-  const header:Header = {
-    alg: "HS256",
-    crit: ["dummy"],
-    dummy: 100,
-  };
-  const critHandlers = {
-    dummy(value: any) {
-      return value * 2;
-    },
-  };
-
-  const jwt = await create({ header, payload, key });
-  const validatedPayload = await verify({
-    jwt,
-    key,
-    critHandlers,
-    algorithm: ["HS256", "HS512"],
-  });
-  assertEquals(validatedPayload, payload);
-
-  try {
-    await verify({ jwt, key, algorithm: "HS256" });
-  } catch (error) {
-    assertEquals(
-      error.message,
-      "critical extension header parameters are not understood",
-    );
-  }
-});
-
-// https://tools.ietf.org/html/rfc7519#section-6
 Deno.test("[jwt] none algorithm", async function (): Promise<void> {
   const payload = {
     iss: "joe",

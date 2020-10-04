@@ -1,15 +1,35 @@
 export { setExpiration } from "./_util.ts"
-export type { Payload } from "./_util.ts";
 export type { Header } from "./header.ts";
 export type { Algorithm } from "./algorithm.ts";
 
-import { createSigningInput, isTokenObject, Payload, TokenObject } from "./_util.ts";
+import { convertStringToBase64url } from "./_util.ts";
 import { isExpired } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 import { Algorithm, verify as verifyAlgorithm } from "./algorithm.ts"
 import { create as createSignature, verify as verifySignature } from "./signature.ts"
 import { verifyHeaderCrit, Handlers, Header } from "./header.ts"
+
+export interface Payload {
+  iss?: string;
+  sub?: string;
+  aud?: string[] | string;
+  exp?: number;
+  nbf?: number;
+  iat?: number;
+  jti?: string;
+  [key: string]: unknown;
+}
+
+export type TokenObject = { header: Header; payload: Payload; signature: string };
+function isTokenObject(object: TokenObject): object is TokenObject {
+  return (
+    typeof object?.signature === "string" &&
+    typeof object?.header?.alg === "string" && 
+    typeof object?.payload === "object" &&
+    object?.payload?.exp ? typeof object.payload.exp === "number" : true
+  )
+}
 
 export function parse(jwt: string): TokenObject {
   const parsedArray = jwt
@@ -71,6 +91,14 @@ export async function verify({
   if (!validSignature) throw new Error("signatures don't match");
 
   return payload;
+}
+
+function createSigningInput(header: Header, payload: Payload | unknown): string {
+  return `${
+    convertStringToBase64url(
+      JSON.stringify(header),
+    )
+  }.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
 
 export async function create({
