@@ -88,6 +88,8 @@ mod tests {
   use super::*;
   use std::fs::File;
   use std::io::Write;
+  use tempfile::TempDir;
+  use std::io::prelude::*;
 
   #[test]
   fn new_nonexistent_lockfile() {
@@ -95,19 +97,21 @@ mod tests {
     assert!(Lockfile::new(file_path, false).is_err());
   }
 
-  #[test]
-  fn new_valid_lockfile() {
+  fn write_valid_lockfile(t: &TempDir) {
     // create a valid lockfile for us to load
-    let t = tempfile::TempDir::new().expect("tempdir fail");
     let file_path = t.path().join("valid_lockfile.json");
     let mut file = File::create(file_path).expect("write file fail");
     writeln!(file, "{{").expect("write line fail");
     writeln!(file, "  \"https://deno.land/std@0.71.0/textproto/mod.ts\": \"3118d7a42c03c242c5a49c2ad91c8396110e14acca1324e7aaefd31a999b71a4\",").expect("write line fail");
-    writeln!(file, "  \"https://deno.land/std@0.71.0/io/util.ts\": \"ae133d310a0fdcf298cea7bc09a599c49acb616d34e148e263bcb02976f80dee\",").expect("write line fail");
     writeln!(file, "  \"https://deno.land/std@0.71.0/async/delay.ts\": \"35957d585a6e3dd87706858fb1d6b551cb278271b03f52c5a2cb70e65e00c26a\"").expect("write line fail");
     writeln!(file, "}}").expect("write line fail");
+  }
 
-    //prep the file path again.. because borrowing
+  #[test]
+  fn new_valid_lockfile() {
+    let t = TempDir::new().expect("tempdir fail");
+    write_valid_lockfile(&t);
+
     let file_path_buf = t.path().join("valid_lockfile.json");
     let file_path = file_path_buf.to_str().expect("file path fail").to_string();
 
@@ -117,7 +121,91 @@ mod tests {
       Ok(lockfile) => lockfile,
       Err(error) => panic!("Lockfile was not created: {:?}", error),
     };
+
     let keys: Vec<String> = lockfile.map.keys().cloned().collect();
+    let expected_keys = vec![String::from("https://deno.land/std@0.71.0/async/delay.ts"), String::from("https://deno.land/std@0.71.0/textproto/mod.ts")];
+    assert_eq!(keys.len(), 2);
+    assert_eq!(keys, expected_keys);
+  }  
+
+  #[test]
+  fn new_lockfile_from_file_and_insert() {
+    let t = TempDir::new().expect("tempdir fail");
+    write_valid_lockfile(&t);
+
+    let file_path_buf = t.path().join("valid_lockfile.json");
+    let file_path = file_path_buf.to_str().expect("file path fail").to_string();
+
+    let result = Lockfile::new(file_path, false);
+
+    let mut lockfile = match result {
+      Ok(lockfile) => lockfile,
+      Err(error) => panic!("Lockfile was not created: {:?}", error),
+    };
+
+    lockfile.insert("https://deno.land/std@0.71.0/io/util.ts", "Here is some source code");
+
+    let keys: Vec<String> = lockfile.map.keys().cloned().collect();
+    let expected_keys = vec![
+      String::from("https://deno.land/std@0.71.0/async/delay.ts"),
+      String::from("https://deno.land/std@0.71.0/io/util.ts"),
+      String::from("https://deno.land/std@0.71.0/textproto/mod.ts"),
+    ];
     assert_eq!(keys.len(), 3);
+    assert_eq!(keys, expected_keys);    
   }
+
+  #[test]
+  fn new_lockfile_and_write() {
+    let t = TempDir::new().expect("tempdir fail");
+    let file_path_buf = t.path().join("valid_lockfile.json");
+    let file_path = file_path_buf.to_str().expect("file path fail").to_string();
+    let result = Lockfile::new(file_path, true);
+
+    let mut lockfile = match result {
+      Ok(lockfile) => lockfile,
+      Err(error) => panic!("Lockfile was not created: {:?}", error),
+    };
+
+    lockfile.insert("https://deno.land/std@0.71.0/textproto/mod.ts", "Here is some source code");
+    lockfile.insert("https://deno.land/std@0.71.0/io/util.ts", "more source code here");
+    lockfile.insert("https://deno.land/std@0.71.0/async/delay.ts", "this source is really exciting");
+
+    lockfile.write().expect("unable to write");
+
+    let file_path_buf = t.path().join("valid_lockfile.json");
+    let file_path = file_path_buf.to_str().expect("file path fail").to_string();
+
+    // read the file contents back into a string and check
+    let mut checkfile = File::open(file_path).expect("Unable to open the file");
+    let mut contents = String::new();
+    checkfile.read_to_string(&mut contents).expect("Unable to read the file");
+
+    assert!(contents.contains("fedebba9bb82cce293196f54b21875b649e457f0eaf55556f1e318204947a28f")); // sha-256 hash of the source 'Here is some source code'
+  }
+
+  #[test]
+  fn check_or_insert_lockfile_false() {
+    // create a valid lockfile for us to load
+    let t = TempDir::new().expect("tempdir fail");
+    write_valid_lockfile(&t);
+    
+    let file_path_buf = t.path().join("valid_lockfile.json");
+    let file_path = file_path_buf.to_str().expect("file path fail").to_string();
+    
+    let result = Lockfile::new(file_path, false);
+    
+    let mut lockfile = match result {
+      Ok(lockfile) => lockfile,
+      Err(error) => panic!("Lockfile was not created: {:?}", error),
+    };
+
+    lockfile.insert("https://deno.land/std@0.71.0/textproto/mod.ts", "Here is some source code");
+
+    let check_true = lockfile.check_or_insert("https://deno.land/std@0.71.0/textproto/mod.ts", "Here is some source code");
+    assert!(check_true);
+
+    let check_false = lockfile.check_or_insert("https://deno.land/std@0.71.0/textproto/mod.ts", "This is new Source code");
+    assert!(check_false == false);    
+  }    
 }
