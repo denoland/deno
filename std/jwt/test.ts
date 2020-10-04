@@ -4,7 +4,7 @@ import {
   setExpiration,
 } from "./mod.ts";
 import {
-  makeSignature,
+  createSignature,
 } from "./create.ts";
 import {
   checkHeaderCrit,
@@ -18,18 +18,18 @@ import { convertHexToBase64url, Header } from "./_util.ts";
 
 const key = "your-secret";
 
-Deno.test("[jwt] makeSignature", async function (): Promise<void> {
+Deno.test("[jwt] createSignature", async function (): Promise<void> {
   // https://www.freeformatter.com/hmac-generator.html
   const computedHmacInHex =
     "2b9e6619fa7f2c8d8b3565c88365376b75b1b0e5d87e41218066fd1986f2c056";
   const anotherVerifiedSignatureInBase64Url =
     "p2KneqJhji8T0PDlVxcG4DROyzTgWXbDhz_mcTVojXo";
   assertEquals(
-    await makeSignature("HS256", "m$y-key", "thisTextWillBeEncrypted"),
+    await createSignature("HS256", "m$y-key", "thisTextWillBeEncrypted"),
     convertHexToBase64url(computedHmacInHex),
   );
   assertEquals(
-    await makeSignature(
+    await createSignature(
       "HS256",
       "m$y-key",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ",

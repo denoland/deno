@@ -122,7 +122,7 @@ export function validateAlgorithm(
   }
 }
 
-export async function verifySignature({
+export async function validateSignature({
   signature,
   key,
   alg,
@@ -165,7 +165,7 @@ export async function validate({
   if (!validAlgorithm) {
     throw new Error("no matching algorithm: " + header.alg);
   }
-  const validSignature = await verifySignature({
+  const validSignature = await validateSignature({
     signature,
     key,
     alg: header.alg,

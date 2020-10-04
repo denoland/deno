@@ -8,7 +8,7 @@ export interface Config {
   header?: Header;
 }
 
-export function makeSigningInput(header: Header, payload: Payload | unknown): string {
+export function createSigningInput(header: Header, payload: Payload | unknown): string {
   return `${
     convertStringToBase64url(
       JSON.stringify(header),
@@ -16,7 +16,7 @@ export function makeSigningInput(header: Header, payload: Payload | unknown): s
   }.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
 
-async function makeSignature(
+export async function createSignature(
   alg: Algorithm,
   key: string,
   input: string,
@@ -30,8 +30,8 @@ export async function create({
   header = { alg: "HS512", typ: "JWT" },
 }: Config): Promise<string> {
   try {
-    const signingInput = makeSigningInput(header, payload);
-    const signature = await makeSignature(
+    const signingInput = createSigningInput(header, payload);
+    const signature = await createSignature(
       header.alg,
       key,
       signingInput,
@@ -42,7 +42,3 @@ export async function create({
     throw err;
   }
 }
-
-export {
-  makeSignature,
-};
