@@ -22,7 +22,7 @@ use std::sync::Mutex;
 // Provides syntax specific helpers to the editor like validation for multi-line edits.
 #[derive(Completer, Helper, Hinter)]
 struct Helper {
-  highlighter: SyntaxHighlighter,
+  highlighter: LineHighlighter,
   validator: MatchingBracketValidator,
 }
 
@@ -57,11 +57,11 @@ impl Highlighter for Helper {
   }
 }
 
-struct SyntaxHighlighter {
+struct LineHighlighter {
   regex: Regex,
 }
 
-impl SyntaxHighlighter {
+impl LineHighlighter {
   fn new() -> Self {
     let regex = Regex::new(
       r#"(?x)
@@ -81,7 +81,7 @@ impl SyntaxHighlighter {
   }
 }
 
-impl Highlighter for SyntaxHighlighter {
+impl Highlighter for LineHighlighter {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     self
       .regex
@@ -125,7 +125,7 @@ pub async fn run(
     .await?;
 
   let helper = Helper {
-    highlighter: SyntaxHighlighter::new(),
+    highlighter: LineHighlighter::new(),
     validator: MatchingBracketValidator::new(),
   };
 
