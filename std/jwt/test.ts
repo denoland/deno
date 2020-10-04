@@ -22,13 +22,13 @@ Deno.test("[jwt] parse", async function (): Promise<void> {
         "4d509e165d679d959431090040ab92a3f23ded87886404bc4f580e904ad3ec5f",
     },
   );
+    // "ImEi" === base64url("a")
   assertThrows(() => {
     // SyntaxError: Unexpected end of JSON input
     parse("aaa");
   }, SyntaxError);
   assertThrows(() => {
     // SyntaxError: Unexpected end of JSON input
-    // "ImEi" === base64url("a")
     parse("ImEi..ImEi");
   }, SyntaxError);
   assertThrows((): void => {
@@ -38,7 +38,7 @@ Deno.test("[jwt] parse", async function (): Promise<void> {
   assertThrows((): void => {
     // TypeError: invalid serialization
     parse("ImEi.ImEi.ImEi.ImEi");
-  }, Error);
+  }, TypeError);
 
   const jwt =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
