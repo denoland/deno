@@ -353,15 +353,12 @@ impl JsRuntime {
   ) -> Result<(), AnyError> {
     self.shared_init();
 
-    let state_rc = Self::state(self);
-    let state = state_rc.borrow();
+    let context = self.global_context();
 
     let scope = &mut v8::HandleScope::with_context(
       self.v8_isolate.as_mut().unwrap(),
-      state.global_context.as_ref().unwrap(),
+      context,
     );
-
-    drop(state);
 
     let source = v8::String::new(scope, js_source).unwrap();
     let name = v8::String::new(scope, js_filename).unwrap();
@@ -652,10 +649,8 @@ impl JsRuntime {
     source: &str,
   ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self);
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -708,13 +703,12 @@ impl JsRuntime {
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
-    let state = state_rc.borrow();
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state.global_context.as_ref().unwrap(),
-    );
+    let context = self.global_context();
+
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
     let tc_scope = &mut v8::TryCatch::new(scope);
 
+    let state = state_rc.borrow();
     let module = match state.modules.get_info(id) {
       Some(info) => v8::Local::new(tc_scope, &info.handle),
       None if id == 0 => return Ok(()),
@@ -746,11 +740,9 @@ impl JsRuntime {
     self.shared_init();
 
     let state_rc = Self::state(self);
+    let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
     let module = state_rc
       .borrow()
@@ -814,11 +806,9 @@ impl JsRuntime {
     err: AnyError,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
+    let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
     let resolver_handle = state_rc
       .borrow_mut()
@@ -847,13 +837,11 @@ impl JsRuntime {
     mod_id: ModuleId,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self);
+    let context = self.global_context();
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
     let resolver_handle = state_rc
       .borrow_mut()
@@ -1162,12 +1150,10 @@ impl JsRuntime {
 
     let key = { *state.pending_promise_exceptions.keys().next().unwrap() };
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
-
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state.global_context.as_ref().unwrap(),
-    );
     drop(state);
+
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception)
@@ -1179,11 +1165,8 @@ impl JsRuntime {
     &mut self,
     maybe_buf: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
     let context = scope.get_current_context();
     let global: v8::Local<v8::Value> = context.global(scope).into();
     let js_recv_cb = JsRuntime::state(scope)
@@ -1213,11 +1196,8 @@ impl JsRuntime {
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
-    let scope = &mut v8::HandleScope::with_context(
-      &mut **self,
-      state_rc.borrow().global_context.as_ref().unwrap(),
-    );
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(&mut **self, context);
     let context = scope.get_current_context();
     let global: v8::Local<v8::Value> = context.global(scope).into();
 
