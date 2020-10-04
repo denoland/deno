@@ -82,7 +82,7 @@ function is as follows:
 ### Usage
 
 ```ts
-import { parse } from "https://deno.land/std/encoding/csv.ts";
+import { parse } from "https://deno.land/std@$STD_VERSION/encoding/csv.ts";
 const string = "a,b,c\nd,e,f";
 
 console.log(
@@ -187,7 +187,10 @@ will output:
 ### Basic usage
 
 ```ts
-import { parse, stringify } from "https://deno.land/std/encoding/toml.ts";
+import {
+  parse,
+  stringify,
+} from "https://deno.land/std@$STD_VERSION/encoding/toml.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
@@ -236,7 +239,10 @@ Heavily inspired from [js-yaml].
 string.
 
 ```ts
-import { parse, stringify } from "https://deno.land/std/encoding/yaml.ts";
+import {
+  parse,
+  stringify,
+} from "https://deno.land/std@$STD_VERSION/encoding/yaml.ts";
 
 const data = parse(`
 foo: bar
@@ -260,7 +266,7 @@ If your YAML contains multiple documents in it, you can use `parseAll` for
 handling it.
 
 ```ts
-import { parseAll } from "https://deno.land/std/encoding/yaml.ts";
+import { parseAll } from "https://deno.land/std@$STD_VERSION/encoding/yaml.ts";
 
 const data = parseAll(`
 ---
@@ -312,7 +318,10 @@ for Deno.
 decodes the given RFC4648 base32 representation to a `Uint8Array`.
 
 ```ts
-import { decode, encode } from "https://deno.land/std/encoding/base32.ts";
+import {
+  decode,
+  encode,
+} from "https://deno.land/std@$STD_VERSION/encoding/base32.ts";
 
 const b32Repr = "RC2E6GA=";
 
@@ -334,7 +343,10 @@ Ascii85/base85 encoder and decoder with support for multiple standards.
 decodes the given ascii85 representation to a `Uint8Array`.
 
 ```ts
-import { decode, encode } from "https://deno.land/std/encoding/ascii85.ts";
+import {
+  decode,
+  encode,
+} from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 
 const a85Repr = "LpTqp";
 
@@ -363,7 +375,10 @@ supported by other encodings.)
 encoding examples:
 
 ```ts
-import { decode, encode } from "https://deno.land/std/encoding/ascii85.ts";
+import {
+  decode,
+  encode,
+} from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 const binaryData = new Uint8Array([136, 180, 79, 24]);
 console.log(encode(binaryData));
 // => LpTqp

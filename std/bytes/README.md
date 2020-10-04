@@ -11,7 +11,7 @@ All the following functions are exposed in `mod.ts`.
 Find first index of binary pattern from given binary array.
 
 ```typescript
-import { findIndex } from "https://deno.land/std/bytes/mod.ts";
+import { findIndex } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 findIndex(
   new Uint8Array([1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 3]),
@@ -26,7 +26,7 @@ findIndex(
 Find last index of binary pattern from given binary array.
 
 ```typescript
-import { findLastIndex } from "https://deno.land/std/bytes/mod.ts";
+import { findLastIndex } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 findLastIndex(
   new Uint8Array([0, 1, 2, 0, 1, 2, 0, 1, 3]),
@@ -41,7 +41,7 @@ findLastIndex(
 Check whether given binary arrays are equal to each other.
 
 ```typescript
-import { equal } from "https://deno.land/std/bytes/mod.ts";
+import { equal } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 equal(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 3])); // returns true
 equal(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 4])); // returns false
@@ -52,7 +52,7 @@ equal(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 4])); // returns fa
 Check whether binary array has binary prefix.
 
 ```typescript
-import { hasPrefix } from "https://deno.land/std/bytes/mod.ts";
+import { hasPrefix } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1])); // returns true
 hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns false
@@ -63,7 +63,7 @@ hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns false
 Repeat bytes of given binary array and return new one.
 
 ```typescript
-import { repeat } from "https://deno.land/std/bytes/mod.ts";
+import { repeat } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 repeat(new Uint8Array([1]), 3); // returns Uint8Array(3) [ 1, 1, 1 ]
 ```
@@ -73,7 +73,7 @@ repeat(new Uint8Array([1]), 3); // returns Uint8Array(3) [ 1, 1, 1 ]
 Concatenate two binary arrays and return new one.
 
 ```typescript
-import { concat } from "https://deno.land/std/bytes/mod.ts";
+import { concat } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 concat(new Uint8Array([1, 2]), new Uint8Array([3, 4])); // returns Uint8Array(4) [ 1, 2, 3, 4 ]
 ```
@@ -83,7 +83,7 @@ concat(new Uint8Array([1, 2]), new Uint8Array([3, 4])); // returns Uint8Array(4)
 Copy bytes from one binary array to another.
 
 ```typescript
-import { copyBytes } from "https://deno.land/std/bytes/mod.ts";
+import { copyBytes } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 const dst = new Uint8Array(4);
 const src = Uint8Array.of(1, 2, 3, 4);
