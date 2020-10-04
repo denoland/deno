@@ -18,13 +18,11 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, mpsc::Receiver};
 
-/// Time without update required to pass to assume after which fluctuations are over
-const DEBOUNCE_TIME_MS: Duration = Duration::from_millis(200);
+const DEBOUNCE_TIMEOUT_MS: Duration = Duration::from_millis(200);
 
 // TODO(bartlomieju): rename
 type WatchFuture = Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
 
-// TODO(bartossh): make generic and move to unique mod
 struct Debounce {
   rx: Receiver<Result<NotifyEvent, AnyError>>,
   debounce_time: Duration,
@@ -58,12 +56,16 @@ impl Stream for Debounce {
       if let Ok(result) = _self.rx.try_recv() {
         if let Ok(event) = result {
           if event == _self.last_event {
+            // if received event is the same as previous one reset timeout
             timeout = Instant::now();
           }
+          // we want to emit only the last received event
           _self.last_event = event;
+          // event received with success
           recv = true;
         }
       }
+      // if event successfully received and debounce time has passed break and emit last event
       if recv && timeout.elapsed() >= _self.debounce_time {
         break;
       }
@@ -88,7 +90,7 @@ where
   F: Fn() -> WatchFuture,
 {
   let (_watcher, receiver) = new_watcher(paths)?;
-  let debounce = Mutex::new(Debounce::new(receiver, DEBOUNCE_TIME_MS));
+  let debounce = Mutex::new(Debounce::new(receiver, DEBOUNCE_TIMEOUT_MS));
   loop {
     let func = error_handler(closure());
     func.await;
