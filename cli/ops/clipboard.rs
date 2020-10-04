@@ -1,13 +1,13 @@
 use crate::permissions::Permissions;
-use deno_core::{OpState, ZeroCopyBuf};
-use deno_core::error::AnyError;
+use clipboard::ClipboardContext;
+use clipboard::ClipboardProvider;
 use deno_core::error::bad_resource_id;
-use serde::Deserialize;
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use clipboard::ClipboardProvider;
-use clipboard::ClipboardContext;
+use deno_core::{OpState, ZeroCopyBuf};
+use serde::Deserialize;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_clipboard_create", op_clipboard_create);
@@ -22,9 +22,7 @@ fn op_clipboard_create(
 ) -> Result<Value, AnyError> {
   let ctx: ClipboardContext = ClipboardProvider::new().unwrap();
 
-  let rid = state
-    .resource_table
-    .add("clipboard", Box::new(ctx));
+  let rid = state.resource_table.add("clipboard", Box::new(ctx));
 
   Ok(json!(rid))
 }

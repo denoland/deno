@@ -653,9 +653,10 @@ impl Permissions {
   }
 
   pub fn check_clipboard_write(&self) -> Result<(), AnyError> {
-    self
-      .clipboard_write
-      .check("access to write to the clipboard", "--allow-clipboard-write")
+    self.clipboard_write.check(
+      "access to write to the clipboard",
+      "--allow-clipboard-write",
+    )
   }
 
   #[allow(clippy::too_many_arguments)]
