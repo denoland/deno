@@ -87,9 +87,9 @@ impl Lockfile {
 mod tests {
   use super::*;
   use std::fs::File;
+  use std::io::prelude::*;
   use std::io::Write;
   use tempfile::TempDir;
-  use std::io::prelude::*;
 
   #[test]
   fn new_nonexistent_lockfile() {
@@ -123,10 +123,13 @@ mod tests {
     };
 
     let keys: Vec<String> = lockfile.map.keys().cloned().collect();
-    let expected_keys = vec![String::from("https://deno.land/std@0.71.0/async/delay.ts"), String::from("https://deno.land/std@0.71.0/textproto/mod.ts")];
+    let expected_keys = vec![
+      String::from("https://deno.land/std@0.71.0/async/delay.ts"),
+      String::from("https://deno.land/std@0.71.0/textproto/mod.ts"),
+    ];
     assert_eq!(keys.len(), 2);
     assert_eq!(keys, expected_keys);
-  }  
+  }
 
   #[test]
   fn new_lockfile_from_file_and_insert() {
@@ -143,7 +146,10 @@ mod tests {
       Err(error) => panic!("Lockfile was not created: {:?}", error),
     };
 
-    lockfile.insert("https://deno.land/std@0.71.0/io/util.ts", "Here is some source code");
+    lockfile.insert(
+      "https://deno.land/std@0.71.0/io/util.ts",
+      "Here is some source code",
+    );
 
     let keys: Vec<String> = lockfile.map.keys().cloned().collect();
     let expected_keys = vec![
@@ -152,7 +158,7 @@ mod tests {
       String::from("https://deno.land/std@0.71.0/textproto/mod.ts"),
     ];
     assert_eq!(keys.len(), 3);
-    assert_eq!(keys, expected_keys);    
+    assert_eq!(keys, expected_keys);
   }
 
   #[test]
@@ -167,9 +173,18 @@ mod tests {
       Err(error) => panic!("Lockfile was not created: {:?}", error),
     };
 
-    lockfile.insert("https://deno.land/std@0.71.0/textproto/mod.ts", "Here is some source code");
-    lockfile.insert("https://deno.land/std@0.71.0/io/util.ts", "more source code here");
-    lockfile.insert("https://deno.land/std@0.71.0/async/delay.ts", "this source is really exciting");
+    lockfile.insert(
+      "https://deno.land/std@0.71.0/textproto/mod.ts",
+      "Here is some source code",
+    );
+    lockfile.insert(
+      "https://deno.land/std@0.71.0/io/util.ts",
+      "more source code here",
+    );
+    lockfile.insert(
+      "https://deno.land/std@0.71.0/async/delay.ts",
+      "this source is really exciting",
+    );
 
     lockfile.write().expect("unable to write");
 
@@ -179,9 +194,13 @@ mod tests {
     // read the file contents back into a string and check
     let mut checkfile = File::open(file_path).expect("Unable to open the file");
     let mut contents = String::new();
-    checkfile.read_to_string(&mut contents).expect("Unable to read the file");
+    checkfile
+      .read_to_string(&mut contents)
+      .expect("Unable to read the file");
 
-    assert!(contents.contains("fedebba9bb82cce293196f54b21875b649e457f0eaf55556f1e318204947a28f")); // sha-256 hash of the source 'Here is some source code'
+    assert!(contents.contains(
+      "fedebba9bb82cce293196f54b21875b649e457f0eaf55556f1e318204947a28f"
+    )); // sha-256 hash of the source 'Here is some source code'
   }
 
   #[test]
@@ -189,23 +208,32 @@ mod tests {
     // create a valid lockfile for us to load
     let t = TempDir::new().expect("tempdir fail");
     write_valid_lockfile(&t);
-    
+
     let file_path_buf = t.path().join("valid_lockfile.json");
     let file_path = file_path_buf.to_str().expect("file path fail").to_string();
-    
+
     let result = Lockfile::new(file_path, false);
-    
+
     let mut lockfile = match result {
       Ok(lockfile) => lockfile,
       Err(error) => panic!("Lockfile was not created: {:?}", error),
     };
 
-    lockfile.insert("https://deno.land/std@0.71.0/textproto/mod.ts", "Here is some source code");
+    lockfile.insert(
+      "https://deno.land/std@0.71.0/textproto/mod.ts",
+      "Here is some source code",
+    );
 
-    let check_true = lockfile.check_or_insert("https://deno.land/std@0.71.0/textproto/mod.ts", "Here is some source code");
+    let check_true = lockfile.check_or_insert(
+      "https://deno.land/std@0.71.0/textproto/mod.ts",
+      "Here is some source code",
+    );
     assert!(check_true);
 
-    let check_false = lockfile.check_or_insert("https://deno.land/std@0.71.0/textproto/mod.ts", "This is new Source code");
-    assert!(!check_false);    
-  }    
+    let check_false = lockfile.check_or_insert(
+      "https://deno.land/std@0.71.0/textproto/mod.ts",
+      "This is new Source code",
+    );
+    assert!(!check_false);
+  }
 }
