@@ -196,9 +196,7 @@ SharedQueue Binary Layout
   }
 
   function getErrorClass(errorName) {
-    const className = errorMap[errorName];
-    assert(className);
-    return className;
+    return errorMap[errorName];
   }
 
   // Returns Uint8Array
@@ -233,7 +231,13 @@ SharedQueue Binary Layout
     if ("ok" in res) {
       return res.ok;
     } else {
-      throw new (getErrorClass(res.err.className))(res.err.message);
+      const ErrorClass = getErrorClass(res.err.className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered Deno core error class: ${res.err.className}\n  ${res.err.message}`,
+        );
+      }
+      throw new ErrorClass(res.err.message);
     }
   }
 
@@ -244,7 +248,13 @@ SharedQueue Binary Layout
     if ("ok" in r) {
       return r.ok;
     } else {
-      throw new (getErrorClass(r.err.className))(r.err.message);
+      const ErrorClass = getErrorClass(res.err.className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered Deno core error class: ${res.err.className}\n  ${res.err.message}`,
+        );
+      }
+      throw new ErrorClass(res.err.message);
     }
   }
 

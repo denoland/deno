@@ -50,7 +50,13 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      throw new (core.getErrorClass(res.err.className))(res.err.message);
+      const ErrorClass = core.getErrorClass(res.err.className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered Deno core error class: ${res.err.className}\n  ${res.err.message}`,
+        );
+      }
+      throw new ErrorClass(res.err.message);
     }
     return res.result;
   }
