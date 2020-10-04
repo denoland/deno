@@ -17,7 +17,7 @@ const testsetString = [
 const testsetBinary = testsetString.map(([str, b64]) => [
   new TextEncoder().encode(str),
   b64,
-]) as [Uint8Array, string][];
+]) as Array<[Uint8Array, string]>;
 
 Deno.test("[encoding/base64] testBase64EncodeString", () => {
   for (const [input, output] of testsetString) {

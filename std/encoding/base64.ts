@@ -99,8 +99,8 @@ export function encode(uint8: Uint8Array): string {
     "/",
   ];
   let result = "",
-    i,
-    l = uint8.length;
+    i;
+  const l = uint8.length;
   for (i = 2; i < l; i += 3) {
     result += base64abc[uint8[i - 2] >> 2];
     result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
