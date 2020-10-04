@@ -23,7 +23,7 @@ import { createHash } from "https://deno.land/std/hash/mod.ts";
 
 const hash = createHash("md5");
 hash.update("Your data here");
-const final = hash.digest(); // returns ArrayBuffer
+const final = hash.digest(); // returns ArrayBuffer.
 ```
 
 Please note that `digest` invalidates the hash instance's internal state.
@@ -34,8 +34,8 @@ import { createHash } from "https://deno.land/std/hash/mod.ts";
 
 const hash = createHash("md5");
 hash.update("Your data here");
-const final1 = hash.digest(); // returns ArrayBuffer
-const final2 = hash.digest(); // throws Error
+const final1 = hash.digest(); // returns ArrayBuffer.
+const final2 = hash.digest(); // throws Error.
 ```
 
 If you need final hash in string formats, call `toString` method with output

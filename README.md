@@ -16,7 +16,7 @@ Deno is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
 - Built-in utilities like a dependency inspector (deno info) and a code
   formatter (deno fmt).
 - Set of reviewed standard modules that are guaranteed to work with
-  [Deno](https://deno.land/std/)
+  [Deno](https://deno.land/std/).
 
 ### Install
 
@@ -76,14 +76,14 @@ for await (const req of s) {
 You can find a more in depth introduction, examples, and environment setup
 guides in the [manual](https://deno.land/manual).
 
-More in-depth info can be found in the runtime [documentation](doc.deno.land)
+More in-depth info can be found in the runtime [documentation](doc.deno.land).
 
 ### Contributing
 
 We appreciate your help!
 
 To contribute, please read the our
-[guidelines](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md)
+[guidelines](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md).
 
 [Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=master&event=push
 [Build status]: https://github.com/denoland/deno/actions

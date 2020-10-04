@@ -5,7 +5,7 @@ fs module is made to provide helpers to manipulate the filesystem.
 ## Usage
 
 Most the following modules are exposed in `mod.ts` This feature is currently
-<b>unstable</b>. To enable it use `deno run --unstable`
+<b>unstable</b>. To enable it use `deno run --unstable`.
 
 ### emptyDir
 
@@ -23,7 +23,7 @@ emptyDirSync("./foo"); // void
 ### ensureDir
 
 Ensures that the directory exists. If the directory structure does not exist, it
-is created. Like mkdir -p.
+is created. Like `mkdir -p`.
 
 ```ts
 import { ensureDir, ensureDirSync } from "https://deno.land/std/fs/mod.ts";
@@ -83,7 +83,7 @@ format(CRLFinput, EOL.LF); // output "deno\nis not\nnode"
 
 ### exists
 
-Test whether or not the given path exists by checking with the file system
+Test whether or not the given path exists by checking with the file system.
 
 ```ts
 import { exists, existsSync } from "https://deno.land/std/fs/mod.ts";
@@ -94,7 +94,7 @@ existsSync("./foo"); // returns boolean
 
 ### move
 
-Moves a file or directory. Overwrites it if option provided
+Moves a file or directory. Overwrites it if option provided.
 
 ```ts
 import { move, moveSync } from "https://deno.land/std/fs/mod.ts";
@@ -107,7 +107,7 @@ moveSync("./foo", "./existingFolder", { overwrite: true });
 
 ### copy
 
-copy a file or directory. Overwrites it if option provided
+copy a file or directory. Overwrites it if option provided.
 
 ```ts
 import { copy, copySync } from "https://deno.land/std/fs/mod.ts";

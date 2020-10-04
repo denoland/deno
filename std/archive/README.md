@@ -12,12 +12,12 @@ await tar.append("deno.txt", {
   contentSize: content.byteLength,
 });
 
-// Or specifying a filePath
+// Or specifying a filePath.
 await tar.append("land.txt", {
   filePath: "./land.txt",
 });
 
-// use tar.getReader() to read the contents
+// use tar.getReader() to read the contents.
 
 const writer = await Deno.open("./out.tar", { write: true, create: true });
 await Deno.copy(tar.getReader(), writer);
@@ -53,7 +53,7 @@ for await (const entry of untar) {
 
   await ensureFile(entry.fileName);
   const file = await Deno.open(entry.fileName, { write: true });
-  // <entry> is a reader
+  // <entry> is a reader.
   await Deno.copy(entry, file);
 }
 reader.close();
