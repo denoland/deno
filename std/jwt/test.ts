@@ -1,20 +1,17 @@
 import {
   create,
-  validate,
+  verify,
   setExpiration,
+  Header,
+  parse
 } from "./mod.ts";
 import {
-  createSignature,
-} from "./create.ts";
-import {
-  checkHeaderCrit,
-  Handlers,
-  parse,
-  isTokenObject,
-} from "./validate.ts";
+  create as createSignature,
+} from "./signature.ts";
 
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import { convertHexToBase64url, Header } from "./_util.ts";
+import { convertHexToBase64url, isTokenObject } from "./_util.ts";
+import { Handlers, verifyHeaderCrit } from "./header.ts"
 
 const key = "your-secret";
 
@@ -109,7 +106,7 @@ Deno.test("[jwt] JSON Payload",
     };
     const payload = [3, 4, 5];
     const jwt = await create({ header, payload, key });
-    const validatedPayload = await validate({ jwt, key, algorithm: "HS256" });
+    const validatedPayload = await verify({ jwt, key, algorithm: "HS256" });
     assertEquals(
       jwt,
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.WzMsNCw1XQ.YlYdV_MrGWOv2Q_-9kpzjU2A1Payyg8gofvnYyUqz7M",
@@ -131,13 +128,13 @@ Deno.test("[jwt] expiredToken", async function (): Promise<void> {
   const jwt = await create({ header, payload, key });
 
   try {
-    await validate({ jwt, key, algorithm: "HS256" });
+    await verify({ jwt, key, algorithm: "HS256" });
   } catch (error) {
     assertEquals(error.message, "the jwt is expired");
   }
 });
 
-Deno.test("[jwt] checkHeaderCrit", async function (): Promise<void> {
+Deno.test("[jwt] verifyHeaderCrit", async function (): Promise<void> {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -157,7 +154,7 @@ Deno.test("[jwt] checkHeaderCrit", async function (): Promise<void> {
       return value;
     },
   };
-  await checkHeaderCrit(header, critHandlers);
+  await verifyHeaderCrit(header, critHandlers);
 });
 
 Deno.test("[jwt] critHandlers", async function (): Promise<void> {
@@ -178,7 +175,7 @@ Deno.test("[jwt] critHandlers", async function (): Promise<void> {
   };
 
   const jwt = await create({ header, payload, key });
-  const validatedPayload = await validate({
+  const validatedPayload = await verify({
     jwt,
     key,
     critHandlers,
@@ -187,7 +184,7 @@ Deno.test("[jwt] critHandlers", async function (): Promise<void> {
   assertEquals(validatedPayload, payload);
 
   try {
-    await validate({ jwt, key, algorithm: "HS256" });
+    await verify({ jwt, key, algorithm: "HS256" });
   } catch (error) {
     assertEquals(
       error.message,
@@ -207,7 +204,7 @@ Deno.test("[jwt] none algorithm", async function (): Promise<void> {
     dummy: 100,
   };
   const jwt = await create({ header, payload, key });
-  const validatedPayload = await validate({
+  const validatedPayload = await verify({
     jwt,
     key: "keyIsIgnored",
     algorithm: "none",
@@ -226,7 +223,7 @@ Deno.test("[jwt] HS256 algorithm", async function (): Promise<void> {
     iat: 1516239022,
   };
   const jwt = await create({ header, payload, key });
-  const validatedPayload = await validate({ jwt, key, algorithm: "HS256" });
+  const validatedPayload = await verify({ jwt, key, algorithm: "HS256" });
   assertEquals(
     jwt,
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SARsBE5x_ua2ye823r2zKpQNaew3Daq8riKz5A4h3o4",
@@ -235,7 +232,7 @@ Deno.test("[jwt] HS256 algorithm", async function (): Promise<void> {
   try {
     const invalidJwt = // jwt with not supported crypto algorithm in alg header:
       "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.bQTnz6AuMJvmXXQsVPrxeQNvzDkimo7VNXxHeSBfClLufmCVZRUuyTwJF311JHuh";
-    await validate({
+    await verify({
       jwt: invalidJwt,
       key: "",
       algorithm: "HS256",
@@ -257,6 +254,6 @@ Deno.test("[jwt] HS512 algorithm", async function (): Promise<void> {
   const externallyVerifiedJwt =
     "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.VFb0qJ1LRg_4ujbZoRMXnVkUgiuKq5KxWqNdbKq_G9Vvz-S1zZa9LPxtHWKa64zDl2ofkT8F6jBt_K4riU-fPg";
   const jwt = await create({ header, payload, key });
-  const validatedPayload = await validate({ jwt, key, algorithm: "HS512" });
+  const validatedPayload = await verify({ jwt, key, algorithm: "HS512" });
   assertEquals(validatedPayload, payload);
 });

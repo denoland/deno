@@ -2,6 +2,20 @@ import { convertUint8ArrayToBase64url } from "./base64/base64url.ts";
 import { decodeString as convertHexToUint8Array } from "../encoding/hex.ts";
 import { HmacSha256 } from "../hash/sha256.ts";
 import { HmacSha512 } from "../hash/sha512.ts";
+import type { Algorithm } from "./algorithm.ts"
+import type { Header } from "./header.ts"
+
+export type TokenObject = { header: Header; payload: Payload; signature: string };
+export interface Payload {
+  iss?: string;
+  sub?: string;
+  aud?: string[] | string;
+  exp?: number;
+  nbf?: number;
+  iat?: number;
+  jti?: string;
+  [key: string]: unknown;
+}
 
 // Helper function: setExpiration()
 // returns the number of seconds since January 1, 1970, 00:00:00 UTC
@@ -23,25 +37,22 @@ export function convertStringToBase64url(input: string): string {
   return convertUint8ArrayToBase64url(new TextEncoder().encode(input));
 }
 
-export type Algorithm = "none" | "HS256" | "HS512";
-
-export interface Payload {
-  iss?: string;
-  sub?: string;
-  aud?: string[] | string;
-  exp?: number;
-  nbf?: number;
-  iat?: number;
-  jti?: string;
-  [key: string]: unknown;
+export function isTokenObject(object: TokenObject): object is TokenObject {
+  return (
+    typeof object?.signature === "string" &&
+    typeof object?.header?.alg === "string" && 
+    typeof object?.payload === "object" &&
+    object?.payload?.exp ? typeof object.payload.exp === "number" : true
+  )
 }
 
-export interface Header {
-  alg: Algorithm;
-  crit?: string[];
-  [key: string]: unknown;
+export function createSigningInput(header: Header, payload: Payload | unknown): string {
+  return `${
+    convertStringToBase64url(
+      JSON.stringify(header),
+    )
+  }.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
-
 
 export async function encrypt(
   alg: Algorithm,
