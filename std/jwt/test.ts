@@ -23,14 +23,23 @@ Deno.test("[jwt] parse", async function (): Promise<void> {
     },
   );
   assertThrows(() => {
-    parse(".aaa.bbb");
-  }, Error);
+    // SyntaxError: Unexpected end of JSON input
+    parse("aaa");
+  }, SyntaxError);
+  assertThrows(() => {
+    // SyntaxError: Unexpected end of JSON input
+    // "ImEi" === base64url("a")
+    parse("ImEi..ImEi");
+  }, SyntaxError);
   assertThrows((): void => {
-    parse("a..aa.bbb");
+    // TypeError: Illegal base64url string!
+    parse("a");
   }, TypeError);
   assertThrows((): void => {
-    parse("aaa.bbb.ccc.");
+    // TypeError: invalid serialization
+    parse("ImEi.ImEi.ImEi.ImEi");
   }, Error);
+
   const jwt =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
   const header:Header = {
