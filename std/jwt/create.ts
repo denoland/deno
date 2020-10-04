@@ -1,15 +1,14 @@
 import { Algorithm, convertHexToBase64url, convertStringToBase64url, encrypt } from "./_util.ts";
 // https://www.rfc-editor.org/rfc/rfc7515.html#page-8
 // The payload can be any content and need not be a representation of a JSON object
-export type Payload = PayloadObject | unknown;
 
 export interface Config {
   key: string;
-  payload: Payload;
+  payload: Payload | unknown;
   header?: Header;
 }
 
-interface PayloadObject {
+export interface Payload {
   iss?: string;
   sub?: string;
   aud?: string[] | string;
@@ -26,7 +25,7 @@ export interface Header {
   [key: string]: unknown;
 }
 
-export function makeSigningInput(header: Header, payload: Payload): string {
+export function makeSigningInput(header: Header, payload: Payload | unknown): string {
   return `${
     convertStringToBase64url(
       JSON.stringify(header),

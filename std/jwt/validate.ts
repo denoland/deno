@@ -1,15 +1,11 @@
 import { Algorithm, encrypt } from "./_util.ts";
 import type { Header, Payload } from "./create.ts";
-import { hasProperty, isExpired, isObject } from "./_util.ts";
+import { isExpired } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
-import {  encodeToString as convertUint8ArrayToHex, } from "../encoding/hex.ts";
+import {  encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 
-type JwtObject = { header: Header; payload: Payload; signature: string };
-type JwtObjectWithUnknownProps = {
-  header: unknown;
-  payload: unknown;
-  signature: unknown;
-};
+type TokenObject = { header: Header; payload: Payload; signature: string };
+
 type Validation = {
   jwt: string;
   key: string;
@@ -48,63 +44,49 @@ const reservedWords = new Set([
 // must understand and process additional claims (JWS §4.1.11)
 export function checkHeaderCrit(
   header: Header,
-  handlers?: Handlers,
-): void {
-  if (!header["crit"]) return;
-  if (
-    !Array.isArray(header.crit) ||
-    header.crit.some((str: string) => typeof str !== "string" || !str)
-  ) {
-    throw new Error(
-      "header parameter 'crit' must be an array of non-empty strings",
-    );
+  handlers: Handlers,
+): unknown {
+  if (!isHeaderCrit(header.crit)) {
+    throw new Error("header parameter 'crit' must be an array of non-empty strings");
   }
-  if (header.crit.some((str: string) => reservedWords.has(str))) {
-    throw new Error(
-      "the 'crit' list contains a non-extension header parameter",
-    );
-  }
-  if (
-    header.crit.some(
-      (str: string) =>
-        typeof header[str] === "undefined" ||
-        typeof handlers?.[str] !== "function",
-    )
-  ) {
-    throw new Error("critical extension header parameters are not understood");
-  }
-}
 
-export function validateObject(
-  maybeJwtObject: JwtObjectWithUnknownProps,
-): JwtObject {
-  if (typeof maybeJwtObject.signature !== "string") {
-    throw ReferenceError("the signature is no string");
-  }
-  if (
-    !(
-      isObject(maybeJwtObject.header) &&
-      hasProperty("alg", maybeJwtObject.header) &&
-      typeof maybeJwtObject.header.alg === "string"
-    )
-  ) {
-    throw ReferenceError("header parameter 'alg' is not a string");
-  }
-  if (
-    isObject(maybeJwtObject.payload) &&
-    hasProperty("exp", maybeJwtObject.payload)
-  ) {
-    if (typeof maybeJwtObject.payload.exp !== "number") {
-      throw RangeError("claim 'exp' is not a number");
-    } // Implementers MAY provide for some small leeway to account for clock skew (JWT §4.1.4)
-    else if (isExpired(maybeJwtObject.payload.exp, 1)) {
-      throw RangeError("the jwt is expired");
+  const newCrit: unknown[] = [...header.crit]
+
+  header.crit.forEach((str: string) => {
+    if (!str || typeof str !== "string") {
+      throw new Error("header parameter 'crit' values must be non-empty strings");
     }
-  }
-  return maybeJwtObject as JwtObject;
+    if(reservedWords.has(str)) {
+      throw new Error("the 'crit' list contains a non-extension header parameter");
+    }
+    
+    const handler = handlers[str]
+    const prop = header[str]
+    if (!prop || typeof handler !== "function") {
+      throw new Error("critical extension header parameters are not understood");
+    }
+
+    newCrit.push(handler(prop))
+  })
+
+  return newCrit
+
 }
 
-export function parseAndDecode(jwt: string): JwtObjectWithUnknownProps {
+function isHeaderCrit(crit: unknown): crit is string[] {
+  return Array.isArray(crit) && crit.every((str: string) => typeof str === "string" && str.length)
+}
+
+export function isTokenObject(object: TokenObject): object is TokenObject {
+  return (
+    typeof object?.signature === "string" &&
+    typeof object?.header?.alg === "string" && 
+    typeof object?.payload === "object" &&
+    object?.payload?.exp ? typeof object.payload.exp === "number" : true
+  )
+}
+
+export function parse(jwt: string): TokenObject {
   const parsedArray = jwt
     .split(".")
     .map(convertBase64urlToUint8Array)
@@ -114,11 +96,18 @@ export function parseAndDecode(jwt: string): JwtObjectWithUnknownProps {
         : JSON.parse(new TextDecoder().decode(uint8Array))
     );
   if (parsedArray.length !== 3) throw TypeError("invalid serialization");
-  return {
+
+  const object = {
     header: parsedArray[0],
     payload: parsedArray[1],
     signature: parsedArray[2],
   };
+
+  if (!isTokenObject(object)) {
+    throw Error("the jwt is invalid");
+  }
+  
+  return object
 }
 
 export function validateAlgorithm(
@@ -159,24 +148,32 @@ export async function verifySignature({
 export async function validate({
   jwt,
   key,
-  critHandlers,
+  critHandlers={},
   algorithm = "HS512",
 }: Validation): Promise<Payload> {
-  const object = validateObject(parseAndDecode(jwt));
 
-  await checkHeaderCrit(object.header, critHandlers);
+  const { header, payload, signature } = parse(jwt);
 
-  const validAlgorithm = validateAlgorithm(algorithm, object.header.alg);
+  if (isExpired(payload.exp!, 1)) {
+    throw RangeError("the jwt is expired");
+  }
+
+  if (header.crit) {
+    await checkHeaderCrit(header, critHandlers);
+  }
+
+  const validAlgorithm = validateAlgorithm(algorithm, header.alg);
   if (!validAlgorithm) {
-    throw new Error("no matching algorithm: " + object.header.alg);
+    throw new Error("no matching algorithm: " + header.alg);
   }
   const validSignature = await verifySignature({
-    signature: object.signature,
+    signature,
     key,
-    alg: object.header.alg,
+    alg: header.alg,
     signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
   });
+
   if (!validSignature) throw new Error("signatures don't match");
 
-  return object.payload;
+  return payload;
 }

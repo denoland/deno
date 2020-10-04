@@ -11,19 +11,6 @@ export function setExpiration(exp: number | Date): number {
   );
 }
 
-export function isObject(obj: unknown): obj is object {
-  return (
-    obj !== null && typeof obj === "object" && Array.isArray(obj) === false
-  );
-}
-
-export function hasProperty<K extends string>(
-  key: K,
-  x: object,
-): x is { [key in K]: unknown } {
-  return key in x;
-}
-
 export function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
 }
