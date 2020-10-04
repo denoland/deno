@@ -121,6 +121,8 @@ pub struct Permissions {
   pub run: PermissionState,
   pub plugin: PermissionState,
   pub hrtime: PermissionState,
+  pub clipboard_read: PermissionState,
+  pub clipboard_write: PermissionState,
 }
 
 fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
@@ -152,6 +154,8 @@ impl Permissions {
       run: PermissionState::from(flags.allow_run),
       plugin: PermissionState::from(flags.allow_plugin),
       hrtime: PermissionState::from(flags.allow_hrtime),
+      clipboard_read: PermissionState::from(flags.allow_clipboard_read),
+      clipboard_write: PermissionState::from(flags.allow_clipboard_write),
     }
   }
 
@@ -191,6 +195,8 @@ impl Permissions {
       run: PermissionState::Granted,
       plugin: PermissionState::Granted,
       hrtime: PermissionState::Granted,
+      clipboard_read: PermissionState::Granted,
+      clipboard_write: PermissionState::Granted,
     }
   }
 
@@ -288,6 +294,14 @@ impl Permissions {
 
   pub fn query_hrtime(&self) -> PermissionState {
     self.hrtime
+  }
+
+  pub fn query_clipboard_read(&self) -> PermissionState {
+    self.clipboard_read
+  }
+
+  pub fn query_clipboard_write(&self) -> PermissionState {
+    self.clipboard_write
   }
 
   pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
@@ -454,6 +468,28 @@ impl Permissions {
     self.hrtime
   }
 
+  pub fn request_clipboard_read(&mut self) -> PermissionState {
+    if self.clipboard_read == PermissionState::Prompt {
+      if permission_prompt("Deno requests access to read from the clipboard") {
+        self.clipboard_read = PermissionState::Granted;
+      } else {
+        self.clipboard_read = PermissionState::Denied;
+      }
+    }
+    self.clipboard_read
+  }
+
+  pub fn request_clipboard_write(&mut self) -> PermissionState {
+    if self.clipboard_write == PermissionState::Prompt {
+      if permission_prompt("Deno requests access to write to the clipboard") {
+        self.clipboard_write = PermissionState::Granted;
+      } else {
+        self.clipboard_write = PermissionState::Denied;
+      }
+    }
+    self.clipboard_write
+  }
+
   pub fn revoke_read(&mut self, path: &Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let path = resolve_from_cwd(path).unwrap();
@@ -529,6 +565,20 @@ impl Permissions {
     self.hrtime
   }
 
+  pub fn revoke_clipboard_read(&mut self) -> PermissionState {
+    if self.clipboard_read == PermissionState::Granted {
+      self.clipboard_read = PermissionState::Prompt;
+    }
+    self.clipboard_read
+  }
+
+  pub fn revoke_clipboard_write(&mut self) -> PermissionState {
+    if self.clipboard_write == PermissionState::Granted {
+      self.clipboard_write = PermissionState::Prompt;
+    }
+    self.clipboard_write
+  }
+
   pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
     self.query_read(&Some(&resolved_path)).check(
@@ -596,6 +646,18 @@ impl Permissions {
       .check("access to high precision time", "--allow-run")
   }
 
+  pub fn check_clipboard_read(&self) -> Result<(), AnyError> {
+    self
+      .clipboard_read
+      .check("access to read the clipboard", "--allow-clipboard-read")
+  }
+
+  pub fn check_clipboard_write(&self) -> Result<(), AnyError> {
+    self
+      .clipboard_write
+      .check("access to write to the clipboard", "--allow-clipboard-write")
+  }
+
   #[allow(clippy::too_many_arguments)]
   pub fn fork(
     &self,
@@ -606,6 +668,8 @@ impl Permissions {
     run: PermissionState,
     plugin: PermissionState,
     hrtime: PermissionState,
+    clipboard_read: PermissionState,
+    clipboard_write: PermissionState,
   ) -> Result<Permissions, AnyError> {
     self.read.check_fork(&read)?;
     self.write.check_fork(&write)?;
@@ -614,6 +678,8 @@ impl Permissions {
     self.run.check_fork(&run)?;
     self.plugin.check_fork(&plugin)?;
     self.hrtime.check_fork(&hrtime)?;
+    self.clipboard_read.check_fork(&plugin)?;
+    self.clipboard_write.check_fork(&hrtime)?;
     Ok(Permissions {
       read,
       write,
@@ -622,6 +688,8 @@ impl Permissions {
       run,
       plugin,
       hrtime,
+      clipboard_read,
+      clipboard_write,
     })
   }
 }
@@ -909,7 +977,9 @@ mod tests {
       "env": "Granted",
       "run": "Granted",
       "plugin": "Granted",
-      "hrtime": "Granted"
+      "hrtime": "Granted",
+      "clipboard_read": "Granted",
+      "clipboard_write": "Granted"
     }
     "#;
     let perms0 = Permissions {
@@ -929,6 +999,8 @@ mod tests {
       run: PermissionState::Granted,
       hrtime: PermissionState::Granted,
       plugin: PermissionState::Granted,
+      clipboard_read: PermissionState::Granted,
+      clipboard_write: PermissionState::Granted,
     };
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
@@ -956,6 +1028,8 @@ mod tests {
         PermissionState::Prompt,
         PermissionState::Denied,
         PermissionState::Denied,
+        PermissionState::Denied,
+        PermissionState::Denied,
       )
       .expect("Fork should succeed.");
     perms0
@@ -974,6 +1048,8 @@ mod tests {
         },
         PermissionState::Granted,
         PermissionState::Granted,
+        PermissionState::Denied,
+        PermissionState::Denied,
         PermissionState::Denied,
         PermissionState::Denied,
       )
@@ -999,6 +1075,8 @@ mod tests {
       run: PermissionState::Granted,
       plugin: PermissionState::Granted,
       hrtime: PermissionState::Granted,
+      clipboard_read: PermissionState::Granted,
+      clipboard_write: PermissionState::Granted,
     };
     let perms2 = Permissions {
       read: UnaryPermission {
@@ -1020,6 +1098,8 @@ mod tests {
       run: PermissionState::Prompt,
       plugin: PermissionState::Prompt,
       hrtime: PermissionState::Prompt,
+      clipboard_read: PermissionState::Prompt,
+      clipboard_write: PermissionState::Prompt,
     };
     #[rustfmt::skip]
     {
@@ -1045,6 +1125,10 @@ mod tests {
       assert_eq!(perms2.query_plugin(), PermissionState::Prompt);
       assert_eq!(perms1.query_hrtime(), PermissionState::Granted);
       assert_eq!(perms2.query_hrtime(), PermissionState::Prompt);
+      assert_eq!(perms1.query_clipboard_read(), PermissionState::Granted);
+      assert_eq!(perms2.query_clipboard_read(), PermissionState::Prompt);
+      assert_eq!(perms1.query_clipboard_write(), PermissionState::Granted);
+      assert_eq!(perms2.query_clipboard_write(), PermissionState::Prompt);
     };
   }
 
@@ -1067,6 +1151,8 @@ mod tests {
       run: PermissionState::Prompt,
       plugin: PermissionState::Prompt,
       hrtime: PermissionState::Prompt,
+      clipboard_read: PermissionState::Prompt,
+      clipboard_write: PermissionState::Prompt,
     };
     #[rustfmt::skip]
     {
@@ -1100,7 +1186,7 @@ mod tests {
       set_prompt_result(false);
       assert_eq!(perms.request_hrtime(), PermissionState::Denied);
       set_prompt_result(true);
-      assert_eq!(perms.request_hrtime(), PermissionState::Denied);
+      assert_eq!(perms.request_hrtime(), PermissionState::Denied); //TODO
     };
   }
 
@@ -1125,6 +1211,8 @@ mod tests {
       run: PermissionState::Granted,
       plugin: PermissionState::Prompt,
       hrtime: PermissionState::Denied,
+      clipboard_read: PermissionState::Denied,
+      clipboard_write: PermissionState::Denied,
     };
     #[rustfmt::skip]
     {
@@ -1139,6 +1227,8 @@ mod tests {
       assert_eq!(perms.revoke_run(), PermissionState::Prompt);
       assert_eq!(perms.revoke_plugin(), PermissionState::Prompt);
       assert_eq!(perms.revoke_hrtime(), PermissionState::Denied);
+      assert_eq!(perms.revoke_clipboard_read(), PermissionState::Prompt);
+      assert_eq!(perms.revoke_clipboard_write(), PermissionState::Denied);
     };
   }
 }

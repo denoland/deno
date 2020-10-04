@@ -25,6 +25,7 @@ delete Object.prototype.__proto__;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
   const webSocket = window.__bootstrap.webSocket;
+  const clipboard = window.__bootstrap.clipboard;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
@@ -243,7 +244,12 @@ delete Object.prototype.__proto__;
     setTimeout: util.writable(timers.setTimeout),
   };
 
+  const navigatorProperties = {
+    clipboard: new clipboard.Clipboard(),
+  };
+
   const mainRuntimeGlobalProperties = {
+    navigator: util.readOnly(navigatorProperties),
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)

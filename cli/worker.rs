@@ -314,6 +314,7 @@ impl MainWorker {
       ops::tls::init(&mut worker);
       ops::tty::init(&mut worker);
       ops::websocket::init(&mut worker);
+      ops::clipboard::init(&mut worker);
     }
     {
       let op_state = worker.op_state();

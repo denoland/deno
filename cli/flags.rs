@@ -99,6 +99,8 @@ pub struct Flags {
   pub allow_hrtime: bool,
   pub allow_net: bool,
   pub allow_plugin: bool,
+  pub allow_clipboard_read: bool,
+  pub allow_clipboard_write: bool,
   pub allow_read: bool,
   pub allow_run: bool,
   pub allow_write: bool,
@@ -181,6 +183,14 @@ impl Flags {
 
     if self.allow_plugin {
       args.push("--allow-plugin".to_string());
+    }
+
+    if self.allow_clipboard_read {
+      args.push("--allow-clipboard-read".to_string());
+    }
+
+    if self.allow_clipboard_write {
+      args.push("--allow-clipboard-write".to_string());
     }
 
     if self.allow_hrtime {
@@ -457,6 +467,8 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = true;
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
+  flags.allow_clipboard_read = true;
+  flags.allow_clipboard_write = true;
 }
 
 fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -468,6 +480,8 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = true;
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
+  flags.allow_clipboard_read = true;
+  flags.allow_clipboard_write = true;
   let code = matches.value_of("code").unwrap().to_string();
   let as_typescript = matches.is_present("ts");
   let print = matches.is_present("print");
@@ -1119,6 +1133,16 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow high resolution time measurement"),
     )
     .arg(
+      Arg::with_name("allow-clipboard-read")
+        .long("allow-clipboard-read")
+        .help("Allow reading from the clipboard"),
+    )
+    .arg(
+      Arg::with_name("allow-clipboard-write")
+        .long("allow-clipboard-write")
+        .help("Allow writing to the clipboard"),
+    )
+    .arg(
       Arg::with_name("allow-all")
         .short("A")
         .long("allow-all")
@@ -1503,6 +1527,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
+  if matches.is_present("allow-clipboard-read") {
+    flags.allow_clipboard_read = true;
+  }
+  if matches.is_present("allow-clipboard-write") {
+    flags.allow_clipboard_write = true;
+  }
   if matches.is_present("allow-all") {
     flags.allow_read = true;
     flags.allow_env = true;
@@ -1512,6 +1542,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_write = true;
     flags.allow_plugin = true;
     flags.allow_hrtime = true;
+    flags.allow_clipboard_read = true;
+    flags.allow_clipboard_write = true;
   }
 }
 

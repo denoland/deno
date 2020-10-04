@@ -3,6 +3,7 @@
 mod dispatch_minimal;
 pub use dispatch_minimal::MinimalOp;
 
+pub mod clipboard;
 pub mod errors;
 pub mod fetch;
 pub mod fs;

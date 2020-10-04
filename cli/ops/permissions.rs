@@ -40,6 +40,8 @@ pub fn op_query_permission(
     "run" => permissions.query_run(),
     "plugin" => permissions.query_plugin(),
     "hrtime" => permissions.query_hrtime(),
+    "clipboard-read" => permissions.query_clipboard_read(),
+    "clipboard-write" => permissions.query_clipboard_write(),
     n => {
       return Err(custom_error(
         "ReferenceError",
@@ -66,6 +68,8 @@ pub fn op_revoke_permission(
     "run" => permissions.revoke_run(),
     "plugin" => permissions.revoke_plugin(),
     "hrtime" => permissions.revoke_hrtime(),
+    "clipboard-read" => permissions.revoke_clipboard_read(),
+    "clipboard-write" => permissions.revoke_clipboard_write(),
     n => {
       return Err(custom_error(
         "ReferenceError",
@@ -92,6 +96,8 @@ pub fn op_request_permission(
     "run" => permissions.request_run(),
     "plugin" => permissions.request_plugin(),
     "hrtime" => permissions.request_hrtime(),
+    "clipboard-read" => permissions.request_clipboard_read(),
+    "clipboard-write" => permissions.request_clipboard_write(),
     n => {
       return Err(custom_error(
         "ReferenceError",
