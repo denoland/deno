@@ -50,7 +50,7 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    if line.len() == 0 {
+    if line.is_empty() {
       let response = self
         .post_message(
           "Runtime.globalLexicalScopeNames".to_string(),
