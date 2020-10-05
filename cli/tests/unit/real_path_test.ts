@@ -12,7 +12,7 @@ unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
   } else {
-    assert(/^[A-Z]/.test(realPath));
+    assert(/^[A-Z]:\\/.test(realPath));
   }
   assert(realPath.endsWith(incompletePath));
 });
@@ -31,7 +31,7 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assert(targetPath.startsWith("/"));
     } else {
-      assert(/^[A-Z]/.test(targetPath));
+      assert(/^[A-Z]:\\/.test(targetPath));
     }
     assert(targetPath.endsWith("/target"));
   },
@@ -57,7 +57,7 @@ unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
   } else {
-    assert(/^[A-Z]/.test(realPath));
+    assert(/^[A-Z]:\\/.test(realPath));
   }
   assert(realPath.endsWith(incompletePath));
 });
@@ -76,7 +76,7 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assert(targetPath.startsWith("/"));
     } else {
-      assert(/^[A-Z]/.test(targetPath));
+      assert(/^[A-Z]:\\/.test(targetPath));
     }
     assert(targetPath.endsWith("/target"));
   },
