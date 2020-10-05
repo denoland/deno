@@ -2668,8 +2668,8 @@ itest!(top_level_await_bug {
 });
 
 itest!(top_level_await_bug2 {
-  args: "run --allow-read top_level_await_bug3.js",
-  output: "top_level_await_bug3.out",
+  args: "run --allow-read top_level_await_bug2.js",
+  output: "top_level_await_bug2.out",
 });
 
 #[test]

@@ -86,6 +86,11 @@ pub struct JsRuntime {
   allocations: IsolateAllocations,
 }
 
+type DynImportModEvaluate =
+  (ModuleId, v8::Global<v8::Promise>, v8::Global<v8::Module>);
+type ModEvaluate =
+  (v8::Global<v8::Promise>, mpsc::Sender<Result<(), AnyError>>);
+
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
@@ -94,18 +99,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
-  pub(crate) pending_dyn_mod_evaluate:
-    HashMap<i32, (ModuleId, v8::Global<v8::Promise>, v8::Global<v8::Module>)>,
-  #[allow(clippy::type_complexity)]
-  pub(crate) pending_mod_evaluate: HashMap<
-    i32,
-    (
-      ModuleId,
-      v8::Global<v8::Promise>,
-      v8::Global<v8::Module>,
-      mpsc::Sender<Result<(), AnyError>>,
-    ),
-  >,
+  pub(crate) pending_dyn_mod_evaluate: HashMap<i32, DynImportModEvaluate>,
+  pub(crate) pending_mod_evaluate: HashMap<ModuleId, ModEvaluate>,
   pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
@@ -500,7 +495,7 @@ impl Future for JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    debug!("main poll");
+    // Top level modules
     runtime.poll_mod_evaluate(cx)?;
 
     // Dynamic module loading - ie. modules loaded using "import()"
@@ -546,11 +541,6 @@ impl Future for JsRuntime {
     Poll::Pending
   }
 }
-
-// enum LoadState {
-//   Loading(future),
-//   Loaded(Global<Value>),
-// }
 
 impl JsRuntimeState {
   // Called by V8 during `Isolate::mod_instantiate`.
@@ -784,10 +774,6 @@ impl JsRuntime {
         );
         let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
-        debug!(
-          "dyn_mod_evaluate promise {}",
-          promise.state() == v8::PromiseState::Pending
-        );
         let promise_id = promise.get_identity_hash();
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_id);
@@ -813,7 +799,7 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  pub fn mod_evaluate(
+  fn mod_evaluate_inner(
     &mut self,
     id: ModuleId,
   ) -> Result<mpsc::Receiver<Result<(), AnyError>>, AnyError> {
@@ -866,38 +852,20 @@ impl JsRuntime {
         let promise_id = promise.get_identity_hash();
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_id);
-        debug!(
-          "mod_evaluate promise state pending {}",
-          promise.state() == v8::PromiseState::Pending
-        );
         let promise_global = v8::Global::new(scope, promise);
-        let module_global = v8::Global::new(scope, module);
         state
           .pending_mod_evaluate
-          .insert(0, (id, promise_global, module_global, sender));
+          .insert(id, (promise_global, sender));
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
     }
 
     Ok(receiver)
-
-    // match status {
-    //   v8::ModuleStatus::Evaluated => Ok(()),
-    //   v8::ModuleStatus::Errored => {
-    //     let exception = module.get_exception();
-    //     exception_to_err_result(scope, exception)
-    //       .map_err(|err| attach_handle_to_error(scope, err, exception))
-    //   }
-    //   other => panic!("Unexpected module status {:?}", other),
-    // }
   }
 
-  pub async fn mod_evaluate_async(
-    &mut self,
-    id: ModuleId,
-  ) -> Result<(), AnyError> {
-    let mut receiver = self.mod_evaluate(id)?;
+  pub async fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
+    let mut receiver = self.mod_evaluate_inner(id)?;
 
     poll_fn(|cx| {
       if let Poll::Ready(result) = receiver.poll_next_unpin(cx) {
@@ -1068,7 +1036,6 @@ impl JsRuntime {
             // Load is done.
             let module_id = load.root_module_id.unwrap();
             self.mod_instantiate(module_id)?;
-            debug!("dyn_mod_evaluate {} {}", dyn_import_id, module_id);
             self.dyn_mod_evaluate(dyn_import_id, module_id)?;
           }
         }
@@ -1084,19 +1051,13 @@ impl JsRuntime {
       let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
       let mut state = state_rc.borrow_mut();
-      debug!(
-        "poll mod evaluate {}",
-        state.pending_mod_evaluate.keys().len()
-      );
 
-      if let Some(&load_id) = state.pending_mod_evaluate.keys().next() {
-        let handle = state.pending_mod_evaluate.remove(&load_id).unwrap();
+      if let Some(&module_id) = state.pending_mod_evaluate.keys().next() {
+        let handle = state.pending_mod_evaluate.remove(&module_id).unwrap();
         drop(state);
 
-        let _module_id = handle.0;
-        let promise = handle.1.get(scope);
-        let _module = handle.2.get(scope);
-        let mut sender = handle.3.clone();
+        let promise = handle.0.get(scope);
+        let mut sender = handle.1.clone();
 
         let promise_state = promise.state();
 
@@ -1105,7 +1066,7 @@ impl JsRuntime {
             state_rc
               .borrow_mut()
               .pending_mod_evaluate
-              .insert(load_id, handle);
+              .insert(module_id, handle);
             state_rc.borrow().waker.wake();
           }
           v8::PromiseState::Fulfilled => {
@@ -1137,10 +1098,6 @@ impl JsRuntime {
         let scope = &mut v8::HandleScope::with_context(&mut **self, context);
 
         let mut state = state_rc.borrow_mut();
-        debug!(
-          "poll dyn imports evaluate {}",
-          state.pending_dyn_mod_evaluate.keys().len()
-        );
         if let Some(&dyn_import_id) =
           state.pending_dyn_mod_evaluate.keys().next()
         {
@@ -2267,7 +2224,7 @@ pub mod tests {
     runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    runtime.mod_evaluate(mod_a).unwrap();
+    runtime.mod_evaluate_inner(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -2510,7 +2467,7 @@ pub mod tests {
     )
     .unwrap();
 
-    runtime.mod_evaluate(module_id).unwrap();
+    futures::executor::block_on(runtime.mod_evaluate(module_id)).unwrap();
 
     let _snapshot = runtime.snapshot();
   }
