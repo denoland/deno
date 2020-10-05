@@ -113,6 +113,52 @@ impl Completer for Helper {
       }
     }
 
+    if let Some(index) = line.rfind('[') {
+      let (lhs, rhs) = line.split_at(index);
+
+      let evaluate_response = self
+        .post_message(
+          "Runtime.evaluate".to_string(),
+          Some(json!({
+              "contextId": self.context_id,
+              "expression": lhs,
+              "throwOnSideEffect": true,
+              "timeout": 200,
+          })),
+        )
+        .unwrap();
+
+      if let Some(result) = evaluate_response.get("result") {
+        if let Some(object_id) = result.get("objectId") {
+          let get_properties_response = self
+            .post_message(
+              "Runtime.getProperties".to_string(),
+              Some(json!({
+                  "objectId": object_id,
+              })),
+            )
+            .unwrap();
+
+          if let Some(result) = get_properties_response.get("result") {
+            let candidates = result
+              .as_array()
+              .unwrap()
+              .iter()
+              .map(|r| {
+                format!(
+                  "\"{}\"",
+                  r.get("name").unwrap().as_str().unwrap().to_string()
+                )
+              })
+              .filter(|r| r.starts_with(&rhs[1..]))
+              .collect();
+
+            return Ok((lhs.len() + 1, candidates));
+          }
+        }
+      }
+    }
+
     let candidates = Vec::new();
     Ok((pos, candidates))
   }
