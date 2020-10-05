@@ -348,7 +348,7 @@ impl JsRuntime {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  pub fn shared_init(&mut self) {
+  fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       self.execute("core.js", include_str!("core.js")).unwrap();

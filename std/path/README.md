@@ -3,7 +3,7 @@
 Usage:
 
 ```ts
-import * as path from "https://deno.land/std/path/mod.ts";
+import * as path from "https://deno.land/std@$STD_VERSION/path/mod.ts";
 ```
 
 ### globToRegExp
@@ -12,7 +12,7 @@ Generate a regex based on glob pattern and options This was meant to be using
 the the `fs.walk` function but can be used anywhere else.
 
 ```ts
-import { globToRegExp } from "https://deno.land/std/path/glob.ts";
+import { globToRegExp } from "https://deno.land/std@$STD_VERSION/path/glob.ts";
 
 globToRegExp("foo/**/*.json", {
   flags: "g",
