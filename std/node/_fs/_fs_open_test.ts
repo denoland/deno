@@ -62,7 +62,7 @@ Deno.test({
         openSync(file, "ax");
       },
       Error,
-      `EEXIST: file already exists, open '${file}'`,
+      `EEXIST: file already exists, open '${file}'`
     );
     Deno.removeSync(file);
   },
@@ -88,9 +88,31 @@ Deno.test({
         openSync(file, "ax+");
       },
       Error,
-      `EEXIST: file already exists, open '${file}'`,
+      `EEXIST: file already exists, open '${file}'`
     );
     Deno.removeSync(file);
+  },
+});
+
+Deno.test({
+  name: "open with flag 'as'",
+  fn() {
+    const file = join(temp_dir, "some_random_file10");
+    const fd = openSync(file, "as");
+    assertEquals(existsSync(file), true);
+    assertEquals(typeof fd, "number");
+    closeSync(fd);
+  },
+});
+
+Deno.test({
+  name: "open with flag 'as+'",
+  fn() {
+    const file = join(temp_dir, "some_random_file10");
+    const fd = openSync(file, "as+");
+    assertEquals(existsSync(file), true);
+    assertEquals(typeof fd, "number");
+    closeSync(fd);
   },
 });
 
@@ -103,7 +125,7 @@ Deno.test({
         openSync(file, "r");
       },
       Error,
-      "No such file or directory (os error 2)",
+      "No such file or directory (os error 2)"
     );
   },
 });
@@ -117,7 +139,7 @@ Deno.test({
         openSync(file, "r+");
       },
       Error,
-      "No such file or directory (os error 2)",
+      "No such file or directory (os error 2)"
     );
   },
 });
@@ -156,7 +178,7 @@ Deno.test({
         openSync(file2, "wx");
       },
       Error,
-      `EEXIST: file already exists, open '${file2}'`,
+      `EEXIST: file already exists, open '${file2}'`
     );
   },
 });
@@ -188,7 +210,7 @@ Deno.test({
         openSync(file, "wx+");
       },
       Error,
-      `EEXIST: file already exists, open '${file}'`,
+      `EEXIST: file already exists, open '${file}'`
     );
     Deno.removeSync(file);
   },
