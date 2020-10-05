@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertMatch,
   assertThrows,
   assertThrowsAsync,
   unitTest,
@@ -13,7 +14,7 @@ unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
     assert(realPath.startsWith("/"));
     assert(realPath.endsWith(relative));
   } else {
-    assert(/^[A-Z]:\\/.test(realPath));
+    assertMatch(realPath, /^[A-Z]:\\/);
     assert(realPath.endsWith(relative.replace(/\//g, "\\")));
   }
 });
@@ -33,7 +34,7 @@ unitTest(
       assert(realPath.startsWith("/"));
       assert(realPath.endsWith("/target"));
     } else {
-      assert(/^[A-Z]:\\/.test(realPath));
+      assertMatch(realPath, /^[A-Z]:\\/);
       assert(realPath.endsWith("\\target"));
     }
   },
@@ -60,7 +61,7 @@ unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
     assert(realPath.startsWith("/"));
     assert(realPath.endsWith(relativePath));
   } else {
-    assert(/^[A-Z]:\\/.test(realPath));
+    assertMatch(realPath, /^[A-Z]:\\/);
     assert(realPath.endsWith(relativePath.replace(/\//g, "\\")));
   }
 });
@@ -80,7 +81,7 @@ unitTest(
       assert(realPath.startsWith("/"));
       assert(realPath.endsWith("/target"));
     } else {
-      assert(/^[A-Z]:\\/.test(realPath));
+      assertMatch(realPath, /^[A-Z]:\\/);
       assert(realPath.endsWith("\\target"));
     }
   },
