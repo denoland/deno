@@ -14,31 +14,33 @@ type readDirCallbackDirent = (err: Error | undefined, files: Dirent[]) => void;
 
 type readDirBoth = (
   err: Error | undefined,
-  files: string[] | Dirent[] | (string | Dirent)[]
+  files: string[] | Dirent[] | Array<string | Dirent>,
 ) => void;
 
 export function readdir(
   path: string | URL,
   options: { withFileTypes?: false; encoding?: string },
-  callback: readDirCallback
+  callback: readDirCallback,
 ): void;
 export function readdir(
   path: string | URL,
   options: { withFileTypes: true; encoding?: string },
-  callback: readDirCallbackDirent
+  callback: readDirCallbackDirent,
 ): void;
 export function readdir(path: string | URL, callback: readDirCallback): void;
 export function readdir(
   path: string | URL,
   optionsOrCallback: readDirOptions | readDirCallback | readDirCallbackDirent,
-  maybeCallback?: readDirCallback | readDirCallbackDirent
+  maybeCallback?: readDirCallback | readDirCallbackDirent,
 ) {
-  const callback = (typeof optionsOrCallback === "function"
+  const callback =
+    (typeof optionsOrCallback === "function"
+      ? optionsOrCallback
+      : maybeCallback) as readDirBoth | undefined;
+  const options = typeof optionsOrCallback === "object"
     ? optionsOrCallback
-    : maybeCallback) as readDirBoth | undefined;
-  const options =
-    typeof optionsOrCallback === "object" ? optionsOrCallback : null;
-  const result: (string | Dirent)[] = [];
+    : null;
+  const result: Array<string | Dirent> = [];
   path = path instanceof URL ? fromFileUrl(path) : path;
 
   if (!callback) throw new Error("No callback function supplied");
@@ -48,7 +50,7 @@ export function readdir(
       new TextDecoder(options.encoding);
     } catch (error) {
       throw new Error(
-        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`
+        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`,
       );
     }
   }
@@ -60,9 +62,9 @@ export function readdir(
         callback(undefined, result);
         return;
       }
-      if (options?.withFileTypes)
+      if (options?.withFileTypes) {
         result.push(toDirent(path, val, options.encoding));
-      else result.push(decode(val.name));
+      } else result.push(decode(val.name));
     });
   } catch (error) {
     callback(error, result);
@@ -83,7 +85,7 @@ type Dirent = {
 function toDirent(
   path: string,
   file: Deno.DirEntry,
-  encoding?: string
+  encoding?: string,
 ): Dirent {
   const lstat = lstatSync(join(path, file.name));
   return {
@@ -123,16 +125,16 @@ function decode(str: string, encoding?: string): string {
 
 export function readdirSync(
   path: string | URL,
-  options: { withFileTypes: true; encoding?: string }
+  options: { withFileTypes: true; encoding?: string },
 ): Dirent[];
 export function readdirSync(
   path: string | URL,
-  options?: { withFileTypes?: false; encoding?: string }
+  options?: { withFileTypes?: false; encoding?: string },
 ): string[];
 export function readdirSync(
   path: string | URL,
-  options?: readDirOptions
-): (string | Dirent)[] {
+  options?: readDirOptions,
+): Array<string | Dirent> {
   const result = [];
   path = path instanceof URL ? fromFileUrl(path) : path;
 
@@ -141,7 +143,7 @@ export function readdirSync(
       new TextDecoder(options.encoding);
     } catch (error) {
       throw new Error(
-        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`
+        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`,
       );
     }
   }
