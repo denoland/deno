@@ -50,6 +50,28 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
+    if line.len() == 0 {
+      let response = self
+        .post_message(
+          "Runtime.globalLexicalScopeNames".to_string(),
+          Some(json!({
+            "executionContextId": self.context_id,
+          })),
+        )
+        .unwrap();
+
+      let candidates = response
+        .get("names")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r.as_str().unwrap().to_string())
+        .collect();
+
+      return Ok((pos, candidates));
+    }
+
     if line.ends_with('.') {
       let evaluate_response = self
         .post_message(
