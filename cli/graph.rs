@@ -8,6 +8,7 @@ use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::file_fetcher::TextDocument;
 use crate::import_map::ImportMap;
+use crate::js;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::specifier_handler::CachedModule;
@@ -16,6 +17,8 @@ use crate::specifier_handler::EmitMap;
 use crate::specifier_handler::EmitType;
 use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
+use crate::ts_checker::exec;
+use crate::ts_checker::Request;
 use crate::tsc_config::IgnoredCompilerOptions;
 use crate::tsc_config::TsConfig;
 use crate::version;
@@ -39,8 +42,6 @@ use std::result;
 use std::sync::Mutex;
 use std::time::Instant;
 use swc_ecmascript::dep_graph::DependencyKind;
-
-pub type BuildInfoMap = HashMap<EmitType, TextDocument>;
 
 lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -387,15 +388,27 @@ impl Module {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Stats(Vec<(String, u128)>);
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct Stat {
+  key: String,
+  value: u128,
+}
+
+impl Stat {
+  pub fn new(key: String, value: u128) -> Self {
+    Stat { key, value }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Stats(pub Vec<Stat>);
 
 impl<'de> Deserialize<'de> for Stats {
   fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {
-    let items: Vec<(String, u128)> = Deserialize::deserialize(deserializer)?;
+    let items: Vec<Stat> = Deserialize::deserialize(deserializer)?;
     Ok(Stats(items))
   }
 }
@@ -403,8 +416,8 @@ impl<'de> Deserialize<'de> for Stats {
 impl fmt::Display for Stats {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     writeln!(f, "Stats:")?;
-    for (key, value) in self.0.clone() {
-      writeln!(f, "  {}: {}", key, value)?;
+    for stat in self.0.clone() {
+      writeln!(f, "  {}: {}", stat.key, stat.value)?;
     }
 
     Ok(())
@@ -452,8 +465,8 @@ pub struct TranspileOptions {
 
 #[derive(Debug)]
 pub struct Graph {
-  build_info: BuildInfoMap,
   handler: Rc<RefCell<dyn SpecifierHandler>>,
+  maybe_build_info: Option<TextDocument>,
   modules: HashMap<ModuleSpecifier, Module>,
   roots: Vec<ModuleSpecifier>,
 }
@@ -466,15 +479,15 @@ impl Graph {
   ///
   pub fn new(handler: Rc<RefCell<dyn SpecifierHandler>>) -> Self {
     Graph {
-      build_info: HashMap::new(),
       handler,
+      maybe_build_info: None,
       modules: HashMap::new(),
       roots: Vec::new(),
     }
   }
 
   pub fn bundle(
-    &self,
+    self,
     options: BundleOptions,
   ) -> Result<(String, Stats, Option<IgnoredCompilerOptions>), AnyError> {
     if self.roots.len() != 1 {
@@ -489,21 +502,62 @@ impl Graph {
 
     let start = Instant::now();
     let root_specifier = self.roots[0].clone();
-    let mut ts_config = TsConfig::new(json!({
+    let mut config = TsConfig::new(json!({
+      "allowJs": true,
       "checkJs": false,
+      "esModuleInterop": true,
       "emitDecoratorMetadata": false,
+      "incremental": true,
+      "isolatedModules": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
+      "lib": ["deno.window"],
+      "module": "esnext",
+      "noEmit": true,
+      "outDir": "deno:///",
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "cache:///.tsbuildinfo",
     }));
     let maybe_ignored_options =
-      ts_config.merge_user_config(options.maybe_config_path)?;
-    let emit_options = ts_config.as_emit_options()?;
+      config.merge_user_config(options.maybe_config_path)?;
+
+    let provider = Rc::new(RefCell::new(self));
+    if options.check {
+      let hash_data =
+        vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
+      let root_names = &provider
+        .borrow()
+        .roots
+        .iter()
+        .map(|ms| ms.to_string())
+        .collect();
+      let maybe_build_info = provider.borrow().maybe_build_info.clone();
+      let result = exec(
+        Request {
+          config: &config,
+          debug: options.debug,
+          root_names,
+        },
+        js::compiler_isolate_init(),
+        provider.clone(),
+        hash_data,
+        maybe_build_info,
+      )?;
+      // TODO(@kitsonk) bubble this up
+      debug!("{}", result.stats);
+      let mut p = provider.borrow_mut();
+      p.maybe_build_info = result.maybe_build_info;
+      p.flush(&EmitType::Bundle)?;
+    }
+
+    let emit_options = config.as_emit_options()?;
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
     ));
-    let loader = BundleLoader::new(self, cm.clone(), &emit_options);
-    let resolver = BundleResolver::new(self);
+    let loader = BundleLoader::new(provider.clone(), cm.clone(), &emit_options);
+    let resolver = BundleResolver::new(provider.clone());
     let hook = Box::new(BundleHook);
     let globals = swc_common::Globals::new();
     let bundler = swc_bundler::Bundler::new(
@@ -540,8 +594,8 @@ impl Graph {
       String::from_utf8(buf).context("Bundle is an invalid utf-8 string.")?;
 
     let stats = Stats(vec![
-      ("Files".to_string(), self.modules.len() as u128),
-      ("Total time".to_string(), start.elapsed().as_millis()),
+      Stat::new("Files".to_string(), provider.borrow().modules.len() as u128),
+      Stat::new("Total time".to_string(), start.elapsed().as_millis()),
     ]);
 
     Ok((s, stats, maybe_ignored_options))
@@ -567,12 +621,8 @@ impl Graph {
       }
     }
     for root_specifier in self.roots.iter() {
-      if let Some(build_info) = self.build_info.get(&emit_type) {
-        handler.set_build_info(
-          root_specifier,
-          &emit_type,
-          build_info.to_owned(),
-        )?;
+      if let Some(build_info) = &self.maybe_build_info {
+        handler.set_build_info(root_specifier, build_info.clone())?;
       }
     }
 
@@ -668,9 +718,9 @@ impl Graph {
     self.flush(&emit_type)?;
 
     let stats = Stats(vec![
-      ("Files".to_string(), self.modules.len() as u128),
-      ("Emitted".to_string(), emit_count),
-      ("Total time".to_string(), start.elapsed().as_millis()),
+      Stat::new("Files".to_string(), self.modules.len() as u128),
+      Stat::new("Emitted".to_string(), emit_count),
+      Stat::new("Total time".to_string(), start.elapsed().as_millis()),
     ]);
 
     Ok((stats, maybe_ignored_options))
@@ -848,6 +898,10 @@ impl GraphBuilder {
 
     if !self.graph.roots.contains(specifier) {
       self.graph.roots.push(specifier.clone());
+      let handler = self.graph.handler.borrow();
+      if self.graph.maybe_build_info.is_none() {
+        self.graph.maybe_build_info = handler.get_build_info(&specifier)?;
+      }
     }
 
     Ok(())
@@ -867,14 +921,47 @@ impl GraphBuilder {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use super::*;
 
   use crate::specifier_handler::tests::MockSpecifierHandler;
 
+  use deno_core::error::anyhow;
   use std::env;
   use std::path::PathBuf;
   use std::sync::Mutex;
+
+  #[derive(Debug, Default)]
+  pub struct MockModuleProvider {
+    pub sources: HashMap<ModuleSpecifier, String>,
+    pub media_types: HashMap<ModuleSpecifier, MediaType>,
+    pub resolution_map:
+      HashMap<ModuleSpecifier, HashMap<String, ModuleSpecifier>>,
+  }
+
+  impl ModuleProvider for MockModuleProvider {
+    fn get_media_type(&self, specifier: &ModuleSpecifier) -> Option<MediaType> {
+      self.media_types.get(specifier).cloned()
+    }
+    fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+      self.sources.get(specifier).cloned()
+    }
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &ModuleSpecifier,
+    ) -> Result<ModuleSpecifier, AnyError> {
+      if let Some(entries) = self.resolution_map.get(referrer) {
+        if let Some(entry) = entries.get(specifier) {
+          Ok(entry.clone())
+        } else {
+          Err(anyhow!("Could not find specifier: {}", specifier))
+        }
+      } else {
+        Err(anyhow!("Could not find referrer: {}", referrer))
+      }
+    }
+  }
 
   #[test]
   fn test_get_version() {
@@ -1043,7 +1130,10 @@ mod tests {
       .expect("module not inserted");
     let graph = builder.get_graph(&None).expect("could not get graph");
     let (s, _, _) = graph
-      .bundle(BundleOptions::default())
+      .bundle(BundleOptions {
+        check: false,
+        ..Default::default()
+      })
       .expect("failed to bundle");
     println!("{}", s);
   }

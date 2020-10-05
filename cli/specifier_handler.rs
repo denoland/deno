@@ -97,7 +97,6 @@ pub trait SpecifierHandler {
   fn get_build_info(
     &self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
   ) -> Result<Option<TextDocument>, AnyError>;
 
   /// Set the emitted code (and maybe map) for a given module specifier.  The
@@ -122,7 +121,6 @@ pub trait SpecifierHandler {
   fn set_build_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
     build_info: TextDocument,
   ) -> Result<(), AnyError>;
 
@@ -273,11 +271,7 @@ impl SpecifierHandler for FetchHandler {
   fn get_build_info(
     &self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
   ) -> Result<Option<TextDocument>, AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
-    }
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
@@ -291,12 +285,8 @@ impl SpecifierHandler for FetchHandler {
   fn set_build_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
     build_info: TextDocument,
   ) -> Result<(), AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
-    }
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
@@ -387,7 +377,7 @@ pub mod tests {
   pub struct MockSpecifierHandler {
     pub fixtures: PathBuf,
     pub build_info: HashMap<ModuleSpecifier, TextDocument>,
-    pub build_info_calls: Vec<(ModuleSpecifier, EmitType, TextDocument)>,
+    pub build_info_calls: Vec<(ModuleSpecifier, TextDocument)>,
     pub cache_calls: Vec<(
       ModuleSpecifier,
       EmitType,
@@ -445,7 +435,6 @@ pub mod tests {
     fn get_build_info(
       &self,
       specifier: &ModuleSpecifier,
-      _cache_type: &EmitType,
     ) -> Result<Option<TextDocument>, AnyError> {
       Ok(self.build_info.get(specifier).cloned())
     }
@@ -475,17 +464,12 @@ pub mod tests {
     fn set_build_info(
       &mut self,
       specifier: &ModuleSpecifier,
-      cache_type: &EmitType,
       build_info: TextDocument,
     ) -> Result<(), AnyError> {
       self
         .build_info
         .insert(specifier.clone(), build_info.clone());
-      self.build_info_calls.push((
-        specifier.clone(),
-        cache_type.clone(),
-        build_info,
-      ));
+      self.build_info_calls.push((specifier.clone(), build_info));
       Ok(())
     }
     fn set_deps(

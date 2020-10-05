@@ -469,10 +469,13 @@ impl ModuleGraphLoader {
           url: module_specifier.to_string(),
           redirect: Some(source_file.url.to_string()),
           filename: source_file.filename.to_str().unwrap().to_string(),
-          version_hash: checksum::gen(&[
-            &source_file.source_code.as_bytes(),
-            version::DENO.as_bytes(),
-          ]),
+          version_hash: checksum::gen(
+            [
+              &source_file.source_code.as_bytes(),
+              version::DENO.as_bytes(),
+            ]
+            .as_ref(),
+          ),
           media_type: source_file.media_type,
           source_code: "".to_string(),
           imports: vec![],
@@ -485,10 +488,13 @@ impl ModuleGraphLoader {
     }
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
-    let version_hash = checksum::gen(&[
-      &source_file.source_code.as_bytes(),
-      version::DENO.as_bytes(),
-    ]);
+    let version_hash = checksum::gen(
+      [
+        &source_file.source_code.as_bytes(),
+        version::DENO.as_bytes(),
+      ]
+      .as_ref(),
+    );
     let source_code = source_file.source_code.to_string()?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {

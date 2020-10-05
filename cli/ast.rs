@@ -8,6 +8,7 @@ use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
+use std::cell::RefCell;
 use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
@@ -421,12 +422,12 @@ impl swc_bundler::Hook for BundleHook {
 pub struct BundleLoader<'a> {
   emit_options: &'a EmitOptions,
   cm: Rc<SourceMap>,
-  provider: &'a dyn ModuleProvider,
+  provider: Rc<RefCell<dyn ModuleProvider>>,
 }
 
 impl<'a> BundleLoader<'a> {
   pub fn new(
-    provider: &'a dyn ModuleProvider,
+    provider: Rc<RefCell<dyn ModuleProvider>>,
     cm: Rc<SourceMap>,
     emit_options: &'a EmitOptions,
   ) -> Self {
@@ -447,10 +448,10 @@ impl swc_bundler::Load for BundleLoader<'_> {
       FileName::Custom(filename) => {
         let specifier = ModuleSpecifier::resolve_url_or_path(filename)
           .context("Failed to convert swc FileName to ModuleSpecifier.")?;
-        if let Some(src) = self.provider.get_source(&specifier) {
+        let provider = self.provider.borrow();
+        if let Some(src) = provider.get_source(&specifier) {
           let comments = SingleThreadedComments::default();
-          let media_type = self
-            .provider
+          let media_type = provider
             .get_media_type(&specifier)
             .context("Failed to lookup media type in BundleLoader")?;
           let syntax = get_syntax(&media_type);
@@ -507,17 +508,17 @@ impl swc_bundler::Load for BundleLoader<'_> {
   }
 }
 
-pub struct BundleResolver<'a> {
-  provider: &'a dyn ModuleProvider,
+pub struct BundleResolver {
+  provider: Rc<RefCell<dyn ModuleProvider>>,
 }
 
-impl<'a> BundleResolver<'a> {
-  pub fn new(provider: &'a dyn ModuleProvider) -> Self {
+impl BundleResolver {
+  pub fn new(provider: Rc<RefCell<dyn ModuleProvider>>) -> Self {
     BundleResolver { provider }
   }
 }
 
-impl swc_bundler::Resolve for BundleResolver<'_> {
+impl swc_bundler::Resolve for BundleResolver {
   fn resolve(
     &self,
     referrer: &FileName,
@@ -529,7 +530,7 @@ impl swc_bundler::Resolve for BundleResolver<'_> {
     } else {
       unreachable!("A non-string referrer was passed: {:?}", referrer)
     };
-    let specifier = self.provider.resolve(specifier, &referrer)?;
+    let specifier = self.provider.borrow().resolve(specifier, &referrer)?;
 
     Ok(FileName::Custom(specifier.to_string()))
   }

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 // Update carefully!
 #[allow(non_camel_case_types)]
 #[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum MediaType {
   JavaScript = 0,
   JSX = 1,
@@ -19,7 +19,8 @@ pub enum MediaType {
   Json = 5,
   Wasm = 6,
   BuildInfo = 7,
-  Unknown = 8,
+  SourceMap = 8,
+  Unknown = 9,
 }
 
 impl<'a> From<&'a Path> for MediaType {
@@ -40,6 +41,12 @@ impl<'a> From<&'a String> for MediaType {
   }
 }
 
+impl Default for MediaType {
+  fn default() -> Self {
+    MediaType::Unknown
+  }
+}
+
 impl MediaType {
   fn from_path(path: &Path) -> Self {
     match path.extension() {
@@ -53,6 +60,7 @@ impl MediaType {
         Some("cjs") => MediaType::JavaScript,
         Some("json") => MediaType::Json,
         Some("wasm") => MediaType::Wasm,
+        Some("map") => MediaType::SourceMap,
         _ => MediaType::Unknown,
       },
     }
@@ -75,6 +83,10 @@ impl MediaType {
       // to the compiler.
       MediaType::Wasm => ".js",
       MediaType::BuildInfo => ".tsbuildinfo",
+      // TypeScript doesn't have an "unknown", so we will treat SourceMap as JS
+      // for mapping purposes, though in reality, it is unlikely to ever be
+      // passed to the compiler.
+      MediaType::SourceMap => ".js",
       // TypeScript doesn't have an "unknown", so we will treat WASM as JS for
       // mapping purposes, though in reality, it is unlikely to ever be passed
       // to the compiler.
@@ -97,7 +109,8 @@ impl Serialize for MediaType {
       MediaType::Json => 5 as i32,
       MediaType::Wasm => 6 as i32,
       MediaType::BuildInfo => 7 as i32,
-      MediaType::Unknown => 8 as i32,
+      MediaType::SourceMap => 8 as i32,
+      MediaType::Unknown => 9 as i32,
     };
     Serialize::serialize(&value, serializer)
   }
@@ -113,6 +126,7 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
     MediaType::Json => "Json",
     MediaType::Wasm => "Wasm",
     MediaType::BuildInfo => "BuildInfo",
+    MediaType::SourceMap => "SourceMap",
     MediaType::Unknown => "Unknown",
   }
 }
@@ -144,4 +158,8 @@ fn test_map_file_extension() {
     MediaType::Unknown
   );
   assert_eq!(MediaType::from(Path::new("foo/bar")), MediaType::Unknown);
+  assert_eq!(
+    MediaType::from(Path::new("foo/bar.js.map")),
+    MediaType::SourceMap
+  );
 }

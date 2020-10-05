@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-pub fn gen(v: &[&[u8]]) -> String {
+pub fn gen(v: &[impl AsRef<[u8]>]) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
   for src in v {
-    ctx.update(src);
+    ctx.update(src.as_ref());
   }
   let digest = ctx.finish();
   let out: Vec<String> = digest

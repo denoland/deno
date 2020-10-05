@@ -301,14 +301,6 @@ struct EmittedSource {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct BundleResponse {
-  diagnostics: Diagnostics,
-  bundle_output: Option<String>,
-  stats: Option<Vec<Stat>>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct CompileResponse {
   diagnostics: Diagnostics,
   emit_map: HashMap<String, EmittedSource>,
@@ -415,10 +407,13 @@ impl TsCompiler {
           .file_fetcher
           .fetch_cached_source_file(&specifier, Permissions::allow_all())
         {
-          let existing_hash = crate::checksum::gen(&[
-            &source_file.source_code.as_bytes(),
-            version::DENO.as_bytes(),
-          ]);
+          let existing_hash = crate::checksum::gen(
+            &[
+              &source_file.source_code.as_bytes(),
+              version::DENO.as_bytes(),
+            ]
+            .as_ref(),
+          );
           let expected_hash =
             file_info["version"].as_str().unwrap().to_string();
           if existing_hash != expected_hash {
@@ -548,120 +543,6 @@ impl TsCompiler {
     }
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
-  }
-
-  /// For a given module, generate a single file JavaScript output that includes
-  /// all the dependencies for that module.
-  pub async fn bundle(
-    &self,
-    global_state: &Arc<GlobalState>,
-    module_specifier: ModuleSpecifier,
-  ) -> Result<String, AnyError> {
-    debug!(
-      "Invoking the compiler to bundle. module_name: {}",
-      module_specifier.to_string()
-    );
-
-    let permissions = Permissions::allow_all();
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      self.file_fetcher.clone(),
-      global_state.maybe_import_map.clone(),
-      permissions.clone(),
-      false,
-      true,
-    );
-    module_graph_loader
-      .add_to_graph(&module_specifier, None)
-      .await?;
-    let module_graph = module_graph_loader.get_graph();
-    let module_graph_files = module_graph.values().collect::<Vec<_>>();
-    // Check integrity of every file in module graph
-    if let Some(ref lockfile) = global_state.lockfile {
-      let mut g = lockfile.lock().unwrap();
-
-      for graph_file in &module_graph_files {
-        let check_passed =
-          g.check_or_insert(&graph_file.url, &graph_file.source_code);
-
-        if !check_passed {
-          eprintln!(
-            "Subresource integrity check failed --lock={}\n{}",
-            g.filename, graph_file.url
-          );
-          std::process::exit(10);
-        }
-      }
-    }
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    }
-    let module_graph_json =
-      serde_json::to_value(module_graph).expect("Failed to serialize data");
-
-    let root_names = vec![module_specifier.to_string()];
-    let target = "main";
-    let performance =
-      matches!(global_state.flags.log_level, Some(Level::Debug));
-    let unstable = self.flags.unstable;
-
-    let mut lib = if target == "main" {
-      vec!["deno.window"]
-    } else {
-      vec!["deno.worker"]
-    };
-
-    if unstable {
-      lib.push("deno.unstable");
-    }
-
-    let mut compiler_options = json!({
-      "allowJs": true,
-      "allowNonTsExtensions": true,
-      "checkJs": false,
-      "esModuleInterop": true,
-      "inlineSourceMap": false,
-      "jsx": "react",
-      "lib": lib,
-      "module": "system",
-      "outFile": "deno:///bundle.js",
-      // disabled until we have effective way to modify source maps
-      "sourceMap": false,
-      "strict": true,
-      "removeComments": true,
-      "target": "esnext",
-    });
-
-    let compiler_config = self.config.clone();
-
-    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
-
-    warn_ignored_options(compiler_config.maybe_ignored_options);
-
-    let j = json!({
-      "type": CompilerRequestType::Bundle,
-      "target": target,
-      "rootNames": root_names,
-      "performance": performance,
-      "compilerOptions": compiler_options,
-      "sourceFileMap": module_graph_json,
-    });
-
-    let req_msg = j.to_string();
-
-    let json_str = execute_in_tsc(global_state.clone(), req_msg)?;
-
-    let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
-
-    maybe_log_stats(bundle_response.stats);
-
-    if !bundle_response.diagnostics.0.is_empty() {
-      return Err(generic_error(bundle_response.diagnostics.to_string()));
-    }
-
-    assert!(bundle_response.bundle_output.is_some());
-    let output = bundle_response.bundle_output.unwrap();
-    Ok(output)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -989,10 +870,8 @@ fn execute_in_tsc(
     );
   }
 
-  let bootstrap_script = format!(
-    "globalThis.bootstrapCompilerRuntime({{ debugFlag: {} }})",
-    debug_flag
-  );
+  let bootstrap_script =
+    format!("globalThis.startup({{ debug: {} }})", debug_flag);
   js_runtime.execute("<compiler>", &bootstrap_script)?;
 
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
@@ -1426,7 +1305,6 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CompilerRequestType {
   Compile = 0,
-  Bundle = 1,
   RuntimeCompile = 2,
   RuntimeBundle = 3,
   RuntimeTranspile = 4,
@@ -1439,7 +1317,6 @@ impl Serialize for CompilerRequestType {
   {
     let value: i32 = match self {
       CompilerRequestType::Compile => 0 as i32,
-      CompilerRequestType::Bundle => 1 as i32,
       CompilerRequestType::RuntimeCompile => 2 as i32,
       CompilerRequestType::RuntimeBundle => 3 as i32,
       CompilerRequestType::RuntimeTranspile => 4 as i32,
@@ -1583,33 +1460,6 @@ mod tests {
     let last_line = lines.pop().unwrap();
     assert!(last_line
       .starts_with("//# sourceMappingURL=data:application/json;base64"));
-  }
-
-  #[tokio::test]
-  async fn test_bundle() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/002_hello.ts");
-    use deno_core::ModuleSpecifier;
-    let module_name =
-      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-
-    let mock_state = GlobalState::mock(
-      vec![
-        String::from("deno"),
-        p.to_string_lossy().into(),
-        String::from("$deno$/bundle.js"),
-      ],
-      None,
-    );
-
-    let result = mock_state
-      .ts_compiler
-      .bundle(&mock_state, module_name)
-      .await;
-
-    assert!(result.is_ok());
   }
 
   #[test]

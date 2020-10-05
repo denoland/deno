@@ -50,6 +50,7 @@ pub mod state;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
+mod ts_checker;
 mod tsc;
 mod tsc_config;
 mod upgrade;
@@ -301,36 +302,26 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = if flags.no_check {
-    let handler = Rc::new(RefCell::new(FetchHandler::new(
-      &global_state,
-      Permissions::allow_all(),
-    )?));
-    let mut builder =
-      graph::GraphBuilder::new(handler, global_state.maybe_import_map.clone());
-    builder.insert(&module_specifier).await?;
-    let graph = builder.get_graph(&global_state.lockfile)?;
+  let handler = Rc::new(RefCell::new(FetchHandler::new(
+    &global_state,
+    Permissions::allow_all(),
+  )?));
+  let mut builder =
+    graph::GraphBuilder::new(handler, global_state.maybe_import_map.clone());
+  builder.insert(&module_specifier).await?;
+  let graph = builder.get_graph(&global_state.lockfile)?;
 
-    let (s, stats, maybe_ignored_options) =
-      graph.bundle(graph::BundleOptions {
-        check: false,
-        debug: flags.log_level == Some(Level::Debug),
-        maybe_config_path: flags.config_path,
-      })?;
+  let (output, stats, maybe_ignored_options) =
+    graph.bundle(graph::BundleOptions {
+      check: !flags.no_check,
+      debug: flags.log_level == Some(Level::Debug),
+      maybe_config_path: flags.config_path,
+    })?;
 
-    debug!("{}", stats);
-    if let Some(ignored_options) = maybe_ignored_options {
-      println!("{}", ignored_options);
-    }
-
-    s
-  } else {
-    global_state
-      .ts_compiler
-      .bundle(&global_state, module_specifier)
-      .await?
-  };
-
+  debug!("{}", stats);
+  if let Some(ignored_options) = maybe_ignored_options {
+    println!("{}", ignored_options);
+  }
   debug!(">>>>> bundle END");
 
   if let Some(out_file_) = out_file.as_ref() {
