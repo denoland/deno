@@ -4,20 +4,95 @@ use crate::global_state::GlobalState;
 use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::Context;
 use rustyline::Editor;
-use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
+use rustyline_derive::{Helper, Highlighter, Hinter};
+use std::sync::mpsc::channel;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 // Provides syntax specific helpers to the editor like validation for multi-line edits.
-#[derive(Completer, Helper, Highlighter, Hinter)]
+#[derive(Helper, Highlighter, Hinter)]
 struct Helper {
+  context_id: u32,
+  message_tx: SyncSender<(String, Option<Value>)>,
+  response_rx: Receiver<Result<Value, AnyError>>,
   validator: MatchingBracketValidator,
+}
+
+impl Helper {
+  fn post_message(
+    &self,
+    method: String,
+    params: Option<Value>,
+  ) -> Result<Value, AnyError> {
+    self.message_tx.send((method, params))?;
+
+    let response = self.response_rx.recv()?;
+    response
+  }
+}
+
+impl Completer for Helper {
+  type Candidate = String;
+
+  fn complete(
+    &self,
+    line: &str,
+    pos: usize,
+    _ctx: &Context<'_>,
+  ) -> Result<(usize, Vec<String>), ReadlineError> {
+    if line.ends_with('.') {
+      let evaluate_response = self
+        .post_message(
+          "Runtime.evaluate".to_string(),
+          Some(json!({
+              "contextId": self.context_id,
+              "expression": &line[0..line.len() - 1],
+              "throwOnSideEffect": true,
+              "timeout": 200,
+          })),
+        )
+        .unwrap();
+
+      if let Some(result) = evaluate_response.get("result") {
+        if let Some(object_id) = result.get("objectId") {
+          let get_properties_response = self
+            .post_message(
+              "Runtime.getProperties".to_string(),
+              Some(json!({
+                  "objectId": object_id,
+              })),
+            )
+            .unwrap();
+
+          if let Some(result) = get_properties_response.get("result") {
+            let candidates = result
+              .as_array()
+              .unwrap()
+              .iter()
+              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+              .collect();
+
+            return Ok((pos, candidates));
+          }
+        }
+      }
+    }
+
+    let candidates = Vec::new();
+    Ok((pos, candidates))
+  }
 }
 
 impl Validator for Helper {
@@ -42,7 +117,13 @@ pub async fn run(
     .post_message("Runtime.enable".to_string(), None)
     .await?;
 
+  let (message_tx, message_rx) = sync_channel(1);
+  let (response_tx, response_rx) = channel();
+
   let helper = Helper {
+    context_id,
+    message_tx,
+    response_rx,
     validator: MatchingBracketValidator::new(),
   };
 
@@ -101,13 +182,38 @@ pub async fn run(
     .await?;
 
   loop {
+    let readline_result;
     let editor2 = editor.clone();
-    let line = tokio::task::spawn_blocking(move || {
+    let readline = tokio::task::spawn_blocking(move || {
       editor2.lock().unwrap().readline("> ")
-    })
-    .await?;
+    });
 
-    match line {
+    tokio::pin!(readline);
+
+    loop {
+      for (method, params) in message_rx.try_iter() {
+        response_tx.send(session.post_message(method, params).await)?;
+      }
+
+      // We use a delay to not spin at 100% idle and let let the outer loop get a chance to poll
+      // the event loop.
+      // TODO(caspervonb) poll the event loop directly instead.
+      let delay =
+        tokio::time::delay_for(tokio::time::Duration::from_millis(10));
+      tokio::pin!(delay);
+
+      tokio::select! {
+        _ = &mut delay => {
+        }
+
+        result = &mut readline => {
+          readline_result = result.unwrap();
+          break;
+        }
+      }
+    }
+
+    match readline_result {
       Ok(line) => {
         // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
         // statement rather than an object literal so we interpret it as an expression statement
@@ -177,41 +283,41 @@ pub async fn run(
 
         if evaluate_exception_details.is_some() {
           session
-            .post_message(
-            "Runtime.callFunctionOn".to_string(),
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
-              "arguments": [
-                evaluate_result,
-              ],
-            }))).await?;
+                  .post_message(
+                    "Runtime.callFunctionOn".to_string(),
+                    Some(json!({
+                      "executionContextId": context_id,
+                      "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
+                      "arguments": [
+                        evaluate_result,
+                      ],
+                    }))).await?;
         } else {
           session
-            .post_message(
-            "Runtime.callFunctionOn".to_string(),
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
-              "arguments": [
-                evaluate_result,
-              ],
-            }))).await?;
+                  .post_message(
+                    "Runtime.callFunctionOn".to_string(),
+                    Some(json!({
+                      "executionContextId": context_id,
+                      "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+                      "arguments": [
+                        evaluate_result,
+                      ],
+                    }))).await?;
         }
 
         // TODO(caspervonb) we should investigate using previews here but to keep things
         // consistent with the previous implementation we just get the preview result from
         // Deno.inspectArgs.
         let inspect_response = session
-          .post_message(
-            "Runtime.callFunctionOn".to_string(),
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
-              "arguments": [
-                evaluate_result,
-              ],
-            }))).await?;
+                .post_message(
+                  "Runtime.callFunctionOn".to_string(),
+                  Some(json!({
+                    "executionContextId": context_id,
+                    "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
+                    "arguments": [
+                      evaluate_result,
+                    ],
+                  }))).await?;
 
         let inspect_result = inspect_response.get("result").unwrap();
 
