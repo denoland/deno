@@ -72,13 +72,15 @@ impl Completer for Helper {
       return Ok((pos, candidates));
     }
 
-    if line.ends_with('.') {
+    if let Some(index) = line.rfind('.') {
+      let (lhs, rhs) = line.split_at(index);
+
       let evaluate_response = self
         .post_message(
           "Runtime.evaluate".to_string(),
           Some(json!({
               "contextId": self.context_id,
-              "expression": &line[0..line.len() - 1],
+              "expression": lhs,
               "throwOnSideEffect": true,
               "timeout": 200,
           })),
@@ -102,9 +104,10 @@ impl Completer for Helper {
               .unwrap()
               .iter()
               .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+              .filter(|r| r.starts_with(&rhs[1..]))
               .collect();
 
-            return Ok((pos, candidates));
+            return Ok((lhs.len() + 1, candidates));
           }
         }
       }
