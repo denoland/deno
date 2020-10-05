@@ -37,9 +37,7 @@ impl Helper {
     params: Option<Value>,
   ) -> Result<Value, AnyError> {
     self.message_tx.send((method, params))?;
-
-    let response = self.response_rx.recv()?;
-    response
+    self.response_rx.recv()?
   }
 }
 
