@@ -1088,6 +1088,7 @@ impl JsRuntime {
         "poll mod evaluate {}",
         state.pending_mod_evaluate.keys().len()
       );
+
       if let Some(&load_id) = state.pending_mod_evaluate.keys().next() {
         let handle = state.pending_mod_evaluate.remove(&load_id).unwrap();
         drop(state);
@@ -1105,6 +1106,7 @@ impl JsRuntime {
               .borrow_mut()
               .pending_mod_evaluate
               .insert(load_id, handle);
+            state_rc.borrow().waker.wake();
           }
           v8::PromiseState::Fulfilled => {
             sender.try_send(Ok(())).unwrap();
@@ -1160,6 +1162,7 @@ impl JsRuntime {
                 .borrow_mut()
                 .pending_dyn_mod_evaluate
                 .insert(dyn_import_id, handle);
+              state_rc.borrow().waker.wake();
               None
             }
             v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
