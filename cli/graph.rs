@@ -513,7 +513,7 @@ fn check_bundle(
     } else {
       None
     }
-  } else if result.emitted_files.len() == 0 {
+  } else if result.emitted_files.is_empty() {
     None
   } else {
     return Err(UnexpectedEmit.into());
