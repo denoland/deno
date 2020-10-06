@@ -64,8 +64,8 @@ lazy_static! {
 
 // TODO(@kitsonk) these can be removed when we no longer are using tsc to emit
 // bundles.
-const SYSTEM_LOADER: &'static str = include_str!("system_loader.js");
-const SYSTEM_LOADER_ES5: &'static str = include_str!("system_loader_es5.js");
+const SYSTEM_LOADER: &str = include_str!("system_loader.js");
+const SYSTEM_LOADER_ES5: &str = include_str!("system_loader_es5.js");
 
 /// A group of errors that represent errors that can occur when interacting with
 /// a module graph.
@@ -617,18 +617,16 @@ impl Graph {
           } else {
             format!("\n__instantiate(\"{}\", false);\n", root_specifier_str)
           }
+        } else if top_level_await {
+          format!(
+            "\nvar __exp = await __instantiate(\"{}\", true);\n",
+            root_specifier_str
+          )
         } else {
-          if top_level_await {
-            format!(
-              "\nvar __exp = await __instantiate(\"{}\", true);\n",
-              root_specifier_str
-            )
-          } else {
-            format!(
-              "\nvar __exp = __instantiate(\"{}\", false);\n",
-              root_specifier_str
-            )
-          }
+          format!(
+            "\nvar __exp = __instantiate(\"{}\", false);\n",
+            root_specifier_str
+          )
         };
         for named_export in exports.iter() {
           let export_statement = match named_export.as_str() {
