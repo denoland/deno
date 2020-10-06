@@ -63,12 +63,18 @@ async fn read_line_and_poll(
 
   let mut poll_worker = true;
   loop {
+    let mut timeout =
+      tokio::time::delay_for(tokio::time::Duration::from_millis(1000));
+
     tokio::select! {
       result = &mut line => {
         return result.unwrap();
       }
       _ = &mut *worker, if poll_worker => {
-          poll_worker = false;
+        poll_worker = false;
+      }
+      _ = &mut timeout => {
+          poll_worker = true
       }
     }
   }
