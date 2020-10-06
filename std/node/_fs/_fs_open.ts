@@ -1,5 +1,6 @@
 import { existsSync } from "../../fs/mod.ts";
 import { fromFileUrl } from "../path.ts";
+import { getOpenOptions } from "./_fs_common.ts";
 
 type openFlags =
   | "a"
@@ -21,82 +22,10 @@ type openCallback = (err: Error | undefined, fd: number) => void;
 function convertFlagAndModeToOptions(
   flag?: openFlags,
   mode?: number,
-): Deno.OpenOptions {
-  if (!flag) return {};
-  if (flag === "a" || flag === "as") {
-    return {
-      append: true,
-      create: true,
-      mode,
-    };
-  }
-  if (flag === "ax") {
-    return {
-      append: true,
-      mode,
-    };
-  }
-  if (flag === "a+" || flag === "as+") {
-    return {
-      append: true,
-      create: true,
-      read: true,
-      mode,
-    };
-  }
-  if (flag === "ax+") {
-    return {
-      append: true,
-      read: true,
-      mode,
-    };
-  }
-  if (flag === "r") {
-    return {
-      read: true,
-      mode,
-    };
-  }
-  if (flag === "r+") {
-    return {
-      read: true,
-      write: true,
-      mode,
-    };
-  }
-  if (flag === "w") {
-    return {
-      write: true,
-      create: true,
-      truncate: true,
-      mode,
-    };
-  }
-  if (flag === "wx") {
-    return {
-      write: true,
-      truncate: true,
-      mode,
-    };
-  }
-  if (flag === "w+") {
-    return {
-      write: true,
-      create: true,
-      truncate: true,
-      read: true,
-      mode,
-    };
-  }
-  if (flag === "wx+") {
-    return {
-      write: true,
-      truncate: true,
-      read: true,
-      mode,
-    };
-  }
-  throw new Error("flag doesn't exits");
+): Deno.OpenOptions | undefined {
+  if (!flag && !mode) return undefined;
+  if (!flag && mode) return { mode };
+  return { ...getOpenOptions(flag), mode };
 }
 
 export function open(path: string | URL, callback: openCallback): void;
@@ -143,11 +72,7 @@ export function open(
       }
       return;
     }
-    Deno.open(
-      path,
-      ((flags || mode) && convertFlagAndModeToOptions(flags, mode)) ||
-        undefined,
-    )
+    Deno.open(path, convertFlagAndModeToOptions(flags, mode))
       .then((file) => callback(undefined, file.rid))
       .catch((err) => callback(err, err));
   }
@@ -174,8 +99,5 @@ export function openSync(
     throw new Error(`EEXIST: file already exists, open '${path}'`);
   }
 
-  return Deno.openSync(
-    path,
-    ((flags || mode) && convertFlagAndModeToOptions(flags, mode)) || undefined,
-  ).rid;
+  return Deno.openSync(path, convertFlagAndModeToOptions(flags, mode)).rid;
 }
