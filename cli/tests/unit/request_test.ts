@@ -36,6 +36,7 @@ unitTest(function requestNonString(): void {
       return "http://foo/";
     },
   };
+  // deno-lint-ignore ban-ts-comment
   // @ts-expect-error
   assertEquals(new Request(nonString).url, "http://foo/");
 });
