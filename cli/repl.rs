@@ -2,8 +2,11 @@
 
 use crate::global_state::GlobalState;
 use crate::inspector::InspectorSession;
+use crate::worker::MainWorker;
+use crate::worker::Worker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use rustyline::error::ReadlineError;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
@@ -29,17 +32,76 @@ impl Validator for Helper {
   }
 }
 
+async fn post_message_and_poll(
+  worker: &mut Worker,
+  session: &mut InspectorSession,
+  method: &str,
+  params: Option<Value>,
+) -> Result<Value, AnyError> {
+  let response = session.post_message(method.to_string(), params);
+  tokio::pin!(response);
+
+  loop {
+    tokio::select! {
+      result = &mut response => {
+        return result
+      }
+
+      _ = &mut *worker => {
+        // A zero delay is long enough to yield the thread in order to prevent the loop from
+        // running hot for messages that are taking longer to resolve like for example an
+        // evaluation of top level await.
+        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+      }
+    }
+  }
+}
+
+async fn read_line_and_poll(
+  worker: &mut Worker,
+  editor: Arc<Mutex<Editor<Helper>>>,
+) -> Result<String, ReadlineError> {
+  let mut line =
+    tokio::task::spawn_blocking(move || editor.lock().unwrap().readline("> "));
+
+  let mut poll_worker = true;
+  loop {
+    // Because an inspector websocket client may choose to connect at anytime when we have an
+    // inspector server we need to keep polling the worker to pick up new connections.
+    let mut timeout =
+      tokio::time::delay_for(tokio::time::Duration::from_millis(1000));
+
+    tokio::select! {
+      result = &mut line => {
+        return result.unwrap();
+      }
+      _ = &mut *worker, if poll_worker => {
+        poll_worker = false;
+      }
+      _ = &mut timeout => {
+          poll_worker = true
+      }
+    }
+  }
+}
+
 pub async fn run(
   global_state: &GlobalState,
-  mut session: Box<InspectorSession>,
+  mut worker: MainWorker,
 ) -> Result<(), AnyError> {
   // Our inspector is unable to default to the default context id so we have to specify it here.
   let context_id: u32 = 1;
 
+  let inspector = worker
+    .inspector
+    .as_mut()
+    .expect("Inspector is not created.");
+
+  let mut session = InspectorSession::new(&mut **inspector);
+
   let history_file = global_state.dir.root.join("deno_history.txt");
 
-  session
-    .post_message("Runtime.enable".to_string(), None)
+  post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
     .await?;
 
   let helper = Helper {
@@ -90,23 +152,19 @@ pub async fn run(
     });
   "#;
 
-  session
-    .post_message(
-      "Runtime.evaluate".to_string(),
-      Some(json!({
-        "expression": prelude,
-        "contextId": context_id,
-      })),
-    )
-    .await?;
+  post_message_and_poll(
+    &mut *worker,
+    &mut session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": prelude,
+      "contextId": context_id,
+    })),
+  )
+  .await?;
 
   loop {
-    let editor2 = editor.clone();
-    let line = tokio::task::spawn_blocking(move || {
-      editor2.lock().unwrap().readline("> ")
-    })
-    .await?;
-
+    let line = read_line_and_poll(&mut *worker, editor.clone()).await;
     match line {
       Ok(line) => {
         // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
@@ -120,16 +178,17 @@ pub async fn run(
           line.clone()
         };
 
-        let evaluate_response = session
-          .post_message(
-            "Runtime.evaluate".to_string(),
-            Some(json!({
-              "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
-              "contextId": context_id,
-              "replMode": true,
-            })),
-          )
-          .await?;
+        let evaluate_response = post_message_and_poll(
+          &mut *worker,
+          &mut session,
+          "Runtime.evaluate",
+          Some(json!({
+            "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
+            "contextId": context_id,
+            "replMode": true,
+          })),
+        )
+        .await?;
 
         // If that fails, we retry it without wrapping in parens letting the error bubble up to the
         // user if it is still an error.
@@ -137,35 +196,37 @@ pub async fn run(
           if evaluate_response.get("exceptionDetails").is_some()
             && wrapped_line != line
           {
-            session
-              .post_message(
-                "Runtime.evaluate".to_string(),
-                Some(json!({
-                  "expression": format!("'use strict'; void 0;\n{}", &line),
-                  "contextId": context_id,
-                  "replMode": true,
-                })),
-              )
-              .await?
+            post_message_and_poll(
+              &mut *worker,
+              &mut session,
+              "Runtime.evaluate",
+              Some(json!({
+                "expression": format!("'use strict'; void 0;\n{}", &line),
+                "contextId": context_id,
+                "replMode": true,
+              })),
+            )
+            .await?
           } else {
             evaluate_response
           };
 
-        let is_closing = session
-          .post_message(
-            "Runtime.evaluate".to_string(),
-            Some(json!({
-              "expression": "(globalThis.closed)",
-              "contextId": context_id,
-            })),
-          )
-          .await?
-          .get("result")
-          .unwrap()
-          .get("value")
-          .unwrap()
-          .as_bool()
-          .unwrap();
+        let is_closing = post_message_and_poll(
+          &mut *worker,
+          &mut session,
+          "Runtime.evaluate",
+          Some(json!({
+            "expression": "(globalThis.closed)",
+            "contextId": context_id,
+          })),
+        )
+        .await?
+        .get("result")
+        .unwrap()
+        .get("value")
+        .unwrap()
+        .as_bool()
+        .unwrap();
 
         if is_closing {
           break;
@@ -176,42 +237,49 @@ pub async fn run(
           evaluate_response.get("exceptionDetails");
 
         if evaluate_exception_details.is_some() {
-          session
-            .post_message(
-            "Runtime.callFunctionOn".to_string(),
+          post_message_and_poll(
+            &mut *worker,
+            &mut session,
+            "Runtime.callFunctionOn",
             Some(json!({
               "executionContextId": context_id,
               "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
               "arguments": [
                 evaluate_result,
               ],
-            }))).await?;
+            })),
+          ).await?;
         } else {
-          session
-            .post_message(
-            "Runtime.callFunctionOn".to_string(),
+          post_message_and_poll(
+            &mut *worker,
+            &mut session,
+            "Runtime.callFunctionOn",
             Some(json!({
               "executionContextId": context_id,
               "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
               "arguments": [
                 evaluate_result,
               ],
-            }))).await?;
+            })),
+          ).await?;
         }
 
         // TODO(caspervonb) we should investigate using previews here but to keep things
         // consistent with the previous implementation we just get the preview result from
         // Deno.inspectArgs.
-        let inspect_response = session
-          .post_message(
-            "Runtime.callFunctionOn".to_string(),
+        let inspect_response =
+          post_message_and_poll(
+            &mut *worker,
+            &mut session,
+            "Runtime.callFunctionOn",
             Some(json!({
               "executionContextId": context_id,
               "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
               "arguments": [
                 evaluate_result,
               ],
-            }))).await?;
+            })),
+          ).await?;
 
         let inspect_result = inspect_response.get("result").unwrap();
 
