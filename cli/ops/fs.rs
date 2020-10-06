@@ -943,8 +943,6 @@ fn op_realpath_sync(
   let realpath = std::fs::canonicalize(&path)?;
   let mut realpath_str = into_string(realpath.into_os_string())?;
   if cfg!(windows) {
-    // Sometimes forward slashes are returned for Windows paths.
-    realpath_str = realpath_str.replace("/", "\\");
     realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
   }
   Ok(json!(realpath_str))
@@ -972,10 +970,9 @@ async fn op_realpath_async(
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = std::fs::canonicalize(&path)?;
-    let mut realpath_str =
-      into_string(realpath.into_os_string())?.replace("\\", "/");
+    let mut realpath_str = into_string(realpath.into_os_string())?;
     if cfg!(windows) {
-      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+      realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
     }
     Ok(json!(realpath_str))
   })
