@@ -1,4 +1,6 @@
 import { fromFileUrl } from "../path.ts";
+import { EventEmitter } from "../events.ts";
+import { notImplemented } from "../_utils.ts";
 
 export function asyncIterableIteratorToCallback<T>(
   iterator: AsyncIterableIterator<T>,
@@ -47,16 +49,16 @@ export function watch(
   filename: string | URL,
   options: watchOptions,
   listener: watchListener,
-): { close: () => void };
+): FSWatcher;
 export function watch(
   filename: string | URL,
   listener: watchListener,
-): { close: () => void };
+): FSWatcher;
 export function watch(
   filename: string | URL,
   options: watchOptions,
-): { close: () => void };
-export function watch(filename: string | URL): { close: () => void };
+): FSWatcher;
+export function watch(filename: string | URL): FSWatcher;
 export function watch(
   filename: string | URL,
   optionsOrListener?: watchOptions | watchListener,
@@ -80,14 +82,30 @@ export function watch(
 
   if (!listener) throw new Error("No callback function supplied");
 
-  asyncIterableIteratorToCallback<Deno.FsEvent>(iterator, (val, done) => {
-    if (done) return;
-    listener(val.kind, val.paths[0]);
+  const fsWatcher = new FSWatcher(() => {
+    if (iterator.return) iterator.return();
   });
 
-  return {
-    close() {
-      if (iterator.return) iterator.return();
-    },
-  };
+  fsWatcher.on("change", listener);
+
+  asyncIterableIteratorToCallback<Deno.FsEvent>(iterator, (val, done) => {
+    if (done) return;
+    fsWatcher.emit("change", val.kind, val.paths[0]);
+  });
+
+  return fsWatcher;
+}
+
+class FSWatcher extends EventEmitter {
+  close: () => void;
+  constructor(closer: () => void) {
+    super();
+    this.close = closer;
+  }
+  ref() {
+    notImplemented("FSWatcher.ref() is not implemented");
+  }
+  unref() {
+    notImplemented("FSWatcher.unref() is not implemented");
+  }
 }
