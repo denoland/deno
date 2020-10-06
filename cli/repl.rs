@@ -67,7 +67,7 @@ async fn read_line_and_poll(
         return result.unwrap();
       }
       _ = &mut *worker => {
-        return line.await.unwrap();
+        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
       }
     }
   }
