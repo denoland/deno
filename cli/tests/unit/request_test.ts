@@ -2,7 +2,7 @@
 import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function fromInit(): void {
-  const req = new Request("https://example.com", {
+  const req = new Request("http://foo/", {
     body: "ahoyhoy",
     method: "POST",
     headers: {
@@ -12,12 +12,12 @@ unitTest(function fromInit(): void {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   assertEquals("ahoyhoy", (req as any)._bodySource);
-  assertEquals(req.url, "https://example.com");
+  assertEquals(req.url, "http://foo/");
   assertEquals(req.headers.get("test-header"), "value");
 });
 
 unitTest(function fromRequest(): void {
-  const r = new Request("https://example.com");
+  const r = new Request("http://foo/");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (r as any)._bodySource = "ahoyhoy";
   r.headers.set("test-header", "value");
@@ -48,8 +48,8 @@ unitTest(function requestRelativeUrl(): void {
 
 unitTest(async function cloneRequestBodyStream(): Promise<void> {
   // hack to get a stream
-  const stream = new Request("", { body: "a test body" }).body;
-  const r1 = new Request("https://example.com", {
+  const stream = new Request("http://foo/", { body: "a test body" }).body;
+  const r1 = new Request("http://foo/", {
     body: stream,
   });
 
