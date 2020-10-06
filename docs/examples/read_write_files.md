@@ -68,9 +68,9 @@ command.
 /**
  * write.ts
  */
-const write = await Deno.writeTextFile("./hello.txt", "Hello World!");
+const write = Deno.writeTextFile("./hello.txt", "Hello World!");
 
-console.log("File written to ./hello.txt");
+write.then(() => console.log("File written to ./hello.txt"));
 
 /**
  * Output: File written to ./hello.txt
