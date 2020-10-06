@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function fromInit(): void {
   const req = new Request("https://example.com", {
@@ -28,6 +28,21 @@ unitTest(function fromRequest(): void {
   assertEquals((req as any)._bodySource, (r as any)._bodySource);
   assertEquals(req.url, r.url);
   assertEquals(req.headers.get("test-header"), r.headers.get("test-header"));
+});
+
+unitTest(function requestNonString(): void {
+  const nonString = {
+    toString() {
+      return "http://foo/";
+    },
+  };
+  // @ts-expect-error
+  assertEquals(new Request(nonString).url, "http://foo/");
+});
+
+unitTest(function requestRelativeUrl(): void {
+  // TODO(nayeemrmn): Base from `--location` when implemented and set.
+  assertThrows(() => new Request("relative-url"), TypeError, "Invalid URL.");
 });
 
 unitTest(async function cloneRequestBodyStream(): Promise<void> {
