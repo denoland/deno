@@ -89,7 +89,7 @@ pub async fn run(
 
   let history_file = global_state.dir.root.join("deno_history.txt");
 
-  post_message_and_poll(&mut session, "Runtime.enable", None, &mut *worker)
+  post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
     .await?;
 
   let helper = Helper {
