@@ -1,7 +1,10 @@
 import { asyncIterableToCallback } from "./_fs_watch.ts";
-import { lstatSync } from "./_fs_lstat.ts";
-import { join } from "../../path/mod.ts";
+import Dirent from "./_fs_dirent.ts";
 import { fromFileUrl } from "../path.ts";
+
+function toDirent(val: Deno.DirEntry): Dirent {
+  return new Dirent(val);
+}
 
 type readDirOptions = {
   encoding?: string;
@@ -63,55 +66,12 @@ export function readdir(
         return;
       }
       if (options?.withFileTypes) {
-        result.push(toDirent(path, val, options.encoding));
+        result.push(toDirent(val));
       } else result.push(decode(val.name));
     });
   } catch (error) {
     callback(error, result);
   }
-}
-
-type Dirent = {
-  name: string;
-  isBlockDevice: () => boolean;
-  isCharacterDevice: () => boolean;
-  isDirectory: () => boolean;
-  isFIFO: () => boolean;
-  isFile: () => boolean;
-  isSocket: () => boolean;
-  isSymbolicLink: () => boolean;
-};
-
-function toDirent(
-  path: string,
-  file: Deno.DirEntry,
-  encoding?: string,
-): Dirent {
-  const lstat = lstatSync(join(path, file.name));
-  return {
-    name: decode(file.name, encoding),
-    isBlockDevice() {
-      return lstat.isBlockDevice();
-    },
-    isFile() {
-      return lstat.isFile();
-    },
-    isFIFO() {
-      return lstat.isFIFO();
-    },
-    isDirectory() {
-      return lstat.isDirectory();
-    },
-    isCharacterDevice() {
-      return lstat.isCharacterDevice();
-    },
-    isSocket() {
-      return lstat.isSocket();
-    },
-    isSymbolicLink() {
-      return lstat.isSymbolicLink();
-    },
-  };
 }
 
 function decode(str: string, encoding?: string): string {
@@ -150,7 +110,7 @@ export function readdirSync(
 
   for (const file of Deno.readDirSync(path)) {
     if (options?.withFileTypes) {
-      result.push(toDirent(path, file, options.encoding));
+      result.push(toDirent(file));
     } else result.push(decode(file.name));
   }
   return result;
