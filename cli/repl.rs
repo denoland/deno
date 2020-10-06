@@ -61,13 +61,14 @@ async fn read_line_and_poll(
   let mut line =
     tokio::task::spawn_blocking(move || editor.lock().unwrap().readline("> "));
 
+  let mut poll_worker = true;
   loop {
     tokio::select! {
       result = &mut line => {
         return result.unwrap();
       }
-      _ = &mut *worker => {
-        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+      _ = &mut *worker, if poll_worker => {
+          poll_worker = false;
       }
     }
   }
