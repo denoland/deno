@@ -2,8 +2,11 @@
 
 use crate::global_state::GlobalState;
 use crate::inspector::InspectorSession;
+use crate::worker::MainWorker;
+use crate::worker::Worker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use rustyline::error::ReadlineError;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
@@ -29,18 +32,70 @@ impl Validator for Helper {
   }
 }
 
+async fn post_message_and_poll(
+  session: &mut InspectorSession,
+  method: String,
+  params: Option<Value>,
+  worker: &mut Worker,
+) -> Result<Value, AnyError> {
+  let response = session.post_message(method, params);
+  tokio::pin!(response);
+
+  loop {
+    tokio::select! {
+      result = &mut response => {
+        return result
+      }
+
+      _ = &mut *worker => {
+        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+      }
+    }
+  }
+}
+
+async fn read_line_and_poll(
+  editor: Arc<Mutex<Editor<Helper>>>,
+  worker: &mut Worker,
+) -> Result<String, ReadlineError> {
+  let mut line =
+    tokio::task::spawn_blocking(move || editor.lock().unwrap().readline("> "));
+
+  loop {
+    tokio::select! {
+      result = &mut line => {
+        return result.unwrap();
+      }
+      _ = &mut *worker => {
+        return line.await.unwrap();
+      }
+    }
+  }
+}
+
 pub async fn run(
   global_state: &GlobalState,
-  mut session: Box<InspectorSession>,
+  mut worker: MainWorker,
 ) -> Result<(), AnyError> {
   // Our inspector is unable to default to the default context id so we have to specify it here.
   let context_id: u32 = 1;
 
+  let inspector = worker
+    .inspector
+    .as_mut()
+    .expect("Inspector is not created.");
+
+  let mut session = InspectorSession::new(&mut **inspector);
+
   let history_file = global_state.dir.root.join("deno_history.txt");
 
-  session
-    .post_message("Runtime.enable".to_string(), None)
-    .await?;
+  post_message_and_poll(
+    &mut session,
+    "Runtime.enable".to_string(),
+    None,
+    &mut *worker,
+  )
+  .await?;
 
   let helper = Helper {
     validator: MatchingBracketValidator::new(),
@@ -101,12 +156,7 @@ pub async fn run(
     .await?;
 
   loop {
-    let editor2 = editor.clone();
-    let line = tokio::task::spawn_blocking(move || {
-      editor2.lock().unwrap().readline("> ")
-    })
-    .await?;
-
+    let line = read_line_and_poll(editor.clone(), &mut *worker).await;
     match line {
       Ok(line) => {
         // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
@@ -120,16 +170,17 @@ pub async fn run(
           line.clone()
         };
 
-        let evaluate_response = session
-          .post_message(
-            "Runtime.evaluate".to_string(),
-            Some(json!({
-              "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
-              "contextId": context_id,
-              "replMode": true,
-            })),
-          )
-          .await?;
+        let evaluate_response = post_message_and_poll(
+          &mut session,
+          "Runtime.evaluate".to_string(),
+          Some(json!({
+            "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
+            "contextId": context_id,
+            "replMode": true,
+          })),
+          &mut *worker,
+        )
+        .await?;
 
         // If that fails, we retry it without wrapping in parens letting the error bubble up to the
         // user if it is still an error.
@@ -137,35 +188,37 @@ pub async fn run(
           if evaluate_response.get("exceptionDetails").is_some()
             && wrapped_line != line
           {
-            session
-              .post_message(
-                "Runtime.evaluate".to_string(),
-                Some(json!({
-                  "expression": format!("'use strict'; void 0;\n{}", &line),
-                  "contextId": context_id,
-                  "replMode": true,
-                })),
-              )
-              .await?
+            post_message_and_poll(
+              &mut session,
+              "Runtime.evaluate".to_string(),
+              Some(json!({
+                "expression": format!("'use strict'; void 0;\n{}", &line),
+                "contextId": context_id,
+                "replMode": true,
+              })),
+              &mut *worker,
+            )
+            .await?
           } else {
             evaluate_response
           };
 
-        let is_closing = session
-          .post_message(
-            "Runtime.evaluate".to_string(),
-            Some(json!({
-              "expression": "(globalThis.closed)",
-              "contextId": context_id,
-            })),
-          )
-          .await?
-          .get("result")
-          .unwrap()
-          .get("value")
-          .unwrap()
-          .as_bool()
-          .unwrap();
+        let is_closing = post_message_and_poll(
+          &mut session,
+          "Runtime.evaluate".to_string(),
+          Some(json!({
+            "expression": "(globalThis.closed)",
+            "contextId": context_id,
+          })),
+          &mut *worker,
+        )
+        .await?
+        .get("result")
+        .unwrap()
+        .get("value")
+        .unwrap()
+        .as_bool()
+        .unwrap();
 
         if is_closing {
           break;
@@ -176,42 +229,47 @@ pub async fn run(
           evaluate_response.get("exceptionDetails");
 
         if evaluate_exception_details.is_some() {
-          session
-            .post_message(
-            "Runtime.callFunctionOn".to_string(),
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
-              "arguments": [
-                evaluate_result,
-              ],
-            }))).await?;
+          post_message_and_poll(
+                  &mut session,
+                  "Runtime.callFunctionOn".to_string(),
+                  Some(json!({
+                    "executionContextId": context_id,
+                    "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
+                    "arguments": [
+                      evaluate_result,
+                    ],
+                  })),
+                  &mut *worker,
+                ).await?;
         } else {
-          session
-            .post_message(
-            "Runtime.callFunctionOn".to_string(),
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
-              "arguments": [
-                evaluate_result,
-              ],
-            }))).await?;
+          post_message_and_poll(
+                  &mut session,
+                  "Runtime.callFunctionOn".to_string(),
+                  Some(json!({
+                    "executionContextId": context_id,
+                    "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+                    "arguments": [
+                      evaluate_result,
+                    ],
+                  })),
+                  &mut *worker,
+                ).await?;
         }
 
         // TODO(caspervonb) we should investigate using previews here but to keep things
         // consistent with the previous implementation we just get the preview result from
         // Deno.inspectArgs.
-        let inspect_response = session
-          .post_message(
-            "Runtime.callFunctionOn".to_string(),
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
-              "arguments": [
-                evaluate_result,
-              ],
-            }))).await?;
+        let inspect_response =
+                post_message_and_poll(&mut session,
+                  "Runtime.callFunctionOn".to_string(),
+                  Some(json!({
+                    "executionContextId": context_id,
+                    "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
+                    "arguments": [
+                      evaluate_result,
+                    ],
+                  })),
+                  &mut *worker).await?;
 
         let inspect_result = inspect_response.get("result").unwrap();
 
