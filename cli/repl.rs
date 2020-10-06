@@ -34,11 +34,11 @@ impl Validator for Helper {
 
 async fn post_message_and_poll(
   session: &mut InspectorSession,
-  method: String,
+  method: &str,
   params: Option<Value>,
   worker: &mut Worker,
 ) -> Result<Value, AnyError> {
-  let response = session.post_message(method, params);
+  let response = session.post_message(method.to_string(), params);
   tokio::pin!(response);
 
   loop {
@@ -89,13 +89,8 @@ pub async fn run(
 
   let history_file = global_state.dir.root.join("deno_history.txt");
 
-  post_message_and_poll(
-    &mut session,
-    "Runtime.enable".to_string(),
-    None,
-    &mut *worker,
-  )
-  .await?;
+  post_message_and_poll(&mut session, "Runtime.enable", None, &mut *worker)
+    .await?;
 
   let helper = Helper {
     validator: MatchingBracketValidator::new(),
@@ -146,15 +141,15 @@ pub async fn run(
   "#;
 
   post_message_and_poll(
-      &mut session,
-      "Runtime.evaluate".to_string(),
-      Some(json!({
-        "expression": prelude,
-        "contextId": context_id,
-      })),
-      &mut *worker,
-    )
-    .await?;
+    &mut session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": prelude,
+      "contextId": context_id,
+    })),
+    &mut *worker,
+  )
+  .await?;
 
   loop {
     let line = read_line_and_poll(editor.clone(), &mut *worker).await;
@@ -173,7 +168,7 @@ pub async fn run(
 
         let evaluate_response = post_message_and_poll(
           &mut session,
-          "Runtime.evaluate".to_string(),
+          "Runtime.evaluate",
           Some(json!({
             "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
             "contextId": context_id,
@@ -191,7 +186,7 @@ pub async fn run(
           {
             post_message_and_poll(
               &mut session,
-              "Runtime.evaluate".to_string(),
+              "Runtime.evaluate",
               Some(json!({
                 "expression": format!("'use strict'; void 0;\n{}", &line),
                 "contextId": context_id,
@@ -206,7 +201,7 @@ pub async fn run(
 
         let is_closing = post_message_and_poll(
           &mut session,
-          "Runtime.evaluate".to_string(),
+          "Runtime.evaluate",
           Some(json!({
             "expression": "(globalThis.closed)",
             "contextId": context_id,
@@ -232,7 +227,7 @@ pub async fn run(
         if evaluate_exception_details.is_some() {
           post_message_and_poll(
                   &mut session,
-                  "Runtime.callFunctionOn".to_string(),
+                  "Runtime.callFunctionOn",
                   Some(json!({
                     "executionContextId": context_id,
                     "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
@@ -245,7 +240,7 @@ pub async fn run(
         } else {
           post_message_and_poll(
                   &mut session,
-                  "Runtime.callFunctionOn".to_string(),
+                  "Runtime.callFunctionOn",
                   Some(json!({
                     "executionContextId": context_id,
                     "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
@@ -262,7 +257,7 @@ pub async fn run(
         // Deno.inspectArgs.
         let inspect_response =
                 post_message_and_poll(&mut session,
-                  "Runtime.callFunctionOn".to_string(),
+                  "Runtime.callFunctionOn",
                   Some(json!({
                     "executionContextId": context_id,
                     "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
