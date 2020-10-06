@@ -30,7 +30,8 @@ Before submitting, please make sure the following is done:
 Examples of good PR title:
 
 - fix(std/http): Fix race condition in server
-- docs(console): Update docstrings - feat(doc): Handle nested reexports
+- docs(console): Update docstrings
+- feat(doc): Handle nested re-exports
 
 Examples of bad PR title:
 
