@@ -422,16 +422,14 @@ delete Object.prototype.__proto__;
       if (legacy) {
         legacyHostState.writeFile(fileName, data, sourceFiles);
       } else {
-        let maybeSpecifier;
+        let maybeSpecifiers;
         if (sourceFiles) {
-          assert(sourceFiles.length === 1, "unexpected number of source files");
-          const [sourceFile] = sourceFiles;
-          maybeSpecifier = sourceFile.moduleName;
-          debug(`  specifier: ${maybeSpecifier}`);
+          maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
+          debug(`  specifiers: ${maybeSpecifiers.join(", ")}`);
         }
         return core.jsonOpSync(
           "op_emit",
-          { maybeSpecifier, fileName, data },
+          { maybeSpecifiers, fileName, data },
         );
       }
     },

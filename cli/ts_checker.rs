@@ -25,11 +25,17 @@ use serde::Serialize;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct EmittedFile {
-  data: String,
-  maybe_specifier: Option<ModuleSpecifier>,
-  media_type: MediaType,
+  pub data: String,
+  pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
+  pub media_type: MediaType,
+}
+
+impl std::fmt::Display for EmittedFile {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    f.write_str(&self.data)
+  }
 }
 
 pub struct CheckerState {
@@ -98,14 +104,14 @@ struct EmitArgs {
   /// A string representation of the specifier that was associated with a
   /// module.  This should be present on every module that represents a module
   /// that was requested to be transformed.
-  maybe_specifier: Option<String>,
+  maybe_specifiers: Option<Vec<String>>,
 }
 
 fn op_emit(state: &mut CheckerState, args: Value) -> Result<Value, AnyError> {
   let v: EmitArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_emit\".")?;
   match v.file_name.as_ref() {
-    "cache:///.tsbuildinfo" => {
+    "deno:///.tsbuildinfo" => {
       state.maybe_build_info = Some(TextDocument::new(
         v.data.as_bytes().to_owned(),
         Option::<&str>::None,
@@ -113,10 +119,12 @@ fn op_emit(state: &mut CheckerState, args: Value) -> Result<Value, AnyError> {
     }
     _ => state.emitted_files.push(EmittedFile {
       data: v.data,
-      maybe_specifier: if let Some(specifier) = &v.maybe_specifier {
-        Some(ModuleSpecifier::resolve_url_or_path(specifier).context(
-          "Error converting a string module specifier for \"op_emit\".",
-        )?)
+      maybe_specifiers: if let Some(specifiers) = &v.maybe_specifiers {
+        let specifiers = specifiers
+          .iter()
+          .map(|s| ModuleSpecifier::resolve_url_or_path(s).unwrap())
+          .collect();
+        Some(specifiers)
       } else {
         None
       },
@@ -189,7 +197,7 @@ fn op_load(state: &mut CheckerState, args: Value) -> Result<Value, AnyError> {
   let specifier = ModuleSpecifier::resolve_url_or_path(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
-  let data = if &v.specifier == "cache:///.tsbuildinfo" {
+  let data = if &v.specifier == "deno:///.tsbuildinfo" {
     if let Some(build_info) = &state.maybe_build_info {
       Some(build_info.to_string()?)
     } else {
@@ -351,7 +359,7 @@ mod tests {
       json!({
         "data": "some file content",
         "fileName": "cache:///some/file.js",
-        "maybeSpecifier": "file:///some/file.ts"
+        "maybeSpecifiers": ["file:///some/file.ts"]
       }),
     )
     .expect("should have not errored");
@@ -361,9 +369,10 @@ mod tests {
       state.emitted_files[0],
       EmittedFile {
         data: "some file content".to_string(),
-        maybe_specifier: Some(
-          ModuleSpecifier::resolve_url_or_path("file:///some/file.ts").unwrap()
-        ),
+        maybe_specifiers: Some(vec![ModuleSpecifier::resolve_url_or_path(
+          "file:///some/file.ts"
+        )
+        .unwrap()]),
         media_type: MediaType::JavaScript,
       }
     );
@@ -377,7 +386,7 @@ mod tests {
       &mut state,
       json!({
         "data": "some file content",
-        "fileName": "cache:///.tsbuildinfo",
+        "fileName": "deno:///.tsbuildinfo",
       }),
     )
     .expect("should not have errored");
@@ -434,7 +443,7 @@ mod tests {
     let actual = op_load(
       &mut state,
       json!({
-        "specifier": "cache:///.tsbuildinfo"
+        "specifier": "deno:///.tsbuildinfo"
       }),
     )
     .expect("op should not have errored");
@@ -593,17 +602,21 @@ mod tests {
     let hash_data = vec![b"{}".to_vec(), b"1.2.3".to_vec()];
     let config = &TsConfig::new(json!({
       "allowJs": true,
+      "checkJs": false,
       "esModuleInterop": true,
+      "emitDecoratorMetadata": false,
       "incremental": true,
       "isolatedModules": true,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
       "lib": ["deno.window"],
       "module": "esnext",
       "noEmit": true,
       "outDir": "deno:///",
-      "sourceMap": true,
       "strict": true,
       "target": "esnext",
-      "tsBuildInfoFile": "cache:///.tsbuildinfo",
+      "tsBuildInfoFile": "deno:///.tsbuildinfo",
     }));
     let actual = exec(
       Request {
@@ -619,6 +632,7 @@ mod tests {
     .expect("should not have errored");
     assert_eq!(actual.stats.0.len(), 12);
     assert_eq!(actual.diagnostics.0.len(), 0);
+    assert_eq!(actual.emitted_files.len(), 0);
     assert!(actual.maybe_build_info.is_some());
   }
 }

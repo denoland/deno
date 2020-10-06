@@ -49,7 +49,9 @@ use swc_ecmascript::transforms::pass::Optional;
 use swc_ecmascript::transforms::proposals;
 use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
+use swc_ecmascript::visit;
 use swc_ecmascript::visit::FoldWith;
+use swc_ecmascript::visit::Visit;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
@@ -198,6 +200,138 @@ pub fn get_syntax(media_type: &MediaType) -> Syntax {
   }
 }
 
+/// Visits a pattern node, recursively looking for any names that end up in the
+/// local scope, pushing them onto the passed vector.
+///
+/// TODO(@kitsonk) this is only needed when doing the bundling emit from tsc.
+fn visit_pat(pat: &swc_ecmascript::ast::Pat, names: &mut Vec<String>) {
+  match pat {
+    swc_ecmascript::ast::Pat::Ident(ident) => names.push(ident.sym.to_string()),
+    swc_ecmascript::ast::Pat::Array(array_pat) => {
+      for elem in array_pat.elems.iter() {
+        if let Some(pat) = elem {
+          visit_pat(pat, names);
+        }
+      }
+    }
+    swc_ecmascript::ast::Pat::Rest(rest_pat) => {
+      visit_pat(rest_pat.arg.as_ref(), names)
+    }
+    swc_ecmascript::ast::Pat::Object(object_pat) => {
+      for prop in object_pat.props.iter() {
+        match prop {
+          swc_ecmascript::ast::ObjectPatProp::Assign(assign_pat) => {
+            names.push(assign_pat.key.sym.to_string())
+          }
+          swc_ecmascript::ast::ObjectPatProp::KeyValue(key_value) => {
+            visit_pat(key_value.value.as_ref(), names)
+          }
+          swc_ecmascript::ast::ObjectPatProp::Rest(rest_pat) => {
+            visit_pat(rest_pat.arg.as_ref(), names)
+          }
+        }
+      }
+    }
+    swc_ecmascript::ast::Pat::Assign(assign_pat) => {
+      visit_pat(assign_pat.left.as_ref(), names)
+    }
+    // Invalid and Expressions are noops
+    _ => {}
+  }
+}
+
+/// A visitor that collects exports
+///
+/// TODO(@kitsonk) this is only needed when doing the bundling emit from tsc.
+#[derive(Default)]
+struct ExportCollector {
+  pub names: Vec<String>,
+  pub export_all_specifiers: Vec<String>,
+}
+
+impl Visit for ExportCollector {
+  fn visit_export_decl(
+    &mut self,
+    node: &swc_ecmascript::ast::ExportDecl,
+    _parent: &dyn visit::Node,
+  ) {
+    match &node.decl {
+      swc_ecmascript::ast::Decl::Class(class_decl) => {
+        self.names.push(class_decl.ident.sym.to_string());
+      }
+      swc_ecmascript::ast::Decl::Fn(fn_decl) => {
+        self.names.push(fn_decl.ident.sym.to_string());
+      }
+      swc_ecmascript::ast::Decl::Var(var_decl) => {
+        for decl in var_decl.decls.iter() {
+          visit_pat(&decl.name, &mut self.names);
+        }
+      }
+      swc_ecmascript::ast::Decl::TsEnum(ts_enum_decl) => {
+        self.names.push(ts_enum_decl.id.sym.to_string());
+      }
+      // Interfaces, Type Aliases, and TS Module/Namespace decl are noops
+      _ => {}
+    }
+  }
+
+  fn visit_named_export(
+    &mut self,
+    node: &swc_ecmascript::ast::NamedExport,
+    _parent: &dyn visit::Node,
+  ) {
+    for spec in node.specifiers.iter() {
+      match spec {
+        swc_ecmascript::ast::ExportSpecifier::Named(named_spec) => {
+          if let Some(ident) = &named_spec.exported {
+            self.names.push(ident.sym.to_string());
+          } else {
+            self.names.push(named_spec.orig.sym.to_string());
+          }
+        }
+        swc_ecmascript::ast::ExportSpecifier::Namespace(namespace_spec) => {
+          self.names.push(namespace_spec.name.sym.to_string());
+        }
+        // Default is only proposed syntax, not current supported, so noop
+        _ => {}
+      }
+    }
+  }
+
+  fn visit_export_default_decl(
+    &mut self,
+    node: &swc_ecmascript::ast::ExportDefaultDecl,
+    _parent: &dyn visit::Node,
+  ) {
+    match &node.decl {
+      swc_ecmascript::ast::DefaultDecl::Class(_) => {
+        self.names.push("default".to_string())
+      }
+      swc_ecmascript::ast::DefaultDecl::Fn(_) => {
+        self.names.push("default".to_string())
+      }
+      // Interface is a noop
+      _ => {}
+    }
+  }
+
+  fn visit_export_default_expr(
+    &mut self,
+    _node: &swc_ecmascript::ast::ExportDefaultExpr,
+    _parent: &dyn visit::Node,
+  ) {
+    self.names.push("default".to_string());
+  }
+
+  fn visit_export_all(
+    &mut self,
+    node: &swc_ecmascript::ast::ExportAll,
+    _parent: &dyn visit::Node,
+  ) {
+    self.export_all_specifiers.push(node.src.value.to_string());
+  }
+}
+
 /// Options which can be adjusted when transpiling a module.
 #[derive(Debug, Clone)]
 pub struct EmitOptions {
@@ -257,6 +391,19 @@ impl ParsedModule {
   /// Return a vector of dependencies for the module.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
     analyze_dependencies(&self.module, &self.source_map, &self.comments)
+  }
+
+  /// Identifies all the names that are exported from a module, or where there
+  /// is an export all statement, the string specifier of the re-exported
+  /// module.
+  ///
+  /// TODO(@kitsonk) this is only needed when doing the bundling emit from
+  /// tsc.
+  pub fn get_export_names(&self) -> (Vec<String>, Vec<String>) {
+    let mut collector = ExportCollector::default();
+    collector.visit_module(&self.module, &self.module);
+
+    (collector.names, collector.export_all_specifiers)
   }
 
   /// Get the module's leading comments, where triple slash directives might

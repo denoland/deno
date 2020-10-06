@@ -67,7 +67,7 @@ use crate::global_state::GlobalState;
 use crate::inspector::InspectorSession;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
-use crate::specifier_handler::FetchHandler;
+use crate::specifier_handler::get_fetch_handler;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -84,14 +84,12 @@ use flags::Flags;
 use global_state::exit_unstable;
 use log::Level;
 use log::LevelFilter;
-use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::Arc;
 use upgrade::upgrade_command;
 
@@ -302,25 +300,28 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
-    &global_state,
-    Permissions::allow_all(),
-  )?));
+  let handler = get_fetch_handler(&global_state, Permissions::allow_all())?;
   let mut builder =
     graph::GraphBuilder::new(handler, global_state.maybe_import_map.clone());
   builder.insert(&module_specifier).await?;
   let graph = builder.get_graph(&global_state.lockfile)?;
 
-  let (output, stats, maybe_ignored_options) =
+  let (output, stats, diagnostics, maybe_ignored_options) =
     graph.bundle(graph::BundleOptions {
       check: !flags.no_check,
       debug: flags.log_level == Some(Level::Debug),
       maybe_config_path: flags.config_path,
+      // TODO(@kitsonk) once swc is stable enough, this should be removed
+      tsc_emit: true,
     })?;
 
   debug!("{}", stats);
   if let Some(ignored_options) = maybe_ignored_options {
     println!("{}", ignored_options);
+  }
+  if !diagnostics.0.is_empty() {
+    // TODO(@kitsonk) we should exit
+    eprintln!("{}", diagnostics);
   }
   debug!(">>>>> bundle END");
 

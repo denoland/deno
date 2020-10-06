@@ -15,11 +15,13 @@ use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fmt;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub type DependencyMap = HashMap<String, Dependency>;
@@ -62,8 +64,6 @@ impl Default for CachedModule {
 pub enum EmitType {
   /// Code that was emitted for use by the CLI
   Cli,
-  /// Code that was emitted for bundling purposes
-  Bundle,
   /// Code that was emitted based on a request to the runtime APIs
   Runtime,
 }
@@ -357,6 +357,18 @@ impl SpecifierHandler for FetchHandler {
       )
       .map_err(|e| e.into())
   }
+}
+
+/// Returns an instance of `FetchHandler` wrapped in `Rc` and `RefCell` ready
+/// to be passed to the graph builder.
+pub fn get_fetch_handler(
+  global_state: &Arc<GlobalState>,
+  permissions: Permissions,
+) -> Result<Rc<RefCell<FetchHandler>>, AnyError> {
+  Ok(Rc::new(RefCell::new(FetchHandler::new(
+    global_state,
+    permissions,
+  )?)))
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ use crate::ast;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use jsonc_parser::JsonValue;
 use serde::Deserialize;
@@ -209,7 +210,18 @@ pub struct TsConfig(Value);
 impl TsConfig {
   /// Create a new `TsConfig` with the base being the `value` supplied.
   pub fn new(value: Value) -> Self {
-    TsConfig(value)
+    // These are implicit defaults in `tsc` that are used in transpiling, and
+    // need to be explicitly present in the config.
+    let mut defaults = json!({
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "jsx": "preserve",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "target": "es5",
+    });
+    json_merge(&mut defaults, &value);
+    TsConfig(defaults)
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
@@ -261,6 +273,29 @@ impl TsConfig {
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
     })
+  }
+
+  pub fn target_es5(&self) -> bool {
+    let target = self
+      .0
+      .get("target")
+      .unwrap()
+      .as_str()
+      .unwrap()
+      .to_lowercase();
+    match target.as_str() {
+      "es2018" => false,
+      "es2019" => false,
+      "es2020" => false,
+      "esnext" => false,
+      _ => true,
+    }
+  }
+}
+
+impl Default for TsConfig {
+  fn default() -> Self {
+    TsConfig::new(json!({}))
   }
 }
 

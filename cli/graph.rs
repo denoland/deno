@@ -6,6 +6,7 @@ use crate::ast::BundleLoader;
 use crate::ast::BundleResolver;
 use crate::ast::Location;
 use crate::ast::ParsedModule;
+use crate::diagnostics::Diagnostics;
 use crate::file_fetcher::TextDocument;
 use crate::import_map::ImportMap;
 use crate::js;
@@ -61,6 +62,11 @@ lazy_static! {
     Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
 }
 
+// TODO(@kitsonk) these can be removed when we no longer are using tsc to emit
+// bundles.
+const SYSTEM_LOADER: &'static str = include_str!("system_loader.js");
+const SYSTEM_LOADER_ES5: &'static str = include_str!("system_loader_es5.js");
+
 /// A group of errors that represent errors that can occur when interacting with
 /// a module graph.
 #[allow(unused)]
@@ -83,6 +89,9 @@ pub enum GraphError {
   MissingSnapshotData,
   /// The current feature is not supported.
   NotSupported(String),
+  /// The result of a request to the TypeScript checker resulted in an
+  /// unexpected emit.
+  UnexpectedEmit,
 }
 use GraphError::*;
 
@@ -105,6 +114,7 @@ impl fmt::Display for GraphError {
       ),
       MissingSnapshotData => write!(f, "Snapshot data was not supplied, but required."),
       NotSupported(ref msg) => write!(f, "{}", msg),
+      UnexpectedEmit => write!(f, "An unexpected emit was received from TypeScript."),
     }
   }
 }
@@ -436,6 +446,12 @@ pub struct BundleOptions {
   /// file that augments the the default configuration passed to the TypeScript
   /// compiler.
   pub maybe_config_path: Option<String>,
+  /// This is a transistional option, which indicates that the bundle should
+  /// be emitted by tsc instead of swc.  This property is ignored if `check`
+  /// is `false`.  It defaults to `false`.
+  ///
+  /// TODO(@kitsonk) this should be refactored out in the future.
+  pub tsc_emit: bool,
 }
 
 impl Default for BundleOptions {
@@ -444,6 +460,7 @@ impl Default for BundleOptions {
       check: true,
       debug: false,
       maybe_config_path: None,
+      tsc_emit: false,
     }
   }
 }
@@ -459,10 +476,55 @@ pub struct TranspileOptions {
   pub maybe_config_path: Option<String>,
 }
 
+/// Execute a type check using tsc on the graph.  Returning an optional string
+/// which is an emitted "raw" bundle.
+fn check_bundle(
+  graph: Rc<RefCell<Graph>>,
+  config: &TsConfig,
+  debug: bool,
+) -> Result<(Option<String>, Stats, Diagnostics), AnyError> {
+  let hash_data = vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
+  let root_names = &graph
+    .borrow()
+    .roots
+    .iter()
+    .map(|ms| ms.to_string())
+    .collect();
+  let maybe_build_info = graph.borrow().maybe_build_info.clone();
+  let result = exec(
+    Request {
+      config,
+      debug,
+      root_names,
+    },
+    js::compiler_isolate_init(),
+    graph.clone(),
+    hash_data,
+    maybe_build_info,
+  )?;
+  let mut g = graph.borrow_mut();
+  g.maybe_build_info = result.maybe_build_info;
+  g.flush(&EmitType::Cli)?;
+
+  let out = if result.emitted_files.len() == 1 {
+    let emitted_file = &result.emitted_files[0];
+    if emitted_file.maybe_specifiers.is_some() {
+      Some(emitted_file.data.clone())
+    } else {
+      None
+    }
+  } else if result.emitted_files.len() == 0 {
+    None
+  } else {
+    return Err(UnexpectedEmit.into());
+  };
+
+  Ok((out, result.stats, result.diagnostics))
+}
+
 /// A dependency graph of modules, were the modules that have been inserted via
 /// the builder will be loaded into the graph.  Also provides an interface to
 /// be able to manipulate and handle the graph.
-
 #[derive(Debug)]
 pub struct Graph {
   handler: Rc<RefCell<dyn SpecifierHandler>>,
@@ -489,7 +551,10 @@ impl Graph {
   pub fn bundle(
     self,
     options: BundleOptions,
-  ) -> Result<(String, Stats, Option<IgnoredCompilerOptions>), AnyError> {
+  ) -> Result<
+    (String, Stats, Diagnostics, Option<IgnoredCompilerOptions>),
+    AnyError,
+  > {
     if self.roots.len() != 1 {
       return Err(
         NotSupported(format!(
@@ -502,103 +567,155 @@ impl Graph {
 
     let start = Instant::now();
     let root_specifier = self.roots[0].clone();
-    let mut config = TsConfig::new(json!({
-      "allowJs": true,
-      "checkJs": false,
-      "esModuleInterop": true,
-      "emitDecoratorMetadata": false,
-      "incremental": true,
-      "isolatedModules": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "lib": ["deno.window"],
-      "module": "esnext",
-      "noEmit": true,
-      "outDir": "deno:///",
-      "strict": true,
-      "target": "esnext",
-      "tsBuildInfoFile": "cache:///.tsbuildinfo",
-    }));
+    let base = if options.tsc_emit {
+      json!({
+        "allowJs": true,
+        "esModuleInterop": true,
+        "jsx": "react",
+        "lib": ["deno.window"],
+        "module": "system",
+        "outFile": "deno:///bundle.js",
+        "strict": true,
+        "target": "esnext",
+      })
+    } else {
+      json!({
+        "allowJs": true,
+        "esModuleInterop": true,
+        "incremental": true,
+        "isolatedModules": true,
+        "jsx": "react",
+        "lib": ["deno.window"],
+        "module": "esnext",
+        "noEmit": true,
+        "outDir": "deno:///",
+        "strict": true,
+        "target": "esnext",
+        "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      })
+    };
+    let mut config = TsConfig::new(base);
     let maybe_ignored_options =
       config.merge_user_config(options.maybe_config_path)?;
 
     let provider = Rc::new(RefCell::new(self));
-    if options.check {
-      let hash_data =
-        vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
-      let root_names = &provider
-        .borrow()
-        .roots
-        .iter()
-        .map(|ms| ms.to_string())
-        .collect();
-      let maybe_build_info = provider.borrow().maybe_build_info.clone();
-      let result = exec(
-        Request {
-          config: &config,
-          debug: options.debug,
-          root_names,
-        },
-        js::compiler_isolate_init(),
-        provider.clone(),
-        hash_data,
-        maybe_build_info,
-      )?;
-      // TODO(@kitsonk) bubble this up
-      debug!("{}", result.stats);
-      let mut p = provider.borrow_mut();
-      p.maybe_build_info = result.maybe_build_info;
-      p.flush(&EmitType::Bundle)?;
-    }
+    // TODO(kitson) this can be removed when no longer using emits from tsc
+    // for bundling
+    if options.tsc_emit {
+      let (maybe_s, stats, diagnostics) =
+        check_bundle(provider.clone(), &config, options.debug)?;
+      let s = if let Some(code) = maybe_s {
+        let top_level_await = code.contains("execute: async function");
+        let root_specifier_str = root_specifier.as_str();
+        let exports = provider.borrow().get_export_names(&root_specifier)?;
+        let mut init_code = if exports.is_empty() {
+          if top_level_await {
+            format!(
+              "\nawait __instantiate(\"{}\", true);\n",
+              root_specifier_str
+            )
+          } else {
+            format!("\n__instantiate(\"{}\", false);\n", root_specifier_str)
+          }
+        } else {
+          if top_level_await {
+            format!(
+              "\nvar __exp = await __instantiate(\"{}\", true);\n",
+              root_specifier_str
+            )
+          } else {
+            format!(
+              "\nvar __exp = __instantiate(\"{}\", false);\n",
+              root_specifier_str
+            )
+          }
+        };
+        for named_export in exports.iter() {
+          let export_statement = match named_export.as_str() {
+            "default" => "export default __exp[\"default\"];\n".to_string(),
+            _ => format!(
+              "export var {} = __exp[\"{}\"];\n",
+              named_export, named_export
+            ),
+          };
+          init_code.push_str(&export_statement);
+        }
 
-    let emit_options = config.as_emit_options()?;
-    let cm = Rc::new(swc_common::SourceMap::new(
-      swc_common::FilePathMapping::empty(),
-    ));
-    let loader = BundleLoader::new(provider.clone(), cm.clone(), &emit_options);
-    let resolver = BundleResolver::new(provider.clone());
-    let hook = Box::new(BundleHook);
-    let globals = swc_common::Globals::new();
-    let bundler = swc_bundler::Bundler::new(
-      &globals,
-      cm.clone(),
-      loader,
-      resolver,
-      swc_bundler::Config::default(),
-      hook,
-    );
-    let mut entries = HashMap::new();
-    entries.insert(
-      "bundle".to_string(),
-      swc_common::FileName::Custom(root_specifier.to_string()),
-    );
-    let output = bundler.bundle(entries).context("Failed to bundle graph.")?;
-    let mut buf = Vec::new();
-    {
-      let mut emitter = swc_ecmascript::codegen::Emitter {
-        cfg: swc_ecmascript::codegen::Config { minify: false },
-        cm: cm.clone(),
-        comments: None,
-        wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
-          cm, "\n", &mut buf, None,
-        )),
+        if config.target_es5() {
+          format!("{}\n{}\n{}", SYSTEM_LOADER_ES5, code, init_code)
+        } else {
+          format!("{}\n{}\n{}", SYSTEM_LOADER, code, init_code)
+        }
+      } else {
+        return Err(UnexpectedEmit.into());
       };
 
-      emitter
-        .emit_module(&output[0].module)
-        .context("Failed to emit bundle")?;
+      Ok((s, stats, diagnostics, maybe_ignored_options))
+    } else {
+      let (mut stats, diagnostics) = if options.check {
+        let (_, stats, diagnostics) =
+          check_bundle(provider.clone(), &config, options.debug)?;
+        (stats, diagnostics)
+      } else {
+        (Stats(Vec::new()), Diagnostics(Vec::new()))
+      };
+
+      let emit_options = config.as_emit_options()?;
+      let cm = Rc::new(swc_common::SourceMap::new(
+        swc_common::FilePathMapping::empty(),
+      ));
+      let loader =
+        BundleLoader::new(provider.clone(), cm.clone(), &emit_options);
+      let resolver = BundleResolver::new(provider.clone());
+      let hook = Box::new(BundleHook);
+      let globals = swc_common::Globals::new();
+      let bundler = swc_bundler::Bundler::new(
+        &globals,
+        cm.clone(),
+        loader,
+        resolver,
+        swc_bundler::Config::default(),
+        hook,
+      );
+      let mut entries = HashMap::new();
+      entries.insert(
+        "bundle".to_string(),
+        swc_common::FileName::Custom(root_specifier.to_string()),
+      );
+      let output =
+        bundler.bundle(entries).context("Failed to bundle graph.")?;
+      let mut buf = Vec::new();
+      {
+        let mut emitter = swc_ecmascript::codegen::Emitter {
+          cfg: swc_ecmascript::codegen::Config { minify: false },
+          cm: cm.clone(),
+          comments: None,
+          wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
+            cm, "\n", &mut buf, None,
+          )),
+        };
+
+        emitter
+          .emit_module(&output[0].module)
+          .context("Failed to emit bundle")?;
+      }
+
+      let s =
+        String::from_utf8(buf).context("Bundle is an invalid utf-8 string.")?;
+
+      if !options.check {
+        stats.0.push(Stat::new(
+          "Files".to_string(),
+          provider.borrow().modules.len() as u128,
+        ));
+      }
+      stats.0.push(Stat::new(
+        "Total bundle time".to_string(),
+        start.elapsed().as_millis(),
+      ));
+
+      Ok((s, stats, diagnostics, maybe_ignored_options))
     }
-
-    let s =
-      String::from_utf8(buf).context("Bundle is an invalid utf-8 string.")?;
-
-    let stats = Stats(vec![
-      Stat::new("Files".to_string(), provider.borrow().modules.len() as u128),
-      Stat::new("Total time".to_string(), start.elapsed().as_millis()),
-    ]);
-
-    Ok((s, stats, maybe_ignored_options))
   }
 
   /// Update the handler with any modules that are marked as _dirty_ and update
@@ -627,6 +744,34 @@ impl Graph {
     }
 
     Ok(())
+  }
+
+  /// Recursively get the exported names of a module.  This handles situations
+  /// where the `export * from 'spec'` exports.
+  ///
+  /// TODO(@kitsonk): This is only used when we deal with the bundling emit from
+  /// tsc
+  fn get_export_names(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Vec<String>, AnyError> {
+    if let Some(module) = self.modules.get(specifier) {
+      let mut names: Vec<String> = Vec::new();
+      if let Some(parsed_module) = module.maybe_parsed_module.as_ref() {
+        let (mut parsed_names, export_all_specifiers) =
+          parsed_module.get_export_names();
+        names.append(&mut parsed_names);
+        for spec in export_all_specifiers.iter() {
+          let exp_specifier = self.resolve(spec, specifier)?;
+          let mut parsed_names = self.get_export_names(&exp_specifier)?;
+          names.append(&mut parsed_names);
+        }
+      }
+
+      Ok(names)
+    } else {
+      Err(MissingSpecifier(specifier.clone()).into())
+    }
   }
 
   /// Verify the subresource integrity of the graph based upon the optional
@@ -670,13 +815,7 @@ impl Graph {
     let start = Instant::now();
     let emit_type = EmitType::Cli;
 
-    let mut ts_config = TsConfig::new(json!({
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    }));
+    let mut ts_config = TsConfig::new(json!({ "jsx": "react" }));
 
     let maybe_ignored_options =
       ts_config.merge_user_config(options.maybe_config_path)?;
@@ -1043,15 +1182,26 @@ pub mod tests {
     assert_eq!(module.maybe_version, expected);
   }
 
-  #[tokio::test]
-  async fn test_graph_builder() {
+  fn setup(
+    maybe_import_map: Option<ImportMap>,
+  ) -> (GraphBuilder, Rc<RefCell<MockSpecifierHandler>>, PathBuf) {
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/module_graph");
     let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
+      fixtures: fixtures.clone(),
+      ..Default::default()
     }));
-    let mut builder = GraphBuilder::new(handler, None);
+
+    (
+      GraphBuilder::new(handler.clone(), maybe_import_map),
+      handler,
+      fixtures,
+    )
+  }
+
+  #[tokio::test]
+  async fn test_graph_builder() {
+    let (mut builder, _, _) = setup(None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
         .expect("could not resolve module");
@@ -1071,12 +1221,6 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_builder_import_map() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
     let import_map = ImportMap::from_json(
       "https://deno.land/x/import_map.ts",
       r#"{
@@ -1087,7 +1231,7 @@ pub mod tests {
     }"#,
     )
     .expect("could not load import map");
-    let mut builder = GraphBuilder::new(handler, Some(import_map));
+    let (mut builder, _, _) = setup(Some(import_map));
     let specifier =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/import_map.ts")
         .expect("could not resolve module");
@@ -1114,13 +1258,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_bundle() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let (mut builder, _, _) = setup(None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/bundle.ts")
         .expect("could not resolve module");
@@ -1129,13 +1267,61 @@ pub mod tests {
       .await
       .expect("module not inserted");
     let graph = builder.get_graph(&None).expect("could not get graph");
-    let (s, _, _) = graph
+    let (s, stats, diagnostics, maybe_ignored_options) = graph
+      .bundle(BundleOptions::default())
+      .expect("failed to bundle");
+    assert_eq!(stats.0.len(), 13);
+    assert_eq!(diagnostics.0.len(), 0);
+    assert!(maybe_ignored_options.is_none());
+    assert!(s.contains("console.log(a, b);"));
+  }
+
+  #[tokio::test]
+  async fn test_graph_bundle_no_check() {
+    let (mut builder, _, _) = setup(None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/bundle.ts")
+        .expect("could not resolve module");
+    builder
+      .insert(&specifier)
+      .await
+      .expect("module not inserted");
+    let graph = builder.get_graph(&None).expect("could not get graph");
+    let (s, stats, diagnostics, maybe_ignored_options) = graph
       .bundle(BundleOptions {
         check: false,
         ..Default::default()
       })
       .expect("failed to bundle");
-    println!("{}", s);
+    assert_eq!(stats.0.len(), 2);
+    assert_eq!(diagnostics.0.len(), 0);
+    assert!(maybe_ignored_options.is_none());
+    assert!(s.contains("console.log(a, b);"));
+  }
+
+  #[tokio::test]
+  async fn test_graph_bundle_tsc_emit() {
+    let (mut builder, _, _) = setup(None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/bundle.ts")
+        .expect("could not resolve module");
+    builder
+      .insert(&specifier)
+      .await
+      .expect("module not inserted");
+    let graph = builder.get_graph(&None).expect("could not get graph");
+    let (s, stats, diagnostics, maybe_ignored_options) = graph
+      .bundle(BundleOptions {
+        tsc_emit: true,
+        ..Default::default()
+      })
+      .expect("failed to bundle");
+    assert_eq!(stats.0.len(), 12);
+    assert_eq!(diagnostics.0.len(), 0);
+    assert!(maybe_ignored_options.is_none());
+    assert!(s.contains(
+      "var __exp = __instantiate(\"file:///tests/bundle.ts\", false);"
+    ));
   }
 
   #[tokio::test]
@@ -1147,13 +1333,7 @@ pub mod tests {
     // to be actually emitted.
     //
     // This also exercises "@deno-types" and type references.
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let (mut builder, handler, _) = setup(None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
@@ -1210,13 +1390,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_transpile_user_config() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures: fixtures.clone(),
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let (mut builder, handler, _) = setup(None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/transpile.tsx")
         .expect("could not resolve module");
@@ -1251,18 +1425,12 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_with_lockfile() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let (mut builder, _, fixtures) = setup(None);
     let lockfile_path = fixtures.join("lockfile.json");
     let lockfile =
       Lockfile::new(lockfile_path.to_string_lossy().to_string(), false)
         .expect("could not load lockfile");
     let maybe_lockfile = Some(Mutex::new(lockfile));
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
@@ -1277,18 +1445,12 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_with_lockfile_fail() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let (mut builder, _, fixtures) = setup(None);
     let lockfile_path = fixtures.join("lockfile_fail.json");
     let lockfile =
       Lockfile::new(lockfile_path.to_string_lossy().to_string(), false)
         .expect("could not load lockfile");
     let maybe_lockfile = Some(Mutex::new(lockfile));
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");

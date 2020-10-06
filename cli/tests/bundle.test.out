@@ -1,23 +1,7 @@
 [WILDCARD]
-function printHello() {
-    console.log("Hello");
-}
-function returnsFoo() {
-    return "Foo";
-}
-function printHello2() {
-    printHello();
-}
-export function returnsHi() {
-    return "Hi";
-}
-export function returnsFoo2() {
-    return returnsFoo();
-}
-export function printHello3() {
-    printHello2();
-}
-export function throwsError() {
-    throw Error("exception from mod1");
-}
+var __exp = __instantiate("[WILDCARD]/tests/subdir/mod1.ts", false);
+export var returnsHi = __exp["returnsHi"];
+export var returnsFoo2 = __exp["returnsFoo2"];
+export var printHello3 = __exp["printHello3"];
+export var throwsError = __exp["throwsError"];
 [WILDCARD]
