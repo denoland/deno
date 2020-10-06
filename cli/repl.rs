@@ -33,10 +33,10 @@ impl Validator for Helper {
 }
 
 async fn post_message_and_poll(
+  worker: &mut Worker,
   session: &mut InspectorSession,
   method: &str,
   params: Option<Value>,
-  worker: &mut Worker,
 ) -> Result<Value, AnyError> {
   let response = session.post_message(method.to_string(), params);
   tokio::pin!(response);
@@ -55,8 +55,8 @@ async fn post_message_and_poll(
 }
 
 async fn read_line_and_poll(
-  editor: Arc<Mutex<Editor<Helper>>>,
   worker: &mut Worker,
+  editor: Arc<Mutex<Editor<Helper>>>,
 ) -> Result<String, ReadlineError> {
   let mut line =
     tokio::task::spawn_blocking(move || editor.lock().unwrap().readline("> "));
@@ -141,18 +141,18 @@ pub async fn run(
   "#;
 
   post_message_and_poll(
+    &mut *worker,
     &mut session,
     "Runtime.evaluate",
     Some(json!({
       "expression": prelude,
       "contextId": context_id,
     })),
-    &mut *worker,
   )
   .await?;
 
   loop {
-    let line = read_line_and_poll(editor.clone(), &mut *worker).await;
+    let line = read_line_and_poll(&mut *worker, editor.clone()).await;
     match line {
       Ok(line) => {
         // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
@@ -167,6 +167,7 @@ pub async fn run(
         };
 
         let evaluate_response = post_message_and_poll(
+          &mut *worker,
           &mut session,
           "Runtime.evaluate",
           Some(json!({
@@ -174,7 +175,6 @@ pub async fn run(
             "contextId": context_id,
             "replMode": true,
           })),
-          &mut *worker,
         )
         .await?;
 
@@ -185,6 +185,7 @@ pub async fn run(
             && wrapped_line != line
           {
             post_message_and_poll(
+              &mut *worker,
               &mut session,
               "Runtime.evaluate",
               Some(json!({
@@ -192,7 +193,6 @@ pub async fn run(
                 "contextId": context_id,
                 "replMode": true,
               })),
-              &mut *worker,
             )
             .await?
           } else {
@@ -200,13 +200,13 @@ pub async fn run(
           };
 
         let is_closing = post_message_and_poll(
+          &mut *worker,
           &mut session,
           "Runtime.evaluate",
           Some(json!({
             "expression": "(globalThis.closed)",
             "contextId": context_id,
           })),
-          &mut *worker,
         )
         .await?
         .get("result")
@@ -226,6 +226,7 @@ pub async fn run(
 
         if evaluate_exception_details.is_some() {
           post_message_and_poll(
+                  &mut *worker,
                   &mut session,
                   "Runtime.callFunctionOn",
                   Some(json!({
@@ -235,10 +236,10 @@ pub async fn run(
                       evaluate_result,
                     ],
                   })),
-                  &mut *worker,
                 ).await?;
         } else {
           post_message_and_poll(
+                  &mut *worker,
                   &mut session,
                   "Runtime.callFunctionOn",
                   Some(json!({
@@ -248,7 +249,6 @@ pub async fn run(
                       evaluate_result,
                     ],
                   })),
-                  &mut *worker,
                 ).await?;
         }
 
@@ -256,7 +256,9 @@ pub async fn run(
         // consistent with the previous implementation we just get the preview result from
         // Deno.inspectArgs.
         let inspect_response =
-                post_message_and_poll(&mut session,
+                post_message_and_poll(
+                  &mut *worker,
+                  &mut session,
                   "Runtime.callFunctionOn",
                   Some(json!({
                     "executionContextId": context_id,
@@ -265,7 +267,7 @@ pub async fn run(
                       evaluate_result,
                     ],
                   })),
-                  &mut *worker).await?;
+                  ).await?;
 
         let inspect_result = inspect_response.get("result").unwrap();
 
