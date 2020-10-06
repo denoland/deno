@@ -145,13 +145,14 @@ pub async fn run(
     });
   "#;
 
-  session
-    .post_message(
+  post_message_and_poll(
+      &mut session,
       "Runtime.evaluate".to_string(),
       Some(json!({
         "expression": prelude,
         "contextId": context_id,
       })),
+      &mut *worker,
     )
     .await?;
 
