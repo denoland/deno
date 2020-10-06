@@ -68,8 +68,6 @@ unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
 
 unitTest(
   {
-    // TODO(nayeemrmn): Symlinks don't work as expected on Windows.
-    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   async function realPathSymlink(): Promise<void> {
