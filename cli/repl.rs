@@ -38,7 +38,7 @@ async fn post_message_and_poll(
   method: &str,
   params: Option<Value>,
 ) -> Result<Value, AnyError> {
-  let response = session.post_message(method.to_string(), params);
+  let response = session.post_message(method, params);
   tokio::pin!(response);
 
   loop {
