@@ -37,7 +37,7 @@ mod lockfile;
 mod media_type;
 mod metrics;
 mod module_graph;
-mod module_graph_2;
+mod module_graph2;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
