@@ -149,7 +149,7 @@ impl Completer for Helper {
               .iter()
               .map(|r| {
                 format!(
-                  "\"{}\"",
+                  "\"{}\"]",
                   r.get("name").unwrap().as_str().unwrap().to_string()
                 )
               })
