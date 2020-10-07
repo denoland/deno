@@ -468,8 +468,6 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fc8ec78c69a1c3c4310c62fed6b8eb28e84915ad8dabe74adc41ad4dd805829"
 dependencies = [
  "futures",
  "lazy_static",
@@ -494,8 +492,6 @@ dependencies = [
 [[package]]
 name = "deno_lint"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60a1f1ce708693fa6955a279ceee3a348a17c9942e8719f1e3e1086a5776ad84"
 dependencies = [
  "lazy_static",
  "log",
@@ -576,8 +572,6 @@ dependencies = [
 [[package]]
 name = "dprint-plugin-typescript"
 version = "0.32.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "019571bd3c744547768ce0e90afd388cd834551399aacc0bea9a354e645fa5ba"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2336,9 +2330,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms"
-version = "0.24.3"
+version = "0.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d38a7010276884ac0b22603e61c217d44a1c3485b56e31225360da36218c5622"
+checksum = "767da99882283863679af31a8f9823997be9d235c609081828aed58ab69d6fe5"
 dependencies = [
  "Inflector",
  "arrayvec",
@@ -2411,9 +2405,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecmascript"
-version = "0.8.3"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d92c80da630ab670496c5daa726292aa6b0b01058681433b9331c0cef3e90a42"
+checksum = "ce264f490930d1bd72d494ceeb06a0ad6dfcb3a5436fa731cda2ae20cd761648"
 dependencies = [
  "swc_ecma_ast",
  "swc_ecma_codegen",
