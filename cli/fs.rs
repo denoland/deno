@@ -116,6 +116,6 @@ where
     .into_iter()
     .filter_map(|e| e.ok())
     .map(|e| e.path().to_owned())
-    .filter(|p| !p.is_dir() && filter(&p) )
+    .filter(|p| !p.is_dir() && filter(&p))
     .collect()
 }
