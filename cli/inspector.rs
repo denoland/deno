@@ -901,7 +901,7 @@ impl InspectorSession {
 
   pub async fn post_message(
     &mut self,
-    method: String,
+    method: &str,
     params: Option<serde_json::Value>,
   ) -> Result<serde_json::Value, AnyError> {
     let id = self.next_message_id;
