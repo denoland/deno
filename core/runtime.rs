@@ -455,6 +455,10 @@ impl JsRuntime {
   }
 
   /// Runs event loop to completion
+  ///
+  /// This future resolves when:
+  ///  - there are no more pending dynamic imports
+  ///  - there are no more pending ops
   pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
     poll_fn(|cx| self.poll_event_loop(cx)).await
   }
