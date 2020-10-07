@@ -20,20 +20,14 @@ impl CoverageCollector {
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message("Debugger.enable".to_string(), None)
-      .await?;
+    self.session.post_message("Debugger.enable", None).await?;
 
-    self
-      .session
-      .post_message("Profiler.enable".to_string(), None)
-      .await?;
+    self.session.post_message("Profiler.enable", None).await?;
 
     self
       .session
       .post_message(
-        "Profiler.startPreciseCoverage".to_string(),
+        "Profiler.startPreciseCoverage",
         Some(json!({"callCount": true, "detailed": true})),
       )
       .await?;
@@ -44,7 +38,7 @@ impl CoverageCollector {
   pub async fn collect(&mut self) -> Result<Vec<Coverage>, AnyError> {
     let result = self
       .session
-      .post_message("Profiler.takePreciseCoverage".to_string(), None)
+      .post_message("Profiler.takePreciseCoverage", None)
       .await?;
 
     let take_coverage_result: TakePreciseCoverageResult =
@@ -55,7 +49,7 @@ impl CoverageCollector {
       let result = self
         .session
         .post_message(
-          "Debugger.getScriptSource".to_string(),
+          "Debugger.getScriptSource",
           Some(json!({
               "scriptId": script_coverage.script_id,
           })),
@@ -77,16 +71,10 @@ impl CoverageCollector {
   pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .post_message("Profiler.stopPreciseCoverage".to_string(), None)
+      .post_message("Profiler.stopPreciseCoverage", None)
       .await?;
-    self
-      .session
-      .post_message("Profiler.disable".to_string(), None)
-      .await?;
-    self
-      .session
-      .post_message("Debugger.disable".to_string(), None)
-      .await?;
+    self.session.post_message("Profiler.disable", None).await?;
+    self.session.post_message("Debugger.disable", None).await?;
 
     Ok(())
   }
