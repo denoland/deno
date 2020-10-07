@@ -26,24 +26,19 @@ export interface Header {
   [key: string]: unknown;
 }
 
-export type TokenObject = {
-  header: { alg: string };
-  payload: Payload;
-  signature: string;
-};
-
 export function isTokenObject(object: {
   header: unknown;
   payload: unknown;
   signature: unknown;
-}): object is TokenObject {
-  return typeof object.signature === "string" &&
+}) {
+  return (
+    typeof object.signature === "string" &&
     isObject(object.header) &&
     typeof object.header?.alg === "string" &&
-    isObject(object.payload) &&
-    object.payload?.exp
-    ? typeof object.payload.exp === "number"
-    : true;
+    (isObject(object.payload) && object.payload?.exp
+      ? typeof object.payload.exp === "number"
+      : true)
+  );
 }
 
 export function parse(jwt: string) {
