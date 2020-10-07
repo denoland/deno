@@ -41,7 +41,7 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn create_isolate() -> JsRuntime {
+fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
   runtime.register_op("listen", deno_core::json_op_sync(op_listen));
   runtime.register_op("close", deno_core::json_op_sync(op_close));
@@ -179,7 +179,7 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let mut isolate = create_isolate();
+  let mut js_runtime = create_js_runtime();
   let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
@@ -187,13 +187,13 @@ fn main() {
     .unwrap();
 
   let future = async move {
-    isolate
+    js_runtime
       .execute(
         "http_bench_json_ops.js",
         include_str!("http_bench_json_ops.js"),
       )
       .unwrap();
-    isolate.await
+    js_runtime.await
   };
   runtime.block_on(future).unwrap();
 }

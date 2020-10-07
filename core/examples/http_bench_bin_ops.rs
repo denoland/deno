@@ -76,14 +76,14 @@ impl From<Record> for RecordBuf {
   }
 }
 
-fn create_isolate() -> JsRuntime {
-  let mut isolate = JsRuntime::new(Default::default());
-  register_op_bin_sync(&mut isolate, "listen", op_listen);
-  register_op_bin_sync(&mut isolate, "close", op_close);
-  register_op_bin_async(&mut isolate, "accept", op_accept);
-  register_op_bin_async(&mut isolate, "read", op_read);
-  register_op_bin_async(&mut isolate, "write", op_write);
-  isolate
+fn create_js_runtime() -> JsRuntime {
+  let mut js_runtime = JsRuntime::new(Default::default());
+  register_op_bin_sync(&mut js_runtime, "listen", op_listen);
+  register_op_bin_sync(&mut js_runtime, "close", op_close);
+  register_op_bin_async(&mut js_runtime, "accept", op_accept);
+  register_op_bin_async(&mut js_runtime, "read", op_read);
+  register_op_bin_async(&mut js_runtime, "write", op_write);
+  js_runtime
 }
 
 fn op_listen(
@@ -172,7 +172,7 @@ fn op_write(
 }
 
 fn register_op_bin_sync<F>(
-  isolate: &mut JsRuntime,
+  js_runtime: &mut JsRuntime,
   name: &'static str,
   op_fn: F,
 ) where
@@ -193,11 +193,11 @@ fn register_op_bin_sync<F>(
     Op::Sync(buf)
   };
 
-  isolate.register_op(name, base_op_fn);
+  js_runtime.register_op(name, base_op_fn);
 }
 
 fn register_op_bin_async<F, R>(
-  isolate: &mut JsRuntime,
+  js_runtime: &mut JsRuntime,
   name: &'static str,
   op_fn: F,
 ) where
@@ -227,7 +227,7 @@ fn register_op_bin_async<F, R>(
     Op::Async(fut.boxed_local())
   };
 
-  isolate.register_op(name, base_op_fn);
+  js_runtime.register_op(name, base_op_fn);
 }
 
 fn bad_resource_id() -> Error {
@@ -246,7 +246,7 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let mut isolate = create_isolate();
+  let mut js_runtime = create_js_runtime();
   let mut runtime = runtime::Builder::new()
     .basic_scheduler()
     .enable_all()
@@ -254,13 +254,13 @@ fn main() {
     .unwrap();
 
   let future = async move {
-    isolate
+    js_runtime
       .execute(
         "http_bench_bin_ops.js",
         include_str!("http_bench_bin_ops.js"),
       )
       .unwrap();
-    isolate.await
+    js_runtime.await
   };
   runtime.block_on(future).unwrap();
 }
