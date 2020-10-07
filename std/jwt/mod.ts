@@ -1,8 +1,7 @@
 export { setExpiration } from "./_util.ts";
 export type { Algorithm } from "./algorithm.ts";
 
-import { convertStringToBase64url } from "./_util.ts";
-import { isExpired } from "./_util.ts";
+import { isExpired, convertStringToBase64url, isObject } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 import { Algorithm, verify as verifyAlgorithm } from "./algorithm.ts";
@@ -32,12 +31,6 @@ export type TokenObject = {
   payload: Payload;
   signature: string;
 };
-
-function isObject(obj: unknown): obj is Record<string, unknown> {
-  return (
-    obj !== null && typeof obj === "object" && Array.isArray(obj) === false
-  );
-}
 
 export function isTokenObject(object: {
   header: unknown;

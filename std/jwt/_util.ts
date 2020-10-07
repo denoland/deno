@@ -5,7 +5,7 @@ import { decodeString as convertHexToUint8Array } from "../encoding/hex.ts";
 // returns the number of seconds since January 1, 1970, 00:00:00 UTC
 export function setExpiration(exp: number | Date): number {
   return Math.round(
-    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
+    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000
   );
 }
 
@@ -19,4 +19,10 @@ export function convertHexToBase64url(input: string): string {
 
 export function convertStringToBase64url(input: string): string {
   return convertUint8ArrayToBase64url(new TextEncoder().encode(input));
+}
+
+export function isObject(obj: unknown): obj is Record<string, unknown> {
+  return (
+    obj !== null && typeof obj === "object" && Array.isArray(obj) === false
+  );
 }
