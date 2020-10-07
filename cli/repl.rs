@@ -89,8 +89,7 @@ pub async fn run(
   global_state: &GlobalState,
   mut worker: MainWorker,
 ) -> Result<(), AnyError> {
-  // Our inspector is unable to default to the default context id so we have to specify it here.
-  let context_id: u32 = 1;
+  let mut context_id: u64 = 0;
 
   let inspector = worker
     .inspector
@@ -103,6 +102,21 @@ pub async fn run(
 
   post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
     .await?;
+
+  for notification in session.notifications() {
+    let method = notification.get("method").unwrap().as_str().unwrap();
+    let params = notification.get("params").unwrap();
+
+    if method == "Runtime.executionContextCreated" {
+      context_id = params
+        .get("context")
+        .unwrap()
+        .get("id")
+        .unwrap()
+        .as_u64()
+        .unwrap();
+    }
+  }
 
   let helper = Helper {
     validator: MatchingBracketValidator::new(),
@@ -292,6 +306,10 @@ pub async fn run(
             "{}",
             inspect_result.get("value").unwrap().as_str().unwrap()
           ),
+        }
+
+        for notification in session.notifications() {
+          println!("{}", notification);
         }
 
         editor.lock().unwrap().add_history_entry(line.as_str());
