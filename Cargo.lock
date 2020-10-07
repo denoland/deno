@@ -587,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.32.2"
+version = "0.32.3"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2264,9 +2264,9 @@ dependencies = [
 
 [[package]]
 name = "swc_bundler"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bec070c46884aa3a64ab4c9bdb722e15e98178ded3e056f35952a30c5e5e6298"
+checksum = "dbb71fbab972c89d583f7a95f64737d09e47081fe97ba7643b137084b42d5b17"
 dependencies = [
  "anyhow",
  "crc",
@@ -2399,9 +2399,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms"
-version = "0.24.4"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfc801558c8c8276a15e079afdfb938b78602c5cbb2a9d9439d5d9001e194ea6"
+checksum = "6aecf21f4b27a1032e1283987b83f271277705e9ab1ed46d1152fd14a2e04247"
 dependencies = [
  "Inflector",
  "arrayvec",
@@ -2474,9 +2474,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecmascript"
-version = "0.8.4"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e17ad3ce5f916fd5d03cb70623f88e657ee2abc1f82c6670feff2777f0f33f93"
+checksum = "16e65de11030079995781261b0039ce42791a503a3ec8cac6f3c4b2f86987014"
 dependencies = [
  "swc_ecma_ast",
  "swc_ecma_codegen",

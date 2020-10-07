@@ -490,8 +490,6 @@ impl swc_bundler::Load for BundleLoader<'_> {
               legacy: true,
               emit_metadata: self.emit_options.emit_metadata
             }),
-            // TODO(@kitsonk) remove when swc-project/swc#1137 is resolved
-            proposals::export(),
             typescript::strip(),
             fixer(Some(&comments)),
           );
