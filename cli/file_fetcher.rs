@@ -318,7 +318,12 @@ impl SourceFileFetcher {
       .map_err(|()| uri_error("File URL contains invalid path"))?;
 
     permissions.check_read(&filepath)?;
-    let source_code = fs::read_to_string(filepath.clone())?;
+    let bytes = fs::read(filepath.clone())?;
+    let source_code = text_encoding::convert_to_utf8(
+      &bytes,
+      text_encoding::detect_charset(&bytes),
+    )?
+    .to_string();
     let (media_type, _) = map_content_type(&filepath, None);
     Ok(SourceFile {
       url: module_url.clone(),
