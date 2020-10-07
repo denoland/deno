@@ -302,7 +302,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(new Uint8Array([1, 2, 3])),
     "Uint8Array(3) [ 1, 2, 3 ]",
   );
-  assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
+  assertEquals(stringify(Uint8Array.prototype), "Uint8Array {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }",
@@ -832,7 +832,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
+    "B { [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
   );
 });
 
