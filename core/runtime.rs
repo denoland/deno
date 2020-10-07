@@ -477,7 +477,7 @@ impl JsRuntime {
     }
 
     // Top level modules
-    self.poll_mod_evaluate(cx)?;
+    self.evaluate_pending_modules()?;
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
@@ -487,7 +487,7 @@ impl JsRuntime {
       let poll_imports = self.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
 
-      self.poll_dyn_imports_evaluate(cx)?;
+      self.evaluate_dyn_imports()?;
 
       self.check_promise_exceptions()?;
     }
@@ -1038,7 +1038,7 @@ impl JsRuntime {
     }
   }
 
-  fn poll_mod_evaluate(&mut self, _cx: &mut Context) -> Result<(), AnyError> {
+  fn evaluate_pending_modules(&mut self) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
     let context = self.global_context();
@@ -1082,10 +1082,7 @@ impl JsRuntime {
     Ok(())
   }
 
-  fn poll_dyn_imports_evaluate(
-    &mut self,
-    _cx: &mut Context,
-  ) -> Result<(), AnyError> {
+  fn evaluate_dyn_imports(&mut self) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
     loop {
