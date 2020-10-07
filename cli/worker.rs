@@ -240,7 +240,7 @@ impl Future for Worker {
     // We always poll the inspector if it exists.
     let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
     inner.waker.register(cx.waker());
-    inner.js_runtime.poll_unpin(cx)
+    inner.js_runtime.poll_event_loop(cx)
   }
 }
 
