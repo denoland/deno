@@ -1097,8 +1097,8 @@
     return null;
   }
 
-  function parseCss(cssString) {
-    const css = {
+  function getDefaultCss() {
+    return {
       backgroundColor: null,
       color: null,
       fontWeight: null,
@@ -1106,6 +1106,10 @@
       textDecorationColor: null,
       textDecorationLine: [],
     };
+  }
+
+  function parseCss(cssString) {
+    const css = getDefaultCss();
 
     const rawEntries = [];
     let inValue = false;
@@ -1160,12 +1164,12 @@
           css.color = color;
         }
       } else if (key == "font-weight") {
-        if (["normal", "bold"].includes(value)) {
+        if (value == "bold") {
           css.fontWeight = value;
         }
       } else if (key == "font-style") {
-        if (["normal", "italic", "oblique", "oblique 14deg"].includes(value)) {
-          css.fontStyle = value;
+        if (["italic", "oblique", "oblique 14deg"].includes(value)) {
+          css.fontStyle = "italic";
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
@@ -1196,50 +1200,81 @@
     return css;
   }
 
-  function cssToAnsi(css) {
+  function colorEquals(color1, color2) {
+    return color1?.[0] == color2?.[0] && color1?.[1] == color2?.[1] &&
+      color1?.[2] == color2?.[2];
+  }
+
+  function cssToAnsi(css, prevCss = null) {
+    prevCss = prevCss ?? getDefaultCss();
     let ansi = "";
-    if (css.backgroundColor != null) {
-      const [r, g, b] = css.backgroundColor;
-      ansi += `\x1b[48;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[49m";
+    if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
+      if (css.backgroundColor != null) {
+        const [r, g, b] = css.backgroundColor;
+        ansi += `\x1b[48;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[49m";
+      }
     }
-    if (css.color != null) {
-      const [r, g, b] = css.color;
-      ansi += `\x1b[38;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[39m";
+    if (!colorEquals(css.color, prevCss.color)) {
+      if (css.color != null) {
+        const [r, g, b] = css.color;
+        ansi += `\x1b[38;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[39m";
+      }
     }
-    if (css.fontWeight == "bold") {
-      ansi += `\x1b[1m`;
-    } else {
-      ansi += "\x1b[22m";
+    if (css.fontWeight != prevCss.fontWeight) {
+      if (css.fontWeight == "bold") {
+        ansi += `\x1b[1m`;
+      } else {
+        ansi += "\x1b[22m";
+      }
     }
-    if (["italic", "oblique"].includes(css.fontStyle)) {
-      ansi += `\x1b[3m`;
-    } else {
-      ansi += "\x1b[23m";
+    if (css.fontStyle != prevCss.fontStyle) {
+      if (css.fontStyle == "italic") {
+        ansi += `\x1b[3m`;
+      } else {
+        ansi += "\x1b[23m";
+      }
     }
-    if (css.textDecorationColor != null) {
-      const [r, g, b] = css.textDecorationColor;
-      ansi += `\x1b[58;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[59m";
+    if (!colorEquals(css.textDecorationColor, prevCss.textDecorationColor)) {
+      if (css.textDecorationColor != null) {
+        const [r, g, b] = css.textDecorationColor;
+        ansi += `\x1b[58;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[59m";
+      }
     }
-    if (css.textDecorationLine.includes("line-through")) {
-      ansi += "\x1b[9m";
-    } else {
-      ansi += "\x1b[29m";
+    if (
+      css.textDecorationLine.includes("line-through") !=
+        prevCss.textDecorationLine.includes("line-through")
+    ) {
+      if (css.textDecorationLine.includes("line-through")) {
+        ansi += "\x1b[9m";
+      } else {
+        ansi += "\x1b[29m";
+      }
     }
-    if (css.textDecorationLine.includes("overline")) {
-      ansi += "\x1b[53m";
-    } else {
-      ansi += "\x1b[55m";
+    if (
+      css.textDecorationLine.includes("overline") !=
+        prevCss.textDecorationLine.includes("overline")
+    ) {
+      if (css.textDecorationLine.includes("overline")) {
+        ansi += "\x1b[53m";
+      } else {
+        ansi += "\x1b[55m";
+      }
     }
-    if (css.textDecorationLine.includes("underline")) {
-      ansi += "\x1b[4m";
-    } else {
-      ansi += "\x1b[24m";
+    if (
+      css.textDecorationLine.includes("underline") !=
+        prevCss.textDecorationLine.includes("underline")
+    ) {
+      if (css.textDecorationLine.includes("underline")) {
+        ansi += "\x1b[4m";
+      } else {
+        ansi += "\x1b[24m";
+      }
     }
     return ansi;
   }
@@ -1257,6 +1292,7 @@
       // have to append to `string` when a substitution occurs / at the end.
       let appendedChars = 0;
       let usedStyle = false;
+      let prevCss = null;
       for (let i = 0; i < first.length - 1; i++) {
         if (first[i] == "%") {
           const char = first[++i];
@@ -1293,9 +1329,15 @@
               );
             } else if (char == "c") {
               const value = args[a++];
-              formattedArg = noColor ? "" : cssToAnsi(parseCss(value));
-              if (formattedArg != "") {
-                usedStyle = true;
+              if (!noColor) {
+                const css = parseCss(value);
+                formattedArg = cssToAnsi(css, prevCss);
+                if (formattedArg != "") {
+                  usedStyle = true;
+                  prevCss = css;
+                }
+              } else {
+                formattedArg = "";
               }
             }
 

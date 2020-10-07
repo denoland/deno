@@ -3,8 +3,6 @@
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
-use crate::graph::GraphBuilder;
-use crate::graph::TranspileOptions;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
@@ -12,6 +10,8 @@ use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
+use crate::module_graph2::GraphBuilder2;
+use crate::module_graph2::TranspileOptions;
 use crate::permissions::Permissions;
 use crate::specifier_handler::FetchHandler;
 use crate::tsc::CompiledModule;
@@ -130,7 +130,7 @@ impl GlobalState {
       // something that should be handled better in the future.
       let handler =
         Rc::new(RefCell::new(FetchHandler::new(self, permissions.clone())?));
-      let mut builder = GraphBuilder::new(handler, maybe_import_map);
+      let mut builder = GraphBuilder2::new(handler, maybe_import_map);
       builder.insert(&module_specifier).await?;
       let mut graph = builder.get_graph(&self.lockfile)?;
 

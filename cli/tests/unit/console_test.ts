@@ -57,8 +57,8 @@ function parseCssColor(colorString: string): Css {
 }
 
 /** ANSI-fy the CSS, replace "\x1b" with "_". */
-function cssToAnsiEsc(css: Css): string {
-  return cssToAnsi_(css).replaceAll("\x1b", "_");
+function cssToAnsiEsc(css: Css, prevCss: Css | null = null): string {
+  return cssToAnsi_(css, prevCss).replaceAll("\x1b", "_");
 }
 
 // test cases from web-platform-tests
@@ -944,7 +944,7 @@ unitTest(function consoleParseCss(): void {
   );
   assertEquals(
     parseCss("font-style: oblique"),
-    { ...DEFAULT_CSS, fontStyle: "oblique" },
+    { ...DEFAULT_CSS, fontStyle: "italic" },
   );
   assertEquals(
     parseCss("text-decoration-color: green"),
@@ -983,46 +983,42 @@ unitTest(function consoleParseCss(): void {
 });
 
 unitTest(function consoleCssToAnsi(): void {
-  // TODO(nayeemrmn): Optimize these by accounting for the previous CSS.
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
-    "_[48;2;200;201;202m_[39m_[22m_[23m_[59m_[29m_[55m_[24m",
+    "_[48;2;200;201;202m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, color: [203, 204, 205] }),
-    "_[49m_[38;2;203;204;205m_[22m_[23m_[59m_[29m_[55m_[24m",
+    "_[38;2;203;204;205m",
   );
-  assertEquals(
-    cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }),
-    "_[49m_[39m_[1m_[23m_[59m_[29m_[55m_[24m",
-  );
-  assertEquals(
-    cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }),
-    "_[49m_[39m_[22m_[3m_[59m_[29m_[55m_[24m",
-  );
-  assertEquals(
-    cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "oblique" }),
-    "_[49m_[39m_[22m_[3m_[59m_[29m_[55m_[24m",
-  );
+  assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }), "_[1m");
+  assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }), "_[3m");
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, textDecorationColor: [206, 207, 208] }),
-    "_[49m_[39m_[22m_[23m_[58;2;206;207;208m_[29m_[55m_[24m",
+    "_[58;2;206;207;208m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, textDecorationLine: ["underline"] }),
-    "_[49m_[39m_[22m_[23m_[59m_[29m_[55m_[4m",
+    "_[4m",
   );
   assertEquals(
     cssToAnsiEsc(
       { ...DEFAULT_CSS, textDecorationLine: ["overline", "line-through"] },
     ),
-    "_[49m_[39m_[22m_[23m_[59m_[9m_[53m_[24m",
+    "_[9m_[53m",
   );
   assertEquals(
     cssToAnsiEsc(
       { ...DEFAULT_CSS, color: [203, 204, 205], fontWeight: "bold" },
     ),
-    "_[49m_[38;2;203;204;205m_[1m_[23m_[59m_[29m_[55m_[24m",
+    "_[38;2;203;204;205m_[1m",
+  );
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, color: [0, 0, 0], fontWeight: "bold" },
+      { ...DEFAULT_CSS, color: [203, 204, 205], fontStyle: "italic" },
+    ),
+    "_[38;2;0;0;0m_[1m_[23m",
   );
 });
 
