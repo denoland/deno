@@ -36,10 +36,10 @@ struct Helper {
 impl Helper {
   fn post_message(
     &self,
-    method: String,
+    method: &str,
     params: Option<Value>,
   ) -> Result<Value, AnyError> {
-    self.message_tx.send((method, params))?;
+    self.message_tx.send((method.to_string(), params))?;
     self.response_rx.recv()?
   }
 }
@@ -56,7 +56,7 @@ impl Completer for Helper {
     if line.is_empty() {
       let response = self
         .post_message(
-          "Runtime.globalLexicalScopeNames".to_string(),
+          "Runtime.globalLexicalScopeNames",
           Some(json!({
             "executionContextId": self.context_id,
           })),
@@ -80,7 +80,7 @@ impl Completer for Helper {
 
       let evaluate_response = self
         .post_message(
-          "Runtime.evaluate".to_string(),
+          "Runtime.evaluate",
           Some(json!({
               "contextId": self.context_id,
               "expression": lhs,
@@ -94,7 +94,7 @@ impl Completer for Helper {
         if let Some(object_id) = result.get("objectId") {
           let get_properties_response = self
             .post_message(
-              "Runtime.getProperties".to_string(),
+              "Runtime.getProperties",
               Some(json!({
                   "objectId": object_id,
               })),
@@ -121,7 +121,7 @@ impl Completer for Helper {
 
       let evaluate_response = self
         .post_message(
-          "Runtime.evaluate".to_string(),
+          "Runtime.evaluate",
           Some(json!({
               "contextId": self.context_id,
               "expression": lhs,
@@ -135,7 +135,7 @@ impl Completer for Helper {
         if let Some(object_id) = result.get("objectId") {
           let get_properties_response = self
             .post_message(
-              "Runtime.getProperties".to_string(),
+              "Runtime.getProperties",
               Some(json!({
                   "objectId": object_id,
               })),
