@@ -37,8 +37,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::option::Option;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -115,19 +113,6 @@ pub(crate) struct JsRuntimeState {
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
-}
-
-impl Deref for JsRuntime {
-  type Target = v8::Isolate;
-  fn deref(&self) -> &v8::Isolate {
-    self.v8_isolate.as_ref().unwrap()
-  }
-}
-
-impl DerefMut for JsRuntime {
-  fn deref_mut(&mut self) -> &mut v8::Isolate {
-    self.v8_isolate.as_mut().unwrap()
-  }
 }
 
 impl Drop for JsRuntime {
@@ -315,13 +300,13 @@ impl JsRuntime {
     }
   }
 
-  pub fn global_context(&self) -> v8::Global<v8::Context> {
-    let state = Self::state(self);
+  pub fn global_context(&mut self) -> v8::Global<v8::Context> {
+    let state = Self::state(self.v8_isolate());
     let state = state.borrow();
     state.global_context.clone().unwrap()
   }
 
-  fn v8_isolate(&mut self) -> &mut v8::OwnedIsolate {
+  pub fn v8_isolate(&mut self) -> &mut v8::OwnedIsolate {
     self.v8_isolate.as_mut().unwrap()
   }
 
@@ -351,7 +336,7 @@ impl JsRuntime {
   }
 
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let state = state_rc.borrow();
     state.op_state.clone()
   }
@@ -404,7 +389,7 @@ impl JsRuntime {
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
-    let state = Self::state(self);
+    let state = Self::state(self.v8_isolate());
 
     // Note: create_blob() method must not be called from within a HandleScope.
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
@@ -425,7 +410,7 @@ impl JsRuntime {
   where
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
-    Self::state(self)
+    Self::state(self.v8_isolate())
       .borrow_mut()
       .op_state
       .borrow_mut()
@@ -481,7 +466,7 @@ impl JsRuntime {
   ) -> Poll<Result<(), AnyError>> {
     self.shared_init();
 
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     {
       let state = state_rc.borrow();
       state.waker.register(cx.waker());
@@ -634,7 +619,7 @@ impl JsRuntime {
     name: &str,
     source: &str,
   ) -> Result<ModuleId, AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
@@ -688,7 +673,7 @@ impl JsRuntime {
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
@@ -729,7 +714,7 @@ impl JsRuntime {
   ) -> Result<(), AnyError> {
     self.shared_init();
 
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
     let context1 = self.global_context();
 
@@ -742,7 +727,8 @@ impl JsRuntime {
       .clone();
 
     let status = {
-      let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+      let scope =
+        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
       let module = module_handle.get(scope);
       module.get_status()
     };
@@ -764,7 +750,8 @@ impl JsRuntime {
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
       // https://v8.dev/features/top-level-await#module-execution-order
-      let scope = &mut v8::HandleScope::with_context(&mut **self, context1);
+      let scope =
+        &mut v8::HandleScope::with_context(self.v8_isolate(), context1);
       let module = v8::Local::new(scope, &module_handle);
       let maybe_value = module.evaluate(scope);
 
@@ -809,7 +796,7 @@ impl JsRuntime {
   ) -> Result<mpsc::Receiver<Result<(), AnyError>>, AnyError> {
     self.shared_init();
 
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
@@ -887,7 +874,7 @@ impl JsRuntime {
     id: ModuleLoadId,
     err: AnyError,
   ) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
@@ -918,7 +905,7 @@ impl JsRuntime {
     id: ModuleLoadId,
     mod_id: ModuleId,
   ) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
@@ -953,7 +940,7 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
 
     if state_rc.borrow().preparing_dyn_imports.is_empty() {
       return Poll::Ready(Ok(()));
@@ -991,7 +978,7 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
 
     if state_rc.borrow().pending_dyn_imports.is_empty() {
       return Poll::Ready(Ok(()));
@@ -1048,11 +1035,12 @@ impl JsRuntime {
   }
 
   fn poll_mod_evaluate(&mut self, _cx: &mut Context) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
 
     let context = self.global_context();
     {
-      let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+      let scope =
+        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
       let mut state = state_rc.borrow_mut();
 
@@ -1094,12 +1082,13 @@ impl JsRuntime {
     &mut self,
     _cx: &mut Context,
   ) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
 
     loop {
       let context = self.global_context();
       let maybe_result = {
-        let scope = &mut v8::HandleScope::with_context(&mut **self, context);
+        let scope =
+          &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
         let mut state = state_rc.borrow_mut();
         if let Some(&dyn_import_id) =
@@ -1173,7 +1162,7 @@ impl JsRuntime {
     let referrer_specifier =
       ModuleSpecifier::resolve_url(&module_url_found).unwrap();
 
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     // #A There are 3 cases to handle at this moment:
     // 1. Source code resolved result have the same module name as requested
     //    and is not yet registered
@@ -1212,14 +1201,14 @@ impl JsRuntime {
 
     // Now we must iterate over all imports of the module and load them.
     let imports = {
-      let state_rc = Self::state(self);
+      let state_rc = Self::state(self.v8_isolate());
       let state = state_rc.borrow();
       state.modules.get_children(module_id).unwrap().clone()
     };
 
     for module_specifier in imports {
       let is_registered = {
-        let state_rc = Self::state(self);
+        let state_rc = Self::state(self.v8_isolate());
         let state = state_rc.borrow();
         state.modules.is_registered(&module_specifier)
       };
@@ -1253,7 +1242,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, AnyError> {
     self.shared_init();
     let loader = {
-      let state_rc = Self::state(self);
+      let state_rc = Self::state(self.v8_isolate());
       let state = state_rc.borrow();
       state.loader.clone()
     };
@@ -1281,7 +1270,7 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Option<(OpId, Box<[u8]>)> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let mut overflow_response: Option<(OpId, Box<[u8]>)> = None;
 
     loop {
@@ -1330,7 +1319,7 @@ impl JsRuntime {
   }
 
   fn check_promise_exceptions(&mut self) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
 
     if state.pending_promise_exceptions.is_empty() {
@@ -1353,7 +1342,7 @@ impl JsRuntime {
     &mut self,
     maybe_overflown_response: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), AnyError> {
-    let state_rc = Self::state(self);
+    let state_rc = Self::state(self.v8_isolate());
 
     let shared_queue_size = state_rc.borrow().shared.size();
 
@@ -1402,7 +1391,7 @@ impl JsRuntime {
 
   fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
     let js_macrotask_cb_handle =
-      match &Self::state(self).borrow().js_macrotask_cb {
+      match &Self::state(self.v8_isolate()).borrow().js_macrotask_cb {
         Some(handle) => handle.clone(),
         None => return Ok(()),
       };
@@ -2038,7 +2027,7 @@ pub mod tests {
       heap_limits: Some(heap_limits),
       ..Default::default()
     });
-    let cb_handle = runtime.thread_safe_handle();
+    let cb_handle = runtime.v8_isolate().thread_safe_handle();
 
     let callback_invoke_count = Rc::new(AtomicUsize::default());
     let inner_invoke_count = Rc::clone(&callback_invoke_count);
@@ -2084,7 +2073,7 @@ pub mod tests {
       heap_limits: Some(heap_limits),
       ..Default::default()
     });
-    let cb_handle = runtime.thread_safe_handle();
+    let cb_handle = runtime.v8_isolate().thread_safe_handle();
 
     let callback_invoke_count_first = Rc::new(AtomicUsize::default());
     let inner_invoke_count_first = Rc::clone(&callback_invoke_count_first);
@@ -2203,7 +2192,7 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     {
       let state = state_rc.borrow();
       let imports = state.modules.get_children(mod_a);

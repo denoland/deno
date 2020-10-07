@@ -428,7 +428,7 @@ impl WebWorker {
     );
 
     let terminated = Arc::new(AtomicBool::new(false));
-    let isolate_handle = worker.isolate.thread_safe_handle();
+    let isolate_handle = worker.isolate.v8_isolate().thread_safe_handle();
     let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
 
     let handle = WebWorkerHandle {
