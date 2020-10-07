@@ -2662,6 +2662,16 @@ itest!(ignore_require {
   exit_code: 0,
 });
 
+itest!(top_level_await_bug {
+  args: "run --allow-read top_level_await_bug.js",
+  output: "top_level_await_bug.out",
+});
+
+itest!(top_level_await_bug2 {
+  args: "run --allow-read top_level_await_bug2.js",
+  output: "top_level_await_bug2.out",
+});
+
 #[test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;

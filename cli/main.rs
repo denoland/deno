@@ -25,7 +25,6 @@ pub mod fmt_errors;
 mod fs;
 pub mod global_state;
 mod global_timer;
-mod graph;
 pub mod http_cache;
 mod http_util;
 mod import_map;
@@ -38,6 +37,7 @@ mod lockfile;
 mod media_type;
 mod metrics;
 mod module_graph;
+mod module_graph2;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -63,7 +63,6 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
-use crate::inspector::InspectorSession;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
@@ -432,24 +431,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let mut worker = MainWorker::new(&global_state, main_module.clone());
   (&mut *worker).await?;
 
-  let inspector = worker
-    .inspector
-    .as_mut()
-    .expect("Inspector is not created.");
-
-  let inspector_session = InspectorSession::new(&mut **inspector);
-  let repl = repl::run(&global_state, inspector_session);
-
-  tokio::pin!(repl);
-
-  loop {
-    tokio::select! {
-      result = &mut repl => {
-          return result;
-      }
-      _ = &mut *worker => {}
-    }
-  }
+  repl::run(&global_state, worker).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {

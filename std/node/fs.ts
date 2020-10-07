@@ -11,6 +11,15 @@ import { exists, existsSync } from "./_fs/_fs_exists.ts";
 import { mkdir, mkdirSync } from "./_fs/_fs_mkdir.ts";
 import { copyFile, copyFileSync } from "./_fs/_fs_copy.ts";
 import { writeFile, writeFileSync } from "./_fs/_fs_writeFile.ts";
+import { readdir, readdirSync } from "./_fs/_fs_readdir.ts";
+import { rename, renameSync } from "./_fs/_fs_rename.ts";
+import { rmdir, rmdirSync } from "./_fs/_fs_rmdir.ts";
+import { unlink, unlinkSync } from "./_fs/_fs_unlink.ts";
+import { watch } from "./_fs/_fs_watch.ts";
+import { open, openSync } from "./_fs/_fs_open.ts";
+import { stat, statSync } from "./_fs/_fs_stat.ts";
+import { lstat, lstatSync } from "./_fs/_fs_lstat.ts";
+
 import * as promises from "./_fs/promises/mod.ts";
 
 export {
@@ -29,13 +38,29 @@ export {
   copyFileSync,
   exists,
   existsSync,
+  // not sure about those
+  lstat,
+  lstatSync,
   mkdir,
   mkdirSync,
+  open,
+  openSync,
   promises,
+  readdir,
+  readdirSync,
   readFile,
   readFileSync,
   readlink,
   readlinkSync,
+  rename,
+  renameSync,
+  rmdir,
+  rmdirSync,
+  stat,
+  statSync,
+  unlink,
+  unlinkSync,
+  watch,
   writeFile,
   writeFileSync,
 };

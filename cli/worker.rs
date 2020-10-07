@@ -189,7 +189,7 @@ impl Worker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    self.isolate.mod_evaluate(id)
+    self.isolate.mod_evaluate(id).await
   }
 
   /// Loads, instantiates and executes provided source code
@@ -204,7 +204,7 @@ impl Worker {
       .load_module(module_specifier, Some(code))
       .await?;
     self.wait_for_inspector_session();
-    self.isolate.mod_evaluate(id)
+    self.isolate.mod_evaluate(id).await
   }
 
   /// Returns a way to communicate with the Worker from other threads.

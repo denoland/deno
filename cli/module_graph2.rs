@@ -107,22 +107,6 @@ impl fmt::Display for GraphError {
 
 impl Error for GraphError {}
 
-/// A trait, implemented by `Graph` that provides the interfaces that the
-/// compiler ops require to be able to retrieve information about the graph.
-pub trait ModuleProvider {
-  /// Get the source for a given module specifier.  If the module is not part
-  /// of the graph, the result will be `None`.
-  fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  /// Given a string specifier and a referring module specifier, provide the
-  /// resulting module specifier and media type for the module that is part of
-  /// the graph.
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<(ModuleSpecifier, MediaType), AnyError>;
-}
-
 /// An enum which represents the parsed out values of references in source code.
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum TypeScriptReference {
@@ -420,23 +404,22 @@ pub struct TranspileOptions {
 /// A dependency graph of modules, were the modules that have been inserted via
 /// the builder will be loaded into the graph.  Also provides an interface to
 /// be able to manipulate and handle the graph.
-
 #[derive(Debug)]
-pub struct Graph {
+pub struct Graph2 {
   build_info: BuildInfoMap,
   handler: Rc<RefCell<dyn SpecifierHandler>>,
   modules: HashMap<ModuleSpecifier, Module>,
   roots: Vec<ModuleSpecifier>,
 }
 
-impl Graph {
+impl Graph2 {
   /// Create a new instance of a graph, ready to have modules loaded it.
   ///
   /// The argument `handler` is an instance of a structure that implements the
   /// `SpecifierHandler` trait.
   ///
   pub fn new(handler: Rc<RefCell<dyn SpecifierHandler>>) -> Self {
-    Graph {
+    Graph2 {
       build_info: HashMap::new(),
       handler,
       modules: HashMap::new(),
@@ -584,82 +567,15 @@ impl Graph {
   }
 }
 
-impl<'a> ModuleProvider for Graph {
-  fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    if let Some(module) = self.modules.get(specifier) {
-      if let Ok(source) = module.source.to_string() {
-        Some(source)
-      } else {
-        None
-      }
-    } else {
-      None
-    }
-  }
-
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
-    if !self.modules.contains_key(referrer) {
-      return Err(MissingSpecifier(referrer.to_owned()).into());
-    }
-    let module = self.modules.get(referrer).unwrap();
-    if !module.dependencies.contains_key(specifier) {
-      return Err(
-        MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
-      );
-    }
-    let dependency = module.dependencies.get(specifier).unwrap();
-    // If there is a @deno-types pragma that impacts the dependency, then the
-    // maybe_type property will be set with that specifier, otherwise we use the
-    // specifier that point to the runtime code.
-    let resolved_specifier =
-      if let Some(type_specifier) = dependency.maybe_type.clone() {
-        type_specifier
-      } else if let Some(code_specifier) = dependency.maybe_code.clone() {
-        code_specifier
-      } else {
-        return Err(
-          MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
-        );
-      };
-    if !self.modules.contains_key(&resolved_specifier) {
-      return Err(
-        MissingDependency(referrer.to_owned(), resolved_specifier.to_string())
-          .into(),
-      );
-    }
-    let dep_module = self.modules.get(&resolved_specifier).unwrap();
-    // In the case that there is a X-TypeScript-Types or a triple-slash types,
-    // then the `maybe_types` specifier will be populated and we should use that
-    // instead.
-    let result = if let Some((_, types)) = dep_module.maybe_types.clone() {
-      if let Some(types_module) = self.modules.get(&types) {
-        (types, types_module.media_type)
-      } else {
-        return Err(
-          MissingDependency(referrer.to_owned(), types.to_string()).into(),
-        );
-      }
-    } else {
-      (resolved_specifier, dep_module.media_type)
-    };
-
-    Ok(result)
-  }
-}
-
 /// A structure for building a dependency graph of modules.
-pub struct GraphBuilder {
+pub struct GraphBuilder2 {
   fetched: HashSet<ModuleSpecifier>,
-  graph: Graph,
+  graph: Graph2,
   maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
   pending: FuturesUnordered<FetchFuture>,
 }
 
-impl GraphBuilder {
+impl GraphBuilder2 {
   pub fn new(
     handler: Rc<RefCell<dyn SpecifierHandler>>,
     maybe_import_map: Option<ImportMap>,
@@ -669,8 +585,8 @@ impl GraphBuilder {
     } else {
       None
     };
-    GraphBuilder {
-      graph: Graph::new(handler),
+    GraphBuilder2 {
+      graph: Graph2::new(handler),
       fetched: HashSet::new(),
       maybe_import_map: internal_import_map,
       pending: FuturesUnordered::new(),
@@ -756,10 +672,15 @@ impl GraphBuilder {
   /// lockfile can be provided, where if the sources in the graph do not match
   /// the expected lockfile, the method with error instead of returning the
   /// graph.
+  ///
+  /// TODO(@kitsonk) this should really be owned by the graph, but currently
+  /// the lockfile is behind a mutex in global_state, which makes it really
+  /// hard to not pass around as a reference, which if the Graph owned it, it
+  /// would need lifetime parameters and lifetime parameters are 😭
   pub fn get_graph(
     self,
     maybe_lockfile: &Option<Mutex<Lockfile>>,
-  ) -> Result<Graph, AnyError> {
+  ) -> Result<Graph2, AnyError> {
     self.graph.lock(maybe_lockfile)?;
     Ok(self.graph)
   }
@@ -769,11 +690,135 @@ impl GraphBuilder {
 mod tests {
   use super::*;
 
-  use crate::specifier_handler::tests::MockSpecifierHandler;
-
+  use deno_core::futures::future;
   use std::env;
+  use std::fs;
   use std::path::PathBuf;
   use std::sync::Mutex;
+
+  /// This is a testing mock for `SpecifierHandler` that uses a special file
+  /// system renaming to mock local and remote modules as well as provides
+  /// "spies" for the critical methods for testing purposes.
+  #[derive(Debug, Default)]
+  pub struct MockSpecifierHandler {
+    pub fixtures: PathBuf,
+    pub build_info: HashMap<ModuleSpecifier, TextDocument>,
+    pub build_info_calls: Vec<(ModuleSpecifier, EmitType, TextDocument)>,
+    pub cache_calls: Vec<(
+      ModuleSpecifier,
+      EmitType,
+      TextDocument,
+      Option<TextDocument>,
+    )>,
+    pub deps_calls: Vec<(ModuleSpecifier, DependencyMap)>,
+    pub types_calls: Vec<(ModuleSpecifier, String)>,
+    pub version_calls: Vec<(ModuleSpecifier, String)>,
+  }
+
+  impl MockSpecifierHandler {
+    fn get_cache(
+      &self,
+      specifier: ModuleSpecifier,
+    ) -> Result<CachedModule, AnyError> {
+      let specifier_text = specifier
+        .to_string()
+        .replace(":///", "_")
+        .replace("://", "_")
+        .replace("/", "-");
+      let specifier_path = self.fixtures.join(specifier_text);
+      let media_type =
+        match specifier_path.extension().unwrap().to_str().unwrap() {
+          "ts" => {
+            if specifier_path.to_string_lossy().ends_with(".d.ts") {
+              MediaType::Dts
+            } else {
+              MediaType::TypeScript
+            }
+          }
+          "tsx" => MediaType::TSX,
+          "js" => MediaType::JavaScript,
+          "jsx" => MediaType::JSX,
+          _ => MediaType::Unknown,
+        };
+      let source =
+        TextDocument::new(fs::read(specifier_path)?, Option::<&str>::None);
+
+      Ok(CachedModule {
+        source,
+        specifier,
+        media_type,
+        ..CachedModule::default()
+      })
+    }
+  }
+
+  impl SpecifierHandler for MockSpecifierHandler {
+    fn fetch(&mut self, specifier: ModuleSpecifier) -> FetchFuture {
+      Box::pin(future::ready(self.get_cache(specifier)))
+    }
+    fn get_build_info(
+      &self,
+      specifier: &ModuleSpecifier,
+      _cache_type: &EmitType,
+    ) -> Result<Option<TextDocument>, AnyError> {
+      Ok(self.build_info.get(specifier).cloned())
+    }
+    fn set_cache(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      cache_type: &EmitType,
+      code: TextDocument,
+      maybe_map: Option<TextDocument>,
+    ) -> Result<(), AnyError> {
+      self.cache_calls.push((
+        specifier.clone(),
+        cache_type.clone(),
+        code,
+        maybe_map,
+      ));
+      Ok(())
+    }
+    fn set_types(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      types: String,
+    ) -> Result<(), AnyError> {
+      self.types_calls.push((specifier.clone(), types));
+      Ok(())
+    }
+    fn set_build_info(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      cache_type: &EmitType,
+      build_info: TextDocument,
+    ) -> Result<(), AnyError> {
+      self
+        .build_info
+        .insert(specifier.clone(), build_info.clone());
+      self.build_info_calls.push((
+        specifier.clone(),
+        cache_type.clone(),
+        build_info,
+      ));
+      Ok(())
+    }
+    fn set_deps(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      dependencies: DependencyMap,
+    ) -> Result<(), AnyError> {
+      self.deps_calls.push((specifier.clone(), dependencies));
+      Ok(())
+    }
+    fn set_version(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      version: String,
+    ) -> Result<(), AnyError> {
+      self.version_calls.push((specifier.clone(), version));
+      Ok(())
+    }
+  }
 
   #[test]
   fn test_get_version() {
@@ -856,81 +901,6 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_graph_builder() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler, None);
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve module");
-    builder
-      .insert(&specifier)
-      .await
-      .expect("module not inserted");
-    let graph = builder.get_graph(&None).expect("error getting graph");
-    let actual = graph
-      .resolve("./a.ts", &specifier)
-      .expect("module to resolve");
-    let expected = (
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a.ts")
-        .expect("unable to resolve"),
-      MediaType::TypeScript,
-    );
-    assert_eq!(actual, expected);
-  }
-
-  #[tokio::test]
-  async fn test_graph_builder_import_map() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let import_map = ImportMap::from_json(
-      "https://deno.land/x/import_map.ts",
-      r#"{
-      "imports": {
-        "jquery": "./jquery.js",
-        "lodash": "https://unpkg.com/lodash/index.js"
-      }
-    }"#,
-    )
-    .expect("could not load import map");
-    let mut builder = GraphBuilder::new(handler, Some(import_map));
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/import_map.ts")
-        .expect("could not resolve module");
-    builder
-      .insert(&specifier)
-      .await
-      .expect("module not inserted");
-    let graph = builder.get_graph(&None).expect("could not get graph");
-    let actual_jquery = graph
-      .resolve("jquery", &specifier)
-      .expect("module to resolve");
-    let expected_jquery = (
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/jquery.js")
-        .expect("unable to resolve"),
-      MediaType::JavaScript,
-    );
-    assert_eq!(actual_jquery, expected_jquery);
-    let actual_lodash = graph
-      .resolve("lodash", &specifier)
-      .expect("module to resolve");
-    let expected_lodash = (
-      ModuleSpecifier::resolve_url_or_path("https://unpkg.com/lodash/index.js")
-        .expect("unable to resolve"),
-      MediaType::JavaScript,
-    );
-    assert_eq!(actual_lodash, expected_lodash);
-  }
-
-  #[tokio::test]
   async fn test_graph_transpile() {
     // This is a complex scenario of transpiling, where we have TypeScript
     // importing a JavaScript file (with type definitions) which imports
@@ -945,7 +915,7 @@ mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
@@ -1008,7 +978,7 @@ mod tests {
       fixtures: fixtures.clone(),
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/transpile.tsx")
         .expect("could not resolve module");
@@ -1054,7 +1024,7 @@ mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
@@ -1080,7 +1050,7 @@ mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
