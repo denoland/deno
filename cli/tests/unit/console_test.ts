@@ -1506,6 +1506,11 @@ unitTest(function inspectGetterError(): void {
   );
 });
 
+unitTest(function inspectPrototype(): void {
+  class A {}
+  assertEquals(Deno.inspect(A.prototype), "A {}");
+});
+
 unitTest(function inspectSorted(): void {
   assertEquals(
     stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
