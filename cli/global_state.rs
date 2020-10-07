@@ -3,8 +3,6 @@
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
-use crate::graph::GraphBuilder;
-use crate::graph::TranspileOptions;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
@@ -12,6 +10,8 @@ use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
+use crate::module_graph_2::GraphBuilder;
+use crate::module_graph_2::TranspileOptions;
 use crate::permissions::Permissions;
 use crate::specifier_handler::FetchHandler;
 use crate::tsc::CompiledModule;
