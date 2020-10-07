@@ -394,7 +394,7 @@ impl DenoInspector {
     server: Option<Arc<InspectorServer>>,
   ) -> Box<Self> {
     let context = isolate.global_context();
-    let scope = &mut v8::HandleScope::new(&mut **isolate);
+    let scope = &mut v8::HandleScope::new(isolate.v8_isolate());
 
     let (new_websocket_tx, new_websocket_rx) =
       mpsc::unbounded::<WebSocketProxy>();
