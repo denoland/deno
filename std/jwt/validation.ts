@@ -30,17 +30,23 @@ export function validate(
     )
   )
     throw Error("the jwt is invalid");
+
   if (isObject(payload) && "exp" in payload) {
-    if (isExpired(payload.exp as number, 1)) {
+    if (isExpired(payload.exp as number, 1))
       throw RangeError("the jwt is expired");
-    }
   }
+
+  if (!verifyAlgorithm(algorithm, header.alg as string))
+    throw new Error("no matching algorithm: " + header.alg);
+
+  // The "crit" (critical) Header Parameter indicates that extensions to this
+  // specification and/or [JWA] are being used that MUST be understood and
+  // processed. (JWS §4.1.11)
   if ("crit" in header) {
     throw new Error(
-      "this implementation doesn't accept 'crit' header parameter"
+      "this implementation doesn't process 'crit' header parameter"
     );
   }
-  if (verifyAlgorithm(algorithm, header.alg as string)) {
-    return { header: header as Header, payload, signature };
-  } else throw new Error("no matching algorithm: " + header.alg);
+
+  return { header: header as Header, payload, signature };
 }
