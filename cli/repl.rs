@@ -85,6 +85,27 @@ async fn read_line_and_poll(
   }
 }
 
+async fn is_closing(worker: &mut MainWorker, session: &mut InspectorSession) -> Result<bool, AnyError> {
+  let closed = post_message_and_poll(
+    &mut *worker,
+    &mut session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": "(globalThis.closed)",
+      "contextId": context_id,
+    })),
+  )
+  .await?
+  .get("result")
+  .unwrap()
+  .get("value")
+  .unwrap()
+  .as_bool()
+  .unwrap();
+
+  Ok(closed)
+}
+
 pub async fn run(
   global_state: &GlobalState,
   mut worker: MainWorker,
@@ -211,24 +232,7 @@ pub async fn run(
             evaluate_response
           };
 
-        let is_closing = post_message_and_poll(
-          &mut *worker,
-          &mut session,
-          "Runtime.evaluate",
-          Some(json!({
-            "expression": "(globalThis.closed)",
-            "contextId": context_id,
-          })),
-        )
-        .await?
-        .get("result")
-        .unwrap()
-        .get("value")
-        .unwrap()
-        .as_bool()
-        .unwrap();
-
-        if is_closing {
+        if is_closing(&mut worker, &mut session).await? {
           break;
         }
 
