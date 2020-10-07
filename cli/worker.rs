@@ -96,13 +96,15 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `MainWorker`
 ///  - `WebWorker`
 pub struct Worker {
-  pub name: String,
-  pub js_runtime: JsRuntime,
-  inspector: Option<Box<DenoInspector>>,
-  pub waker: AtomicWaker,
-  pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
+  inspector: Option<Box<DenoInspector>>,
+  // Following fields are pub because they are accessed
+  // when creating a new WebWorker instance.
+  pub(crate) internal_channels: WorkerChannelsInternal,
+  pub(crate) js_runtime: JsRuntime,
+  pub(crate) name: String,
   should_break_on_first_statement: bool,
+  waker: AtomicWaker,
 }
 
 impl Worker {
@@ -148,13 +150,13 @@ impl Worker {
     let (internal_channels, external_channels) = create_channels();
 
     Self {
-      name,
-      js_runtime,
-      inspector,
-      waker: AtomicWaker::new(),
-      internal_channels,
       external_channels,
+      inspector,
+      internal_channels,
+      js_runtime,
+      name,
       should_break_on_first_statement,
+      waker: AtomicWaker::new(),
     }
   }
 
