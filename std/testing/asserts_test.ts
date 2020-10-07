@@ -2,6 +2,7 @@
 import {
   _format,
   assert,
+  assertAnything,
   assertArrayContains,
   assertEquals,
   AssertionError,
@@ -151,6 +152,19 @@ Deno.test("testingNotEquals", function (): void {
   let didThrow;
   try {
     assertNotEquals("Raptor", "Raptor");
+    didThrow = false;
+  } catch (e) {
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+});
+
+Deno.test("testingAssertAnything", function (): void {
+  assertAnything("Denosaurus");
+  let didThrow;
+  try {
+    assertAnything(undefined);
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
