@@ -96,7 +96,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: JsRuntime,
+  pub js_runtime: JsRuntime,
   pub inspector: Option<Box<DenoInspector>>,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
@@ -114,7 +114,7 @@ impl Worker {
   ) -> Self {
     let global_state_ = global_state.clone();
 
-    let mut isolate = JsRuntime::new(RuntimeOptions {
+    let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
       js_error_create_fn: Some(Box::new(move |core_js_error| {
@@ -123,7 +123,7 @@ impl Worker {
       ..Default::default()
     });
     {
-      let op_state = isolate.op_state();
+      let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.get_error_class_fn = &crate::errors::get_error_class_name;
     }
@@ -131,11 +131,11 @@ impl Worker {
     let inspector =
       if let Some(inspector_server) = &global_state.maybe_inspector_server {
         Some(DenoInspector::new(
-          &mut isolate,
+          &mut js_runtime,
           Some(inspector_server.clone()),
         ))
       } else if global_state.flags.coverage || global_state.flags.repl {
-        Some(DenoInspector::new(&mut isolate, None))
+        Some(DenoInspector::new(&mut js_runtime, None))
       } else {
         None
       };
@@ -148,7 +148,7 @@ impl Worker {
 
     Self {
       name,
-      isolate,
+      js_runtime,
       inspector,
       waker: AtomicWaker::new(),
       internal_channels,
@@ -171,7 +171,7 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), AnyError> {
-    self.isolate.execute(js_filename, js_source)
+    self.js_runtime.execute(js_filename, js_source)
   }
 
   /// Loads and instantiates specified JavaScript module.
@@ -179,7 +179,7 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self.isolate.load_module(module_specifier, None).await
+    self.js_runtime.load_module(module_specifier, None).await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
@@ -189,7 +189,7 @@ impl Worker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    self.isolate.mod_evaluate(id).await
+    self.js_runtime.mod_evaluate(id).await
   }
 
   /// Loads, instantiates and executes provided source code
@@ -200,11 +200,11 @@ impl Worker {
     code: String,
   ) -> Result<(), AnyError> {
     let id = self
-      .isolate
+      .js_runtime
       .load_module(module_specifier, Some(code))
       .await?;
     self.wait_for_inspector_session();
-    self.isolate.mod_evaluate(id).await
+    self.js_runtime.mod_evaluate(id).await
   }
 
   /// Returns a way to communicate with the Worker from other threads.
@@ -240,20 +240,20 @@ impl Future for Worker {
     // We always poll the inspector if it exists.
     let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
     inner.waker.register(cx.waker());
-    inner.isolate.poll_unpin(cx)
+    inner.js_runtime.poll_unpin(cx)
   }
 }
 
 impl Deref for Worker {
   type Target = JsRuntime;
   fn deref(&self) -> &Self::Target {
-    &self.isolate
+    &self.js_runtime
   }
 }
 
 impl DerefMut for Worker {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.isolate
+    &mut self.js_runtime
   }
 }
 
@@ -428,7 +428,7 @@ impl WebWorker {
     );
 
     let terminated = Arc::new(AtomicBool::new(false));
-    let isolate_handle = worker.isolate.v8_isolate().thread_safe_handle();
+    let isolate_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
     let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
 
     let handle = WebWorkerHandle {

@@ -390,11 +390,11 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut deno_core::JsRuntime,
+    js_runtime: &mut deno_core::JsRuntime,
     server: Option<Arc<InspectorServer>>,
   ) -> Box<Self> {
-    let context = isolate.global_context();
-    let scope = &mut v8::HandleScope::new(isolate.v8_isolate());
+    let context = js_runtime.global_context();
+    let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
 
     let (new_websocket_tx, new_websocket_rx) =
       mpsc::unbounded::<WebSocketProxy>();
