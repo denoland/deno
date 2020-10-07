@@ -175,18 +175,13 @@
   /* eslint-disable @typescript-eslint/no-use-before-define */
 
   function getClassInstanceName(instance) {
-    if (typeof instance !== "object") {
+    if (typeof instance != "object") {
       return "";
     }
-    if (!instance) {
-      return "";
+    const constructor = instance?.constructor;
+    if (typeof constructor == "function") {
+      return constructor.name ?? "";
     }
-
-    const proto = Object.getPrototypeOf(instance);
-    if (proto && proto.constructor) {
-      return proto.constructor.name; // could be "Object" or "Array"
-    }
-
     return "";
   }
 
