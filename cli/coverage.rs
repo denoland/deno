@@ -20,15 +20,9 @@ impl CoverageCollector {
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self
-      .session
-      .post_message("Debugger.enable", None)
-      .await?;
+    self.session.post_message("Debugger.enable", None).await?;
 
-    self
-      .session
-      .post_message("Profiler.enable", None)
-      .await?;
+    self.session.post_message("Profiler.enable", None).await?;
 
     self
       .session
@@ -79,14 +73,8 @@ impl CoverageCollector {
       .session
       .post_message("Profiler.stopPreciseCoverage", None)
       .await?;
-    self
-      .session
-      .post_message("Profiler.disable", None)
-      .await?;
-    self
-      .session
-      .post_message("Debugger.disable", None)
-      .await?;
+    self.session.post_message("Profiler.disable", None).await?;
+    self.session.post_message("Debugger.disable", None).await?;
 
     Ok(())
   }
