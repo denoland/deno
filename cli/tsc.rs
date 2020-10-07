@@ -863,6 +863,8 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .map(|out| {
+        // Do NOT use .lines(): it skips the terminating empty line.
+        // (due to internally using .split_terminator() instead of .split())
         let lines: Vec<&str> = out.source_code.split('\n').collect();
         assert!(lines.len() > line);
         lines[line].to_string()

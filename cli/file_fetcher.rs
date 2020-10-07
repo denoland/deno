@@ -31,10 +31,6 @@ use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-// pub fn to_str(&self) -> Result<Cow<str>, std::io::Error> {
-//   text_encoding::convert_to_utf8(&self.bytes, &self.charset)
-// }
-
 /// Structure representing local or remote file.
 ///
 /// In case of remote file `url` might be different than originally requested URL, if so
