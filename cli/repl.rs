@@ -92,12 +92,7 @@ pub async fn run(
   // Our inspector is unable to default to the default context id so we have to specify it here.
   let context_id: u32 = 1;
 
-  let inspector = worker
-    .inspector
-    .as_mut()
-    .expect("Inspector is not created.");
-
-  let mut session = InspectorSession::new(&mut **inspector);
+  let mut session = worker.create_inspector_session();
 
   let history_file = global_state.dir.root.join("deno_history.txt");
 

@@ -578,12 +578,8 @@ async fn test_command(
     .save_source_file_in_cache(&main_module, source_file);
 
   let mut maybe_coverage_collector = if flags.coverage {
-    let inspector = worker
-      .inspector
-      .as_mut()
-      .expect("Inspector is not created.");
-
-    let mut coverage_collector = CoverageCollector::new(&mut **inspector);
+    let session = worker.create_inspector_session();
+    let mut coverage_collector = CoverageCollector::new(session);
     coverage_collector.start_collecting().await?;
 
     Some(coverage_collector)

@@ -3,6 +3,7 @@
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
+use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics::Metrics;
 use crate::ops;
@@ -97,7 +98,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 pub struct Worker {
   pub name: String,
   pub js_runtime: JsRuntime,
-  pub inspector: Option<Box<DenoInspector>>,
+  inspector: Option<Box<DenoInspector>>,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
@@ -220,6 +221,14 @@ impl Worker {
         .unwrap()
         .wait_for_session_and_break_on_next_statement()
     }
+  }
+
+  /// Create new inspector session. This function panics if Worker
+  /// was not configured to create inspector.
+  pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
+    let inspector = self.inspector.as_mut().unwrap();
+
+    InspectorSession::new(&mut **inspector)
   }
 }
 
@@ -453,11 +462,7 @@ impl WebWorker {
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_json_sync(
-        js_runtime,
-        "op_resources",
-        deno_core::op_resources,
-      );
+      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
         js_runtime,
         "op_domain_to_ascii",
