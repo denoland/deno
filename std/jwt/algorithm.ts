@@ -1,14 +1,10 @@
 export type Algorithm = "none" | "HS256" | "HS512";
 
 export function verify(
-  algorithm: Algorithm | Algorithm[],
-  jwtAlg: Algorithm,
+  algorithm: Algorithm | Array<Exclude<Algorithm, "none">>,
+  jwtAlg: string
 ): boolean {
-  if (Array.isArray(algorithm)) {
-    if (algorithm.length > 1 && algorithm.includes("none")) {
-      throw new Error("algorithm 'none' must be used alone");
-    } else return algorithm.includes(jwtAlg);
-  } else {
-    return algorithm === jwtAlg;
-  }
+  return Array.isArray(algorithm)
+    ? algorithm.includes(jwtAlg as any)
+    : algorithm === jwtAlg;
 }
