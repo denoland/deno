@@ -215,7 +215,9 @@ async fn read_line_and_poll(
 
   loop {
     for (method, params) in message_rx.try_iter() {
-      response_tx.send(session.post_message(method, params).await).unwrap();
+      response_tx
+        .send(session.post_message(method, params).await)
+        .unwrap();
     }
 
     // Because an inspector websocket client may choose to connect at anytime when we have an
