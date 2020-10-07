@@ -38,10 +38,10 @@ export function isTokenObject(object: {
   signature: unknown;
 }): object is TokenObject {
   return typeof object.signature === "string" &&
-      isObject(object.header) &&
-      typeof object.header?.alg === "string" &&
-      isObject(object.payload) &&
-      object.payload?.exp
+    isObject(object.header) &&
+    typeof object.header?.alg === "string" &&
+    isObject(object.payload) &&
+    object.payload?.exp
     ? typeof object.payload.exp === "number"
     : true;
 }
@@ -72,7 +72,7 @@ export async function verify({
   jwt: string;
   key: string;
   algorithm: Algorithm | Array<Exclude<Algorithm, "none">>;
-}): Promise<Payload> {
+}): Promise<unknown> {
   const { header, payload, signature } = parse(jwt);
 
   if (!isTokenObject({ header, payload, signature })) {
@@ -101,7 +101,7 @@ export async function verify({
   // processed. (JWS §4.1.11)
   if ("crit" in header) {
     throw new Error(
-      "the jwt is valid but contains the 'crit' header parameter",
+      "the jwt is valid but contains the 'crit' header parameter"
     );
   }
 
@@ -109,11 +109,9 @@ export async function verify({
 }
 
 function createSigningInput(header: Header, payload: Payload): string {
-  return `${
-    convertStringToBase64url(
-      JSON.stringify(header),
-    )
-  }.${convertStringToBase64url(JSON.stringify(payload))}`;
+  return `${convertStringToBase64url(
+    JSON.stringify(header)
+  )}.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
 
 export async function create({
