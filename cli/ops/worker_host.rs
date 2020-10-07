@@ -62,7 +62,7 @@ fn create_web_worker(
   );
 
   if has_deno_namespace {
-    let state = worker.isolate.op_state();
+    let state = worker.js_runtime.op_state();
     let mut state = state.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
     if let Some(stream) = stdin {
