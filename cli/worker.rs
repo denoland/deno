@@ -244,19 +244,6 @@ impl Future for Worker {
   }
 }
 
-impl Deref for Worker {
-  type Target = JsRuntime;
-  fn deref(&self) -> &Self::Target {
-    &self.js_runtime
-  }
-}
-
-impl DerefMut for Worker {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.js_runtime
-  }
-}
-
 /// This worker is created and used by Deno executable.
 ///
 /// It provides ops available in the `Deno` namespace.
@@ -278,45 +265,46 @@ impl MainWorker {
       loader,
       true,
     );
+    let js_runtime = &mut worker.js_runtime;
     {
       // All ops registered in this function depend on these
       {
-        let op_state = worker.op_state();
+        let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
         op_state.put::<Arc<GlobalState>>(global_state.clone());
         op_state.put::<Permissions>(global_state.permissions.clone());
       }
 
-      ops::runtime::init(&mut worker, main_module);
-      ops::fetch::init(&mut worker, global_state.flags.ca_file.as_deref());
-      ops::timers::init(&mut worker);
-      ops::worker_host::init(&mut worker);
-      ops::random::init(&mut worker, global_state.flags.seed);
-      ops::reg_json_sync(&mut worker, "op_close", deno_core::op_close);
-      ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
+      ops::runtime::init(js_runtime, main_module);
+      ops::fetch::init(js_runtime, global_state.flags.ca_file.as_deref());
+      ops::timers::init(js_runtime);
+      ops::worker_host::init(js_runtime);
+      ops::random::init(js_runtime, global_state.flags.seed);
+      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
-        &mut worker,
+        js_runtime,
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
-      ops::errors::init(&mut worker);
-      ops::fs_events::init(&mut worker);
-      ops::fs::init(&mut worker);
-      ops::io::init(&mut worker);
-      ops::net::init(&mut worker);
-      ops::os::init(&mut worker);
-      ops::permissions::init(&mut worker);
-      ops::plugin::init(&mut worker);
-      ops::process::init(&mut worker);
-      ops::runtime_compiler::init(&mut worker);
-      ops::signal::init(&mut worker);
-      ops::tls::init(&mut worker);
-      ops::tty::init(&mut worker);
-      ops::websocket::init(&mut worker);
+      ops::errors::init(js_runtime);
+      ops::fs_events::init(js_runtime);
+      ops::fs::init(js_runtime);
+      ops::io::init(js_runtime);
+      ops::net::init(js_runtime);
+      ops::os::init(js_runtime);
+      ops::permissions::init(js_runtime);
+      ops::plugin::init(js_runtime);
+      ops::process::init(js_runtime);
+      ops::runtime_compiler::init(js_runtime);
+      ops::signal::init(js_runtime);
+      ops::tls::init(js_runtime);
+      ops::tty::init(js_runtime);
+      ops::websocket::init(js_runtime);
     }
     {
-      let op_state = worker.op_state();
+      let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       let t = &mut op_state.resource_table;
       let (stdin, stdout, stderr) = get_stdio();
@@ -449,49 +437,49 @@ impl WebWorker {
     {
       let handle = web_worker.thread_safe_handle();
       let sender = web_worker.worker.internal_channels.sender.clone();
-
+      let js_runtime = &mut web_worker.js_runtime;
       // All ops registered in this function depend on these
       {
-        let op_state = web_worker.op_state();
+        let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
         op_state.put::<Arc<GlobalState>>(global_state.clone());
         op_state.put::<Permissions>(permissions);
       }
 
-      ops::web_worker::init(&mut web_worker, sender, handle);
-      ops::runtime::init(&mut web_worker, main_module);
-      ops::fetch::init(&mut web_worker, global_state.flags.ca_file.as_deref());
-      ops::timers::init(&mut web_worker);
-      ops::worker_host::init(&mut web_worker);
-      ops::reg_json_sync(&mut web_worker, "op_close", deno_core::op_close);
+      ops::web_worker::init(js_runtime, sender, handle);
+      ops::runtime::init(js_runtime, main_module);
+      ops::fetch::init(js_runtime, global_state.flags.ca_file.as_deref());
+      ops::timers::init(js_runtime);
+      ops::worker_host::init(js_runtime);
+      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(
-        &mut web_worker,
+        js_runtime,
         "op_resources",
         deno_core::op_resources,
       );
       ops::reg_json_sync(
-        &mut web_worker,
+        js_runtime,
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
-      ops::errors::init(&mut web_worker);
-      ops::io::init(&mut web_worker);
-      ops::websocket::init(&mut web_worker);
+      ops::errors::init(js_runtime);
+      ops::io::init(js_runtime);
+      ops::websocket::init(js_runtime);
 
       if has_deno_namespace {
-        ops::fs_events::init(&mut web_worker);
-        ops::fs::init(&mut web_worker);
-        ops::net::init(&mut web_worker);
-        ops::os::init(&mut web_worker);
-        ops::permissions::init(&mut web_worker);
-        ops::plugin::init(&mut web_worker);
-        ops::process::init(&mut web_worker);
-        ops::random::init(&mut web_worker, global_state.flags.seed);
-        ops::runtime_compiler::init(&mut web_worker);
-        ops::signal::init(&mut web_worker);
-        ops::tls::init(&mut web_worker);
-        ops::tty::init(&mut web_worker);
+        ops::fs_events::init(js_runtime);
+        ops::fs::init(js_runtime);
+        ops::net::init(js_runtime);
+        ops::os::init(js_runtime);
+        ops::permissions::init(js_runtime);
+        ops::plugin::init(js_runtime);
+        ops::process::init(js_runtime);
+        ops::random::init(js_runtime, global_state.flags.seed);
+        ops::runtime_compiler::init(js_runtime);
+        ops::signal::init(js_runtime);
+        ops::tls::init(js_runtime);
+        ops::tty::init(js_runtime);
       }
     }
 
