@@ -216,7 +216,7 @@ async fn read_line_and_poll(
   loop {
     for (method, params) in message_rx.try_iter() {
       response_tx
-        .send(session.post_message(method, params).await)
+        .send(session.post_message(&method, params).await)
         .unwrap();
     }
 
