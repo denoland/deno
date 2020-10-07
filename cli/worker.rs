@@ -12,6 +12,7 @@ use crate::permissions::Permissions;
 use crate::state::CliModuleLoader;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
@@ -23,10 +24,8 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use std::env;
-use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -232,6 +231,20 @@ impl Worker {
 
     InspectorSession::new(&mut **inspector)
   }
+
+  pub fn poll_event_loop(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
+    // We always poll the inspector if it exists.
+    let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
+    self.waker.register(cx.waker());
+    self.js_runtime.poll_event_loop(cx)
+  }
+
+  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx)).await
+  }
 }
 
 impl Drop for Worker {
@@ -242,18 +255,18 @@ impl Drop for Worker {
   }
 }
 
-impl Future for Worker {
-  type Output = Result<(), AnyError>;
+// impl Future for Worker {
+//   type Output = Result<(), AnyError>;
 
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
+//   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+//     let inner = self.get_mut();
 
-    // We always poll the inspector if it exists.
-    let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
-    inner.waker.register(cx.waker());
-    inner.js_runtime.poll_event_loop(cx)
-  }
-}
+//     // We always poll the inspector if it exists.
+//     let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
+//     inner.waker.register(cx.waker());
+//     inner.js_runtime.poll_event_loop(cx)
+//   }
+// }
 
 /// This worker is created and used by Deno executable.
 ///
@@ -499,38 +512,27 @@ impl WebWorker {
   pub fn thread_safe_handle(&self) -> WebWorkerHandle {
     self.handle.clone()
   }
-}
 
-impl Deref for WebWorker {
-  type Target = Worker;
-  fn deref(&self) -> &Self::Target {
-    &self.worker
+  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx)).await
   }
-}
 
-impl DerefMut for WebWorker {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.worker
-  }
-}
+  pub fn poll_event_loop(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
+    let worker = &mut self.worker;
 
-impl Future for WebWorker {
-  type Output = Result<(), AnyError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let worker = &mut inner.worker;
-
-    let terminated = inner.handle.terminated.load(Ordering::Relaxed);
+    let terminated = self.handle.terminated.load(Ordering::Relaxed);
 
     if terminated {
       return Poll::Ready(Ok(()));
     }
 
-    if !inner.event_loop_idle {
-      match worker.poll_unpin(cx) {
+    if !self.event_loop_idle {
+      match worker.poll_event_loop(cx) {
         Poll::Ready(r) => {
-          let terminated = inner.handle.terminated.load(Ordering::Relaxed);
+          let terminated = self.handle.terminated.load(Ordering::Relaxed);
           if terminated {
             return Poll::Ready(Ok(()));
           }
@@ -541,13 +543,13 @@ impl Future for WebWorker {
               .try_send(WorkerEvent::Error(e))
               .expect("Failed to post message to host");
           }
-          inner.event_loop_idle = true;
+          self.event_loop_idle = true;
         }
         Poll::Pending => {}
       }
     }
 
-    if let Poll::Ready(r) = inner.terminate_rx.poll_next_unpin(cx) {
+    if let Poll::Ready(r) = self.terminate_rx.poll_next_unpin(cx) {
       // terminate_rx should never be closed
       assert!(r.is_some());
       return Poll::Ready(Ok(()));
@@ -564,7 +566,7 @@ impl Future for WebWorker {
           if let Err(e) = worker.execute(&script) {
             // If execution was terminated during message callback then
             // just ignore it
-            if inner.handle.terminated.load(Ordering::Relaxed) {
+            if self.handle.terminated.load(Ordering::Relaxed) {
               return Poll::Ready(Ok(()));
             }
 
@@ -576,7 +578,7 @@ impl Future for WebWorker {
           }
 
           // Let event loop be polled again
-          inner.event_loop_idle = false;
+          self.event_loop_idle = false;
           worker.waker.wake();
         }
         None => unreachable!(),
@@ -584,6 +586,19 @@ impl Future for WebWorker {
     }
 
     Poll::Pending
+  }
+}
+
+impl Deref for WebWorker {
+  type Target = Worker;
+  fn deref(&self) -> &Self::Target {
+    &self.worker
+  }
+}
+
+impl DerefMut for WebWorker {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.worker
   }
 }
 
@@ -623,7 +638,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = (&mut *worker).await {
+    if let Err(e) = worker.run_event_loop().await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -641,7 +656,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = (&mut *worker).await {
+    if let Err(e) = worker.run_event_loop().await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -660,7 +675,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = (&mut *worker).await {
+    if let Err(e) = worker.run_event_loop().await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -728,7 +743,7 @@ mod tests {
       worker.execute(source).unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker);
+      let r = tokio_util::run_basic(worker.run_event_loop());
       assert!(r.is_ok())
     });
 
@@ -775,7 +790,7 @@ mod tests {
       worker.execute("onmessage = () => { close(); }").unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker);
+      let r = tokio_util::run_basic(worker.run_event_loop());
       assert!(r.is_ok())
     });
 
