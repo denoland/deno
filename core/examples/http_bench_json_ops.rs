@@ -193,7 +193,7 @@ fn main() {
         include_str!("http_bench_json_ops.js"),
       )
       .unwrap();
-    isolate.await
+    isolate.run_event_loop().await
   };
   runtime.block_on(future).unwrap();
 }

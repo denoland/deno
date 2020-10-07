@@ -468,25 +468,18 @@ impl JsRuntime {
         .remove_near_heap_limit_callback(cb, heap_limit);
     }
   }
-}
 
-extern "C" fn near_heap_limit_callback<F>(
-  data: *mut c_void,
-  current_heap_limit: usize,
-  initial_heap_limit: usize,
-) -> usize
-where
-  F: FnMut(usize, usize) -> usize,
-{
-  let callback = unsafe { &mut *(data as *mut F) };
-  callback(current_heap_limit, initial_heap_limit)
-}
+  /// Runs event loop to completion
+  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx)).await
+  }
 
-impl Future for JsRuntime {
-  type Output = Result<(), AnyError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let runtime = self.get_mut();
+  /// Runs a single tick of event loop
+  pub fn poll_event_loop(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
+    let runtime = self;
     runtime.shared_init();
 
     let state_rc = Self::state(runtime);
@@ -540,6 +533,18 @@ impl Future for JsRuntime {
 
     Poll::Pending
   }
+}
+
+extern "C" fn near_heap_limit_callback<F>(
+  data: *mut c_void,
+  current_heap_limit: usize,
+  initial_heap_limit: usize,
+) -> usize
+where
+  F: FnMut(usize, usize) -> usize,
+{
+  let callback = unsafe { &mut *(data as *mut F) };
+  callback(current_heap_limit, initial_heap_limit)
 }
 
 impl JsRuntimeState {
@@ -872,7 +877,7 @@ impl JsRuntime {
         debug!("received module evaluate");
         return Poll::Ready(result.unwrap());
       }
-      let _r = self.poll_unpin(cx)?;
+      let _r = self.poll_event_loop(cx)?;
       Poll::Pending
     })
     .await
@@ -1451,13 +1456,13 @@ pub mod tests {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
-  fn poll_until_ready<F>(future: &mut F, max_poll_count: usize) -> F::Output
-  where
-    F: Future + Unpin,
-  {
+  fn poll_until_ready(
+    runtime: &mut JsRuntime,
+    max_poll_count: usize,
+  ) -> Result<(), AnyError> {
     let mut cx = Context::from_waker(futures::task::noop_waker_ref());
     for _ in 0..max_poll_count {
-      match future.poll_unpin(&mut cx) {
+      match runtime.poll_event_loop(&mut cx) {
         Poll::Pending => continue,
         Poll::Ready(val) => return val,
       }
@@ -1673,7 +1678,7 @@ pub mod tests {
         )
         .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       runtime
         .execute(
@@ -1686,11 +1691,11 @@ pub mod tests {
         )
         .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
       runtime.execute("check3.js", "assert(nrecv == 2)").unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
     });
   }
 
@@ -1714,7 +1719,7 @@ pub mod tests {
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       // The above op never finish, but runtime can finish
       // because the op is an unreffed async op.
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
     })
   }
 
@@ -1844,7 +1849,7 @@ pub mod tests {
         )
         .unwrap();
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
       runtime
         .execute("check.js", "assert(asyncRecv == 1);")
         .unwrap();
@@ -1936,7 +1941,7 @@ pub mod tests {
          "#,
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
         unreachable!();
       }
     });
@@ -1949,7 +1954,7 @@ pub mod tests {
       runtime
         .execute("core_test.js", include_str!("core_test.js"))
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
         unreachable!();
       }
     });
@@ -1975,7 +1980,7 @@ pub mod tests {
           include_str!("encode_decode_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_unpin(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
         unreachable!();
       }
     });
@@ -2283,7 +2288,7 @@ pub mod tests {
 
       assert_eq!(count.load(Ordering::Relaxed), 0);
       // We should get an error here.
-      let result = runtime.poll_unpin(cx);
+      let result = runtime.poll_event_loop(cx);
       if let Poll::Ready(Ok(_)) = result {
         unreachable!();
       }
@@ -2376,14 +2381,14 @@ pub mod tests {
         .unwrap();
 
       // First poll runs `prepare_load` hook.
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Pending));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Pending));
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
 
       // Second poll actually loads modules into the isolate.
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
-      assert!(matches!(runtime.poll_unpin(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
@@ -2415,10 +2420,10 @@ pub mod tests {
         )
         .unwrap();
       // First poll runs `prepare_load` hook.
-      let _ = runtime.poll_unpin(cx);
+      let _ = runtime.poll_event_loop(cx);
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       // Second poll triggers error
-      let _ = runtime.poll_unpin(cx);
+      let _ = runtime.poll_event_loop(cx);
     })
   }
 
@@ -2549,7 +2554,7 @@ main();
     at async error_async_stack.js:10:5
 "#;
 
-      match runtime.poll_unpin(cx) {
+      match runtime.poll_event_loop(cx) {
         Poll::Ready(Err(e)) => {
           assert_eq!(e.to_string(), expected_error);
         }
