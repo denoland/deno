@@ -479,37 +479,36 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let runtime = self;
-    runtime.shared_init();
+    self.shared_init();
 
-    let state_rc = Self::state(runtime);
+    let state_rc = Self::state(self);
     {
       let state = state_rc.borrow();
       state.waker.register(cx.waker());
     }
 
     // Top level modules
-    runtime.poll_mod_evaluate(cx)?;
+    self.poll_mod_evaluate(cx)?;
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
-      let poll_imports = runtime.prepare_dyn_imports(cx)?;
+      let poll_imports = self.prepare_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
 
-      let poll_imports = runtime.poll_dyn_imports(cx)?;
+      let poll_imports = self.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
 
-      runtime.poll_dyn_imports_evaluate(cx)?;
+      self.poll_dyn_imports_evaluate(cx)?;
 
-      runtime.check_promise_exceptions()?;
+      self.check_promise_exceptions()?;
     }
 
     // Ops
     {
-      let overflow_response = runtime.poll_pending_ops(cx);
-      runtime.async_op_response(overflow_response)?;
-      runtime.drain_macrotasks()?;
-      runtime.check_promise_exceptions()?;
+      let overflow_response = self.poll_pending_ops(cx);
+      self.async_op_response(overflow_response)?;
+      self.drain_macrotasks()?;
+      self.check_promise_exceptions()?;
     }
 
     let state = state_rc.borrow();
