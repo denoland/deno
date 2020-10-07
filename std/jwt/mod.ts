@@ -28,20 +28,32 @@ export interface Header {
 }
 
 export type TokenObject = {
-  header: Header;
+  header: { alg: string };
   payload: Payload;
   signature: string;
 };
-function isTokenObject(object: TokenObject): object is TokenObject {
-  return typeof object?.signature === "string" &&
-    typeof object?.header?.alg === "string" &&
-    typeof object?.payload === "object" &&
-    object?.payload?.exp
+
+function isObject(obj: unknown): obj is Record<string, unknown> {
+  return (
+    obj !== null && typeof obj === "object" && Array.isArray(obj) === false
+  );
+}
+
+export function isTokenObject(object: {
+  header: unknown;
+  payload: unknown;
+  signature: unknown;
+}): object is TokenObject {
+  return typeof object.signature === "string" &&
+      isObject(object.header) &&
+      typeof object.header?.alg === "string" &&
+      isObject(object.payload) &&
+      object.payload?.exp
     ? typeof object.payload.exp === "number"
     : true;
 }
 
-export function parse(jwt: string): TokenObject {
+export function parse(jwt: string) {
   const parsedArray = jwt
     .split(".")
     .map(convertBase64urlToUint8Array)
@@ -52,17 +64,11 @@ export function parse(jwt: string): TokenObject {
     );
   if (parsedArray.length !== 3) throw TypeError("invalid serialization");
 
-  const object = {
+  return {
     header: parsedArray[0],
     payload: parsedArray[1],
     signature: parsedArray[2],
   };
-
-  if (!isTokenObject(object)) {
-    throw Error("the jwt is invalid");
-  }
-
-  return object;
 }
 
 export async function verify({
@@ -76,40 +82,46 @@ export async function verify({
 }): Promise<Payload> {
   const { header, payload, signature } = parse(jwt);
 
-  if (isExpired(payload.exp!, 1)) {
-    throw RangeError("the jwt is expired");
+  if (!isTokenObject({ header, payload, signature })) {
+    throw Error("the jwt is invalid");
   }
 
-  const validAlgorithm = verifyAlgorithm(algorithm, header.alg);
-  if (!validAlgorithm) {
+  if (isExpired(payload.exp!, 1)) throw RangeError("the jwt is expired");
+
+  if (!verifyAlgorithm(algorithm, header.alg)) {
     throw new Error("no matching algorithm: " + header.alg);
   }
-  const validSignature = await verifySignature({
-    signature,
-    key,
-    alg: header.alg,
-    signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
-  });
 
-  if (!validSignature) throw new Error("signatures don't match");
+  if (
+    !(await verifySignature({
+      signature,
+      key,
+      alg: header.alg,
+      signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
+    }))
+  ) {
+    throw new Error("signatures don't match");
+  }
 
   // The "crit" (critical) Header Parameter indicates that extensions to this
   // specification and/or [JWA] are being used that MUST be understood and
   // processed. (JWS §4.1.11)
-  if ("crit" in header)
+  if ("crit" in header) {
     throw new Error(
-      "the jwt is valid but contains the 'crit' header parameter"
+      "the jwt is valid but contains the 'crit' header parameter",
     );
+  }
 
   return payload;
 }
 
-function createSigningInput(header: Header, payload: Payload | unknown): string {
+function createSigningInput(header: Header, payload: Payload): string {
   return `${
     convertStringToBase64url(
       JSON.stringify(header),
     )
   }.${convertStringToBase64url(JSON.stringify(payload))}`;
+}
 
 export async function create({
   key,
@@ -117,12 +129,13 @@ export async function create({
   header = { alg: "HS512", typ: "JWT" },
 }: {
   key: string;
-  payload: Payload | unknown;
+  payload: Payload;
   header?: Header;
 }): Promise<string> {
   try {
     const signingInput = createSigningInput(header, payload);
     const signature = await createSignature(header.alg, key, signingInput);
+
     return `${signingInput}.${signature}`;
   } catch (err) {
     err.message = `Failed to create JWT: ${err.message}`;
