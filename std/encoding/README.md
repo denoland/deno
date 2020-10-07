@@ -87,7 +87,7 @@ const string = "a,b,c\nd,e,f";
 
 console.log(
   await parse(string, {
-    header: false,
+    skipFirstRow: false,
   }),
 );
 // output:
