@@ -36,7 +36,7 @@ Deno.test("[jwt] verify signature", async function (): Promise<void> {
     payload: {},
     key,
   });
-  const { header, signature } = await parse(jwt);
+  const { header, signature } = (await parse(jwt)) as any;
 
   const validSignature = await verifySignature({
     signature,

@@ -9,6 +9,7 @@ export function setExpiration(exp: number | Date): number {
   );
 }
 
+// Implementers MAY provide for some small leeway to account for clock skew (JWT §4.1.4)
 export function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
 }
@@ -21,7 +22,7 @@ export function convertStringToBase64url(input: string): string {
   return convertUint8ArrayToBase64url(new TextEncoder().encode(input));
 }
 
-export function isObject(obj: unknown): obj is Record<string, unknown> {
+export function isObject(obj: unknown): obj is { [key: string]: unknown } {
   return (
     obj !== null && typeof obj === "object" && Array.isArray(obj) === false
   );

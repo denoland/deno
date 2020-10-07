@@ -1,10 +1,11 @@
 export { setExpiration } from "./_util.ts";
-export type { Algorithm } from "./algorithm.ts";
 
-import { isExpired, convertStringToBase64url, isObject } from "./_util.ts";
+import type { Algorithm } from "./algorithm.ts";
+import type { TokenObjectUnknown } from "./validation.ts";
+import { convertStringToBase64url, isExpired } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
-import { Algorithm, verify as verifyAlgorithm } from "./algorithm.ts";
+import { validate } from "./validation.ts";
 import {
   create as createSignature,
   verify as verifySignature,
@@ -26,22 +27,7 @@ export interface Header {
   [key: string]: unknown;
 }
 
-export function isTokenObject(object: {
-  header: unknown;
-  payload: unknown;
-  signature: unknown;
-}) {
-  return (
-    typeof object.signature === "string" &&
-    isObject(object.header) &&
-    typeof object.header?.alg === "string" &&
-    (isObject(object.payload) && object.payload?.exp
-      ? typeof object.payload.exp === "number"
-      : true)
-  );
-}
-
-export function parse(jwt: string) {
+export function parse(jwt: string): TokenObjectUnknown {
   const parsedArray = jwt
     .split(".")
     .map(convertBase64urlToUint8Array)
@@ -68,18 +54,7 @@ export async function verify({
   key: string;
   algorithm: Algorithm | Array<Exclude<Algorithm, "none">>;
 }): Promise<unknown> {
-  const { header, payload, signature } = parse(jwt);
-
-  if (!isTokenObject({ header, payload, signature })) {
-    throw Error("the jwt is invalid");
-  }
-
-  if (isExpired(payload.exp!, 1)) throw RangeError("the jwt is expired");
-
-  if (!verifyAlgorithm(algorithm, header.alg)) {
-    throw new Error("no matching algorithm: " + header.alg);
-  }
-
+  const { header, payload, signature } = validate(parse(jwt), algorithm);
   if (
     !(await verifySignature({
       signature,
@@ -91,22 +66,15 @@ export async function verify({
     throw new Error("signatures don't match");
   }
 
-  // The "crit" (critical) Header Parameter indicates that extensions to this
-  // specification and/or [JWA] are being used that MUST be understood and
-  // processed. (JWS §4.1.11)
-  if ("crit" in header) {
-    throw new Error(
-      "the jwt is valid but contains the 'crit' header parameter"
-    );
-  }
-
   return payload;
 }
 
 function createSigningInput(header: Header, payload: Payload): string {
-  return `${convertStringToBase64url(
-    JSON.stringify(header)
-  )}.${convertStringToBase64url(JSON.stringify(payload))}`;
+  return `${
+    convertStringToBase64url(
+      JSON.stringify(header),
+    )
+  }.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
 
 export async function create({
