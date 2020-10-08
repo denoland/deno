@@ -2,6 +2,10 @@ import { create, Header, parse, setExpiration, verify } from "./mod.ts";
 
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
+Deno.test("[jwt] setExpiration", function (): void {
+  assertEquals(setExpiration(10), setExpiration(new Date(Date.now() + 10000)));
+});
+
 const key = "your-secret";
 
 Deno.test("[jwt] parse", async function (): Promise<void> {

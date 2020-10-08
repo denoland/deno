@@ -1,8 +1,5 @@
-export { setExpiration } from "./_util.ts";
-
 import type { Algorithm } from "./algorithm.ts";
-import type { TokenObjectUnknown } from "./validation.ts";
-import { convertStringToBase64url, isExpired } from "./_util.ts";
+import { convertStringToBase64url } from "./_util.ts";
 import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
 import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 import { validate } from "./validation.ts";
@@ -40,7 +37,23 @@ export interface Header {
   [key: string]: unknown;
 }
 
-export function parse(jwt: string): TokenObjectUnknown {
+/*
+ * Helper function: setExpiration()
+ * returns the number of seconds since January 1, 1970, 00:00:00 UTC
+ */
+export function setExpiration(exp: number | Date): number {
+  return Math.round(
+    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000
+  );
+}
+
+export function parse(
+  jwt: string
+): {
+  header: unknown;
+  payload: unknown;
+  signature: unknown;
+} {
   const parsedArray = jwt
     .split(".")
     .map(convertBase64urlToUint8Array)

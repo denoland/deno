@@ -1,15 +1,14 @@
 import type { Header, Payload } from "./mod.ts";
 import type { Algorithm } from "./algorithm.ts";
 import { verify as verifyAlgorithm } from "./algorithm.ts";
-import { isExpired, isObject } from "./_util.ts";
 
-export type TokenObjectUnknown = {
+type TokenObjectUnknown = {
   header: unknown;
   payload: unknown;
   signature: unknown;
 };
 
-export type TokenObject = {
+type TokenObject = {
   header: Header;
   payload: unknown;
   signature: string;
@@ -17,9 +16,15 @@ export type TokenObject = {
 
 type TokenObjectWithExpClaim = {
   header: Header;
-  payload: { [key: string]: unknown } & { exp: number };
+  payload: { exp: number } & unknown;
   signature: string;
 };
+
+function isObject(obj: unknown): obj is { [key: string]: unknown } {
+  return (
+    obj !== null && typeof obj === "object" && Array.isArray(obj) === false
+  );
+}
 
 function isTokenObject(obj: TokenObjectUnknown): obj is TokenObject {
   return (
@@ -33,6 +38,7 @@ function isTokenObject(obj: TokenObjectUnknown): obj is TokenObject {
  * The "exp" (expiration time) claim identifies the expiration time on
  * or after which the JWT MUST NOT be accepted for processing.
  * Its value MUST be a number containing a NumericDate value.
+ * Implementers MAY provide for some small leeway to account for clock skew.
  * Use of this claim is OPTIONAL. (JWT §4.1.4)
  */
 function hasExpClaim(obj: TokenObject): obj is TokenObjectWithExpClaim {
@@ -40,6 +46,10 @@ function hasExpClaim(obj: TokenObject): obj is TokenObjectWithExpClaim {
     if (typeof obj.payload.exp === "number") return true;
     else throw new TypeError("the 'exp' claim must be a number");
   } else return false;
+}
+
+export function isExpired(exp: number, leeway = 0): boolean {
+  return exp + leeway < Date.now() / 1000;
 }
 
 export function validate(
