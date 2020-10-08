@@ -2,16 +2,20 @@ import type { Header, Payload } from "./mod.ts";
 import type { Algorithm } from "./algorithm.ts";
 import { verify as verifyAlgorithm } from "./algorithm.ts";
 
-type TokenObjectUnknown = {
-  header: unknown;
-  payload: unknown;
-  signature: unknown;
-};
-
+/*
+ * Note that the payload can be any content and need not be a representation of
+ * a JSON object. (JWS §3,3)
+ */
 type TokenObject = {
   header: Header;
   payload: unknown;
   signature: string;
+};
+
+type TokenObjectUnknown = {
+  header: unknown;
+  payload: unknown;
+  signature: unknown;
 };
 
 type TokenObjectWithExpClaim = {
