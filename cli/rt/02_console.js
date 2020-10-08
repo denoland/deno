@@ -3,25 +3,25 @@
 ((window) => {
   const core = window.Deno.core;
   const exposeForTest = window.__bootstrap.internals.exposeForTest;
-  const {
-    stripColor,
-    yellow,
-    dim,
-    cyan,
-    red,
-    green,
-    magenta,
-    bold,
-  } = window.__bootstrap.colors;
+  const colors = window.__bootstrap.colors;
 
-  const {
-    isTypedArray,
-    isInvalidDate,
-    hasOwnProperty,
-  } = window.__bootstrap.webUtil;
+  function isInvalidDate(x) {
+    return isNaN(x.getTime());
+  }
+
+  function hasOwnProperty(obj, v) {
+    if (obj == null) {
+      return false;
+    }
+    return Object.prototype.hasOwnProperty.call(obj, v);
+  }
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
+
+  function isTypedArray(x) {
+    return ArrayBuffer.isView(x) && !(x instanceof DataView);
+  }
 
   const tableChars = {
     middleMiddle: "─",
@@ -79,7 +79,7 @@
   }
 
   function getStringWidth(str) {
-    str = stripColor(str).normalize("NFC");
+    str = colors.stripColor(str).normalize("NFC");
     let width = 0;
 
     for (const ch of str) {
@@ -156,6 +156,7 @@
     compact: true,
     iterableLimit: 100,
     showProxy: false,
+    colors: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -174,22 +175,26 @@
   /* eslint-disable @typescript-eslint/no-use-before-define */
 
   function getClassInstanceName(instance) {
-    if (typeof instance !== "object") {
+    if (typeof instance != "object") {
       return "";
     }
-    if (!instance) {
-      return "";
+    const constructor = instance?.constructor;
+    if (typeof constructor == "function") {
+      return constructor.name ?? "";
     }
-
-    const proto = Object.getPrototypeOf(instance);
-    if (proto && proto.constructor) {
-      return proto.constructor.name; // could be "Object" or "Array"
-    }
-
     return "";
   }
 
+  function maybeColor(fn, inspectOptions) {
+    return inspectOptions.colors ? fn : (s) => s;
+  }
+
   function inspectFunction(value, _ctx) {
+    if (customInspect in value && typeof value[customInspect] === "function") {
+      try {
+        return String(value[customInspect]());
+      } catch {}
+    }
     // Might be Function/AsyncFunction/GeneratorFunction
     const cstrName = Object.getPrototypeOf(value).constructor.name;
     if (value.name && value.name !== "anonymous") {
@@ -206,6 +211,7 @@
     options,
     inspectOptions,
   ) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     if (level >= inspectOptions.depth) {
       return cyan(`[${options.typeName}]`);
     }
@@ -260,7 +266,7 @@
     } else {
       iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
       if (
-        stripColor(iContent).length > LINE_BREAKING_LENGTH ||
+        colors.stripColor(iContent).length > LINE_BREAKING_LENGTH ||
         !inspectOptions.compact
       ) {
         iContent = `${initIndentation}${
@@ -295,7 +301,7 @@
     for (let i = 0; i < entriesLength; i++) {
       // Taking colors into account: removing the ANSI color
       // codes from the string before measuring its length
-      const len = stripColor(entries[i]).length;
+      const len = colors.stripColor(entries[i]).length;
       dataLen[i] = len;
       totalLength += len + separatorSpace;
       if (maxLength < len) maxLength = len;
@@ -400,9 +406,16 @@
         : inspectValue(proxyDetails[0], ctx, level, inspectOptions);
     }
 
+    const green = maybeColor(colors.green, inspectOptions);
+    const yellow = maybeColor(colors.yellow, inspectOptions);
+    const dim = maybeColor(colors.dim, inspectOptions);
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    const bold = maybeColor(colors.bold, inspectOptions);
+    const red = maybeColor(colors.red, inspectOptions);
+
     switch (typeof value) {
       case "string":
-        return value;
+        return green(quoteString(value));
       case "number": // Numbers are yellow
         // Special handling of -0
         return yellow(Object.is(value, -0) ? "-0" : `${value}`);
@@ -411,7 +424,7 @@
       case "undefined": // undefined is dim
         return dim(String(value));
       case "symbol": // Symbols are green
-        return green(String(value));
+        return green(maybeQuoteSymbol(value));
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
@@ -462,7 +475,33 @@
       .replace(/\n/g, "\\n")
       .replace(/\r/g, "\\r")
       .replace(/\t/g, "\\t")
-      .replace(/\v/g, "\\v");
+      .replace(/\v/g, "\\v")
+      .replace(
+        /[\x00-\x1f\x7f-\x9f]/g,
+        (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
+      );
+  }
+
+  // Surround a string with quotes when it is required (e.g the string not a valid identifier).
+  function maybeQuoteString(string) {
+    if (/^[a-zA-Z_][a-zA-Z_0-9]*$/.test(string)) {
+      return replaceEscapeSequences(string);
+    }
+
+    return quoteString(string);
+  }
+
+  // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
+  function maybeQuoteSymbol(symbol) {
+    if (symbol.description === undefined) {
+      return symbol.toString();
+    }
+
+    if (/^[a-zA-Z_][a-zA-Z_.0-9]*$/.test(symbol.description)) {
+      return symbol.toString();
+    }
+
+    return `Symbol(${quoteString(symbol.description)})`;
   }
 
   // Print strings when they are inside of arrays or objects with quotes
@@ -472,6 +511,7 @@
     level,
     inspectOptions,
   ) {
+    const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
       case "string":
         const trunc = value.length > STR_ABBREVIATE_SIZE
@@ -489,6 +529,7 @@
     level,
     inspectOptions,
   ) {
+    const dim = maybeColor(colors.dim, inspectOptions);
     const options = {
       typeName: "Array",
       displayName: "",
@@ -590,32 +631,39 @@
     );
   }
 
-  function inspectWeakSet() {
+  function inspectWeakSet(inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     return `WeakSet { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
   }
 
-  function inspectWeakMap() {
+  function inspectWeakMap(inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     return `WeakMap { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
   }
 
-  function inspectDate(value) {
+  function inspectDate(value, inspectOptions) {
     // without quotes, ISO format, in magenta like before
+    const magenta = maybeColor(colors.magenta, inspectOptions);
     return magenta(isInvalidDate(value) ? "Invalid Date" : value.toISOString());
   }
 
-  function inspectRegExp(value) {
+  function inspectRegExp(value, inspectOptions) {
+    const red = maybeColor(colors.red, inspectOptions);
     return red(value.toString()); // RegExps are red
   }
 
-  function inspectStringObject(value) {
+  function inspectStringObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     return cyan(`[String: "${value.toString()}"]`); // wrappers are in cyan
   }
 
-  function inspectBooleanObject(value) {
+  function inspectBooleanObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     return cyan(`[Boolean: ${value.toString()}]`); // wrappers are in cyan
   }
 
-  function inspectNumberObject(value) {
+  function inspectNumberObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     return cyan(`[Number: ${value.toString()}]`); // wrappers are in cyan
   }
 
@@ -631,6 +679,9 @@
     level,
     inspectOptions,
   ) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    const red = maybeColor(colors.red, inspectOptions);
+
     const [state, result] = core.getPromiseDetails(value);
 
     if (state === PromiseState.Pending) {
@@ -674,6 +725,8 @@
     level,
     inspectOptions,
   ) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+
     if (level >= inspectOptions.depth) {
       return cyan("[Object]"); // wrappers are in cyan
     }
@@ -704,33 +757,37 @@
       );
     }
 
+    const red = maybeColor(colors.red, inspectOptions);
+
     for (const key of stringKeys) {
-      entries.push(
-        `${replaceEscapeSequences(key)}: ${
-          inspectValueWithQuotes(
-            value[key],
-            ctx,
-            level + 1,
-            inspectOptions,
-          )
-        }`,
-      );
+      let propertyValue;
+      let error = null;
+      try {
+        propertyValue = value[key];
+      } catch (error_) {
+        error = error_;
+      }
+      const inspectedValue = error == null
+        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
+        : red(`[Thrown ${error.name}: ${error.message}]`);
+      entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
     }
     for (const key of symbolKeys) {
-      entries.push(
-        `${replaceEscapeSequences(key.toString())}: ${
-          inspectValueWithQuotes(
-            value[key],
-            ctx,
-            level + 1,
-            inspectOptions,
-          )
-        }`,
-      );
+      let propertyValue;
+      let error;
+      try {
+        propertyValue = value[key];
+      } catch (error_) {
+        error = error_;
+      }
+      const inspectedValue = error == null
+        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
+        : red(`Thrown ${error.name}: ${error.message}`);
+      entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
     }
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +
-      stripColor(entries.join("")).length;
+      colors.stripColor(entries.join("")).length;
 
     ctx.delete(value);
 
@@ -764,30 +821,43 @@
         return String(value[customInspect]());
       } catch {}
     }
+    // This non-unique symbol is used to support op_crates, ie.
+    // in op_crates/web we don't want to depend on unique "Deno.customInspect"
+    // symbol defined in the public API. Internal only, shouldn't be used
+    // by users.
+    const nonUniqueCustomInspect = Symbol.for("Deno.customInspect");
+    if (
+      nonUniqueCustomInspect in value &&
+      typeof value[nonUniqueCustomInspect] === "function"
+    ) {
+      try {
+        return String(value[nonUniqueCustomInspect]());
+      } catch {}
+    }
     if (value instanceof Error) {
       return String(value.stack);
     } else if (Array.isArray(value)) {
       return inspectArray(value, consoleContext, level, inspectOptions);
     } else if (value instanceof Number) {
-      return inspectNumberObject(value);
+      return inspectNumberObject(value, inspectOptions);
     } else if (value instanceof Boolean) {
-      return inspectBooleanObject(value);
+      return inspectBooleanObject(value, inspectOptions);
     } else if (value instanceof String) {
-      return inspectStringObject(value);
+      return inspectStringObject(value, inspectOptions);
     } else if (value instanceof Promise) {
       return inspectPromise(value, consoleContext, level, inspectOptions);
     } else if (value instanceof RegExp) {
-      return inspectRegExp(value);
+      return inspectRegExp(value, inspectOptions);
     } else if (value instanceof Date) {
-      return inspectDate(value);
+      return inspectDate(value, inspectOptions);
     } else if (value instanceof Set) {
       return inspectSet(value, consoleContext, level, inspectOptions);
     } else if (value instanceof Map) {
       return inspectMap(value, consoleContext, level, inspectOptions);
     } else if (value instanceof WeakSet) {
-      return inspectWeakSet();
+      return inspectWeakSet(inspectOptions);
     } else if (value instanceof WeakMap) {
-      return inspectWeakMap();
+      return inspectWeakMap(inspectOptions);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
         Object.getPrototypeOf(value).constructor.name,
@@ -1022,8 +1092,8 @@
     return null;
   }
 
-  function parseCss(cssString) {
-    const css = {
+  function getDefaultCss() {
+    return {
       backgroundColor: null,
       color: null,
       fontWeight: null,
@@ -1031,6 +1101,10 @@
       textDecorationColor: null,
       textDecorationLine: [],
     };
+  }
+
+  function parseCss(cssString) {
+    const css = getDefaultCss();
 
     const rawEntries = [];
     let inValue = false;
@@ -1085,12 +1159,12 @@
           css.color = color;
         }
       } else if (key == "font-weight") {
-        if (["normal", "bold"].includes(value)) {
+        if (value == "bold") {
           css.fontWeight = value;
         }
       } else if (key == "font-style") {
-        if (["normal", "italic", "oblique", "oblique 14deg"].includes(value)) {
-          css.fontStyle = value;
+        if (["italic", "oblique", "oblique 14deg"].includes(value)) {
+          css.fontStyle = "italic";
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
@@ -1121,50 +1195,81 @@
     return css;
   }
 
-  function cssToAnsi(css) {
+  function colorEquals(color1, color2) {
+    return color1?.[0] == color2?.[0] && color1?.[1] == color2?.[1] &&
+      color1?.[2] == color2?.[2];
+  }
+
+  function cssToAnsi(css, prevCss = null) {
+    prevCss = prevCss ?? getDefaultCss();
     let ansi = "";
-    if (css.backgroundColor != null) {
-      const [r, g, b] = css.backgroundColor;
-      ansi += `\x1b[48;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[49m";
+    if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
+      if (css.backgroundColor != null) {
+        const [r, g, b] = css.backgroundColor;
+        ansi += `\x1b[48;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[49m";
+      }
     }
-    if (css.color != null) {
-      const [r, g, b] = css.color;
-      ansi += `\x1b[38;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[39m";
+    if (!colorEquals(css.color, prevCss.color)) {
+      if (css.color != null) {
+        const [r, g, b] = css.color;
+        ansi += `\x1b[38;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[39m";
+      }
     }
-    if (css.fontWeight == "bold") {
-      ansi += `\x1b[1m`;
-    } else {
-      ansi += "\x1b[22m";
+    if (css.fontWeight != prevCss.fontWeight) {
+      if (css.fontWeight == "bold") {
+        ansi += `\x1b[1m`;
+      } else {
+        ansi += "\x1b[22m";
+      }
     }
-    if (["italic", "oblique"].includes(css.fontStyle)) {
-      ansi += `\x1b[3m`;
-    } else {
-      ansi += "\x1b[23m";
+    if (css.fontStyle != prevCss.fontStyle) {
+      if (css.fontStyle == "italic") {
+        ansi += `\x1b[3m`;
+      } else {
+        ansi += "\x1b[23m";
+      }
     }
-    if (css.textDecorationColor != null) {
-      const [r, g, b] = css.textDecorationColor;
-      ansi += `\x1b[58;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[59m";
+    if (!colorEquals(css.textDecorationColor, prevCss.textDecorationColor)) {
+      if (css.textDecorationColor != null) {
+        const [r, g, b] = css.textDecorationColor;
+        ansi += `\x1b[58;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[59m";
+      }
     }
-    if (css.textDecorationLine.includes("line-through")) {
-      ansi += "\x1b[9m";
-    } else {
-      ansi += "\x1b[29m";
+    if (
+      css.textDecorationLine.includes("line-through") !=
+        prevCss.textDecorationLine.includes("line-through")
+    ) {
+      if (css.textDecorationLine.includes("line-through")) {
+        ansi += "\x1b[9m";
+      } else {
+        ansi += "\x1b[29m";
+      }
     }
-    if (css.textDecorationLine.includes("overline")) {
-      ansi += "\x1b[53m";
-    } else {
-      ansi += "\x1b[55m";
+    if (
+      css.textDecorationLine.includes("overline") !=
+        prevCss.textDecorationLine.includes("overline")
+    ) {
+      if (css.textDecorationLine.includes("overline")) {
+        ansi += "\x1b[53m";
+      } else {
+        ansi += "\x1b[55m";
+      }
     }
-    if (css.textDecorationLine.includes("underline")) {
-      ansi += "\x1b[4m";
-    } else {
-      ansi += "\x1b[24m";
+    if (
+      css.textDecorationLine.includes("underline") !=
+        prevCss.textDecorationLine.includes("underline")
+    ) {
+      if (css.textDecorationLine.includes("underline")) {
+        ansi += "\x1b[4m";
+      } else {
+        ansi += "\x1b[24m";
+      }
     }
     return ansi;
   }
@@ -1182,6 +1287,7 @@
       // have to append to `string` when a substitution occurs / at the end.
       let appendedChars = 0;
       let usedStyle = false;
+      let prevCss = null;
       for (let i = 0; i < first.length - 1; i++) {
         if (first[i] == "%") {
           const char = first[++i];
@@ -1218,9 +1324,15 @@
               );
             } else if (char == "c") {
               const value = args[a++];
-              formattedArg = noColor ? "" : cssToAnsi(parseCss(value));
-              if (formattedArg != "") {
-                usedStyle = true;
+              if (!noColor) {
+                const css = parseCss(value);
+                formattedArg = cssToAnsi(css, prevCss);
+                if (formattedArg != "") {
+                  usedStyle = true;
+                  prevCss = css;
+                }
+              } else {
+                formattedArg = "";
               }
             }
 
@@ -1245,8 +1357,12 @@
       if (a > 0) {
         string += " ";
       }
-      // Use default maximum depth for null or undefined arguments.
-      string += inspectValue(args[a], new Set(), 0, rInspectOptions);
+      if (typeof args[a] == "string") {
+        string += args[a];
+      } else {
+        // Use default maximum depth for null or undefined arguments.
+        string += inspectValue(args[a], new Set(), 0, rInspectOptions);
+      }
     }
 
     if (rInspectOptions.indentLevel > 0) {
@@ -1260,6 +1376,11 @@
   const countMap = new Map();
   const timerMap = new Map();
   const isConsoleInstance = Symbol("isConsoleInstance");
+
+  const CONSOLE_INSPECT_OPTIONS = {
+    ...DEFAULT_INSPECT_OPTIONS,
+    colors: true,
+  };
 
   class Console {
     #printFunc = null;
@@ -1282,6 +1403,7 @@
     log = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
+          ...CONSOLE_INSPECT_OPTIONS,
           indentLevel: this.indentLevel,
         }) + "\n",
         false,
@@ -1292,7 +1414,10 @@
     info = this.log;
 
     dir = (obj, options = {}) => {
-      this.#printFunc(inspectArgs([obj], options) + "\n", false);
+      this.#printFunc(
+        inspectArgs([obj], { ...CONSOLE_INSPECT_OPTIONS, ...options }) + "\n",
+        false,
+      );
     };
 
     dirxml = this.dir;
@@ -1300,6 +1425,7 @@
     warn = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
+          ...CONSOLE_INSPECT_OPTIONS,
           indentLevel: this.indentLevel,
         }) + "\n",
         true,
@@ -1503,7 +1629,10 @@
     };
 
     trace = (...args) => {
-      const message = inspectArgs(args, { indentLevel: 0 });
+      const message = inspectArgs(
+        args,
+        { ...CONSOLE_INSPECT_OPTIONS, indentLevel: 0 },
+      );
       const err = {
         name: "Trace",
         message,
@@ -1523,16 +1652,12 @@
     value,
     inspectOptions = {},
   ) {
-    if (typeof value === "string") {
-      return value;
-    } else {
-      return inspectValue(value, new Set(), 0, {
-        ...DEFAULT_INSPECT_OPTIONS,
-        ...inspectOptions,
-        // TODO(nayeemrmn): Indent level is not supported.
-        indentLevel: 0,
-      });
-    }
+    return inspectValue(value, new Set(), 0, {
+      ...DEFAULT_INSPECT_OPTIONS,
+      ...inspectOptions,
+      // TODO(nayeemrmn): Indent level is not supported.
+      indentLevel: 0,
+    });
   }
 
   // Expose these fields to internalObject for tests.

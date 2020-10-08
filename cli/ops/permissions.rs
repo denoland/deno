@@ -1,10 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::ErrBox;
+use crate::permissions::Permissions;
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
-use serde_json::Value;
+use serde::Deserialize;
 use std::path::Path;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -24,10 +28,9 @@ pub fn op_query_permission(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let cli_state = super::cli_state(state);
-  let permissions = cli_state.permissions.borrow();
+  let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.query_read(&path.as_deref().map(Path::new)),
@@ -38,7 +41,7 @@ pub fn op_query_permission(
     "plugin" => permissions.query_plugin(),
     "hrtime" => permissions.query_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))
@@ -51,10 +54,9 @@ pub fn op_revoke_permission(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let cli_state = super::cli_state(state);
-  let mut permissions = cli_state.permissions.borrow_mut();
+  let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.revoke_read(&path.as_deref().map(Path::new)),
@@ -65,7 +67,7 @@ pub fn op_revoke_permission(
     "plugin" => permissions.revoke_plugin(),
     "hrtime" => permissions.revoke_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))
@@ -78,10 +80,9 @@ pub fn op_request_permission(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let cli_state = super::cli_state(state);
-  let permissions = &mut cli_state.permissions.borrow_mut();
+  let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.request_read(&path.as_deref().map(Path::new)),
@@ -92,7 +93,7 @@ pub fn op_request_permission(
     "plugin" => permissions.request_plugin(),
     "hrtime" => permissions.request_hrtime(),
     n => {
-      return Err(ErrBox::new(
+      return Err(custom_error(
         "ReferenceError",
         format!("No such permission name: {}", n),
       ))

@@ -1,16 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
   const { errors } = window.__bootstrap.errors;
-  const { close } = window.__bootstrap.resources;
 
   class FsWatcher {
     #rid = 0;
 
     constructor(paths, options) {
       const { recursive } = options;
-      this.#rid = sendSync("op_fs_events_open", { recursive, paths });
+      this.#rid = core.jsonOpSync("op_fs_events_open", { recursive, paths });
     }
 
     get rid() {
@@ -19,7 +18,7 @@
 
     async next() {
       try {
-        return await sendAsync("op_fs_events_poll", {
+        return await core.jsonOpAsync("op_fs_events_poll", {
           rid: this.rid,
         });
       } catch (error) {
@@ -31,7 +30,7 @@
     }
 
     return(value) {
-      close(this.rid);
+      core.close(this.rid);
       return Promise.resolve({ value, done: true });
     }
 

@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendAsync } = window.__bootstrap.dispatchJson;
-  const { close } = window.__bootstrap.resources;
+  const core = window.Deno.core;
   const { requiredArguments } = window.__bootstrap.webUtil;
   const CONNECTING = 0;
   const OPEN = 1;
@@ -47,7 +46,7 @@
         );
       }
 
-      sendAsync("op_ws_create", {
+      core.jsonOpAsync("op_ws_create", {
         url: wsURL.href,
         protocols: protocols.join("; "),
       }).then((create) => {
@@ -57,7 +56,7 @@
           this.#protocol = create.protocol;
 
           if (this.#readyState === CLOSING) {
-            sendAsync("op_ws_close", {
+            core.jsonOpAsync("op_ws_close", {
               rid: this.#rid,
             }).then(() => {
               this.#readyState = CLOSED;
@@ -71,13 +70,8 @@
               event.target = this;
               this.onclose?.(event);
               this.dispatchEvent(event);
-              close(this.#rid);
+              core.close(this.#rid);
             });
-
-            const event = new Event("error");
-            event.target = this;
-            this.onerror?.(event);
-            this.dispatchEvent(event);
           } else {
             this.#readyState = OPEN;
             const event = new Event("open");
@@ -100,6 +94,21 @@
           this.onclose?.(closeEvent);
           this.dispatchEvent(closeEvent);
         }
+      }).catch((err) => {
+        this.#readyState = CLOSED;
+
+        const errorEv = new ErrorEvent(
+          "error",
+          { error: err, message: err.toString() },
+        );
+        errorEv.target = this;
+        this.onerror?.(errorEv);
+        this.dispatchEvent(errorEv);
+
+        const closeEv = new CloseEvent("close");
+        closeEv.target = this;
+        this.onclose?.(closeEv);
+        this.dispatchEvent(closeEv);
       });
     }
 
@@ -164,7 +173,7 @@
 
       const sendTypedArray = (ta) => {
         this.#bufferedAmount += ta.size;
-        sendAsync("op_ws_send", {
+        core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
         }, ta).then(() => {
           this.#bufferedAmount -= ta.size;
@@ -190,7 +199,7 @@
         const encoder = new TextEncoder();
         const d = encoder.encode(string);
         this.#bufferedAmount += d.size;
-        sendAsync("op_ws_send", {
+        core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
           text: string,
         }).then(() => {
@@ -220,7 +229,7 @@
       } else if (this.#readyState === OPEN) {
         this.#readyState = CLOSING;
 
-        sendAsync("op_ws_close", {
+        core.jsonOpAsync("op_ws_close", {
           rid: this.#rid,
           code,
           reason,
@@ -234,14 +243,17 @@
           event.target = this;
           this.onclose?.(event);
           this.dispatchEvent(event);
-          close(this.#rid);
+          core.close(this.#rid);
         });
       }
     }
 
     async #eventLoop() {
       if (this.#readyState === OPEN) {
-        const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
+        const message = await core.jsonOpAsync(
+          "op_ws_next_event",
+          { rid: this.#rid },
+        );
         if (message.type === "string" || message.type === "binary") {
           let data;
 
@@ -275,10 +287,18 @@
           this.onclose?.(event);
           this.dispatchEvent(event);
         } else if (message.type === "error") {
-          const event = new Event("error");
-          event.target = this;
-          this.onerror?.(event);
-          this.dispatchEvent(event);
+          this.#readyState = CLOSED;
+
+          const errorEv = new Event("error");
+          errorEv.target = this;
+          this.onerror?.(errorEv);
+          this.dispatchEvent(errorEv);
+
+          this.#readyState = CLOSED;
+          const closeEv = new CloseEvent("close");
+          closeEv.target = this;
+          this.onclose?.(closeEv);
+          this.dispatchEvent(closeEv);
         }
       }
     }

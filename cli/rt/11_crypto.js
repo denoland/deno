@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync } = window.__bootstrap.dispatchJson;
+  const core = window.Deno.core;
   const { assert } = window.__bootstrap.util;
 
   function getRandomValues(typedArray) {
@@ -12,7 +12,7 @@
       typedArray.byteOffset,
       typedArray.byteLength,
     );
-    sendSync("op_get_random_values", {}, ui8);
+    core.jsonOpSync("op_get_random_values", {}, ui8);
     return typedArray;
   }
 

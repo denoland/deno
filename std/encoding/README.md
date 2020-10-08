@@ -37,25 +37,29 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 Parse the CSV from the `reader` with the options provided and return
 `string[][]`.
 
-#### `parse(input: string | BufReader, opt: ParseOptions = { header: false }): Promise<unknown[]>`:
+#### `parse(input: string | BufReader, opt: ParseOptions = { skipFirstRow: false }): Promise<unknown[]>`:
 
 Parse the CSV string/buffer with the options provided. The result of this
 function is as follows:
 
-- If you don't provide both `opt.header` and `opt.parse`, it returns
-  `string[][]`.
-- If you provide `opt.header` but not `opt.parse`, it returns `object[]`.
+- If you don't provide `opt.skipFirstRow`, `opt.parse`, and `opt.columns`, it
+  returns `string[][]`.
+- If you provide `opt.skipFirstRow` or `opt.columns` but not `opt.parse`, it
+  returns `object[]`.
 - If you provide `opt.parse`, it returns an array where each element is the
   value returned from `opt.parse`.
 
 ##### `ParseOptions`
 
-- **`header: boolean | string[] | HeaderOptions[];`**: If a boolean is provided,
-  the first line will be used as Header definitions. If `string[]` or
-  `HeaderOptions[]` those names will be used for header definition.
+- **`skipFirstRow: boolean;`**: If you provide `skipFirstRow: true` and
+  `columns`, the first line will be skipped. If you provide `skipFirstRow: true`
+  but not `columns`, the first line will be skipped and used as header
+  definitions.
+- **`columns: string[] | HeaderOptions[];`**: If you provide `string[]` or
+  `ColumnOptions[]`, those names will be used for header definition.
 - **`parse?: (input: unknown) => unknown;`**: Parse function for the row, which
   will be executed after parsing of all columns. Therefore if you don't provide
-  header and parse function with headers, input will be `string[]`.
+  `skipFirstRow`, `columns`, and `parse` function, input will be `string[]`.
 
 ##### `HeaderOptions`
 
@@ -66,24 +70,24 @@ function is as follows:
 
 ##### `ReadOptions`
 
-- **`comma?: string;`**: Character which separates values. Default: `','`
-- **`comment?: string;`**: Character to start a comment. Default: `'#'`
+- **`comma?: string;`**: Character which separates values. Default: `','`.
+- **`comment?: string;`**: Character to start a comment. Default: `'#'`.
 - **`trimLeadingSpace?: boolean;`**: Flag to trim the leading space of the
-  value. Default: `false`
+  value. Default: `false`.
 - **`lazyQuotes?: boolean;`**: Allow unquoted quote in a quoted field or non
-  double quoted quotes in quoted field. Default: 'false`
+  double quoted quotes in quoted field. Default: `false`.
 - **`fieldsPerRecord?`**: Enabling the check of fields for each row. If == 0,
   first row is used as referral for the number of fields.
 
 ### Usage
 
 ```ts
-import { parse } from "https://deno.land/std/encoding/csv.ts";
+import { parse } from "https://deno.land/std@$STD_VERSION/encoding/csv.ts";
 const string = "a,b,c\nd,e,f";
 
 console.log(
   await parse(string, {
-    header: false,
+    skipFirstRow: false,
   }),
 );
 // output:
@@ -183,7 +187,10 @@ will output:
 ### Basic usage
 
 ```ts
-import { parse, stringify } from "https://deno.land/std/encoding/toml.ts";
+import {
+  parse,
+  stringify,
+} from "https://deno.land/std@$STD_VERSION/encoding/toml.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
@@ -222,9 +229,9 @@ console.log(tomlObject);
 
 ## YAML
 
-YAML parser / dumper for Deno
+YAML parser / dumper for Deno.
 
-Heavily inspired from [js-yaml]
+Heavily inspired from [js-yaml].
 
 ### Basic usage
 
@@ -232,7 +239,10 @@ Heavily inspired from [js-yaml]
 string.
 
 ```ts
-import { parse, stringify } from "https://deno.land/std/encoding/yaml.ts";
+import {
+  parse,
+  stringify,
+} from "https://deno.land/std@$STD_VERSION/encoding/yaml.ts";
 
 const data = parse(`
 foo: bar
@@ -256,7 +266,7 @@ If your YAML contains multiple documents in it, you can use `parseAll` for
 handling it.
 
 ```ts
-import { parseAll } from "https://deno.land/std/encoding/yaml.ts";
+import { parseAll } from "https://deno.land/std@$STD_VERSION/encoding/yaml.ts";
 
 const data = parseAll(`
 ---
@@ -290,17 +300,17 @@ Serializes `object` as a YAML document.
 
 ### :warning: Limitations
 
-- `binary` type is currently not stable
-- `function`, `regexp`, and `undefined` type are currently not supported
+- `binary` type is currently not stable.
+- `function`, `regexp`, and `undefined` type are currently not supported.
 
 ### More example
 
-See https://github.com/nodeca/js-yaml.
+See: https://github.com/nodeca/js-yaml
 
 ## base32
 
 [RFC4648 base32](https://tools.ietf.org/html/rfc4648#section-6) encoder/decoder
-for Deno
+for Deno.
 
 ### Basic usage
 
@@ -308,7 +318,10 @@ for Deno
 decodes the given RFC4648 base32 representation to a `Uint8Array`.
 
 ```ts
-import { encode, decode } from "https://deno.land/std/encoding/base32.ts";
+import {
+  decode,
+  encode,
+} from "https://deno.land/std@$STD_VERSION/encoding/base32.ts";
 
 const b32Repr = "RC2E6GA=";
 
@@ -322,7 +335,7 @@ console.log(encode(binaryData));
 
 ## ascii85
 
-Ascii85/base85 encoder and decoder with support for multiple standards
+Ascii85/base85 encoder and decoder with support for multiple standards.
 
 ### Basic usage
 
@@ -330,7 +343,10 @@ Ascii85/base85 encoder and decoder with support for multiple standards
 decodes the given ascii85 representation to a `Uint8Array`.
 
 ```ts
-import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+import {
+  decode,
+  encode,
+} from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 
 const a85Repr = "LpTqp";
 
@@ -359,7 +375,10 @@ supported by other encodings.)
 encoding examples:
 
 ```ts
-import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+import {
+  decode,
+  encode,
+} from "https://deno.land/std@$STD_VERSION/encoding/ascii85.ts";
 const binaryData = new Uint8Array([136, 180, 79, 24]);
 console.log(encode(binaryData));
 // => LpTqp

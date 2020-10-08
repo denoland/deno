@@ -4,7 +4,7 @@ Deno can execute [WebAssembly](https://webassembly.org/) binaries.
 
 <!-- dprint-ignore -->
 
-```js
+```ts
 const wasmCode = new Uint8Array([
   0, 97, 115, 109, 1, 0, 0, 0, 1, 133, 128, 128, 128, 0, 1, 96, 0, 1, 127,
   3, 130, 128, 128, 128, 0, 1, 0, 4, 132, 128, 128, 128, 0, 1, 112, 0, 0,
@@ -15,5 +15,6 @@ const wasmCode = new Uint8Array([
 ]);
 const wasmModule = new WebAssembly.Module(wasmCode);
 const wasmInstance = new WebAssembly.Instance(wasmModule);
+const main = wasmInstance.exports.main as CallableFunction
 console.log(wasmInstance.exports.main().toString());
 ```

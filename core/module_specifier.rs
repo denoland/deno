@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::normalize_path;
 use std::env::current_dir;
 use std::error::Error;

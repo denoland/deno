@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = window.Deno.core;
   const { gray, green, italic, red, yellow } = window.__bootstrap.colors;
   const { exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
   const { exposeForTest } = window.__bootstrap.internals;
   const { metrics } = window.__bootstrap.metrics;
-  const { resources } = window.__bootstrap.resources;
   const { assert } = window.__bootstrap.util;
 
   const disabledConsole = new Console(() => {});
@@ -64,9 +64,9 @@ finishing test case.`,
     fn,
   ) {
     return async function resourceSanitizer() {
-      const pre = resources();
+      const pre = core.resources();
       await fn();
-      const post = resources();
+      const post = core.resources();
 
       const preStr = JSON.stringify(pre, null, 2);
       const postStr = JSON.stringify(post, null, 2);

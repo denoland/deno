@@ -8,7 +8,12 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringContains,
+  unitTest,
+} from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
 
 const customInspect = Deno.customInspect;
@@ -52,8 +57,8 @@ function parseCssColor(colorString: string): Css {
 }
 
 /** ANSI-fy the CSS, replace "\x1b" with "_". */
-function cssToAnsiEsc(css: Css): string {
-  return cssToAnsi_(css).replaceAll("\x1b", "_");
+function cssToAnsiEsc(css: Css, prevCss: Css | null = null): string {
+  return cssToAnsi_(css, prevCss).replaceAll("\x1b", "_");
 }
 
 // test cases from web-platform-tests
@@ -94,16 +99,69 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
 unitTest(
   function consoleTestStringifyComplexObjectsWithEscapedSequences(): void {
     assertEquals(
-      stringify(["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v"]),
-      `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v" ]`,
+      stringify(
+        ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
+      ),
+      `[
+  "foo\\b",   "foo\\f",
+  "foo\\n",   "foo\\r",
+  "foo\\t",   "foo\\v",
+  "foo\\x00"
+]`,
     );
     assertEquals(
-      stringify({ "foo\b": "bar\n", "bar\r": "baz\t" }),
-      `{ foo\\b: "bar\\n", bar\\r: "baz\\t" }`,
+      stringify(
+        [
+          Symbol(),
+          Symbol(""),
+          Symbol("foo\b"),
+          Symbol("foo\f"),
+          Symbol("foo\n"),
+          Symbol("foo\r"),
+          Symbol("foo\t"),
+          Symbol("foo\v"),
+          Symbol("foo\0"),
+        ],
+      ),
+      `[
+  Symbol(),
+  Symbol(""),
+  Symbol("foo\\b"),
+  Symbol("foo\\f"),
+  Symbol("foo\\n"),
+  Symbol("foo\\r"),
+  Symbol("foo\\t"),
+  Symbol("foo\\v"),
+  Symbol("foo\\x00")
+]`,
     );
     assertEquals(
-      stringify(new Set(["foo\n", "foo\r"])),
-      `Set { "foo\\n", "foo\\r" }`,
+      stringify(
+        { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
+      ),
+      `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
+    );
+    assertEquals(
+      stringify(
+        {
+          [Symbol("foo\b")]: `Symbol("foo\n")`,
+          [Symbol("bar\n")]: `Symbol("bar\n")`,
+          [Symbol("bar\r")]: `Symbol("bar\r")`,
+          [Symbol("baz\t")]: `Symbol("baz\t")`,
+          [Symbol("qux\0")]: `Symbol("qux\0")`,
+        },
+      ),
+      `{
+  [Symbol("foo\\b")]: 'Symbol("foo\\n\")',
+  [Symbol("bar\\n")]: 'Symbol("bar\\n\")',
+  [Symbol("bar\\r")]: 'Symbol("bar\\r\")',
+  [Symbol("baz\\t")]: 'Symbol("baz\\t\")',
+  [Symbol("qux\\x00")]: 'Symbol(\"qux\\x00")'
+}`,
+    );
+    assertEquals(
+      stringify(new Set(["foo\n", "foo\r", "foo\0"])),
+      `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
     );
   },
 );
@@ -220,7 +278,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
   assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
-  assertEquals(stringify(Symbol(1)), "Symbol(1)");
+  assertEquals(stringify(Symbol(1)), `Symbol("1")`);
   assertEquals(stringify(null), "null");
   assertEquals(stringify(undefined), "undefined");
   assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");
@@ -244,13 +302,16 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(new Uint8Array([1, 2, 3])),
     "Uint8Array(3) [ 1, 2, 3 ]",
   );
-  assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
+  assertEquals(stringify(Uint8Array.prototype), "Uint8Array {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }",
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
-  assertEquals(stringify(JSON), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
+  assertEquals(
+    stringify(JSON),
+    'JSON { [Symbol(Symbol.toStringTag)]: "JSON" }',
+  );
   assertEquals(
     stringify(console),
     `{
@@ -274,12 +335,12 @@ unitTest(function consoleTestStringifyCircular(): void {
   clear: [Function: clear],
   trace: [Function: trace],
   indentLevel: 0,
-  Symbol(isConsoleInstance): true
+  [Symbol(isConsoleInstance)]: true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
-    'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }',
+    'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
@@ -771,8 +832,19 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ Symbol(Deno.customInspect): [Function: [Deno.customInspect]] }",
+    "B { [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
   );
+});
+
+unitTest(function consoleTestWithCustomInspectFunction(): void {
+  function a() {}
+  Object.assign(a, {
+    [customInspect]() {
+      return "b";
+    },
+  });
+
+  assertEquals(stringify(a), "b");
 });
 
 unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
@@ -822,7 +894,7 @@ unitTest(function consoleTestWithStringFormatSpecifier(): void {
 unitTest(function consoleTestWithObjectFormatSpecifier(): void {
   assertEquals(stringify("%o"), "%o");
   assertEquals(stringify("%o", 42), "42");
-  assertEquals(stringify("%o", "foo"), "foo");
+  assertEquals(stringify("%o", "foo"), `"foo"`);
   assertEquals(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
   assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
   assertEquals(
@@ -872,7 +944,7 @@ unitTest(function consoleParseCss(): void {
   );
   assertEquals(
     parseCss("font-style: oblique"),
-    { ...DEFAULT_CSS, fontStyle: "oblique" },
+    { ...DEFAULT_CSS, fontStyle: "italic" },
   );
   assertEquals(
     parseCss("text-decoration-color: green"),
@@ -911,46 +983,42 @@ unitTest(function consoleParseCss(): void {
 });
 
 unitTest(function consoleCssToAnsi(): void {
-  // TODO(nayeemrmn): Optimize these by accounting for the previous CSS.
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
-    "_[48;2;200;201;202m_[39m_[22m_[23m_[59m_[29m_[55m_[24m",
+    "_[48;2;200;201;202m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, color: [203, 204, 205] }),
-    "_[49m_[38;2;203;204;205m_[22m_[23m_[59m_[29m_[55m_[24m",
+    "_[38;2;203;204;205m",
   );
-  assertEquals(
-    cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }),
-    "_[49m_[39m_[1m_[23m_[59m_[29m_[55m_[24m",
-  );
-  assertEquals(
-    cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }),
-    "_[49m_[39m_[22m_[3m_[59m_[29m_[55m_[24m",
-  );
-  assertEquals(
-    cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "oblique" }),
-    "_[49m_[39m_[22m_[3m_[59m_[29m_[55m_[24m",
-  );
+  assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }), "_[1m");
+  assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }), "_[3m");
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, textDecorationColor: [206, 207, 208] }),
-    "_[49m_[39m_[22m_[23m_[58;2;206;207;208m_[29m_[55m_[24m",
+    "_[58;2;206;207;208m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, textDecorationLine: ["underline"] }),
-    "_[49m_[39m_[22m_[23m_[59m_[29m_[55m_[4m",
+    "_[4m",
   );
   assertEquals(
     cssToAnsiEsc(
       { ...DEFAULT_CSS, textDecorationLine: ["overline", "line-through"] },
     ),
-    "_[49m_[39m_[22m_[23m_[59m_[9m_[53m_[24m",
+    "_[9m_[53m",
   );
   assertEquals(
     cssToAnsiEsc(
       { ...DEFAULT_CSS, color: [203, 204, 205], fontWeight: "bold" },
     ),
-    "_[49m_[38;2;203;204;205m_[1m_[23m_[59m_[29m_[55m_[24m",
+    "_[38;2;203;204;205m_[1m",
+  );
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, color: [0, 0, 0], fontWeight: "bold" },
+      { ...DEFAULT_CSS, color: [203, 204, 205], fontStyle: "italic" },
+    ),
+    "_[38;2;0;0;0m_[1m_[23m",
   );
 });
 
@@ -1415,75 +1483,103 @@ unitTest(function consoleTrace(): void {
   });
 });
 
+unitTest(function inspectString(): void {
+  assertEquals(
+    stripColor(Deno.inspect("\0")),
+    `"\\x00"`,
+  );
+  assertEquals(
+    stripColor(Deno.inspect("\x1b[2J")),
+    `"\\x1b[2J"`,
+  );
+});
+
+unitTest(function inspectGetterError(): void {
+  assertEquals(
+    Deno.inspect({
+      // deno-lint-ignore getter-return
+      get foo() {
+        throw new Error("bar");
+      },
+    }),
+    "{ foo: [Thrown Error: bar] }",
+  );
+});
+
+unitTest(function inspectPrototype(): void {
+  class A {}
+  assertEquals(Deno.inspect(A.prototype), "A {}");
+});
+
 unitTest(function inspectSorted(): void {
   assertEquals(
-    Deno.inspect({ b: 2, a: 1 }, { sorted: true }),
+    stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
     "{ a: 1, b: 2 }",
   );
   assertEquals(
-    Deno.inspect(new Set(["b", "a"]), { sorted: true }),
+    stripColor(Deno.inspect(new Set(["b", "a"]), { sorted: true })),
     `Set { "a", "b" }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Map([
         ["b", 2],
         ["a", 1],
       ]),
       { sorted: true },
-    ),
+    )),
     `Map { "a" => 1, "b" => 2 }`,
   );
 });
 
 unitTest(function inspectTrailingComma(): void {
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       [
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       ],
       { trailingComma: true },
-    ),
+    )),
     `[
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 ]`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       {
         aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1,
         bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2,
       },
       { trailingComma: true },
-    ),
+    )),
     `{
   aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1,
   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2,
 }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Set([
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       ]),
       { trailingComma: true },
-    ),
+    )),
     `Set {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Map([
         ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1],
         ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 2],
       ]),
       { trailingComma: true },
-    ),
+    )),
     `Map {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" => 1,
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" => 2,
@@ -1493,7 +1589,7 @@ unitTest(function inspectTrailingComma(): void {
 
 unitTest(function inspectCompact(): void {
   assertEquals(
-    Deno.inspect({ a: 1, b: 2 }, { compact: false }),
+    stripColor(Deno.inspect({ a: 1, b: 2 }, { compact: false })),
     `{
   a: 1,
   b: 2
@@ -1503,69 +1599,77 @@ unitTest(function inspectCompact(): void {
 
 unitTest(function inspectIterableLimit(): void {
   assertEquals(
-    Deno.inspect(["a", "b", "c"], { iterableLimit: 2 }),
+    stripColor(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
     `[ "a", "b", ... 1 more items ]`,
   );
   assertEquals(
-    Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 }),
+    stripColor(Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 })),
     `Set { "a", "b", ... 1 more items }`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Map([
         ["a", 1],
         ["b", 2],
         ["c", 3],
       ]),
       { iterableLimit: 2 },
-    ),
+    )),
     `Map { "a" => 1, "b" => 2, ... 1 more items }`,
   );
 });
 
 unitTest(function inspectProxy(): void {
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy([1, 2, 3], { get(): void {} }),
-    ),
+    )),
     "[ 1, 2, 3 ]",
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy({ key: "value" }, { get(): void {} }),
-    ),
+    )),
     `{ key: "value" }`,
   );
   assertEquals(
-    Deno.inspect(new Proxy([1, 2, 3], { get(): void {} }), { showProxy: true }),
+    stripColor(Deno.inspect(
+      new Proxy([1, 2, 3], { get(): void {} }),
+      { showProxy: true },
+    )),
     "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy({ a: 1 }, {
         set(): boolean {
           return false;
         },
       }),
       { showProxy: true },
-    ),
+    )),
     "Proxy [ { a: 1 }, { set: [Function: set] } ]",
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy([1, 2, 3, 4, 5, 6, 7], { get(): void {} }),
       { showProxy: true },
-    ),
+    )),
     `Proxy [ [
     1, 2, 3, 4,
     5, 6, 7
   ], { get: [Function: get] } ]`,
   );
   assertEquals(
-    Deno.inspect(
+    stripColor(Deno.inspect(
       new Proxy(function fn() {}, { get(): void {} }),
       { showProxy: true },
-    ),
+    )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
   );
+});
+
+unitTest(function inspectColors(): void {
+  assertEquals(Deno.inspect(1), "1");
+  assertStringContains(Deno.inspect(1, { colors: true }), "\x1b[");
 });

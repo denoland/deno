@@ -1,16 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "../testing/asserts.ts";
 import {
-  getLogger,
-  debug,
-  info,
-  warning,
-  error,
   critical,
-  setup,
+  debug,
+  error,
+  getLogger,
+  info,
+  LevelName,
   Logger,
   LogLevels,
-  LevelName,
+  setup,
+  warning,
 } from "./mod.ts";
 import { BaseHandler } from "./handlers.ts";
 

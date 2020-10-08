@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use serde_json::{self, map::Map, Number, Value};
+use deno_core::serde_json::{self, map::Map, Number, Value};
 use std::{
   convert::From,
   env, fs,
@@ -24,13 +24,9 @@ fn write_json(filename: &str, value: &Value) -> Result<()> {
 
 /// The list of the tuples of the benchmark name, arguments and return code
 const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
-  ("hello", &["run", "cli/tests/002_hello.ts"], None),
-  (
-    "relative_import",
-    &["run", "cli/tests/003_relative_import.ts"],
-    None,
-  ),
-  ("error_001", &["run", "cli/tests/error_001.ts"], Some(1)),
+  // we need to run the cold_* benchmarks before the _warm_ ones as they ensure
+  // the cache is properly populated, instead of other tests possibly
+  // invalidating that cache.
   (
     "cold_hello",
     &["run", "--reload", "cli/tests/002_hello.ts"],
@@ -39,6 +35,18 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   (
     "cold_relative_import",
     &["run", "--reload", "cli/tests/003_relative_import.ts"],
+    None,
+  ),
+  ("hello", &["run", "cli/tests/002_hello.ts"], None),
+  (
+    "relative_import",
+    &["run", "cli/tests/003_relative_import.ts"],
+    None,
+  ),
+  ("error_001", &["run", "cli/tests/error_001.ts"], Some(1)),
+  (
+    "no_check_hello",
+    &["run", "--reload", "--no-check", "cli/tests/002_hello.ts"],
     None,
   ),
   (
@@ -78,6 +86,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--no-check",
       "std/examples/chat/server_test.ts",
     ],
+    None,
+  ),
+  (
+    "bundle",
+    &["bundle", "std/examples/chat/server_test.ts"],
     None,
   ),
 ];

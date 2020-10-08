@@ -34,6 +34,7 @@ async function generate(wasm: string, output: string): Promise<void> {
   const denoHashScript =
     "/* eslint-disable */\n" +
     "//deno-fmt-ignore-file\n" +
+    "//deno-lint-ignore-file\n" +
     `import * as base64 from "../../encoding/base64.ts";` +
     `export const source = base64.decode("${wasm}");` +
     initScript;

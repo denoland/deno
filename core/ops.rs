@@ -1,11 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::bad_resource_id;
+use crate::error::type_error;
+use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::BufVec;
-use crate::ErrBox;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
+use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -150,12 +153,12 @@ fn op_table() {
 
 pub fn json_op_sync<F>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>
+  F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
     + 'static,
 {
   Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
     let result = serde_json::from_slice(&bufs[0])
-      .map_err(crate::ErrBox::from)
+      .map_err(AnyError::from)
       .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
     let buf =
       json_serialize_op_result(None, result, state.borrow().get_error_class_fn);
@@ -166,15 +169,15 @@ where
 pub fn json_op_async<F, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
-  R: Future<Output = Result<Value, ErrBox>> + 'static,
+  R: Future<Output = Result<Value, AnyError>> + 'static,
 {
   let try_dispatch_op =
-    move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, ErrBox> {
+    move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
       let args: Value = serde_json::from_slice(&bufs[0])?;
       let promise_id = args
         .get("promiseId")
         .and_then(Value::as_u64)
-        .ok_or_else(|| ErrBox::type_error("missing or invalid `promiseId`"))?;
+        .ok_or_else(|| type_error("missing or invalid `promiseId`"))?;
       let bufs = bufs[1..].into();
       use crate::futures::FutureExt;
       let fut = op_fn(state.clone(), args, bufs).map(move |result| {
@@ -201,7 +204,7 @@ where
 
 fn json_serialize_op_result(
   promise_id: Option<u64>,
-  result: Result<serde_json::Value, crate::ErrBox>,
+  result: Result<serde_json::Value, AnyError>,
   get_error_class_fn: crate::runtime::GetErrorClassFn,
 ) -> Box<[u8]> {
   let value = match result {
@@ -215,4 +218,37 @@ fn json_serialize_op_result(
     }),
   };
   serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
+
+/// Return map of resources with id as key
+/// and string representaion as value.
+///
+/// This op must be wrapped in `json_op_sync`.
+pub fn op_resources(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let serialized_resources = state.resource_table.entries();
+  Ok(json!(serialized_resources))
+}
+
+/// Remove a resource from the resource table.
+///
+/// This op must be wrapped in `json_op_sync`.
+pub fn op_close(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let rid = args
+    .get("rid")
+    .and_then(Value::as_u64)
+    .ok_or_else(|| type_error("missing or invalid `rid`"))?;
+
+  state
+    .resource_table
+    .close(rid as u32)
+    .ok_or_else(bad_resource_id)?;
+  Ok(json!({}))
 }

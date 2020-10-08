@@ -1,28 +1,4 @@
-import {
-  assertStrictEquals,
-  unitTest,
-  assertMatch,
-  unreachable,
-} from "./test_util.ts";
-
-const openErrorStackPattern = new RegExp(
-  `^.*
-    at unwrapResponse \\(.*dispatch_json\\.js:.*\\)
-    at sendAsync \\(.*dispatch_json\\.js:.*\\)
-    at async Object\\.open \\(.*files\\.js:.*\\).*$`,
-  "ms",
-);
-
-unitTest(
-  { perms: { read: true } },
-  async function sendAsyncStackTrace(): Promise<void> {
-    await Deno.open("nonexistent.txt")
-      .then(unreachable)
-      .catch((error): void => {
-        assertMatch(error.stack, openErrorStackPattern);
-      });
-  },
-);
+import { assertMatch, assertStrictEquals, unitTest } from "./test_util.ts";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

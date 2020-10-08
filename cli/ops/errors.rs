@@ -3,11 +3,13 @@
 use crate::diagnostics::Diagnostics;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
-use serde_json::Value;
+use serde::Deserialize;
 use std::collections::HashMap;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -27,7 +29,7 @@ fn op_apply_source_map(
   state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -37,7 +39,7 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      &super::cli_state(state).global_state.ts_compiler,
+      &super::global_state(state).ts_compiler,
     );
 
   Ok(json!({
@@ -51,7 +53,7 @@ fn op_format_diagnostic(
   _state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, ErrBox> {
+) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
 }

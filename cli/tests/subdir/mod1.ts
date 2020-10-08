@@ -1,4 +1,4 @@
-import { returnsFoo, printHello2 } from "./subdir2/mod2.ts";
+import { printHello2, returnsFoo } from "./subdir2/mod2.ts";
 
 export function returnsHi(): string {
   return "Hi";
