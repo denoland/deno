@@ -1,4 +1,6 @@
-use crate::ast;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use crate::ast::{self, Location};
 use crate::flags::Flags;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
@@ -6,30 +8,157 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::{error::AnyError, ModuleSpecifier};
 use deno_doc::DocParser;
-use jsdoc::{self, ast::Tag, Input};
+use jsdoc::ast::Tag;
+use jsdoc::Input;
 use regex::Regex;
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use swc_common::{comments::SingleThreadedComments, SourceMap, Span};
+use swc_ecmascript::visit::Visit;
+use swc_ecmascript::{
+  ast::{Class, Decl, ExportDecl, Expr, Function, Module, VarDecl},
+  visit::Node,
+};
 
 use crate::test_runner::is_supported;
 
 lazy_static! {
+  // matches non-dynamic js imports
   static ref IMPORT_PATTERN: Regex =
     Regex::new(r#"import\s+?(?:(?:(?:[\w*\s{},]*)\s+from\s+?)|)(?:(?:".*?")|(?:'.*?'))[\s]*?(?:;|$|)"#).unwrap();
-  static ref EXAMPLE_PATTERN: Regex = Regex::new(r"@example\s*(?:<\w+>.*</\w+>)*\n(?:\s*\*\s*\n*)*```").unwrap();
   static ref TEST_TAG_PATTERN: Regex = Regex::new(r"```(\w+)?").unwrap();
   static ref AWAIT_PATTERN: Regex = Regex::new(r"\Wawait\s").unwrap();
+  // matches jsdoc example caption
   static ref CAPTION_PATTERN: Regex =
       Regex::new(r"<caption>([\s\w\W]+)</caption>").unwrap();
-  static ref TICKS_OR_IMPORT_PATTERN: Regex =
-      Regex::new(r"(?:import[^(].*)|(?:```\w*)").unwrap();
+}
+
+struct DocTestVisitor {
+  comments: SingleThreadedComments,
+  source_map: Rc<SourceMap>,
+  examples: RefCell<Vec<(Location, String)>>,
+}
+
+struct DocTester {
+  doctest_visitor: DocTestVisitor,
+  module: Module,
+}
+
+impl DocTester {
+  fn new(
+    module: Module,
+    comments: SingleThreadedComments,
+    source_map: Rc<SourceMap>,
+  ) -> Self {
+    Self {
+      doctest_visitor: DocTestVisitor::new(comments, source_map),
+      module,
+    }
+  }
+  pub fn get_comments(&mut self) -> Vec<(Location, String)> {
+    let visitor = self.doctest_visitor.borrow_mut();
+    visitor.visit_module(&self.module, &self.module);
+    visitor.examples.clone().into_inner()
+  }
+}
+
+impl DocTestVisitor {
+  fn new(comments: SingleThreadedComments, source_map: Rc<SourceMap>) -> Self {
+    Self {
+      comments,
+      source_map,
+      examples: RefCell::new(vec![]),
+    }
+  }
+
+  fn get_span_location(&self, span: Span) -> Location {
+    self.source_map.lookup_char_pos(span.lo()).into()
+  }
+
+  fn parse_span_comments(&mut self, span: Span) {
+    let comments = self
+      .comments
+      .with_leading(span.lo, |comments| comments.to_vec());
+    let examples = comments
+      .iter()
+      .map(|comment| {
+        jsdoc::parse(Input::from(comment))
+          .expect("Unable to parse jsdoc")
+          .1
+      })
+      .flat_map(|js_doc| {
+        js_doc
+          .tags
+          .into_iter()
+          .filter_map(|tag_item| match tag_item.tag {
+            Tag::Example(ex_tag) => Some((
+              self.get_span_location(ex_tag.text.span),
+              ex_tag.text.value.to_string(),
+            )),
+            _ => None,
+          })
+      });
+    self.examples.borrow_mut().extend(examples);
+  }
+
+  fn check_var_decl(
+    &mut self,
+    var_decl: &VarDecl,
+    opt_export_decl: Option<&ExportDecl>,
+  ) {
+    var_decl.decls.iter().for_each(|decl| {
+      if let Some(expr) = &decl.init {
+        match &**expr {
+          Expr::Object(_) | Expr::Fn(_) | Expr::Class(_) | Expr::Arrow(_) => {
+            if let Some(export_decl) = opt_export_decl {
+              self.parse_span_comments(export_decl.span);
+            } else {
+              self.parse_span_comments(var_decl.span);
+            }
+          }
+          _ => {}
+        }
+      }
+    });
+  }
+}
+
+impl Visit for DocTestVisitor {
+  fn visit_class(&mut self, class: &Class, parent: &dyn Node) {
+    self.parse_span_comments(class.span);
+    swc_ecmascript::visit::visit_class(self, class, parent);
+  }
+
+  fn visit_function(&mut self, function: &Function, parent: &dyn Node) {
+    self.parse_span_comments(function.span);
+    swc_ecmascript::visit::visit_function(self, function, parent);
+  }
+
+  fn visit_var_decl(&mut self, var_decl: &VarDecl, parent: &dyn Node) {
+    self.check_var_decl(var_decl, None);
+    swc_ecmascript::visit::visit_var_decl(self, var_decl, parent);
+  }
+
+  fn visit_export_decl(&mut self, export_decl: &ExportDecl, parent: &dyn Node) {
+    match &export_decl.decl {
+      Decl::Var(var_decl) => self.check_var_decl(var_decl, Some(export_decl)),
+      Decl::Class(_) | Decl::Fn(_) => {
+        self.parse_span_comments(export_decl.span)
+      }
+      _ => {}
+    }
+    swc_ecmascript::visit::visit_export_decl(self, export_decl, parent);
+  }
 }
 
 pub async fn parse_jsdocs(
   source_files: &Vec<Url>,
   flags: Flags,
-) -> Result<Vec<(ast::Location, String)>, AnyError> {
+) -> Result<Vec<(Location, String)>, AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let loader = Box::new(global_state.file_fetcher.clone());
 
@@ -41,60 +170,49 @@ pub async fn parse_jsdocs(
     let path = PathBuf::from(&url.to_string());
     let media_type = MediaType::from(&path);
     let specifier = ModuleSpecifier::resolve_url(&url.to_string())?;
-    let module = ast::parse(&specifier, &source_code, &media_type)?;
-
-    let result = module
-      .get_leading_comments()
-      .into_iter()
-      .map(|comment| {
-        jsdoc::parse(Input::from(&comment))
-          .expect("Error Parsing Jsdoc")
-          .1
-      })
-      .flat_map(|jsdoc| jsdoc.tags)
-      .filter_map(|tag_item| match tag_item.tag {
-        Tag::Example(ex_tag) => Some((
-          module.get_location(&ex_tag.text.span),
-          ex_tag.text.value.to_string(),
-        )),
-        _ => None,
-      })
-      .collect::<Vec<_>>();
-    results.extend(result);
+    let parsed_module = ast::parse(&specifier, &source_code, &media_type)?;
+    let mut doc_tester = DocTester::new(
+      parsed_module.module,
+      parsed_module.comments,
+      Rc::clone(&parsed_module.source_map),
+    );
+    results.extend(doc_tester.get_comments());
   }
   Ok(results)
 }
 
 pub fn prepare_doctests(
-  jsdocs: Vec<(ast::Location, String)>,
+  jsdocs: Vec<(Location, String)>,
   fail_fast: bool,
   quiet: bool,
   filter: Option<String>,
 ) -> Result<String, AnyError> {
   let mut test_file =  "import * as assert from \"https://deno.land/std@0.70.0/testing/asserts.ts\";\n".to_string();
   let mut import_set = HashSet::new();
+
   let cwd = std::env::current_dir()?;
   let cwd_url_str = Url::from_directory_path(cwd)
     .map(|url| url.to_string())
     .unwrap_or("".to_string());
+
   let tests: String = jsdocs
     .into_iter()
-    .map(|(loc, example)| (loc, clean_string(&example)))
-    .filter_map(|(l, x)| {
-      let test_tag = extract_test_tag(&x);
+    .filter_map(|(loc, example)| {
+      let ex_str = clean_string(&example);
+      let test_tag = extract_test_tag(&ex_str);
       if test_tag == Some("text") {
         return  None;
       }
       let ignore = test_tag == Some("ignore");
-      extract_imports(&x).into_iter().for_each(|import| { import_set.insert(import.to_string()); });
-      let caption = extract_caption(&x);
-      let code_body = extract_code_body(&x);
-      let is_async = has_await(&x);
+      extract_imports(&ex_str).into_iter().for_each(|import| { import_set.insert(import.to_string()); });
+      let caption = extract_caption(&ex_str);
+      let code_body = extract_code_body(&ex_str);
+      let is_async = has_await(&ex_str);
       let res = format!(
-        "\nDeno.test({{\n\tname: \"{} - {} (line {})\",\n\tignore: {},\n\t{}fn() {{\n{}\n}}\n}});\n",
-        l.filename.replace(&cwd_url_str, ""),
+        "\nDeno.test({{\n\tname: \"{} - {} (line {})\",\n\tignore: {},\n\t{} fn() {{\n{}\n}}\n}});\n",
+        loc.filename.replace(&cwd_url_str, ""),
         caption.unwrap_or(""),
-        l.line,
+        loc.line,
         ignore,
         if is_async { "async"} else {""},
         code_body
@@ -194,7 +312,7 @@ fn extract_code_body(ex: &str) -> String {
 mod test {
   use super::*;
   #[test]
-  fn test_extract_jsdoc() {
+  fn test_extract_fns() {
     let test = r#"<caption>Linkedlists.compareWith</caption>
     * ```ts
     * import { LinkedList } from './js_test/linkedlist.ts'
@@ -206,7 +324,7 @@ mod test {
     *   secondList.insertNode(data);
     * }
     * const result = firstList.compareWith(secondList);
-    * assert(result);
+    * assert.assert(result);
     ```"#;
     let res = clean_string(test);
     assert_eq!(extract_caption(&res), Some("Linkedlists.compareWith"));

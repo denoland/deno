@@ -207,10 +207,10 @@ impl Default for TranspileOptions {
 /// processing.
 #[derive(Clone)]
 pub struct ParsedModule {
-  comments: SingleThreadedComments,
+  pub(crate) comments: SingleThreadedComments,
   leading_comments: Vec<Comment>,
-  module: Module,
-  source_map: Rc<SourceMap>,
+  pub(crate) module: Module,
+  pub(crate) source_map: Rc<SourceMap>,
 }
 
 impl fmt::Debug for ParsedModule {
