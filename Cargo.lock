@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.4.4"
+version = "1.4.5"
 dependencies = [
  "atty",
  "base64 0.12.3",
@@ -450,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "deno_core",
  "reqwest",
@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "deno_core",
  "futures",

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.4.4"
+version = "1.4.5"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,20 +20,20 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.61.0" }
-deno_web = { path = "../op_crates/web", version = "0.13.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.5.0" }
+deno_core = { path = "../core", version = "0.62.0" }
+deno_web = { path = "../op_crates/web", version = "0.14.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.6.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.61.0" }
+deno_core = { path = "../core", version = "0.62.0" }
 deno_doc = "0.1.11"
 deno_lint = { version = "0.2.3", features = ["json"] }
-deno_web = { path = "../op_crates/web", version = "0.13.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.5.0" }
+deno_web = { path = "../op_crates/web", version = "0.14.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.6.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
