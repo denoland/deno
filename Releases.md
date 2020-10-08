@@ -6,7 +6,7 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-### 1.4.4 / 2020.10.03
+### 1.4.5 / 2020.10.08
 
 - feat(unstable): Revert "enable importsNotUsedAsValues by default #7413"
   (#7800)
