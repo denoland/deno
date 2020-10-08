@@ -3,8 +3,6 @@
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
-use crate::graph::GraphBuilder;
-use crate::graph::TranspileOptions;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
@@ -12,6 +10,8 @@ use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
+use crate::module_graph2::GraphBuilder2;
+use crate::module_graph2::TranspileOptions;
 use crate::permissions::Permissions;
 use crate::specifier_handler::FetchHandler;
 use crate::tsc::CompiledModule;
@@ -21,10 +21,7 @@ use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::cell::RefCell;
 use std::env;
-use std::fs;
-use std::io;
 use std::rc::Rc;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -48,7 +45,6 @@ pub struct GlobalState {
   pub file_fetcher: SourceFileFetcher,
   pub ts_compiler: TsCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
-  pub compiler_starts: AtomicUsize,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
@@ -109,7 +105,6 @@ impl GlobalState {
       lockfile,
       maybe_import_map,
       maybe_inspector_server,
-      compiler_starts: AtomicUsize::new(0),
     };
     Ok(Arc::new(global_state))
   }
@@ -131,43 +126,25 @@ impl GlobalState {
 
     if self.flags.no_check {
       debug!("Transpiling root: {}", module_specifier);
+      // TODO(kitsonk) note that self.permissions != permissions, which is
+      // something that should be handled better in the future.
       let handler =
-        Rc::new(RefCell::new(FetchHandler::new(&self.flags, &permissions)?));
-      let mut builder = GraphBuilder::new(handler, maybe_import_map);
+        Rc::new(RefCell::new(FetchHandler::new(self, permissions.clone())?));
+      let mut builder = GraphBuilder2::new(handler, maybe_import_map);
       builder.insert(&module_specifier).await?;
       let mut graph = builder.get_graph(&self.lockfile)?;
-
-      // TODO(kitsonk) this needs to move, but CompilerConfig is way too
-      // complicated to use here.
-      let maybe_config = if let Some(path) = self.flags.config_path.clone() {
-        let cwd = std::env::current_dir()?;
-        let config_file = cwd.join(path);
-        let config_path = config_file.canonicalize().map_err(|_| {
-          io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-              "Could not find the config file: {}",
-              config_file.to_string_lossy()
-            ),
-          )
-        })?;
-        let config_str = fs::read_to_string(config_path)?;
-
-        Some(config_str)
-      } else {
-        None
-      };
 
       let (stats, maybe_ignored_options) =
         graph.transpile(TranspileOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
-          maybe_config,
+          maybe_config_path: self.flags.config_path.clone(),
         })?;
 
-      debug!("{}", stats);
       if let Some(ignored_options) = maybe_ignored_options {
-        println!("Some compiler options were ignored:\n  {}", ignored_options);
+        eprintln!("{}", ignored_options);
       }
+
+      debug!("{}", stats);
     } else {
       let mut module_graph_loader = ModuleGraphLoader::new(
         self.file_fetcher.clone(),
@@ -216,7 +193,7 @@ impl GlobalState {
       if should_compile {
         self
           .ts_compiler
-          .compile(self, &out, target_lib, permissions, &module_graph, allow_js)
+          .compile(self, &out, target_lib, &module_graph, allow_js)
           .await?;
       }
     }
@@ -270,7 +247,7 @@ impl GlobalState {
       }
     } else {
       CompiledModule {
-        code: out.source_code.to_string()?,
+        code: out.source_code,
         name: out.url.to_string(),
       }
     };

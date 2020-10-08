@@ -207,7 +207,7 @@ class Printf {
               this.handleWidthOrPrecisionRef(WorP.WIDTH);
               // force . or flag at this point
               break;
-            default:
+            default: {
               const val = parseInt(c);
               // most likely parseInt does something stupid that makes
               // it unusable for this scenario ...
@@ -220,6 +220,7 @@ class Printf {
               flags.width = flags.width == -1 ? 0 : flags.width;
               flags.width *= 10;
               flags.width += val;
+            }
           } // switch c
           break;
         case State.PRECISION: {

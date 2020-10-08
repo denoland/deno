@@ -46,10 +46,6 @@
     return promise;
   }
 
-  function notImplemented() {
-    throw new Error("not implemented");
-  }
-
   function immutableDefine(
     o,
     p,
@@ -139,7 +135,6 @@
   window.__bootstrap.util = {
     log,
     setLogDebug,
-    notImplemented,
     createResolvable,
     assert,
     AssertionError,

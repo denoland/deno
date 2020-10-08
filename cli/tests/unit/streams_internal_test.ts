@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertThrows } from "./test_util.ts";
+import { assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function streamReadableHwmError() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

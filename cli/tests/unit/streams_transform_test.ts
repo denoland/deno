@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertNotEquals,
   assertThrows,
+  unitTest,
 } from "./test_util.ts";
 
 function delay(seconds: number): Promise<void> {

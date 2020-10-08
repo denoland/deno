@@ -1,18 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import {
-  findIndex,
-  findLastIndex,
-  equal,
-  hasPrefix,
-  hasSuffix,
-  repeat,
   concat,
   contains,
   copyBytes,
+  equal,
+  findIndex,
+  findLastIndex,
+  hasPrefix,
+  hasSuffix,
+  repeat,
 } from "./mod.ts";
-import { assertEquals, assertThrows, assert } from "../testing/asserts.ts";
-import { encode, decode } from "../encoding/utf8.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
+import { decode, encode } from "../encoding/utf8.ts";
 
 Deno.test("[bytes] findIndex1", () => {
   const i = findIndex(

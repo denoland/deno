@@ -5,8 +5,8 @@
 - Like browsers, Deno implements web standard APIs such as
   [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API).
 - Deno is secure by default, meaning explicit permission must be granted to
-  access the network
-- See also: Deno's [permissions](../getting_started/permissions.md) model
+  access the network.
+- See also: Deno's [permissions](../getting_started/permissions.md) model.
 
 ## Overview
 

@@ -113,7 +113,7 @@ def pylint():
 
 
 def clippy():
-    print "clippy"
+    print("clippy")
     current_build_mode = build_mode()
     args = ["cargo", "clippy", "--all-targets", "--locked"]
     if current_build_mode != "debug":

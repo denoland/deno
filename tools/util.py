@@ -58,7 +58,7 @@ def run(args, quiet=False, cwd=None, env=None, merge_env=None, shell=None):
         #   - Windows: use shell; this makes .bat/.cmd files work.
         shell = os.name == "nt"
     if not quiet:
-        print " ".join([shell_quote(arg) for arg in args])
+        print(" ".join([shell_quote(arg) for arg in args]))
     rc = subprocess.call(args, cwd=cwd, env=env, shell=shell)
     if rc != 0:
         sys.exit(rc)
@@ -77,7 +77,7 @@ def run_output(args,
         merge_env = {}
     args[0] = os.path.normpath(args[0])
     if not quiet:
-        print " ".join(args)
+        print(" ".join(args))
     env = make_env(env=env, merge_env=merge_env)
     shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
     p = subprocess.Popen(
@@ -412,4 +412,4 @@ def tty_capture(cmd, bytes_input, timeout=5):
 
 def print_command(cmd, files):
     noun = "file" if len(files) == 1 else "files"
-    print "%s (%d %s)" % (cmd, len(files), noun)
+    print("%s (%d %s)" % (cmd, len(files), noun))

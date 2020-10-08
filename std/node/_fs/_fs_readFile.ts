@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  Encodings,
-  getEncoding,
-  FileOptionsArgument,
-  TextOptionsArgument,
-  BinaryOptionsArgument,
-  TextEncodings,
   BinaryEncodings,
+  BinaryOptionsArgument,
+  Encodings,
+  FileOptionsArgument,
+  getEncoding,
+  TextEncodings,
+  TextOptionsArgument,
 } from "./_fs_common.ts";
 import { Buffer } from "../buffer.ts";
 import { fromFileUrl } from "../path.ts";

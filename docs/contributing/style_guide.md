@@ -257,6 +257,29 @@ the first column of the comment. For example:
 Code examples should not contain additional comments. It is already inside a
 comment. If it needs further comments it is not a good example.
 
+### Resolve linting problems using ESLint directives
+
+Currently, the building process uses ESLint to validate linting problems in the
+code. Don't use `deno_lint` directives while working with internal Deno code and
+the std library.
+
+What would be:
+
+```typescript
+// deno-lint-ignore no-explicit-any
+let x: any;
+```
+
+Should rather be:
+
+```typescript
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let x: any;
+```
+
+This ensures the continuous integration process doesn't fail due to linting
+problems.
+
 ### Each module should come with a test module.
 
 Every module with public functionality `foo.ts` should come with a test module

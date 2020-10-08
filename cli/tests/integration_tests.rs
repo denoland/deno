@@ -345,6 +345,88 @@ fn cache_test() {
 }
 
 #[test]
+fn cache_invalidation_test() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
+}
+
+#[test]
+fn cache_invalidation_test_no_check() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
+}
+
+#[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
@@ -711,7 +793,7 @@ fn ts_reload() {
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
-    .contains("\"compiler::host.writeFile\" \"deno://002_hello.js\""));
+    .contains("\"host.writeFile(\\\"deno://002_hello.js\\\")\""));
 }
 
 #[test]
@@ -1085,6 +1167,45 @@ fn repl_test_block_expression() {
 }
 
 #[test]
+fn repl_test_await_resolve() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await Promise.resolve('done')"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("\"done\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_await_timeout() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await new Promise((r) => setTimeout(r, 0, 'done'))"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("\"done\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_let_redeclaration() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["let foo = 0;", "foo", "let foo = 1;", "foo"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("undefined\n0\nundefined\n1\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
 fn repl_cwd() {
   let (_out, err) = util::run_and_collect_output(
     true,
@@ -1157,6 +1278,7 @@ fn repl_test_function() {
 }
 
 #[test]
+#[ignore]
 fn repl_test_multiline() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -1167,6 +1289,18 @@ fn repl_test_multiline() {
   );
   assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_import() {
+  let (out, _) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["import('./subdir/auto_print_hello.ts')"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.contains("hello!\n"));
 }
 
 #[test]
@@ -1292,7 +1426,7 @@ fn repl_test_save_last_thrown() {
     false,
   );
   assert!(out.ends_with("1\n"));
-  assert_eq!(err, "Thrown: 1\n");
+  assert_eq!(err, "Uncaught 1\n");
 }
 
 #[test]
@@ -1322,7 +1456,7 @@ fn repl_test_assign_underscore_error() {
   assert!(
     out.ends_with("Last thrown error is no longer saved to _error.\n1\n1\n")
   );
-  assert_eq!(err, "Thrown: 2\n");
+  assert_eq!(err, "Uncaught 2\n");
 }
 
 #[test]
@@ -1504,6 +1638,12 @@ itest!(deno_test_only {
   args: "test deno_test_only.ts",
   exit_code: 1,
   output: "deno_test_only.ts.out",
+});
+
+itest!(deno_test_no_check {
+  args: "test --no-check test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test.out",
 });
 
 #[test]
@@ -2514,6 +2654,22 @@ itest!(info_recursive_modules {
 itest!(info_type_import {
   args: "info info_type_import.ts",
   output: "info_type_import.out",
+});
+
+itest!(ignore_require {
+  args: "cache --reload --no-check ignore_require.js",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(top_level_await_bug {
+  args: "run --allow-read top_level_await_bug.js",
+  output: "top_level_await_bug.out",
+});
+
+itest!(top_level_await_bug2 {
+  args: "run --allow-read top_level_await_bug2.js",
+  output: "top_level_await_bug2.out",
 });
 
 #[test]

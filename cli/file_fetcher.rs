@@ -19,7 +19,6 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_fetch::reqwest;
 use log::info;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -32,59 +31,6 @@ use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Structure representing a text document.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct TextDocument {
-  bytes: Vec<u8>,
-  charset: Cow<'static, str>,
-}
-
-impl TextDocument {
-  pub fn new(
-    bytes: Vec<u8>,
-    charset: Option<impl Into<Cow<'static, str>>>,
-  ) -> TextDocument {
-    let charset = charset
-      .map(|cs| cs.into())
-      .unwrap_or_else(|| text_encoding::detect_charset(&bytes).into());
-    TextDocument { bytes, charset }
-  }
-
-  pub fn as_bytes(&self) -> &Vec<u8> {
-    &self.bytes
-  }
-
-  pub fn into_bytes(self) -> Vec<u8> {
-    self.bytes
-  }
-
-  pub fn to_str(&self) -> Result<Cow<str>, std::io::Error> {
-    text_encoding::convert_to_utf8(&self.bytes, &self.charset)
-  }
-
-  pub fn to_string(&self) -> Result<String, std::io::Error> {
-    self.to_str().map(String::from)
-  }
-}
-
-impl From<Vec<u8>> for TextDocument {
-  fn from(bytes: Vec<u8>) -> Self {
-    TextDocument::new(bytes, Option::<&str>::None)
-  }
-}
-
-impl From<String> for TextDocument {
-  fn from(s: String) -> Self {
-    TextDocument::new(s.as_bytes().to_vec(), Option::<&str>::None)
-  }
-}
-
-impl From<&str> for TextDocument {
-  fn from(s: &str) -> Self {
-    TextDocument::new(s.as_bytes().to_vec(), Option::<&str>::None)
-  }
-}
-
 /// Structure representing local or remote file.
 ///
 /// In case of remote file `url` might be different than originally requested URL, if so
@@ -95,7 +41,7 @@ pub struct SourceFile {
   pub filename: PathBuf,
   pub types_header: Option<String>,
   pub media_type: MediaType,
-  pub source_code: TextDocument,
+  pub source_code: String,
 }
 
 /// Simple struct implementing in-process caching to prevent multiple
@@ -242,9 +188,8 @@ impl SourceFileFetcher {
     match result {
       Ok(mut file) => {
         // TODO: move somewhere?
-        if file.source_code.bytes.starts_with(b"#!") {
-          file.source_code =
-            filter_shebang(&file.source_code.to_str().unwrap()[..]).into();
+        if file.source_code.starts_with("#!") {
+          file.source_code = filter_shebang(&file.source_code);
         }
 
         // Cache in-process for subsequent access.
@@ -369,17 +314,18 @@ impl SourceFileFetcher {
       .map_err(|()| uri_error("File URL contains invalid path"))?;
 
     permissions.check_read(&filepath)?;
-    let source_code = match fs::read(filepath.clone()) {
-      Ok(c) => c,
-      Err(e) => return Err(e.into()),
-    };
-
-    let (media_type, charset) = map_content_type(&filepath, None);
+    let bytes = fs::read(filepath.clone())?;
+    let source_code = text_encoding::convert_to_utf8(
+      &bytes,
+      text_encoding::detect_charset(&bytes),
+    )?
+    .to_string();
+    let (media_type, _) = map_content_type(&filepath, None);
     Ok(SourceFile {
       url: module_url.clone(),
       filename: filepath,
       media_type,
-      source_code: TextDocument::new(source_code, charset),
+      source_code,
       types_header: None,
     })
   }
@@ -444,12 +390,17 @@ impl SourceFileFetcher {
       &fake_filepath,
       headers.get("content-type").map(|e| e.as_str()),
     );
+    let source_code = if let Some(charset) = charset {
+      text_encoding::convert_to_utf8(&source_code, &charset)?.to_string()
+    } else {
+      String::from_utf8(source_code)?
+    };
     let types_header = headers.get("x-typescript-types").map(|e| e.to_string());
     Ok(Some(SourceFile {
       url: module_url.clone(),
       filename: cache_filename,
       media_type,
-      source_code: TextDocument::new(source_code, charset),
+      source_code,
       types_header,
     }))
   }
@@ -549,6 +500,11 @@ impl SourceFileFetcher {
             &fake_filepath,
             headers.get("content-type").map(String::as_str),
           );
+          let source_code = if let Some(charset) = charset {
+            text_encoding::convert_to_utf8(&source, &charset)?.to_string()
+          } else {
+            String::from_utf8(source)?
+          };
 
           let types_header =
             headers.get("x-typescript-types").map(String::to_string);
@@ -557,7 +513,7 @@ impl SourceFileFetcher {
             url: module_url.clone(),
             filename: cache_filepath,
             media_type,
-            source_code: TextDocument::new(source, charset),
+            source_code,
             types_header,
           };
 
@@ -631,12 +587,12 @@ fn map_js_like_extension(path: &Path, default: MediaType) -> MediaType {
   }
 }
 
-fn filter_shebang(string: &str) -> Vec<u8> {
+fn filter_shebang(string: &str) -> String {
   if let Some(i) = string.find('\n') {
     let (_, rest) = string.split_at(i);
-    rest.as_bytes().to_owned()
+    rest.to_string()
   } else {
-    Vec::new()
+    "".to_string()
   }
 }
 
@@ -811,8 +767,8 @@ mod tests {
     assert!(result.is_ok());
     let r = result.unwrap();
     assert_eq!(
-      r.source_code.bytes,
-      &b"export { printHello } from \"./print_hello.ts\";\n"[..]
+      r.source_code,
+      "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(&(r.media_type), &MediaType::TypeScript);
 
@@ -838,8 +794,8 @@ mod tests {
     assert!(result2.is_ok());
     let r2 = result2.unwrap();
     assert_eq!(
-      r2.source_code.bytes,
-      &b"export { printHello } from \"./print_hello.ts\";\n"[..]
+      r2.source_code,
+      "export { printHello } from \"./print_hello.ts\";\n"
     );
     // If get_source_file does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
@@ -867,8 +823,8 @@ mod tests {
     assert!(result3.is_ok());
     let r3 = result3.unwrap();
     assert_eq!(
-      r3.source_code.bytes,
-      &b"export { printHello } from \"./print_hello.ts\";\n"[..]
+      r3.source_code,
+      "export { printHello } from \"./print_hello.ts\";\n"
     );
     // If get_source_file does not call remote, this should be JavaScript
     // as we modified before! (we do not overwrite .headers.json due to no http fetch)
@@ -893,8 +849,8 @@ mod tests {
       .await;
     assert!(result4.is_ok());
     let r4 = result4.unwrap();
-    let expected4 = &b"export { printHello } from \"./print_hello.ts\";\n"[..];
-    assert_eq!(r4.source_code.bytes, expected4);
+    let expected4 = "export { printHello } from \"./print_hello.ts\";\n";
+    assert_eq!(r4.source_code, expected4);
     // Resolved back to TypeScript
     assert_eq!(&(r4.media_type), &MediaType::TypeScript);
   }
@@ -921,8 +877,8 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
-    let expected = b"export const loaded = true;\n";
-    assert_eq!(r.source_code.bytes, expected);
+    let expected = "export const loaded = true;\n";
+    assert_eq!(r.source_code, expected);
     assert_eq!(&(r.media_type), &MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
@@ -947,8 +903,8 @@ mod tests {
       .await;
     assert!(result2.is_ok());
     let r2 = result2.unwrap();
-    let expected2 = b"export const loaded = true;\n";
-    assert_eq!(r2.source_code.bytes, expected2);
+    let expected2 = "export const loaded = true;\n";
+    assert_eq!(r2.source_code, expected2);
     // If get_source_file does not call remote, this should be TypeScript
     // as we modified before! (we do not overwrite .headers.json due to no http
     // fetch)
@@ -973,8 +929,8 @@ mod tests {
       .await;
     assert!(result3.is_ok());
     let r3 = result3.unwrap();
-    let expected3 = b"export const loaded = true;\n";
-    assert_eq!(r3.source_code.bytes, expected3);
+    let expected3 = "export const loaded = true;\n";
+    assert_eq!(r3.source_code, expected3);
     // Now the old .headers.json file should be overwritten back to JavaScript!
     // (due to http fetch)
     assert_eq!(&(r3.media_type), &MediaType::JavaScript);
@@ -1378,7 +1334,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
-    assert_eq!(r.source_code.bytes, b"export const loaded = true;\n");
+    assert_eq!(r.source_code, "export const loaded = true;\n");
     assert_eq!(&(r.media_type), &MediaType::TypeScript);
 
     // Modify .metadata.json, make sure read from local
@@ -1394,7 +1350,7 @@ mod tests {
     let result2 = fetcher.fetch_cached_remote_source(&module_url, 1);
     assert!(result2.is_ok());
     let r2 = result2.unwrap().unwrap();
-    assert_eq!(r2.source_code.bytes, b"export const loaded = true;\n");
+    assert_eq!(r2.source_code, "export const loaded = true;\n");
     // Not MediaType::TypeScript due to .headers.json modification
     assert_eq!(&(r2.media_type), &MediaType::JavaScript);
   }
@@ -1416,7 +1372,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
-    assert_eq!(r.source_code.bytes, b"export const loaded = true;\n");
+    assert_eq!(r.source_code, "export const loaded = true;\n");
     assert_eq!(&(r.media_type), &MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
@@ -1440,7 +1396,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let r2 = result.unwrap();
-    assert_eq!(r2.source_code.bytes, b"export const loaded = true;\n");
+    assert_eq!(r2.source_code, "export const loaded = true;\n");
     assert_eq!(&(r2.media_type), &MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
@@ -1464,7 +1420,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let r3 = result.unwrap();
-    assert_eq!(r3.source_code.bytes, b"export const loaded = true;\n");
+    assert_eq!(r3.source_code, "export const loaded = true;\n");
     assert_eq!(&(r3.media_type), &MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
@@ -1559,10 +1515,7 @@ mod tests {
       .await;
     assert!(r.is_ok());
     let fetched_file = r.unwrap();
-    let source_code = fetched_file.source_code.to_str();
-    assert!(source_code.is_ok());
-    let actual = source_code.unwrap();
-    assert_eq!(expected_content, actual);
+    assert_eq!(expected_content, fetched_file.source_code);
   }
 
   #[tokio::test]
@@ -1795,10 +1748,10 @@ mod tests {
 
   #[test]
   fn test_filter_shebang() {
-    assert_eq!(filter_shebang("#!"), b"");
-    assert_eq!(filter_shebang("#!\n\n"), b"\n\n");
+    assert_eq!(filter_shebang("#!"), "");
+    assert_eq!(filter_shebang("#!\n\n"), "\n\n");
     let code = "#!/usr/bin/env deno\nconsole.log('hello');\n";
-    assert_eq!(filter_shebang(code), b"\nconsole.log('hello');\n");
+    assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n");
   }
 
   #[tokio::test]
@@ -1819,7 +1772,7 @@ mod tests {
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
-    assert_eq!(source.source_code.bytes, b"console.log('etag')");
+    assert_eq!(source.source_code, "console.log('etag')");
     assert_eq!(&(source.media_type), &MediaType::TypeScript);
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
@@ -1846,7 +1799,7 @@ mod tests {
       )
       .await
       .unwrap();
-    assert_eq!(cached_source.source_code.bytes, b"changed content");
+    assert_eq!(cached_source.source_code, "changed content");
 
     let modified2 = metadata_path.metadata().unwrap().modified().unwrap();
 
@@ -1871,7 +1824,7 @@ mod tests {
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
-    assert_eq!(source.source_code.bytes, b"export const foo = 'foo';");
+    assert_eq!(source.source_code, "export const foo = 'foo';");
     assert_eq!(&(source.media_type), &MediaType::JavaScript);
     assert_eq!(
       source.types_header,
@@ -1941,9 +1894,7 @@ mod tests {
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
-    assert_eq!(&source.source_code.charset.to_lowercase()[..], charset);
-    let text = &source.source_code.to_str().unwrap();
-    assert_eq!(text, expected_content);
+    assert_eq!(source.source_code, expected_content);
     assert_eq!(&(source.media_type), &MediaType::TypeScript);
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();

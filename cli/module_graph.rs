@@ -489,7 +489,7 @@ impl ModuleGraphLoader {
       &source_file.source_code.as_bytes(),
       version::DENO.as_bytes(),
     ]);
-    let source_code = source_file.source_code.to_string()?;
+    let source_code = source_file.source_code.clone();
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {

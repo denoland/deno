@@ -72,7 +72,6 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
-    coverage: bool,
   },
   Types,
   Upgrade {
@@ -108,6 +107,7 @@ pub struct Flags {
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
+  pub coverage: bool,
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
@@ -121,6 +121,7 @@ pub struct Flags {
   pub no_remote: bool,
   pub read_allowlist: Vec<PathBuf>,
   pub reload: bool,
+  pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
   pub v8_flags: Option<Vec<String>>,
@@ -448,6 +449,7 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false);
+  flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -587,9 +589,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let filter = matches.value_of("filter").map(String::from);
   let coverage = matches.is_present("coverage");
 
-  // Coverage implies `--inspect`
   if coverage {
-    flags.inspect = Some("127.0.0.1:9229".parse::<SocketAddr>().unwrap());
+    flags.coverage = true;
   }
 
   let include = if matches.is_present("files") {
@@ -610,7 +611,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     filter,
     allow_none,
-    coverage,
   };
 }
 
@@ -2153,6 +2153,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         allow_net: true,
         allow_env: true,
@@ -2173,6 +2174,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
@@ -2867,7 +2869,6 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
-          coverage: false,
         },
         allow_net: true,
         ..Flags::default()
@@ -2888,7 +2889,6 @@ mod tests {
           quiet: false,
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
-          coverage: false,
         },
         ..Flags::default()
       }
@@ -2928,7 +2928,6 @@ mod tests {
           quiet: false,
           filter: Some("- foo".to_string()),
           include: Some(svec!["dir1"]),
-          coverage: false,
         },
         ..Flags::default()
       }
@@ -2954,9 +2953,8 @@ mod tests {
           quiet: false,
           filter: None,
           include: Some(svec!["dir1"]),
-          coverage: true,
         },
-        inspect: Some("127.0.0.1:9229".parse::<SocketAddr>().unwrap()),
+        coverage: true,
         unstable: true,
         ..Flags::default()
       }

@@ -2,8 +2,8 @@
 /** This module is browser compatible. Do not rely on good formatting of values
  * for AssertionError messages in browsers. */
 
-import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
-import diff, { DiffType, DiffResult } from "./diff.ts";
+import { bold, gray, green, red, stripColor, white } from "../fmt/colors.ts";
+import { diff, DiffResult, DiffType } from "./_diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
@@ -21,13 +21,13 @@ export class AssertionError extends Error {
 
 export function _format(v: unknown): string {
   return globalThis.Deno
-    ? stripColor(Deno.inspect(v, {
+    ? Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
       trailingComma: true,
       compact: false,
       iterableLimit: Infinity,
-    }))
+    })
     : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
 }
 

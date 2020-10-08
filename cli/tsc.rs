@@ -8,29 +8,26 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::js;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
-use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-use crate::state::CliModuleLoader;
 use crate::tsc_config;
 use crate::version;
-use crate::worker::Worker;
-use core::task::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::Future;
-use deno_core::futures::future::FutureExt;
+use deno_core::error::JsError;
+use deno_core::json_op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_core::RuntimeOptions;
 use log::debug;
 use log::info;
 use log::Level;
@@ -44,15 +41,10 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::ops::Deref;
-use std::ops::DerefMut;
-use std::path::Path;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::str;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::task::Poll;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
 use swc_ecmascript::dep_graph;
@@ -125,71 +117,6 @@ pub struct CompiledModule {
   pub name: String,
 }
 
-pub struct CompilerWorker {
-  worker: Worker,
-  response: Arc<Mutex<Option<String>>>,
-}
-
-impl CompilerWorker {
-  pub fn new(
-    name: String,
-    permissions: Permissions,
-    global_state: Arc<GlobalState>,
-  ) -> Self {
-    let main_module =
-      ModuleSpecifier::resolve_url_or_path("./$deno$compiler.ts").unwrap();
-    // TODO(bartlomieju): compiler worker shouldn't require any loader/state
-    let loader = CliModuleLoader::new(None);
-    let mut worker = Worker::new(
-      name,
-      Some(js::compiler_isolate_init()),
-      permissions,
-      main_module,
-      global_state,
-      loader,
-      false,
-      true,
-    );
-    let response = Arc::new(Mutex::new(None));
-    ops::runtime::init(&mut worker);
-    ops::errors::init(&mut worker);
-    ops::timers::init(&mut worker);
-    ops::compiler::init(&mut worker, response.clone());
-    Self { worker, response }
-  }
-
-  pub fn get_response(&mut self) -> String {
-    let mut maybe_response = self.response.lock().unwrap();
-    assert!(
-      maybe_response.is_some(),
-      "Unexpected missing response from TS compiler"
-    );
-    maybe_response.take().unwrap()
-  }
-}
-
-impl Deref for CompilerWorker {
-  type Target = Worker;
-  fn deref(&self) -> &Self::Target {
-    &self.worker
-  }
-}
-
-impl DerefMut for CompilerWorker {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.worker
-  }
-}
-
-impl Future for CompilerWorker {
-  type Output = Result<(), AnyError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.worker.poll_unpin(cx)
-  }
-}
-
 lazy_static! {
   /// Matches the `@deno-types` pragma.
   static ref DENO_TYPES_RE: Regex =
@@ -213,33 +140,10 @@ lazy_static! {
 
 fn warn_ignored_options(
   maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
-  config_path: &Path,
 ) {
   if let Some(ignored_options) = maybe_ignored_options {
-    eprintln!(
-      "Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}",
-      config_path.to_string_lossy(),
-      ignored_options
-    );
+    eprintln!("{}", ignored_options);
   }
-}
-
-/// Create a new worker with snapshot of TS compiler and setup compiler's
-/// runtime.
-fn create_compiler_worker(
-  global_state: &Arc<GlobalState>,
-  permissions: Permissions,
-) -> CompilerWorker {
-  // TODO(bartlomieju): this metric is never used anywhere
-  // Count how many times we start the compiler worker.
-  global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
-
-  let mut worker =
-    CompilerWorker::new("TS".to_string(), permissions, global_state.clone());
-  worker
-    .execute("globalThis.bootstrapCompilerRuntime()")
-    .unwrap();
-  worker
 }
 
 #[derive(Clone)]
@@ -300,7 +204,7 @@ impl CompilerConfig {
     let (options, maybe_ignored_options) = if config_str.is_empty() {
       (json!({}), None)
     } else {
-      tsc_config::parse_config(&config_str)?
+      tsc_config::parse_config(&config_str, &config_path)?
     };
 
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
@@ -548,7 +452,6 @@ impl TsCompiler {
     global_state: &Arc<GlobalState>,
     source_file: &SourceFile,
     target: TargetLib,
-    permissions: Permissions,
     module_graph: &ModuleGraph,
     allow_js: bool,
   ) -> Result<(), AnyError> {
@@ -602,7 +505,6 @@ impl TsCompiler {
       "inlineSourceMap": true,
       // TODO(lucacasonato): enable this by default in 1.5.0
       "isolatedModules": unstable,
-      "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
       "jsx": "react",
       "lib": lib,
       "module": "esnext",
@@ -617,10 +519,7 @@ impl TsCompiler {
 
     tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
 
-    warn_ignored_options(
-      compiler_config.maybe_ignored_options,
-      compiler_config.path.as_ref().unwrap(),
-    );
+    warn_ignored_options(compiler_config.maybe_ignored_options);
 
     let j = json!({
       "type": CompilerRequestType::Compile,
@@ -634,8 +533,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str =
-      execute_in_same_thread(global_state, permissions, req_msg).await?;
+    let json_str = execute_in_tsc(global_state.clone(), req_msg)?;
 
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
@@ -738,10 +636,7 @@ impl TsCompiler {
 
     tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
 
-    warn_ignored_options(
-      compiler_config.maybe_ignored_options,
-      compiler_config.path.as_ref().unwrap(),
-    );
+    warn_ignored_options(compiler_config.maybe_ignored_options);
 
     let j = json!({
       "type": CompilerRequestType::Bundle,
@@ -754,8 +649,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str =
-      execute_in_same_thread(global_state, permissions, req_msg).await?;
+    let json_str = execute_in_tsc(global_state.clone(), req_msg)?;
 
     let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
 
@@ -841,7 +735,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: compiled_source_file.source_code.to_string()?,
+      code: compiled_source_file.source_code,
       name: module_url.to_string(),
     };
 
@@ -866,7 +760,7 @@ impl TsCompiler {
       url: module_url.clone(),
       filename: compiled_code_filename,
       media_type: MediaType::JavaScript,
-      source_code: compiled_code.into(),
+      source_code: String::from_utf8(compiled_code)?,
       types_header: None,
     };
 
@@ -923,7 +817,7 @@ impl TsCompiler {
       url: module_specifier.as_url().to_owned(),
       filename: source_map_filename,
       media_type: MediaType::JavaScript,
-      source_code: source_code.into(),
+      source_code: String::from_utf8(source_code)?,
       types_header: None,
     };
 
@@ -968,14 +862,12 @@ impl SourceMapGetter for TsCompiler {
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
     self
       .try_resolve_and_get_source_file(script_name)
-      .and_then(|out| {
-        out.source_code.to_str().ok().map(|v| {
-          // Do NOT use .lines(): it skips the terminating empty line.
-          // (due to internally using .split_terminator() instead of .split())
-          let lines: Vec<&str> = v.split('\n').collect();
-          assert!(lines.len() > line);
-          lines[line].to_string()
-        })
+      .map(|out| {
+        // Do NOT use .lines(): it skips the terminating empty line.
+        // (due to internally using .split_terminator() instead of .split())
+        let lines: Vec<&str> = out.source_code.split('\n').collect();
+        assert!(lines.len() > line);
+        lines[line].to_string()
       })
   }
 }
@@ -1047,16 +939,70 @@ impl TsCompiler {
   }
 }
 
-async fn execute_in_same_thread(
-  global_state: &Arc<GlobalState>,
-  permissions: Permissions,
+#[derive(Debug, Deserialize)]
+struct CreateHashArgs {
+  data: String,
+}
+
+fn execute_in_tsc(
+  global_state: Arc<GlobalState>,
   req: String,
 ) -> Result<String, AnyError> {
-  let mut worker = create_compiler_worker(&global_state, permissions);
+  let mut js_runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(js::compiler_isolate_init()),
+    ..Default::default()
+  });
+
+  let debug_flag = global_state
+    .flags
+    .log_level
+    .map_or(false, |l| l == log::Level::Debug);
+  let response = Arc::new(Mutex::new(None));
+
+  {
+    js_runtime.register_op(
+      "op_fetch_asset",
+      crate::op_fetch_asset::op_fetch_asset(HashMap::default()),
+    );
+    let res = response.clone();
+    js_runtime.register_op(
+      "op_compiler_respond",
+      json_op_sync(move |_state, args, _bufs| {
+        let mut response_slot = res.lock().unwrap();
+        let replaced_value = response_slot.replace(args.to_string());
+        assert!(
+          replaced_value.is_none(),
+          "op_compiler_respond found unexpected existing compiler output",
+        );
+        Ok(json!({}))
+      }),
+    );
+    js_runtime.register_op(
+      "op_create_hash",
+      json_op_sync(move |_s, args, _bufs| {
+        let v: CreateHashArgs = serde_json::from_value(args)?;
+        let hash = crate::checksum::gen(&[v.data.as_bytes()]);
+        Ok(json!({ "hash": hash }))
+      }),
+    );
+  }
+
+  let bootstrap_script = format!(
+    "globalThis.bootstrapCompilerRuntime({{ debugFlag: {} }})",
+    debug_flag
+  );
+  js_runtime.execute("<compiler>", &bootstrap_script)?;
+
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
-  worker.execute2("<compiler>", &script)?;
-  (&mut *worker).await?;
-  Ok(worker.get_response())
+  js_runtime.execute("<compiler>", &script)?;
+
+  let maybe_response = response.lock().unwrap().take();
+  assert!(
+    maybe_response.is_some(),
+    "Unexpected missing response from TS compiler"
+  );
+
+  Ok(maybe_response.unwrap())
 }
 
 async fn create_runtime_module_graph(
@@ -1099,7 +1045,7 @@ async fn create_runtime_module_graph(
   Ok((root_names, module_graph_loader.get_graph()))
 }
 
-fn js_error_to_errbox(error: AnyError) -> AnyError {
+fn extract_js_error(error: AnyError) -> AnyError {
   match error.downcast::<JsError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
@@ -1161,7 +1107,6 @@ pub async fn runtime_compile(
     "esModuleInterop": true,
     // TODO(lucacasonato): enable this by default in 1.5.0
     "isolatedModules": unstable,
-    "importsNotUsedAsValues": if unstable { "error" } else { "remove" },
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,
@@ -1195,10 +1140,8 @@ pub async fn runtime_compile(
 
   let compiler = global_state.ts_compiler.clone();
 
-  let json_str = execute_in_same_thread(global_state, permissions, req_msg)
-    .await
-    .map_err(js_error_to_errbox)?;
-
+  let json_str =
+    execute_in_tsc(global_state.clone(), req_msg).map_err(extract_js_error)?;
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
   if response.diagnostics.0.is_empty() && sources.is_none() {
@@ -1304,9 +1247,8 @@ pub async fn runtime_bundle(
   })
   .to_string();
 
-  let json_str = execute_in_same_thread(global_state, permissions, req_msg)
-    .await
-    .map_err(js_error_to_errbox)?;
+  let json_str =
+    execute_in_tsc(global_state.clone(), req_msg).map_err(extract_js_error)?;
   let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
@@ -1316,8 +1258,7 @@ pub async fn runtime_bundle(
 
 /// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile(
-  global_state: &Arc<GlobalState>,
-  permissions: Permissions,
+  global_state: Arc<GlobalState>,
   sources: &HashMap<String, String>,
   maybe_options: &Option<String>,
 ) -> Result<Value, AnyError> {
@@ -1343,9 +1284,8 @@ pub async fn runtime_transpile(
   })
   .to_string();
 
-  let json_str = execute_in_same_thread(global_state, permissions, req_msg)
-    .await
-    .map_err(js_error_to_errbox)?;
+  let json_str =
+    execute_in_tsc(global_state, req_msg).map_err(extract_js_error)?;
   let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
@@ -1586,7 +1526,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
+      source_code: include_str!("./tests/002_hello.ts").to_string(),
       types_header: None,
     };
     let dir =
@@ -1628,14 +1568,7 @@ mod tests {
     .unwrap();
 
     let result = ts_compiler
-      .compile(
-        &mock_state,
-        &out,
-        TargetLib::Main,
-        Permissions::allow_all(),
-        &module_graph,
-        false,
-      )
+      .compile(&mock_state, &out, TargetLib::Main, &module_graph, false)
       .await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();

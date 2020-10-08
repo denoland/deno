@@ -6,10 +6,10 @@ import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";
 
 import {
-  assertPath,
-  normalizeString,
-  isPosixPathSeparator,
   _format,
+  assertPath,
+  isPosixPathSeparator,
+  normalizeString,
 } from "./_util.ts";
 
 export const sep = "/";

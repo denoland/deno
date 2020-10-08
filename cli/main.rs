@@ -26,7 +26,6 @@ pub mod fmt_errors;
 mod fs;
 pub mod global_state;
 mod global_timer;
-mod graph;
 pub mod http_cache;
 mod http_util;
 mod import_map;
@@ -39,6 +38,7 @@ mod lockfile;
 mod media_type;
 mod metrics;
 mod module_graph;
+mod module_graph2;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -55,14 +55,12 @@ mod tsc;
 mod tsc_config;
 mod upgrade;
 pub mod version;
-mod web_worker;
 pub mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
@@ -234,7 +232,7 @@ async fn install_command(
 ) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  let mut worker = MainWorker::new(&global_state, main_module.clone());
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
@@ -266,7 +264,7 @@ async fn cache_command(
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$cache.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  let mut worker = MainWorker::new(&global_state, main_module.clone());
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
@@ -288,7 +286,7 @@ async fn eval_command(
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  let mut worker = MainWorker::new(&global_state, main_module.clone());
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -307,7 +305,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: TextDocument::new(source_code, Some("utf-8")),
+    source_code: String::from_utf8(source_code)?,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
@@ -430,18 +428,17 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::create(&global_state, main_module)?;
-  loop {
-    (&mut *worker).await?;
-  }
+  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  (&mut *worker).await?;
+
+  repl::run(&global_state, worker).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
-  let mut worker =
-    MainWorker::create(&global_state.clone(), main_module.clone())?;
+  let mut worker = MainWorker::new(&global_state.clone(), main_module.clone());
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -452,7 +449,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     url: main_module_url,
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: source.into(),
+    source_code: String::from_utf8(source)?,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
@@ -505,7 +502,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     let gs = GlobalState::new(flags.clone()).unwrap();
     let main_module = main_module.clone();
     async move {
-      let mut worker = MainWorker::create(&gs, main_module.clone())?;
+      let mut worker = MainWorker::new(&gs, main_module.clone());
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -530,7 +527,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let global_state = GlobalState::new(flags.clone())?;
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  let mut worker = MainWorker::new(&global_state, main_module.clone());
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -547,7 +544,6 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
-  coverage: bool,
 ) -> Result<(), AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -570,7 +566,7 @@ async fn test_command(
     return Ok(());
   }
 
-  let test_file_path = cwd.join(".deno.test.ts");
+  let test_file_path = cwd.join("$deno$test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
 
@@ -588,17 +584,14 @@ async fn test_command(
 
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+  let mut worker = MainWorker::new(&global_state, main_module.clone());
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
     url: test_file_url.clone(),
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: TextDocument::new(
-      test_file.clone().into_bytes(),
-      Some("utf-8"),
-    ),
+    source_code: test_file.clone(),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
@@ -606,7 +599,7 @@ async fn test_command(
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
 
-  let mut maybe_coverage_collector = if coverage {
+  let mut maybe_coverage_collector = if flags.coverage {
     let inspector = worker
       .inspector
       .as_mut()
@@ -757,9 +750,8 @@ pub fn main() {
       include,
       allow_none,
       filter,
-      coverage,
     } => test_command(
-      docs, flags, include, fail_fast, quiet, allow_none, filter, coverage,
+      docs, flags, include, fail_fast, quiet, allow_none, filter,
     )
     .boxed_local(),
     DenoSubcommand::Completions { buf } => {

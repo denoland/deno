@@ -13,7 +13,12 @@
   "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
     ".cargo_home",
-    "cli/dts",
+    "cli/dts/lib.d.ts",
+    "cli/dts/lib.dom*",
+    "cli/dts/lib.es*",
+    "cli/dts/lib.scripthost.d.ts",
+    "cli/dts/lib.webworker*.d.ts",
+    "cli/dts/typescript.d.ts",
     "cli/tests/encoding",
     "cli/tsc/*typescript.js",
     "gh-pages",
@@ -25,7 +30,7 @@
     "third_party"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.29.0.wasm",
+    "https://plugins.dprint.dev/typescript-0.32.1.wasm",
     "https://plugins.dprint.dev/json-0.7.0.wasm",
     "https://plugins.dprint.dev/markdown-0.4.0.wasm"
   ]
