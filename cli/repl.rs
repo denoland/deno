@@ -308,10 +308,6 @@ pub async fn run(
           ),
         }
 
-        for notification in session.notifications() {
-          println!("{}", notification);
-        }
-
         editor.lock().unwrap().add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
