@@ -11,6 +11,14 @@ import {
   verify as verifySignature,
 } from "./signature.ts";
 
+/*
+ * The following Claim Names are registered in the IANA "JSON Web Token Claims"
+ * registry established by Section 10.1. None of the claims defined below are
+ * intended to be mandatory to use or implement in all cases, but rather they
+ * provide a starting point for a set of useful, interoperable claims.
+ * Applications using JWTs should define which specific claims they use and when
+ * they are required or optional. (JWT §4.1)
+ */
 export interface Payload {
   iss?: string;
   sub?: string;
@@ -22,6 +30,11 @@ export interface Payload {
   [key: string]: unknown;
 }
 
+/*
+ * The "alg" value is a case-sensitive ASCII string containing a StringOrURI value.
+ * This Header Parameter MUST be present and MUST be understood and processed by
+ * implementations. (JWS §4.1.1)
+ */
 export interface Header {
   alg: Algorithm;
   [key: string]: unknown;
@@ -70,11 +83,9 @@ export async function verify({
 }
 
 function createSigningInput(header: Header, payload: Payload): string {
-  return `${
-    convertStringToBase64url(
-      JSON.stringify(header),
-    )
-  }.${convertStringToBase64url(JSON.stringify(payload))}`;
+  return `${convertStringToBase64url(
+    JSON.stringify(header)
+  )}.${convertStringToBase64url(JSON.stringify(payload))}`;
 }
 
 export async function create({

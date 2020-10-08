@@ -1,15 +1,19 @@
 import { convertUint8ArrayToBase64url } from "./base64/base64url.ts";
 import { decodeString as convertHexToUint8Array } from "../encoding/hex.ts";
 
-// Helper function: setExpiration()
-// returns the number of seconds since January 1, 1970, 00:00:00 UTC
+/*
+ * Helper function: setExpiration()
+ * returns the number of seconds since January 1, 1970, 00:00:00 UTC
+ */
 export function setExpiration(exp: number | Date): number {
   return Math.round(
     (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000
   );
 }
 
-// Implementers MAY provide for some small leeway to account for clock skew (JWT §4.1.4)
+/*
+ * Implementers MAY provide for some small leeway to account for clock skew (JWT §4.1.4)
+ */
 export function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
 }
