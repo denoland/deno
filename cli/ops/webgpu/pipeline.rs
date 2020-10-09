@@ -83,10 +83,16 @@ fn serialize_blend_factor(blend_factor: String) -> wgpu::BlendFactor {
   }
 }
 
-fn serialize_blend_descriptor(blend: GPUBlendDescriptor) -> wgpu::BlendDescriptor {
+fn serialize_blend_descriptor(
+  blend: GPUBlendDescriptor,
+) -> wgpu::BlendDescriptor {
   wgpu::BlendDescriptor {
-    src_factor: blend.src_factor.map_or(wgpu::BlendFactor::One, serialize_blend_factor),
-    dst_factor: blend.dst_factor.map_or(wgpu::BlendFactor::Zero, serialize_blend_factor),
+    src_factor: blend
+      .src_factor
+      .map_or(wgpu::BlendFactor::One, serialize_blend_factor),
+    dst_factor: blend
+      .dst_factor
+      .map_or(wgpu::BlendFactor::Zero, serialize_blend_factor),
     operation: match blend.operation {
       Some(&"add") => wgpu::BlendOperation::Add,
       Some(&"subtract") => wgpu::BlendOperation::Subtract,
@@ -95,7 +101,7 @@ fn serialize_blend_descriptor(blend: GPUBlendDescriptor) -> wgpu::BlendDescripto
       Some(&"max") => wgpu::BlendOperation::Max,
       Some(_) => unreachable!(),
       None => wgpu::BlendOperation::Add,
-    }
+    },
   }
 }
 
@@ -342,8 +348,12 @@ pub fn op_webgpu_create_render_pipeline(
         .map(|color_state| {
           wgpu::ColorStateDescriptor {
             format: serialize_texture_format(color_state.format.clone())?,
-            alpha_blend: color_state.alpha_blend.map_or("", serialize_blend_descriptor), // TODO
-            color_blend: color_state.color_blend.map_or("", serialize_blend_descriptor), // TODO
+            alpha_blend: color_state
+              .alpha_blend
+              .map_or("", serialize_blend_descriptor), // TODO
+            color_blend: color_state
+              .color_blend
+              .map_or("", serialize_blend_descriptor), // TODO
             write_mask: color_state.write_mask, // TODO
           }
         })
@@ -352,78 +362,88 @@ pub fn op_webgpu_create_render_pipeline(
         wgpu::DepthStencilStateDescriptor {
           format: serialize_texture_format(state.format)?,
           depth_write_enabled: state.depth_write_enabled.unwrap_or(false),
-          depth_compare: state.depth_compare.map_or(wgpu::CompareFunction::Always, serialize_compare_function),
+          depth_compare: state
+            .depth_compare
+            .map_or(wgpu::CompareFunction::Always, serialize_compare_function),
           stencil: wgpu::StencilStateDescriptor {
-            front: state.stencil_front.map_or(wgpu::StencilStateFaceDescriptor::IGNORE, serialize_stencil_state_face_descriptor),
-            back: state.stencil_front.map_or(wgpu::StencilStateFaceDescriptor::IGNORE, serialize_stencil_state_face_descriptor),
+            front: state.stencil_front.map_or(
+              wgpu::StencilStateFaceDescriptor::IGNORE,
+              serialize_stencil_state_face_descriptor,
+            ),
+            back: state.stencil_front.map_or(
+              wgpu::StencilStateFaceDescriptor::IGNORE,
+              serialize_stencil_state_face_descriptor,
+            ),
             read_mask: state.stencil_read_mask.unwrap_or(0xFFFFFFFF),
             write_mask: state.stencil_write_mask.unwrap_or(0xFFFFFFFF),
           },
         }
       }),
       vertex_state: wgpu::VertexStateDescriptor {
-        index_format: args.vertex_state.unwrap().index_format.map_or("", |format| match format { // TODO
-          &"uint16" => wgpu::IndexFormat::Uint16,
-          &"uint32" => wgpu::IndexFormat::Uint32,
-          _ => unreachable!(),
-        }),
+        index_format: args.vertex_state.unwrap().index_format.map_or(
+          "",
+          |format| match format {
+            // TODO
+            &"uint16" => wgpu::IndexFormat::Uint16,
+            &"uint32" => wgpu::IndexFormat::Uint32,
+            _ => unreachable!(),
+          },
+        ),
         vertex_buffers: &args
           .vertex_state
           .unwrap()
           .vertex_buffers
           .unwrap() // TODO
           .iter()
-          .map(|buffer| {
-            wgpu::VertexBufferDescriptor {
-              stride: buffer.array_stride,
-              step_mode: match buffer.step_mode {
-                Some(&"vertex") => wgpu::InputStepMode::Vertex,
-                Some(&"instance") => wgpu::InputStepMode::Instance,
-                Some(_) => unreachable!(),
-                None => wgpu::InputStepMode::Vertex,
-              },
-              attributes: &buffer
-                .attributes
-                .iter()
-                .map(|attribute| wgpu::VertexAttributeDescriptor {
-                  offset: attribute.offset,
-                  format: match attribute.format {
-                    &"uchar2" => wgpu::VertexFormat::Uchar2,
-                    &"uchar4" => wgpu::VertexFormat::Uchar4,
-                    &"char2" => wgpu::VertexFormat::Char2,
-                    &"char4" => wgpu::VertexFormat::Char4,
-                    &"uchar2norm" => wgpu::VertexFormat::Uchar2Norm,
-                    &"uchar4norm" => wgpu::VertexFormat::Uchar4,
-                    &"char2norm" => wgpu::VertexFormat::Char2Norm,
-                    &"char4norm" => wgpu::VertexFormat::Char4Norm,
-                    &"ushort2" => wgpu::VertexFormat::Ushort2,
-                    &"ushort4" => wgpu::VertexFormat::Ushort4,
-                    &"short2" => wgpu::VertexFormat::Short2,
-                    &"short4" => wgpu::VertexFormat::Short4,
-                    &"ushort2norm" => wgpu::VertexFormat::Ushort2Norm,
-                    &"ushort4norm" => wgpu::VertexFormat::Ushort4Norm,
-                    &"short2norm" => wgpu::VertexFormat::Short2Norm,
-                    &"short4norm" => wgpu::VertexFormat::Short4Norm,
-                    &"half2" => wgpu::VertexFormat::Half2,
-                    &"half4" => wgpu::VertexFormat::Half4,
-                    &"float" => wgpu::VertexFormat::Float,
-                    &"float2" => wgpu::VertexFormat::Float2,
-                    &"float3" => wgpu::VertexFormat::Float3,
-                    &"float4" => wgpu::VertexFormat::Float4,
-                    &"uint" => wgpu::VertexFormat::Uint,
-                    &"uint2" => wgpu::VertexFormat::Uint2,
-                    &"uint3" => wgpu::VertexFormat::Uint3,
-                    &"uint4" => wgpu::VertexFormat::Uint4,
-                    &"int" => wgpu::VertexFormat::Int,
-                    &"int2" => wgpu::VertexFormat::Int2,
-                    &"int3" => wgpu::VertexFormat::Int3,
-                    &"int4" => wgpu::VertexFormat::Int4,
-                    _ => unreachable!(),
-                  },
-                  shader_location: attribute.shader_location,
-                })
-                .collect::<[wgpu::VertexAttributeDescriptor]>(),
-            }
+          .map(|buffer| wgpu::VertexBufferDescriptor {
+            stride: buffer.array_stride,
+            step_mode: match buffer.step_mode {
+              Some(&"vertex") => wgpu::InputStepMode::Vertex,
+              Some(&"instance") => wgpu::InputStepMode::Instance,
+              Some(_) => unreachable!(),
+              None => wgpu::InputStepMode::Vertex,
+            },
+            attributes: &buffer
+              .attributes
+              .iter()
+              .map(|attribute| wgpu::VertexAttributeDescriptor {
+                offset: attribute.offset,
+                format: match attribute.format {
+                  &"uchar2" => wgpu::VertexFormat::Uchar2,
+                  &"uchar4" => wgpu::VertexFormat::Uchar4,
+                  &"char2" => wgpu::VertexFormat::Char2,
+                  &"char4" => wgpu::VertexFormat::Char4,
+                  &"uchar2norm" => wgpu::VertexFormat::Uchar2Norm,
+                  &"uchar4norm" => wgpu::VertexFormat::Uchar4,
+                  &"char2norm" => wgpu::VertexFormat::Char2Norm,
+                  &"char4norm" => wgpu::VertexFormat::Char4Norm,
+                  &"ushort2" => wgpu::VertexFormat::Ushort2,
+                  &"ushort4" => wgpu::VertexFormat::Ushort4,
+                  &"short2" => wgpu::VertexFormat::Short2,
+                  &"short4" => wgpu::VertexFormat::Short4,
+                  &"ushort2norm" => wgpu::VertexFormat::Ushort2Norm,
+                  &"ushort4norm" => wgpu::VertexFormat::Ushort4Norm,
+                  &"short2norm" => wgpu::VertexFormat::Short2Norm,
+                  &"short4norm" => wgpu::VertexFormat::Short4Norm,
+                  &"half2" => wgpu::VertexFormat::Half2,
+                  &"half4" => wgpu::VertexFormat::Half4,
+                  &"float" => wgpu::VertexFormat::Float,
+                  &"float2" => wgpu::VertexFormat::Float2,
+                  &"float3" => wgpu::VertexFormat::Float3,
+                  &"float4" => wgpu::VertexFormat::Float4,
+                  &"uint" => wgpu::VertexFormat::Uint,
+                  &"uint2" => wgpu::VertexFormat::Uint2,
+                  &"uint3" => wgpu::VertexFormat::Uint3,
+                  &"uint4" => wgpu::VertexFormat::Uint4,
+                  &"int" => wgpu::VertexFormat::Int,
+                  &"int2" => wgpu::VertexFormat::Int2,
+                  &"int3" => wgpu::VertexFormat::Int3,
+                  &"int4" => wgpu::VertexFormat::Int4,
+                  _ => unreachable!(),
+                },
+                shader_location: attribute.shader_location,
+              })
+              .collect::<[wgpu::VertexAttributeDescriptor]>(),
           })
           .collect::<[wgpu::VertexBufferDescriptor]>(),
       },
@@ -455,7 +475,8 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPipelineGetBindGroupLayoutArgs = serde_json::from_value(args)?;
+  let args: RenderPipelineGetBindGroupLayoutArgs =
+    serde_json::from_value(args)?;
 
   let render_pipeline = state
     .resource_table

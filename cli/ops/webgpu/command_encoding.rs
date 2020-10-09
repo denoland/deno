@@ -32,9 +32,10 @@ pub fn op_webgpu_create_command_encoder(
     .get_mut::<wgpu::Device>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-    label: args.label.map(|label| &label),
-  });
+  let command_encoder =
+    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+      label: args.label.map(|label| &label),
+    });
 
   let rid = state
     .resource_table
@@ -72,7 +73,8 @@ struct CommandEncoderBeginRenderPassArgs {
   rid: u32,
   label: Option<String>, // TODO
   color_attachments: [GPURenderPassColorAttachmentDescriptor],
-  depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachmentDescriptor>,
+  depth_stencil_attachment:
+    Option<GPURenderPassDepthStencilAttachmentDescriptor>,
   occlusion_query_set: (), // TODO
 }
 
@@ -88,33 +90,40 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
     .get_mut::<wgpu::CommandEncoder>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-    color_attachments: &args.color_attachments.iter().map(|color_attachment| {
-      wgpu::RenderPassColorAttachmentDescriptor {
-        attachment: state
-          .resource_table
-          .get_mut::<wgpu::TextureView>(color_attachment.attachment)
-          .ok_or_else(bad_resource_id)?,
-        resolve_target: color_attachment.resolve_target.map(|rid| {
-          state
-            .resource_table
-            .get_mut::<wgpu::TextureView>(rid)
-            .ok_or_else(bad_resource_id)?
-        }),
-        ops: (), // TODO
-      }
-    }).collect::<[wgpu::RenderPassColorAttachmentDescriptor]>(),
-    depth_stencil_attachment: args.depth_stencil_attachment.map(|depth_stencil_attachment| {
-      wgpu::RenderPassDepthStencilAttachmentDescriptor {
-        attachment: state
-          .resource_table
-          .get_mut::<wgpu::TextureView>(depth_stencil_attachment.attachment)
-          .ok_or_else(bad_resource_id)?,
-        depth_ops: None, // TODO
-        stencil_ops: None, // TODO
-      }
-    }),
-  });
+  let render_pass =
+    command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+      color_attachments: &args
+        .color_attachments
+        .iter()
+        .map(|color_attachment| {
+          wgpu::RenderPassColorAttachmentDescriptor {
+            attachment: state
+              .resource_table
+              .get_mut::<wgpu::TextureView>(color_attachment.attachment)
+              .ok_or_else(bad_resource_id)?,
+            resolve_target: color_attachment.resolve_target.map(|rid| {
+              state
+                .resource_table
+                .get_mut::<wgpu::TextureView>(rid)
+                .ok_or_else(bad_resource_id)?
+            }),
+            ops: (), // TODO
+          }
+        })
+        .collect::<[wgpu::RenderPassColorAttachmentDescriptor]>(),
+      depth_stencil_attachment: args.depth_stencil_attachment.map(
+        |depth_stencil_attachment| {
+          wgpu::RenderPassDepthStencilAttachmentDescriptor {
+            attachment: state
+              .resource_table
+              .get_mut::<wgpu::TextureView>(depth_stencil_attachment.attachment)
+              .ok_or_else(bad_resource_id)?,
+            depth_ops: None,   // TODO
+            stencil_ops: None, // TODO
+          }
+        },
+      ),
+    });
 
   let rid = state
     .resource_table
@@ -177,7 +186,8 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderCopyTextureToTextureArgs = serde_json::from_value(args)?;
+  let args: CommandEncoderCopyTextureToTextureArgs =
+    serde_json::from_value(args)?;
 
   let command_encoder = state
     .resource_table
@@ -204,8 +214,8 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     wgpu::Extent3d {
       width: 0,
       height: 0,
-      depth: 0
-    }
+      depth: 0,
+    },
   );
 
   Ok(json!({}))
@@ -240,4 +250,3 @@ pub fn op_webgpu_command_encoder_finish(
     "rid": rid,
   }))
 }
-

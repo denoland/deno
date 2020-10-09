@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use super::texture::serialize_texture_format;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
@@ -11,7 +12,6 @@ use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::rc::Rc;
-use super::texture::serialize_texture_format;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,14 +35,19 @@ pub fn op_webgpu_create_render_bundle_encoder(
     .get_mut::<wgpu::Device>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let render_bundle_encoder = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
-    label: args.label.map(|label| &label),
-    color_formats: &args.color_formats.iter().map(|format| {
-      serialize_texture_format(format.clone())?
-    }).collect::<[wgpu::TextureFormat]>(),
-    depth_stencil_format: args.depth_stencil_format.map(|format| serialize_texture_format(format)?),
-    sample_count: args.sample_count.unwrap_or(1),
-  });
+  let render_bundle_encoder =
+    device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
+      label: args.label.map(|label| &label),
+      color_formats: &args
+        .color_formats
+        .iter()
+        .map(|format| serialize_texture_format(format.clone())?)
+        .collect::<[wgpu::TextureFormat]>(),
+      depth_stencil_format: args
+        .depth_stencil_format
+        .map(|format| serialize_texture_format(format)?),
+      sample_count: args.sample_count.unwrap_or(1),
+    });
 
   let rid = state
     .resource_table
@@ -72,9 +77,10 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .get_mut::<wgpu::RenderBundleEncoder>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let render_bundle = render_bundle_encoder.finish(&wgpu::RenderBundleDescriptor {
-    label: args.label.map(|label| &label),
-  });
+  let render_bundle =
+    render_bundle_encoder.finish(&wgpu::RenderBundleDescriptor {
+      label: args.label.map(|label| &label),
+    });
 
   let rid = state
     .resource_table

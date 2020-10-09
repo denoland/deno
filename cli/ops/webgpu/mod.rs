@@ -2,12 +2,12 @@
 
 mod binding;
 mod buffer;
+mod bundle;
+mod command_encoding;
 mod pipeline;
 mod sampler;
 mod shader;
 mod texture;
-mod command_encoder;
-mod bundle;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -111,22 +111,22 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(
     rt,
     "op_webgpu_create_command_encoder",
-    command_encoder::op_webgpu_create_command_encoder,
+    command_encoding::op_webgpu_create_command_encoder,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_begin_render_pass",
-    command_encoder::op_webgpu_command_encoder_begin_render_pass,
+    command_encoding::op_webgpu_command_encoder_begin_render_pass,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_begin_compute_pass",
-    command_encoder::op_webgpu_command_encoder_begin_compute_pass,
+    command_encoding::op_webgpu_command_encoder_begin_compute_pass,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_copy_texture_to_texture",
-    command_encoder::op_webgpu_command_encoder_copy_texture_to_texture,
+    command_encoding::op_webgpu_command_encoder_copy_texture_to_texture,
   );
 
   super::reg_json_sync(
