@@ -460,6 +460,7 @@ dependencies = [
  "libc",
  "log",
  "rusty_v8",
+ "serde",
  "serde_json",
  "smallvec",
  "tokio",
@@ -2820,6 +2821,7 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]
