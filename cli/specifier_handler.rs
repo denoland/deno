@@ -98,27 +98,12 @@ pub trait SpecifierHandler {
     maybe_map: Option<String>,
   ) -> Result<(), AnyError>;
 
-  /// When parsed out of a JavaScript module source, the triple slash reference
-  /// to the types should be stored in the cache.
-  fn set_types(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    types: String,
-  ) -> Result<(), AnyError>;
-
   /// Set the build info for a module specifier, also providing the cache type.
   fn set_build_info(
     &mut self,
     specifier: &ModuleSpecifier,
     emit_type: EmitType,
     build_info: String,
-  ) -> Result<(), AnyError>;
-
-  /// Set the graph dependencies for a given module specifier.
-  fn set_deps(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    dependencies: DependencyMap,
   ) -> Result<(), AnyError>;
 
   /// Set the version of the source for a given module, which is used to help
@@ -298,24 +283,6 @@ impl SpecifierHandler for FetchHandler {
       self.disk_cache.set(&filename, map.as_bytes())?;
     }
 
-    Ok(())
-  }
-
-  fn set_deps(
-    &mut self,
-    _specifier: &ModuleSpecifier,
-    _dependencies: DependencyMap,
-  ) -> Result<(), AnyError> {
-    // file_fetcher doesn't have the concept of caching dependencies
-    Ok(())
-  }
-
-  fn set_types(
-    &mut self,
-    _specifier: &ModuleSpecifier,
-    _types: String,
-  ) -> Result<(), AnyError> {
-    // file_fetcher doesn't have the concept of caching of the types
     Ok(())
   }
 

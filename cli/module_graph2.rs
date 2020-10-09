@@ -609,17 +609,7 @@ impl GraphBuilder2 {
       Module::new(specifier.clone(), self.maybe_import_map.clone());
     module.hydrate(cached_module);
     if !module.is_parsed {
-      let has_types = module.maybe_types.is_some();
       module.parse()?;
-      if self.maybe_import_map.is_none() {
-        let mut handler = self.graph.handler.borrow_mut();
-        handler.set_deps(&specifier, module.dependencies.clone())?;
-        if !has_types {
-          if let Some((types, _)) = module.maybe_types.clone() {
-            handler.set_types(&specifier, types)?;
-          }
-        }
-      }
     }
     for (_, dep) in module.dependencies.iter() {
       if let Some(specifier) = dep.maybe_code.as_ref() {
@@ -698,8 +688,6 @@ mod tests {
     pub build_info: HashMap<ModuleSpecifier, String>,
     pub build_info_calls: Vec<(ModuleSpecifier, EmitType, String)>,
     pub cache_calls: Vec<(ModuleSpecifier, EmitType, String, Option<String>)>,
-    pub deps_calls: Vec<(ModuleSpecifier, DependencyMap)>,
-    pub types_calls: Vec<(ModuleSpecifier, String)>,
     pub version_calls: Vec<(ModuleSpecifier, String)>,
   }
 
@@ -755,14 +743,6 @@ mod tests {
         .push((specifier.clone(), emit_type, code, maybe_map));
       Ok(())
     }
-    fn set_types(
-      &mut self,
-      specifier: &ModuleSpecifier,
-      types: String,
-    ) -> Result<(), AnyError> {
-      self.types_calls.push((specifier.clone(), types));
-      Ok(())
-    }
     fn set_build_info(
       &mut self,
       specifier: &ModuleSpecifier,
@@ -775,14 +755,6 @@ mod tests {
       self
         .build_info_calls
         .push((specifier.clone(), emit_type, build_info));
-      Ok(())
-    }
-    fn set_deps(
-      &mut self,
-      specifier: &ModuleSpecifier,
-      dependencies: DependencyMap,
-    ) -> Result<(), AnyError> {
-      self.deps_calls.push((specifier.clone(), dependencies));
       Ok(())
     }
     fn set_version(
@@ -907,30 +879,6 @@ mod tests {
       .2
       .contains("# sourceMappingURL=data:application/json;base64,"));
     assert_eq!(h.cache_calls[0].3, None);
-    assert_eq!(h.deps_calls.len(), 7);
-    assert_eq!(
-      h.deps_calls[0].0,
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts").unwrap()
-    );
-    assert_eq!(h.deps_calls[0].1.len(), 1);
-    assert_eq!(
-      h.deps_calls[1].0,
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.js")
-        .unwrap()
-    );
-    assert_eq!(h.deps_calls[1].1.len(), 3);
-    assert_eq!(
-      h.deps_calls[2].0,
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.d.ts")
-        .unwrap()
-    );
-    assert_eq!(h.deps_calls[2].1.len(), 3, "should have 3 dependencies");
-    // sometimes the calls are not deterministic, and so checking the contents
-    // can cause some failures
-    assert_eq!(h.deps_calls[3].1.len(), 0, "should have no dependencies");
-    assert_eq!(h.deps_calls[4].1.len(), 0, "should have no dependencies");
-    assert_eq!(h.deps_calls[5].1.len(), 0, "should have no dependencies");
-    assert_eq!(h.deps_calls[6].1.len(), 0, "should have no dependencies");
   }
 
   #[tokio::test]
