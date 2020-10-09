@@ -273,14 +273,14 @@ mod test {
     };
     let mut items = HashMap::new();
     items.insert(
-      spec_c.clone(),
+      spec_c,
       ModuleInfoMapItem {
         deps: vec![spec_d.clone()],
         size: 12345,
       },
     );
     items.insert(
-      spec_d.clone(),
+      spec_d,
       ModuleInfoMapItem {
         deps: Vec::new(),
         size: 12345,
