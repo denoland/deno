@@ -20,7 +20,7 @@ use std::rc::Rc;
 use swc_common::{comments::SingleThreadedComments, SourceMap, Span};
 use swc_ecmascript::visit::Visit;
 use swc_ecmascript::{
-  ast::{Class, Decl, ExportDecl, Expr, Function, Module, VarDecl},
+  ast::{Class, Decl, ExportDecl, Expr, Function, VarDecl},
   visit::Node,
 };
 
@@ -45,23 +45,23 @@ struct DocTestVisitor {
 
 struct DocTester {
   doctest_visitor: DocTestVisitor,
-  module: Module,
+  parsed_module: ast::ParsedModule,
 }
 
 impl DocTester {
-  fn new(
-    module: Module,
-    comments: SingleThreadedComments,
-    source_map: Rc<SourceMap>,
-  ) -> Self {
+  fn new(parsed_module: ast::ParsedModule) -> Self {
     Self {
-      doctest_visitor: DocTestVisitor::new(comments, source_map),
-      module,
+      doctest_visitor: DocTestVisitor::new(
+        parsed_module.comments.clone(),
+        Rc::clone(&parsed_module.source_map),
+      ),
+      parsed_module,
     }
   }
   pub fn get_comments(&mut self) -> Vec<(Location, String)> {
     let visitor = self.doctest_visitor.borrow_mut();
-    visitor.visit_module(&self.module, &self.module);
+    visitor
+      .visit_module(&self.parsed_module.module, &self.parsed_module.module);
     visitor.examples.clone().into_inner()
   }
 }
@@ -171,11 +171,7 @@ pub async fn parse_jsdocs(
     let media_type = MediaType::from(&path);
     let specifier = ModuleSpecifier::resolve_url(&url.to_string())?;
     let parsed_module = ast::parse(&specifier, &source_code, &media_type)?;
-    let mut doc_tester = DocTester::new(
-      parsed_module.module,
-      parsed_module.comments,
-      Rc::clone(&parsed_module.source_map),
-    );
+    let mut doc_tester = DocTester::new(parsed_module);
     results.extend(doc_tester.get_comments());
   }
   Ok(results)
