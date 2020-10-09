@@ -544,7 +544,7 @@ impl Graph2 {
       let parsed_module = module.maybe_parsed_module.clone().unwrap();
       let emit = parsed_module.transpile(&emit_options)?;
       emit_count += 1;
-      module.emits.insert(emit_type.clone(), emit);
+      module.emits.insert(emit_type, emit);
       module.set_version(&config);
       module.is_dirty = true;
     }
