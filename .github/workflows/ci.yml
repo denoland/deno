@@ -119,6 +119,35 @@ jobs:
           restore-keys: |
             deno-${{ matrix.os }}-${{ matrix.kind }}-
 
+        # It seems that the 'target' directory does not always get restored
+        # from cache correctly on MacOS. In the build log we see the following:
+        #
+        #   Fresh serde_derive v1.0.115
+        #
+        # But a little while after that Cargo aborts because 'serde_derive' is
+        # now nowhere to be found. We're not the only ones experiencing this,
+        # see https://github.com/actions-rs/cargo/issues/111.
+        #
+        #   error[E0463]: can't find crate for `serde_derive`
+        #   ##[error]   --> /Users/runner/.cargo/registry/src/github.com-
+        #       |           1ecc6299db9ec823/serde-1.0.115/src/lib.rs:285:1
+        #       |
+        #   285 | extern crate serde_derive;
+        #       | ^^^^^^^^^^^^^^^^^^^^^^^^^^ can't find crate
+      - name: Work around MacOS + Cargo + Github Actions cache bug
+        if: runner.os == 'macOS'
+        run: |
+          cargo clean --locked --release \
+                      -p ast_node \
+                      -p is-macro \
+                      -p serde_derive \
+                      -p swc_ecma_codegen \
+                      -p swc_ecma_codegen_macros \
+                      -p swc_ecma_parser \
+                      -p swc_ecma_parser_macros \
+                      -p swc_visit \
+                      -p swc_visit_macros
+
       - name: lint.py
         if: matrix.kind == 'lint'
         run: python ./tools/lint.py
