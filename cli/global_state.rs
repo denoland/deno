@@ -247,7 +247,7 @@ impl GlobalState {
       }
     } else {
       CompiledModule {
-        code: out.source_code.to_string()?,
+        code: out.source_code,
         name: out.url.to_string(),
       }
     };

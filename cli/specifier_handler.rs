@@ -3,7 +3,6 @@
 use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::file_fetcher::TextDocument;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
@@ -23,7 +22,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 pub type DependencyMap = HashMap<String, Dependency>;
-pub type EmitMap = HashMap<EmitType, (TextDocument, Option<TextDocument>)>;
+pub type EmitMap = HashMap<EmitType, (String, Option<String>)>;
 pub type FetchFuture =
   Pin<Box<(dyn Future<Output = Result<CachedModule, AnyError>> + 'static)>>;
 
@@ -34,7 +33,7 @@ pub struct CachedModule {
   pub maybe_types: Option<String>,
   pub maybe_version: Option<String>,
   pub media_type: MediaType,
-  pub source: TextDocument,
+  pub source: String,
   pub specifier: ModuleSpecifier,
 }
 
@@ -47,7 +46,7 @@ impl Default for CachedModule {
       maybe_types: None,
       maybe_version: None,
       media_type: MediaType::Unknown,
-      source: TextDocument::new(Vec::new(), Option::<&str>::None),
+      source: "".to_string(),
       specifier: ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts")
         .unwrap(),
     }
@@ -98,7 +97,7 @@ pub trait SpecifierHandler {
     &self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-  ) -> Result<Option<TextDocument>, AnyError>;
+  ) -> Result<Option<String>, AnyError>;
 
   /// Set the emitted code (and maybe map) for a given module specifier.  The
   /// cache type indicates what form the emit is related to.
@@ -106,8 +105,8 @@ pub trait SpecifierHandler {
     &mut self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-    code: TextDocument,
-    maybe_map: Option<TextDocument>,
+    code: String,
+    maybe_map: Option<String>,
   ) -> Result<(), AnyError>;
 
   /// When parsed out of a JavaScript module source, the triple slash reference
@@ -123,7 +122,7 @@ pub trait SpecifierHandler {
     &mut self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-    build_info: TextDocument,
+    build_info: String,
   ) -> Result<(), AnyError>;
 
   /// Set the graph dependencies for a given module specifier.
@@ -245,16 +244,16 @@ impl SpecifierHandler for FetchHandler {
 
       let filename =
         disk_cache.get_cache_filename_with_extension(&url, "js.map");
-      let maybe_map: Option<TextDocument> =
-        if let Ok(map) = disk_cache.get(&filename) {
-          Some(map.into())
-        } else {
-          None
-        };
+      let maybe_map: Option<String> = if let Ok(map) = disk_cache.get(&filename)
+      {
+        Some(String::from_utf8(map)?)
+      } else {
+        None
+      };
       let mut emits = HashMap::new();
       let filename = disk_cache.get_cache_filename_with_extension(&url, "js");
       if let Ok(code) = disk_cache.get(&filename) {
-        emits.insert(EmitType::Cli, (code.into(), maybe_map));
+        emits.insert(EmitType::Cli, (String::from_utf8(code)?, maybe_map));
       };
 
       Ok(CachedModule {
@@ -274,7 +273,7 @@ impl SpecifierHandler for FetchHandler {
     &self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-  ) -> Result<Option<TextDocument>, AnyError> {
+  ) -> Result<Option<String>, AnyError> {
     if emit_type != &EmitType::Cli {
       return Err(UnsupportedEmitType(emit_type.clone()).into());
     }
@@ -282,7 +281,7 @@ impl SpecifierHandler for FetchHandler {
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
     if let Ok(build_info) = self.disk_cache.get(&filename) {
-      return Ok(Some(build_info.into()));
+      return Ok(Some(String::from_utf8(build_info)?));
     }
 
     Ok(None)
@@ -292,7 +291,7 @@ impl SpecifierHandler for FetchHandler {
     &mut self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-    build_info: TextDocument,
+    build_info: String,
   ) -> Result<(), AnyError> {
     if emit_type != &EmitType::Cli {
       return Err(UnsupportedEmitType(emit_type.clone()).into());
@@ -310,8 +309,8 @@ impl SpecifierHandler for FetchHandler {
     &mut self,
     specifier: &ModuleSpecifier,
     emit_type: &EmitType,
-    code: TextDocument,
-    maybe_map: Option<TextDocument>,
+    code: String,
+    maybe_map: Option<String>,
   ) -> Result<(), AnyError> {
     if emit_type != &EmitType::Cli {
       return Err(UnsupportedEmitType(emit_type.clone()).into());
@@ -414,7 +413,7 @@ pub mod tests {
     assert!(cached_module.maybe_dependencies.is_none());
     assert_eq!(cached_module.media_type, MediaType::TypeScript);
     assert_eq!(
-      cached_module.source.to_str().unwrap(),
+      cached_module.source,
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(cached_module.specifier, specifier);
@@ -431,7 +430,7 @@ pub mod tests {
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier.clone()).await.unwrap();
     assert_eq!(cached_module.emits.len(), 0);
-    let code = TextDocument::from("some code");
+    let code = String::from("some code");
     file_fetcher
       .set_cache(&specifier, &EmitType::Cli, code, None)
       .expect("could not set cache");
@@ -439,7 +438,7 @@ pub mod tests {
       file_fetcher.fetch(specifier.clone()).await.unwrap();
     assert_eq!(cached_module.emits.len(), 1);
     let actual_emit = cached_module.emits.get(&EmitType::Cli).unwrap();
-    assert_eq!(actual_emit.0.to_str().unwrap(), "some code");
+    assert_eq!(actual_emit.0, "some code");
     assert_eq!(actual_emit.1, None);
   }
 }

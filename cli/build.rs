@@ -10,12 +10,12 @@ use std::path::Path;
 use std::path::PathBuf;
 
 fn create_snapshot(
-  mut isolate: JsRuntime,
+  mut js_runtime: JsRuntime,
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
-  deno_web::init(&mut isolate);
-  deno_fetch::init(&mut isolate);
+  deno_web::init(&mut js_runtime);
+  deno_fetch::init(&mut js_runtime);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -23,7 +23,7 @@ fn create_snapshot(
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
-    isolate
+    js_runtime
       .execute(
         &("deno:".to_string() + &display_path_str.replace('\\', "/")),
         &std::fs::read_to_string(&file).unwrap(),
@@ -31,7 +31,7 @@ fn create_snapshot(
       .unwrap();
   }
 
-  let snapshot = isolate.snapshot();
+  let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
   std::fs::write(&snapshot_path, snapshot_slice).unwrap();
@@ -39,11 +39,11 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let isolate = JsRuntime::new(RuntimeOptions {
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     ..Default::default()
   });
-  create_snapshot(isolate, snapshot_path, files);
+  create_snapshot(js_runtime, snapshot_path, files);
 }
 
 fn create_compiler_snapshot(
@@ -79,15 +79,15 @@ fn create_compiler_snapshot(
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
 
-  let mut isolate = JsRuntime::new(RuntimeOptions {
+  let mut js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     ..Default::default()
   });
-  isolate.register_op(
+  js_runtime.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),
   );
-  create_snapshot(isolate, snapshot_path, files);
+  create_snapshot(js_runtime, snapshot_path, files);
 }
 
 fn ts_version() -> String {
