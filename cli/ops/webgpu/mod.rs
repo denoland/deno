@@ -6,7 +6,8 @@ mod pipeline;
 mod sampler;
 mod shader;
 mod texture;
-mod command_buffer;
+mod command_encoder;
+mod bundle;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -105,6 +106,38 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_render_pipeline_get_bind_group_layout",
     pipeline::op_webgpu_render_pipeline_get_bind_group_layout,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_command_encoder",
+    command_encoder::op_webgpu_create_command_encoder,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_begin_render_pass",
+    command_encoder::op_webgpu_command_encoder_begin_render_pass,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_begin_compute_pass",
+    command_encoder::op_webgpu_command_encoder_begin_compute_pass,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_copy_texture_to_texture",
+    command_encoder::op_webgpu_command_encoder_copy_texture_to_texture,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_render_bundle_encoder",
+    bundle::op_webgpu_create_render_bundle_encoder,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_finish",
+    bundle::op_webgpu_render_bundle_encoder_finish,
   );
 }
 

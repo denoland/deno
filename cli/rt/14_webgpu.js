@@ -184,6 +184,29 @@
 
       return new GPURenderPipeline(rid, descriptor.label);
     }
+
+    async createReadyComputePipeline(descriptor) {} // TODO
+
+    async createReadyRenderPipeline(descriptor) {} // TODO
+
+    createCommandEncoder(descriptor = {}) {
+      const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
+        rid: this.#deviceRid,
+        ...descriptor
+      });
+
+      return new GPUCommandEncoder(rid, descriptor.label);
+    }
+
+    createRenderBundleEncoder(descriptor) {
+      const { rid } = core.jsonOpSync("op_webgpu_create_render_bundle_encoder", {
+        rid: this.#deviceRid,
+        ...descriptor,
+      });
+
+
+      new GPURenderBundleEncoder();
+    }
   }
 
   class GPUBuffer {
@@ -329,6 +352,195 @@
       const bindGroupLayout = new GPUBindGroupLayout(); // TODO
       GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
       return bindGroupLayout;
+    }
+  }
+
+  class GPUCommandEncoder {
+    #rid;
+
+    constructor(rid, label) {
+      this.#rid = rid;
+      this.label = label;
+    }
+
+    beginRenderPass(descriptor) {
+      const { rid } = core.jsonOpSync("op_webgpu_command_encoder_begin_render_pass", {
+        rid: this.#rid,
+        ...descriptor,
+      });
+
+      return new GPURenderPassEncoder(rid, descriptor.label);
+    }
+
+    beginComputePass(descriptor = {}) {
+      const { rid } = core.jsonOpSync("op_webgpu_command_encoder_begin_compute_pass", {
+        rid: this.#rid,
+        ...descriptor,
+      });
+
+      return new GPUComputePassEncoder(rid, descriptor.label);
+    }
+
+    copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size) {} // TODO
+
+    copyBufferToTexture(source, destination, copySize) {} // TODO
+
+    copyTextureToBuffer(source, destination, copySize) {} // TODO
+
+    copyTextureToTexture(source, destination, copySize) {
+      const { rid } = core.jsonOpSync("op_webgpu_command_encoder_copy_texture_to_texture", {
+        rid: this.#rid,
+        source,
+        destination,
+        copySize,
+      });
+    }
+
+    pushDebugGroup(groupLabel) {} // TODO
+    popDebugGroup() {} // TODO
+    insertDebugMarker(markerLabel) {} // TODO
+
+    writeTimestamp(querySet, queryIndex) {} // TODO
+
+    resolveQuerySet(querySet, firstQuery, queryCount, destination, destinationOffset) {} // TODO
+
+    finish(descriptor = {}) {
+      const { rid } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
+        rid: this.#rid,
+        ...descriptor,
+      });
+
+      return new GPUCommandBuffer(descriptor.label);
+    }
+  }
+
+  class GPURenderPassEncoder {
+    #rid;
+
+    constructor(rid, label) {
+      this.#rid = rid;
+      this.label = label;
+    }
+
+    setViewport(x, y, width, height, minDepth, maxDepth) {} // TODO
+
+    setScissorRect(x, y, width, height) {} // TODO
+
+    setBlendColor(color) {} // TODO
+    setStencilReference(reference) {} // TODO
+
+    beginOcclusionQuery(queryIndex) {} // TODO
+    endOcclusionQuery() {} // TODO
+
+    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO
+    endPipelineStatisticsQuery() {} // TODO
+
+    writeTimestamp(querySet, queryIndex) {} // TODO
+
+    executeBundles(bundles) {} // TODO
+    endPass() {} // TODO
+
+
+    setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
+
+    setBindGroup(index, bindGroup, dynamicOffsetsData, dynamicOffsetsDataStart, dynamicOffsetsDataLength) {} // TODO
+
+    pushDebugGroup(groupLabel) {} // TODO
+    popDebugGroup() {} // TODO
+    insertDebugMarker(markerLabel) {} // TODO
+
+
+    setPipeline(pipeline) {} // TODO
+
+    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO
+    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO
+
+    draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {} // TODO
+    drawIndexed(indexCount, instanceCount = 1, firstIndex = 0, baseVertex = 0, firstInstance = 0) {} // TODO
+
+    drawIndirect(indirectBuffer, indirectOffset) {} // TODO
+    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO
+  }
+
+  class GPUComputePassEncoder {
+    #rid;
+
+    constructor(rid, label) {
+      this.#rid = rid;
+      this.label = label;
+    }
+
+    setPipeline(pipeline) {} // TODO
+    dispatch(x, y = 1, z = 1) {} // TODO
+    dispatchIndirect(indirectBuffer, indirectOffset) {} // TODO
+
+    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO
+    endPipelineStatisticsQuery() {} // TODO
+
+    writeTimestamp(querySet, queryIndex) {} // TODO
+
+    endPass() {} // TODO
+
+
+    setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
+
+    setBindGroup(index, bindGroup, dynamicOffsetsData, dynamicOffsetsDataStart, dynamicOffsetsDataLength) {} // TODO
+
+    pushDebugGroup(groupLabel) {} // TODO
+    popDebugGroup() {} // TODO
+    insertDebugMarker(markerLabel) {} // TODO
+  }
+
+  class GPUCommandBuffer {
+    constructor(label) {
+      this.label = label;
+    }
+
+    async get executionTime() {} // TODO
+  }
+
+  class GPURenderBundleEncoder {
+    #rid;
+    constructor(rid, label) {
+      this.#rid = rid;
+      this.label = label;
+    }
+
+    finish(descriptor = {}) {
+      const { rid } = core.jsonOpSync("op_webgpu_render_bundle_encoder_finish", {
+        rid: this.#rid,
+        ...descriptor,
+      });
+
+      return new GPURenderBundle(descriptor.label);
+    }
+
+
+    setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
+
+    setBindGroup(index, bindGroup, dynamicOffsetsData, dynamicOffsetsDataStart, dynamicOffsetsDataLength) {} // TODO
+
+    pushDebugGroup(groupLabel) {} // TODO
+    popDebugGroup() {} // TODO
+    insertDebugMarker(markerLabel) {} // TODO
+
+
+    setPipeline(pipeline) {} // TODO
+
+    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO
+    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO
+
+    draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {} // TODO
+    drawIndexed(indexCount, instanceCount = 1, firstIndex = 0, baseVertex = 0, firstInstance = 0) {} // TODO
+
+    drawIndirect(indirectBuffer, indirectOffset) {} // TODO
+    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO
+
+  }
+
+  class GPURenderBundle {
+    constructor(label) {
+      this.label = label;
     }
   }
 
