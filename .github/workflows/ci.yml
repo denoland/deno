@@ -114,9 +114,9 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-          key: ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+          key: deno-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.os }}-${{ matrix.kind }}-
+            deno-${{ matrix.os }}-${{ matrix.kind }}-
 
       - name: lint.py
         if: matrix.kind == 'lint'
