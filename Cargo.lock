@@ -415,7 +415,7 @@ dependencies = [
  "fwdansi",
  "http",
  "indexmap",
- "jsdoc 0.5.1",
+ "jsdoc",
  "jsonc-parser",
  "lazy_static",
  "libc",
@@ -1114,18 +1114,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca059e81d9486668f12d455a4ea6daa600bd408134cd17e3d3fb5a32d1f016f8"
 dependencies = [
  "wasm-bindgen",
-]
-
-[[package]]
-name = "jsdoc"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eb0392aa1730824b8359786500d1e1812a8fe4f220bb97a799a4390cf302d9d"
-dependencies = [
- "nom",
- "serde",
- "swc_atoms",
- "swc_common",
 ]
 
 [[package]]
@@ -2360,7 +2348,7 @@ dependencies = [
  "fxhash",
  "indexmap",
  "is-macro",
- "jsdoc 0.6.0",
+ "jsdoc",
  "log",
  "once_cell",
  "ordered-float",

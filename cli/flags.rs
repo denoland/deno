@@ -1168,7 +1168,8 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("docs")
         .long("docs")
         .help("Run code examples from JSDocs as tests")
-        .takes_value(false),
+        .takes_value(false)
+        .requires("unstable"),
     )
     .arg(
       Arg::with_name("allow_none")
