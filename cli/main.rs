@@ -60,7 +60,6 @@ use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
@@ -266,7 +265,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: TextDocument::new(source_code, Some("utf-8")),
+    source_code: String::from_utf8(source_code)?,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
@@ -358,12 +357,7 @@ async fn doc_command(
               e.to_string(),
             ))
           })?;
-        source_file.source_code.to_string().map_err(|e| {
-          doc::DocError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-          ))
-        })
+        Ok(source_file.source_code)
       }
       .boxed_local()
     }
@@ -449,7 +443,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     url: main_module_url,
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: source.into(),
+    source_code: String::from_utf8(source)?,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
@@ -575,10 +569,7 @@ async fn test_command(
     url: test_file_url.clone(),
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: TextDocument::new(
-      test_file.clone().into_bytes(),
-      Some("utf-8"),
-    ),
+    source_code: test_file.clone(),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler

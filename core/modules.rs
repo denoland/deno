@@ -686,7 +686,7 @@ mod tests {
       ]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
@@ -753,7 +753,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -829,7 +829,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -976,7 +976,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
 
