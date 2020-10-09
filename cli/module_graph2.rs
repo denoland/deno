@@ -1045,7 +1045,7 @@ mod tests {
     assert!(info
       .local
       .to_string_lossy()
-      .ends_with("cli/tests/module_graph/file_tests-main.ts"));
+      .ends_with("file_tests-main.ts"));
     assert!(info.map.is_none());
     assert_eq!(
       info.module,
