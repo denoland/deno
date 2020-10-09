@@ -160,7 +160,7 @@ jobs:
         if: |
           matrix.kind == 'test_release' ||
           matrix.kind == 'bench'
-        run: cargo build --release --locked --all-targets
+        run: cargo build --release --locked --all-targets -vv
 
       - name: Build debug
         if: matrix.kind == 'test_debug'
