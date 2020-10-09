@@ -85,10 +85,10 @@ impl DocTestVisitor {
       .with_leading(span.lo, |comments| comments.to_vec());
     let examples = comments
       .iter()
-      .map(|comment| {
+      .filter_map(|comment| {
         jsdoc::parse(Input::from(comment))
-          .expect("Unable to parse jsdoc")
-          .1
+          .map(|parsed| parsed.1)
+          .ok()
       })
       .flat_map(|js_doc| {
         js_doc
