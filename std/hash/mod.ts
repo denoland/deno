@@ -27,7 +27,6 @@ export type SupportedAlgorithm =
   | "keccak384"
   | "keccak512";
 
-
 export type { HmacHasher } from "./hmac_hasher.ts";
 export type HmacSupportedAlgorithm =
   | "sha256"
@@ -47,6 +46,9 @@ export function createHash(algorithm: SupportedAlgorithm): Hasher {
  *
  * @param algorithm name of hash algorithm to use
  */
-export function createHmacHash(algorithm: HmacSupportedAlgorithm, key: string): HmacHasher {
+export function createHmacHash(
+  algorithm: HmacSupportedAlgorithm,
+  key: string,
+): HmacHasher {
   return new HmacHash(algorithm as string, key);
 }

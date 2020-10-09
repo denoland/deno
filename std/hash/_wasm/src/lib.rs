@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use digest::{Digest, DynDigest};
-use wasm_bindgen::prelude::*;
-use sha2::{Sha256, Sha512};
 use hmac::{Hmac, Mac, NewMac};
+use sha2::{Sha256, Sha512};
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct DenoHash {
@@ -52,19 +52,18 @@ pub fn digest_hash(hash: &mut DenoHash) -> Box<[u8]> {
   hash.inner.finalize_reset()
 }
 
-
 #[wasm_bindgen]
 pub struct HmacSha256Hash {
-  inner:  Hmac<Sha256>,
+  inner: Hmac<Sha256>,
 }
 
 #[wasm_bindgen]
 impl HmacSha256Hash {
   #[wasm_bindgen(constructor)]
-  pub fn new(secret: &str) -> Result<HmacSha256Hash,JsValue> {
+  pub fn new(secret: &str) -> Result<HmacSha256Hash, JsValue> {
     let hash = Hmac::<Sha256>::new_varkey(&secret.to_string().into_bytes());
     if let Ok(h) = hash {
-      Ok(HmacSha256Hash{ inner: h })
+      Ok(HmacSha256Hash { inner: h })
     } else {
       Err(JsValue::from_str("Invalid key length"))
     }
@@ -77,22 +76,28 @@ impl HmacSha256Hash {
 
   #[wasm_bindgen]
   pub fn digest(&mut self) -> Box<[u8]> {
-    self.inner.finalize_reset().into_bytes().as_slice().to_vec().into_boxed_slice()
+    self
+      .inner
+      .finalize_reset()
+      .into_bytes()
+      .as_slice()
+      .to_vec()
+      .into_boxed_slice()
   }
 }
 
 #[wasm_bindgen]
 pub struct HmacSha512Hash {
-  inner:  Hmac<Sha512>,
+  inner: Hmac<Sha512>,
 }
 
 #[wasm_bindgen]
 impl HmacSha512Hash {
   #[wasm_bindgen(constructor)]
-  pub fn new(secret: &str) -> Result<HmacSha512Hash,JsValue> {
+  pub fn new(secret: &str) -> Result<HmacSha512Hash, JsValue> {
     let hash = Hmac::<Sha512>::new_varkey(&secret.to_string().into_bytes());
     if let Ok(h) = hash {
-      Ok(HmacSha512Hash{ inner: h })
+      Ok(HmacSha512Hash { inner: h })
     } else {
       Err(JsValue::from_str("Invalid key length"))
     }
@@ -105,6 +110,12 @@ impl HmacSha512Hash {
 
   #[wasm_bindgen]
   pub fn digest(&mut self) -> Box<[u8]> {
-    self.inner.finalize_reset().into_bytes().as_slice().to_vec().into_boxed_slice()
+    self
+      .inner
+      .finalize_reset()
+      .into_bytes()
+      .as_slice()
+      .to_vec()
+      .into_boxed_slice()
   }
 }

@@ -378,14 +378,14 @@ for (const [name, tests] of Object.entries(fixtures.hmacSha512)) {
     Deno.test({
       name: `hmacSha512wa.digest() - ${name} - #${i++}`,
       fn() {
-        console.log(typeof(key),typeof(message));
-        if(typeof(key) === 'string' && typeof(message) == 'string'){
-          const algorithm = createHmacHash("sha512",key);
+        console.log(typeof (key), typeof (message));
+        if (typeof (key) === "string" && typeof (message) == "string") {
+          const algorithm = createHmacHash("sha512", key);
           algorithm.update(message);
           const actual = toHexString(algorithm.digest());
           assertEquals(actual, expected);
         } else {
-          assertEquals(true,true);
+          assertEquals(true, true);
         }
       },
     });
