@@ -57,7 +57,7 @@ impl Default for CachedModule {
 /// cached.  Different types can utilise different configurations which can
 /// change the validity of the emitted code.
 #[allow(unused)]
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum EmitType {
   /// Code that was emitted for use by the CLI
   Cli,
@@ -93,7 +93,7 @@ pub trait SpecifierHandler {
   fn set_cache(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
+    emit_type: EmitType,
     code: String,
     maybe_map: Option<String>,
   ) -> Result<(), AnyError>;
@@ -110,7 +110,7 @@ pub trait SpecifierHandler {
   fn set_build_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
+    emit_type: EmitType,
     build_info: String,
   ) -> Result<(), AnyError>;
 
@@ -261,11 +261,11 @@ impl SpecifierHandler for FetchHandler {
   fn set_build_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
+    emit_type: EmitType,
     build_info: String,
   ) -> Result<(), AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
+    if emit_type != EmitType::Cli {
+      return Err(UnsupportedEmitType(emit_type).into());
     }
     let filename = self
       .disk_cache
@@ -279,12 +279,12 @@ impl SpecifierHandler for FetchHandler {
   fn set_cache(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
+    emit_type: EmitType,
     code: String,
     maybe_map: Option<String>,
   ) -> Result<(), AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
+    if emit_type != EmitType::Cli {
+      return Err(UnsupportedEmitType(emit_type).into());
     }
     let filename = self
       .disk_cache
@@ -403,7 +403,7 @@ pub mod tests {
     assert_eq!(cached_module.emits.len(), 0);
     let code = String::from("some code");
     file_fetcher
-      .set_cache(&specifier, &EmitType::Cli, code, None)
+      .set_cache(&specifier, EmitType::Cli, code, None)
       .expect("could not set cache");
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier.clone()).await.unwrap();

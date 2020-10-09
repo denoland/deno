@@ -423,14 +423,14 @@ impl Graph2 {
 
   /// Update the handler with any modules that are marked as _dirty_ and update
   /// any build info if present.
-  fn flush(&mut self, emit_type: &EmitType) -> Result<(), AnyError> {
+  fn flush(&mut self, emit_type: EmitType) -> Result<(), AnyError> {
     let mut handler = self.handler.borrow_mut();
     for (_, module) in self.modules.iter_mut() {
       if module.is_dirty {
-        let (code, maybe_map) = module.emits.get(emit_type).unwrap();
+        let (code, maybe_map) = module.emits.get(&emit_type).unwrap();
         handler.set_cache(
           &module.specifier,
-          &emit_type,
+          emit_type,
           code.clone(),
           maybe_map.clone(),
         )?;
@@ -444,7 +444,7 @@ impl Graph2 {
       if let Some(build_info) = self.build_info.get(&emit_type) {
         handler.set_build_info(
           root_specifier,
-          &emit_type,
+          emit_type,
           build_info.to_owned(),
         )?;
       }
@@ -548,7 +548,7 @@ impl Graph2 {
       module.set_version(&config);
       module.is_dirty = true;
     }
-    self.flush(&emit_type)?;
+    self.flush(emit_type)?;
 
     let stats = Stats(vec![
       ("Files".to_string(), self.modules.len() as u128),
@@ -746,16 +746,13 @@ mod tests {
     fn set_cache(
       &mut self,
       specifier: &ModuleSpecifier,
-      cache_type: &EmitType,
+      emit_type: EmitType,
       code: String,
       maybe_map: Option<String>,
     ) -> Result<(), AnyError> {
-      self.cache_calls.push((
-        specifier.clone(),
-        cache_type.clone(),
-        code,
-        maybe_map,
-      ));
+      self
+        .cache_calls
+        .push((specifier.clone(), emit_type, code, maybe_map));
       Ok(())
     }
     fn set_types(
@@ -769,17 +766,15 @@ mod tests {
     fn set_build_info(
       &mut self,
       specifier: &ModuleSpecifier,
-      cache_type: &EmitType,
+      emit_type: EmitType,
       build_info: String,
     ) -> Result<(), AnyError> {
       self
         .build_info
         .insert(specifier.clone(), build_info.clone());
-      self.build_info_calls.push((
-        specifier.clone(),
-        cache_type.clone(),
-        build_info,
-      ));
+      self
+        .build_info_calls
+        .push((specifier.clone(), emit_type, build_info));
       Ok(())
     }
     fn set_deps(
