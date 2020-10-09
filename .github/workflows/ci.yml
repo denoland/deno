@@ -26,14 +26,6 @@ jobs:
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
             kind: lint
 
-      # Always run master branch builds to completion. This allows the cache to
-      # stay mostly up-to-date in situations where a single job fails due to
-      # e.g. a flaky test.
-      # Don't fast-fail on tag build because publishing binaries shouldn't be
-      # prevented if 'cargo publish' fails (which can be a false negative).
-      fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
-        'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
-
     env:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
@@ -93,30 +85,6 @@ jobs:
           python --version
           rustc --version
           cargo --version
-
-      - name: Configure cargo data directory
-        # After this point, all cargo registry and crate data is stored in
-        # $GITHUB_WORKSPACE/.cargo_home. This allows us to cache only the files
-        # that are needed during the build process. Additionally, this works
-        # around a bug in the 'cache' action that causes directories outside of
-        # the workspace dir to be saved/restored incorrectly.
-        run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
-
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          # Note: crates from the denoland/deno git repo always get rebuilt,
-          # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,
-          # so we cache only those subdirectories of target/{debug|release} that
-          # contain the build output for crates that come from the registry.
-          path: |-
-            .cargo_home
-            target/*/.*
-            target/*/build
-            target/*/deps
-          key: deno-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            deno-${{ matrix.os }}-${{ matrix.kind }}-
 
       - name: lint.py
         if: matrix.kind == 'lint'
