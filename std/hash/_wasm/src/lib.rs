@@ -2,6 +2,8 @@
 
 use digest::{Digest, DynDigest};
 use wasm_bindgen::prelude::*;
+use sha2::{Sha256, Sha512};
+use hmac::{Hmac, Mac, NewMac};
 
 #[wasm_bindgen]
 pub struct DenoHash {
@@ -48,4 +50,61 @@ pub fn update_hash(hash: &mut DenoHash, data: &[u8]) {
 #[wasm_bindgen]
 pub fn digest_hash(hash: &mut DenoHash) -> Box<[u8]> {
   hash.inner.finalize_reset()
+}
+
+
+#[wasm_bindgen]
+pub struct HmacSha256Hash {
+  inner:  Hmac<Sha256>,
+}
+
+#[wasm_bindgen]
+impl HmacSha256Hash {
+  #[wasm_bindgen(constructor)]
+  pub fn new(secret: &str) -> Result<HmacSha256Hash,JsValue> {
+    let hash = Hmac::<Sha256>::new_varkey(&secret.to_string().into_bytes());
+    if let Ok(h) = hash {
+      Ok(HmacSha256Hash{ inner: h })
+    } else {
+      Err(JsValue::from_str("Invalid key length"))
+    }
+  }
+
+  #[wasm_bindgen]
+  pub fn update(&mut self, key: &str) {
+    self.inner.update(&key.to_string().into_bytes())
+  }
+
+  #[wasm_bindgen]
+  pub fn digest(&mut self) -> Box<[u8]> {
+    self.inner.finalize_reset().into_bytes().as_slice().to_vec().into_boxed_slice()
+  }
+}
+
+#[wasm_bindgen]
+pub struct HmacSha512Hash {
+  inner:  Hmac<Sha512>,
+}
+
+#[wasm_bindgen]
+impl HmacSha512Hash {
+  #[wasm_bindgen(constructor)]
+  pub fn new(secret: &str) -> Result<HmacSha512Hash,JsValue> {
+    let hash = Hmac::<Sha512>::new_varkey(&secret.to_string().into_bytes());
+    if let Ok(h) = hash {
+      Ok(HmacSha512Hash{ inner: h })
+    } else {
+      Err(JsValue::from_str("Invalid key length"))
+    }
+  }
+
+  #[wasm_bindgen]
+  pub fn update(&mut self, key: &str) {
+    self.inner.update(&key.to_string().into_bytes())
+  }
+
+  #[wasm_bindgen]
+  pub fn digest(&mut self) -> Box<[u8]> {
+    self.inner.finalize_reset().into_bytes().as_slice().to_vec().into_boxed_slice()
+  }
 }

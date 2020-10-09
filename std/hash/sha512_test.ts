@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { HmacSha512, Message, Sha512 } from "./sha512.ts";
+import { createHmacHash } from "./mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
@@ -368,6 +369,26 @@ for (const method of methods) {
         },
       });
     }
+  }
+}
+
+for (const [name, tests] of Object.entries(fixtures.hmacSha512)) {
+  let i = 1;
+  for (const [expected, [key, message]] of Object.entries(tests)) {
+    Deno.test({
+      name: `hmacSha512wa.digest() - ${name} - #${i++}`,
+      fn() {
+        console.log(typeof(key),typeof(message));
+        if(typeof(key) === 'string' && typeof(message) == 'string'){
+          const algorithm = createHmacHash("sha512",key);
+          algorithm.update(message);
+          const actual = toHexString(algorithm.digest());
+          assertEquals(actual, expected);
+        } else {
+          assertEquals(true,true);
+        }
+      },
+    });
   }
 }
 

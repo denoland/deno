@@ -20,6 +20,7 @@ sha-1 = "0.9.1"
 sha2 = "0.9.1"
 sha3 = "0.9.1"
 wasm-bindgen = "0.2.68"
+hmac = "0.9.0"
 
 [profile.release]
 lto = true
