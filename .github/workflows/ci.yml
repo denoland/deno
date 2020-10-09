@@ -114,6 +114,7 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
+            target/*/gn_out
           key: deno-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             deno-${{ matrix.os }}-${{ matrix.kind }}-
