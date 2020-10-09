@@ -35,29 +35,34 @@ unitTest(function performanceMark() {
 });
 
 unitTest(function performanceMeasure() {
-  const mark = performance.mark("test");
+  const markName1 = "mark1";
+  const measureName1 = "measure1";
+  const mark1 = performance.mark(markName1);
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       try {
-        const measure = performance.measure("test", "test");
-        assert(measure instanceof PerformanceMeasure);
-        assertEquals(measure.detail, null);
-        assertEquals(measure.name, "test");
-        assertEquals(measure.entryType, "measure");
-        assert(measure.startTime > 0);
-        assertEquals(mark.startTime, measure.startTime);
+        const measure1 = performance.measure(measureName1, markName1);
+        assert(measure1 instanceof PerformanceMeasure);
+        assertEquals(measure1.detail, null);
+        assertEquals(measure1.name, measureName1);
+        assertEquals(measure1.entryType, "measure");
+        assert(measure1.startTime > 0);
+        assertEquals(mark1.startTime, measure1.startTime);
         assert(
-          measure.duration >= 100,
-          `duration below 100ms: ${measure.duration}`,
+          measure1.duration >= 100,
+          `duration below 100ms: ${measure1.duration}`,
         );
         assert(
-          measure.duration < 500,
-          `duration exceeds 500ms: ${measure.duration}`,
+          measure1.duration < 500,
+          `duration exceeds 500ms: ${measure1.duration}`,
         );
         const entries = performance.getEntries();
-        assert(entries[entries.length - 1] === measure);
-        const measureEntries = performance.getEntriesByName("test", "measure");
-        assert(measureEntries[measureEntries.length - 1] === measure);
+        assert(entries[entries.length - 1] === measure1);
+        const measureEntries = performance.getEntriesByName(
+          measureName1,
+          "measure",
+        );
+        assert(measureEntries[measureEntries.length - 1] === measure1);
       } catch (e) {
         return reject(e);
       }
