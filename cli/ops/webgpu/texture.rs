@@ -12,10 +12,10 @@ use serde::Deserialize;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-fn serialize_texture_format(
-  format: &String,
+pub fn serialize_texture_format(
+  format: String,
 ) -> Result<wgpu::TextureFormat, AnyError> {
-  let texture_format = match *format {
+  Ok(match format {
     // 8-bit formats
     &"r8unorm" => wgpu::TextureFormat::R8Unorm,
     &"r8snorm" => wgpu::TextureFormat::R8Snorm,
@@ -93,9 +93,7 @@ fn serialize_texture_format(
     // "depth32float-stencil8" extension
     &"depth32float-stencil8" => return Err(not_supported()), // wgpu-rs#590
     _ => unreachable!(),
-  };
-
-  Ok(texture_format)
+  })
 }
 
 #[derive(Deserialize)]
@@ -134,7 +132,7 @@ pub fn op_webgpu_create_texture(
       Some(_) => unreachable!(),
       None => wgpu::TextureDimension::D2,
     },
-    format: serialize_texture_format(&args.format)?,
+    format: serialize_texture_format(args.format)?,
     usage: (), // TODO
   });
 
@@ -144,6 +142,19 @@ pub fn op_webgpu_create_texture(
     "rid": rid,
   }))
 }
+
+pub fn serialize_dimension(dimension: String) -> wgpu::TextureViewDimension {
+  match dimension {
+    &"1d" => wgpu::TextureViewDimension::D1,
+    &"2d" => wgpu::TextureViewDimension::D2,
+    &"2d-array" => wgpu::TextureViewDimension::D2Array,
+    &"cube" => wgpu::TextureViewDimension::Cube,
+    &"cube-array" => wgpu::TextureViewDimension::CubeArray,
+    &"3d" => wgpu::TextureViewDimension::D3,
+    _ => unreachable!(),
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateTextureViewArgs {
@@ -172,16 +183,10 @@ pub fn op_webgpu_create_texture_view(
 
   let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
     label: args.label.map(|label| &label),
-    format: args.format.map(|format| serialize_texture_format(&format)?),
-    dimension: args.dimension.map(|dimension| match dimension {
-      &"1d" => wgpu::TextureViewDimension::D1,
-      &"2d" => wgpu::TextureViewDimension::D2,
-      &"2d-array" => wgpu::TextureViewDimension::D2Array,
-      &"cube" => wgpu::TextureViewDimension::Cube,
-      &"cube-array" => wgpu::TextureViewDimension::CubeArray,
-      &"3d" => wgpu::TextureViewDimension::D3,
-      _ => unreachable!(),
-    }),
+    format: args.format.map(|format| serialize_texture_format(format)?),
+    dimension: args
+      .dimension
+      .map(|dimension| serialize_dimension(dimension)),
     aspect: match args.aspect {
       Some(&"all") => wgpu::TextureAspect::All,
       Some(&"stencil-only") => wgpu::TextureAspect::StencilOnly,

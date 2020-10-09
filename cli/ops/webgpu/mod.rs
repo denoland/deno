@@ -1,7 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+mod binding;
 mod buffer;
+mod pipeline;
+mod sampler;
+mod shader;
 mod texture;
+mod command_buffer;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -57,6 +62,49 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_create_texture_view",
     texture::op_webgpu_create_texture_view,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_sampler",
+    sampler::op_webgpu_create_sampler,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_bind_group_layout",
+    binding::op_webgpu_create_bind_group_layout,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_pipeline_layout",
+    binding::op_webgpu_create_pipeline_layout,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_bind_group",
+    binding::op_webgpu_create_bind_group,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_compute_pipeline",
+    pipeline::op_webgpu_create_compute_pipeline,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pipeline_get_bind_group_layout",
+    pipeline::op_webgpu_compute_pipeline_get_bind_group_layout,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_render_pipeline",
+    pipeline::op_webgpu_create_render_pipeline,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pipeline_get_bind_group_layout",
+    pipeline::op_webgpu_render_pipeline_get_bind_group_layout,
   );
 }
 
@@ -153,6 +201,7 @@ pub async fn op_webgpu_request_device(
   let (device, queue) = adapter
     .request_device(
       &wgpu::DeviceDescriptor {
+        // TODO: should accept label
         features: Default::default(), // TODO
         limits: Default::default(),   // TODO
         shader_validation: false,     // TODO

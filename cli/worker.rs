@@ -313,6 +313,7 @@ impl MainWorker {
       ops::signal::init(&mut worker);
       ops::tls::init(&mut worker);
       ops::tty::init(&mut worker);
+      ops::webgpu::init(&mut worker);
       ops::websocket::init(&mut worker);
     }
     {
@@ -477,6 +478,7 @@ impl WebWorker {
       );
       ops::errors::init(&mut web_worker);
       ops::io::init(&mut web_worker);
+      ops::webgpu::init(&mut web_worker);
       ops::websocket::init(&mut web_worker);
 
       if has_deno_namespace {
