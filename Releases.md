@@ -11,8 +11,7 @@ https://github.com/denoland/deno_install
 - feat(unstable): Revert "enable importsNotUsedAsValues by default #7413"
   (#7800)
 - fix: Update worker types to better align to lib.dom.d.ts (#7843)
-- fix(cli/ops/fs): Don't force Windows paths separate paths with forward slash
-  (#7833)
+- fix(cli/ops/fs): Preserve Windows path separators in Deno.realPath() (#7833)
 - fix(cli/rt/console): Don't require a prototype to detect a class instance
   (#7869)
 - fix(cli/rt/error_stack): Improve message line formatting (#7860)
