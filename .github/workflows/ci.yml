@@ -116,7 +116,7 @@ jobs:
             target/*/deps
           key: invalidate-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.os }}-${{ matrix.kind }}-
+            invalidate-${{ matrix.os }}-${{ matrix.kind }}-
 
       - name: lint.py
         if: matrix.kind == 'lint'
