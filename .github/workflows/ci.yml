@@ -114,7 +114,7 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-          key: ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+          key: invalidate-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ matrix.os }}-${{ matrix.kind }}-
 
