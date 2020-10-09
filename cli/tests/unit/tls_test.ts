@@ -183,7 +183,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, net: true } },
+  { ignore: true, perms: { read: true, net: true } },
   async function startTls(): Promise<void> {
     const hostname = "smtp.gmail.com";
     const port = 587;
