@@ -743,13 +743,6 @@ mod tests {
     fn fetch(&mut self, specifier: ModuleSpecifier) -> FetchFuture {
       Box::pin(future::ready(self.get_cache(specifier)))
     }
-    fn get_build_info(
-      &self,
-      specifier: &ModuleSpecifier,
-      _cache_type: &EmitType,
-    ) -> Result<Option<String>, AnyError> {
-      Ok(self.build_info.get(specifier).cloned())
-    }
     fn set_cache(
       &mut self,
       specifier: &ModuleSpecifier,

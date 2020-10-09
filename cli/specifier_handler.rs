@@ -88,17 +88,6 @@ pub trait SpecifierHandler {
   /// cache.
   fn fetch(&mut self, specifier: ModuleSpecifier) -> FetchFuture;
 
-  /// Get the optional build info from the cache for a given module specifier.
-  /// Because build infos are only associated with the "root" modules, they are
-  /// not expected to be cached for each module, but are "lazily" checked when
-  /// a root module is identified.  The `emit_type` also indicates what form
-  /// of the module the build info is valid for.
-  fn get_build_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
-  ) -> Result<Option<String>, AnyError>;
-
   /// Set the emitted code (and maybe map) for a given module specifier.  The
   /// cache type indicates what form the emit is related to.
   fn set_cache(
@@ -267,24 +256,6 @@ impl SpecifierHandler for FetchHandler {
       })
     }
     .boxed_local()
-  }
-
-  fn get_build_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
-  ) -> Result<Option<String>, AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
-    }
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
-    if let Ok(build_info) = self.disk_cache.get(&filename) {
-      return Ok(Some(String::from_utf8(build_info)?));
-    }
-
-    Ok(None)
   }
 
   fn set_build_info(
