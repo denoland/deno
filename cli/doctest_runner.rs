@@ -96,7 +96,7 @@ impl DocTestVisitor {
           .into_iter()
           .filter_map(|tag_item| match tag_item.tag {
             Tag::Example(ex_tag) => Some((
-              self.get_span_location(ex_tag.text.span),
+              self.get_span_location(ex_tag.span),
               ex_tag.text.value.to_string(),
             )),
             _ => None,
