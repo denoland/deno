@@ -118,12 +118,7 @@ impl DocFileLoader for SourceFileFetcher {
             e.to_string(),
           ))
         })?;
-      source_file.source_code.to_string().map_err(|e| {
-        doc::DocError::Io(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          e.to_string(),
-        ))
-      })
+      Ok(source_file.source_code)
     }
     .boxed_local()
   }
@@ -578,7 +573,8 @@ async fn test_command(
       filter,
     )
   } else {
-    let jsdocs = doctest_runner::parse_jsdocs(&test_modules, flags).await?;
+    let jsdocs =
+      doctest_runner::parse_jsdocs(&test_modules, flags.clone()).await?;
     doctest_runner::prepare_doctests(jsdocs, fail_fast, quiet, filter)?
   };
 
@@ -750,10 +746,10 @@ pub fn main() {
       include,
       allow_none,
       filter,
-    } => test_command(
-      docs, flags, include, fail_fast, quiet, allow_none, filter,
-    )
-    .boxed_local(),
+    } => {
+      test_command(docs, flags, include, fail_fast, quiet, allow_none, filter)
+        .boxed_local()
+    }
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);

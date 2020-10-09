@@ -2907,7 +2907,6 @@ mod tests {
           quiet: false,
           filter: None,
           include: Some(svec!["dir1"]),
-          coverage: false
         },
         ..Flags::default()
       }
