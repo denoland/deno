@@ -8,6 +8,33 @@ https://github.com/denoland/deno_install
 
 ### 1.4.4 / 2020.10.03
 
+- feat(unstable): Revert "enable importsNotUsedAsValues by default #7413"
+  (#7800)
+- fix: Update worker types to better align to lib.dom.d.ts (#7843)
+- fix(cli/ops/fs): Don't force Windows paths separate paths with forward slash
+  (#7833)
+- fix(cli/rt/console): Don't require a prototype to detect a class instance
+  (#7869)
+- fix(cli/rt/error_stack): Improve message line formatting (#7860)
+- fix(core): Handle unregistered errors in core better (#7817)
+- fix(core): Module execution with top level await (#7672)
+- perf(cli/console): Don't add redundant ANSI codes (#7823)
+- refactor(cli): Remove TextDocument (#7850)
+- refactor(cli/inspector): Use &str for post_message (#7851)
+- refactor(cli/repl): Tightly integrate event loop (#7834)
+- refactor(core): Cleanup JsRuntime (#7853, #7855, #7825, #7846)
+- upgrade: deno_doc, deno_lint, dprint, swc (#7862)
+- upgrade: rusty_v8 0.11.0, V8 8.7.220.3 (#7859)
+
+Changes in std version 0.74.0:
+
+- chore(std/http): Rename http_bench.ts -> bench.ts (#7509)
+- feat(std/node/fs): Adding readdir, rename, and some others (#7666)
+- fix(std/node/fs): Allow appendFileSync to accept Uint8Array as type for data
+  (#7835)
+
+### 1.4.4 / 2020.10.03
+
 - fix(cli): Update type definitions to align to TS dom (#7791)
 - fix(cli/repl): Fix hot loop in REPL (#7804)
 - fix(cli/repl): Enable colors on inspected values (#7798)

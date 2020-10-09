@@ -255,19 +255,6 @@ impl Drop for Worker {
   }
 }
 
-// impl Future for Worker {
-//   type Output = Result<(), AnyError>;
-
-//   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-//     let inner = self.get_mut();
-
-//     // We always poll the inspector if it exists.
-//     let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
-//     inner.waker.register(cx.waker());
-//     inner.js_runtime.poll_event_loop(cx)
-//   }
-// }
-
 /// This worker is created and used by Deno executable.
 ///
 /// It provides ops available in the `Deno` namespace.

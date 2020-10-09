@@ -65,7 +65,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.46.0
+          rust-version: 1.47.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -114,9 +114,9 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-          key: ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+          key: deno-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.os }}-${{ matrix.kind }}-
+            deno-${{ matrix.os }}-${{ matrix.kind }}-
 
       - name: lint.py
         if: matrix.kind == 'lint'
