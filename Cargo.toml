@@ -10,7 +10,8 @@ members = [
   "op_crates/web",
 ]
 exclude = [
-  "std/hash/_wasm"
+  "std/hash/_wasm",
+  "std/mail/_wasm"
 ]
 
 

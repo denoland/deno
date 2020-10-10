@@ -8,6 +8,7 @@ repository = "https://github.com/denoland/deno"
 
 [lib]
 crate-type = ["cdylib"]
+path = "lib.rs"
 
 [dependencies]
 digest = "0.9.0"
