@@ -1,11 +1,23 @@
 const TESTS = [];
 
-async function runTests() {
-    for (const {name, fn} of TESTS) {
-        console.log("test ", name);
-        await fn();
+class TestRunner {
+    async *[Symbol.asyncIterator]() {
+        for (const {name, fn} of TESTS) {
+            console.log("test ", name);
+            await fn();
+            yield { name };
+        }
     }
-    console.log("done testing");
+}
+
+async function runTests() {
+    const r = new TestRunner();
+
+    for await (const msg of r) {
+        console.log(msg);
+    }
+
+    console.log("tests done");
 }
 
 function test(def) {
@@ -29,11 +41,11 @@ test({
     }
 });
 
-function foo() {
-    return new Promise((_r, _rj) => {
-        console.log("hello from clunky promise");
-    });
-}
+// function foo() {
+//     return new Promise((_r, _rj) => {
+//         console.log("hello from clunky promise");
+//     });
+// }
 
-await foo();
+// await foo();
 await runTests();
