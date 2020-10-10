@@ -1,5 +1,6 @@
 import { assertEquals, fail } from "../../testing/asserts.ts";
 import { rmdir, rmdirSync } from "./_fs_rmdir.ts";
+import { closeSync } from "./_fs_close.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { join } from "../../path/mod.ts";
 
@@ -30,9 +31,20 @@ Deno.test({
   },
 });
 
+function closeRes(before: Deno.ResourceMap, after: Deno.ResourceMap) {
+  for (const key in after) {
+    if (!before[key]) {
+      try {
+        closeSync(Number(key));
+      } catch (error) {}
+    }
+  }
+}
+
 Deno.test({
   name: "ASYNC: removing non-empty folder",
   async fn() {
+    const rBefore = Deno.resources();
     const dir = Deno.makeTempDirSync();
     Deno.createSync(join(dir, "file1.txt"));
     Deno.createSync(join(dir, "file2.txt"));
@@ -48,6 +60,8 @@ Deno.test({
       .catch(() => fail())
       .finally(() => {
         if (existsSync(dir)) Deno.removeSync(dir, { recursive: true });
+        const rAfter = Deno.resources();
+        closeRes(rBefore, rAfter);
       });
   },
 });
@@ -55,6 +69,7 @@ Deno.test({
 Deno.test({
   name: "SYNC: removing non-empty folder",
   fn() {
+    const rBefore = Deno.resources();
     const dir = Deno.makeTempDirSync();
     Deno.createSync(join(dir, "file1.txt"));
     Deno.createSync(join(dir, "file2.txt"));
@@ -62,5 +77,8 @@ Deno.test({
     Deno.createSync(join(dir, "some_dir", "file.txt"));
     rmdirSync(dir, { recursive: true });
     assertEquals(existsSync(dir), false);
+    // closing resources
+    const rAfter = Deno.resources();
+    closeRes(rBefore, rAfter);
   },
 });
