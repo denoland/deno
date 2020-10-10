@@ -1,4 +1,4 @@
-import { assertEquals, fail, assertNotEquals } from "../../testing/asserts.ts";
+import { assertEquals, assertNotEquals, fail } from "../../testing/asserts.ts";
 import { readdir, readdirSync } from "./_fs_readdir.ts";
 import { join } from "../../path/mod.ts";
 
@@ -18,7 +18,7 @@ Deno.test({
   },
 });
 
-function assertEqualsArrayAnyOrder<T = any>(actual: T[], expected: T[]) {
+function assertEqualsArrayAnyOrder<T>(actual: T[], expected: T[]) {
   assertEquals(actual.length, expected.length);
   for (const item of expected) {
     const index = actual.indexOf(item);
@@ -63,6 +63,9 @@ Deno.test({
     Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
     Deno.writeTextFileSync(join(dir, "file2.txt"), "hi");
     Deno.mkdirSync(join(dir, "some_dir"));
-    assertEqualsArrayAnyOrder(readdirSync(dir), ["file1.txt", "some_dir", "file2.txt"]);
+    assertEqualsArrayAnyOrder(
+      readdirSync(dir),
+      ["file1.txt", "some_dir", "file2.txt"],
+    );
   },
 });
