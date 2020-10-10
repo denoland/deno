@@ -1,2 +1,2 @@
 export { serve } from "../../http/server.ts";
-export { encode, decode } from "../../encoding/utf8.ts";
+export { decode, encode } from "../../encoding/utf8.ts";

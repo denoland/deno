@@ -1,5 +1,5 @@
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import { create, parse } from "./mod.ts";
+import { assertEquals } from "../testing/asserts.ts";
+import { create, parse, TokenObject } from "./mod.ts";
 
 import {
   create as createSignature,
@@ -32,11 +32,8 @@ Deno.test("[jwt] create signature", async function (): Promise<void> {
 });
 
 Deno.test("[jwt] verify signature", async function (): Promise<void> {
-  const jwt = await create({
-    payload: {},
-    key,
-  });
-  const { header, signature } = (await parse(jwt)) as any;
+  const jwt = await create({}, key);
+  const { header, signature } = await parse(jwt) as TokenObject;
 
   const validSignature = await verifySignature({
     signature,

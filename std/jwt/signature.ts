@@ -3,11 +3,11 @@ import { convertHexToBase64url } from "./_util.ts";
 import { HmacSha256 } from "../hash/sha256.ts";
 import { HmacSha512 } from "../hash/sha512.ts";
 
-async function encrypt(
-  alg: Algorithm,
+function encrypt(
+  alg: Algorithm | "none",
   key: string,
   msg: string,
-): Promise<string> {
+): string {
   switch (alg) {
     case "none":
       return "";
@@ -17,20 +17,20 @@ async function encrypt(
       return new HmacSha512(key).update(msg).toString();
     default:
       throw new RangeError(
-        `no matching crypto algorithm in the header: ${alg}`,
+        `algorithm '${alg}' in header is not supported`,
       );
   }
 }
 
-export async function create(
+export function create(
   alg: Algorithm,
   key: string,
   input: string,
-): Promise<string> {
-  return convertHexToBase64url(await encrypt(alg, key, input));
+): string {
+  return convertHexToBase64url(encrypt(alg, key, input));
 }
 
-export async function verify({
+export function verify({
   signature,
   key,
   alg,
@@ -38,16 +38,8 @@ export async function verify({
 }: {
   signature: string;
   key: string;
-  alg: Algorithm;
+  alg: Algorithm | "none";
   signingInput: string;
-}): Promise<boolean> {
-  switch (alg) {
-    case "none":
-    case "HS256":
-    case "HS512": {
-      return signature === (await encrypt(alg, key, signingInput));
-    }
-    default:
-      throw new RangeError(`no matching crypto alg in the header: ${alg}`);
-  }
+}): boolean {
+  return signature === encrypt(alg, key, signingInput);
 }

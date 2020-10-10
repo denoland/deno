@@ -6,7 +6,7 @@ The absolute minimum to make JSON Web Tokens in deno. Based on
 [JWT](https://tools.ietf.org/html/rfc7519) and
 [JWS](https://www.rfc-editor.org/rfc/rfc7515.html) specifications.
 
-This library is accessible through the https://deno.land/x/ service and the 
+This library is accessible through the https://deno.land/x/ service and the
 https://nest.land/ service.
 
 ## Features
@@ -15,7 +15,7 @@ To generate JWTs which look in their finalized form like this (with line breaks
 for display purposes only)
 
 ```
- eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9
+eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9
  .
  eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ
  .
@@ -34,7 +34,7 @@ The following signature and MAC algorithms - which are defined in the JSON Web
 Algorithms (JWA) [specification](https://www.rfc-editor.org/rfc/rfc7518.html) -
 have been implemented already: **HMAC SHA-256** ("HS256"), **HMAC SHA-512**
 ("HS512"), **RSASSA-PKCS1-v1_5 SHA-256** ("RS256") and **none**
-([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).  
+([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
 As soon as deno expands its
 [crypto library](https://github.com/denoland/deno/tree/master/std/hash), we will
 add more algorithms.
@@ -57,8 +57,8 @@ to see how the **crit** header parameter works.
 
 ## API
 
-The API consists mostly of the two functions `create` and `validate`,
-generating and validating a JWT, respectively.
+The API consists mostly of the two functions `create` and `validate`, generating
+and validating a JWT, respectively.
 
 #### create({ key: string, header: Jose, payload: Payload }): Promise\<string>
 
@@ -68,10 +68,10 @@ The function `create` returns the url-safe encoded JWT as promise.
 
 The function `validate` returns a _promise_. This promise resolves to an
 _object_ with a _union type_ where the boolean property `isValid` serves as
-[discriminant](https://www.typescriptlang.org/docs/handbook/advanced-types.html#discriminated-unions).  
+[discriminant](https://www.typescriptlang.org/docs/handbook/advanced-types.html#discriminated-unions).
 If the JWT is valid (`.isValid === true`), the _type_ of the resolved promise
 is:
-`{ isValid: true; header: Jose; payload: Payload; signature: string; jwt: string; critResult?: unknown[] }`.  
+`{ isValid: true; header: Jose; payload: Payload; signature: string; jwt: string; critResult?: unknown[] }`.
 If the JWT is invalid, the promise resolves to
 `{ isValid: false; jwt: unknown; error: JwtError; isExpired: boolean }`.
 
@@ -102,7 +102,7 @@ setExpiration(60 * 60);
 
 Run the following _server_ example with `deno run -A example.ts`:
 
-The server will respond to a **GET** request with a newly created JWT.  
+The server will respond to a **GET** request with a newly created JWT.
 On the other hand, if you send a JWT as data along with a **POST** request, the
 server will check the validity of the JWT.
 
@@ -112,7 +112,12 @@ example `https://deno.land/x/djwt@v1.2/create.ts`.
 ```typescript
 import { serve } from "https://deno.land/std/http/server.ts";
 import { validate } from "https://deno.land/x/djwt/validate.ts";
-import { create, setExpiration, Jose, Payload } from "https://deno.land/x/djwt/create.ts";
+import {
+  create,
+  Jose,
+  Payload,
+  setExpiration,
+} from "https://deno.land/x/djwt/create.ts";
 
 const key = "your-secret";
 const payload: Payload = {
@@ -145,5 +150,5 @@ implementation for the [Oak](https://oakserver.github.io/oak/) framework
 
 ## Contribution
 
-Every kind of contribution to this project is highly appreciated.  
+Every kind of contribution to this project is highly appreciated.
 Please run `deno fmt` on the changed files before making a pull request.

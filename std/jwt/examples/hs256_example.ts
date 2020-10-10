@@ -1,5 +1,5 @@
-import { serve, decode } from "./example_deps.ts";
-import { verify, create, setExpiration } from "../mod.ts";
+import { decode, serve } from "./example_deps.ts";
+import { create, setExpiration, verify } from "../mod.ts";
 import type { Header, Payload } from "../mod.ts";
 
 const key = "your-secret";
@@ -18,8 +18,6 @@ for await (const req of serve("0.0.0.0:8000")) {
     req.respond({ body: (await create({ header, payload, key })) + "\n" });
   } else {
     const jwt = decode(await Deno.readAll(req.body));
-    let j = await verify({ jwt, key, algorithm: "HS256" });
-    j = () => {};
     req.respond({
       body: JSON.stringify(await verify({ jwt, key, algorithm: "HS256" })),
     });

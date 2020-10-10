@@ -21,10 +21,10 @@ Takes a base64 encoded ascii string and returns a ucs-2 string.
 ### Example
 
 ```typescript
-const str = "Hello ☸☹☺☻☼☾☿ World ✓"
-const uint8Array = new TextEncoder().encode(str)
-uint8Array === convertBase64ToUint8Array(convertUint8ArrayToBase64(uint8Array))
-str === convertBase64ToString(convertStringToBase64(str))
+const str = "Hello ☸☹☺☻☼☾☿ World ✓";
+const uint8Array = new TextEncoder().encode(str);
+uint8Array === convertBase64ToUint8Array(convertUint8ArrayToBase64(uint8Array));
+str === convertBase64ToString(convertStringToBase64(str));
 ```
 
 ## base64url
@@ -41,8 +41,8 @@ Converts a **base64url** string to standard **base64**.
 ### Example
 
 ```typescript
-const base64 = "c3ViamVjdHM/X2Q9MQ=="
-const base64url = convertBase64ToBase64url(base64)
+const base64 = "c3ViamVjdHM/X2Q9MQ==";
+const base64url = convertBase64ToBase64url(base64);
 
-console.log(base64url) // c3ViamVjdHM_X2Q9MQ
+console.log(base64url); // c3ViamVjdHM_X2Q9MQ
 ```

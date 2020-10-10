@@ -24,14 +24,14 @@ Deno.test("[jwt] conversion", function (): void {
             convertHexToUint8Array(
               convertUint8ArrayToHex(
                 convertBase64ToUint8Array(
-                  convertBase64urlToBase64(convertHexToBase64url(hex1))
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+                  convertBase64urlToBase64(convertHexToBase64url(hex1)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
   );
   assertEquals(hex1, hex2);
 });

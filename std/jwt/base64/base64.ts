@@ -10,7 +10,7 @@ function convertBase64ToUint8Array(data: string): Uint8Array {
 
 // credit: https://gist.github.com/enepomnyaschih/72c423f727d395eeaa09697058238727
 function convertUint8ArrayToBase64(bytes: Uint8Array): string {
-  const base64abc = (() => {
+  const base64abc: string[] = (() => {
     const abc = [],
       A = "A".charCodeAt(0),
       a = "a".charCodeAt(0),
@@ -29,9 +29,9 @@ function convertUint8ArrayToBase64(bytes: Uint8Array): string {
     return abc;
   })();
 
-  let result = "",
-    i,
-    l = bytes.length;
+  let result = "";
+  let i: number;
+  const l = bytes.length;
   for (i = 2; i < l; i += 3) {
     result += base64abc[bytes[i - 2] >> 2];
     result += base64abc[((bytes[i - 2] & 0x03) << 4) | (bytes[i - 1] >> 4)];
@@ -65,8 +65,8 @@ function convertBase64ToString(str: string): string {
 }
 
 export {
-  convertBase64ToUint8Array,
-  convertUint8ArrayToBase64,
-  convertStringToBase64,
   convertBase64ToString,
+  convertBase64ToUint8Array,
+  convertStringToBase64,
+  convertUint8ArrayToBase64,
 };
