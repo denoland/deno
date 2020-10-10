@@ -75,6 +75,7 @@ pub fn get_declaration() -> PathBuf {
 mod tests {
   use deno_core::JsRuntime;
   use futures::future::lazy;
+  use futures::future::FutureExt;
   use futures::task::Context;
   use futures::task::Poll;
 
@@ -101,7 +102,7 @@ mod tests {
           include_str!("abort_controller_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
@@ -114,7 +115,7 @@ mod tests {
       isolate
         .execute("event_test.js", include_str!("event_test.js"))
         .unwrap();
-      if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
@@ -133,7 +134,7 @@ mod tests {
       } else {
         unreachable!();
       }
-      if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
@@ -146,7 +147,7 @@ mod tests {
       isolate
         .execute("event_target_test.js", include_str!("event_target_test.js"))
         .unwrap();
-      if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
@@ -162,7 +163,7 @@ mod tests {
           include_str!("text_encoding_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
     });

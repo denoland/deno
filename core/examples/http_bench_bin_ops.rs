@@ -260,7 +260,7 @@ fn main() {
         include_str!("http_bench_bin_ops.js"),
       )
       .unwrap();
-    js_runtime.run_event_loop().await
+    js_runtime.await
   };
   runtime.block_on(future).unwrap();
 }
