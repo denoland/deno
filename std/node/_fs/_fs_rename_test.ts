@@ -19,7 +19,10 @@ Deno.test({
         assertEquals(existsSync(file), false);
       })
       .catch(() => fail())
-      .finally(() => Deno.removeSync(file));
+      .finally(() => { 
+        if(existsSync(file)) Deno.removeSync(file);
+        if(existsSync(newPath)) Deno.removeSync(newPath);
+      });
   },
 });
 
