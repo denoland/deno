@@ -179,6 +179,12 @@ unitTest(function urlSearchParamsMissingPair(): void {
   assertEquals(searchParams.toString(), "c=4&a=54");
 });
 
+unitTest(function urlSearchParamsForShortEncodedChar(): void {
+  const init = { linefeed: "\n", tab: "\t" };
+  const searchParams = new URLSearchParams(init);
+  assertEquals(searchParams.toString(), "linefeed=%0A&tab=%09");
+});
+
 // If pair does not contain exactly two items, then throw a TypeError.
 // ref https://url.spec.whatwg.org/#interface-urlsearchparams
 unitTest(function urlSearchParamsShouldThrowTypeError(): void {
