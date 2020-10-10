@@ -509,6 +509,8 @@ impl JsRuntime {
         && state.pending_mod_evaluate.is_empty()
     };
 
+    // eprintln!("is idle {}", is_idle);
+
     if is_idle {
       return Poll::Ready(Ok(()));
     }
@@ -516,6 +518,7 @@ impl JsRuntime {
     // Check if more async ops have been dispatched
     // during this turn of event loop.
     if state.have_unpolled_ops.get() {
+      // eprintln!("have unpolled ops");
       state.waker.wake();
     }
 
@@ -566,6 +569,7 @@ impl JsRuntimeState {
       self.loader.clone(),
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
+    // eprintln!("dyn import wake");
     self.waker.wake();
     let fut = load.prepare().boxed_local();
     self.preparing_dyn_imports.push(fut);
@@ -1063,7 +1067,8 @@ impl JsRuntime {
               .borrow_mut()
               .pending_mod_evaluate
               .insert(module_id, handle);
-            state_rc.borrow().waker.wake();
+            // eprintln!("pending, calling waker");
+            // state_rc.borrow().waker.wake();
           }
           v8::PromiseState::Fulfilled => {
             sender.try_send(Ok(())).unwrap();
@@ -1113,6 +1118,7 @@ impl JsRuntime {
                 .borrow_mut()
                 .pending_dyn_mod_evaluate
                 .insert(dyn_import_id, handle);
+              // eprintln!("evaluate dyn imports wake");
               state_rc.borrow().waker.wake();
               None
             }
