@@ -275,7 +275,7 @@ async fn eval_command(
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -423,7 +423,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
 
   repl::run(&global_state, worker).await
 }
@@ -454,7 +454,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -500,7 +500,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
-      (&mut *worker).await?;
+      worker.run_event_loop().await?;
       worker.execute("window.dispatchEvent(new Event('unload'))")?;
       Ok(())
     }
@@ -525,7 +525,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -578,12 +578,8 @@ async fn test_command(
     .save_source_file_in_cache(&main_module, source_file);
 
   let mut maybe_coverage_collector = if flags.coverage {
-    let inspector = worker
-      .inspector
-      .as_mut()
-      .expect("Inspector is not created.");
-
-    let mut coverage_collector = CoverageCollector::new(&mut **inspector);
+    let session = worker.create_inspector_session();
+    let mut coverage_collector = CoverageCollector::new(session);
     coverage_collector.start_collecting().await?;
 
     Some(coverage_collector)
@@ -594,9 +590,9 @@ async fn test_command(
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     let coverages = coverage_collector.collect().await?;
