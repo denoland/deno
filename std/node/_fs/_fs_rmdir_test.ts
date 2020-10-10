@@ -36,7 +36,9 @@ function closeRes(before: Deno.ResourceMap, after: Deno.ResourceMap) {
     if (!before[key]) {
       try {
         closeSync(Number(key));
-      } catch (error) {}
+      } catch (error) {
+        return error;
+      }
     }
   }
 }
