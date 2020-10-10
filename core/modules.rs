@@ -341,13 +341,6 @@ pub struct ModuleInfo {
   pub name: String,
   pub handle: v8::Global<v8::Module>,
   pub import_specifiers: Vec<ModuleSpecifier>,
-  // TODO(bartlomieju): there should be "state"
-  // field that describes if module is already being loaded,
-  // so concurent dynamic imports don't introduce dead lock
-  // pub state: LoadState {
-  //   Loading(shared_future),
-  //   Loaded,
-  // },
 }
 
 /// A symbolic module entity.
