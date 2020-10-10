@@ -86,9 +86,7 @@ impl DocTestVisitor {
     let examples = comments
       .iter()
       .filter_map(|comment| {
-        jsdoc::parse(Input::from(comment))
-          .map(|parsed| parsed.1)
-          .ok()
+        jsdoc::parse(Input::from(comment)).map(|op| op.1).ok()
       })
       .flat_map(|js_doc| {
         js_doc
