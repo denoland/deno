@@ -281,7 +281,7 @@ pub async fn run(
         let value = inspect_result.get("value").unwrap().as_str().unwrap();
         let output = match evaluate_exception_details {
           Some(_) => format!("Uncaught {}", value),
-          None => format!("{}", value,),
+          None => value.to_string(),
         };
 
         println!("{}", output);
