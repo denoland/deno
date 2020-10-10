@@ -154,7 +154,7 @@ impl Visit for DocTestVisitor {
 }
 
 pub async fn parse_jsdocs(
-  source_files: &Vec<Url>,
+  source_files: &[Url],
   flags: Flags,
 ) -> Result<Vec<(Location, String)>, AnyError> {
   let global_state = GlobalState::new(flags.clone())?;
@@ -187,7 +187,7 @@ pub fn prepare_doctests(
   let cwd = std::env::current_dir()?;
   let cwd_url_str = Url::from_directory_path(cwd)
     .map(|url| url.to_string())
-    .unwrap_or("".to_string());
+    .unwrap_or_else(|_| "".to_string());
 
   let tests: String = jsdocs
     .into_iter()
@@ -238,13 +238,13 @@ fn clean_string(input: &str) -> String {
   input
     .lines()
     .map(|line| {
-      if line.trim().starts_with("*") {
+      if line.trim().starts_with('*') {
         &line.trim()[1..]
       } else {
         line.trim()
       }
     })
-    .filter(|line| line.len() > 0)
+    .filter(|line| !line.is_empty())
     .collect::<Vec<_>>()
     .join("\n")
 }
@@ -287,7 +287,7 @@ fn extract_code_body(ex: &str) -> String {
     .lines()
     .filter_map(|line| {
       let res = line.trim();
-      if line.len() > 0 {
+      if !line.is_empty() {
         Some(res)
       } else {
         None
