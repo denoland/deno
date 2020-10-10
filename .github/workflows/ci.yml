@@ -100,7 +100,7 @@ jobs:
         # that are needed during the build process. Additionally, this works
         # around a bug in the 'cache' action that causes directories outside of
         # the workspace dir to be saved/restored incorrectly.
-        run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
+        run: echo "CARGO_HOME=$(pwd)/.cargo_home" >> $GITHUB_ENV
 
       - name: Cache
         uses: actions/cache@v2
