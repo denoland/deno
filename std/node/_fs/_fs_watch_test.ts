@@ -25,5 +25,6 @@ Deno.test({
       ["modify", file],
       ["access", file],
     ]);
+    return;
   },
 });
