@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::fmt_errors::JsError;
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
@@ -48,7 +48,7 @@ pub type WorkerId = u32;
 fn create_web_worker(
   worker_id: u32,
   name: String,
-  global_state: &Arc<GlobalState>,
+  global_state: &Arc<CliState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
@@ -91,7 +91,7 @@ fn create_web_worker(
 fn run_worker_thread(
   worker_id: u32,
   name: String,
-  global_state: &Arc<GlobalState>,
+  global_state: &Arc<CliState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,

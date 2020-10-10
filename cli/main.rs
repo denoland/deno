@@ -38,6 +38,7 @@ mod media_type;
 mod metrics;
 mod module_graph;
 mod module_graph2;
+mod module_loader;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -46,7 +47,6 @@ pub mod resolve_addr;
 pub mod signal;
 pub mod source_maps;
 mod specifier_handler;
-pub mod state;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
@@ -61,7 +61,7 @@ use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::fs as deno_fs;
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
@@ -109,10 +109,7 @@ where
   serde_json::to_writer_pretty(writer, value).map_err(AnyError::from)
 }
 
-fn print_cache_info(
-  state: &Arc<GlobalState>,
-  json: bool,
-) -> Result<(), AnyError> {
+fn print_cache_info(state: &Arc<CliState>, json: bool) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.http_cache.location;
   let typescript_cache = &state.dir.gen_cache.location;
@@ -164,7 +161,7 @@ async fn info_command(
   if json && !flags.unstable {
     exit_unstable("--json");
   }
-  let global_state = GlobalState::new(flags)?;
+  let global_state = CliState::new(flags)?;
   // If it was just "deno info" print location of caches and exit
   if file.is_none() {
     print_cache_info(&global_state, json)
@@ -190,7 +187,7 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let global_state = CliState::new(flags.clone())?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
   // First, fetch and compile the module; this step ensures that the module exists.
@@ -223,12 +220,12 @@ async fn cache_command(
 ) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$cache.ts").unwrap();
-  let global_state = GlobalState::new(flags)?;
+  let global_state = CliState::new(flags)?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
-    // TODO(bartlomieju): don't use `preload_module` in favor of calling "GlobalState::prepare_module_load()"
+    // TODO(bartlomieju): don't use `preload_module` in favor of calling "CliState::prepare_module_load()"
     // explicitly? Seems wasteful to create multiple worker just to run TS compiler
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
@@ -245,7 +242,7 @@ async fn eval_command(
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
-  let global_state = GlobalState::new(flags)?;
+  let global_state = CliState::new(flags)?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
@@ -288,7 +285,7 @@ async fn bundle_command(
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
-  let global_state = GlobalState::new(flags)?;
+  let global_state = CliState::new(flags)?;
 
   info!(
     "{} {}",
@@ -326,7 +323,7 @@ async fn doc_command(
   maybe_filter: Option<String>,
   private: bool,
 ) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let global_state = CliState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   impl DocFileLoader for SourceFileFetcher {
@@ -421,7 +418,7 @@ async fn doc_command(
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
-  let global_state = GlobalState::new(flags)?;
+  let global_state = CliState::new(flags)?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
   (&mut *worker).await?;
 
@@ -429,7 +426,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let global_state = CliState::new(flags.clone())?;
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker = MainWorker::new(&global_state.clone(), main_module.clone());
@@ -461,7 +458,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let global_state = GlobalState::new(flags.clone())?;
+  let global_state = CliState::new(flags.clone())?;
 
   let mut module_graph_loader = module_graph::ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
@@ -491,9 +488,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func(&paths_to_watch, move || {
-    // FIXME(bartlomieju): GlobalState must be created on each restart - otherwise file fetcher
+    // FIXME(bartlomieju): CliState must be created on each restart - otherwise file fetcher
     // will use cached source files
-    let gs = GlobalState::new(flags.clone()).unwrap();
+    let gs = CliState::new(flags.clone()).unwrap();
     let main_module = main_module.clone();
     async move {
       let mut worker = MainWorker::new(&gs, main_module.clone());
@@ -520,7 +517,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   }
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let global_state = GlobalState::new(flags.clone())?;
+  let global_state = CliState::new(flags.clone())?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
@@ -538,7 +535,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let global_state = CliState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;

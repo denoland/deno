@@ -8,7 +8,7 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::js;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
@@ -449,7 +449,7 @@ impl TsCompiler {
   /// compiler.
   pub async fn compile(
     &self,
-    global_state: &Arc<GlobalState>,
+    global_state: &Arc<CliState>,
     source_file: &SourceFile,
     target: TargetLib,
     module_graph: &ModuleGraph,
@@ -554,7 +554,7 @@ impl TsCompiler {
   /// all the dependencies for that module.
   pub async fn bundle(
     &self,
-    global_state: &Arc<GlobalState>,
+    global_state: &Arc<CliState>,
     module_specifier: ModuleSpecifier,
   ) -> Result<String, AnyError> {
     debug!(
@@ -945,7 +945,7 @@ struct CreateHashArgs {
 }
 
 fn execute_in_tsc(
-  global_state: Arc<GlobalState>,
+  global_state: Arc<CliState>,
   req: String,
 ) -> Result<String, AnyError> {
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -1006,7 +1006,7 @@ fn execute_in_tsc(
 }
 
 async fn create_runtime_module_graph(
-  global_state: &Arc<GlobalState>,
+  global_state: &Arc<CliState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
@@ -1057,7 +1057,7 @@ fn extract_js_error(error: AnyError) -> AnyError {
 
 /// This function is used by `Deno.compile()` API.
 pub async fn runtime_compile(
-  global_state: &Arc<GlobalState>,
+  global_state: &Arc<CliState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
@@ -1156,7 +1156,7 @@ pub async fn runtime_compile(
 
 /// This function is used by `Deno.bundle()` API.
 pub async fn runtime_bundle(
-  global_state: &Arc<GlobalState>,
+  global_state: &Arc<CliState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
@@ -1258,7 +1258,7 @@ pub async fn runtime_bundle(
 
 /// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile(
-  global_state: Arc<GlobalState>,
+  global_state: Arc<CliState>,
   sources: &HashMap<String, String>,
   maybe_options: &Option<String>,
 ) -> Result<Value, AnyError> {
@@ -1451,7 +1451,7 @@ mod tests {
   use super::*;
   use crate::deno_dir;
   use crate::fs as deno_fs;
-  use crate::global_state::GlobalState;
+  use crate::global_state::CliState;
   use crate::http_cache;
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
@@ -1533,7 +1533,7 @@ mod tests {
       deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
         .unwrap();
     let http_cache = http_cache::HttpCache::new(&dir.root.join("deps"));
-    let mock_state = GlobalState::mock(
+    let mock_state = CliState::mock(
       vec![String::from("deno"), String::from("hello.ts")],
       None,
     );
@@ -1593,7 +1593,7 @@ mod tests {
     let module_name =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
 
-    let mock_state = GlobalState::mock(
+    let mock_state = CliState::mock(
       vec![
         String::from("deno"),
         p.to_string_lossy().into(),

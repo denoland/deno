@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::module_graph::{ModuleGraph, ModuleGraphFile, ModuleGraphLoader};
 use crate::ModuleSpecifier;
 use crate::Permissions;
@@ -31,7 +31,7 @@ pub struct ModuleDepInfo {
 impl ModuleDepInfo {
   /// Creates a new `ModuleDepInfo` struct for the module with the provided `ModuleSpecifier`.
   pub async fn new(
-    global_state: &Arc<GlobalState>,
+    global_state: &Arc<CliState>,
     module_specifier: ModuleSpecifier,
   ) -> Result<Self, AnyError> {
     // First load module as if it was to be executed by worker

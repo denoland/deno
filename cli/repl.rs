@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::inspector::InspectorSession;
 use crate::worker::MainWorker;
 use crate::worker::Worker;
@@ -86,7 +86,7 @@ async fn read_line_and_poll(
 }
 
 pub async fn run(
-  global_state: &GlobalState,
+  global_state: &CliState,
   mut worker: MainWorker,
 ) -> Result<(), AnyError> {
   // Our inspector is unable to default to the default context id so we have to specify it here.

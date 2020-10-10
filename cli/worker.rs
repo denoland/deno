@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::fmt_errors::JsError;
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::inspector::DenoInspector;
 use crate::js;
 use crate::metrics::Metrics;
+use crate::module_loader::CliModuleLoader;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::CliModuleLoader;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::FutureExt;
@@ -108,7 +108,7 @@ impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Snapshot,
-    global_state: Arc<GlobalState>,
+    global_state: Arc<CliState>,
     module_loader: Rc<CliModuleLoader>,
     is_main: bool,
   ) -> Self {
@@ -267,7 +267,7 @@ pub struct MainWorker(Worker);
 
 impl MainWorker {
   pub fn new(
-    global_state: &Arc<GlobalState>,
+    global_state: &Arc<CliState>,
     main_module: ModuleSpecifier,
   ) -> Self {
     let loader = CliModuleLoader::new(global_state.maybe_import_map.clone());
@@ -284,7 +284,7 @@ impl MainWorker {
         let op_state = worker.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<GlobalState>>(global_state.clone());
+        op_state.put::<Arc<CliState>>(global_state.clone());
         op_state.put::<Permissions>(global_state.permissions.clone());
       }
 
@@ -415,7 +415,7 @@ impl WebWorker {
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
-    global_state: Arc<GlobalState>,
+    global_state: Arc<CliState>,
     has_deno_namespace: bool,
   ) -> Self {
     let loader = CliModuleLoader::new_for_worker();
@@ -455,7 +455,7 @@ impl WebWorker {
         let op_state = web_worker.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<GlobalState>>(global_state.clone());
+        op_state.put::<Arc<CliState>>(global_state.clone());
         op_state.put::<Permissions>(permissions);
       }
 
@@ -597,7 +597,7 @@ mod tests {
   use super::*;
   use crate::flags::DenoSubcommand;
   use crate::flags::Flags;
-  use crate::global_state::GlobalState;
+  use crate::global_state::CliState;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
   use deno_core::serde_json::json;
@@ -611,7 +611,7 @@ mod tests {
       },
       ..Default::default()
     };
-    let global_state = GlobalState::mock(vec!["deno".to_string()], Some(flags));
+    let global_state = CliState::mock(vec!["deno".to_string()], Some(flags));
     MainWorker::new(&global_state, main_module)
   }
 
@@ -698,7 +698,7 @@ mod tests {
   fn create_test_web_worker() -> WebWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let global_state = GlobalState::mock(vec!["deno".to_string()], None);
+    let global_state = CliState::mock(vec!["deno".to_string()], None);
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),

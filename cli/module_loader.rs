@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::import_map::ImportMap;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
@@ -53,7 +53,7 @@ impl ModuleLoader for CliModuleLoader {
   ) -> Result<ModuleSpecifier, AnyError> {
     let global_state = {
       let state = op_state.borrow();
-      state.borrow::<Arc<GlobalState>>().clone()
+      state.borrow::<Arc<CliState>>().clone()
     };
 
     // FIXME(bartlomieju): hacky way to provide compatibility with repl
@@ -89,7 +89,7 @@ impl ModuleLoader for CliModuleLoader {
     let module_url_specified = module_specifier.to_string();
     let global_state = {
       let state = op_state.borrow();
-      state.borrow::<Arc<GlobalState>>().clone()
+      state.borrow::<Arc<CliState>>().clone()
     };
 
     // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
@@ -130,7 +130,7 @@ impl ModuleLoader for CliModuleLoader {
     } else {
       state.borrow::<Permissions>().clone()
     };
-    let global_state = state.borrow::<Arc<GlobalState>>().clone();
+    let global_state = state.borrow::<Arc<CliState>>().clone();
     drop(state);
 
     // TODO(bartlomieju): I'm not sure if it's correct to ignore

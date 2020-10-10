@@ -36,7 +36,7 @@ pub fn exit_unstable(api_name: &str) {
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-pub struct GlobalState {
+pub struct CliState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
@@ -49,7 +49,7 @@ pub struct GlobalState {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
-impl GlobalState {
+impl CliState {
   pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
@@ -96,7 +96,7 @@ impl GlobalState {
       None => None,
     };
 
-    let global_state = GlobalState {
+    let global_state = CliState {
       dir,
       permissions: Permissions::from_flags(&flags),
       flags,
@@ -269,8 +269,8 @@ impl GlobalState {
   pub fn mock(
     argv: Vec<String>,
     maybe_flags: Option<flags::Flags>,
-  ) -> Arc<GlobalState> {
-    GlobalState::new(flags::Flags {
+  ) -> Arc<CliState> {
+    CliState::new(flags::Flags {
       argv,
       ..maybe_flags.unwrap_or_default()
     })
@@ -334,7 +334,7 @@ fn needs_compilation(
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(GlobalState::mock(vec![], None));
+  f(CliState::mock(vec![], None));
 }
 
 #[test]

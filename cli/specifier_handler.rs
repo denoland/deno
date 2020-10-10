@@ -3,7 +3,7 @@
 use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::global_state::GlobalState;
+use crate::global_state::CliState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 
@@ -202,7 +202,7 @@ pub struct FetchHandler {
 
 impl FetchHandler {
   pub fn new(
-    global_state: &Arc<GlobalState>,
+    global_state: &Arc<CliState>,
     permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
