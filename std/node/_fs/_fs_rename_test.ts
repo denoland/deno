@@ -11,6 +11,7 @@ Deno.test({
     await new Promise((resolve, reject) => {
       rename(file, newPath, (err) => {
         if (err) reject(err);
+        resolve();
       });
     })
       .then(() => {

@@ -22,13 +22,11 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.isFile(), expected.isFile);
   assertEquals(actual.isDirectory(), expected.isDirectory);
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
-  // assertEquals(actual.ctimeMs === expected.ctime?.getTime());
-  // assertEquals(actual.ctime?.getTime() === expected.ctime?.getTime());
 }
 
 export function assertStatsBigInt(
   actual: BigIntStats,
-  expected: Deno.FileInfo,
+  expected: Deno.FileInfo
 ) {
   assertEquals(actual.dev, BigInt(expected.dev));
   assertEquals(actual.gid, BigInt(expected.gid));
@@ -53,9 +51,6 @@ export function assertStatsBigInt(
   assertEquals(actual.isFile(), expected.isFile);
   assertEquals(actual.isDirectory(), expected.isDirectory);
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
-  // assertEquals(actual.ctime?.getTime() === expected.ctime?.getTime());
-  // assertEquals(Number(actual.ctimeMs) === expected.ctime?.getTime());
-  // assertEquals(Number(actual.ctimeNs) / 1e+6 === expected.ctime?.getTime());
 }
 
 Deno.test({
