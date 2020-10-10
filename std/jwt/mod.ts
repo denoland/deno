@@ -15,7 +15,7 @@ import { verify as verifyAlgorithm } from "./algorithm.ts";
  * Applications using JWTs should define which specific claims they use and when
  * they are required or optional. (JWT §4.1)
  */
-export interface Payload {
+export interface PayloadObject {
   iss?: string;
   sub?: string;
   aud?: string[] | string;
@@ -25,6 +25,8 @@ export interface Payload {
   jti?: string;
   [key: string]: unknown;
 }
+
+export type Payload = PayloadObject | string | unknown[] | null;
 
 /*
  * The "alg" value is a case-sensitive ASCII string containing a StringOrURI value.
@@ -75,7 +77,7 @@ export function parse(
 
 export type TokenObject = {
   header: Header;
-  payload: Payload | string;
+  payload: PayloadObject | string;
   signature: string;
 };
 
@@ -92,7 +94,7 @@ export function isTokenObject(object: TokenObject): object is TokenObject {
 
 export function verify(jwt: string, key: string, { algorithm = "HS512" }: {
   algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
-} = {}): unknown {
+} = {}): Payload {
   const obj = parse(jwt) as TokenObject;
 
   if (!isTokenObject(obj)) {
@@ -100,7 +102,8 @@ export function verify(jwt: string, key: string, { algorithm = "HS512" }: {
   }
 
   if (
-    typeof obj.payload === "object" && "exp" in obj.payload &&
+    obj?.payload !== null && typeof obj?.payload === "object" &&
+    "exp" in obj.payload &&
     isExpired(obj.payload.exp!, 1)
   ) {
     throw RangeError("jwt is expired");
@@ -141,12 +144,21 @@ export function verify(jwt: string, key: string, { algorithm = "HS512" }: {
   return payload;
 }
 
-function createSigningInput(header: Header, payload: Payload): string {
+function createSigningInput(
+  header: Header,
+  payload: Payload,
+): string {
   return `${
     convertStringToBase64url(
       JSON.stringify(header),
     )
-  }.${convertStringToBase64url(JSON.stringify(payload))}`;
+  }.${
+    convertStringToBase64url(
+      typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload),
+    )
+  }`;
 }
 
 export function create(

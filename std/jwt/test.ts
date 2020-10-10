@@ -7,12 +7,7 @@ import {
   verify,
 } from "./mod.ts";
 
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-  assertThrowsAsync,
-} from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 
 const header: Header = {
   alg: "HS256",
@@ -23,6 +18,7 @@ const payload = {
 };
 const signature = "abc";
 const exp = setExpiration(new Date("2035-07-01"));
+const key = "your-secret";
 
 Deno.test("[jwt] isTokenObject", function (): void {
   assert(isTokenObject({ header, payload, signature }));
@@ -47,44 +43,66 @@ Deno.test("[jwt] isTokenObject", function (): void {
   assertEquals(isTokenObject({ signature: 123 }), false);
 });
 
-Deno.test("[jwt] verify", async function (): Promise<void> {
+Deno.test("[jwt] create", function (): void {
   const key = "secret";
+  assertEquals(
+    create("", key),
+    "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9..B0lmJDC8zSfMJstPqLdOAWfM265-5Svj0XrACZm8DKa1y6VJA0W7d0VoGGKJo0quKxWUdf1B1ueElNk2Yl_cLw",
+  );
+  assertEquals(
+    create({}, key),
+    "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.e30.dGumW8J3t2BlAwqqoisyWDC6ov2hRtjTAFHzd-Tlr4DUScaHG4OYqTHXLHEzd3hU5wy5xs87vRov6QzZnj410g",
+  );
+  assertEquals(
+    create({ foo: "bar" }, key),
+    "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.WePl7achkd0oGNB8XRF_LJwxlyiPZqpdNgdKpDboAjSTsWq-aOGNynTp8TOv8KjonFym8vwFwppXOLoLXbkIaQ",
+  );
+  assertEquals(
+    create(null, key),
+    "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.bnVsbA.tv7DbhvALc5Eq2sC61Y9IZlG2G15hvJoug9UO6iwmE_UZOLva8EC-9PURg7IIj6f-F9jFWix8vCn9WaAMHR1AA",
+  );
+  assertEquals(
+    create([], key),
+    "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.W10.BqmZ-tVI9a-HDx6PpMiBdMq6lzcaqO9sW6pImw-NRajCCmRrVi6IgMhEw7lvOG6sxhteceVMl8_xFRGverJJWw",
+  );
+});
 
-  await assertThrowsAsync(
-    async () => {
+Deno.test("[jwt] verify", function (): void {
+  assertThrows(
+    () => {
       // @ts-ignore */
-      const jwt = await create("", key, { header: "invalid" });
+      const jwt = create("", key, { header: "invalid" });
       verify(jwt, key, { algorithm: "HS512" });
     },
     Error,
   );
 
-  await assertThrowsAsync(
-    async () => {
+  assertThrows(
+    () => {
       // @ts-ignore */
-      const jwt = await create("", key, { header: { alg: "invalidAlg" } });
-      await verify(jwt, key, { algorithm: "HS512" });
+      const jwt = create("", key, { header: { alg: "invalidAlg" } });
+      verify(jwt, key, { algorithm: "HS512" });
     },
     Error,
   );
-  await assertThrowsAsync(async () => {
+  assertThrows(() => {
     // @ts-ignore */
-    const jwt = await create({ header: {}, payload });
-    await verify(jwt, key, { algorithm: "HS512" });
+    const jwt = create({ header: {}, payload });
+    verify(jwt, key, { algorithm: "HS512" });
   }, Error);
-  await assertThrowsAsync(
-    async () => {
+  assertThrows(
+    () => {
       // @ts-ignore */
-      const jwt = await create({ header, payload });
-      await verify(jwt, key, { algorithm: "HS512" });
+      const jwt = create({ header, payload });
+      verify(jwt, key, { algorithm: "HS512" });
     },
     Error,
   );
-  await assertThrowsAsync(
-    async () => {
+  assertThrows(
+    () => {
       // @ts-ignore */
-      const jwt = await create({ exp: 100 }, key, { header });
-      await verify(jwt, key, { algorithm: "HS512" });
+      const jwt = create({ exp: 100 }, key, { header });
+      verify(jwt, key, { algorithm: "HS512" });
     },
     Error,
     "jwt is expired",
@@ -95,9 +113,7 @@ Deno.test("[jwt] setExpiration", function (): void {
   assertEquals(setExpiration(10), setExpiration(new Date(Date.now() + 10000)));
 });
 
-const key = "your-secret";
-
-Deno.test("[jwt] parse", async function (): Promise<void> {
+Deno.test("[jwt] parse", function (): void {
   assertEquals(
     parse(
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.TVCeFl1nnZWUMQkAQKuSo_I97YeIZAS8T1gOkErT7F8",
@@ -145,12 +161,12 @@ Deno.test("[jwt] parse", async function (): Promise<void> {
       "49f94ac7044948c78a285d904f87f0a4c7897f7e8f3a4eb2255fda750b2cc397",
   });
   assertEquals(
-    await create(payload, "your-256-bit-secret", { header }),
+    create(payload, "your-256-bit-secret", { header }),
     jwt,
   );
 });
 
-Deno.test("[jwt] expired token", async function (): Promise<void> {
+Deno.test("[jwt] expired token", function (): void {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -160,16 +176,16 @@ Deno.test("[jwt] expired token", async function (): Promise<void> {
     alg: "HS256",
     dummy: 100,
   };
-  const jwt = await create(payload, key, { header });
+  const jwt = create(payload, key, { header });
 
   try {
-    await verify(jwt, key, { algorithm: "HS256" });
+    verify(jwt, key, { algorithm: "HS256" });
   } catch (error) {
     assertEquals(error.message, "jwt is expired");
   }
 });
 
-Deno.test("[jwt] none algorithm", async function (): Promise<void> {
+Deno.test("[jwt] none algorithm", function (): void {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
@@ -178,8 +194,8 @@ Deno.test("[jwt] none algorithm", async function (): Promise<void> {
     alg: "none",
     dummy: 100,
   };
-  const jwt = await create(payload, key, { header });
-  const validatedPayload = await verify(
+  const jwt = create(payload, key, { header });
+  const validatedPayload = verify(
     jwt,
     "keyIsIgnored",
     {
@@ -189,7 +205,7 @@ Deno.test("[jwt] none algorithm", async function (): Promise<void> {
   assertEquals(validatedPayload, payload);
 });
 
-Deno.test("[jwt] HS256 algorithm", async function (): Promise<void> {
+Deno.test("[jwt] HS256 algorithm", function (): void {
   const header: Header = {
     alg: "HS256",
     typ: "JWT",
@@ -199,8 +215,8 @@ Deno.test("[jwt] HS256 algorithm", async function (): Promise<void> {
     name: "John Doe",
     iat: 1516239022,
   };
-  const jwt = await create(payload, key, { header });
-  const validatedPayload = await verify(jwt, key, { algorithm: "HS256" });
+  const jwt = create(payload, key, { header });
+  const validatedPayload = verify(jwt, key, { algorithm: "HS256" });
   assertEquals(
     jwt,
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SARsBE5x_ua2ye823r2zKpQNaew3Daq8riKz5A4h3o4",
@@ -209,7 +225,7 @@ Deno.test("[jwt] HS256 algorithm", async function (): Promise<void> {
   try {
     const invalidJwt = // jwt with not supported crypto algorithm in alg header:
       "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.bQTnz6AuMJvmXXQsVPrxeQNvzDkimo7VNXxHeSBfClLufmCVZRUuyTwJF311JHuh";
-    await verify(invalidJwt, "", {
+    verify(invalidJwt, "", {
       algorithm: "HS256",
     });
   } catch (error) {
@@ -217,7 +233,7 @@ Deno.test("[jwt] HS256 algorithm", async function (): Promise<void> {
   }
 });
 
-Deno.test("[jwt] HS512 algorithm", async function (): Promise<void> {
+Deno.test("[jwt] HS512 algorithm", function (): void {
   const header: Header = { alg: "HS512", typ: "JWT" };
   const payload = {
     sub: "1234567890",
@@ -225,8 +241,7 @@ Deno.test("[jwt] HS512 algorithm", async function (): Promise<void> {
     admin: true,
     iat: 1516239022,
   };
-  const key = "your-512-bit-secret";
-  const jwt = await create(payload, key, { header });
-  const validatedPayload = await verify(jwt, key, { algorithm: "HS512" });
+  const jwt = create(payload, key, { header });
+  const validatedPayload = verify(jwt, key, { algorithm: "HS512" });
   assertEquals(validatedPayload, payload);
 });
