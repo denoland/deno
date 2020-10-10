@@ -12,29 +12,13 @@ type TokenObject = {
   signature: string;
 };
 
-type TokenObjectUnknown = {
-  header: unknown;
-  payload: unknown;
-  signature: unknown;
-};
-
-type TokenObjectWithExpClaim = {
-  header: Header;
-  payload: { exp: number } & unknown;
-  signature: string;
-};
-
-function isObject(obj: unknown): obj is { [key: string]: unknown } {
+function isTokenObject(obj: any): obj is TokenObject {
   return (
-    obj !== null && typeof obj === "object" && Array.isArray(obj) === false
-  );
-}
-
-function isTokenObject(obj: TokenObjectUnknown): obj is TokenObject {
-  return (
-    typeof obj.signature === "string" &&
-    isObject(obj.header) &&
-    typeof obj.header.alg === "string"
+    typeof obj?.signature === "string" &&
+    typeof obj?.header?.alg === "string" &&
+    (typeof obj?.payload === "object" && obj?.payload?.exp
+      ? typeof obj.payload.exp === "number"
+      : true)
   );
 }
 
@@ -45,11 +29,8 @@ function isTokenObject(obj: TokenObjectUnknown): obj is TokenObject {
  * Implementers MAY provide for some small leeway to account for clock skew.
  * Use of this claim is OPTIONAL. (JWT §4.1.4)
  */
-function hasExpClaim(obj: TokenObject): obj is TokenObjectWithExpClaim {
-  if (isObject(obj.payload) && "exp" in obj.payload) {
-    if (typeof obj.payload.exp === "number") return true;
-    else throw new TypeError("the 'exp' claim must be a number");
-  } else return false;
+function hasExpClaim(obj: any): obj is { payload: { exp: number } } {
+  return typeof obj?.payload?.exp === "number";
 }
 
 export function isExpired(exp: number, leeway = 0): boolean {
@@ -57,7 +38,7 @@ export function isExpired(exp: number, leeway = 0): boolean {
 }
 
 export function validate(
-  obj: TokenObjectUnknown,
+  obj: { header: unknown; payload: unknown; signature: unknown },
   algorithm: Algorithm | Array<Exclude<Algorithm, "none">>
 ): TokenObject {
   if (isTokenObject(obj)) {
