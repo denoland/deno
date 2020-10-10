@@ -31,11 +31,14 @@
   function assertOps(fn) {
     return async function asyncOpSanitizer() {
       const pre = metrics();
+      console.error("sanitize ops before");
       await fn();
+      console.error("sanitize ops after");
       // Defer until next event loop turn - that way timeouts and intervals
       // cleared can actually be removed from resource table, otherwise
       // false positives may occur (https://github.com/denoland/deno/issues/4591)
       await delay(0);
+      console.error("sanitize ops after timer");
       const post = metrics();
       // We're checking diff because one might spawn HTTP server in the background
       // that will be a pending async op before test starts.
@@ -65,7 +68,9 @@ finishing test case.`,
   ) {
     return async function resourceSanitizer() {
       const pre = core.resources();
+      console.error("sanitize resource before");
       await fn();
+      console.error("sanitize resource after");
       const post = core.resources();
 
       const preStr = JSON.stringify(pre, null, 2);
@@ -82,6 +87,14 @@ finishing test case.`;
 
   const TEST_REGISTRY = [];
 
+  function wrapTestFn(fn) {
+    return async function wrappedFn() {
+      const result = fn();
+      if (result && "then" in result) {
+        await result;
+      }
+    }
+  }
   // Main test function provided by Deno, as you can see it merely
   // creates a new object with "name" and "fn" fields.
   function test(
@@ -113,6 +126,10 @@ finishing test case.`;
       }
       testDef = { ...defaults, ...t };
     }
+
+
+    console.error("fn", typeof testDef.fn, testDef.fn);
+    testDef.fn = wrapTestFn(testDef.fn);
 
     if (testDef.sanitizeOps) {
       testDef.fn = assertOps(testDef.fn);
@@ -196,6 +213,94 @@ finishing test case.`;
 
   // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
   // TODO: implements PromiseLike<RunTestsEndResult>
+  class NewTestRunner {
+    #usedOnly = false;
+
+    constructor(
+      tests,
+      filterFn,
+      failFast,
+    ) {
+      this.stats = {
+        filtered: 0,
+        ignored: 0,
+        measured: 0,
+        passed: 0,
+        failed: 0,
+      };
+      this.filterFn = filterFn;
+      this.failFast = failFast;
+      const onlyTests = tests.filter(({ only }) => only);
+      this.#usedOnly = onlyTests.length > 0;
+      const unfilteredTests = this.#usedOnly ? onlyTests : tests;
+      this.testsToRun = unfilteredTests.filter(filterFn);
+      this.stats.filtered = unfilteredTests.length - this.testsToRun.length;
+      this.state = "start";
+      this.testIndex = 0;
+      this.results = [];
+    }
+
+    async runNext() {
+      if (this.state === "start") {
+        this.state = "run";
+        return { start: { tests: this.testsToRun } };
+      }
+
+      this.suiteStart = +new Date();
+
+      if (this.state === "run") {
+        const test = this.testsToRun[this.testIndex];
+
+        if (!this.results[this.testIndex]) {
+          const endMessage = {
+            name: test.name,
+            duration: 0,
+          };
+          this.results[this.testIndex] = endMessage;
+          return { testStart: { ...test } };
+        }
+
+        const endMessage = this.results[this.testIndex];
+        if (test.ignore) {
+          endMessage.status = "ignored";
+          this.stats.ignored++;
+        } else {
+          const start = +new Date();
+          try {
+            console.error("before awaiting", test.fn);
+            await test.fn();
+            console.error("after awaiting");
+            endMessage.status = "passed";
+            this.stats.passed++;
+          } catch (err) {
+            console.error("caught error!", err);
+            endMessage.status = "failed";
+            endMessage.error = err;
+            this.stats.failed++;
+          }
+          endMessage.duration = +new Date() - start;
+        }
+        this.results[this.testIndex] = endMessage;
+        this.testIndex++;
+
+        if (this.testIndex >= this.testsToRun.length) {
+          this.state = "end";
+        }
+
+        if (this.failFast && endMessage.error != null) {
+          this.state = "end";
+        }
+
+        return { testEnd: endMessage };
+      }
+
+      const duration = +new Date() - this.suiteStart;
+      return {
+        end: { ...this.stats, usedOnly: this.#usedOnly, duration, results: this.results },
+      };
+    }
+  }
+
   class TestRunner {
     #usedOnly = false;
 
@@ -237,10 +342,13 @@ finishing test case.`;
         } else {
           const start = +new Date();
           try {
+            console.error("before awaiting", test.fn);
             await test.fn();
+            console.error("after awaiting");
             endMessage.status = "passed";
             this.stats.passed++;
           } catch (err) {
+            console.error("caught error!", err);
             endMessage.status = "failed";
             endMessage.error = err;
             this.stats.failed++;
@@ -304,7 +412,7 @@ finishing test case.`;
     onMessage = undefined,
   } = {}) {
     const filterFn = createFilterFn(filter, skip);
-    const testRunner = new TestRunner(TEST_REGISTRY, filterFn, failFast);
+    const testRunner = new NewTestRunner(TEST_REGISTRY, filterFn, failFast);
 
     const originalConsole = globalThis.console;
 
@@ -314,7 +422,10 @@ finishing test case.`;
 
     let endMsg;
 
-    for await (const message of testRunner) {
+    console.error("before test runner");
+    while (true) {
+      const message = await testRunner.runNext();
+      console.error("test runner msg", message);
       if (onMessage != null) {
         await onMessage(message);
       }
@@ -323,17 +434,21 @@ finishing test case.`;
       }
       if (message.end != null) {
         endMsg = message.end;
+        break;
       }
     }
 
+    console.error("after test runner");
     if (disableLog) {
       globalThis.console = originalConsole;
     }
 
     if ((endMsg.failed > 0 || endMsg?.usedOnly) && exitOnFail) {
+      console.error("exit!");
       exit(1);
     }
 
+    console.error("return test runner");
     return endMsg;
   }
 

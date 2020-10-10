@@ -1,5 +1,6 @@
 [WILDCARD]
-running 4 tests
+running 5 tests
+test never resolve ... ok [WILDCARD]
 test fail1 ... FAILED [WILDCARD]
 test fail2 ... FAILED [WILDCARD]
 test success1 ... ok [WILDCARD]
@@ -22,5 +23,5 @@ AssertionError: fail3 assertion
 failures:
 [WILDCARD]
 
-test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: FAILED. 2 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
 

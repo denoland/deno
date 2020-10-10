@@ -295,6 +295,8 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let promise = message.get_promise();
   let promise_id = promise.get_identity_hash();
 
+  eprintln!("promise reject callback!");
+  
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
       let error = message.get_value();

@@ -591,12 +591,19 @@ async fn test_command(
     None
   };
 
+  eprintln!("before execute");
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
+  eprintln!("after execute");
   worker.execute("window.dispatchEvent(new Event('load'))")?;
+  eprintln!("after execute load");
   (&mut *worker).await?;
+  eprintln!("after event loop");
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  eprintln!("after unload");
   (&mut *worker).await?;
+
+  eprintln!("after event loop2");
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     let coverages = coverage_collector.collect().await?;
