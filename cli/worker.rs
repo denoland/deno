@@ -189,7 +189,7 @@ impl Worker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id).await
+    self.js_runtime.mod_evaluate(id)
   }
 
   /// Loads, instantiates and executes provided source code
@@ -204,7 +204,7 @@ impl Worker {
       .load_module(module_specifier, Some(code))
       .await?;
     self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id).await
+    self.js_runtime.mod_evaluate(id)
   }
 
   /// Returns a way to communicate with the Worker from other threads.
@@ -240,7 +240,7 @@ impl Future for Worker {
     // We always poll the inspector if it exists.
     let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
     inner.waker.register(cx.waker());
-    inner.js_runtime.poll_event_loop(cx)
+    inner.js_runtime.poll_unpin(cx)
   }
 }
 

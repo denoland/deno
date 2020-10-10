@@ -58,6 +58,17 @@ hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1])); // returns true
 hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns false
 ```
 
+## hasSuffix
+
+Check whether binary array ends with suffix.
+
+```typescript
+import { hasSuffix } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+
+hasSuffix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1])); // returns false
+hasSuffix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns true
+```
+
 ## repeat
 
 Repeat bytes of given binary array and return new one.
@@ -76,6 +87,24 @@ Concatenate two binary arrays and return new one.
 import { concat } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 concat(new Uint8Array([1, 2]), new Uint8Array([3, 4])); // returns Uint8Array(4) [ 1, 2, 3, 4 ]
+```
+
+## contains
+
+Check source array contains pattern array.
+
+```typescript
+import { contains } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+
+contains(
+  new Uint8Array([1, 2, 0, 1, 2, 0, 2, 1, 3]),
+  new Uint8Array([0, 1, 2]),
+); // => returns true
+
+contains(
+  new Uint8Array([1, 2, 0, 1, 2, 0, 2, 1, 3]),
+  new Uint8Array([2, 2]),
+); // => returns false
 ```
 
 ## copyBytes
