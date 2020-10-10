@@ -2897,7 +2897,13 @@ mod tests {
   }
   #[test]
   fn test_docs() {
-    let r = flags_from_vec_safe(svec!["deno", "test", "--docs", "dir1"]);
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "test",
+      "--unstable",
+      "--docs",
+      "dir1"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2909,6 +2915,7 @@ mod tests {
           filter: None,
           include: Some(svec!["dir1"]),
         },
+        unstable: true,
         ..Flags::default()
       }
     );
