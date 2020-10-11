@@ -66,6 +66,7 @@ Deno.test({
         closeRes(rBefore, rAfter);
       });
   },
+  ignore: Deno.build.os === "windows",
 });
 
 Deno.test({
@@ -83,4 +84,5 @@ Deno.test({
     const rAfter = Deno.resources();
     closeRes(rBefore, rAfter);
   },
+  ignore: Deno.build.os === "windows",
 });
