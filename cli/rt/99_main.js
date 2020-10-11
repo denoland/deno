@@ -193,7 +193,7 @@ delete Object.prototype.__proto__;
 
   class Window extends EventTarget {
     constructor(key) {
-      if (key != illegalConstructorKey) {
+      if (key !== illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
     }
