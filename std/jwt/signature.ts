@@ -6,15 +6,15 @@ import { HmacSha512 } from "../hash/sha512.ts";
 function encrypt(
   alg: Algorithm | "none",
   key: string,
-  msg: string,
+  message: string,
 ): string {
   switch (alg) {
     case "none":
       return "";
     case "HS256":
-      return new HmacSha256(key).update(msg).toString();
+      return new HmacSha256(key).update(message).toString();
     case "HS512":
-      return new HmacSha512(key).update(msg).toString();
+      return new HmacSha512(key).update(message).toString();
     default:
       throw new RangeError(
         `algorithm '${alg}' in header is not supported`,
@@ -23,11 +23,11 @@ function encrypt(
 }
 
 export function create(
-  alg: Algorithm,
+  algorithm: Algorithm,
   key: string,
   input: string,
 ): string {
-  return convertHexToBase64url(encrypt(alg, key, input));
+  return convertHexToBase64url(encrypt(algorithm, key, input));
 }
 
 export function verify({
