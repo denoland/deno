@@ -196,8 +196,13 @@
         return String(value[customInspect]());
       } catch {}
     }
-    // Might be Function/AsyncFunction/GeneratorFunction
-    const cstrName = Object.getPrototypeOf(value).constructor.name;
+    // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
+    let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
+    if (!cstrName) {
+      // If prototype is removed or broken,
+      // use generic 'Function' instead.
+      cstrName = "Function";
+    }
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
       return `[${cstrName}: ${value.name}]`;
