@@ -12,9 +12,11 @@ path = "lib.rs"
 
 [dependencies]
 digest = "0.9.0"
-wasm-bindgen = { version = "0.2.68" }
+wasm-bindgen = { version = "0.2.68", features = ["serde-serialize"] }
 js-sys = "0.3.45"
 mailparse = "0.13.0"
+serde = "1.0.116"
+serde_derive = "1.0.116"
 
 [profile.release]
 lto = true

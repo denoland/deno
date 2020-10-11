@@ -3,15 +3,13 @@
 use mailparse::{addrparse, dateparse};
 use wasm_bindgen::prelude::*;
 use js_sys::Array;
+use serde_derive::{Serialize, Deserialize};
 
-#[wasm_bindgen]
-pub struct DenoAddr {
-    // Reprenting SingleMailAddr
-    display_name: Option<String>,
-    addr: Option<String>,
-    // Representing GroupMailAddr
-    group_name: Option<String>,
-    addrs: Option<Vec<mailparse::SingleInfo>>,
+#[derive(Serialize, Debug)]
+pub struct DenoSingleAddr {
+    // Reprenting SingleMailAddress
+    pub display_name: Option<String>,
+    pub addr: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -22,7 +20,7 @@ pub fn parse_date(data: &[u8]) -> Result<i64, JsValue> {
 
 
 #[wasm_bindgen]
-pub fn parse_addr(data: &[u8]) -> Result<Array, JsValue> {
+pub fn parse_addr_single(data: &[u8]) -> Result<Array, JsValue> {
     let addr = std::str::from_utf8(data).unwrap();
     return addrparse(addr).map_err(|e| JsValue::from_str(&e.to_string()))
            .map(|list| {
@@ -33,24 +31,17 @@ pub fn parse_addr(data: &[u8]) -> Result<Array, JsValue> {
                         match x {
                             mailparse::MailAddr::Single(i) => {
                                 let info = i.clone();
-                                DenoAddr{
+                                return JsValue::from_serde(&DenoSingleAddr{
                                     display_name: info.display_name,
                                     addr: Some(info.addr),
-                                    addrs: None,
-                                    group_name: None,
-                                }
+                                }).unwrap()
                             },
-                            mailparse::MailAddr::Group(i) => {
-                                let info = i.clone();
-                                DenoAddr{
-                                    group_name: Some(info.group_name),
-                                    addrs: Some(info.addrs),
-                                    addr: None,
-                                    display_name: None,
-                                }
-                            }
+                            _ => return JsValue::from_serde(&DenoSingleAddr {
+                                addr: None,
+                                display_name: None,
+                            }).unwrap()
                         }
                     })
-                    .collect::<Vec<DenoAddr>>().into_iter().map(JsValue::from).collect()
+                    .collect::<Vec<JsValue>>().into_iter().map(JsValue::from).collect()
         })
     }
