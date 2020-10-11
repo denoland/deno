@@ -2,9 +2,9 @@
 import {
   _format,
   assert,
-  assertAnything,
   assertArrayContains,
   assertEquals,
+  assertExists,
   AssertionError,
   assertMatch,
   assertNotEquals,
@@ -160,11 +160,11 @@ Deno.test("testingNotEquals", function (): void {
   assertEquals(didThrow, true);
 });
 
-Deno.test("testingAssertAnything", function (): void {
-  assertAnything("Denosaurus");
+Deno.test("testingAssertExists", function (): void {
+  assertExists("Denosaurus");
   let didThrow;
   try {
-    assertAnything(undefined);
+    assertExists(undefined);
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
