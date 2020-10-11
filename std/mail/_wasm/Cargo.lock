@@ -48,6 +48,7 @@ name = "deno-mail"
 version = "0.1.0"
 dependencies = [
  "digest",
+ "js-sys",
  "mailparse",
  "wasm-bindgen",
 ]
@@ -78,6 +79,15 @@ checksum = "501466ecc8a30d1d3b7fc9229b122b2ce8ed6e9d9223f1138d4babb253e51817"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "js-sys"
+version = "0.3.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca059e81d9486668f12d455a4ea6daa600bd408134cd17e3d3fb5a32d1f016f8"
+dependencies = [
+ "wasm-bindgen",
 ]
 
 [[package]]

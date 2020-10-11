@@ -12,7 +12,8 @@ path = "lib.rs"
 
 [dependencies]
 digest = "0.9.0"
-wasm-bindgen = "0.2.68"
+wasm-bindgen = { version = "0.2.68" }
+js-sys = "0.3.45"
 mailparse = "0.13.0"
 
 [profile.release]
