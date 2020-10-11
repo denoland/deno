@@ -45,18 +45,9 @@ export function assertStatsBigInt(
   assertEquals(Number(actual.atimeMs), expected.atime?.getTime());
   assertEquals(Number(actual.mtimeMs), expected.mtime?.getTime());
   assertEquals(Number(actual.birthtimeMs), expected.birthtime?.getTime());
-  assertEquals(
-    Number(actual.atimeNs),
-    expected.atime ? expected.atime.getTime() * 1e6 : 0,
-  );
-  assertEquals(
-    Number(actual.mtimeNs),
-    expected.atime ? expected.atime.getTime() * 1e6 : 0,
-  );
-  assertEquals(
-    Number(actual.birthtimeNs),
-    expected.atime ? expected.atime.getTime() * 1e6 : 0,
-  );
+  assertEquals(actual.atimeNs === null, actual.atime === null);
+  assertEquals(actual.mtimeNs === null, actual.mtime === null);
+  assertEquals(actual.birthtimeNs === null, actual.birthtime === null);
   assertEquals(actual.isFile(), expected.isFile);
   assertEquals(actual.isDirectory(), expected.isDirectory);
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
