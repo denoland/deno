@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::flags::DenoSubcommand;
 use crate::fmt_errors::JsError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
@@ -136,7 +137,9 @@ impl Worker {
           &mut js_runtime,
           Some(inspector_server.clone()),
         ))
-      } else if global_state.flags.coverage || global_state.flags.repl {
+      } else if global_state.flags.coverage
+        || matches!(global_state.flags.subcommand, DenoSubcommand::Repl)
+      {
         Some(DenoInspector::new(&mut js_runtime, None))
       } else {
         None

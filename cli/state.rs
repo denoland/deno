@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::flags::DenoSubcommand;
 use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
 use crate::permissions::Permissions;
@@ -57,7 +58,9 @@ impl ModuleLoader for CliModuleLoader {
     };
 
     // FIXME(bartlomieju): hacky way to provide compatibility with repl
-    let referrer = if referrer.is_empty() && global_state.flags.repl {
+    let referrer = if referrer.is_empty()
+      && matches!(global_state.flags.subcommand, DenoSubcommand::Repl)
+    {
       "<unknown>"
     } else {
       referrer
