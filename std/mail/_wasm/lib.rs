@@ -2,16 +2,17 @@
 
 use js_sys::Array;
 use mailparse::{addrparse, dateparse};
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Serialize;
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Debug)]
-pub struct DenoSingleAddr {
-  // Reprenting SingleMailAddress
-  pub displayName: Option<String>,
+#[serde(rename_all = "camelCase")]
+pub struct DenoAddr {
+  // Reprenting both SingleMailAddr and DoubleMailAddr
+  pub display_name: Option<String>,
   pub addr: Option<String>,
-  pub groupName: Option<String>,
-  pub addrs: Option<Vec<DenoSingleAddr>>,
+  pub group_name: Option<String>,
+  pub addrs: Option<Vec<DenoAddr>>,
 }
 
 #[wasm_bindgen]
@@ -32,10 +33,10 @@ pub fn parse_addr(data: &[u8]) -> Result<Array, JsValue> {
         .map(|x| match x {
           mailparse::MailAddr::Single(i) => {
             let info = i.clone();
-            return JsValue::from_serde(&DenoSingleAddr {
-              displayName: info.display_name,
+            return JsValue::from_serde(&DenoAddr {
+              display_name: info.display_name,
               addr: Some(info.addr),
-              groupName: None,
+              group_name: None,
               addrs: None,
             })
             .unwrap();
@@ -47,18 +48,18 @@ pub fn parse_addr(data: &[u8]) -> Result<Array, JsValue> {
               .iter()
               .map(|addr| {
                 let cln = addr.clone();
-                DenoSingleAddr {
-                  displayName: cln.display_name,
+                DenoAddr {
+                  display_name: cln.display_name,
                   addr: Some(cln.addr),
-                  groupName: None,
+                  group_name: None,
                   addrs: None,
                 }
               })
               .collect();
-            return JsValue::from_serde(&DenoSingleAddr {
-              groupName: Some(info.group_name),
+            return JsValue::from_serde(&DenoAddr {
+              group_name: Some(info.group_name),
               addrs: Some(addrs),
-              displayName: None,
+              display_name: None,
               addr: None,
             })
             .unwrap();
