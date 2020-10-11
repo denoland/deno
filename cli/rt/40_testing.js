@@ -90,8 +90,11 @@ finishing test case.`;
   function wrapTestFn(fn) {
     return async function wrappedFn() {
       const result = fn();
+      console.log("called wrapped test fn");
       if (result && "then" in result) {
+        console.log("wrapped test fn returned promise awaiting...");
         await result;
+        console.log("awaited");
       }
     }
   }
@@ -412,7 +415,7 @@ finishing test case.`;
     onMessage = undefined,
   } = {}) {
     const filterFn = createFilterFn(filter, skip);
-    const testRunner = new NewTestRunner(TEST_REGISTRY, filterFn, failFast);
+    const testRunner = new TestRunner(TEST_REGISTRY, filterFn, failFast);
 
     const originalConsole = globalThis.console;
 
@@ -423,8 +426,14 @@ finishing test case.`;
     let endMsg;
 
     console.error("before test runner");
-    while (true) {
-      const message = await testRunner.runNext();
+    // await new Promise((_resolve, _reject) => {
+    //   console.log("in promise before runner");
+    //   // _reject("asdf");
+    //   // Neither `resolve` nor `reject` is called
+    // });
+
+
+    for await (const message of testRunner) {
       console.error("test runner msg", message);
       if (onMessage != null) {
         await onMessage(message);

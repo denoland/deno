@@ -592,11 +592,13 @@ async fn test_command(
   };
 
   eprintln!("before execute");
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
+  worker.execute_module(&main_module).await?;
+  (&mut *worker).await?;
   eprintln!("after execute");
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   eprintln!("after execute load");
+  worker.execute("(async function () {await Deno[Deno.internal].runTests({}); })()")?;
+  eprintln!("executed run tests");
   (&mut *worker).await?;
   eprintln!("after event loop");
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
