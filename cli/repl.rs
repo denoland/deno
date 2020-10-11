@@ -60,7 +60,7 @@ impl Completer for Helper {
     let end_slice = &line[pos..line.len()];
     let end_offset = end_slice
       .rfind(|c| c == ' ' || c == '\n')
-      .unwrap_or_else(|_| line.len());
+      .unwrap_or_else(|| line.len());
 
     let slice = &line[start_offset..end_offset];
     let mut parts: Vec<&str> =
