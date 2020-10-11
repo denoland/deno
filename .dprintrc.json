@@ -26,6 +26,7 @@
     "std/**/vendor",
     "std/node_modules",
     "std/hash/_wasm",
+    "std/mail/_wasm",
     "target",
     "third_party"
   ],
