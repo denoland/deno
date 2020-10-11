@@ -14,4 +14,4 @@ export function parseDate(date: string) {
     return parse_date(view)
 }
 
-console.log(parse_addr_single(encoder.encode("John Doe <john@doe.com>"))[0])
+console.log(parse_addr_single(encoder.encode("John Doe <john@doe.com>, John Doe <john@doe.com>")))
