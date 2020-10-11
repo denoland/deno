@@ -89,15 +89,31 @@ pub async fn run(
   global_state: &GlobalState,
   mut worker: MainWorker,
 ) -> Result<(), AnyError> {
-  // Our inspector is unable to default to the default context id so we have to specify it here.
-  let context_id: u32 = 1;
-
   let mut session = worker.create_inspector_session();
 
   let history_file = global_state.dir.root.join("deno_history.txt");
 
   post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
     .await?;
+
+  // Enabling the runtime domain will always send trigger one executionContextCreated for each
+  // context the inspector knows about so we grab the execution context from that since
+  // our inspector does not support a default context (0 is an invalid context id).
+  let mut context_id: u64 = 0;
+  for notification in session.notifications() {
+    let method = notification.get("method").unwrap().as_str().unwrap();
+    let params = notification.get("params").unwrap();
+
+    if method == "Runtime.executionContextCreated" {
+      context_id = params
+        .get("context")
+        .unwrap()
+        .get("id")
+        .unwrap()
+        .as_u64()
+        .unwrap();
+    }
+  }
 
   let helper = Helper {
     validator: MatchingBracketValidator::new(),
