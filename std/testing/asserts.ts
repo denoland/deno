@@ -333,7 +333,7 @@ export function assertNotStrictEquals(
  * Make an assertion that actual is not null or undefined. If not
  * then thrown.
  */
-export function assertAnything(
+export function assertExists(
   actual: unknown,
   msg?: string,
 ): void {
