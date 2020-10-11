@@ -593,7 +593,7 @@ impl Permissions {
   pub fn check_hrtime(&self) -> Result<(), AnyError> {
     self
       .hrtime
-      .check("access to high precision time", "--allow-run")
+      .check("access to high precision time", "--allow-hrtime")
   }
 
   #[allow(clippy::too_many_arguments)]

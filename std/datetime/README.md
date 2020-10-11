@@ -37,7 +37,7 @@ are supported:
 Takes an input `string` and a `formatString` to parse to a `date`.
 
 ```ts
-import { parse } from 'https://deno.land/std/datetime/mod.ts'
+import { parse } from 'https://deno.land/std@0.69.0/datetime/mod.ts'
 
 parse("20-01-2019", "dd-MM-yyyy") // output : new Date(2019, 0, 20)
 parse("2019-01-20", "yyyy-MM-dd") // output : new Date(2019, 0, 20)
@@ -54,7 +54,7 @@ parse("01-20-2019 16:34:23.123", "MM-dd-yyyy HH:mm:ss.SSS") // output : new Date
 Takes an input `date` and a `formatString` to format to a `string`.
 
 ```ts
-import { format } from "https://deno.land/std/datetime/mod.ts";
+import { format } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
 format(new Date(2019, 0, 20), "dd-MM-yyyy"); // output : "20-01-2019"
 format(new Date(2019, 0, 20), "yyyy-MM-dd"); // output : "2019-01-20"
@@ -71,7 +71,7 @@ format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd"); // output : "today: 2019-0
 Returns the number of the day in the year.
 
 ```ts
-import { dayOfYear } from "https://deno.land/std/datetime/mod.ts";
+import { dayOfYear } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
 dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
 ```
@@ -81,7 +81,7 @@ dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
 Returns the ISO week number of the provided date (1-53).
 
 ```ts
-import { weekOfYear } from "https://deno.land/std/datetime/mod.ts";
+import { weekOfYear } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
 weekOfYear(new Date("2020-12-28T03:24:00")); // Returns 53
 ```

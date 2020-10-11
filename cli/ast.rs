@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::file_fetcher::TextDocument;
 use crate::media_type::MediaType;
 
 use deno_core::error::AnyError;
@@ -247,7 +246,7 @@ impl ParsedModule {
   pub fn transpile(
     self,
     options: &TranspileOptions,
-  ) -> Result<(TextDocument, Option<TextDocument>)> {
+  ) -> Result<(String, Option<String>)> {
     let program = Program::Module(self.module);
 
     let jsx_pass = react::react(
@@ -297,7 +296,7 @@ impl ParsedModule {
       program.emit_with(&mut emitter)?;
     }
     let mut src = String::from_utf8(buf)?;
-    let mut map: Option<TextDocument> = None;
+    let mut map: Option<String> = None;
     {
       let mut buf = Vec::new();
       self
@@ -310,10 +309,10 @@ impl ParsedModule {
         let encoded_map = base64::encode(buf);
         src.push_str(&encoded_map);
       } else {
-        map = Some(TextDocument::from(buf));
+        map = Some(String::from_utf8(buf)?);
       }
     }
-    Ok((src.into(), map))
+    Ok((src, map))
   }
 }
 
@@ -439,14 +438,10 @@ mod tests {
     let (code, maybe_map) = module
       .transpile(&TranspileOptions::default())
       .expect("could not strip types");
-    assert!(code
-      .to_string()
-      .unwrap()
-      .starts_with("var D;\n(function(D) {\n"));
-    assert!(code
-      .to_string()
-      .unwrap()
-      .contains("\n//# sourceMappingURL=data:application/json;base64,"));
+    assert!(code.starts_with("var D;\n(function(D) {\n"));
+    assert!(
+      code.contains("\n//# sourceMappingURL=data:application/json;base64,")
+    );
     assert!(maybe_map.is_none());
   }
 
@@ -467,10 +462,7 @@ mod tests {
     let (code, _) = module
       .transpile(&TranspileOptions::default())
       .expect("could not strip types");
-    assert!(code
-      .to_string()
-      .unwrap()
-      .contains("React.createElement(\"div\", null"));
+    assert!(code.contains("React.createElement(\"div\", null"));
   }
 
   #[test]
@@ -501,9 +493,6 @@ mod tests {
     let (code, _) = module
       .transpile(&TranspileOptions::default())
       .expect("could not strip types");
-    assert!(code
-      .to_string()
-      .unwrap()
-      .contains("_applyDecoratedDescriptor("));
+    assert!(code.contains("_applyDecoratedDescriptor("));
   }
 }
