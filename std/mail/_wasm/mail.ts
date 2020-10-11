@@ -2,7 +2,7 @@
 import init, {
     source,
     parse_date,
-    parse_addr_single,
+    parse_addr
 } from "./wasm.js";
 
 await init(source);
@@ -14,4 +14,9 @@ export function parseDate(date: string) {
     return parse_date(view)
 }
 
-console.log(parse_addr_single(encoder.encode("John Doe <john@doe.com>, John Doe <john@doe.com>")))
+export function parseAddr(addr: string) {
+    let view = encoder.encode(addr);
+    let res = parse_addr(view);
+    return res
+}
+

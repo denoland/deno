@@ -5,7 +5,7 @@ import {
 
 import { parseDate } from "./date.ts"
 
-Deno.test("parseDate", function (): void {
+Deno.test("[mail/date] parseDate", function (): void {
     assertEquals(
         parseDate("Sun, 25 Sep 2016 18:36:33 -0400"),
         1474842993n

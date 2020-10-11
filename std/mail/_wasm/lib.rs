@@ -8,8 +8,10 @@ use wasm_bindgen::prelude::*;
 #[derive(Serialize, Debug)]
 pub struct DenoSingleAddr {
   // Reprenting SingleMailAddress
-  pub display_name: Option<String>,
+  pub displayName: Option<String>,
   pub addr: Option<String>,
+  pub groupName: Option<String>,
+  pub addrs: Option<Vec<DenoSingleAddr>>,
 }
 
 #[wasm_bindgen]
@@ -19,7 +21,7 @@ pub fn parse_date(data: &[u8]) -> Result<i64, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn parse_addr_single(data: &[u8]) -> Result<Array, JsValue> {
+pub fn parse_addr(data: &[u8]) -> Result<Array, JsValue> {
   let addr = std::str::from_utf8(data).unwrap();
   return addrparse(addr)
     .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -31,17 +33,35 @@ pub fn parse_addr_single(data: &[u8]) -> Result<Array, JsValue> {
           mailparse::MailAddr::Single(i) => {
             let info = i.clone();
             return JsValue::from_serde(&DenoSingleAddr {
-              display_name: info.display_name,
+              displayName: info.display_name,
               addr: Some(info.addr),
+              groupName: None,
+              addrs: None,
             })
             .unwrap();
           }
-          _ => {
+          mailparse::MailAddr::Group(i) => {
+            let info = i.clone();
+            let addrs = info
+              .addrs
+              .iter()
+              .map(|addr| {
+                let cln = addr.clone();
+                DenoSingleAddr {
+                  displayName: cln.display_name,
+                  addr: Some(cln.addr),
+                  groupName: None,
+                  addrs: None,
+                }
+              })
+              .collect();
             return JsValue::from_serde(&DenoSingleAddr {
+              groupName: Some(info.group_name),
+              addrs: Some(addrs),
+              displayName: None,
               addr: None,
-              display_name: None,
             })
-            .unwrap()
+            .unwrap();
           }
         })
         .collect::<Vec<JsValue>>()
