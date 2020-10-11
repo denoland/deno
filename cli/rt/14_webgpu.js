@@ -3,17 +3,20 @@
 ((window) => {
   const core = window.Deno.core;
 
+  let instanceRid; // TODO: use op_webgpu_create_instance
+
   const GPU = {
     async requestAdapter(options = {}) {
-      const { rid, name, extensions } = await core.jsonOpAsync(
+      const { rid, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_adapter",
-        options,
+        {
+          instanceRid,
+          ...options,
+        },
       );
-      return new GPUAdapter(rid, name, extensions);
+      return new GPUAdapter(rid, data);
     },
   };
-
-  let instanceRid; // TODO define
 
   class GPUAdapter {
     #rid;
@@ -21,38 +24,40 @@
     get name() {
       return this.#name;
     }
-    #extensions;
-    get extensions() {
-      return this.#extensions;
+    #features;
+    get features() {
+      return this.#features;
     }
-    // TODO: limits
 
-    constructor(rid, name, extensions) {
+    constructor(rid, data) {
       this.#rid = rid;
-      this.#name = name;
-      this.#extensions = Object.freeze(extensions);
+      this.#name = data.name;
+      this.#extensions = Object.freeze(data.features);
     }
 
     async requestDevice(descriptor = {}) {
-      const data = await core.jsonOpAsync("op_webgpu_request_device", {
-        instanceRid,
-        adapterRid: this.#rid,
-        ...descriptor,
-      });
+      const { rid, ...data } = await core.jsonOpAsync(
+        "op_webgpu_request_device",
+        {
+          instanceRid,
+          adapterRid: this.#rid,
+          ...descriptor,
+        },
+      );
 
       return new GPUDevice(this, data);
     }
   }
 
   class GPUDevice extends EventTarget {
-    #deviceRid;
+    #rid;
     #adapter;
     get adapter() {
       return this.#adapter;
     }
-    #extensions;
-    get extensions() {
-      return this.#extensions;
+    #features;
+    get features() {
+      return this.#features;
     }
     #limits;
     get limits() {
@@ -61,21 +66,22 @@
     #defaultQueue;
     get defaultQueue() {
       return this.#defaultQueue;
-    } // TODO
+    }
 
-    // TODO: should have label
-
-    constructor(adapter, data) {
+    constructor(adapter, rid, data) {
       super();
 
       this.#adapter = adapter;
-      this.#deviceRid = data.deviceRid; // TODO: properties
+      this.#rid = rid;
+      this.#features = Object.freeze(data.features);
+      this.#limits = data.limits;
+      this.#defaultQueue = new GPUQueue(); // TODO
     }
 
     createBuffer(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         ...descriptor,
       });
 
@@ -85,7 +91,7 @@
     createTexture(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_texture", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         ...descriptor,
       });
 
@@ -95,7 +101,7 @@
     createSampler(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_sampler", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         ...descriptor,
       });
 
@@ -107,7 +113,7 @@
     createBindGroupLayout(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group_layout", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         ...descriptor,
       });
 
@@ -119,7 +125,7 @@
     createPipelineLayout(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         label: descriptor.label,
         bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) => {
           return GPUBindGroupLayoutMap.get(bindGroupLayout);
@@ -134,7 +140,7 @@
     createBindGroup(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         label: descriptor.label,
         layout: GPUBindGroupLayoutMap.get(descriptor.layout),
         entries: descriptor.entries.map((entry) => {
@@ -149,7 +155,7 @@
               resource: GPUTextureViewMap.get(entry),
             };
           } else {
-            // TODO
+            // TODO: buffer
           }
         }),
       });
@@ -162,7 +168,7 @@
     createShaderModule(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_shader_module", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         ...descriptor,
       });
 
@@ -174,7 +180,7 @@
     createComputePipeline(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_compute_pipeline", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         label: descriptor.label,
         layout: descriptor.layout &&
           GPUPipelineLayoutMap.get(descriptor.layout),
@@ -190,7 +196,7 @@
     createRenderPipeline(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         ...descriptor,
       });
 
@@ -204,7 +210,7 @@
     createCommandEncoder(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
         instanceRid,
-        deviceRid: this.#deviceRid,
+        deviceRid: this.#rid,
         ...descriptor,
       });
 
@@ -216,7 +222,7 @@
         "op_webgpu_create_render_bundle_encoder",
         {
           instanceRid,
-          deviceRid: this.#deviceRid,
+          deviceRid: this.#rid,
           ...descriptor,
         },
       );
@@ -227,6 +233,21 @@
     createQuerySet(descriptor) {
       throw new Error("Not yet implemented");
     }
+  }
+
+  class GPUQueue {
+    constructor(label) {
+      this.label = label;
+    }
+
+    submit(commandBuffers) {} // TODO
+    createFence(descriptor = {}) {} // TODO
+
+    writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {}
+
+    writeTexture(destination, data, dataLayout, size) {} // TODO
+
+    copyImageBitmapToTexture(source, destination, copySize) {} // TODO
   }
 
   class GPUBuffer {
@@ -241,6 +262,7 @@
       await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
         instanceRid,
         bufferRid: this.#rid,
+        mode,
         offset,
         size,
       });

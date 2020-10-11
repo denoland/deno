@@ -9,6 +9,7 @@ use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -19,7 +20,7 @@ struct CreateBufferArgs {
   device_rid: u32,
   label: Option<String>,
   size: u64,
-  usage: (), // TODO
+  usage: u32,
   mapped_at_creation: Option<bool>,
 }
 
@@ -44,10 +45,10 @@ pub fn op_webgpu_create_buffer(
     &wgc::resource::BufferDescriptor {
       label: args.label.map(|label| Cow::Borrowed(&label)),
       size: args.size,
-      usage: (),
+      usage: wgt::BufferUsage::from_bits(args.usage).unwrap(), // TODO: don't unwrap
       mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
     },
-    (), // TODO
+    (), // TODO: id_in
   )?;
 
   let rid = state.resource_table.add("webGPUBuffer", Box::new(buffer));
@@ -63,6 +64,8 @@ struct BufferGetMapAsyncArgs {
   instance_rid: u32,
   buffer_rid: u32,
   mode: u32,
+  offset: Option<u64>,
+  size: Option<u64>,
 }
 
 pub async fn op_webgpu_buffer_get_map_async(
@@ -84,7 +87,16 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   instance.buffer_map_async(
     *buffer,
-    // TODO
+    (), // TODO
+    wgc::resource::BufferMapOperation {
+      host: match args.mode {
+        1 => wgc::device::HostMap::Read,
+        2 => wgc::device::HostMap::Read,
+        _ => unreachable!(),
+      },
+      callback: (),  // TODO
+      user_data: (), // TODO
+    },
   )?;
 
   Ok(json!({}))
@@ -96,7 +108,7 @@ struct BufferGetMappedRangeArgs {
   instance_rid: u32,
   buffer_rid: u32,
   offset: u64,
-  size: Option<u64>,
+  size: Option<std::num::NonZeroU64>,
 }
 
 pub fn op_webgpu_buffer_get_mapped_range(
@@ -116,10 +128,11 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .ok_or_else(bad_resource_id)?;
 
   let slice = instance.buffer_get_mapped_range(
+    // TODO: use
     *buffer,
     args.offset,
-    args.size, // TODO
-  )?; // TODO
+    args.size,
+  )?;
 
   Ok(json!({}))
 }

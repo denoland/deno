@@ -19,7 +19,7 @@ struct CreateShaderModuleArgs {
   device_rid: u32,
   label: Option<String>,
   code: String,
-  source_map: (), // TODO
+  source_map: (), // TODO: https://gpuweb.github.io/gpuweb/#shader-module-creation
 }
 
 pub fn op_webgpu_create_shader_module(
@@ -39,9 +39,10 @@ pub fn op_webgpu_create_shader_module(
     .ok_or_else(bad_resource_id)?;
 
   let shader_module = instance.device_create_shader_module(
+    // TODO: should accept label
     *device,
     wgc::pipeline::ShaderModuleSource, // TODO
-    (),                                // TODO
+    (),                                // TODO: id_in
   )?;
 
   let rid = state

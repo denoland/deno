@@ -51,7 +51,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
           .iter()
           .map(|format| serialize_texture_format(format.clone())?)
           .collect::<Vec<wgt::TextureFormat>>(),
-      ), // TODO
+      ),
       depth_stencil_format: args
         .depth_stencil_format
         .map(|format| serialize_texture_format(format)?),
@@ -97,7 +97,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     &wgc::command::RenderBundleDescriptor {
       label: args.label.map(|label| Cow::Borrowed(&label)),
     },
-    (), // TODO
+    (), // TODO: id_in
   )?;
 
   let rid = state

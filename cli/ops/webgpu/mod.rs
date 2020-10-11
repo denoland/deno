@@ -22,6 +22,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_instance",
+    op_webgpu_create_instance,
+  );
   super::reg_json_async(
     rt,
     "op_webgpu_request_adapter",
@@ -147,19 +152,23 @@ fn serialize_features(features: &wgt::Features) -> Vec<&str> {
   if features.contains(wgt::Features::DEPTH_CLAMPING) {
     extensions.push("depth-clamping");
   }
-  if features.contains(wgt::Features) { // TODO
+  if features.contains(wgt::Features) {
+    // TODO
     extensions.push("depth24unorm-stencil8");
   }
-  if features.contains(wgt::Features) { // TODO
+  if features.contains(wgt::Features) {
+    // TODO
     extensions.push("depth32float-stencil8");
   }
-  if features.contains(wgt::Features) { // TODO
+  if features.contains(wgt::Features) {
+    // TODO
     extensions.push("pipeline-statistics-query");
   }
   if features.contains(wgt::Features::TEXTURE_COMPRESSION_BC) {
     extensions.push("texture-compression-bc");
   }
-  if features.contains(wgt::Features) { // TODO
+  if features.contains(wgt::Features) {
+    // TODO
     extensions.push("timestamp-query");
   }
 
@@ -168,9 +177,30 @@ fn serialize_features(features: &wgt::Features) -> Vec<&str> {
 
 pub type WgcInstance = wgc::hub::Global<wgc::hub::IdentityManagerFactory>;
 
+pub fn op_webgpu_create_instance(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let instance = wgc::hub::Global::new(
+    "webgpu",
+    wgc::hub::IdentityManagerFactory,
+    wgt::BackendBit::PRIMARY,
+  );
+
+  let rid = state
+    .resource_table
+    .add("webGPUInstance", Box::new(adapter));
+
+  Ok(json!({
+    "rid": rid,
+  }))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RequestAdapterArgs {
+  instance_rid: u32,
   power_preference: Option<String>,
 }
 
@@ -181,11 +211,12 @@ pub async fn op_webgpu_request_adapter(
 ) -> Result<Value, AnyError> {
   let args: RequestAdapterArgs = serde_json::from_value(args)?;
 
-  let instance = wgc::hub::Global::new(
-    "webgpu",
-    wgc::hub::IdentityManagerFactory,
-    wgt::BackendBit::PRIMARY,
-  ); // TODO: own op
+  let mut state = state.borrow_mut();
+  let instance = state
+    .resource_table
+    .get_mut::<WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+
   let adapter = instance.request_adapter(
     &wgc::instance::RequestAdapterOptions {
       power_preference: match args.power_preference {
@@ -200,9 +231,8 @@ pub async fn op_webgpu_request_adapter(
   )?;
 
   let name = instance.adapter_get_info(adapter)?.name;
-  let extensions = serialize_features(&instance.adapter_features(adapter)?);
+  let features = serialize_features(&instance.adapter_features(adapter)?);
 
-  let mut state = state.borrow_mut();
   let rid = state
     .resource_table
     .add("webGPUInstance", Box::new(instance));
@@ -211,8 +241,23 @@ pub async fn op_webgpu_request_adapter(
   Ok(json!({
     "rid": rid,
     "name": name,
-    "extensions": extensions,
+    "features": features,
   }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GPULimits {
+  // TODO: each should be Option
+  max_bind_groups: u32,
+  max_dynamic_uniform_buffers_per_pipeline_layout: u32,
+  max_dynamic_storage_buffers_per_pipeline_layout: u32,
+  max_sampled_textures_per_shader_stage: u32,
+  max_samplers_per_shader_stage: u32,
+  max_storage_buffers_per_shader_stage: u32,
+  max_storage_textures_per_shader_stage: u32,
+  max_uniform_buffers_per_shader_stage: u32,
+  max_uniform_buffer_binding_size: u32,
 }
 
 #[derive(Deserialize)]
@@ -220,8 +265,8 @@ pub async fn op_webgpu_request_adapter(
 struct RequestDeviceArgs {
   instance_rid: u32,
   adapter_rid: u32,
-  extensions: Option<[String]>,
-  limits: Option<String>, // TODO
+  features: Option<[String]>,
+  limits: Option<GPULimits>,
 }
 
 pub async fn op_webgpu_request_device(
@@ -246,22 +291,52 @@ pub async fn op_webgpu_request_device(
     &wgt::DeviceDescriptor {
       // TODO: should accept label
       features: Default::default(), // TODO
-      limits: Default::default(),   // TODO
-      shader_validation: false,     // TODO
+      limits: args.limits.map_or(Default::default(), |limits| {
+        wgt::Limits {
+          max_bind_groups: limits.max_bind_groups,
+          max_dynamic_uniform_buffers_per_pipeline_layout: limits
+            .max_dynamic_uniform_buffers_per_pipeline_layout,
+          max_dynamic_storage_buffers_per_pipeline_layout: limits
+            .max_dynamic_storage_buffers_per_pipeline_layout,
+          max_sampled_textures_per_shader_stage: limits
+            .max_sampled_textures_per_shader_stage,
+          max_samplers_per_shader_stage: limits.max_samplers_per_shader_stage,
+          max_storage_buffers_per_shader_stage: limits
+            .max_storage_buffers_per_shader_stage,
+          max_storage_textures_per_shader_stage: limits
+            .max_storage_textures_per_shader_stage,
+          max_uniform_buffers_per_shader_stage: limits
+            .max_uniform_buffers_per_shader_stage,
+          max_uniform_buffer_binding_size: limits
+            .max_uniform_buffer_binding_size,
+          max_push_constant_size: 0, // TODO
+        }
+      }),
+      shader_validation: false, // TODO
     },
     None,
     (), // TODO
   )?;
 
-  let extensions = serialize_features(&instance.device_features(device)?);
-  let limits = instance.device_limits(device)?; // TODO
+  let features = serialize_features(&instance.device_features(device)?);
+  let limits = instance.device_limits(device)?;
+  let json_limits = json!({
+     "max_bind_groups": limits.max_bind_groups,
+     "max_dynamic_uniform_buffers_per_pipeline_layout": limits.max_dynamic_uniform_buffers_per_pipeline_layout,
+     "max_dynamic_storage_buffers_per_pipeline_layout": limits.max_dynamic_storage_buffers_per_pipeline_layout,
+     "max_sampled_textures_per_shader_stage": limits.max_sampled_textures_per_shader_stage,
+     "max_samplers_per_shader_stage": limits.max_samplers_per_shader_stage,
+     "max_storage_buffers_per_shader_stage": limits.max_storage_buffers_per_shader_stage,
+     "max_storage_textures_per_shader_stage": limits.max_storage_textures_per_shader_stage,
+     "max_uniform_buffers_per_shader_stage": limits.max_uniform_buffers_per_shader_stage,
+     "max_uniform_buffer_binding_size": limits.max_uniform_buffer_binding_size,
+  });
 
-  let device_rid = state.resource_table.add("webGPUDevice", Box::new(device));
+  let rid = state.resource_table.add("webGPUDevice", Box::new(device));
 
   Ok(json!({
-    "deviceRid": device_rid,
-    "queueRid": queue_rid,
-    "extensions": extensions,
-    "limits", // TODO
+    "rid": rid,
+    "features": features,
+    "limits": json_limits,
   }))
 }

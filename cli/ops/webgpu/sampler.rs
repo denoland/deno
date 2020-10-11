@@ -61,7 +61,7 @@ struct CreateSamplerArgs {
   lod_min_clamp: Option<f32>,
   lod_max_clamp: Option<f32>,
   compare: Option<String>,
-  max_anisotropy: Option<u8>,
+  max_anisotropy: Option<std::num::NonZeroU8>,
 }
 
 pub fn op_webgpu_create_sampler(
@@ -93,11 +93,15 @@ pub fn op_webgpu_create_sampler(
       min_filter: serialize_filter_mode(args.min_filter),
       mipmap_filter: serialize_filter_mode(args.mipmap_filter),
       lod_min_clamp: args.lod_min_clamp.unwrap_or(0.0),
-      lod_max_clamp: args.lod_max_clamp.unwrap_or(0xffffffff as f32), // TODO
+      lod_max_clamp: args.lod_max_clamp.unwrap_or(0xffffffff as f32), // TODO: check if there is a better solution
       compare: args.compare.map(serialize_compare_function),
-      anisotropy_clamp: args.max_anisotropy.unwrap_or(1), // TODO
+      anisotropy_clamp: Some(
+        args
+          .max_anisotropy
+          .unwrap_or(unsafe { std::num::NonZeroU8::new_unchecked(1) }),
+      ), // TODO: check what None would be
     },
-    (), // TODO
+    (), // TODO: id_in
   )?;
 
   let rid = state.resource_table.add("webGPUTexture", Box::new(sampler));

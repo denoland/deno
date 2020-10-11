@@ -115,11 +115,12 @@ struct CreateTextureArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
+  size: (), // TODO: mixed types
   mip_level_count: Option<u32>,
   sample_count: Option<u32>,
   dimension: Option<String>,
   format: String,
-  usage: (), // TODO
+  usage: u32,
 }
 
 pub fn op_webgpu_create_texture(
@@ -153,9 +154,9 @@ pub fn op_webgpu_create_texture(
         None => wgt::TextureDimension::D2,
       },
       format: serialize_texture_format(args.format)?,
-      usage: (), // TODO
+      usage: wgt::TextureUsage::from_bits(args.usage).unwrap(), // TODO: don't unwrap
     },
-    (), // TODO
+    (), // TODO: id_in
   )?;
 
   let rid = state.resource_table.add("webGPUTexture", Box::new(texture));
@@ -175,9 +176,9 @@ struct CreateTextureViewArgs {
   dimension: Option<String>,
   aspect: Option<String>,
   base_mip_level: Option<u32>,
-  mip_level_count: Option<u32>,
+  mip_level_count: Option<std::num::NonZeroU32>,
   base_array_layer: Option<u32>,
-  array_layer_count: Option<u32>,
+  array_layer_count: Option<std::num::NonZeroU32>,
 }
 
 pub fn op_webgpu_create_texture_view(
@@ -212,11 +213,11 @@ pub fn op_webgpu_create_texture_view(
         None => wgt::TextureAspect::All,
       },
       base_mip_level: args.base_mip_level.unwrap_or(0),
-      level_count: args.mip_level_count, // TODO
+      level_count: args.mip_level_count,
       base_array_layer: args.base_array_layer.unwrap_or(0),
-      array_layer_count: args.array_layer_count, // TODO
+      array_layer_count: args.array_layer_count,
     },
-    (), // TODO
+    (), // TODO: id_in
   )?;
 
   let rid = state

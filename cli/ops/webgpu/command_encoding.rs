@@ -19,7 +19,7 @@ struct CreateCommandEncoderArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
-  measure_execution_time: Option<bool>, // TODO
+  measure_execution_time: Option<bool>,
 }
 
 pub fn op_webgpu_create_command_encoder(
@@ -41,9 +41,10 @@ pub fn op_webgpu_create_command_encoder(
   let command_encoder = instance.device_create_command_encoder(
     *device,
     &wgt::CommandEncoderDescriptor {
+      // TODO: should accept measure_execution_time
       label: args.label.map(|label| Cow::Borrowed(&label)),
     },
-    (), // TODO
+    (), // TODO: id_in
   )?;
 
   let rid = state
@@ -60,7 +61,7 @@ pub fn op_webgpu_create_command_encoder(
 struct GPURenderPassColorAttachmentDescriptor {
   attachment: u32,
   resolve_target: Option<u32>,
-  load_value: (), // TODO
+  load_value: (), // TODO: mixed types
   store_op: Option<String>,
 }
 
@@ -68,10 +69,10 @@ struct GPURenderPassColorAttachmentDescriptor {
 #[serde(rename_all = "camelCase")]
 struct GPURenderPassDepthStencilAttachmentDescriptor {
   attachment: u32,
-  depth_load_value: (), // TODO
+  depth_load_value: (), // TODO: mixed types
   depth_store_op: String,
   depth_read_only: Option<bool>,
-  stencil_load_value: (), // TODO
+  stencil_load_value: (), // TODO: mixed types
   stencil_store_op: String,
   stencil_read_only: Option<bool>,
 }
@@ -81,11 +82,11 @@ struct GPURenderPassDepthStencilAttachmentDescriptor {
 struct CommandEncoderBeginRenderPassArgs {
   instance_rid: u32,
   command_encoder_rid: u32,
-  label: Option<String>, // TODO
+  label: Option<String>,
   color_attachments: [GPURenderPassColorAttachmentDescriptor],
   depth_stencil_attachment:
     Option<GPURenderPassDepthStencilAttachmentDescriptor>,
-  occlusion_query_set: (), // TODO
+  occlusion_query_set: u32, // TODO: wait to be added to wpgu, and add to JS
 }
 
 pub fn op_webgpu_command_encoder_begin_render_pass(
@@ -107,6 +108,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   let render_pass = wgc::command::RenderPass::new(
     *command_encoder,
     wgc::command::RenderPassDescriptor {
+      // TODO: should accept label
       color_attachments: Cow::Owned(
         args
           .color_attachments
@@ -181,7 +183,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
     .ok_or_else(bad_resource_id)?;
 
   let compute_pass = wgc::command::ComputePass::new(*command_encoder);
-
+  // TODO: should accept label
   instance.command_encoder_run_compute_pass(*command_encoder, &compute_pass);
 
   let rid = state
@@ -198,7 +200,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 struct GPUTextureCopyView {
   texture: u32,
   mip_level: Option<u32>,
-  origin: (), // TODO
+  origin: (), // TODO: mixed types
 }
 
 #[derive(Deserialize)]
@@ -208,7 +210,7 @@ struct CommandEncoderCopyTextureToTextureArgs {
   command_encoder_rid: u32,
   source: GPUTextureCopyView,
   destination: GPUTextureCopyView,
-  copy_size: (), // TODO
+  copy_size: (), // TODO: mixed types
 }
 
 pub fn op_webgpu_command_encoder_copy_texture_to_texture(
@@ -262,7 +264,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
 struct CommandEncoderFinishArgs {
   instance_rid: u32,
   command_encoder_rid: u32,
-  label: Option<String>, // TODO
+  label: Option<String>,
 }
 
 pub fn op_webgpu_command_encoder_finish(
