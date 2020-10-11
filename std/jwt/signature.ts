@@ -22,15 +22,15 @@ function encrypt(
   }
 }
 
-export function create(
+export async function create(
   algorithm: Algorithm,
   key: string,
   input: string,
-): string {
-  return convertHexToBase64url(encrypt(algorithm, key, input));
+): Promise<string> {
+  return convertHexToBase64url(await encrypt(algorithm, key, input));
 }
 
-export function verify({
+export async function verify({
   signature,
   key,
   alg,
@@ -40,6 +40,6 @@ export function verify({
   key: string;
   alg: Algorithm | "none";
   signingInput: string;
-}): boolean {
-  return signature === encrypt(alg, key, signingInput);
+}): Promise<boolean> {
+  return signature === await encrypt(alg, key, signingInput);
 }

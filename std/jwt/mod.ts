@@ -52,7 +52,7 @@ export function setExpiration(exp: number | Date): number {
   );
 }
 
-export function parse(
+export function decode(
   jwt: string,
 ): {
   header: unknown;
@@ -92,10 +92,14 @@ export function isTokenObject(object: TokenObject): object is TokenObject {
   );
 }
 
-export function verify(jwt: string, key: string, { algorithm = "HS512" }: {
-  algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
-} = {}): Payload {
-  const obj = parse(jwt) as TokenObject;
+export async function verify(
+  jwt: string,
+  key: string,
+  { algorithm = "HS512" }: {
+    algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
+  } = {},
+): Promise<Payload> {
+  const obj = decode(jwt) as TokenObject;
 
   if (!isTokenObject(obj)) {
     throw new Error(`jwt is invalid`);
@@ -131,7 +135,7 @@ export function verify(jwt: string, key: string, { algorithm = "HS512" }: {
   }
 
   if (
-    !verifySignature({
+    !await verifySignature({
       signature,
       key,
       alg: header.alg,
@@ -154,21 +158,19 @@ function createSigningInput(
     )
   }.${
     convertStringToBase64url(
-      typeof payload === "string"
-        ? payload
-        : JSON.stringify(payload),
+      typeof payload === "string" ? payload : JSON.stringify(payload),
     )
   }`;
 }
 
-export function create(
+export async function create(
   payload: Payload,
   key: string,
   { header = { alg: "HS512", typ: "JWT" } }: {
     header?: Header;
   } = {},
-): string {
+): Promise<string> {
   const signingInput = createSigningInput(header, payload);
-  const signature = createSignature(header.alg, key, signingInput);
+  const signature = await createSignature(header.alg, key, signingInput);
   return `${signingInput}.${signature}`;
 }
