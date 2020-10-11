@@ -6,12 +6,11 @@ await init(source);
 const encoder = new TextEncoder();
 
 export function parseDate(date: string) {
-  let view = encoder.encode(date);
+  const view = encoder.encode(date);
   return parse_date(view);
 }
 
 export function parseAddr(addr: string) {
-  let view = encoder.encode(addr);
-  let res = parse_addr(view);
-  return res;
+  const view = encoder.encode(addr);
+  return parse_addr(view);
 }
