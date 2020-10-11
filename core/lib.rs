@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
+pub use log::log;
+pub use lazy_static::lazy_static;
 
 mod bindings;
 pub mod error;
