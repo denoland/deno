@@ -141,34 +141,32 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
 }
 
-fn serialize_features(features: &wgpu::Features) -> Vec<&str> {
+fn serialize_features(features: &wgt::Features) -> Vec<&str> {
   let mut extensions: Vec<&str> = vec![];
 
-  if features.contains(wgpu::Features::DEPTH_CLAMPING) {
+  if features.contains(wgt::Features::DEPTH_CLAMPING) {
     extensions.push("depth-clamping");
   }
-  if features.contains(wgpu::Features) {
-    // TODO
+  if features.contains(wgt::Features) { // TODO
     extensions.push("depth24unorm-stencil8");
   }
-  if features.contains(wgpu::Features) {
-    // TODO
+  if features.contains(wgt::Features) { // TODO
     extensions.push("depth32float-stencil8");
   }
-  if features.contains(wgpu::Features) {
-    // TODO
+  if features.contains(wgt::Features) { // TODO
     extensions.push("pipeline-statistics-query");
   }
-  if features.contains(wgpu::Features::TEXTURE_COMPRESSION_BC) {
+  if features.contains(wgt::Features::TEXTURE_COMPRESSION_BC) {
     extensions.push("texture-compression-bc");
   }
-  if features.contains(wgpu::Features) {
-    // TODO
+  if features.contains(wgt::Features) { // TODO
     extensions.push("timestamp-query");
   }
 
   extensions
 }
+
+pub type WgcInstance = wgc::hub::Global<wgc::hub::IdentityManagerFactory>;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,24 +181,31 @@ pub async fn op_webgpu_request_adapter(
 ) -> Result<Value, AnyError> {
   let args: RequestAdapterArgs = serde_json::from_value(args)?;
 
-  let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY); // TODO: own op
-  let adapter = instance
-    .request_adapter(&wgpu::RequestAdapterOptions {
+  let instance = wgc::hub::Global::new(
+    "webgpu",
+    wgc::hub::IdentityManagerFactory,
+    wgt::BackendBit::PRIMARY,
+  ); // TODO: own op
+  let adapter = instance.request_adapter(
+    &wgc::instance::RequestAdapterOptions {
       power_preference: match args.power_preference {
-        Some(&"low-power") => wgpu::PowerPreference::LowPower,
-        Some(&"high-performance") => wgpu::PowerPreference::HighPerformance,
+        Some(&"low-power") => wgt::PowerPreference::LowPower,
+        Some(&"high-performance") => wgt::PowerPreference::HighPerformance,
         Some(_) => unreachable!(),
-        None => wgpu::PowerPreference::Default,
+        None => wgt::PowerPreference::Default,
       },
       compatible_surface: None, // windowless
-    })
-    .await
-    .unwrap(); // TODO: dont unwrap
+    },
+    wgc::instance::AdapterInputs::Mask(wgt::BackendBit::PRIMARY, ()), // TODO
+  )?;
 
-  let name = adapter.get_info().name;
-  let extensions = serialize_features(&adapter.features());
+  let name = instance.adapter_get_info(adapter)?.name;
+  let extensions = serialize_features(&instance.adapter_features(adapter)?);
 
   let mut state = state.borrow_mut();
+  let rid = state
+    .resource_table
+    .add("webGPUInstance", Box::new(instance));
   let rid = state.resource_table.add("webGPUAdapter", Box::new(adapter));
 
   Ok(json!({
@@ -213,7 +218,8 @@ pub async fn op_webgpu_request_adapter(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RequestDeviceArgs {
-  rid: u32,
+  instance_rid: u32,
+  adapter_rid: u32,
   extensions: Option<[String]>,
   limits: Option<String>, // TODO
 }
@@ -226,30 +232,31 @@ pub async fn op_webgpu_request_device(
   let args: RequestDeviceArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
+  let instance = state
+    .resource_table
+    .get_mut::<WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let adapter = state
     .resource_table
-    .get_mut::<wgpu::Adapter>(args.rid)
+    .get_mut::<wgc::id::AdapterId>(args.adapter_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let (device, queue) = adapter
-    .request_device(
-      &wgpu::DeviceDescriptor {
-        // TODO: should accept label
-        features: Default::default(), // TODO
-        limits: Default::default(),   // TODO
-        shader_validation: false,     // TODO
-      },
-      None, // debug
-    )
-    .await
-    .unwrap(); // TODO: dont unwrap
+  let device = instance.adapter_request_device(
+    *adapter,
+    &wgt::DeviceDescriptor {
+      // TODO: should accept label
+      features: Default::default(), // TODO
+      limits: Default::default(),   // TODO
+      shader_validation: false,     // TODO
+    },
+    None,
+    (), // TODO
+  )?;
 
-  let extensions = serialize_features(&device.features());
-  let limits = device.limits();
+  let extensions = serialize_features(&instance.device_features(device)?);
+  let limits = instance.device_limits(device)?; // TODO
 
   let device_rid = state.resource_table.add("webGPUDevice", Box::new(device));
-
-  let queue_rid = state.resource_table.add("webGPUQueue", Box::new(queue));
 
   Ok(json!({
     "deviceRid": device_rid,

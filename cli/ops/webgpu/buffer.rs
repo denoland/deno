@@ -15,7 +15,8 @@ use std::rc::Rc;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateBufferArgs {
-  rid: u32,
+  instance_rid: u32,
+  device_rid: u32,
   label: Option<String>,
   size: u64,
   usage: (), // TODO
@@ -29,17 +30,25 @@ pub fn op_webgpu_create_buffer(
 ) -> Result<Value, AnyError> {
   let args: CreateBufferArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let device = state
     .resource_table
-    .get_mut::<wgpu::Device>(args.rid)
+    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-    label: args.label.map(|label| &label),
-    size: args.size,
-    usage: (), // TODO
-    mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
-  });
+  let buffer = instance.device_create_buffer(
+    *device,
+    &wgc::resource::BufferDescriptor {
+      label: args.label.map(|label| Cow::Borrowed(&label)),
+      size: args.size,
+      usage: (),
+      mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
+    },
+    (), // TODO
+  )?;
 
   let rid = state.resource_table.add("webGPUBuffer", Box::new(buffer));
 
@@ -51,7 +60,8 @@ pub fn op_webgpu_create_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BufferGetMapAsyncArgs {
-  rid: u32,
+  instance_rid: u32,
+  buffer_rid: u32,
   mode: u32,
 }
 
@@ -63,12 +73,19 @@ pub async fn op_webgpu_buffer_get_map_async(
   let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let buffer = state
     .resource_table
-    .get_mut::<wgpu::Buffer>(args.rid)
+    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
-  buffer.slice(..).map_async().await; // TODO
+  instance.buffer_map_async(
+    *buffer,
+    // TODO
+  )?;
 
   Ok(json!({}))
 }
@@ -76,7 +93,8 @@ pub async fn op_webgpu_buffer_get_map_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BufferGetMappedRangeArgs {
-  rid: u32,
+  instance_rid: u32,
+  buffer_rid: u32,
   offset: u64,
   size: Option<u64>,
 }
@@ -88,16 +106,20 @@ pub fn op_webgpu_buffer_get_mapped_range(
 ) -> Result<Value, AnyError> {
   let args: BufferGetMappedRangeArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let buffer = state
     .resource_table
-    .get_mut::<wgpu::Buffer>(args.rid)
+    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let end = args.size.map(|size| size + args.offset);
-
-  let slice = buffer.slice(args.offset..end); // TODO
-  let view = slice.get_mapped_range();
-  view[0]; // TODO
+  let slice = instance.buffer_get_mapped_range(
+    *buffer,
+    args.offset,
+    args.size, // TODO
+  )?; // TODO
 
   Ok(json!({}))
 }
@@ -105,7 +127,8 @@ pub fn op_webgpu_buffer_get_mapped_range(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BufferUnmapArgs {
-  rid: u32,
+  instance_rid: u32,
+  buffer_rid: u32,
 }
 
 pub fn op_webgpu_buffer_unmap(
@@ -115,12 +138,16 @@ pub fn op_webgpu_buffer_unmap(
 ) -> Result<Value, AnyError> {
   let args: BufferUnmapArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let buffer = state
     .resource_table
-    .get_mut::<wgpu::Buffer>(args.rid)
+    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
-  buffer.unmap();
+  instance.buffer_unmap(*buffer)?;
 
   Ok(json!({}))
 }

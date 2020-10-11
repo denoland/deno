@@ -75,7 +75,8 @@ walkdir = "2.3.1"
 warp = { version = "0.2.5", features = ["tls"] }
 semver-parser = "0.9.0"
 uuid = { version = "0.8.1", features = ["v4"] }
-wgpu = "0.6.0"
+wgc = { package = "wgpu-core", version = "0.6.4" }
+wgt = { package = "wgpu-types", versionn = "0.6.1" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }

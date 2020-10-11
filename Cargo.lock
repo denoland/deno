@@ -537,7 +537,8 @@ dependencies = [
  "warp",
  "webpki",
  "webpki-roots",
- "wgpu",
+ "wgpu-core",
+ "wgpu-types",
  "winapi 0.3.9",
  "winres",
 ]
@@ -1089,7 +1090,6 @@ dependencies = [
  "raw-window-handle",
  "smallvec",
  "winapi 0.3.9",
- "x11",
 ]
 
 [[package]]
@@ -1935,12 +1935,6 @@ name = "pin-utils"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
-
-[[package]]
-name = "pkg-config"
-version = "0.3.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d36492546b6af1463394d46f0c834346f31548646f6ba10849802c9c9a27ac33"
 
 [[package]]
 name = "pmutil"
@@ -3185,12 +3179,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "typed-arena"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0685c84d5d54d1c26f7d3eb96cd41550adb97baed141a761cf335d3d33bcd0ae"
-
-[[package]]
 name = "typenum"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3463,29 +3451,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wgpu"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "549160f188eef412ac978499ddf0ceadad4c9159bb1160f9e6b9d4cc8ee977dc"
-dependencies = [
- "arrayvec",
- "futures",
- "gfx-backend-vulkan",
- "js-sys",
- "objc",
- "parking_lot",
- "raw-window-handle",
- "smallvec",
- "tracing",
- "typed-arena",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu-core",
- "wgpu-types",
-]
-
-[[package]]
 name = "wgpu-core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3505,7 +3470,6 @@ dependencies = [
  "gfx-memory",
  "naga",
  "parking_lot",
- "raw-window-handle",
  "smallvec",
  "thiserror",
  "tracing",
@@ -3609,14 +3573,4 @@ checksum = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
-]
-
-[[package]]
-name = "x11"
-version = "2.18.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77ecd092546cb16f25783a5451538e73afc8d32e242648d54f4ae5459ba1e773"
-dependencies = [
- "libc",
- "pkg-config",
 ]

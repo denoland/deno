@@ -11,96 +11,93 @@ use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 fn serialize_programmable_stage_descriptor(
   state: &mut OpState,
   programmable_stage_descriptor: GPUProgrammableStageDescriptor,
-) -> Result<wgpu::ProgrammableStageDescriptor, AnyError> {
-  Ok(wgpu::ProgrammableStageDescriptor {
-    module: state
+) -> Result<wgc::pipeline::ProgrammableStageDescriptor, AnyError> {
+  Ok(wgc::pipeline::ProgrammableStageDescriptor {
+    module: *state
       .resource_table
-      .get_mut::<wgpu::ShaderModule>(programmable_stage_descriptor.module)
+      .get_mut::<wgc::id::ShaderModuleId>(programmable_stage_descriptor.module)
       .ok_or_else(bad_resource_id)?,
-    entry_point: &programmable_stage_descriptor.entry_point,
+    entry_point: Cow::Owned(programmable_stage_descriptor.entry_point),
   })
 }
 
-fn serialize_stencil_operation(operation: String) -> wgpu::StencilOperation {
+fn serialize_stencil_operation(operation: String) -> wgt::StencilOperation {
   match operation {
-    &"keep" => wgpu::StencilOperation::Keep,
-    &"zero" => wgpu::StencilOperation::Zero,
-    &"replace" => wgpu::StencilOperation::Replace,
-    &"invert" => wgpu::StencilOperation::Invert,
-    &"increment-clamp" => wgpu::StencilOperation::IncrementClamp,
-    &"decrement-clamp" => wgpu::StencilOperation::DecrementClamp,
-    &"increment-wrap" => wgpu::StencilOperation::IncrementWrap,
-    &"decrement-wrap" => wgpu::StencilOperation::DecrementWrap,
+    &"keep" => wgt::StencilOperation::Keep,
+    &"zero" => wgt::StencilOperation::Zero,
+    &"replace" => wgt::StencilOperation::Replace,
+    &"invert" => wgt::StencilOperation::Invert,
+    &"increment-clamp" => wgt::StencilOperation::IncrementClamp,
+    &"decrement-clamp" => wgt::StencilOperation::DecrementClamp,
+    &"increment-wrap" => wgt::StencilOperation::IncrementWrap,
+    &"decrement-wrap" => wgt::StencilOperation::DecrementWrap,
     _ => unreachable!(),
   }
 }
 
 fn serialize_stencil_state_face_descriptor(
   state: GPUStencilStateFaceDescriptor,
-) -> wgpu::StencilStateFaceDescriptor {
-  wgpu::StencilStateFaceDescriptor {
+) -> wgt::StencilStateFaceDescriptor {
+  wgt::StencilStateFaceDescriptor {
     compare: state
       .compare
-      .map_or(wgpu::CompareFunction::Always, |compare| {
-        serialize_compare_function(compare)
-      }),
-    fail_op: state.fail_op.map_or(wgpu::StencilOperation::Keep, |op| {
-      serialize_stencil_operation(op)
-    }),
+      .map_or(wgt::CompareFunction::Always, serialize_compare_function),
+    fail_op: state
+      .fail_op
+      .map_or(wgt::StencilOperation::Keep, serialize_stencil_operation),
     depth_fail_op: state
       .depth_fail_op
-      .map_or(wgpu::StencilOperation::Keep, |op| {
-        serialize_stencil_operation(op)
-      }),
-    pass_op: state.pass_op.map_or(wgpu::StencilOperation::Keep, |op| {
-      serialize_stencil_operation(op)
-    }),
+      .map_or(wgt::StencilOperation::Keep, serialize_stencil_operation),
+    pass_op: state
+      .pass_op
+      .map_or(wgt::StencilOperation::Keep, serialize_stencil_operation),
   }
 }
 
-fn serialize_blend_factor(blend_factor: String) -> wgpu::BlendFactor {
+fn serialize_blend_factor(blend_factor: String) -> wgt::BlendFactor {
   match blend_factor {
-    &"zero" => wgpu::BlendFactor::Zero,
-    &"one" => wgpu::BlendFactor::One,
-    &"src-color" => wgpu::BlendFactor::SrcColor,
-    &"one-minus-src-color" => wgpu::BlendFactor::OneMinusSrcColor,
-    &"src-alpha" => wgpu::BlendFactor::SrcAlpha,
-    &"one-minus-src-alpha" => wgpu::BlendFactor::OneMinusSrcAlpha,
-    &"dst-color" => wgpu::BlendFactor::DstColor,
-    &"one-minus-dst-color" => wgpu::BlendFactor::OneMinusDstColor,
-    &"dst-alpha" => wgpu::BlendFactor::DstAlpha,
-    &"one-minus-dst-alpha" => wgpu::BlendFactor::OneMinusDstAlpha,
-    &"src-alpha-saturated" => wgpu::BlendFactor::SrcAlphaSaturated,
-    &"blend-color" => wgpu::BlendFactor::BlendColor,
-    &"one-minus-blend-color" => wgpu::BlendFactor::OneMinusBlendColor,
+    &"zero" => wgt::BlendFactor::Zero,
+    &"one" => wgt::BlendFactor::One,
+    &"src-color" => wgt::BlendFactor::SrcColor,
+    &"one-minus-src-color" => wgt::BlendFactor::OneMinusSrcColor,
+    &"src-alpha" => wgt::BlendFactor::SrcAlpha,
+    &"one-minus-src-alpha" => wgt::BlendFactor::OneMinusSrcAlpha,
+    &"dst-color" => wgt::BlendFactor::DstColor,
+    &"one-minus-dst-color" => wgt::BlendFactor::OneMinusDstColor,
+    &"dst-alpha" => wgt::BlendFactor::DstAlpha,
+    &"one-minus-dst-alpha" => wgt::BlendFactor::OneMinusDstAlpha,
+    &"src-alpha-saturated" => wgt::BlendFactor::SrcAlphaSaturated,
+    &"blend-color" => wgt::BlendFactor::BlendColor,
+    &"one-minus-blend-color" => wgt::BlendFactor::OneMinusBlendColor,
     _ => unreachable!(),
   }
 }
 
 fn serialize_blend_descriptor(
   blend: GPUBlendDescriptor,
-) -> wgpu::BlendDescriptor {
-  wgpu::BlendDescriptor {
+) -> wgt::BlendDescriptor {
+  wgt::BlendDescriptor {
     src_factor: blend
       .src_factor
-      .map_or(wgpu::BlendFactor::One, serialize_blend_factor),
+      .map_or(wgt::BlendFactor::One, serialize_blend_factor),
     dst_factor: blend
       .dst_factor
-      .map_or(wgpu::BlendFactor::Zero, serialize_blend_factor),
+      .map_or(wgt::BlendFactor::Zero, serialize_blend_factor),
     operation: match blend.operation {
-      Some(&"add") => wgpu::BlendOperation::Add,
-      Some(&"subtract") => wgpu::BlendOperation::Subtract,
-      Some(&"reverse-subtract") => wgpu::BlendOperation::ReverseSubtract,
-      Some(&"min") => wgpu::BlendOperation::Min,
-      Some(&"max") => wgpu::BlendOperation::Max,
+      Some(&"add") => wgt::BlendOperation::Add,
+      Some(&"subtract") => wgt::BlendOperation::Subtract,
+      Some(&"reverse-subtract") => wgt::BlendOperation::ReverseSubtract,
+      Some(&"min") => wgt::BlendOperation::Min,
+      Some(&"max") => wgt::BlendOperation::Max,
       Some(_) => unreachable!(),
-      None => wgpu::BlendOperation::Add,
+      None => wgt::BlendOperation::Add,
     },
   }
 }
@@ -115,7 +112,8 @@ struct GPUProgrammableStageDescriptor {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateComputePipelineArgs {
-  rid: u32,
+  instance_rid: u32,
+  device_rid: u32,
   label: Option<String>,
   layout: Option<u32>,
   compute_stage: GPUProgrammableStageDescriptor,
@@ -128,25 +126,34 @@ pub fn op_webgpu_create_compute_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateComputePipelineArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let device = state
     .resource_table
-    .get_mut::<wgpu::Device>(args.rid)
+    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let compute_pipeline =
-    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-      label: args.label.map(|label| &label),
+  let (compute_pipeline, smth) = instance.device_create_compute_pipeline(
+    // TODO
+    *device,
+    &wgc::pipeline::ComputePipelineDescriptor {
+      label: args.label.map(|label| Cow::Borrowed(&label)),
       layout: args.layout.map(|rid| {
-        state
+        *state
           .resource_table
-          .get_mut::<wgpu::PipelineLayout>(rid)
+          .get_mut::<wgc::id::PipelineLayoutId>(rid)
           .ok_or_else(bad_resource_id)?
       }),
       compute_stage: serialize_programmable_stage_descriptor(
         state,
         args.compute_stage,
       )?,
-    });
+    },
+    (), // TODO
+    (), // TODO
+  )?;
 
   let rid = state
     .resource_table
@@ -160,7 +167,8 @@ pub fn op_webgpu_create_compute_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ComputePipelineGetBindGroupLayoutArgs {
-  rid: u32,
+  instance_rid: u32,
+  compute_pipeline_rid: u32,
   index: u32,
 }
 
@@ -172,12 +180,17 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   let args: ComputePipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let compute_pipeline = state
     .resource_table
-    .get_mut::<wgpu::ComputePipeline>(args.rid)
+    .get_mut::<wgc::id::ComputePipelineId>(args.compute_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let bind_group_layout = compute_pipeline.get_bind_group_layout(args.index);
+  let bind_group_layout = instance
+    .compute_pipeline_get_bind_group_layout(*compute_pipeline, args.index)?;
 
   let rid = state
     .resource_table
@@ -263,7 +276,8 @@ struct GPUVertexStateDescriptor {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateRenderPipelineArgs {
-  rid: u32,
+  instance_rid: u32,
+  device_rid: u32,
   label: Option<String>,
   layout: Option<u32>,
   vertex_stage: GPUProgrammableStageDescriptor,
@@ -285,18 +299,23 @@ pub fn op_webgpu_create_render_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateRenderPipelineArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let device = state
     .resource_table
-    .get_mut::<wgpu::Device>(args.rid)
+    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let render_pipeline =
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-      label: args.label.map(|label| &label),
+  let (render_pipeline, smth) = instance.device_create_render_pipeline(
+    *device,
+    &wgc::pipeline::RenderPipelineDescriptor {
+      label: args.label.map(|label| Cow::Borrowed(&label)),
       layout: args.layout.map(|rid| {
-        state
+        *state
           .resource_table
-          .get_mut::<wgpu::PipelineLayout>(rid)
+          .get_mut::<wgc::id::PipelineLayoutId>(rid)
           .ok_or_else(bad_resource_id)?
       }),
       vertex_stage: serialize_programmable_stage_descriptor(
@@ -312,19 +331,19 @@ pub fn op_webgpu_create_render_pipeline(
         },
       ),
       rasterization_state: args.rasterization_state.map(
-        |rasterization_state| wgpu::RasterizationStateDescriptor {
+        |rasterization_state| wgt::RasterizationStateDescriptor {
           front_face: match rasterization_state.front_face {
-            Some(&"ccw") => wgpu::FrontFace::Ccw,
-            Some(&"cw") => wgpu::FrontFace::Cw,
+            Some(&"ccw") => wgt::FrontFace::Ccw,
+            Some(&"cw") => wgt::FrontFace::Cw,
             Some(_) => unreachable!(),
-            None => wgpu::FrontFace::Ccw,
+            None => wgt::FrontFace::Ccw,
           },
           cull_mode: match rasterization_state.cull_mode {
-            Some(&"none") => wgpu::CullMode::None,
-            Some(&"front") => wgpu::CullMode::Front,
-            Some(&"back") => wgpu::CullMode::Back,
+            Some(&"none") => wgt::CullMode::None,
+            Some(&"front") => wgt::CullMode::Front,
+            Some(&"back") => wgt::CullMode::Back,
             Some(_) => unreachable!(),
-            None => wgpu::CullMode::None,
+            None => wgt::CullMode::None,
           },
           clamp_depth: rasterization_state.clamp_depth.unwrap_or(false),
           depth_bias: rasterization_state.depth_bias.unwrap_or(0),
@@ -335,43 +354,45 @@ pub fn op_webgpu_create_render_pipeline(
         },
       ),
       primitive_topology: match args.primitive_topology {
-        &"point-list" => wgpu::PrimitiveTopology::PointList,
-        &"line-list" => wgpu::PrimitiveTopology::LineList,
-        &"line-strip" => wgpu::PrimitiveTopology::LineStrip,
-        &"triangle-list" => wgpu::PrimitiveTopology::TriangleList,
-        &"triangle-strip" => wgpu::PrimitiveTopology::TriangleStrip,
+        &"point-list" => wgt::PrimitiveTopology::PointList,
+        &"line-list" => wgt::PrimitiveTopology::LineList,
+        &"line-strip" => wgt::PrimitiveTopology::LineStrip,
+        &"triangle-list" => wgt::PrimitiveTopology::TriangleList,
+        &"triangle-strip" => wgt::PrimitiveTopology::TriangleStrip,
         _ => unreachable!(),
       },
-      color_states: &args
-        .color_states
-        .iter()
-        .map(|color_state| {
-          wgpu::ColorStateDescriptor {
-            format: serialize_texture_format(color_state.format.clone())?,
-            alpha_blend: color_state
-              .alpha_blend
-              .map_or("", serialize_blend_descriptor), // TODO
-            color_blend: color_state
-              .color_blend
-              .map_or("", serialize_blend_descriptor), // TODO
-            write_mask: color_state.write_mask, // TODO
-          }
-        })
-        .collect::<[wgpu::ColorStateDescriptor]>(),
+      color_states: Cow::Owned(
+        args
+          .color_states
+          .iter()
+          .map(|color_state| {
+            wgt::ColorStateDescriptor {
+              format: serialize_texture_format(color_state.format.clone())?,
+              alpha_blend: color_state
+                .alpha_blend
+                .map_or("", serialize_blend_descriptor), // TODO
+              color_blend: color_state
+                .color_blend
+                .map_or("", serialize_blend_descriptor), // TODO
+              write_mask: color_state.write_mask, // TODO
+            }
+          })
+          .collect::<Vec<wgt::ColorStateDescriptor>>(),
+      ),
       depth_stencil_state: args.depth_stencil_state.map(|state| {
-        wgpu::DepthStencilStateDescriptor {
+        wgt::DepthStencilStateDescriptor {
           format: serialize_texture_format(state.format)?,
           depth_write_enabled: state.depth_write_enabled.unwrap_or(false),
           depth_compare: state
             .depth_compare
-            .map_or(wgpu::CompareFunction::Always, serialize_compare_function),
-          stencil: wgpu::StencilStateDescriptor {
+            .map_or(wgt::CompareFunction::Always, serialize_compare_function),
+          stencil: wgt::StencilStateDescriptor {
             front: state.stencil_front.map_or(
-              wgpu::StencilStateFaceDescriptor::IGNORE,
+              wgt::StencilStateFaceDescriptor::IGNORE,
               serialize_stencil_state_face_descriptor,
             ),
             back: state.stencil_front.map_or(
-              wgpu::StencilStateFaceDescriptor::IGNORE,
+              wgt::StencilStateFaceDescriptor::IGNORE,
               serialize_stencil_state_face_descriptor,
             ),
             read_mask: state.stencil_read_mask.unwrap_or(0xFFFFFFFF),
@@ -379,80 +400,87 @@ pub fn op_webgpu_create_render_pipeline(
           },
         }
       }),
-      vertex_state: wgpu::VertexStateDescriptor {
+      vertex_state: wgc::pipeline::VertexStateDescriptor {
         index_format: args.vertex_state.unwrap().index_format.map_or(
-          "",
+          // TODO
+          "", // TODO
           |format| match format {
-            // TODO
-            &"uint16" => wgpu::IndexFormat::Uint16,
-            &"uint32" => wgpu::IndexFormat::Uint32,
+            &"uint16" => wgt::IndexFormat::Uint16,
+            &"uint32" => wgt::IndexFormat::Uint32,
             _ => unreachable!(),
           },
         ),
-        vertex_buffers: &args
-          .vertex_state
-          .unwrap()
-          .vertex_buffers
-          .unwrap() // TODO
-          .iter()
-          .map(|buffer| wgpu::VertexBufferDescriptor {
-            stride: buffer.array_stride,
-            step_mode: match buffer.step_mode {
-              Some(&"vertex") => wgpu::InputStepMode::Vertex,
-              Some(&"instance") => wgpu::InputStepMode::Instance,
-              Some(_) => unreachable!(),
-              None => wgpu::InputStepMode::Vertex,
-            },
-            attributes: &buffer
-              .attributes
-              .iter()
-              .map(|attribute| wgpu::VertexAttributeDescriptor {
-                offset: attribute.offset,
-                format: match attribute.format {
-                  &"uchar2" => wgpu::VertexFormat::Uchar2,
-                  &"uchar4" => wgpu::VertexFormat::Uchar4,
-                  &"char2" => wgpu::VertexFormat::Char2,
-                  &"char4" => wgpu::VertexFormat::Char4,
-                  &"uchar2norm" => wgpu::VertexFormat::Uchar2Norm,
-                  &"uchar4norm" => wgpu::VertexFormat::Uchar4,
-                  &"char2norm" => wgpu::VertexFormat::Char2Norm,
-                  &"char4norm" => wgpu::VertexFormat::Char4Norm,
-                  &"ushort2" => wgpu::VertexFormat::Ushort2,
-                  &"ushort4" => wgpu::VertexFormat::Ushort4,
-                  &"short2" => wgpu::VertexFormat::Short2,
-                  &"short4" => wgpu::VertexFormat::Short4,
-                  &"ushort2norm" => wgpu::VertexFormat::Ushort2Norm,
-                  &"ushort4norm" => wgpu::VertexFormat::Ushort4Norm,
-                  &"short2norm" => wgpu::VertexFormat::Short2Norm,
-                  &"short4norm" => wgpu::VertexFormat::Short4Norm,
-                  &"half2" => wgpu::VertexFormat::Half2,
-                  &"half4" => wgpu::VertexFormat::Half4,
-                  &"float" => wgpu::VertexFormat::Float,
-                  &"float2" => wgpu::VertexFormat::Float2,
-                  &"float3" => wgpu::VertexFormat::Float3,
-                  &"float4" => wgpu::VertexFormat::Float4,
-                  &"uint" => wgpu::VertexFormat::Uint,
-                  &"uint2" => wgpu::VertexFormat::Uint2,
-                  &"uint3" => wgpu::VertexFormat::Uint3,
-                  &"uint4" => wgpu::VertexFormat::Uint4,
-                  &"int" => wgpu::VertexFormat::Int,
-                  &"int2" => wgpu::VertexFormat::Int2,
-                  &"int3" => wgpu::VertexFormat::Int3,
-                  &"int4" => wgpu::VertexFormat::Int4,
-                  _ => unreachable!(),
-                },
-                shader_location: attribute.shader_location,
-              })
-              .collect::<[wgpu::VertexAttributeDescriptor]>(),
-          })
-          .collect::<[wgpu::VertexBufferDescriptor]>(),
+        vertex_buffers: Cow::Owned(
+          args
+            .vertex_state
+            .unwrap()
+            .vertex_buffers
+            .unwrap() // TODO
+            .iter()
+            .map(|buffer| wgc::pipeline::VertexBufferDescriptor {
+              stride: buffer.array_stride,
+              step_mode: match buffer.step_mode {
+                Some(&"vertex") => wgt::InputStepMode::Vertex,
+                Some(&"instance") => wgt::InputStepMode::Instance,
+                Some(_) => unreachable!(),
+                None => wgt::InputStepMode::Vertex,
+              },
+              attributes: Cow::Owned(
+                buffer
+                  .attributes
+                  .iter()
+                  .map(|attribute| wgt::VertexAttributeDescriptor {
+                    offset: attribute.offset,
+                    format: match attribute.format {
+                      &"uchar2" => wgt::VertexFormat::Uchar2,
+                      &"uchar4" => wgt::VertexFormat::Uchar4,
+                      &"char2" => wgt::VertexFormat::Char2,
+                      &"char4" => wgt::VertexFormat::Char4,
+                      &"uchar2norm" => wgt::VertexFormat::Uchar2Norm,
+                      &"uchar4norm" => wgt::VertexFormat::Uchar4,
+                      &"char2norm" => wgt::VertexFormat::Char2Norm,
+                      &"char4norm" => wgt::VertexFormat::Char4Norm,
+                      &"ushort2" => wgt::VertexFormat::Ushort2,
+                      &"ushort4" => wgt::VertexFormat::Ushort4,
+                      &"short2" => wgt::VertexFormat::Short2,
+                      &"short4" => wgt::VertexFormat::Short4,
+                      &"ushort2norm" => wgt::VertexFormat::Ushort2Norm,
+                      &"ushort4norm" => wgt::VertexFormat::Ushort4Norm,
+                      &"short2norm" => wgt::VertexFormat::Short2Norm,
+                      &"short4norm" => wgt::VertexFormat::Short4Norm,
+                      &"half2" => wgt::VertexFormat::Half2,
+                      &"half4" => wgt::VertexFormat::Half4,
+                      &"float" => wgt::VertexFormat::Float,
+                      &"float2" => wgt::VertexFormat::Float2,
+                      &"float3" => wgt::VertexFormat::Float3,
+                      &"float4" => wgt::VertexFormat::Float4,
+                      &"uint" => wgt::VertexFormat::Uint,
+                      &"uint2" => wgt::VertexFormat::Uint2,
+                      &"uint3" => wgt::VertexFormat::Uint3,
+                      &"uint4" => wgt::VertexFormat::Uint4,
+                      &"int" => wgt::VertexFormat::Int,
+                      &"int2" => wgt::VertexFormat::Int2,
+                      &"int3" => wgt::VertexFormat::Int3,
+                      &"int4" => wgt::VertexFormat::Int4,
+                      _ => unreachable!(),
+                    },
+                    shader_location: attribute.shader_location,
+                  })
+                  .collect::<Vec<wgt::VertexAttributeDescriptor>>(),
+              ),
+            })
+            .collect::<Vec<wgc::pipeline::VertexBufferDescriptor>>(),
+        ),
       },
       sample_count: args.sample_count.unwrap_or(1),
       sample_mask: args.sample_mask.unwrap_or(0xFFFFFFFF),
       alpha_to_coverage_enabled: args
         .alpha_to_coverage_enabled
         .unwrap_or(false),
-    });
+    },
+    (), // TODO
+    (), // TODO
+  )?;
 
   let rid = state
     .resource_table
@@ -466,7 +494,8 @@ pub fn op_webgpu_create_render_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RenderPipelineGetBindGroupLayoutArgs {
-  rid: u32,
+  instance_rid: u32,
+  render_pipeline_rid: u32,
   index: u32,
 }
 
@@ -478,12 +507,17 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   let args: RenderPipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let render_pipeline = state
     .resource_table
-    .get_mut::<wgpu::RenderPipeline>(args.rid)
+    .get_mut::<wgc::id::RenderPipelineId>(args.render_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let bind_group_layout = render_pipeline.get_bind_group_layout(args.index);
+  let bind_group_layout = instance
+    .render_pipeline_get_bind_group_layout(*render_pipeline, args.index)?;
 
   let rid = state
     .resource_table

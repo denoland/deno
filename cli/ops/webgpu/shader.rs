@@ -15,7 +15,8 @@ use std::rc::Rc;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateShaderModuleArgs {
-  rid: u32,
+  instance_rid: u32,
+  device_rid: u32,
   label: Option<String>,
   code: String,
   source_map: (), // TODO
@@ -28,12 +29,20 @@ pub fn op_webgpu_create_shader_module(
 ) -> Result<Value, AnyError> {
   let args: CreateShaderModuleArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
   let device = state
     .resource_table
-    .get_mut::<wgpu::Device>(args.rid)
+    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let shader_module = device.create_shader_module(wgpu::ShaderModuleSource); // TODO
+  let shader_module = instance.device_create_shader_module(
+    *device,
+    wgc::pipeline::ShaderModuleSource, // TODO
+    (),                                // TODO
+  )?;
 
   let rid = state
     .resource_table
