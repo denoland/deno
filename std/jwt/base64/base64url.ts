@@ -4,7 +4,6 @@ import {
 } from "./base64.ts";
 import { addPaddingToBase64url } from "../../encoding/base64url.ts";
 
-
 function convertBase64urlToBase64(base64url: string): string {
   return addPaddingToBase64url(base64url).replace(/\-/g, "+").replace(
     /_/g,

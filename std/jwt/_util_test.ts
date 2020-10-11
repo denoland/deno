@@ -13,7 +13,7 @@ import {
 import { assertEquals } from "../testing/asserts.ts";
 import { convertHexToBase64url } from "./_util.ts";
 
-Deno.test("[jwt] conversion", function (): void {
+Deno.test("[jwt] conversion", function () {
   const hex1 =
     "a4a99a8e21149ccbc5c5aabd310e5d5208b12db90dff749171d5014b688ce808";
   const hex2 = convertUint8ArrayToHex(
@@ -24,14 +24,14 @@ Deno.test("[jwt] conversion", function (): void {
             convertHexToUint8Array(
               convertUint8ArrayToHex(
                 convertBase64ToUint8Array(
-                  convertBase64urlToBase64(convertHexToBase64url(hex1))
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+                  convertBase64urlToBase64(convertHexToBase64url(hex1)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
   );
   assertEquals(hex1, hex2);
 });

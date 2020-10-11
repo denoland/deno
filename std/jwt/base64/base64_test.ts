@@ -1,12 +1,10 @@
-import {
-  assertEquals,
-} from "../../testing/asserts.ts";
+import { assertEquals } from "../../testing/asserts.ts";
 
 import {
-  convertBase64ToUint8Array,
-  convertUint8ArrayToBase64,
-  convertStringToBase64,
   convertBase64ToString,
+  convertBase64ToUint8Array,
+  convertStringToBase64,
+  convertUint8ArrayToBase64,
 } from "../base64/base64.ts";
 
 const str1 = "Hello ☸☹☺☻☼☾☿ World ✓";
