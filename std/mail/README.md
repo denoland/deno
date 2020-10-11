@@ -14,3 +14,14 @@ import { parseDate } from "https://deno.land/std@$STD_VERSION/mail/mod.ts";
 const timestamp = parseDate("Fri, 30 Nov 2012 20:57:23 GMT");
 // ...
 ```
+
+### Parsing Address
+
+Convert an address from an email header into a structured type. This function handles the most common formatting of to/from/cc/bcc fields found in email headers.
+
+```ts
+import { parseAddr } from "https://deno.land/std@$STD_VERSION/mail/mod.ts";
+
+const addrList = parseAddr("bar-group: foo <foo@bar.com>;");
+// ...
+```
