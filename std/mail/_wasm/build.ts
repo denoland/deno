@@ -31,8 +31,7 @@ async function encodeWasm(wasmPath: string): Promise<string> {
 // 3. generate script
 async function generate(wasm: string, output: string): Promise<void> {
   const initScript = await Deno.readTextFile(`${output}/deno_mail.js`);
-  const denoHashScript =
-    "/* eslint-disable */\n" +
+  const denoHashScript = "/* eslint-disable */\n" +
     "//deno-fmt-ignore-file\n" +
     "//deno-lint-ignore-file\n" +
     `import * as base64 from "../../encoding/base64.ts";` +

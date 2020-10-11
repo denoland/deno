@@ -1,12 +1,12 @@
-import { parseAddr as wasmParseAddr } from "./_wasm/mail.ts"
+import { parseAddr as wasmParseAddr } from "./_wasm/mail.ts";
 
 interface MailAddrList {
-    displayName?: string;
-    addr?: string;
-    groupName?: string;
-    addrs?: MailAddrList[];
+  displayName?: string;
+  addr?: string;
+  groupName?: string;
+  addrs?: MailAddrList[];
 }
 
 export function parseAddr(addr: string): MailAddrList[] {
-    return wasmParseAddr(addr);
+  return wasmParseAddr(addr);
 }
