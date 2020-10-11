@@ -47,7 +47,7 @@ async fn post_message_and_poll(
         return result
       }
 
-      _ = &mut *worker => {
+      _ = worker.run_event_loop() => {
         // A zero delay is long enough to yield the thread in order to prevent the loop from
         // running hot for messages that are taking longer to resolve like for example an
         // evaluation of top level await.
@@ -75,7 +75,7 @@ async fn read_line_and_poll(
       result = &mut line => {
         return result.unwrap();
       }
-      _ = &mut *worker, if poll_worker => {
+      _ = worker.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }
       _ = &mut timeout => {
@@ -89,12 +89,7 @@ pub async fn run(
   global_state: &GlobalState,
   mut worker: MainWorker,
 ) -> Result<(), AnyError> {
-  let inspector = worker
-    .inspector
-    .as_mut()
-    .expect("Inspector is not created.");
-
-  let mut session = InspectorSession::new(&mut **inspector);
+  let mut session = worker.create_inspector_session();
 
   let history_file = global_state.dir.root.join("deno_history.txt");
 

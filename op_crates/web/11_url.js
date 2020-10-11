@@ -803,7 +803,7 @@
 
   function encodeChar(c) {
     return [...encoder.encode(c)]
-      .map((n) => `%${n.toString(16)}`)
+      .map((n) => `%${n.toString(16).padStart(2, "0")}`)
       .join("")
       .toUpperCase();
   }
