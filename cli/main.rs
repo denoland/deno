@@ -78,6 +78,7 @@ use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
 use global_state::exit_unstable;
+use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
 use std::env;
@@ -319,6 +320,59 @@ async fn bundle_command(
   Ok(())
 }
 
+struct DocLoader {
+  fetcher: SourceFileFetcher,
+  maybe_import_map: Option<ImportMap>,
+}
+
+impl DocFileLoader for DocLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<String, doc::DocError> {
+    let maybe_resolved =
+      if let Some(import_map) = self.maybe_import_map.as_ref() {
+        import_map
+          .resolve(specifier, referrer)
+          .map_err(|e| doc::DocError::Resolve(e.to_string()))?
+      } else {
+        None
+      };
+
+    let resolved_specifier = if let Some(resolved) = maybe_resolved {
+      resolved
+    } else {
+      ModuleSpecifier::resolve_import(specifier, referrer)
+        .map_err(|e| doc::DocError::Resolve(e.to_string()))?
+    };
+
+    Ok(resolved_specifier.to_string())
+  }
+
+  fn load_source_code(
+    &self,
+    specifier: &str,
+  ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
+    let fetcher = self.fetcher.clone();
+    let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
+      .expect("Expected valid specifier");
+    async move {
+      let source_file = fetcher
+        .fetch_source_file(&specifier, None, Permissions::allow_all())
+        .await
+        .map_err(|e| {
+          doc::DocError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+          ))
+        })?;
+      Ok(source_file.source_code)
+    }
+    .boxed_local()
+  }
+}
+
 async fn doc_command(
   flags: Flags,
   source_file: Option<String>,
@@ -329,41 +383,10 @@ async fn doc_command(
   let global_state = GlobalState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
-  impl DocFileLoader for SourceFileFetcher {
-    fn resolve(
-      &self,
-      specifier: &str,
-      referrer: &str,
-    ) -> Result<String, doc::DocError> {
-      ModuleSpecifier::resolve_import(specifier, referrer)
-        .map(|specifier| specifier.to_string())
-        .map_err(|e| doc::DocError::Resolve(e.to_string()))
-    }
-
-    fn load_source_code(
-      &self,
-      specifier: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
-      let fetcher = self.clone();
-      let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
-        .expect("Expected valid specifier");
-      async move {
-        let source_file = fetcher
-          .fetch_source_file(&specifier, None, Permissions::allow_all())
-          .await
-          .map_err(|e| {
-            doc::DocError::Io(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              e.to_string(),
-            ))
-          })?;
-        Ok(source_file.source_code)
-      }
-      .boxed_local()
-    }
-  }
-
-  let loader = Box::new(global_state.file_fetcher.clone());
+  let loader = Box::new(DocLoader {
+    fetcher: global_state.file_fetcher.clone(),
+    maybe_import_map: global_state.maybe_import_map.clone(),
+  });
   let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
