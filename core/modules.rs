@@ -341,13 +341,6 @@ pub struct ModuleInfo {
   pub name: String,
   pub handle: v8::Global<v8::Module>,
   pub import_specifiers: Vec<ModuleSpecifier>,
-  // TODO(bartlomieju): there should be "state"
-  // field that describes if module is already being loaded,
-  // so concurent dynamic imports don't introduce dead lock
-  // pub state: LoadState {
-  //   Loading(shared_future),
-  //   Loaded,
-  // },
 }
 
 /// A symbolic module entity.
@@ -674,7 +667,7 @@ mod tests {
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    futures::executor::block_on(runtime.mod_evaluate(a_id)).unwrap();
+    runtime.mod_evaluate(a_id).unwrap();
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -686,7 +679,7 @@ mod tests {
       ]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
@@ -741,7 +734,7 @@ mod tests {
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      runtime.mod_evaluate(circular1_id).await.unwrap();
+      runtime.mod_evaluate(circular1_id).unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -753,7 +746,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -818,7 +811,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      runtime.mod_evaluate(redirect1_id).await.unwrap();
+      runtime.mod_evaluate(redirect1_id).unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -829,7 +822,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -968,7 +961,7 @@ mod tests {
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    futures::executor::block_on(runtime.mod_evaluate(main_id)).unwrap();
+    runtime.mod_evaluate(main_id).unwrap();
 
     let l = loads.lock().unwrap();
     assert_eq!(
@@ -976,7 +969,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
 

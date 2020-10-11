@@ -9,35 +9,51 @@
 
 declare interface DedicatedWorkerGlobalScope {
   self: DedicatedWorkerGlobalScope & typeof globalThis;
-  onmessage: (e: MessageEvent) => void;
-  onmessageerror: (e: MessageEvent) => void;
-  onerror: undefined | typeof onerror;
-  name: typeof __workerMain.name;
-  close: typeof __workerMain.close;
-  postMessage: typeof __workerMain.postMessage;
+  onmessage:
+    | ((
+      this: DedicatedWorkerGlobalScope & typeof globalThis,
+      ev: MessageEvent,
+    ) => any)
+    | null;
+  onmessageerror:
+    | ((
+      this: DedicatedWorkerGlobalScope & typeof globalThis,
+      ev: MessageEvent,
+    ) => any)
+    | null;
+  onerror:
+    | ((
+      this: DedicatedWorkerGlobalScope & typeof globalThis,
+      ev: ErrorEvent,
+    ) => any)
+    | null;
+  name: string;
+  close: () => void;
+  postMessage: (message: any) => void;
   Deno: typeof Deno;
 }
 
 declare var self: DedicatedWorkerGlobalScope & typeof globalThis;
-declare var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
+declare var onmessage:
+  | ((
+    this: DedicatedWorkerGlobalScope & typeof globalThis,
+    ev: MessageEvent,
+  ) => any)
+  | null;
+declare var onmessageerror:
+  | ((
+    this: DedicatedWorkerGlobalScope & typeof globalThis,
+    ev: MessageEvent,
+  ) => any)
+  | null;
 declare var onerror:
   | ((
-    msg: string,
-    source: string,
-    lineno: number,
-    colno: number,
-    e: Event,
-  ) => boolean | void)
-  | undefined;
-declare var close: typeof __workerMain.close;
-declare var name: typeof __workerMain.name;
-declare var postMessage: typeof __workerMain.postMessage;
-
-declare namespace __workerMain {
-  export let onmessage: (e: { data: any }) => void;
-  export function postMessage(data: any): void;
-  export function close(): void;
-  export const name: string;
-}
+    this: DedicatedWorkerGlobalScope & typeof globalThis,
+    ev: ErrorEvent,
+  ) => any)
+  | null;
+declare var close: () => void;
+declare var name: string;
+declare var postMessage: (message: any) => void;
 
 /* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */

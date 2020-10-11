@@ -735,7 +735,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: compiled_source_file.source_code.to_string()?,
+      code: compiled_source_file.source_code,
       name: module_url.to_string(),
     };
 
@@ -760,7 +760,7 @@ impl TsCompiler {
       url: module_url.clone(),
       filename: compiled_code_filename,
       media_type: MediaType::JavaScript,
-      source_code: compiled_code.into(),
+      source_code: String::from_utf8(compiled_code)?,
       types_header: None,
     };
 
@@ -817,7 +817,7 @@ impl TsCompiler {
       url: module_specifier.as_url().to_owned(),
       filename: source_map_filename,
       media_type: MediaType::JavaScript,
-      source_code: source_code.into(),
+      source_code: String::from_utf8(source_code)?,
       types_header: None,
     };
 
@@ -862,14 +862,12 @@ impl SourceMapGetter for TsCompiler {
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
     self
       .try_resolve_and_get_source_file(script_name)
-      .and_then(|out| {
-        out.source_code.to_str().ok().map(|v| {
-          // Do NOT use .lines(): it skips the terminating empty line.
-          // (due to internally using .split_terminator() instead of .split())
-          let lines: Vec<&str> = v.split('\n').collect();
-          assert!(lines.len() > line);
-          lines[line].to_string()
-        })
+      .map(|out| {
+        // Do NOT use .lines(): it skips the terminating empty line.
+        // (due to internally using .split_terminator() instead of .split())
+        let lines: Vec<&str> = out.source_code.split('\n').collect();
+        assert!(lines.len() > line);
+        lines[line].to_string()
       })
   }
 }
@@ -1528,7 +1526,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
+      source_code: include_str!("./tests/002_hello.ts").to_string(),
       types_header: None,
     };
     let dir =

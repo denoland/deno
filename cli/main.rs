@@ -60,7 +60,6 @@ use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
@@ -266,7 +265,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: TextDocument::new(source_code, Some("utf-8")),
+    source_code: String::from_utf8(source_code)?,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
@@ -276,7 +275,7 @@ async fn eval_command(
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -358,12 +357,7 @@ async fn doc_command(
               e.to_string(),
             ))
           })?;
-        source_file.source_code.to_string().map_err(|e| {
-          doc::DocError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-          ))
-        })
+        Ok(source_file.source_code)
       }
       .boxed_local()
     }
@@ -429,7 +423,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker = MainWorker::new(&global_state, main_module.clone());
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
 
   repl::run(&global_state, worker).await
 }
@@ -449,7 +443,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     url: main_module_url,
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: source.into(),
+    source_code: String::from_utf8(source)?,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
@@ -460,7 +454,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -506,7 +500,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
-      (&mut *worker).await?;
+      worker.run_event_loop().await?;
       worker.execute("window.dispatchEvent(new Event('unload'))")?;
       Ok(())
     }
@@ -531,7 +525,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -575,10 +569,7 @@ async fn test_command(
     url: test_file_url.clone(),
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: TextDocument::new(
-      test_file.clone().into_bytes(),
-      Some("utf-8"),
-    ),
+    source_code: test_file.clone(),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
@@ -587,12 +578,8 @@ async fn test_command(
     .save_source_file_in_cache(&main_module, source_file);
 
   let mut maybe_coverage_collector = if flags.coverage {
-    let inspector = worker
-      .inspector
-      .as_mut()
-      .expect("Inspector is not created.");
-
-    let mut coverage_collector = CoverageCollector::new(&mut **inspector);
+    let session = worker.create_inspector_session();
+    let mut coverage_collector = CoverageCollector::new(session);
     coverage_collector.start_collecting().await?;
 
     Some(coverage_collector)
@@ -603,9 +590,9 @@ async fn test_command(
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  (&mut *worker).await?;
+  worker.run_event_loop().await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     let coverages = coverage_collector.collect().await?;
