@@ -133,6 +133,26 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     "op_webgpu_command_encoder_copy_texture_to_texture",
     command_encoding::op_webgpu_command_encoder_copy_texture_to_texture,
   );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_push_debug_group",
+    command_encoding::op_webgpu_command_encoder_push_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_pop_debug_group",
+    command_encoding::op_webgpu_command_encoder_pop_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_insert_debug_marker",
+    command_encoding::op_webgpu_command_encoder_insert_debug_marker,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_finish",
+    command_encoding::op_webgpu_command_encoder_finish,
+  );
 
   super::reg_json_sync(
     rt,

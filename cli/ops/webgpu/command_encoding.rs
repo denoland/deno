@@ -261,6 +261,92 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CommandEncoderPushDebugGroupArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  group_label: String,
+}
+
+pub fn op_webgpu_command_encoder_push_debug_group(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderPushDebugGroupArgs = serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = state
+    .resource_table
+    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.command_encoder_push_debug_group(*command_encoder, args.group_label)?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandEncoderPopDebugGroupArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+}
+
+pub fn op_webgpu_command_encoder_pop_debug_group(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderPopDebugGroupArgs = serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = state
+    .resource_table
+    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.command_encoder_pop_debug_group(*command_encoder)?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandEncoderInsertDebugMarkerArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  marker_label: String,
+}
+
+pub fn op_webgpu_command_encoder_insert_debug_marker(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderInsertDebugMarkerArgs = serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = state
+    .resource_table
+    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.command_encoder_insert_debug_marker(*command_encoder, args.marker_label)?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CommandEncoderFinishArgs {
   instance_rid: u32,
   command_encoder_rid: u32,

@@ -231,7 +231,7 @@
     }
 
     createQuerySet(descriptor) {
-      throw new Error("Not yet implemented");
+      throw new Error("Not yet implemented"); // wgpu#721
     }
   }
 
@@ -352,7 +352,7 @@
       this.label = label;
     }
 
-    async compilationInfo() {} // TODO
+    async compilationInfo() {} // TODO: missing?
   }
 
   class GPUComputePipeline {
@@ -373,7 +373,7 @@
         },
       );
 
-      const bindGroupLayout = new GPUBindGroupLayout(); // TODO
+      const bindGroupLayout = new GPUBindGroupLayout(); // TODO: label?
       GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
       return bindGroupLayout;
     }
@@ -397,7 +397,7 @@
         },
       );
 
-      const bindGroupLayout = new GPUBindGroupLayout(); // TODO
+      const bindGroupLayout = new GPUBindGroupLayout(); // TODO: label?
       GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
       return bindGroupLayout;
     }
@@ -437,17 +437,11 @@
       return new GPUComputePassEncoder(rid, descriptor.label);
     }
 
-    copyBufferToBuffer(
-      source,
-      sourceOffset,
-      destination,
-      destinationOffset,
-      size,
-    ) {} // TODO
+    copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size) {} // TODO: buffer
 
-    copyBufferToTexture(source, destination, copySize) {} // TODO
+    copyBufferToTexture(source, destination, copySize) {} // TODO: buffer
 
-    copyTextureToBuffer(source, destination, copySize) {} // TODO
+    copyTextureToBuffer(source, destination, copySize) {} // TODO: buffer
 
     copyTextureToTexture(source, destination, copySize) {
       const { rid } = core.jsonOpSync(
@@ -462,11 +456,30 @@
       );
     }
 
-    pushDebugGroup(groupLabel) {} // TODO
-    popDebugGroup() {} // TODO
-    insertDebugMarker(markerLabel) {} // TODO
+    pushDebugGroup(groupLabel) {
+      core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
+        instanceRid,
+        commandEncoderRid: this.#rid,
+        groupLabel,
+      });
+    }
+    popDebugGroup() {
+      core.jsonOpSync("op_webgpu_command_encoder_pop_debug_group", {
+        instanceRid,
+        commandEncoderRid: this.#rid,
+      });
+    }
+    insertDebugMarker(markerLabel) {
+      core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
+        instanceRid,
+        commandEncoderRid: this.#rid,
+        markerLabel,
+      });
+    }
 
-    writeTimestamp(querySet, queryIndex) {} // TODO
+    writeTimestamp(querySet, queryIndex) {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
 
     resolveQuerySet(
       querySet,
@@ -474,7 +487,9 @@
       queryCount,
       destination,
       destinationOffset,
-    ) {} // TODO
+    ) {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
 
     finish(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
@@ -483,7 +498,7 @@
         ...descriptor,
       });
 
-      return new GPUCommandBuffer(descriptor.label);
+      return new GPUCommandBuffer(descriptor.label); // TODO
     }
   }
 
@@ -584,7 +599,7 @@
       this.label = label;
     }
 
-    get executionTime() {} // TODO
+    get executionTime() {} // TODO: missing?
   }
 
   class GPURenderBundleEncoder {
