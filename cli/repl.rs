@@ -78,7 +78,7 @@ impl Completer for Helper {
     .map_or(0, |i| cmp::min(i, end_offset));
 
     let slice = if let Some(slice) = line.get(start_offset..end_offset) {
-      slice.replace('{', "").replace('}', "")
+      slice.replace('{', "").replace('}', "").replace('`', "")
     } else {
       return Ok((pos, Vec::new()));
     };
