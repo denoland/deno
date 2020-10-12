@@ -1080,6 +1080,7 @@ impl JsRuntime {
           v8::PromiseState::Rejected => {
             let exception = promise.result(scope);
             state.pending_mod_evaluate.take();
+            drop(state);
             let err1 = exception_to_err_result::<()>(scope, exception)
               .map_err(|err| attach_handle_to_error(scope, err, exception))
               .unwrap_err();
