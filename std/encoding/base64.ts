@@ -1,31 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/**
- * Encodes a given string into RFC4648 base64 representation
- * @param str
- */
-export function encodeString(str: string): string {
-  return btoa(
-    encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function (match, p1) {
-      return String.fromCharCode(parseInt(p1, 16));
-    }),
-  );
-}
-
-/**
- * Decodes a given RFC4648 base64 representation into a string
- * @param b64
- */
-export function decodeString(b64: string): string {
-  return decodeURIComponent(
-    Array.prototype.map
-      .call(atob(b64), function (c) {
-        return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-      })
-      .join(""),
-  );
-}
-
 // deno-fmt-ignore
 const base64abc = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", 
   "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", 
@@ -35,10 +9,13 @@ const base64abc = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
 
 /**
  * CREDIT: https://gist.github.com/enepomnyaschih/72c423f727d395eeaa09697058238727
- * Encodes a given Uint8Array into RFC4648 base64 representation
- * @param uint8
+ * Encodes a given Uint8Array or string into RFC4648 base64 representation
+ * @param data
  */
-export function encode(uint8: Uint8Array): string {
+export function encode(data: Uint8Array | string): string {
+  const uint8 = typeof data === "string"
+    ? new TextEncoder().encode(data)
+    : data;
   let result = "",
     i;
   const l = uint8.length;
