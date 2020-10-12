@@ -734,7 +734,7 @@ mod tests {
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      futures::executor::block_on(runtime.mod_evaluate(circular1_id)).unwrap();
+      runtime.mod_evaluate(circular1_id).await.unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -811,7 +811,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      futures::executor::block_on(runtime.mod_evaluate(redirect1_id)).unwrap();
+      runtime.mod_evaluate(redirect1_id).await.unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
