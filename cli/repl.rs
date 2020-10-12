@@ -16,6 +16,7 @@ use rustyline::validate::Validator;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Highlighter, Hinter};
+use std::cmp;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
 use std::sync::mpsc::Receiver;
@@ -54,15 +55,15 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let start_slice = &line[..pos];
-    let start_offset = start_slice
-      .rfind(|c| c == ' ' || c == '\n' || c == '{' || c == '(')
-      .map_or(0, |i| i + 1);
-
     let end_slice = &line[pos..];
     let end_offset = end_slice
       .rfind(|c| c == ' ' || c == '\n' || c == '}' || c == ')')
       .map_or_else(|| line.len(), |i| pos + i - 1);
+
+    let start_slice = &line[..pos];
+    let start_offset = start_slice
+      .rfind(|c| c == ' ' || c == '\n' || c == '{' || c == '(')
+      .map_or(0, |i| cmp::min(i + 1, end_offset));
 
     let slice = &line[start_offset..end_offset];
     let mut parts: Vec<&str> =
