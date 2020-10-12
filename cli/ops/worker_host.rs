@@ -153,9 +153,15 @@ fn run_worker_thread(
       rt.block_on(load_future)
     };
 
-    if let Err(e) = result {
-      let mut sender = worker.internal_channels.sender.clone();
+    let mut sender = worker.internal_channels.sender.clone();
 
+    // If sender is closed it means that worker has already been closed from
+    // within using "globalThis.close()"
+    if sender.is_closed() {
+      return;
+    }
+
+    if let Err(e) = result {
       sender
         .try_send(WorkerEvent::TerminalError(e))
         .expect("Failed to post message to host");
