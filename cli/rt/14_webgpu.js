@@ -200,12 +200,14 @@
         ...descriptor,
       });
 
-      return new GPURenderPipeline(rid, descriptor.label);
+      const pipeline = new GPURenderPipeline(rid, descriptor.label);
+      GPURenderPipelineMap.set(pipeline, rid);
+      return pipeline;
     }
 
-    async createReadyComputePipeline(descriptor) {} // TODO
+    async createReadyComputePipeline(descriptor) {} // TODO: missing?
 
-    async createReadyRenderPipeline(descriptor) {} // TODO
+    async createReadyRenderPipeline(descriptor) {} // TODO: missing?
 
     createCommandEncoder(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
@@ -237,7 +239,7 @@
 
   class GPUQueue {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
 
     submit(commandBuffers) {} // TODO
@@ -255,7 +257,7 @@
 
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     async mapAsync(mode, offset = 0, size = undefined) {
@@ -274,7 +276,7 @@
         bufferRid: this.#rid,
         offset,
         size,
-      }); // TODO
+      });
     }
 
     unmap() {
@@ -284,14 +286,14 @@
       });
     }
 
-    destroy() {} // TODO
+    destroy() {} // TODO: missing?
   }
 
   class GPUTexture {
     #rid;
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     createView(descriptor = {}) {
@@ -306,41 +308,41 @@
       return view;
     }
 
-    destroy() {} // TODO
+    destroy() {} // TODO: missing?
   }
 
   const GPUTextureViewMap = new WeakMap();
   class GPUTextureView {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
   }
 
   const GPUSamplerMap = new WeakMap();
   class GPUSampler {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
   }
 
   const GPUBindGroupLayoutMap = new WeakMap();
   class GPUBindGroupLayout {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
   }
 
   const GPUPipelineLayoutMap = new WeakMap();
   class GPUPipelineLayout {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
   }
 
   const GPUBindGroupMap = new WeakMap();
   class GPUBindGroup {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
   }
 
@@ -349,7 +351,7 @@
     #rid;
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     async compilationInfo() {} // TODO: missing?
@@ -360,7 +362,7 @@
 
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     getBindGroupLayout(index) {
@@ -379,12 +381,13 @@
     }
   }
 
+  const GPURenderPipelineMap = new WeakMap();
   class GPURenderPipeline {
     #rid;
 
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     getBindGroupLayout(index) {
@@ -408,7 +411,7 @@
 
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     beginRenderPass(descriptor) {
@@ -507,26 +510,59 @@
 
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
-    setViewport(x, y, width, height, minDepth, maxDepth) {} // TODO
+    setViewport(x, y, width, height, minDepth, maxDepth) {
+      core.jsonOpSync("op_webgpu_render_pass_set_viewport", {
+        renderPassRid: this.#rid,
+        x,
+        y,
+        width,
+        height,
+        minDepth,
+        maxDepth,
+      });
+    }
 
-    setScissorRect(x, y, width, height) {} // TODO
+    setScissorRect(x, y, width, height) {
+      core.jsonOpSync("op_webgpu_render_pass_set_scissor_rect", {
+        renderPassRid: this.#rid,
+        x,
+        y,
+        width,
+        height,
+      });
+    }
 
-    setBlendColor(color) {} // TODO
-    setStencilReference(reference) {} // TODO
+    setBlendColor(color) {
+      core.jsonOpSync("op_webgpu_render_pass_set_blend_color", {
+        renderPassRid: this.#rid,
+        color,
+      });
+    }
+    setStencilReference(reference) {
+      core.jsonOpSync("op_webgpu_render_pass_set_stencil_reference", {
+        renderPassRid: this.#rid,
+        reference,
+      });
+    }
 
-    beginOcclusionQuery(queryIndex) {} // TODO
-    endOcclusionQuery() {} // TODO
+    beginOcclusionQuery(queryIndex) {} // TODO: missing?
+    endOcclusionQuery() {} // TODO: missing?
 
-    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO
-    endPipelineStatisticsQuery() {} // TODO
+    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO: missing?
+    endPipelineStatisticsQuery() {} // TODO: missing?
 
-    writeTimestamp(querySet, queryIndex) {} // TODO
+    writeTimestamp(querySet, queryIndex) {} // TODO: missing?
 
-    executeBundles(bundles) {} // TODO
-    endPass() {} // TODO
+    executeBundles(bundles) {
+      core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
+        renderPassRid: this.#rid,
+        bundles,
+      });
+    }
+    endPass() {} // TODO: missing?
 
     setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
 
@@ -538,26 +574,62 @@
       dynamicOffsetsDataLength,
     ) {} // TODO
 
-    pushDebugGroup(groupLabel) {} // TODO
-    popDebugGroup() {} // TODO
-    insertDebugMarker(markerLabel) {} // TODO
+    pushDebugGroup(groupLabel) {
+      core.jsonOpSync("op_webgpu_render_pass_push_debug_group", {
+        renderPassRid: this.#rid,
+        groupLabel,
+      });
+    }
+    popDebugGroup() {
+      core.jsonOpSync("op_webgpu_render_pass_pop_debug_group", {
+        renderPassRid: this.#rid,
+      });
+    }
+    insertDebugMarker(markerLabel) {
+      core.jsonOpSync("op_webgpu_render_pass_insert_debug_marker", {
+        renderPassRid: this.#rid,
+        markerLabel,
+      });
+    }
 
-    setPipeline(pipeline) {} // TODO
+    setPipeline(pipeline) {
+      core.jsonOpSync("op_webgpu_render_pass_set_pipeline", {
+        renderPassRid: this.#rid,
+        pipeline: GPURenderPipelineMap.get(pipeline),
+      });
+    }
 
-    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO
-    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO
+    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO: buffer
+    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO: buffer
 
-    draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {} // TODO
+    draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
+      core.jsonOpSync("op_webgpu_render_pass_draw", {
+        renderPassRid: this.#rid,
+        vertexCount,
+        instanceCount,
+        firstVertex,
+        firstInstance,
+      });
+    }
     drawIndexed(
       indexCount,
       instanceCount = 1,
       firstIndex = 0,
       baseVertex = 0,
       firstInstance = 0,
-    ) {} // TODO
+    ) {
+      core.jsonOpSync("op_webgpu_render_pass_draw_indexed", {
+        renderPassRid: this.#rid,
+        indexCount,
+        instanceCount,
+        firstIndex,
+        baseVertex,
+        firstInstance,
+      });
+    }
 
-    drawIndirect(indirectBuffer, indirectOffset) {} // TODO
-    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO
+    drawIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
+    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
   }
 
   class GPUComputePassEncoder {
@@ -565,17 +637,17 @@
 
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     setPipeline(pipeline) {} // TODO
     dispatch(x, y = 1, z = 1) {} // TODO
     dispatchIndirect(indirectBuffer, indirectOffset) {} // TODO
 
-    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO
-    endPipelineStatisticsQuery() {} // TODO
+    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO: missing?
+    endPipelineStatisticsQuery() {} // TODO: missing?
 
-    writeTimestamp(querySet, queryIndex) {} // TODO
+    writeTimestamp(querySet, queryIndex) {} // TODO: missing?
 
     endPass() {} // TODO
 
@@ -596,7 +668,7 @@
 
   class GPUCommandBuffer {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
 
     get executionTime() {} // TODO: missing?
@@ -606,7 +678,7 @@
     #rid;
     constructor(rid, label) {
       this.#rid = rid;
-      this.label = label;
+      this.label = label ?? null;
     }
 
     finish(descriptor = {}) {
@@ -656,7 +728,7 @@
 
   class GPURenderBundle {
     constructor(label) {
-      this.label = label;
+      this.label = label ?? null;
     }
   }
 

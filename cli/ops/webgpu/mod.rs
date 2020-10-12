@@ -8,6 +8,7 @@ mod pipeline;
 mod sampler;
 mod shader;
 mod texture;
+mod render_pass;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -152,6 +153,62 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_command_encoder_finish",
     command_encoding::op_webgpu_command_encoder_finish,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_set_viewport",
+    render_pass::op_webgpu_render_pass_set_viewport,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_set_scissor_rect",
+    render_pass::op_webgpu_render_pass_set_scissor_rect,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_set_blend_color",
+    render_pass::op_webgpu_render_pass_set_blend_color,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_set_stencil_reference",
+    render_pass::op_webgpu_render_pass_set_stencil_reference,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_execute_bundles",
+    render_pass::op_webgpu_render_pass_execute_bundles,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_push_debug_group",
+    render_pass::op_webgpu_render_pass_push_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_pop_debug_group",
+    render_pass::op_webgpu_render_pass_pop_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_insert_debug_marker",
+    render_pass::op_webgpu_render_pass_insert_debug_marker,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_set_pipeline",
+    render_pass::op_webgpu_render_pass_set_pipeline,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_draw",
+    render_pass::op_webgpu_render_pass_draw,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_draw_indexed",
+    render_pass::op_webgpu_render_pass_draw_indexed,
   );
 
   super::reg_json_sync(
@@ -335,7 +392,7 @@ pub async fn op_webgpu_request_device(
       shader_validation: false, // TODO
     },
     None,
-    (), // TODO
+    (), // TODO: id_in
   )?;
 
   let features = serialize_features(&instance.device_features(device)?);
