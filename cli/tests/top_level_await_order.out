@@ -1,2 +1,2 @@
-order [WILDCARD]
+order ["order","b","c","d","a","parent"]
 TLA order correct
