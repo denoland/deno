@@ -85,6 +85,11 @@ impl Completer for Helper {
       )
       .unwrap();
 
+    if evaluate_response.get("exceptionDetails").is_some() {
+      let candidates = Vec::new();
+      return Ok((pos, candidates));
+    }
+
     if let Some(result) = evaluate_response.get("result") {
       if let Some(object_id) = result.get("objectId") {
         let get_properties_response = self
