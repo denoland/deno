@@ -156,9 +156,6 @@ fn op_set_raw(
     if is_raw {
       let (raw_fd, maybe_tty_mode) =
         match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
@@ -198,9 +195,6 @@ fn op_set_raw(
       // Try restore saved mode.
       let (raw_fd, maybe_tty_mode) =
         match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
@@ -253,7 +247,6 @@ fn op_isatty(
       }
     }
     Err(StreamResource::FsFile(_)) => unreachable!(),
-    Err(StreamResource::Stdin(..)) => Ok(atty::is(atty::Stream::Stdin)),
     _ => Ok(false),
   })?;
   Ok(json!(isatty))

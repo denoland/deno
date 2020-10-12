@@ -194,21 +194,6 @@ impl Worker {
     self.js_runtime.mod_evaluate(id)
   }
 
-  /// Loads, instantiates and executes provided source code
-  /// as module.
-  pub async fn execute_module_from_code(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    code: String,
-  ) -> Result<(), AnyError> {
-    let id = self
-      .js_runtime
-      .load_module(module_specifier, Some(code))
-      .await?;
-    self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id)
-  }
-
   /// Returns a way to communicate with the Worker from other threads.
   pub fn thread_safe_handle(&self) -> WorkerHandle {
     self.external_channels.clone()
