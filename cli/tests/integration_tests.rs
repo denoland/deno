@@ -1923,7 +1923,7 @@ fn _066_prompt() {
   let args = "run --unstable 066_prompt.ts";
   let output = "066_prompt.ts.out";
   // These are answers to prompt, confirm, and alert calls.
-  let input = b"John Doe\n\nfoo\nY\nN\n\n\n\n\n";
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\n\n\n";
 
   util::test_pty(args, output, input);
 }

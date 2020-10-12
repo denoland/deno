@@ -35,6 +35,7 @@ declare function alert(message?: string): void;
 
 /**
  * Shows the given message and waits for the answer. Returns the user's answer as boolean.
+ * Only `y` and `Y` are considered as true.
  * If the stdin is not interactive, it returns false.
  * @param message
  */

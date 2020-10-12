@@ -8,7 +8,7 @@ const answer0 = confirm("Question 0"); // Answer y
 console.log(`Your answer is ${answer0}`);
 const answer1 = confirm("Question 1"); // Answer n
 console.log(`Your answer is ${answer1}`);
-const answer2 = confirm("Question 2"); // Answer with default
+const answer2 = confirm("Question 2"); // Answer with yes (returns false)
 console.log(`Your answer is ${answer2}`);
 const answer3 = confirm(); // Answer with default
 console.log(`Your answer is ${answer3}`);
