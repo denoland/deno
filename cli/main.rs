@@ -81,12 +81,14 @@ use global_state::exit_unstable;
 use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
+use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use upgrade::upgrade_command;
 
@@ -159,27 +161,36 @@ fn get_types(unstable: bool) -> String {
 
 async fn info_command(
   flags: Flags,
-  file: Option<String>,
+  maybe_specifier: Option<String>,
   json: bool,
 ) -> Result<(), AnyError> {
   if json && !flags.unstable {
     exit_unstable("--json");
   }
   let global_state = GlobalState::new(flags)?;
-  // If it was just "deno info" print location of caches and exit
-  if file.is_none() {
-    print_cache_info(&global_state, json)
-  } else {
-    let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-    let info =
-      info::ModuleDepInfo::new(&global_state, main_module.clone()).await?;
+  if let Some(specifier) = maybe_specifier {
+    let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
+    let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
+      &global_state,
+      Permissions::allow_all(),
+    )?));
+    let mut builder = module_graph2::GraphBuilder2::new(
+      handler,
+      global_state.maybe_import_map.clone(),
+    );
+    builder.insert(&specifier).await?;
+    let graph = builder.get_graph(&global_state.lockfile)?;
+    let info = graph.info()?;
 
     if json {
-      write_json_to_stdout(&json!(info))
+      write_json_to_stdout(&json!(info))?;
     } else {
-      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())
-        .map_err(AnyError::from)
+      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())?;
     }
+    Ok(())
+  } else {
+    // If it was just "deno info" print location of caches and exit
+    print_cache_info(&global_state, json)
   }
 }
 

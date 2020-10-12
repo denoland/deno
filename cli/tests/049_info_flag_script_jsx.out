@@ -2,12 +2,13 @@
 local: [WILDCARD]http[WILDCARD]127.0.0.1_PORT4545[WILDCARD]
 type: TypeScript
 deps: 8 unique (total [WILDCARD])
+
 http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts ([WILDCARD])
-├── http://localhost:4545/cli/tests/subdir/mt_text_typescript_tsx.t1.tsx ([WILDCARD])
-├── http://localhost:4545/cli/tests/subdir/mt_video_vdn_tsx.t2.tsx ([WILDCARD])
-├── http://localhost:4545/cli/tests/subdir/mt_video_mp2t_tsx.t3.tsx ([WILDCARD])
-├── http://localhost:4545/cli/tests/subdir/mt_application_x_typescript_tsx.t4.tsx ([WILDCARD])
-├── http://localhost:4545/cli/tests/subdir/mt_text_javascript_jsx.j1.jsx ([WILDCARD])
 ├── http://localhost:4545/cli/tests/subdir/mt_application_ecmascript_jsx.j2.jsx ([WILDCARD])
+├── http://localhost:4545/cli/tests/subdir/mt_application_x_javascript_jsx.j4.jsx ([WILDCARD])
+├── http://localhost:4545/cli/tests/subdir/mt_application_x_typescript_tsx.t4.tsx ([WILDCARD])
 ├── http://localhost:4545/cli/tests/subdir/mt_text_ecmascript_jsx.j3.jsx ([WILDCARD])
-└── http://localhost:4545/cli/tests/subdir/mt_application_x_javascript_jsx.j4.jsx ([WILDCARD])
+├── http://localhost:4545/cli/tests/subdir/mt_text_javascript_jsx.j1.jsx ([WILDCARD])
+├── http://localhost:4545/cli/tests/subdir/mt_text_typescript_tsx.t1.tsx ([WILDCARD])
+├── http://localhost:4545/cli/tests/subdir/mt_video_mp2t_tsx.t3.tsx ([WILDCARD])
+└── http://localhost:4545/cli/tests/subdir/mt_video_vdn_tsx.t2.tsx ([WILDCARD])
