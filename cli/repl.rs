@@ -24,7 +24,8 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-// Provides syntax specific helpers to the editor like validation for multi-line edits.
+// Provides helpers to the editor like validation for multi-line edits, completion candidates for
+// tab completion.
 #[derive(Helper, Highlighter, Hinter)]
 struct Helper {
   context_id: u64,
