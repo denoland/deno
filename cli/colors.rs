@@ -4,9 +4,7 @@ use regex::Regex;
 use std::env;
 use std::fmt;
 use std::io::Write;
-use termcolor::Color::{
-  Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow,
-};
+use termcolor::Color::{Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow};
 use termcolor::{Ansi, ColorSpec, WriteColor};
 
 #[cfg(windows)]
