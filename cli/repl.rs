@@ -53,14 +53,14 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let start_slice = &line[0..pos];
+    let start_slice = &line[..pos];
     let start_offset =
       start_slice.rfind(|c| c == ' ' || c == '\n').unwrap_or(0);
 
-    let end_slice = &line[pos..line.len()];
-    let end_offset = end_slice
+    let end_slice = &line[pos..];
+    let end_offset = pos + end_slice
       .rfind(|c| c == ' ' || c == '\n')
-      .unwrap_or_else(|| line.len());
+      .unwrap_or_else(|| end_slice.len());
 
     let slice = &line[start_offset..end_offset];
     let mut parts: Vec<&str> =
