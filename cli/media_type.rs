@@ -19,7 +19,6 @@ pub enum MediaType {
   TSX = 4,
   Json = 5,
   Wasm = 6,
-  BuildInfo = 7,
   Unknown = 8,
 }
 
@@ -33,7 +32,6 @@ impl fmt::Display for MediaType {
       MediaType::TSX => "TSX",
       MediaType::Json => "Json",
       MediaType::Wasm => "Wasm",
-      MediaType::BuildInfo => "BuildInfo",
       MediaType::Unknown => "Unknown",
     };
     write!(f, "{}", value)
@@ -75,30 +73,6 @@ impl MediaType {
       },
     }
   }
-
-  /// Convert a MediaType to a `ts.Extension`.
-  ///
-  /// *NOTE* This is defined in TypeScript as a string based enum.  Changes to
-  /// that enum in TypeScript should be reflected here.
-  pub fn as_ts_extension(&self) -> &str {
-    match self {
-      MediaType::JavaScript => ".js",
-      MediaType::JSX => ".jsx",
-      MediaType::TypeScript => ".ts",
-      MediaType::Dts => ".d.ts",
-      MediaType::TSX => ".tsx",
-      MediaType::Json => ".json",
-      // TypeScript doesn't have an "unknown", so we will treat WASM as JS for
-      // mapping purposes, though in reality, it is unlikely to ever be passed
-      // to the compiler.
-      MediaType::Wasm => ".js",
-      MediaType::BuildInfo => ".tsbuildinfo",
-      // TypeScript doesn't have an "unknown", so we will treat WASM as JS for
-      // mapping purposes, though in reality, it is unlikely to ever be passed
-      // to the compiler.
-      MediaType::Unknown => ".js",
-    }
-  }
 }
 
 impl Serialize for MediaType {
@@ -114,7 +88,6 @@ impl Serialize for MediaType {
       MediaType::TSX => 4 as i32,
       MediaType::Json => 5 as i32,
       MediaType::Wasm => 6 as i32,
-      MediaType::BuildInfo => 7 as i32,
       MediaType::Unknown => 8 as i32,
     };
     Serialize::serialize(&value, serializer)
@@ -175,7 +148,6 @@ mod tests {
     assert_eq!(json!(MediaType::TSX), json!(4));
     assert_eq!(json!(MediaType::Json), json!(5));
     assert_eq!(json!(MediaType::Wasm), json!(6));
-    assert_eq!(json!(MediaType::BuildInfo), json!(7));
     assert_eq!(json!(MediaType::Unknown), json!(8));
   }
 
@@ -188,7 +160,6 @@ mod tests {
     assert_eq!(format!("{}", MediaType::TSX), "TSX");
     assert_eq!(format!("{}", MediaType::Json), "Json");
     assert_eq!(format!("{}", MediaType::Wasm), "Wasm");
-    assert_eq!(format!("{}", MediaType::BuildInfo), "BuildInfo");
     assert_eq!(format!("{}", MediaType::Unknown), "Unknown");
   }
 }

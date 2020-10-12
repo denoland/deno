@@ -9,28 +9,28 @@ extern crate log;
 
 mod ast;
 mod checksum;
-pub mod colors;
+mod colors;
 mod coverage;
-pub mod deno_dir;
-pub mod diagnostics;
+mod deno_dir;
+mod diagnostics;
 mod diff;
 mod disk_cache;
-pub mod errors;
+mod errors;
 mod file_fetcher;
 mod file_watcher;
-pub mod flags;
+mod flags;
 mod flags_allow_net;
 mod fmt;
-pub mod fmt_errors;
+mod fmt_errors;
 mod fs;
-pub mod global_state;
+mod global_state;
 mod global_timer;
-pub mod http_cache;
+mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
 mod inspector;
-pub mod installer;
+mod installer;
 mod js;
 mod lint;
 mod lockfile;
@@ -39,22 +39,22 @@ mod metrics;
 mod module_graph;
 mod module_graph2;
 mod op_fetch_asset;
-pub mod ops;
-pub mod permissions;
+mod ops;
+mod permissions;
 mod repl;
-pub mod resolve_addr;
-pub mod signal;
-pub mod source_maps;
+mod resolve_addr;
+mod signal;
+mod source_maps;
 mod specifier_handler;
-pub mod state;
+mod state;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
 mod tsc_config;
 mod upgrade;
-pub mod version;
-pub mod worker;
+mod version;
+mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
@@ -783,7 +783,6 @@ pub fn main() {
     } => {
       upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
     }
-    _ => unreachable!(),
   };
 
   let result = tokio_util::run_basic(fut);
