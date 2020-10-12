@@ -58,7 +58,7 @@ impl Completer for Helper {
     let end_slice = &line[pos..];
     let end_offset = end_slice
       .rfind(|c| c == ' ' || c == '\n' || c == '}' || c == ')')
-      .map_or_else(|| line.len(), |i| pos + i - 1);
+      .map_or_else(|| line.len(), |i| pos + i);
 
     let start_slice = &line[..pos];
     let start_offset = start_slice
