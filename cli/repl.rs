@@ -55,11 +55,11 @@ impl Completer for Helper {
   ) -> Result<(usize, Vec<String>), ReadlineError> {
     let start_slice = &line[..pos];
     let start_offset =
-      start_slice.rfind(|c| c == ' ' || c == '\n').unwrap_or(0);
+      start_slice.rfind(|c| c == ' ' || c == '\n' || c == '{' || c == '(').unwrap_or(0);
 
     let end_slice = &line[pos..];
     let end_offset = pos + end_slice
-      .rfind(|c| c == ' ' || c == '\n')
+      .rfind(|c| c == ' ' || c == '\n' || c == '}' || c == ')')
       .unwrap_or_else(|| end_slice.len());
 
     let slice = &line[start_offset..end_offset];
