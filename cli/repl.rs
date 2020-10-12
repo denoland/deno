@@ -61,13 +61,18 @@ impl Completer for Helper {
       .map_or_else(|| line.len(), |i| pos + i);
 
     let start_slice = &line[..pos];
-    let start_offset = start_slice
-      .rfind(|c| c == ' ' || c == '\n' || c == '{' || c == '(')
-      .map_or(0, |i| cmp::min(i + 1, end_offset));
+    let start_offset = match &line[end_offset - 1..end_offset] {
+      ")" => start_slice.rfind('('),
+      "}" => start_slice.rfind('{'),
+      _ => start_slice.rfind(|c| c == ' ' || c == '\n' || c == '(' || c == '{'),
+    }
+    .map_or(0, |i| cmp::min(i, end_offset));
 
-    let slice = &line[start_offset..end_offset];
-    let mut parts: Vec<&str> =
-      slice.rsplitn(2, |c| c == '.' || c == '[').collect();
+    let slice = &line[start_offset..end_offset]
+        .replace('{', "")
+        .replace('}', "");
+
+    let mut parts: Vec<&str> = slice.rsplitn(2, |c| c == '.' || c == '[').collect();
 
     if parts.len() == 1 {
       parts.push("(globalThis)");
@@ -102,6 +107,8 @@ impl Completer for Helper {
           .unwrap();
 
         if let Some(result) = get_properties_response.get("result") {
+          let offset: usize = cmp::min(line.len(), pos - parts[0].len());
+
           let candidates = result
             .as_array()
             .unwrap()
@@ -110,7 +117,7 @@ impl Completer for Helper {
             .filter(|r| r.starts_with(&parts[0]))
             .collect();
 
-          return Ok((pos - (parts[0].len()), candidates));
+          return Ok((offset, candidates));
         }
       }
     }
