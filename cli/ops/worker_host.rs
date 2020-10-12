@@ -155,6 +155,7 @@ fn run_worker_thread(
 
     if let Err(e) = result {
       let mut sender = worker.internal_channels.sender.clone();
+
       sender
         .try_send(WorkerEvent::TerminalError(e))
         .expect("Failed to post message to host");
@@ -166,7 +167,8 @@ fn run_worker_thread(
     // TODO(bartlomieju): this thread should return result of event loop
     // that means that we should store JoinHandle to thread to ensure
     // that it actually terminates.
-    rt.block_on(worker).expect("Panic in event loop");
+    rt.block_on(worker.run_event_loop())
+      .expect("Panic in event loop");
     debug!("Worker thread shuts down {}", &name);
   })?;
 

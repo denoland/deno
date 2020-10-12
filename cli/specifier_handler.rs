@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fmt;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -30,10 +31,13 @@ pub type FetchFuture =
 pub struct CachedModule {
   pub emits: EmitMap,
   pub maybe_dependencies: Option<DependencyMap>,
+  pub maybe_emit_path: Option<PathBuf>,
+  pub maybe_map_path: Option<PathBuf>,
   pub maybe_types: Option<String>,
   pub maybe_version: Option<String>,
   pub media_type: MediaType,
   pub source: String,
+  pub source_path: PathBuf,
   pub specifier: ModuleSpecifier,
 }
 
@@ -43,10 +47,13 @@ impl Default for CachedModule {
     CachedModule {
       emits: HashMap::new(),
       maybe_dependencies: None,
+      maybe_emit_path: None,
+      maybe_map_path: None,
       maybe_types: None,
       maybe_version: None,
       media_type: MediaType::Unknown,
       source: "".to_string(),
+      source_path: PathBuf::new(),
       specifier: ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts")
         .unwrap(),
     }
@@ -242,27 +249,34 @@ impl SpecifierHandler for FetchHandler {
         None
       };
 
-      let filename =
+      let mut maybe_map_path: Option<PathBuf> = None;
+      let map_path =
         disk_cache.get_cache_filename_with_extension(&url, "js.map");
-      let maybe_map: Option<String> = if let Ok(map) = disk_cache.get(&filename)
+      let maybe_map: Option<String> = if let Ok(map) = disk_cache.get(&map_path)
       {
+        maybe_map_path = Some(disk_cache.location.join(map_path));
         Some(String::from_utf8(map)?)
       } else {
         None
       };
       let mut emits = HashMap::new();
-      let filename = disk_cache.get_cache_filename_with_extension(&url, "js");
-      if let Ok(code) = disk_cache.get(&filename) {
+      let mut maybe_emit_path: Option<PathBuf> = None;
+      let emit_path = disk_cache.get_cache_filename_with_extension(&url, "js");
+      if let Ok(code) = disk_cache.get(&emit_path) {
+        maybe_emit_path = Some(disk_cache.location.join(emit_path));
         emits.insert(EmitType::Cli, (String::from_utf8(code)?, maybe_map));
       };
 
       Ok(CachedModule {
         emits,
         maybe_dependencies: None,
+        maybe_emit_path,
+        maybe_map_path,
         maybe_types: source_file.types_header,
         maybe_version,
         media_type: source_file.media_type,
         source: source_file.source_code,
+        source_path: source_file.filename,
         specifier,
       })
     }

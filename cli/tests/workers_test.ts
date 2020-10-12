@@ -106,6 +106,24 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker globals",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const w = new Worker(
+      new URL("subdir/worker_globals.ts", import.meta.url).href,
+      { type: "module" },
+    );
+    w.onmessage = (e): void => {
+      assertEquals(e.data, "true, true, true");
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
   name: "worker fetch API",
   fn: async function (): Promise<void> {
     const promise = createResolvable();

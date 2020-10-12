@@ -244,12 +244,6 @@ pub struct ModuleGraphFile {
   pub source_code: String,
 }
 
-impl ModuleGraphFile {
-  pub fn size(&self) -> usize {
-    self.source_code.as_bytes().len()
-  }
-}
-
 type SourceFileFuture = Pin<
   Box<dyn Future<Output = Result<(ModuleSpecifier, SourceFile), AnyError>>>,
 >;

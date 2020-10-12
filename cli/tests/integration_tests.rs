@@ -2633,6 +2633,11 @@ itest!(deno_doc {
   output: "deno_doc.out",
 });
 
+itest!(deno_doc_importmap {
+  args: "doc --unstable --importmap=doc/importmap.json doc/use_importmap.js",
+  output: "doc/use_importmap.out",
+});
+
 itest!(compiler_js_error {
   args: "run --unstable compiler_js_error.ts",
   output: "compiler_js_error.ts.out",

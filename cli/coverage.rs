@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::inspector::DenoInspector;
 use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -14,8 +13,7 @@ pub struct CoverageCollector {
 }
 
 impl CoverageCollector {
-  pub fn new(inspector_ptr: *mut DenoInspector) -> Self {
-    let session = InspectorSession::new(inspector_ptr);
+  pub fn new(session: Box<InspectorSession>) -> Self {
     Self { session }
   }
 

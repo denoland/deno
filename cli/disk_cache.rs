@@ -147,11 +147,6 @@ impl DiskCache {
     deno_fs::write_file(&path, data, 0o666)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
   }
-
-  pub fn remove(&self, filename: &Path) -> std::io::Result<()> {
-    let path = self.location.join(filename);
-    fs::remove_file(path)
-  }
 }
 
 #[cfg(test)]
