@@ -7,6 +7,7 @@ use crate::error::attach_handle_to_error;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::error::generic_error;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -482,8 +483,13 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    // Top level module
-    self.evaluate_pending_module()?;
+    // Ops
+    {
+      let overflow_response = self.poll_pending_ops(cx);
+      self.async_op_response(overflow_response)?;
+      self.drain_macrotasks()?;
+      self.check_promise_exceptions()?;
+    }
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
@@ -498,13 +504,8 @@ impl JsRuntime {
       self.check_promise_exceptions()?;
     }
 
-    // Ops
-    {
-      let overflow_response = self.poll_pending_ops(cx);
-      self.async_op_response(overflow_response)?;
-      self.drain_macrotasks()?;
-      self.check_promise_exceptions()?;
-    }
+    // Top level module
+    self.evaluate_pending_module()?;
 
     let state = state_rc.borrow();
     let has_pending_ops = !state.pending_ops.is_empty();
@@ -514,10 +515,9 @@ impl JsRuntime {
         && state.pending_dyn_imports.is_empty()
         && state.pending_dyn_mod_evaluate.is_empty()
     };
+    let has_pending_module_evaluation = state_rc.borrow().pending_mod_evaluate.is_some();
 
-    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-
-    eprintln!("is idle {} {} {}", has_pending_ops, has_pending_dyn_imports, has_pending_module_evaluation);
+    // eprintln!("is idle {} {} {}", has_pending_ops, has_pending_dyn_imports, has_pending_module_evaluation);
 
     if !has_pending_ops
       && !has_pending_dyn_imports
@@ -532,12 +532,20 @@ impl JsRuntime {
       state.waker.wake();
     }
 
-    // If there are no more pending ops but there are still pending
-    // module evaluations, we need to poll runtime again
-    if !has_pending_ops
-      && (has_pending_dyn_imports || has_pending_module_evaluation)
-    {
-      state.waker.wake();
+    if has_pending_module_evaluation {
+      if has_pending_ops || has_pending_dyn_imports {
+        state.waker.wake();
+      } else {
+        return Poll::Ready(Err(generic_error("Module evaluation is still pending but there are no pending ops or dynamic imports.")))
+      }
+    }
+
+    if has_pending_dyn_imports {
+      if has_pending_ops || has_pending_module_evaluation {
+        state.waker.wake();
+      } else {
+        return Poll::Ready(Err(generic_error("Dynamically imported module evaluation is still pending but there are no pending ops.")))
+      }
     }
 
     Poll::Pending
@@ -862,7 +870,6 @@ impl JsRuntime {
       // https://v8.dev/features/top-level-await#module-execution-order
       let maybe_value = module.evaluate(scope);
 
-      scope.perform_microtask_checkpoint();
       // Update status after evaluating.
       status = module.get_status();
 
@@ -886,6 +893,7 @@ impl JsRuntime {
           promise: promise_global,
           sender,
         });
+        scope.perform_microtask_checkpoint();
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -1137,11 +1145,11 @@ impl JsRuntime {
           &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
         let mut state = state_rc.borrow_mut();
-        eprintln!("pending_dyn_mod_evaluate {}", state.pending_dyn_mod_evaluate.len());
+        // eprintln!("pending_dyn_mod_evaluate {}", state.pending_dyn_mod_evaluate.len());
         if let Some(&dyn_import_id) =
           state.pending_dyn_mod_evaluate.keys().next()
         {
-          eprintln!("dyn import id {}", dyn_import_id);
+          // eprintln!("dyn import id {}", dyn_import_id);
           let handle = state
             .pending_dyn_mod_evaluate
             .remove(&dyn_import_id)

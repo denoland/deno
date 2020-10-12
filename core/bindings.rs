@@ -289,6 +289,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
+  eprintln!("promise reject callback");
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 

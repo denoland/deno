@@ -2421,7 +2421,7 @@ itest!(top_level_await_loop {
 });
 
 itest!(top_level_await_timeout_loop {
-  args: "run --allow-read tls3/a.js",
+  args: "run --allow-read tla3/a.js",
   output: "top_level_await_timeout_loop.out",
 });
 
