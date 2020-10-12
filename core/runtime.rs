@@ -479,8 +479,8 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    // Top level modules
-    self.evaluate_pending_modules()?;
+    // Top level module
+    self.evaluate_pending_module()?;
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
@@ -1051,7 +1051,20 @@ impl JsRuntime {
     }
   }
 
-  fn evaluate_pending_modules(&mut self) -> Result<(), AnyError> {
+  /// "deno_core" runs V8 with "--harmony-top-level-await"
+  /// flag on - it means that each module evaluation returns a promise
+  /// from V8.
+  ///
+  /// This promise resolves after all dependent modules have also
+  /// resolved. Each dependent module may perform calls to "import()" and APIs
+  /// using async ops will add futures to the runtime's event loop.
+  /// It means that the promise returned from module evaluation will
+  /// resolve only after all futures in the event loop are done.
+  ///
+  /// Thus during turn of event loop we need to check if V8 has
+  /// resolved or rejected the promise. If the promise is still pending
+  /// then another turn of event loop must be performed.
+  fn evaluate_pending_module(&mut self) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
     let context = self.global_context();
