@@ -84,13 +84,16 @@ pub struct JsRuntime {
   allocations: IsolateAllocations,
 }
 
-type DynImportModEvaluate =
-  (ModuleId, v8::Global<v8::Promise>, v8::Global<v8::Module>);
-type ModEvaluate = (
-  ModuleId,
-  v8::Global<v8::Promise>,
-  mpsc::Sender<Result<(), AnyError>>,
-);
+struct DynImportModEvaluate {
+  module_id: ModuleId,
+  promise: v8::Global<v8::Promise>,
+  module: v8::Global<v8::Module>,
+}
+
+struct ModEvaluate {
+  promise: v8::Global<v8::Promise>,
+  sender: mpsc::Sender<Result<(), AnyError>>,
+}
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
@@ -100,8 +103,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
-  pub(crate) pending_dyn_mod_evaluate: HashMap<i32, DynImportModEvaluate>,
-  pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
+  pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
+  pending_mod_evaluate: Option<ModEvaluate>,
   pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
@@ -785,9 +788,16 @@ impl JsRuntime {
         state.pending_promise_exceptions.remove(&promise_id);
         let promise_global = v8::Global::new(scope, promise);
         let module_global = v8::Global::new(scope, module);
+
+        let dyn_import_mod_evaluate = DynImportModEvaluate {
+          module_id: id,
+          promise: promise_global,
+          module: module_global,
+        };
+
         state
           .pending_dyn_mod_evaluate
-          .insert(load_id, (id, promise_global, module_global));
+          .insert(load_id, dyn_import_mod_evaluate);
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -863,7 +873,11 @@ impl JsRuntime {
           state.pending_mod_evaluate.is_none(),
           "There is already pending top level module evaluation"
         );
-        state.pending_mod_evaluate = Some((id, promise_global, sender));
+
+        state.pending_mod_evaluate = Some(ModEvaluate {
+          promise: promise_global,
+          sender,
+        });
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -1075,9 +1089,8 @@ impl JsRuntime {
       let mut state = state_rc.borrow_mut();
 
       if let Some(module_evaluation) = state.pending_mod_evaluate.as_ref() {
-        let _module_id = module_evaluation.0;
-        let promise = module_evaluation.1.get(scope);
-        let mut sender = module_evaluation.2.clone();
+        let promise = module_evaluation.promise.get(scope);
+        let mut sender = module_evaluation.sender.clone();
 
         let promise_state = promise.state();
 
@@ -1125,9 +1138,9 @@ impl JsRuntime {
             .unwrap();
           drop(state);
 
-          let module_id = handle.0;
-          let promise = handle.1.get(scope);
-          let _module = handle.2.get(scope);
+          let module_id = handle.module_id;
+          let promise = handle.promise.get(scope);
+          let _module = handle.module.get(scope);
 
           let promise_state = promise.state();
 
