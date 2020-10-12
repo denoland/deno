@@ -28,12 +28,14 @@ declare var onunload: ((this: Window, ev: Event) => any) | null;
 
 /**
  * Shows the given message and waits for the enter key pressed.
+ * If the stdin is not interactive, it does nothing.
  * @param message
  */
 declare function alert(message?: string): void;
 
 /**
  * Shows the given message and waits for the answer. Returns the user's answer as boolean.
+ * If the stdin is not interactive, it returns false.
  * @param message
  */
 declare function confirm(message?: string): boolean;
@@ -42,6 +44,8 @@ declare function confirm(message?: string): boolean;
  * Shows the given message and waits for the user's input. Returns the user's input as string.
  * If the default value is given and the user inputs the empty string, then it returns the given
  * default value.
+ * If the default value is not given and the user inputs the empty string, it returns null.
+ * If the stdin is not interactive, it returns null.
  * @param message
  * @param defaultValue
  */
