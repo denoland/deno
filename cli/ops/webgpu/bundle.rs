@@ -41,6 +41,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
+  wgc::command::RenderBundleEncoder::new
   let render_bundle_encoder = instance.device_create_render_bundle_encoder(
     *device,
     &wgc::command::RenderBundleEncoderDescriptor {

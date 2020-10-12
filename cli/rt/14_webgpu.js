@@ -205,9 +205,13 @@
       return pipeline;
     }
 
-    async createReadyComputePipeline(descriptor) {} // TODO: missing?
+    async createReadyComputePipeline(descriptor) {
+      throw new Error("Not yet implemented"); // easy polyfill
+    }
 
-    async createReadyRenderPipeline(descriptor) {} // TODO: missing?
+    async createReadyRenderPipeline(descriptor) {
+      throw new Error("Not yet implemented"); // easy polyfill
+    }
 
     createCommandEncoder(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
@@ -286,7 +290,9 @@
       });
     }
 
-    destroy() {} // TODO: missing?
+    destroy() {
+      throw new Error("Not yet implemented"); // master
+    }
   }
 
   class GPUTexture {
@@ -308,7 +314,9 @@
       return view;
     }
 
-    destroy() {} // TODO: missing?
+    destroy() {
+      throw new Error("Not yet implemented"); // master
+    }
   }
 
   const GPUTextureViewMap = new WeakMap();
@@ -354,7 +362,9 @@
       this.label = label ?? null;
     }
 
-    async compilationInfo() {} // TODO: missing?
+    async compilationInfo() {
+      throw new Error("Not yet implemented"); // wgpu#977
+    }
   }
 
   class GPUComputePipeline {
@@ -548,13 +558,23 @@
       });
     }
 
-    beginOcclusionQuery(queryIndex) {} // TODO: missing?
-    endOcclusionQuery() {} // TODO: missing?
+    beginOcclusionQuery(queryIndex) {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
+    endOcclusionQuery() {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
 
-    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO: missing?
-    endPipelineStatisticsQuery() {} // TODO: missing?
+    beginPipelineStatisticsQuery(querySet, queryIndex) {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
+    endPipelineStatisticsQuery() {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
 
-    writeTimestamp(querySet, queryIndex) {} // TODO: missing?
+    writeTimestamp(querySet, queryIndex) {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
 
     executeBundles(bundles) {
       core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
@@ -562,7 +582,7 @@
         bundles,
       });
     }
-    endPass() {} // TODO: missing?
+    endPass() {} // TODO
 
     setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
 
@@ -644,10 +664,16 @@
     dispatch(x, y = 1, z = 1) {} // TODO
     dispatchIndirect(indirectBuffer, indirectOffset) {} // TODO
 
-    beginPipelineStatisticsQuery(querySet, queryIndex) {} // TODO: missing?
-    endPipelineStatisticsQuery() {} // TODO: missing?
+    beginPipelineStatisticsQuery(querySet, queryIndex) {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
+    endPipelineStatisticsQuery() {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
 
-    writeTimestamp(querySet, queryIndex) {} // TODO: missing?
+    writeTimestamp(querySet, queryIndex) {
+      throw new Error("Not yet implemented"); // wgpu#721
+    }
 
     endPass() {} // TODO
 
@@ -671,7 +697,9 @@
       this.label = label ?? null;
     }
 
-    get executionTime() {} // TODO: missing?
+    get executionTime() {
+      throw new Error("Not yet implemented");
+    }
   }
 
   class GPURenderBundleEncoder {

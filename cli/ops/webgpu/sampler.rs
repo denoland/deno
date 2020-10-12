@@ -95,11 +95,7 @@ pub fn op_webgpu_create_sampler(
       lod_min_clamp: args.lod_min_clamp.unwrap_or(0.0),
       lod_max_clamp: args.lod_max_clamp.unwrap_or(0xffffffff as f32), // TODO: check if there is a better solution
       compare: args.compare.map(serialize_compare_function),
-      anisotropy_clamp: Some(
-        args
-          .max_anisotropy
-          .unwrap_or(unsafe { std::num::NonZeroU8::new_unchecked(1) }),
-      ), // TODO: check what None would be
+      anisotropy_clamp: args.max_anisotropy,
     },
     (), // TODO: id_in
   )?;

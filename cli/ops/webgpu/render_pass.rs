@@ -165,6 +165,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
       // TODO
     );
   }
+  wgc::command::render_ffi::end_pass
 
   Ok(json!({}))
 }
@@ -192,7 +193,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
     wgc::command::render_ffi::wgpu_render_pass_push_debug_group(
       render_pass,
       std::ffi::CString::new(args.group_label).unwrap().as_ptr(),
-      // TODO: color?
+      0, // wgpu#975
     );
   }
 
@@ -245,7 +246,7 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
     wgc::command::render_ffi::wgpu_render_pass_insert_debug_marker(
       render_pass,
       std::ffi::CString::new(args.marker_label).unwrap().as_ptr(),
-      // TODO: color?
+      0, // wgpu#975
     );
   }
 

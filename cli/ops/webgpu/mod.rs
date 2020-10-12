@@ -342,6 +342,7 @@ struct GPULimits {
 struct RequestDeviceArgs {
   instance_rid: u32,
   adapter_rid: u32,
+  label: Option<String>, // wgpu#976
   features: Option<[String]>,
   limits: Option<GPULimits>,
 }
@@ -366,7 +367,6 @@ pub async fn op_webgpu_request_device(
   let device = instance.adapter_request_device(
     *adapter,
     &wgt::DeviceDescriptor {
-      // TODO: should accept label
       features: Default::default(), // TODO
       limits: args.limits.map_or(Default::default(), |limits| {
         wgt::Limits {

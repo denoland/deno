@@ -135,8 +135,7 @@ pub fn op_webgpu_create_compute_pipeline(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  // TODO: look into what that u8 is
-  let (compute_pipeline, smth) = instance.device_create_compute_pipeline(
+  let (compute_pipeline, _) = instance.device_create_compute_pipeline(
     *device,
     &wgc::pipeline::ComputePipelineDescriptor {
       label: args.label.map(|label| Cow::Borrowed(&label)),
@@ -308,7 +307,7 @@ pub fn op_webgpu_create_render_pipeline(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let (render_pipeline, smth) = instance.device_create_render_pipeline(
+  let (render_pipeline, _) = instance.device_create_render_pipeline(
     *device,
     &wgc::pipeline::RenderPipelineDescriptor {
       label: args.label.map(|label| Cow::Borrowed(&label)),

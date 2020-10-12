@@ -19,7 +19,7 @@ struct CreateCommandEncoderArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
-  measure_execution_time: Option<bool>,
+  measure_execution_time: Option<bool>, // waiting for wgpu to add measure_execution_time
 }
 
 pub fn op_webgpu_create_command_encoder(
@@ -41,7 +41,6 @@ pub fn op_webgpu_create_command_encoder(
   let command_encoder = instance.device_create_command_encoder(
     *device,
     &wgt::CommandEncoderDescriptor {
-      // TODO: should accept measure_execution_time
       label: args.label.map(|label| Cow::Borrowed(&label)),
     },
     (), // TODO: id_in
@@ -82,11 +81,11 @@ struct GPURenderPassDepthStencilAttachmentDescriptor {
 struct CommandEncoderBeginRenderPassArgs {
   instance_rid: u32,
   command_encoder_rid: u32,
-  label: Option<String>,
+  label: Option<String>, // wgpu#974
   color_attachments: [GPURenderPassColorAttachmentDescriptor],
   depth_stencil_attachment:
     Option<GPURenderPassDepthStencilAttachmentDescriptor>,
-  occlusion_query_set: u32, // TODO: wait to be added to wpgu, and add to JS
+  occlusion_query_set: u32, // wgpu#721
 }
 
 pub fn op_webgpu_command_encoder_begin_render_pass(
@@ -108,7 +107,6 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   let render_pass = wgc::command::RenderPass::new(
     *command_encoder,
     wgc::command::RenderPassDescriptor {
-      // TODO: should accept label
       color_attachments: Cow::Owned(
         args
           .color_attachments
@@ -146,8 +144,6 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       ),
     },
   );
-
-  instance.command_encoder_run_render_pass(*command_encoder, &render_pass)?;
 
   let rid = state
     .resource_table

@@ -17,7 +17,7 @@ use std::rc::Rc;
 struct CreateShaderModuleArgs {
   instance_rid: u32,
   device_rid: u32,
-  label: Option<String>,
+  label: Option<String>, // wgpu#977
   code: String,
   source_map: (), // TODO: https://gpuweb.github.io/gpuweb/#shader-module-creation
 }
@@ -39,7 +39,6 @@ pub fn op_webgpu_create_shader_module(
     .ok_or_else(bad_resource_id)?;
 
   let shader_module = instance.device_create_shader_module(
-    // TODO: should accept label
     *device,
     wgc::pipeline::ShaderModuleSource, // TODO
     (),                                // TODO: id_in

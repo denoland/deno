@@ -135,7 +135,7 @@ pub fn op_webgpu_create_bind_group_layout(
                 }
                 _ => unreachable!(),
               },
-              count: None, // TODO: look into what this is
+              count: None,
             }
           })
           .collect::<Vec<wgt::BindGroupLayoutEntry>>(),
@@ -194,7 +194,7 @@ pub fn op_webgpu_create_pipeline_layout(
           })
           .collect::<Vec<wgc::id::BindGroupLayoutId>>(),
       ),
-      push_constant_ranges: Default::default(), // TODO: look into what this is
+      push_constant_ranges: Default::default(),
     },
     (), // TODO: id_in
   )?;
