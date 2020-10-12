@@ -36,7 +36,7 @@ pub fn exit_unstable(api_name: &str) {
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-pub struct CliState {
+pub struct ProgramState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
@@ -49,7 +49,7 @@ pub struct CliState {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
-impl CliState {
+impl ProgramState {
   pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
@@ -96,7 +96,7 @@ impl CliState {
       None => None,
     };
 
-    let global_state = CliState {
+    let program_state = ProgramState {
       dir,
       permissions: Permissions::from_flags(&flags),
       flags,
@@ -106,7 +106,7 @@ impl CliState {
       maybe_import_map,
       maybe_inspector_server,
     };
-    Ok(Arc::new(global_state))
+    Ok(Arc::new(program_state))
   }
 
   /// This function is called when new module load is
@@ -269,8 +269,8 @@ impl CliState {
   pub fn mock(
     argv: Vec<String>,
     maybe_flags: Option<flags::Flags>,
-  ) -> Arc<CliState> {
-    CliState::new(flags::Flags {
+  ) -> Arc<ProgramState> {
+    ProgramState::new(flags::Flags {
       argv,
       ..maybe_flags.unwrap_or_default()
     })
@@ -334,7 +334,7 @@ fn needs_compilation(
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(CliState::mock(vec![], None));
+  f(ProgramState::mock(vec![], None));
 }
 
 #[test]
