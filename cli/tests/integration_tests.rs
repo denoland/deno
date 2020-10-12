@@ -2410,6 +2410,11 @@ itest!(wasm_unreachable {
   exit_code: 1,
 });
 
+itest!(top_level_await_order {
+  args: "run --allow-read top_level_await_order.js",
+  output: "top_level_await_order.out",
+});
+
 itest!(top_level_await {
   args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
