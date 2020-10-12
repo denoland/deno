@@ -424,7 +424,7 @@ export default class Buffer extends Uint8Array {
 
     const b = this.subarray(start, end);
     if (encoding === "hex") return hex.encodeToString(b);
-    if (encoding === "base64") return base64.encode(b);
+    if (encoding === "base64") return base64.encode(b.buffer);
 
     return new TextDecoder(encoding).decode(b);
   }

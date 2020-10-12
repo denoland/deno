@@ -25,15 +25,15 @@ Deno.test("[encoding/base64] testBase64EncodeString", () => {
   }
 });
 
-Deno.test("[encoding/base64] testBase64DecodeString", () => {
-  for (const [input, output] of testsetString) {
-    assertEquals(new TextDecoder().decode(decode(output)), input);
-  }
-});
-
 Deno.test("[encoding/base64] testBase64EncodeBinary", () => {
   for (const [input, output] of testsetBinary) {
     assertEquals(encode(input), output);
+  }
+});
+
+Deno.test("[encoding/base64] testBase64EncodeBinaryBuffer", () => {
+  for (const [input, output] of testsetBinary) {
+    assertEquals(encode(input.buffer), output);
   }
 });
 
