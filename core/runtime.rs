@@ -507,17 +507,20 @@ impl JsRuntime {
     }
 
     let state = state_rc.borrow();
-    let is_idle =
-      { state.pending_ops.is_empty() && state.pending_dyn_imports.is_empty() };
+    let has_pending_ops = !state.pending_ops.is_empty();
 
     let has_pending_dyn_imports = !{
       state.preparing_dyn_imports.is_empty()
+        && state.pending_dyn_imports.is_empty()
         && state.pending_dyn_mod_evaluate.is_empty()
     };
 
-    let has_pending_module = state.pending_mod_evaluate.is_some();
+    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
 
-    if is_idle && !has_pending_dyn_imports && !has_pending_module {
+    if !has_pending_ops
+      && !has_pending_dyn_imports
+      && !has_pending_module_evaluation
+    {
       return Poll::Ready(Ok(()));
     }
 
@@ -527,9 +530,11 @@ impl JsRuntime {
       state.waker.wake();
     }
 
-    // If event loop is idle but there are still pending
-    // modules need to poll runtime again
-    if is_idle && (has_pending_dyn_imports || has_pending_module) {
+    // If there are no more pending ops but there are still pending
+    // module evaluations, we need to poll runtime again
+    if !has_pending_ops
+      && (has_pending_dyn_imports || has_pending_module_evaluation)
+    {
       state.waker.wake();
     }
 
