@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 use serde::Serializer;
+use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -20,6 +21,23 @@ pub enum MediaType {
   Wasm = 6,
   BuildInfo = 7,
   Unknown = 8,
+}
+
+impl fmt::Display for MediaType {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let value = match self {
+      MediaType::JavaScript => "JavaScript",
+      MediaType::JSX => "JSX",
+      MediaType::TypeScript => "TypeScript",
+      MediaType::Dts => "Dts",
+      MediaType::TSX => "TSX",
+      MediaType::Json => "Json",
+      MediaType::Wasm => "Wasm",
+      MediaType::BuildInfo => "BuildInfo",
+      MediaType::Unknown => "Unknown",
+    };
+    write!(f, "{}", value)
+  }
 }
 
 impl<'a> From<&'a Path> for MediaType {
@@ -103,45 +121,74 @@ impl Serialize for MediaType {
   }
 }
 
-pub fn enum_name_media_type(mt: MediaType) -> &'static str {
-  match mt {
-    MediaType::JavaScript => "JavaScript",
-    MediaType::JSX => "JSX",
-    MediaType::TypeScript => "TypeScript",
-    MediaType::Dts => "Dts",
-    MediaType::TSX => "TSX",
-    MediaType::Json => "Json",
-    MediaType::Wasm => "Wasm",
-    MediaType::BuildInfo => "BuildInfo",
-    MediaType::Unknown => "Unknown",
-  }
+/// Serialize a `MediaType` enum into a human readable string.  The default
+/// serialization for media types is and integer.
+///
+/// TODO(@kitsonk) remove this once we stop sending MediaType into tsc.
+pub fn serialize_media_type<S>(mt: &MediaType, s: S) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  s.serialize_str(&format!("{}", mt))
 }
 
-#[test]
-fn test_map_file_extension() {
-  assert_eq!(
-    MediaType::from(Path::new("foo/bar.ts")),
-    MediaType::TypeScript
-  );
-  assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::TSX);
-  assert_eq!(
-    MediaType::from(Path::new("foo/bar.d.ts")),
-    MediaType::TypeScript
-  );
-  assert_eq!(
-    MediaType::from(Path::new("foo/bar.js")),
-    MediaType::JavaScript
-  );
-  assert_eq!(MediaType::from(Path::new("foo/bar.jsx")), MediaType::JSX);
-  assert_eq!(MediaType::from(Path::new("foo/bar.json")), MediaType::Json);
-  assert_eq!(MediaType::from(Path::new("foo/bar.wasm")), MediaType::Wasm);
-  assert_eq!(
-    MediaType::from(Path::new("foo/bar.cjs")),
-    MediaType::JavaScript
-  );
-  assert_eq!(
-    MediaType::from(Path::new("foo/bar.txt")),
-    MediaType::Unknown
-  );
-  assert_eq!(MediaType::from(Path::new("foo/bar")), MediaType::Unknown);
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_core::serde_json::json;
+
+  #[test]
+  fn test_map_file_extension() {
+    assert_eq!(
+      MediaType::from(Path::new("foo/bar.ts")),
+      MediaType::TypeScript
+    );
+    assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::TSX);
+    assert_eq!(
+      MediaType::from(Path::new("foo/bar.d.ts")),
+      MediaType::TypeScript
+    );
+    assert_eq!(
+      MediaType::from(Path::new("foo/bar.js")),
+      MediaType::JavaScript
+    );
+    assert_eq!(MediaType::from(Path::new("foo/bar.jsx")), MediaType::JSX);
+    assert_eq!(MediaType::from(Path::new("foo/bar.json")), MediaType::Json);
+    assert_eq!(MediaType::from(Path::new("foo/bar.wasm")), MediaType::Wasm);
+    assert_eq!(
+      MediaType::from(Path::new("foo/bar.cjs")),
+      MediaType::JavaScript
+    );
+    assert_eq!(
+      MediaType::from(Path::new("foo/bar.txt")),
+      MediaType::Unknown
+    );
+    assert_eq!(MediaType::from(Path::new("foo/bar")), MediaType::Unknown);
+  }
+
+  #[test]
+  fn test_serialization() {
+    assert_eq!(json!(MediaType::JavaScript), json!(0));
+    assert_eq!(json!(MediaType::JSX), json!(1));
+    assert_eq!(json!(MediaType::TypeScript), json!(2));
+    assert_eq!(json!(MediaType::Dts), json!(3));
+    assert_eq!(json!(MediaType::TSX), json!(4));
+    assert_eq!(json!(MediaType::Json), json!(5));
+    assert_eq!(json!(MediaType::Wasm), json!(6));
+    assert_eq!(json!(MediaType::BuildInfo), json!(7));
+    assert_eq!(json!(MediaType::Unknown), json!(8));
+  }
+
+  #[test]
+  fn test_display() {
+    assert_eq!(format!("{}", MediaType::JavaScript), "JavaScript");
+    assert_eq!(format!("{}", MediaType::JSX), "JSX");
+    assert_eq!(format!("{}", MediaType::TypeScript), "TypeScript");
+    assert_eq!(format!("{}", MediaType::Dts), "Dts");
+    assert_eq!(format!("{}", MediaType::TSX), "TSX");
+    assert_eq!(format!("{}", MediaType::Json), "Json");
+    assert_eq!(format!("{}", MediaType::Wasm), "Wasm");
+    assert_eq!(format!("{}", MediaType::BuildInfo), "BuildInfo");
+    assert_eq!(format!("{}", MediaType::Unknown), "Unknown");
+  }
 }
