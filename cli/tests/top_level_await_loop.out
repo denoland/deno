@@ -1,0 +1,5 @@
+loading [WILDCARD]a.js
+loaded Module { default: [Function: Foo], [Symbol(Symbol.toStringTag)]: "Module" }
+loading [WILDCARD]b.js
+loaded Module { default: [Function: Bar], [Symbol(Symbol.toStringTag)]: "Module" }
+all loaded

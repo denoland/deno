@@ -2415,6 +2415,11 @@ itest!(top_level_await_order {
   output: "top_level_await_order.out",
 });
 
+itest!(top_level_await_loop {
+  args: "run --allow-read top_level_await_loop.js",
+  output: "top_level_await_loop.out",
+});
+
 itest!(top_level_await {
   args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
