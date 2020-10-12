@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::media_type::serialize_media_type;
 use crate::MediaType;
 use crate::ModuleSpecifier;
 
-use serde::ser::SerializeSeq;
 use serde::Serialize;
 use serde::Serializer;
 use std::cmp::Ordering;
@@ -12,38 +12,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
-
-/// Serialize a `MediaType` enum into a human readable string.  The default
-/// serialization for media types is and integer.
-fn serialize_media_type<S>(mt: &MediaType, s: S) -> Result<S::Ok, S::Error>
-where
-  S: Serializer,
-{
-  s.serialize_str(&format!("{}", mt))
-}
-
-/// Serialize a module specifier to a simple string representation.
-fn serialize_specifier<S>(ms: &ModuleSpecifier, s: S) -> Result<S::Ok, S::Error>
-where
-  S: Serializer,
-{
-  s.serialize_str(&ms.to_string())
-}
-
-/// Serialize a vector of module specifiers.
-fn serialize_specifier_vec<S>(
-  v: &[ModuleSpecifier],
-  s: S,
-) -> Result<S::Ok, S::Error>
-where
-  S: Serializer,
-{
-  let mut seq = s.serialize_seq(Some(v.len()))?;
-  for element in v {
-    seq.serialize_element(&element.to_string())?;
-  }
-  seq.end()
-}
 
 /// The core structure representing information about a specific "root" file in
 /// a module graph.  This is used to represent information as part of the `info`
@@ -60,7 +28,6 @@ pub struct ModuleGraphInfo {
   pub info: ModuleInfo,
   pub local: PathBuf,
   pub map: Option<PathBuf>,
-  #[serde(serialize_with = "serialize_specifier")]
   pub module: ModuleSpecifier,
   pub total_size: usize,
 }
@@ -105,7 +72,7 @@ impl fmt::Display for ModuleGraphInfo {
 
     let dep_count = self.info.deps.len();
     for (idx, dep) in self.info.deps.iter().enumerate() {
-      dep.write_info(f, &"", idx == dep_count - 1)?;
+      dep.write_info(f, "", idx == dep_count - 1)?;
     }
 
     Ok(())
@@ -118,7 +85,6 @@ impl fmt::Display for ModuleGraphInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ModuleInfo {
   pub deps: Vec<ModuleInfo>,
-  #[serde(serialize_with = "serialize_specifier")]
   pub name: ModuleSpecifier,
   pub size: usize,
   pub total_size: Option<usize>,
@@ -207,7 +173,6 @@ impl Serialize for ModuleInfoMap {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModuleInfoMapItem {
-  #[serde(serialize_with = "serialize_specifier_vec")]
   pub deps: Vec<ModuleSpecifier>,
   pub size: usize,
 }

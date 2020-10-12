@@ -452,13 +452,7 @@ impl Graph2 {
 
     if not_seen {
       let mut seen_deps = HashSet::new();
-      // Check if the module has a type only dependency itself (e.g.
-      // `X-TypeScript-Types` header or triple slash ref)
-      if let Some((_, dep)) = &module.maybe_types {
-        if seen_deps.insert(dep.clone()) {
-          deps.push(self.get_info(dep, seen, totals));
-        }
-      }
+      // TODO(@kitsonk) https://github.com/denoland/deno/issues/7927
       for (_, dep) in module.dependencies.iter() {
         // Check the runtime code dependency
         if let Some(code_dep) = &dep.maybe_code {
@@ -466,14 +460,8 @@ impl Graph2 {
             deps.push(self.get_info(code_dep, seen, totals));
           }
         }
-        // Check the type only dependency (e.g. `@deno-types` pragma)
-        if let Some(type_dep) = &dep.maybe_type {
-          if seen_deps.insert(type_dep.clone()) {
-            deps.push(self.get_info(type_dep, seen, totals));
-          }
-        }
       }
-
+      deps.sort();
       total_size = if let Some(total) = totals.get(specifier) {
         Some(total.to_owned())
       } else {
@@ -491,7 +479,6 @@ impl Graph2 {
         totals.insert(specifier.clone(), total);
         Some(total)
       };
-      deps.sort();
     }
 
     ModuleInfo {
@@ -1042,16 +1029,13 @@ mod tests {
     assert_eq!(info.dep_count, 6);
     assert_eq!(info.file_type, MediaType::TypeScript);
     assert_eq!(info.files.0.len(), 7);
-    assert!(info
-      .local
-      .to_string_lossy()
-      .ends_with("file_tests-main.ts"));
+    assert!(info.local.to_string_lossy().ends_with("file_tests-main.ts"));
     assert!(info.map.is_none());
     assert_eq!(
       info.module,
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts").unwrap()
     );
-    assert_eq!(info.total_size, 518);
+    assert_eq!(info.total_size, 344);
   }
 
   #[tokio::test]

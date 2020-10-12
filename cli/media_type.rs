@@ -121,6 +121,17 @@ impl Serialize for MediaType {
   }
 }
 
+/// Serialize a `MediaType` enum into a human readable string.  The default
+/// serialization for media types is and integer.
+///
+/// TODO(@kitsonk) remove this once we stop sending MediaType into tsc.
+pub fn serialize_media_type<S>(mt: &MediaType, s: S) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  s.serialize_str(&format!("{}", mt))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
