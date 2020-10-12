@@ -12,7 +12,7 @@ const base64abc = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
  * Encodes a given Uint8Array, ArrayBuffer or string into RFC4648 base64 representation
  * @param data
  */
-export function encode(data: Uint8Array | ArrayBuffer | string): string {
+export function encode(data: ArrayBuffer | string): string {
   const uint8 =
     typeof data === "string"
       ? new TextEncoder().encode(data)
