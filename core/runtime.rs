@@ -86,8 +86,11 @@ pub struct JsRuntime {
 
 type DynImportModEvaluate =
   (ModuleId, v8::Global<v8::Promise>, v8::Global<v8::Module>);
-type ModEvaluate =
-  (v8::Global<v8::Promise>, mpsc::Sender<Result<(), AnyError>>);
+type ModEvaluate = (
+  ModuleId,
+  v8::Global<v8::Promise>,
+  mpsc::Sender<Result<(), AnyError>>,
+);
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
@@ -98,7 +101,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate: HashMap<i32, DynImportModEvaluate>,
-  pub(crate) pending_mod_evaluate: HashMap<ModuleId, ModEvaluate>,
+  pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
   pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
@@ -273,7 +276,7 @@ impl JsRuntime {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: HashMap::new(),
-      pending_mod_evaluate: HashMap::new(),
+      pending_mod_evaluate: None,
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
@@ -506,7 +509,7 @@ impl JsRuntime {
         && state.pending_dyn_imports.is_empty()
         && state.preparing_dyn_imports.is_empty()
         && state.pending_dyn_mod_evaluate.is_empty()
-        && state.pending_mod_evaluate.is_empty()
+        && state.pending_mod_evaluate.is_none()
     };
 
     if is_idle {
@@ -848,9 +851,11 @@ impl JsRuntime {
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_id);
         let promise_global = v8::Global::new(scope, promise);
-        state
-          .pending_mod_evaluate
-          .insert(id, (promise_global, sender));
+        assert!(
+          state.pending_mod_evaluate.is_none(),
+          "There is already pending top level module evaluation"
+        );
+        state.pending_mod_evaluate = Some((id, promise_global, sender));
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -1048,28 +1053,24 @@ impl JsRuntime {
 
       let mut state = state_rc.borrow_mut();
 
-      if let Some(&module_id) = state.pending_mod_evaluate.keys().next() {
-        let handle = state.pending_mod_evaluate.remove(&module_id).unwrap();
-        drop(state);
-
-        let promise = handle.0.get(scope);
-        let mut sender = handle.1.clone();
+      if let Some(module_evaluation) = state.pending_mod_evaluate.as_ref() {
+        let _module_id = module_evaluation.0;
+        let promise = module_evaluation.1.get(scope);
+        let mut sender = module_evaluation.2.clone();
 
         let promise_state = promise.state();
 
         match promise_state {
           v8::PromiseState::Pending => {
-            state_rc
-              .borrow_mut()
-              .pending_mod_evaluate
-              .insert(module_id, handle);
-            state_rc.borrow().waker.wake();
+            // state.waker.wake();
           }
           v8::PromiseState::Fulfilled => {
+            state.pending_mod_evaluate.take();
             sender.try_send(Ok(())).unwrap();
           }
           v8::PromiseState::Rejected => {
             let exception = promise.result(scope);
+            state.pending_mod_evaluate.take();
             let err1 = exception_to_err_result::<()>(scope, exception)
               .map_err(|err| attach_handle_to_error(scope, err, exception))
               .unwrap_err();
