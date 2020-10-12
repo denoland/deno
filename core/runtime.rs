@@ -522,8 +522,8 @@ impl JsRuntime {
     // during this turn of event loop.
     if state.have_unpolled_ops.get() {
       state.waker.wake();
-    } 
-    
+    }
+
     // If event loop is idle but there are still pending
     // modules need to poll runtime again
     if is_idle && (has_pending_dyn_imports || has_pending_module) {
