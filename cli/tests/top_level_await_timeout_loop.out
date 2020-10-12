@@ -1,0 +1,8 @@
+timeout 0
+timeout 1
+timeout 2
+timeout 3
+timeout 4
+foo in a foo
+foo in main foo
+mod mod

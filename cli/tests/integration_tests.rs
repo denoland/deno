@@ -2420,6 +2420,11 @@ itest!(top_level_await_loop {
   output: "top_level_await_loop.out",
 });
 
+itest!(top_level_await_timeout_loop {
+  args: "run --allow-read tls3/a.js",
+  output: "top_level_await_timeout_loop.out",
+});
+
 itest!(top_level_await {
   args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",

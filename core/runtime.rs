@@ -517,6 +517,8 @@ impl JsRuntime {
 
     let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
 
+    eprintln!("is idle {} {} {}", has_pending_ops, has_pending_dyn_imports, has_pending_module_evaluation);
+
     if !has_pending_ops
       && !has_pending_dyn_imports
       && !has_pending_module_evaluation
@@ -860,6 +862,7 @@ impl JsRuntime {
       // https://v8.dev/features/top-level-await#module-execution-order
       let maybe_value = module.evaluate(scope);
 
+      scope.perform_microtask_checkpoint();
       // Update status after evaluating.
       status = module.get_status();
 
@@ -1134,9 +1137,11 @@ impl JsRuntime {
           &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
         let mut state = state_rc.borrow_mut();
+        eprintln!("pending_dyn_mod_evaluate {}", state.pending_dyn_mod_evaluate.len());
         if let Some(&dyn_import_id) =
           state.pending_dyn_mod_evaluate.keys().next()
         {
+          eprintln!("dyn import id {}", dyn_import_id);
           let handle = state
             .pending_dyn_mod_evaluate
             .remove(&dyn_import_id)
@@ -1155,7 +1160,6 @@ impl JsRuntime {
                 .borrow_mut()
                 .pending_dyn_mod_evaluate
                 .insert(dyn_import_id, handle);
-              state_rc.borrow().waker.wake();
               None
             }
             v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
