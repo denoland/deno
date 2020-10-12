@@ -42,16 +42,6 @@ impl PermissionState {
     let message = format!("{}, run again with the {} flag", msg, flag_name);
     Err(custom_error("PermissionDenied", message))
   }
-
-  /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(self, other: &Self) -> Result<(), AnyError> {
-    if self == PermissionState::Denied && other != &PermissionState::Denied
-      || self == PermissionState::Prompt && other == &PermissionState::Granted
-    {
-      return Err(permission_escalation_error());
-    }
-    Ok(())
-  }
 }
 
 impl From<usize> for PermissionState {
@@ -96,20 +86,6 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub global_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
-}
-
-impl<T: Eq + Hash> UnaryPermission<T> {
-  /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(&self, other: &Self) -> Result<(), AnyError> {
-    self.global_state.check_fork(&other.global_state)?;
-    if !self.granted_list.is_superset(&other.granted_list) {
-      return Err(permission_escalation_error());
-    }
-    if !self.denied_list.is_subset(&other.denied_list) {
-      return Err(permission_escalation_error());
-    }
-    Ok(())
-  }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -595,35 +571,6 @@ impl Permissions {
       .hrtime
       .check("access to high precision time", "--allow-hrtime")
   }
-
-  #[allow(clippy::too_many_arguments)]
-  pub fn fork(
-    &self,
-    read: UnaryPermission<PathBuf>,
-    write: UnaryPermission<PathBuf>,
-    net: UnaryPermission<String>,
-    env: PermissionState,
-    run: PermissionState,
-    plugin: PermissionState,
-    hrtime: PermissionState,
-  ) -> Result<Permissions, AnyError> {
-    self.read.check_fork(&read)?;
-    self.write.check_fork(&write)?;
-    self.net.check_fork(&net)?;
-    self.env.check_fork(&env)?;
-    self.run.check_fork(&run)?;
-    self.plugin.check_fork(&plugin)?;
-    self.hrtime.check_fork(&hrtime)?;
-    Ok(Permissions {
-      read,
-      write,
-      net,
-      env,
-      run,
-      plugin,
-      hrtime,
-    })
-  }
 }
 
 impl deno_fetch::FetchPermissions for Permissions {
@@ -724,10 +671,6 @@ fn check_host_and_port_list(
   allowlist.contains(host)
     || (port.is_some()
       && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
-}
-
-fn permission_escalation_error() -> AnyError {
-  custom_error("PermissionDenied", "Arguments escalate parent permissions")
 }
 
 #[cfg(test)]
@@ -933,51 +876,6 @@ mod tests {
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
     assert_eq!(perms0, deserialized_perms);
-  }
-
-  #[test]
-  fn test_fork() {
-    let perms0 = Permissions::from_flags(&Flags::default());
-    perms0
-      .fork(
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        PermissionState::Prompt,
-        PermissionState::Prompt,
-        PermissionState::Denied,
-        PermissionState::Denied,
-      )
-      .expect("Fork should succeed.");
-    perms0
-      .fork(
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        PermissionState::Granted,
-        PermissionState::Granted,
-        PermissionState::Denied,
-        PermissionState::Denied,
-      )
-      .expect_err("Fork should fail.");
   }
 
   #[test]

@@ -305,7 +305,10 @@ class Parser {
       dataString = dataString.replace(/,]/g, "]");
     }
 
-    if (dataString[0] === "{" && dataString[dataString.length - 1] === "}") {
+    if (
+      (dataString[0] === "{" && dataString[dataString.length - 1] === "}") ||
+      (dataString[0] === "[" && dataString[dataString.length - 1] === "]")
+    ) {
       const reg = /([a-zA-Z0-9-_\.]*) (=)/gi;
       let result;
       while ((result = reg.exec(dataString))) {
