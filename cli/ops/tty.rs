@@ -90,7 +90,6 @@ fn op_set_raw(
 
     // For now, only stdin.
     let handle = match &mut resource_holder.resource {
-      StreamResource::Stdin(..) => std::io::stdin().as_raw_handle(),
       StreamResource::FsFile(ref mut option_file_metadata) => {
         if let Some((tokio_file, metadata)) = option_file_metadata.take() {
           match tokio_file.try_into_std() {
