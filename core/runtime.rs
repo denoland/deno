@@ -504,21 +504,29 @@ impl JsRuntime {
     }
 
     let state = state_rc.borrow();
-    let is_idle = {
-      state.pending_ops.is_empty()
-        && state.pending_dyn_imports.is_empty()
-        && state.preparing_dyn_imports.is_empty()
+    let is_idle =
+      { state.pending_ops.is_empty() && state.pending_dyn_imports.is_empty() };
+
+    let has_pending_dyn_imports = !{
+      state.preparing_dyn_imports.is_empty()
         && state.pending_dyn_mod_evaluate.is_empty()
-        && state.pending_mod_evaluate.is_none()
     };
 
-    if is_idle {
+    let has_pending_module = state.pending_mod_evaluate.is_some();
+
+    if is_idle && !has_pending_dyn_imports && !has_pending_module {
       return Poll::Ready(Ok(()));
     }
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
     if state.have_unpolled_ops.get() {
+      state.waker.wake();
+    } 
+    
+    // If event loop is idle but there are still pending
+    // modules need to poll runtime again
+    if is_idle && (has_pending_dyn_imports || has_pending_module) {
       state.waker.wake();
     }
 
@@ -1062,7 +1070,8 @@ impl JsRuntime {
 
         match promise_state {
           v8::PromiseState::Pending => {
-            // state.waker.wake();
+            // pass, poll_event_loop will decide if
+            // runtime would be woken soon
           }
           v8::PromiseState::Fulfilled => {
             state.pending_mod_evaluate.take();
