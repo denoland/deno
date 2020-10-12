@@ -27,7 +27,7 @@ use std::sync::Mutex;
 // Provides syntax specific helpers to the editor like validation for multi-line edits.
 #[derive(Helper, Highlighter, Hinter)]
 struct Helper {
-  context_id: u32,
+  context_id: u64,
   message_tx: SyncSender<(String, Option<Value>)>,
   response_rx: Receiver<Result<Value, AnyError>>,
   validator: MatchingBracketValidator,
