@@ -1917,6 +1917,17 @@ itest!(_065_import_map_info {
   output: "065_import_map_info.out",
 });
 
+#[cfg(unix)]
+#[test]
+fn _066_prompt() {
+  let args = "run --unstable 066_prompt.ts";
+  let output = "066_prompt.ts.out";
+  // These are answers to prompt, confirm, and alert calls.
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\n\n\n";
+
+  util::test_pty(args, output, input);
+}
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
