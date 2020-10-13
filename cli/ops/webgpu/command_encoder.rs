@@ -43,7 +43,7 @@ pub fn op_webgpu_create_command_encoder(
     &wgt::CommandEncoderDescriptor {
       label: args.label.map(|label| Cow::Borrowed(&label)),
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state
@@ -192,10 +192,182 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CommandEncoderCopyBufferToBufferArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  source: u32,
+  source_offset: u64,
+  destination: u32,
+  destination_offset: u64,
+  size: u64,
+}
+
+pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderCopyBufferToBufferArgs =
+    serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = state
+    .resource_table
+    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.command_encoder_copy_buffer_to_buffer(
+    *command_encoder,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.source)
+      .ok_or_else(bad_resource_id)?,
+    args.source_offset,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.destination)
+      .ok_or_else(bad_resource_id)?,
+    args.destination_offset,
+    args.size,
+  )?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GPUBufferCopyView {
+  buffer: u32,
+  offset: Option<u64>,
+  bytes_per_row: Option<u32>,
+  rows_per_image: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GPUTextureCopyView {
   pub texture: u32,
   pub mip_level: Option<u32>,
   pub origin: (), // TODO: mixed types
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandEncoderCopyBufferToTextureArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  source: GPUBufferCopyView,
+  destination: GPUTextureCopyView,
+  copy_size: (), // TODO: mixed types
+}
+
+pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderCopyBufferToTextureArgs =
+    serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = state
+    .resource_table
+    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.command_encoder_copy_buffer_to_texture(
+    *command_encoder,
+    &wgc::command::BufferCopyView {
+      buffer: *state
+        .resource_table
+        .get_mut::<wgc::id::BufferId>(args.source.buffer)
+        .ok_or_else(bad_resource_id)?,
+      layout: wgt::TextureDataLayout {
+        offset: args.source.offset.unwrap_or(0),
+        bytes_per_row: args.source.bytes_per_row, // TODO: default value?
+        rows_per_image: args.source.rows_per_image, // TODO: default value?
+      },
+    },
+    &wgc::command::TextureCopyView {
+      texture: *state
+        .resource_table
+        .get_mut::<wgc::id::TextureId>(args.destination.texture)
+        .ok_or_else(bad_resource_id)?,
+      mip_level: args.destination.mip_level.unwrap_or(0),
+      origin: Default::default(), // TODO
+    },
+    &wgt::Extent3d {
+      width: 0,  // TODO
+      height: 0, // TODO
+      depth: 0,  // TODO
+    },
+  )?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandEncoderCopyTextureToBufferArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  source: GPUTextureCopyView,
+  destination: GPUBufferCopyView,
+  copy_size: (), // TODO: mixed types
+}
+
+pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderCopyTextureToBufferArgs =
+    serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = state
+    .resource_table
+    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.command_encoder_copy_texture_to_buffer(
+    *command_encoder,
+    &wgc::command::TextureCopyView {
+      texture: *state
+        .resource_table
+        .get_mut::<wgc::id::TextureId>(args.source.texture)
+        .ok_or_else(bad_resource_id)?,
+      mip_level: args.source.mip_level.unwrap_or(0),
+      origin: Default::default(), // TODO
+    },
+    &wgc::command::BufferCopyView {
+      buffer: *state
+        .resource_table
+        .get_mut::<wgc::id::BufferId>(args.destination.buffer)
+        .ok_or_else(bad_resource_id)?,
+      layout: wgt::TextureDataLayout {
+        offset: args.destination.offset.unwrap_or(0),
+        bytes_per_row: args.destination.bytes_per_row, // TODO: default value?
+        rows_per_image: args.destination.rows_per_image, // TODO: default value?
+      },
+    },
+    &wgt::Extent3d {
+      width: 0,  // TODO
+      height: 0, // TODO
+      depth: 0,  // TODO
+    },
+  )?;
+
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]

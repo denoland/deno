@@ -156,7 +156,7 @@ pub fn op_webgpu_create_texture(
       format: serialize_texture_format(args.format)?,
       usage: wgt::TextureUsage::from_bits(args.usage).unwrap(), // TODO: don't unwrap
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state.resource_table.add("webGPUTexture", Box::new(texture));
@@ -217,7 +217,7 @@ pub fn op_webgpu_create_texture_view(
       base_array_layer: args.base_array_layer.unwrap_or(0),
       array_layer_count: args.array_layer_count,
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state

@@ -76,7 +76,7 @@
       this.#rid = rid;
       this.#features = Object.freeze(data.features);
       this.#limits = data.limits;
-      this.#defaultQueue = new GPUQueue(); // TODO
+      this.#defaultQueue = new GPUQueue(rid); // TODO: label?
     }
 
     createBuffer(descriptor) {
@@ -86,7 +86,9 @@
         ...descriptor,
       });
 
-      return new GPUBuffer(rid, descriptor.label);
+      const buffer = new GPUBuffer(rid, descriptor.label, descriptor.size);
+      GPUBufferMap.set(buffer, rid);
+      return buffer;
     }
 
     createTexture(descriptor) {
@@ -96,7 +98,9 @@
         ...descriptor,
       });
 
-      return new GPUTexture(rid, descriptor.label);
+      const texture = new GPUTexture(rid, descriptor.label);
+      GPUTextureMap.set(texture, rid);
+      return texture;
     }
 
     createSampler(descriptor = {}) {
@@ -156,7 +160,12 @@
               resource: GPUTextureViewMap.get(entry),
             };
           } else {
-            // TODO: buffer
+            return {
+              kind: "GPUBuffer",
+              resource: GPUBufferMap.get(entry.buffer),
+              offset: entry.offset,
+              size: entry.size,
+            };
           }
         }),
       });
@@ -244,7 +253,9 @@
   }
 
   class GPUQueue {
-    constructor(label) {
+    #rid;
+    constructor(rid, label) {
+      this.#rid = rid;
       this.label = label ?? null;
     }
 
@@ -261,17 +272,33 @@
       throw new Error("Not yet implemented");
     }
 
-    writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {} // TODO: buffer
+    writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {
+      core.jsonOpSync(
+        "op_webgpu_write_texture",
+        {
+          instanceRid,
+          queueRid: this.#rid,
+          buffer: GPUBufferMap.get(buffer),
+          bufferOffset,
+          dataOffset,
+          size,
+        },
+        data,
+      );
+    }
 
     writeTexture(destination, data, dataLayout, size) {
-      core.jsonOpSync("op_webgpu_write_texture", {
-        instanceRid,
-        queueRid: this.#rid,
-        destination,
+      core.jsonOpSync(
+        "op_webgpu_write_texture",
+        {
+          instanceRid,
+          queueRid: this.#rid,
+          destination,
+          dataLayout,
+          size,
+        },
         data,
-        dataLayout,
-        size,
-      });
+      );
     }
 
     copyImageBitmapToTexture(source, destination, copySize) {
@@ -280,31 +307,45 @@
   }
 
   // TODO: https://gpuweb.github.io/gpuweb/#buffer-interface
+  const GPUBufferMap = new WeakMap();
   class GPUBuffer {
     #rid;
+    #size;
+    #mappedSize; // TODO: is this OK?
 
-    constructor(rid, label) {
+    constructor(rid, label, size) {
       this.#rid = rid;
       this.label = label ?? null;
+      this.#size = size;
     }
 
     async mapAsync(mode, offset = 0, size = undefined) {
+      this.#mappedSize = size ?? this.#size; // TODO: is this OK?
       await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
         instanceRid,
         bufferRid: this.#rid,
         mode,
         offset,
-        size,
-      });
+        size: this.#mappedSize,
+      } // TODO: is this OK?
+      );
     }
 
     getMappedRange(offset = 0, size = undefined) {
-      core.jsonOpSync("op_webgpu_buffer_get_mapped_range", {
-        instanceRid,
-        bufferRid: this.#rid,
-        offset,
-        size,
-      });
+      const buf = new ArrayBuffer(size ?? this.#mappedSize); // TODO: is this OK?
+
+      core.jsonOpSync(
+        "op_webgpu_buffer_get_mapped_range",
+        {
+          instanceRid,
+          bufferRid: this.#rid,
+          offset,
+          size,
+        },
+        buf,
+      );
+
+      return buf;
     }
 
     unmap() {
@@ -315,10 +356,11 @@
     }
 
     destroy() {
-      throw new Error("Not yet implemented"); // master
+      throw new Error("Not yet implemented"); // wgpu master
     }
   }
 
+  const GPUTextureMap = new WeakMap();
   class GPUTexture {
     #rid;
     constructor(rid, label) {
@@ -339,7 +381,7 @@
     }
 
     destroy() {
-      throw new Error("Not yet implemented"); // master
+      throw new Error("Not yet implemented"); // wgpu master
     }
   }
 
@@ -481,20 +523,73 @@
       destination,
       destinationOffset,
       size,
-    ) {} // TODO: buffer
+    ) {
+      core.jsonOpSync(
+        "op_webgpu_command_encoder_copy_buffer_to_buffer",
+        {
+          instanceRid,
+          commandEncoderRid: this.#rid,
+          source: GPUBufferMap.get(source),
+          sourceOffset,
+          destination: GPUBufferMap.get(destination),
+          destinationOffset,
+          size,
+        },
+      );
+    }
 
-    copyBufferToTexture(source, destination, copySize) {} // TODO: buffer
+    copyBufferToTexture(source, destination, copySize) {
+      core.jsonOpSync(
+        "op_webgpu_command_encoder_copy_buffer_to_texture",
+        {
+          instanceRid,
+          commandEncoderRid: this.#rid,
+          source: {
+            ...source, // TODO: check
+            buffer: GPUBufferMap.get(source.buffer),
+          },
+          destination: {
+            ...destination, // TODO: check
+            texture: GPUTextureMap.get(destination.texture),
+          },
+          copySize,
+        },
+      );
+    }
 
-    copyTextureToBuffer(source, destination, copySize) {} // TODO: buffer
+    copyTextureToBuffer(source, destination, copySize) {
+      core.jsonOpSync(
+        "op_webgpu_command_encoder_copy_texture_to_buffer",
+        {
+          instanceRid,
+          commandEncoderRid: this.#rid,
+          source: {
+            ...source, // TODO: check
+            texture: GPUTextureMap.get(source.texture),
+          },
+          destination: {
+            ...destination, // TODO: check
+            buffer: GPUBufferMap.get(destination.buffer),
+          },
+          copySize,
+        },
+      );
+    }
 
     copyTextureToTexture(source, destination, copySize) {
-      const { rid } = core.jsonOpSync(
+      core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_texture",
         {
           instanceRid,
           commandEncoderRid: this.#rid,
-          source,
-          destination,
+          source: {
+            ...source, // TODO: check
+            texture: GPUTextureMap.get(source.texture),
+          },
+          destination: {
+            ...destination, // TODO: check
+            texture: GPUTextureMap.get(destination.texture),
+          },
           copySize,
         },
       );
@@ -660,8 +755,24 @@
       });
     }
 
-    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO: buffer
-    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO: buffer
+    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
+      core.jsonOpSync("op_webgpu_render_pass_set_index_buffer", {
+        renderPassRid: this.#rid,
+        buffer: GPUBufferMap.get(buffer),
+        indexFormat,
+        offset,
+        size,
+      });
+    }
+    setVertexBuffer(slot, buffer, offset = 0, size = 0) {
+      core.jsonOpSync("op_webgpu_render_pass_set_vertex_buffer", {
+        renderPassRid: this.#rid,
+        slot,
+        buffer: GPUBufferMap.get(buffer),
+        offset,
+        size,
+      });
+    }
 
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
       core.jsonOpSync("op_webgpu_render_pass_draw", {
@@ -689,8 +800,20 @@
       });
     }
 
-    drawIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
-    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
+    drawIndirect(indirectBuffer, indirectOffset) {
+      core.jsonOpSync("op_webgpu_render_pass_draw_indirect", {
+        renderPassRid: this.#rid,
+        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectOffset,
+      });
+    }
+    drawIndexedIndirect(indirectBuffer, indirectOffset) {
+      core.jsonOpSync("op_webgpu_render_pass_draw_indexed_indirect", {
+        renderPassRid: this.#rid,
+        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectOffset,
+      });
+    }
   }
 
   class GPUComputePassEncoder {
@@ -717,7 +840,13 @@
         z,
       });
     }
-    dispatchIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
+    dispatchIndirect(indirectBuffer, indirectOffset) {
+      core.jsonOpSync("op_webgpu_compute_pass_dispatch_indirect", {
+        computePassRid: this.#rid,
+        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectOffset,
+      });
+    }
 
     beginPipelineStatisticsQuery(querySet, queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
@@ -835,8 +964,24 @@
       });
     }
 
-    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO: buffer
-    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO: buffer
+    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
+        renderBundleEncoderRid: this.#rid,
+        buffer: GPUBufferMap.get(buffer),
+        indexFormat,
+        offset,
+        size,
+      });
+    }
+    setVertexBuffer(slot, buffer, offset = 0, size = 0) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
+        renderBundleEncoderRid: this.#rid,
+        slot,
+        buffer: GPUBufferMap.get(buffer),
+        offset,
+        size,
+      });
+    }
 
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw", {
@@ -864,8 +1009,16 @@
       });
     }
 
-    drawIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
-    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
+    drawIndirect(indirectBuffer, indirectOffset) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indirect", {
+        renderBundleEncoderRid: this.#rid,
+        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectOffset,
+      });
+    }
+    drawIndexedIndirect(indirectBuffer, indirectOffset) {
+      throw new Error("Not yet implemented");
+    }
   }
 
   const GPURenderBundleMap = new WeakMap();

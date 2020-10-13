@@ -74,6 +74,38 @@ pub fn op_webgpu_compute_pass_dispatch(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ComputePassDispatchIndirectArgs {
+  compute_pass_rid: u32,
+  indirect_buffer: u32,
+  indirect_offset: uu64,
+}
+
+pub fn op_webgpu_compute_pass_dispatch_indirect(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: ComputePassDispatchIndirectArgs = serde_json::from_value(args)?;
+
+  let compute_pass = state
+    .resource_table
+    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  wgc::command::compute_ffi::wgpu_compute_pass_dispatch_indirect(
+    compute_pass,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
+      .ok_or_else(bad_resource_id)?,
+    args.indirect_offset,
+  );
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ComputePassEndPassArgs {
   instance_rid: u32,
   command_encoder_rid: u32,

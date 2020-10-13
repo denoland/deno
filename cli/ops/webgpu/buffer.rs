@@ -45,10 +45,10 @@ pub fn op_webgpu_create_buffer(
     &wgc::resource::BufferDescriptor {
       label: args.label.map(|label| Cow::Borrowed(&label)),
       size: args.size,
-      usage: wgt::BufferUsage::from_bits(args.usage).unwrap(), // TODO: don't unwrap
+      usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
       mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state.resource_table.add("webGPUBuffer", Box::new(buffer));
@@ -64,8 +64,8 @@ struct BufferGetMapAsyncArgs {
   instance_rid: u32,
   buffer_rid: u32,
   mode: u32,
-  offset: Option<u64>,
-  size: Option<u64>,
+  offset: u64,
+  size: u64,
 }
 
 pub async fn op_webgpu_buffer_get_map_async(
@@ -87,7 +87,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   instance.buffer_map_async(
     *buffer,
-    (), // TODO
+    args.offset..args.size,
     wgc::resource::BufferMapOperation {
       host: match args.mode {
         1 => wgc::device::HostMap::Read,
@@ -108,13 +108,13 @@ struct BufferGetMappedRangeArgs {
   instance_rid: u32,
   buffer_rid: u32,
   offset: u64,
-  size: Option<std::num::NonZeroU64>,
+  size: std::num::NonZeroU64,
 }
 
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: BufferGetMappedRangeArgs = serde_json::from_value(args)?;
 
@@ -127,12 +127,9 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let slice = instance.buffer_get_mapped_range(
-    // TODO: use
-    *buffer,
-    args.offset,
-    args.size,
-  )?;
+  // TODO: use
+  let slice_pointer =
+    instance.buffer_get_mapped_range(*buffer, args.offset, Some(args.size))?;
 
   Ok(json!({}))
 }

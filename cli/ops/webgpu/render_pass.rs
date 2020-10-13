@@ -329,6 +329,85 @@ pub fn op_webgpu_render_pass_set_pipeline(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RenderPassSetIndexBufferArgs {
+  render_pass_rid: u32,
+  buffer: u32,
+  index_format: String, // wgpu#978
+  offset: u64,
+  size: u64,
+}
+
+pub fn op_webgpu_render_pass_set_index_buffer(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassSetIndexBufferArgs = serde_json::from_value(args)?;
+
+  let render_pass = state
+    .resource_table
+    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  wgc::command::render_ffi::wgpu_render_pass_set_index_buffer(
+    render_pass,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.buffer)
+      .ok_or_else(bad_resource_id)?,
+    args.offset,
+    if args.size == 0 {
+      None
+    } else {
+      Some(args.size as std::num::NonZeroU64) // TODO: check
+    },
+  );
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderPassSetVertexBufferArgs {
+  render_pass_rid: u32,
+  slot: u32,
+  buffer: u32,
+  offset: u64,
+  size: u64,
+}
+
+pub fn op_webgpu_render_pass_set_vertex_buffer(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassSetVertexBufferArgs = serde_json::from_value(args)?;
+
+  let render_pass = state
+    .resource_table
+    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  wgc::command::render_ffi::wgpu_render_pass_set_vertex_buffer(
+    render_pass,
+    args.slot,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.buffer)
+      .ok_or_else(bad_resource_id)?,
+    args.offset,
+    if args.size == 0 {
+      None
+    } else {
+      Some(args.size as std::num::NonZeroU64) // TODO: check
+    },
+  );
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RenderPassDrawArgs {
   render_pass_rid: u32,
   vertex_count: u32,
@@ -390,6 +469,70 @@ pub fn op_webgpu_render_pass_draw_indexed(
     args.first_index,
     args.base_vertex,
     args.first_instance,
+  );
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderPassDrawIndirectArgs {
+  render_pass_rid: u32,
+  indirect_buffer: u32,
+  indirect_offset: u64,
+}
+
+pub fn op_webgpu_render_pass_draw_indirect(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassDrawIndirectArgs = serde_json::from_value(args)?;
+
+  let render_pass = state
+    .resource_table
+    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  wgc::command::render_ffi::wgpu_render_pass_draw_indirect(
+    render_pass,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
+      .ok_or_else(bad_resource_id)?,
+    args.indirect_offset,
+  );
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderPassDrawIndexedIndirectArgs {
+  render_pass_rid: u32,
+  indirect_buffer: u32,
+  indirect_offset: u64,
+}
+
+pub fn op_webgpu_render_pass_draw_indexed_indirect(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassDrawIndexedIndirectArgs = serde_json::from_value(args)?;
+
+  let render_pass = state
+    .resource_table
+    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  wgc::command::render_ffi::wgpu_render_pass_draw_indexed_indirect(
+    render_pass,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
+      .ok_or_else(bad_resource_id)?,
+    args.indirect_offset,
   );
 
   Ok(json!({}))

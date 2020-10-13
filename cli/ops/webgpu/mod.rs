@@ -133,6 +133,21 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(
     rt,
+    "op_webgpu_command_encoder_copy_buffer_to_buffer",
+    command_encoder::op_webgpu_command_encoder_copy_buffer_to_buffer,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_copy_buffer_to_texture",
+    command_encoder::op_webgpu_command_encoder_copy_buffer_to_texture,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_copy_texture_to_buffer",
+    command_encoder::op_webgpu_command_encoder_copy_texture_to_buffer,
+  );
+  super::reg_json_sync(
+    rt,
     "op_webgpu_command_encoder_copy_texture_to_texture",
     command_encoder::op_webgpu_command_encoder_copy_texture_to_texture,
   );
@@ -209,6 +224,16 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(
     rt,
+    "op_webgpu_render_pass_set_index_buffer",
+    render_pass::op_webgpu_render_pass_set_index_buffer,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_set_vertex_buffer",
+    render_pass::op_webgpu_render_pass_set_vertex_buffer,
+  );
+  super::reg_json_sync(
+    rt,
     "op_webgpu_render_pass_draw",
     render_pass::op_webgpu_render_pass_draw,
   );
@@ -216,6 +241,16 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_render_pass_draw_indexed",
     render_pass::op_webgpu_render_pass_draw_indexed,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_draw_indirect",
+    render_pass::op_webgpu_render_pass_draw_indirect,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pass_draw_indexed_indirect",
+    render_pass::op_webgpu_render_pass_draw_indexed_indirect,
   );
 
   super::reg_json_sync(
@@ -227,6 +262,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_compute_pass_dispatch",
     compute_pass::op_webgpu_compute_pass_dispatch,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_dispatch_indirect",
+    compute_pass::op_webgpu_compute_pass_dispatch_indirect,
   );
   super::reg_json_sync(
     rt,
@@ -281,6 +321,16 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(
     rt,
+    "op_webgpu_render_bundle_encoder_set_index_buffer",
+    bundle::op_webgpu_render_bundle_encoder_set_index_buffer,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_set_vertex_buffer",
+    bundle::op_webgpu_render_bundle_encoder_set_vertex_buffer,
+  );
+  super::reg_json_sync(
+    rt,
     "op_webgpu_render_bundle_encoder_draw",
     bundle::op_webgpu_render_bundle_encoder_draw,
   );
@@ -289,11 +339,21 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     "op_webgpu_render_bundle_encoder_draw_indexed",
     bundle::op_webgpu_render_bundle_encoder_draw_indexed,
   );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_draw_indirect",
+    bundle::op_webgpu_render_bundle_encoder_draw_indirect,
+  );
 
   super::reg_json_sync(
     rt,
     "op_webgpu_queue_submit",
     queue::op_webgpu_queue_submit,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_write_buffer",
+    queue::op_webgpu_write_buffer,
   );
   super::reg_json_sync(
     rt,
@@ -471,7 +531,7 @@ pub async fn op_webgpu_request_device(
       shader_validation: false, // TODO
     },
     None,
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let features = serialize_features(&instance.device_features(device)?);

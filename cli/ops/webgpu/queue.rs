@@ -63,11 +63,54 @@ struct GPUTextureDataLayout {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct QueueWriteBufferArgs {
+  instance_rid: u32,
+  queue_rid: u32,
+  buffer: u32,
+  buffer_offset: u64,
+  data_offset: u64,
+  size: Option<u64>,
+}
+
+pub fn op_webgpu_write_buffer(
+  state: &mut OpState,
+  args: Value,
+  zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: QueueWriteBufferArgs = serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let queue = state
+    .resource_table
+    .get_mut::<wgc::id::QueueId>(args.queue_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.queue_write_buffer(
+    *queue,
+    *state
+      .resource_table
+      .get_mut::<wgc::id::BufferId>(args.buffer)
+      .ok_or_else(bad_resource_id)?,
+    args.buffer_offset,
+    &zero_copy[0][if let Some(size) = args.size {
+      args.data_offset..(args.data_offset + size)
+    } else {
+      args.data_offset..
+    }],
+  )?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct QueueWriteTextureArgs {
   instance_rid: u32,
   queue_rid: u32,
   destination: super::command_encoder::GPUTextureCopyView,
-  data: (), // TODO
   data_layout: GPUTextureDataLayout,
   size: (), // TODO: mixed types
 }
@@ -75,7 +118,7 @@ struct QueueWriteTextureArgs {
 pub fn op_webgpu_write_texture(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: QueueWriteTextureArgs = serde_json::from_value(args)?;
 
@@ -98,7 +141,7 @@ pub fn op_webgpu_write_texture(
       mip_level: args.destination.mip_level.unwrap_or(0),
       origin: Default::default(),
     },
-    (),
+    &zero_copy[0][..],
     &wgt::TextureDataLayout {
       offset: args.data_layout.offset.unwrap_or(0),
       bytes_per_row: args.data_layout.bytes_per_row,

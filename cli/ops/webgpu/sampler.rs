@@ -97,7 +97,7 @@ pub fn op_webgpu_create_sampler(
       compare: args.compare.map(serialize_compare_function),
       anisotropy_clamp: args.max_anisotropy,
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state.resource_table.add("webGPUTexture", Box::new(sampler));

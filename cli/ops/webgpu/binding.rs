@@ -141,7 +141,7 @@ pub fn op_webgpu_create_bind_group_layout(
           .collect::<Vec<wgt::BindGroupLayoutEntry>>(),
       ),
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state
@@ -196,7 +196,7 @@ pub fn op_webgpu_create_pipeline_layout(
       ),
       push_constant_ranges: Default::default(),
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state
@@ -212,8 +212,10 @@ pub fn op_webgpu_create_pipeline_layout(
 #[serde(rename_all = "camelCase")]
 struct GPUBindGroupEntry {
   binding: u32,
-  resource_kind: String,
-  resource: u32, // TODO: buffer
+  kind: String,
+  resource: u32,
+  offset: Option<u64>,
+  size: Option<std::num::NonZeroU64>,
 }
 
 #[derive(Deserialize)]
@@ -254,34 +256,42 @@ pub fn op_webgpu_create_bind_group(
         args
           .entries
           .iter()
-          .map(|entry| {
-            let resource = state
-              .resource_table
-              .get_mut(entry.resource)
-              .ok_or_else(bad_resource_id)?;
-
-            wgc::binding_model::BindGroupEntry {
-              binding: entry.binding,
-              resource: match entry.resource_kind {
-                &"GPUSampler" => wgc::binding_model::BindingResource::Sampler(
-                  *resource as wgc::id::SamplerId,
-                ),
-                &"GPUTextureView" => {
-                  wgc::binding_model::BindingResource::TextureView(
-                    *resource as wgc::id::TextureViewId,
-                  )
-                }
-                &"GPUBufferBinding" => {
-                  wgc::binding_model::BindingResource::Buffer() // TODO: buffer
-                }
-                _ => unreachable!(),
-              },
-            }
+          .map(|entry| wgc::binding_model::BindGroupEntry {
+            binding: entry.binding,
+            resource: match entry.resource_kind {
+              &"GPUSampler" => wgc::binding_model::BindingResource::Sampler(
+                *state
+                  .resource_table
+                  .get_mut::<wgc::id::SamplerId>(entry.resource)
+                  .ok_or_else(bad_resource_id)?,
+              ),
+              &"GPUTextureView" => {
+                wgc::binding_model::BindingResource::TextureView(
+                  *state
+                    .resource_table
+                    .get_mut::<wgc::id::TextureViewId>(entry.resource)
+                    .ok_or_else(bad_resource_id)?,
+                )
+              }
+              &"GPUBufferBinding" => {
+                wgc::binding_model::BindingResource::Buffer(
+                  wgc::binding_model::BufferBinding {
+                    buffer_id: *state
+                      .resource_table
+                      .get_mut::<wgc::id::BufferId>(entry.resource)
+                      .ok_or_else(bad_resource_id)?,
+                    offset: entry.offset.unwrap_or(0),
+                    size: entry.size,
+                  },
+                )
+              }
+              _ => unreachable!(),
+            },
           })
           .collect::<Vec<wgc::binding_model::BindGroupEntry>>(),
       ),
     },
-    (), // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state

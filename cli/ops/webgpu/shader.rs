@@ -41,7 +41,7 @@ pub fn op_webgpu_create_shader_module(
   let shader_module = instance.device_create_shader_module(
     *device,
     wgc::pipeline::ShaderModuleSource, // TODO
-    (),                                // TODO: id_in
+    std::marker::PhantomData,
   )?;
 
   let rid = state
