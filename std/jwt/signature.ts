@@ -11,7 +11,7 @@ export function convertHexToBase64url(input: string): string {
 function encrypt(
   alg: Algorithm | "none",
   key: string,
-  message: string
+  message: string,
 ): string {
   switch (alg) {
     case "none":
@@ -28,7 +28,7 @@ function encrypt(
 export async function create(
   algorithm: Algorithm,
   key: string,
-  input: string
+  input: string,
 ): Promise<string> {
   return convertHexToBase64url(await encrypt(algorithm, key, input));
 }

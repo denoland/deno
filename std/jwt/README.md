@@ -2,7 +2,8 @@
 
 Make JSON Web Tokens in deno. Based on
 [JWT](https://tools.ietf.org/html/rfc7519),
-[JWS](https://www.rfc-editor.org/rfc/rfc7515.html) and [JWA](https://www.rfc-editor.org/rfc/rfc7518.html) specifications.
+[JWS](https://www.rfc-editor.org/rfc/rfc7515.html) and
+[JWA](https://www.rfc-editor.org/rfc/rfc7518.html) specifications.
 
 ## Features
 
@@ -28,7 +29,8 @@ process where a web token is represented as the concatenation of
 The following signature and MAC algorithms - which are defined in the JSON Web
 Algorithms (JWA) [specification](https://www.rfc-editor.org/rfc/rfc7518.html) -
 have been implemented already: **HMAC SHA-256** ("HS256"), **HMAC SHA-512**
-("HS512") and **none** ([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
+("HS512") and **none**
+([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
 
 ### Expiration Time
 
@@ -43,7 +45,8 @@ and validating a JWT, respectively.
 
 ### create
 
-Takes a `payload`, `key` and `header` to return the url-safe encoded JWT as promise.
+Takes a `payload`, `key` and `header` to return the url-safe encoded JWT as
+promise.
 
 ```typescript
 import { create } from 'https://deno.land/std/jwt/mod.ts'
@@ -52,12 +55,13 @@ create()
 .
 .
 .
-
 ```
 
 ### verify
 
-Takes a `jwt`, `key` and an object with a the property `algorithm` to return the `payload` of the `jwt` as `promise`, if the `jwt` is valid. Otherwise it throws an `Error`.
+Takes a `jwt`, `key` and an object with a the property `algorithm` to return the
+`payload` of the `jwt` as `promise`, if the `jwt` is valid. Otherwise it throws
+an `Error`.
 
 ```typescript
 import { verify } from 'https://deno.land/std/jwt/mod.ts'
@@ -70,10 +74,11 @@ verify()
 
 ### setExpiration
 
-Takes either an `Date` object or a `number` (in seconds) as argument and returns the number of seconds since January 1, 1970, 00:00:00 UTC
+Takes either an `Date` object or a `number` (in seconds) as argument and returns
+the number of seconds since January 1, 1970, 00:00:00 UTC
 
 ```typescript
-import { setExpiration } from 'https://deno.land/std/jwt/mod.ts'
+import { setExpiration } from "https://deno.land/std/jwt/mod.ts";
 
 // A specific date:
 setExpiration(new Date("2025-07-01"));
@@ -83,7 +88,8 @@ setExpiration(60 * 60);
 
 ### decode
 
-Takes a `jwt` to return an object with the `header`, `payload` and `signature` properties.
+Takes a `jwt` to return an object with the `header`, `payload` and `signature`
+properties.
 
 ```typescript
 import { decode } from 'https://deno.land/std/jwt/mod.ts'
