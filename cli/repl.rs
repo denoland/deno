@@ -147,8 +147,7 @@ pub async fn run(
     }
   }
 
-  let helper = Helper {
-  };
+  let helper = Helper {};
 
   let editor = Arc::new(Mutex::new(Editor::new()));
 
