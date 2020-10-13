@@ -51,7 +51,7 @@ pub fn bad_resource_id() -> AnyError {
 }
 
 pub fn not_supported() -> AnyError {
-  custom_error("NotSupported", "The operation is supported")
+  custom_error("NotSupported", "The operation is not supported")
 }
 
 pub fn resource_unavailable() -> AnyError {
