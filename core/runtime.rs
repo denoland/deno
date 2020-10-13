@@ -539,11 +539,11 @@ impl JsRuntime {
     }
 
     if has_pending_module_evaluation {
-      if has_pending_ops
+      if !(has_pending_ops
         || has_pending_dyn_imports
-        || has_pending_dyn_module_evaluation
+        || has_pending_dyn_module_evaluation)
       {
-        state.waker.wake();
+        // pass, will be polled again
       } else {
         return Poll::Ready(Err(generic_error("Module evaluation is still pending but there are no pending ops or dynamic imports.")));
       }
@@ -551,7 +551,7 @@ impl JsRuntime {
 
     if has_pending_dyn_module_evaluation {
       if has_pending_ops || has_pending_dyn_imports {
-        state.waker.wake();
+        // pass, will be polled again
       } else {
         return Poll::Ready(Err(generic_error("Dynamically imported module evaluation is still pending but there are no pending ops.")));
       }
