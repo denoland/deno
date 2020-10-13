@@ -16,23 +16,20 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
 pub type DependencyMap = HashMap<String, Dependency>;
-pub type EmitMap = HashMap<EmitType, (String, Option<String>)>;
 pub type FetchFuture =
   Pin<Box<(dyn Future<Output = Result<CachedModule, AnyError>> + 'static)>>;
 
 #[derive(Debug, Clone)]
 pub struct CachedModule {
-  pub emits: EmitMap,
   pub maybe_dependencies: Option<DependencyMap>,
-  pub maybe_emit_path: Option<PathBuf>,
-  pub maybe_map_path: Option<PathBuf>,
+  pub maybe_emit: Option<Emit>,
+  pub maybe_emit_path: Option<(PathBuf, Option<PathBuf>)>,
   pub maybe_types: Option<String>,
   pub maybe_version: Option<String>,
   pub media_type: MediaType,
@@ -45,10 +42,9 @@ pub struct CachedModule {
 impl Default for CachedModule {
   fn default() -> Self {
     CachedModule {
-      emits: HashMap::new(),
       maybe_dependencies: None,
+      maybe_emit: None,
       maybe_emit_path: None,
-      maybe_map_path: None,
       maybe_types: None,
       maybe_version: None,
       media_type: MediaType::Unknown,
@@ -60,23 +56,21 @@ impl Default for CachedModule {
   }
 }
 
-/// An enum that represents the different types of emitted code that can be
-/// cached.  Different types can utilise different configurations which can
-/// change the validity of the emitted code.
-#[allow(unused)]
+/// An enum to own the a specific emit.
+///
+/// Currently there is only one type of emit that is cacheable, but this has
+/// been added to future proof the ability for the specifier handler
+/// implementations to be able to handle other types of emits, like form a
+/// runtime API which might have a different configuration.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum EmitType {
+pub enum Emit {
   /// Code that was emitted for use by the CLI
-  Cli,
-  /// Code that was emitted for bundling purposes
-  Bundle,
-  /// Code that was emitted based on a request to the runtime APIs
-  Runtime,
+  Cli((String, Option<String>)),
 }
 
-impl Default for EmitType {
+impl Default for Emit {
   fn default() -> Self {
-    EmitType::Cli
+    Emit::Cli(("".to_string(), None))
   }
 }
 
@@ -100,20 +94,16 @@ pub trait SpecifierHandler {
   /// not expected to be cached for each module, but are "lazily" checked when
   /// a root module is identified.  The `emit_type` also indicates what form
   /// of the module the build info is valid for.
-  fn get_build_info(
+  fn get_ts_build_info(
     &self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
   ) -> Result<Option<String>, AnyError>;
 
-  /// Set the emitted code (and maybe map) for a given module specifier.  The
-  /// cache type indicates what form the emit is related to.
+  /// Set the emit for the module specifier.
   fn set_cache(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
-    code: String,
-    maybe_map: Option<String>,
+    emit: &Emit,
   ) -> Result<(), AnyError>;
 
   /// When parsed out of a JavaScript module source, the triple slash reference
@@ -125,11 +115,10 @@ pub trait SpecifierHandler {
   ) -> Result<(), AnyError>;
 
   /// Set the build info for a module specifier, also providing the cache type.
-  fn set_build_info(
+  fn set_ts_build_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
-    build_info: String,
+    ts_build_info: String,
   ) -> Result<(), AnyError>;
 
   /// Set the graph dependencies for a given module specifier.
@@ -153,29 +142,6 @@ impl fmt::Debug for dyn SpecifierHandler {
     write!(f, "SpecifierHandler {{ }}")
   }
 }
-
-/// Errors that could be raised by a `SpecifierHandler` implementation.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum SpecifierHandlerError {
-  /// An error representing an error the `EmitType` that was supplied to a
-  /// method of an implementor of the `SpecifierHandler` trait.
-  UnsupportedEmitType(EmitType),
-}
-use SpecifierHandlerError::*;
-
-impl fmt::Display for SpecifierHandlerError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      UnsupportedEmitType(ref emit_type) => write!(
-        f,
-        "The emit type of \"{:?}\" is unsupported for this operation.",
-        emit_type
-      ),
-    }
-  }
-}
-
-impl Error for SpecifierHandlerError {}
 
 /// A representation of meta data for a compiled file.
 ///
@@ -249,29 +215,28 @@ impl SpecifierHandler for FetchHandler {
         None
       };
 
-      let mut maybe_map_path: Option<PathBuf> = None;
+      let mut maybe_map_path = None;
       let map_path =
         disk_cache.get_cache_filename_with_extension(&url, "js.map");
-      let maybe_map: Option<String> = if let Ok(map) = disk_cache.get(&map_path)
-      {
+      let maybe_map = if let Ok(map) = disk_cache.get(&map_path) {
         maybe_map_path = Some(disk_cache.location.join(map_path));
         Some(String::from_utf8(map)?)
       } else {
         None
       };
-      let mut emits = HashMap::new();
-      let mut maybe_emit_path: Option<PathBuf> = None;
+      let mut maybe_emit = None;
+      let mut maybe_emit_path = None;
       let emit_path = disk_cache.get_cache_filename_with_extension(&url, "js");
       if let Ok(code) = disk_cache.get(&emit_path) {
-        maybe_emit_path = Some(disk_cache.location.join(emit_path));
-        emits.insert(EmitType::Cli, (String::from_utf8(code)?, maybe_map));
+        maybe_emit = Some(Emit::Cli((String::from_utf8(code)?, maybe_map)));
+        maybe_emit_path =
+          Some((disk_cache.location.join(emit_path), maybe_map_path));
       };
 
       Ok(CachedModule {
-        emits,
         maybe_dependencies: None,
+        maybe_emit,
         maybe_emit_path,
-        maybe_map_path,
         maybe_types: source_file.types_header,
         maybe_version,
         media_type: source_file.media_type,
@@ -283,63 +248,54 @@ impl SpecifierHandler for FetchHandler {
     .boxed_local()
   }
 
-  fn get_build_info(
+  fn get_ts_build_info(
     &self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
   ) -> Result<Option<String>, AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
-    }
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
-    if let Ok(build_info) = self.disk_cache.get(&filename) {
-      return Ok(Some(String::from_utf8(build_info)?));
+    if let Ok(ts_build_info) = self.disk_cache.get(&filename) {
+      return Ok(Some(String::from_utf8(ts_build_info)?));
     }
 
     Ok(None)
   }
 
-  fn set_build_info(
+  fn set_ts_build_info(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
-    build_info: String,
+    ts_build_info: String,
   ) -> Result<(), AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
-    }
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
     self
       .disk_cache
-      .set(&filename, build_info.as_bytes())
+      .set(&filename, ts_build_info.as_bytes())
       .map_err(|e| e.into())
   }
 
   fn set_cache(
     &mut self,
     specifier: &ModuleSpecifier,
-    emit_type: &EmitType,
-    code: String,
-    maybe_map: Option<String>,
+    emit: &Emit,
   ) -> Result<(), AnyError> {
-    if emit_type != &EmitType::Cli {
-      return Err(UnsupportedEmitType(emit_type.clone()).into());
-    }
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier.as_url(), "js");
-    self.disk_cache.set(&filename, code.as_bytes())?;
+    match emit {
+      Emit::Cli((code, maybe_map)) => {
+        let url = specifier.as_url();
+        let filename =
+          self.disk_cache.get_cache_filename_with_extension(url, "js");
+        self.disk_cache.set(&filename, code.as_bytes())?;
 
-    if let Some(map) = maybe_map {
-      let filename = self
-        .disk_cache
-        .get_cache_filename_with_extension(specifier.as_url(), "js.map");
-      self.disk_cache.set(&filename, map.as_bytes())?;
-    }
+        if let Some(map) = maybe_map {
+          let filename = self
+            .disk_cache
+            .get_cache_filename_with_extension(url, "js.map");
+          self.disk_cache.set(&filename, map.as_bytes())?;
+        }
+      }
+    };
 
     Ok(())
   }
@@ -423,7 +379,7 @@ pub mod tests {
     .unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier.clone()).await.unwrap();
-    assert_eq!(cached_module.emits.len(), 0);
+    assert!(cached_module.maybe_emit.is_none());
     assert!(cached_module.maybe_dependencies.is_none());
     assert_eq!(cached_module.media_type, MediaType::TypeScript);
     assert_eq!(
@@ -443,16 +399,16 @@ pub mod tests {
     .unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier.clone()).await.unwrap();
-    assert_eq!(cached_module.emits.len(), 0);
+    assert!(cached_module.maybe_emit.is_none());
     let code = String::from("some code");
     file_fetcher
-      .set_cache(&specifier, &EmitType::Cli, code, None)
+      .set_cache(&specifier, &Emit::Cli((code, None)))
       .expect("could not set cache");
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier.clone()).await.unwrap();
-    assert_eq!(cached_module.emits.len(), 1);
-    let actual_emit = cached_module.emits.get(&EmitType::Cli).unwrap();
-    assert_eq!(actual_emit.0, "some code");
-    assert_eq!(actual_emit.1, None);
+    assert_eq!(
+      cached_module.maybe_emit,
+      Some(Emit::Cli(("some code".to_string(), None)))
+    );
   }
 }
