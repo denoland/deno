@@ -370,7 +370,6 @@ delete Object.prototype.__proto__;
           "op_load",
           { specifier },
         );
-        debug({ data, hash });
         assert(data, `"data" is unexpectedly null for "${specifier}".`);
         sourceFile = ts.createSourceFile(
           specifier,

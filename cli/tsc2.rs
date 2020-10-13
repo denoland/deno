@@ -21,7 +21,6 @@ use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use serde::Deserialize;
 use serde::Serialize;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -41,7 +40,7 @@ pub struct Request {
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   #[serde(skip_serializing)]
-  pub graph: Rc<RefCell<Graph2>>,
+  pub graph: Rc<Graph2>,
   #[serde(skip_serializing)]
   pub hash_data: Vec<Vec<u8>>,
   #[serde(skip_serializing)]
@@ -66,14 +65,14 @@ pub struct Response {
 struct State {
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Rc<RefCell<Graph2>>,
+  graph: Rc<Graph2>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
 }
 
 impl State {
   pub fn new(
-    graph: Rc<RefCell<Graph2>>,
+    graph: Rc<Graph2>,
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
   ) -> Self {
@@ -160,14 +159,13 @@ struct LoadArgs {
 fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let graph = state.graph.borrow();
   let specifier = ModuleSpecifier::resolve_url_or_path(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let data = if &v.specifier == "deno:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.clone()
   } else {
-    let maybe_source = graph.get_source(&specifier);
+    let maybe_source = state.graph.get_source(&specifier);
     if let Some(source) = &maybe_source {
       let mut data = vec![source.as_bytes().to_owned()];
       data.extend_from_slice(&state.hash_data);
@@ -192,7 +190,6 @@ struct ResolveArgs {
 fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_resolve\".")?;
-  let graph = state.graph.borrow();
   let mut resolved: Vec<(String, String)> = Vec::new();
   let referrer = ModuleSpecifier::resolve_url_or_path(&v.base).context(
     "Error converting a string module specifier for \"op_resolve\".",
@@ -204,16 +201,17 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let resolved_specifier = graph.resolve(specifier, &referrer)?;
-      let media_type =
-        if let Some(media_type) = graph.get_media_type(&resolved_specifier) {
-          media_type
-        } else {
-          bail!(
-            "Unable to resolve media type for specifier: \"{}\"",
-            resolved_specifier
-          )
-        };
+      let resolved_specifier = state.graph.resolve(specifier, &referrer)?;
+      let media_type = if let Some(media_type) =
+        state.graph.get_media_type(&resolved_specifier)
+      {
+        media_type
+      } else {
+        bail!(
+          "Unable to resolve media type for specifier: \"{}\"",
+          resolved_specifier
+        )
+      };
       resolved
         .push((resolved_specifier.to_string(), media_type.as_ts_extension()));
     }
@@ -305,6 +303,7 @@ mod tests {
   use crate::module_graph2::tests::MockSpecifierHandler;
   use crate::module_graph2::GraphBuilder2;
   use crate::tsc_config::TsConfig;
+  use std::cell::RefCell;
   use std::env;
   use std::path::PathBuf;
 
@@ -328,9 +327,7 @@ mod tests {
       .insert(&specifier)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(
-      builder.get_graph(&None).expect("could not get graph"),
-    ));
+    let graph = Rc::new(builder.get_graph(&None).expect("could not get graph"));
     State::new(graph, hash_data, maybe_tsbuildinfo)
   }
 
@@ -550,9 +547,7 @@ mod tests {
       .insert(&specifier)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(
-      builder.get_graph(&None).expect("could not get graph"),
-    ));
+    let graph = Rc::new(builder.get_graph(&None).expect("could not get graph"));
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
