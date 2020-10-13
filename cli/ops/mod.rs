@@ -3,6 +3,7 @@
 mod dispatch_minimal;
 pub use dispatch_minimal::MinimalOp;
 
+pub mod crypto;
 pub mod errors;
 pub mod fetch;
 pub mod fs;
@@ -15,7 +16,6 @@ pub mod os;
 pub mod permissions;
 pub mod plugin;
 pub mod process;
-pub mod random;
 pub mod runtime;
 pub mod runtime_compiler;
 pub mod signal;
