@@ -3,7 +3,7 @@
 mod binding;
 mod buffer;
 mod bundle;
-mod command_encoding;
+mod command_encoder;
 mod pipeline;
 mod sampler;
 mod shader;
@@ -118,42 +118,42 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(
     rt,
     "op_webgpu_create_command_encoder",
-    command_encoding::op_webgpu_create_command_encoder,
+    command_encoder::op_webgpu_create_command_encoder,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_begin_render_pass",
-    command_encoding::op_webgpu_command_encoder_begin_render_pass,
+    command_encoder::op_webgpu_command_encoder_begin_render_pass,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_begin_compute_pass",
-    command_encoding::op_webgpu_command_encoder_begin_compute_pass,
+    command_encoder::op_webgpu_command_encoder_begin_compute_pass,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_copy_texture_to_texture",
-    command_encoding::op_webgpu_command_encoder_copy_texture_to_texture,
+    command_encoder::op_webgpu_command_encoder_copy_texture_to_texture,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_push_debug_group",
-    command_encoding::op_webgpu_command_encoder_push_debug_group,
+    command_encoder::op_webgpu_command_encoder_push_debug_group,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_pop_debug_group",
-    command_encoding::op_webgpu_command_encoder_pop_debug_group,
+    command_encoder::op_webgpu_command_encoder_pop_debug_group,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_insert_debug_marker",
-    command_encoding::op_webgpu_command_encoder_insert_debug_marker,
+    command_encoder::op_webgpu_command_encoder_insert_debug_marker,
   );
   super::reg_json_sync(
     rt,
     "op_webgpu_command_encoder_finish",
-    command_encoding::op_webgpu_command_encoder_finish,
+    command_encoder::op_webgpu_command_encoder_finish,
   );
 
   super::reg_json_sync(
@@ -257,6 +257,36 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_render_bundle_encoder_finish",
     bundle::op_webgpu_render_bundle_encoder_finish,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_push_debug_group",
+    bundle::op_webgpu_render_bundle_encoder_push_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_pop_debug_group",
+    bundle::op_webgpu_render_bundle_encoder_pop_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_insert_debug_marker",
+    bundle::op_webgpu_render_bundle_encoder_insert_debug_marker,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_set_pipeline",
+    bundle::op_webgpu_render_bundle_encoder_set_pipeline,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_draw",
+    bundle::op_webgpu_render_bundle_encoder_draw,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_draw_indexed",
+    bundle::op_webgpu_render_bundle_encoder_draw_indexed,
   );
 }
 

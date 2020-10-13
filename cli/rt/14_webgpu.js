@@ -229,7 +229,6 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_render_bundle_encoder",
         {
-          instanceRid,
           deviceRid: this.#rid,
           ...descriptor,
         },
@@ -777,26 +776,63 @@
       dynamicOffsetsDataLength,
     ) {} // TODO
 
-    pushDebugGroup(groupLabel) {} // TODO
-    popDebugGroup() {} // TODO
-    insertDebugMarker(markerLabel) {} // TODO
+    pushDebugGroup(groupLabel) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
+        renderBundleEncoderRid: this.#rid,
+        groupLabel,
+      });
+    }
+    popDebugGroup() {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_pop_debug_group", {
+        renderBundleEncoderRid: this.#rid,
+      });
+    }
+    insertDebugMarker(markerLabel) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
+        renderBundleEncoderRid: this.#rid,
+        markerLabel,
+      });
+    }
 
-    setPipeline(pipeline) {} // TODO
 
-    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO
-    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO
+    setPipeline(pipeline) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_set_pipeline", {
+        renderBundleEncoderRid: this.#rid,
+        pipeline: GPURenderPipelineMap.get(pipeline),
+      });
+    }
 
-    draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {} // TODO
+    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {} // TODO: buffer
+    setVertexBuffer(slot, buffer, offset = 0, size = 0) {} // TODO: buffer
+
+    draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_draw", {
+        renderBundleEncoderRid: this.#rid,
+        vertexCount,
+        instanceCount,
+        firstVertex,
+        firstInstance,
+      });
+    }
     drawIndexed(
       indexCount,
       instanceCount = 1,
       firstIndex = 0,
       baseVertex = 0,
       firstInstance = 0,
-    ) {} // TODO
+    ) {
+      core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indexed", {
+        renderBundleEncoderRid: this.#rid,
+        indexCount,
+        instanceCount,
+        firstIndex,
+        baseVertex,
+        firstInstance,
+      });
+    }
 
-    drawIndirect(indirectBuffer, indirectOffset) {} // TODO
-    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO
+    drawIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
+    drawIndexedIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
   }
 
   class GPURenderBundle {
