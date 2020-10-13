@@ -1956,6 +1956,8 @@ declare namespace Deno {
     sorted?: boolean;
     /** Add a trailing comma for multiline collections. Defaults to false. */
     trailingComma?: boolean;
+    /*** Evaluate the result of calling getters. Defaults to false. */
+    getters?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

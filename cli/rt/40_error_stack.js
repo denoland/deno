@@ -221,12 +221,18 @@
       formattedCallSites.push(formatCallSite(callSite));
     }
     Object.freeze(error.__callSiteEvals);
-    return (
-      `${error.name}: ${error.message}\n` +
-      formattedCallSites
-        .map((s) => `    at ${s}`)
-        .join("\n")
-    );
+    const message = error.message !== undefined ? error.message : "";
+    const name = error.name !== undefined ? error.name : "Error";
+    let messageLine;
+    if (name != "" && message != "") {
+      messageLine = `${name}: ${message}`;
+    } else if ((name || message) != "") {
+      messageLine = name || message;
+    } else {
+      messageLine = "";
+    }
+    return messageLine +
+      formattedCallSites.map((s) => `\n    at ${s}`).join("");
   }
 
   function setPrepareStackTrace(ErrorConstructor) {
