@@ -1,10 +1,13 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// From https://github.com/PandawanFr/deno_notify
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use notify_rust::Notification;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
     super::reg_json_sync(rt, "op_notify_send", op_notify_send);
@@ -25,23 +28,22 @@ struct NotificationParams {
   title: String,
   message: String,
   icon: Option<Icon>,
-  sound: Option<String>,
 }
 
 
 fn op_notify_send(
-    state: &mut OpState,
+    _state: &mut OpState,
     args: Value,
     _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: SetEnv = serde_json::from_value(args)?;
+  let args: NotificationParams = serde_json::from_value(args)?;
   let mut notification = Notification::new();
-  notification.summary(&params.title).body(&args.message);
+  notification.summary(&args.title).body(&args.message);
   if let Some(icon_value) = &args.icon {
     notification.icon(match icon_value {
       Icon::App(app_name) => {
-        if let Err(error) = set_app_identifier(app_name) {
-          response.err = Some(error);
+        if let Err(error) = set_app_identifier(&app_name) {
+          return Ok(json!(error.to_string()));
         }
         app_name
       }
@@ -49,15 +51,12 @@ fn op_notify_send(
       Icon::Name(icon_name) => icon_name,
     });
   }
-  if let Some(sound_name) = &params.sound {
-    notification.sound_name(sound_name);
-  }
   match notification.show() {
     Ok(_) => {
-      Ok(json!({}))
+      return Ok(json!({}))
     }
     Err(error) => {
-      Ok(json!(error.to_string())
+      return Ok(json!(error.to_string()))
     }
   };
 

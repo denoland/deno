@@ -21,6 +21,7 @@ delete Object.prototype.__proto__;
   const { internalSymbol, internalObject } = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
+  const Notification = window.__bootstrap.Notification;
   const url = window.__bootstrap.url;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
@@ -269,6 +270,7 @@ delete Object.prototype.__proto__;
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
     console: util.writable(new Console(core.print)),
+    Notification: util.nonEnumerable(Notification),
     crypto: util.readOnly(crypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
