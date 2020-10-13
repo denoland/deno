@@ -1,76 +1,64 @@
 # jwt
 
-Make JSON Web Tokens in deno. Based on
-[JWT](https://tools.ietf.org/html/rfc7519),
-[JWS](https://www.rfc-editor.org/rfc/rfc7515.html) and
-[JWA](https://www.rfc-editor.org/rfc/rfc7518.html) specifications.
+Create and verify JSON Web Tokens.
 
-## Features
-
-To generate JWTs which look in their finalized form like this (with line breaks
-for display purposes only)
-
-```
-eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9
- .
- eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ
- .
- dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
-```
-
-... we use the mandatory
-[**compact serialization**](https://www.rfc-editor.org/rfc/rfc7515.html#section-3.1)
-process where a web token is represented as the concatenation of
-
-`'BASE64URL(UTF8(JWS Protected Header))' || '.' || 'BASE64URL(JWS Payload)' ||'.'|| 'BASE64URL(JWS Signature)'`.
-
-### Cryptographic Algorithm
-
-The following signature and MAC algorithms - which are defined in the JSON Web
-Algorithms (JWA) [specification](https://www.rfc-editor.org/rfc/rfc7518.html) -
-have been implemented already: **HMAC SHA-256** ("HS256"), **HMAC SHA-512**
-("HS512") and **none**
-([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
-
-### Expiration Time
-
-The optional **exp** claim identifies the expiration time on or after which the
-JWT must not be accepted for processing. This library checks if the current
-date/time is before the expiration date/time listed in the **exp** claim.
-
-## Usage
-
-The API consists mostly of the two functions `create` and `validate`, generating
-and validating a JWT, respectively.
+## JSON Web Token
 
 ### create
 
-Takes a `payload`, `key` and `header` to return the url-safe encoded JWT as
-promise.
+Takes a `payload`, `key` and `header` and returns the url-safe encoded `jwt`.
 
 ```typescript
-import { create } from 'https://deno.land/std/jwt/mod.ts'
+import { create } from "https://deno.land/std/jwt/mod.ts";
 
-create()
-.
-.
-.
+const payload = { foo: "bar" };
+const key = "secret";
+
+const jwt = await create(payload, key); // eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ
+```
+
+**Specific algorithm**
+
+```typescript
+const jwt = await create(payload, key, { header: { alg: "HS256" } });
 ```
 
 ### verify
 
-Takes a `jwt`, `key` and an object with a the property `algorithm` to return the
-`payload` of the `jwt` as `promise`, if the `jwt` is valid. Otherwise it throws
-an `Error`.
+Takes a `jwt`, `key` and an optional `options` object and returns the `payload`
+of the `jwt` if the `jwt` is valid. Otherwise it throws an `Error`.
 
 ```typescript
-import { verify } from 'https://deno.land/std/jwt/mod.ts'
+import { verify } from "https://deno.land/std/jwt/mod.ts";
 
-verify()
-.
-.
-.
+const jwt =
+  "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ";
+const key = "secret";
+
+const payload = await verify(jwt, key); // { foo: "bar" }
 ```
+
+**Specific algorithm**
+
+```ts
+const payload = await verify(jwt, key, { algorithm: "HS256" });
+```
+
+### decode
+
+Takes a `jwt` to return an object with the `header`, `payload` and `signature`
+properties if the `jwt` is valid. Otherwise it throws an `Error`.
+
+```typescript
+import { decode } from "https://deno.land/std/jwt/mod.ts";
+
+const jwt =
+  "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ";
+
+const { payload, signature, header } = await decode(jwt); // { header: { alg: "HS512", typ: "JWT" }, payload: { foo: "bar" }, signature: "e22f90d58d280d9ba72e06a8ae4a9b60d70d7e7e4281d178f54bc9edd510e0655342fa6c30b1c00646415a9f6c821cb7a953ac79cea139cbb84676c5912df4cd" }
+```
+
+## Expiration
 
 ### setExpiration
 
@@ -86,16 +74,25 @@ setExpiration(new Date("2025-07-01"));
 setExpiration(60 * 60);
 ```
 
-### decode
-
-Takes a `jwt` to return an object with the `header`, `payload` and `signature`
-properties.
+The optional **exp** claim in the payload that identifies the expiration time on
+or after which the JWT must not be accepted for processing. This module checks
+if the current date/time is before the expiration date/time listed in the
+**exp** claim.
 
 ```typescript
-import { decode } from 'https://deno.land/std/jwt/mod.ts'
-
-decode()
-.
-.
-.
+const jwt = await create({ exp: setExpiration(60 * 60) }, "secret");
 ```
+
+## Algorithms
+
+The following signature and MAC algorithms have been implemented:
+
+- HS256 (HMAC SHA-256)
+- HS512 (HMAC SHA-512)
+- none ([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
+
+## Specifications
+
+- [JSON Web Token](https://tools.ietf.org/html/rfc7519)
+- [JSON Web Signature](https://www.rfc-editor.org/rfc/rfc7515.html)
+- [JSON Web Algorithms](https://www.rfc-editor.org/rfc/rfc7518.html)
