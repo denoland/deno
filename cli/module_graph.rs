@@ -588,16 +588,16 @@ impl ModuleGraphLoader {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::global_state::GlobalState;
+  use crate::program_state::ProgramState;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleGraph, AnyError> {
-    let global_state = GlobalState::new(Default::default()).unwrap();
+    let program_state = ProgramState::new(Default::default()).unwrap();
     let mut graph_loader = ModuleGraphLoader::new(
-      global_state.file_fetcher.clone(),
+      program_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
       false,

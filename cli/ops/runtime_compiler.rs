@@ -37,14 +37,14 @@ async fn op_compile(
   super::check_unstable2(&state, "Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
   let cli_state = super::global_state2(&state);
-  let global_state = cli_state.clone();
+  let program_state = cli_state.clone();
   let permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
   let fut = if args.bundle {
     runtime_bundle(
-      &global_state,
+      &program_state,
       permissions,
       &args.root_name,
       &args.sources,
@@ -53,7 +53,7 @@ async fn op_compile(
     .boxed_local()
   } else {
     runtime_compile(
-      &global_state,
+      &program_state,
       permissions,
       &args.root_name,
       &args.sources,
@@ -79,8 +79,8 @@ async fn op_transpile(
   super::check_unstable2(&state, "Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   let cli_state = super::global_state2(&state);
-  let global_state = cli_state.clone();
+  let program_state = cli_state.clone();
   let result =
-    runtime_transpile(global_state, &args.sources, &args.options).await?;
+    runtime_transpile(program_state, &args.sources, &args.options).await?;
   Ok(result)
 }

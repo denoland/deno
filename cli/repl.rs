@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::global_state::GlobalState;
 use crate::inspector::InspectorSession;
+use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
 use crate::worker::Worker;
 use deno_core::error::AnyError;
@@ -86,12 +86,12 @@ async fn read_line_and_poll(
 }
 
 pub async fn run(
-  global_state: &GlobalState,
+  program_state: &ProgramState,
   mut worker: MainWorker,
 ) -> Result<(), AnyError> {
   let mut session = worker.create_inspector_session();
 
-  let history_file = global_state.dir.root.join("deno_history.txt");
+  let history_file = program_state.dir.root.join("deno_history.txt");
 
   post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
     .await?;
