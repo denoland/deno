@@ -289,6 +289,7 @@ impl MainWorker {
       ops::fs::init(js_runtime);
       ops::io::init(js_runtime);
       ops::net::init(js_runtime);
+      ops::notify::init(js_runtime);
       ops::os::init(js_runtime);
       ops::permissions::init(js_runtime);
       ops::plugin::init(js_runtime);
@@ -448,6 +449,7 @@ impl WebWorker {
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime);
+      ops::notify::init(js_runtime);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(

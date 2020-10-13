@@ -1,5 +1,3 @@
-use deno_core::plugin_api::Buf;
-use deno_core::plugin_api::Interface;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -8,6 +6,9 @@ use deno_core::ZeroCopyBuf;
 use notify_rust::Notification;
 use serde::{Deserialize, Serialize};
 
+pub fn init(rt: &mut deno_core::JsRuntime) {
+    super::reg_json_sync(rt, "op_notify_send", op_notify_send);
+}
 
 #[derive(Deserialize)]
 enum Icon {
@@ -27,8 +28,6 @@ struct NotificationParams {
   sound: Option<String>,
 }
 
-#[derive(Serialize)]
-struct SendNotificationResult {}
 
 fn op_notify_send(
     state: &mut OpState,
@@ -40,7 +39,7 @@ fn op_notify_send(
   notification.summary(&params.title).body(&args.message);
   if let Some(icon_value) = &args.icon {
     notification.icon(match icon_value {
-      Icon::App(app_name) => {=
+      Icon::App(app_name) => {
         if let Err(error) = set_app_identifier(app_name) {
           response.err = Some(error);
         }
@@ -58,7 +57,7 @@ fn op_notify_send(
       Ok(json!({}))
     }
     Err(error) => {
-      Ok(json!({error: error.to_string()})
+      Ok(json!(error.to_string())
     }
   };
 
