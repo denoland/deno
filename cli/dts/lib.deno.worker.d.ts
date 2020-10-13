@@ -7,48 +7,53 @@
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 
-declare interface DedicatedWorkerGlobalScope {
-  self: DedicatedWorkerGlobalScope & typeof globalThis;
+declare class WorkerGlobalScope {
+  new(): WorkerGlobalScope;
+  self: WorkerGlobalScope & typeof globalThis;
   onmessage:
     | ((
-      this: DedicatedWorkerGlobalScope & typeof globalThis,
+      this: WorkerGlobalScope & typeof globalThis,
       ev: MessageEvent,
     ) => any)
     | null;
   onmessageerror:
     | ((
-      this: DedicatedWorkerGlobalScope & typeof globalThis,
+      this: WorkerGlobalScope & typeof globalThis,
       ev: MessageEvent,
     ) => any)
     | null;
   onerror:
     | ((
-      this: DedicatedWorkerGlobalScope & typeof globalThis,
+      this: WorkerGlobalScope & typeof globalThis,
       ev: ErrorEvent,
     ) => any)
     | null;
-  name: string;
   close: () => void;
   postMessage: (message: any) => void;
   Deno: typeof Deno;
 }
 
-declare var self: DedicatedWorkerGlobalScope & typeof globalThis;
+declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
+  new(): DedicatedWorkerGlobalScope;
+  name: string;
+}
+
+declare var self: WorkerGlobalScope & typeof globalThis;
 declare var onmessage:
   | ((
-    this: DedicatedWorkerGlobalScope & typeof globalThis,
+    this: WorkerGlobalScope & typeof globalThis,
     ev: MessageEvent,
   ) => any)
   | null;
 declare var onmessageerror:
   | ((
-    this: DedicatedWorkerGlobalScope & typeof globalThis,
+    this: WorkerGlobalScope & typeof globalThis,
     ev: MessageEvent,
   ) => any)
   | null;
 declare var onerror:
   | ((
-    this: DedicatedWorkerGlobalScope & typeof globalThis,
+    this: WorkerGlobalScope & typeof globalThis,
     ev: ErrorEvent,
   ) => any)
   | null;

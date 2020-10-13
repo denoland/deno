@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::tsc::TargetLib;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -51,13 +51,13 @@ impl ModuleLoader for CliModuleLoader {
     referrer: &str,
     is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let global_state = {
+    let program_state = {
       let state = op_state.borrow();
-      state.borrow::<Arc<GlobalState>>().clone()
+      state.borrow::<Arc<ProgramState>>().clone()
     };
 
     // FIXME(bartlomieju): hacky way to provide compatibility with repl
-    let referrer = if referrer.is_empty() && global_state.flags.repl {
+    let referrer = if referrer.is_empty() && program_state.flags.repl {
       "<unknown>"
     } else {
       referrer
@@ -87,14 +87,14 @@ impl ModuleLoader for CliModuleLoader {
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.to_owned();
     let module_url_specified = module_specifier.to_string();
-    let global_state = {
+    let program_state = {
       let state = op_state.borrow();
-      state.borrow::<Arc<GlobalState>>().clone()
+      state.borrow::<Arc<ProgramState>>().clone()
     };
 
     // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
     let fut = async move {
-      let compiled_module = global_state
+      let compiled_module = program_state
         .fetch_compiled_module(module_specifier, maybe_referrer)
         .await?;
       Ok(deno_core::ModuleSource {
@@ -130,7 +130,7 @@ impl ModuleLoader for CliModuleLoader {
     } else {
       state.borrow::<Permissions>().clone()
     };
-    let global_state = state.borrow::<Arc<GlobalState>>().clone();
+    let program_state = state.borrow::<Arc<ProgramState>>().clone();
     drop(state);
 
     // TODO(bartlomieju): I'm not sure if it's correct to ignore
@@ -144,7 +144,7 @@ impl ModuleLoader for CliModuleLoader {
 
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
-      global_state
+      program_state
         .prepare_module_load(
           module_specifier,
           maybe_referrer,

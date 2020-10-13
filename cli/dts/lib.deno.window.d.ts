@@ -7,7 +7,8 @@
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 
-declare interface Window extends EventTarget {
+declare class Window extends EventTarget {
+  new(): Window;
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
   onload: ((this: Window, ev: Event) => any) | null;

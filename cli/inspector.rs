@@ -826,6 +826,7 @@ pub struct InspectorSession {
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
+  notification_queue: Vec<Value>,
 }
 
 impl Deref for InspectorSession {
@@ -868,8 +869,12 @@ impl v8::inspector::ChannelImpl for InspectorSession {
 
   fn send_notification(
     &mut self,
-    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
+    let raw_message = message.unwrap().string().to_string();
+    let message = serde_json::from_str(&raw_message).unwrap();
+
+    self.notification_queue.push(message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
@@ -890,13 +895,20 @@ impl InspectorSession {
       let response_tx_map = HashMap::new();
       let next_message_id = 0;
 
+      let notification_queue = Vec::new();
+
       Self {
         v8_channel,
         v8_session,
         response_tx_map,
         next_message_id,
+        notification_queue,
       }
     })
+  }
+
+  pub fn notifications(&mut self) -> Vec<Value> {
+    self.notification_queue.split_off(0)
   }
 
   pub async fn post_message(
