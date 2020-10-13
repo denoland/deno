@@ -12,7 +12,6 @@ use regex::Captures;
 use regex::Regex;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
-use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
@@ -26,7 +25,6 @@ use std::sync::Mutex;
 #[derive(Completer, Helper, Hinter)]
 struct Helper {
   highlighter: LineHighlighter,
-  validator: MatchingBracketValidator,
 }
 
 impl Validator for Helper {
@@ -234,7 +232,6 @@ pub async fn run(
 
   let helper = Helper {
     highlighter: LineHighlighter::new(),
-    validator: MatchingBracketValidator::new(),
   };
 
   let editor = Arc::new(Mutex::new(Editor::new()));
