@@ -1,12 +1,17 @@
 import type { Algorithm } from "./algorithm.ts";
-import { convertHexToBase64url } from "./_util.ts";
 import { HmacSha256 } from "../hash/sha256.ts";
 import { HmacSha512 } from "../hash/sha512.ts";
+import { encode as convertUint8ArrayToBase64url } from "../encoding/base64url.ts";
+import { decodeString as convertHexToUint8Array } from "../encoding/hex.ts";
+
+export function convertHexToBase64url(input: string): string {
+  return convertUint8ArrayToBase64url(convertHexToUint8Array(input));
+}
 
 function encrypt(
   alg: Algorithm | "none",
   key: string,
-  message: string,
+  message: string
 ): string {
   switch (alg) {
     case "none":
@@ -16,16 +21,14 @@ function encrypt(
     case "HS512":
       return new HmacSha512(key).update(message).toString();
     default:
-      throw new RangeError(
-        `algorithm '${alg}' in header is not supported`,
-      );
+      throw new RangeError(`algorithm '${alg}' in header is not supported`);
   }
 }
 
 export async function create(
   algorithm: Algorithm,
   key: string,
-  input: string,
+  input: string
 ): Promise<string> {
   return convertHexToBase64url(await encrypt(algorithm, key, input));
 }
@@ -41,5 +44,5 @@ export async function verify({
   alg: Algorithm | "none";
   signingInput: string;
 }): Promise<boolean> {
-  return signature === await encrypt(alg, key, signingInput);
+  return signature === (await encrypt(alg, key, signingInput));
 }

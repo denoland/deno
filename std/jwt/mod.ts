@@ -1,6 +1,5 @@
 import type { Algorithm } from "./algorithm.ts";
-import { convertStringToBase64url } from "./_util.ts";
-import { convertBase64urlToUint8Array } from "./base64/base64url.ts";
+import * as base64url from "../encoding/base64url.ts";
 import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 import {
   create as createSignature,
@@ -48,12 +47,12 @@ function isExpired(exp: number, leeway = 0): boolean {
  */
 export function setExpiration(exp: number | Date): number {
   return Math.round(
-    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
+    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000
   );
 }
 
 export function decode(
-  jwt: string,
+  jwt: string
 ): {
   header: unknown;
   payload: unknown;
@@ -61,7 +60,7 @@ export function decode(
 } {
   const parsedArray = jwt
     .split(".")
-    .map(convertBase64urlToUint8Array)
+    .map(base64url.decode)
     .map((uint8Array, index) =>
       index === 2
         ? convertUint8ArrayToHex(uint8Array)
@@ -85,8 +84,7 @@ export function isTokenObject(object: TokenObject): object is TokenObject {
   return (
     typeof object?.signature === "string" &&
     typeof object?.header?.alg === "string" &&
-    (typeof object?.payload === "object" &&
-        object?.payload?.exp
+    (typeof object?.payload === "object" && object?.payload?.exp
       ? typeof object.payload.exp === "number"
       : true)
   );
@@ -95,9 +93,11 @@ export function isTokenObject(object: TokenObject): object is TokenObject {
 export async function verify(
   jwt: string,
   key: string,
-  { algorithm = "HS512" }: {
+  {
+    algorithm = "HS512",
+  }: {
     algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
-  } = {},
+  } = {}
 ): Promise<Payload> {
   const obj = decode(jwt) as TokenObject;
 
@@ -106,7 +106,8 @@ export async function verify(
   }
 
   if (
-    obj?.payload !== null && typeof obj?.payload === "object" &&
+    obj?.payload !== null &&
+    typeof obj?.payload === "object" &&
     "exp" in obj.payload &&
     isExpired(obj.payload.exp!, 1)
   ) {
@@ -117,30 +118,24 @@ export async function verify(
     throw new Error(`algorithms do not match`);
   }
 
-  const {
-    header,
-    payload,
-    signature,
-  } = obj;
+  const { header, payload, signature } = obj;
 
   /*
-     * The "crit" (critical) Header Parameter indicates that extensions to this
-     * specification and/or [JWA] are being used that MUST be understood and
-     * processed. (JWS §4.1.11)
-     */
+   * The "crit" (critical) Header Parameter indicates that extensions to this
+   * specification and/or [JWA] are being used that MUST be understood and
+   * processed. (JWS §4.1.11)
+   */
   if ("crit" in obj.header) {
-    throw new Error(
-      "implementation does not process 'crit' header parameter",
-    );
+    throw new Error("implementation does not process 'crit' header parameter");
   }
 
   if (
-    !await verifySignature({
+    !(await verifySignature({
       signature,
       key,
       alg: header.alg,
       signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
-    })
+    }))
   ) {
     throw new Error("signatures do not match");
   }
@@ -148,27 +143,24 @@ export async function verify(
   return payload;
 }
 
-function createSigningInput(
-  header: Header,
-  payload: Payload,
-): string {
-  return `${
-    convertStringToBase64url(
-      JSON.stringify(header),
+function createSigningInput(header: Header, payload: Payload): string {
+  return `${base64url.encode(
+    new TextEncoder().encode(JSON.stringify(header))
+  )}.${base64url.encode(
+    new TextEncoder().encode(
+      typeof payload === "string" ? payload : JSON.stringify(payload)
     )
-  }.${
-    convertStringToBase64url(
-      typeof payload === "string" ? payload : JSON.stringify(payload),
-    )
-  }`;
+  )}`;
 }
 
 export async function create(
   payload: Payload,
   key: string,
-  { header = { alg: "HS512", typ: "JWT" } }: {
+  {
+    header = { alg: "HS512", typ: "JWT" },
+  }: {
     header?: Header;
-  } = {},
+  } = {}
 ): Promise<string> {
   const signingInput = createSigningInput(header, payload);
   const signature = await createSignature(header.alg, key, signingInput);
