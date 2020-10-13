@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
-
+use deno_crypto;
 fn create_snapshot(
   mut js_runtime: JsRuntime,
   snapshot_path: &Path,
@@ -16,6 +16,7 @@ fn create_snapshot(
 ) {
   deno_web::init(&mut js_runtime);
   deno_fetch::init(&mut js_runtime);
+  deno_crypto::init(&mut js_runtime);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
