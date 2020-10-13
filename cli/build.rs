@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
-use deno_crypto;
+
 fn create_snapshot(
   mut js_runtime: JsRuntime,
   snapshot_path: &Path,
