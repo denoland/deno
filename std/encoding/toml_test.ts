@@ -441,3 +441,28 @@ Deno.test({
     assertEquals(actual, expected);
   },
 });
+
+Deno.test({
+  name: "[TOML] Inline Array of Inline Table",
+  fn(): void {
+    const expected = {
+      inlineArray: {
+        string: [{ var: "a string" }],
+        my_points: [
+          { x: 1, y: 2, z: 3 },
+          { x: 7, y: 8, z: 9 },
+          { x: 2, y: 4, z: 8 },
+        ],
+        points: [
+          { x: 1, y: 2, z: 3 },
+          { x: 7, y: 8, z: 9 },
+          { x: 2, y: 4, z: 8 },
+        ],
+      },
+    };
+    const actual = parseFile(
+      path.join(testdataDir, "inlineArrayOfInlineTable.toml"),
+    );
+    assertEquals(actual, expected);
+  },
+});
