@@ -31,11 +31,23 @@ pub struct EmittedFile {
   pub media_type: MediaType,
 }
 
+/// A structure representing a request to be sent to the tsc runtime.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Request {
+  /// The TypeScript compiler options which will be serialized and sent to
+  /// tsc.
   pub config: TsConfig,
+  /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
+  #[serde(skip_serializing)]
+  pub graph: Rc<RefCell<Graph2>>,
+  #[serde(skip_serializing)]
+  pub hash_data: Vec<Vec<u8>>,
+  #[serde(skip_serializing)]
+  pub maybe_tsbuildinfo: Option<String>,
+  /// A vector of strings that represent the root/entry point modules for the
+  /// program.
   pub root_names: Vec<String>,
 }
 
@@ -223,12 +235,12 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!(true))
 }
 
+/// Execute a request on the supplied snapshot, returning a response which
+/// contains information, like any emitted files, diagnostics, statistics and
+/// optionally an updated TypeScript build info.
 pub fn exec(
-  request: Request,
   snapshot: Snapshot,
-  graph: Rc<RefCell<Graph2>>,
-  hash_data: Vec<Vec<u8>>,
-  maybe_tsbuildinfo: Option<String>,
+  request: Request,
 ) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(snapshot),
@@ -238,7 +250,11 @@ pub fn exec(
   {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(graph, hash_data, maybe_tsbuildinfo));
+    op_state.put(State::new(
+      request.graph.clone(),
+      request.hash_data.clone(),
+      request.maybe_tsbuildinfo.clone(),
+    ));
   }
 
   runtime.register_op("op_create_hash", op(create_hash));
@@ -557,12 +573,14 @@ mod tests {
     }));
     let request = Request {
       config,
-      debug: true,
+      debug: false,
+      graph,
+      hash_data,
+      maybe_tsbuildinfo: None,
       root_names: vec!["https://deno.land/x/a.ts".to_string()],
     };
-    let actual =
-      exec(request, js::compiler_isolate_init(), graph, hash_data, None)
-        .expect("exec should have not errored");
+    let actual = exec(js::compiler_isolate_init(), request)
+      .expect("exec should have not errored");
     assert!(actual.diagnostics.0.is_empty());
     assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
