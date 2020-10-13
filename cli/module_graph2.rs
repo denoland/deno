@@ -373,8 +373,8 @@ impl Module {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Stats(Vec<(String, u128)>);
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Stats(pub Vec<(String, u128)>);
 
 impl<'de> Deserialize<'de> for Stats {
   fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
@@ -572,6 +572,27 @@ impl Graph2 {
     Ok(())
   }
 
+  pub fn get_media_type(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    if let Some(module) = self.modules.get(specifier) {
+      Some(module.media_type)
+    } else {
+      None
+    }
+  }
+
+  /// Get the source for a given module specifier.  If the module is not part
+  /// of the graph, the result will be `None`.
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if let Some(module) = self.modules.get(specifier) {
+      Some(module.source.clone())
+    } else {
+      None
+    }
+  }
+
   /// Verify the subresource integrity of the graph based upon the optional
   /// lockfile, updating the lockfile with any missing resources.  This will
   /// error if any of the resources do not match their lock status.
@@ -593,6 +614,56 @@ impl Graph2 {
     }
 
     Ok(())
+  }
+
+  /// Given a string specifier and a referring module specifier, provide the
+  /// resulting module specifier and media type for the module that is part of
+  /// the graph.
+  pub fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    if !self.modules.contains_key(referrer) {
+      return Err(MissingSpecifier(referrer.to_owned()).into());
+    }
+    let module = self.modules.get(referrer).unwrap();
+    if !module.dependencies.contains_key(specifier) {
+      return Err(
+        MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
+      );
+    }
+    let dependency = module.dependencies.get(specifier).unwrap();
+    // If there is a @deno-types pragma that impacts the dependency, then the
+    // maybe_type property will be set with that specifier, otherwise we use the
+    // specifier that point to the runtime code.
+    let resolved_specifier =
+      if let Some(type_specifier) = dependency.maybe_type.clone() {
+        type_specifier
+      } else if let Some(code_specifier) = dependency.maybe_code.clone() {
+        code_specifier
+      } else {
+        return Err(
+          MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
+        );
+      };
+    if !self.modules.contains_key(&resolved_specifier) {
+      return Err(
+        MissingDependency(referrer.to_owned(), resolved_specifier.to_string())
+          .into(),
+      );
+    }
+    let dep_module = self.modules.get(&resolved_specifier).unwrap();
+    // In the case that there is a X-TypeScript-Types or a triple-slash types,
+    // then the `maybe_types` specifier will be populated and we should use that
+    // instead.
+    let result = if let Some((_, types)) = dep_module.maybe_types.clone() {
+      types
+    } else {
+      resolved_specifier
+    };
+
+    Ok(result)
   }
 
   /// Transpile (only transform) the graph, updating any emitted modules
@@ -798,7 +869,7 @@ impl GraphBuilder2 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use super::*;
 
   use deno_core::futures::future;
