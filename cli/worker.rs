@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::fmt_errors::JsError;
-use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics::Metrics;
+use crate::module_loader::CliModuleLoader;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::CliModuleLoader;
+use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
@@ -110,11 +110,11 @@ impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Snapshot,
-    global_state: Arc<GlobalState>,
+    program_state: Arc<ProgramState>,
     module_loader: Rc<CliModuleLoader>,
     is_main: bool,
   ) -> Self {
-    let global_state_ = global_state.clone();
+    let global_state_ = program_state.clone();
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
@@ -131,12 +131,12 @@ impl Worker {
     }
 
     let inspector =
-      if let Some(inspector_server) = &global_state.maybe_inspector_server {
+      if let Some(inspector_server) = &program_state.maybe_inspector_server {
         Some(DenoInspector::new(
           &mut js_runtime,
           Some(inspector_server.clone()),
         ))
-      } else if global_state.flags.coverage || global_state.flags.repl {
+      } else if program_state.flags.coverage || program_state.flags.repl {
         Some(DenoInspector::new(&mut js_runtime, None))
       } else {
         None
@@ -144,7 +144,7 @@ impl Worker {
 
     let should_break_on_first_statement = inspector.is_some()
       && is_main
-      && global_state.flags.inspect_brk.is_some();
+      && program_state.flags.inspect_brk.is_some();
 
     let (internal_channels, external_channels) = create_channels();
 
@@ -250,14 +250,14 @@ pub struct MainWorker(Worker);
 
 impl MainWorker {
   pub fn new(
-    global_state: &Arc<GlobalState>,
+    program_state: &Arc<ProgramState>,
     main_module: ModuleSpecifier,
   ) -> Self {
-    let loader = CliModuleLoader::new(global_state.maybe_import_map.clone());
+    let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
     let mut worker = Worker::new(
       "main".to_string(),
       js::deno_isolate_init(),
-      global_state.clone(),
+      program_state.clone(),
       loader,
       true,
     );
@@ -268,15 +268,15 @@ impl MainWorker {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<GlobalState>>(global_state.clone());
-        op_state.put::<Permissions>(global_state.permissions.clone());
+        op_state.put::<Arc<ProgramState>>(program_state.clone());
+        op_state.put::<Permissions>(program_state.permissions.clone());
       }
 
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(js_runtime, global_state.flags.ca_file.as_deref());
+      ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime);
-      ops::random::init(js_runtime, global_state.flags.seed);
+      ops::random::init(js_runtime, program_state.flags.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -399,14 +399,14 @@ impl WebWorker {
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
-    global_state: Arc<GlobalState>,
+    program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
   ) -> Self {
     let loader = CliModuleLoader::new_for_worker();
     let mut worker = Worker::new(
       name,
       js::deno_isolate_init(),
-      global_state.clone(),
+      program_state.clone(),
       loader,
       false,
     );
@@ -439,13 +439,13 @@ impl WebWorker {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<GlobalState>>(global_state.clone());
+        op_state.put::<Arc<ProgramState>>(program_state.clone());
         op_state.put::<Permissions>(permissions);
       }
 
       ops::web_worker::init(js_runtime, sender, handle);
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(js_runtime, global_state.flags.ca_file.as_deref());
+      ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
@@ -467,7 +467,7 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::random::init(js_runtime, global_state.flags.seed);
+        ops::random::init(js_runtime, program_state.flags.seed);
         ops::runtime_compiler::init(js_runtime);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
@@ -579,7 +579,7 @@ mod tests {
   use super::*;
   use crate::flags::DenoSubcommand;
   use crate::flags::Flags;
-  use crate::global_state::GlobalState;
+  use crate::program_state::ProgramState;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
   use deno_core::serde_json::json;
@@ -593,8 +593,9 @@ mod tests {
       },
       ..Default::default()
     };
-    let global_state = GlobalState::mock(vec!["deno".to_string()], Some(flags));
-    MainWorker::new(&global_state, main_module)
+    let program_state =
+      ProgramState::mock(vec!["deno".to_string()], Some(flags));
+    MainWorker::new(&program_state, main_module)
   }
 
   #[tokio::test]
@@ -680,12 +681,12 @@ mod tests {
   fn create_test_web_worker() -> WebWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let global_state = GlobalState::mock(vec!["deno".to_string()], None);
+    let program_state = ProgramState::mock(vec!["deno".to_string()], None);
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
-      global_state,
+      program_state,
       false,
     );
     worker

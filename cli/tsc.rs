@@ -8,12 +8,12 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
-use crate::global_state::GlobalState;
 use crate::js;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
 use crate::tsc_config;
 use crate::version;
@@ -449,7 +449,7 @@ impl TsCompiler {
   /// compiler.
   pub async fn compile(
     &self,
-    global_state: &Arc<GlobalState>,
+    program_state: &Arc<ProgramState>,
     source_file: &SourceFile,
     target: TargetLib,
     module_graph: &ModuleGraph,
@@ -533,7 +533,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str = execute_in_tsc(global_state.clone(), req_msg)?;
+    let json_str = execute_in_tsc(program_state.clone(), req_msg)?;
 
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
@@ -554,7 +554,7 @@ impl TsCompiler {
   /// all the dependencies for that module.
   pub async fn bundle(
     &self,
-    global_state: &Arc<GlobalState>,
+    program_state: &Arc<ProgramState>,
     module_specifier: ModuleSpecifier,
   ) -> Result<String, AnyError> {
     debug!(
@@ -565,7 +565,7 @@ impl TsCompiler {
     let permissions = Permissions::allow_all();
     let mut module_graph_loader = ModuleGraphLoader::new(
       self.file_fetcher.clone(),
-      global_state.maybe_import_map.clone(),
+      program_state.maybe_import_map.clone(),
       permissions.clone(),
       false,
       true,
@@ -576,7 +576,7 @@ impl TsCompiler {
     let module_graph = module_graph_loader.get_graph();
     let module_graph_files = module_graph.values().collect::<Vec<_>>();
     // Check integrity of every file in module graph
-    if let Some(ref lockfile) = global_state.lockfile {
+    if let Some(ref lockfile) = program_state.lockfile {
       let mut g = lockfile.lock().unwrap();
 
       for graph_file in &module_graph_files {
@@ -592,7 +592,7 @@ impl TsCompiler {
         }
       }
     }
-    if let Some(ref lockfile) = global_state.lockfile {
+    if let Some(ref lockfile) = program_state.lockfile {
       let g = lockfile.lock().unwrap();
       g.write()?;
     }
@@ -602,7 +602,7 @@ impl TsCompiler {
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
     let performance =
-      matches!(global_state.flags.log_level, Some(Level::Debug));
+      matches!(program_state.flags.log_level, Some(Level::Debug));
     let unstable = self.flags.unstable;
 
     let mut lib = if target == "main" {
@@ -649,7 +649,7 @@ impl TsCompiler {
 
     let req_msg = j.to_string();
 
-    let json_str = execute_in_tsc(global_state.clone(), req_msg)?;
+    let json_str = execute_in_tsc(program_state.clone(), req_msg)?;
 
     let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
 
@@ -945,7 +945,7 @@ struct CreateHashArgs {
 }
 
 fn execute_in_tsc(
-  global_state: Arc<GlobalState>,
+  program_state: Arc<ProgramState>,
   req: String,
 ) -> Result<String, AnyError> {
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -953,7 +953,7 @@ fn execute_in_tsc(
     ..Default::default()
   });
 
-  let debug_flag = global_state
+  let debug_flag = program_state
     .flags
     .log_level
     .map_or(false, |l| l == log::Level::Debug);
@@ -1006,7 +1006,7 @@ fn execute_in_tsc(
 }
 
 async fn create_runtime_module_graph(
-  global_state: &Arc<GlobalState>,
+  program_state: &Arc<ProgramState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
@@ -1014,7 +1014,7 @@ async fn create_runtime_module_graph(
 ) -> Result<(Vec<String>, ModuleGraph), AnyError> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
-    global_state.file_fetcher.clone(),
+    program_state.file_fetcher.clone(),
     None,
     permissions,
     false,
@@ -1057,7 +1057,7 @@ fn extract_js_error(error: AnyError) -> AnyError {
 
 /// This function is used by `Deno.compile()` API.
 pub async fn runtime_compile(
-  global_state: &Arc<GlobalState>,
+  program_state: &Arc<ProgramState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
@@ -1082,7 +1082,7 @@ pub async fn runtime_compile(
     vec![]
   };
 
-  let unstable = global_state.flags.unstable;
+  let unstable = program_state.flags.unstable;
 
   let mut lib = vec![];
   if let Some(user_libs) = user_options["lib"].take().as_array() {
@@ -1119,7 +1119,7 @@ pub async fn runtime_compile(
   tsc_config::json_merge(&mut compiler_options, &json!({ "lib": lib }));
 
   let (root_names, module_graph) = create_runtime_module_graph(
-    &global_state,
+    &program_state,
     permissions.clone(),
     root_name,
     sources,
@@ -1138,10 +1138,10 @@ pub async fn runtime_compile(
   })
   .to_string();
 
-  let compiler = global_state.ts_compiler.clone();
+  let compiler = program_state.ts_compiler.clone();
 
   let json_str =
-    execute_in_tsc(global_state.clone(), req_msg).map_err(extract_js_error)?;
+    execute_in_tsc(program_state.clone(), req_msg).map_err(extract_js_error)?;
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
   if response.diagnostics.0.is_empty() && sources.is_none() {
@@ -1156,7 +1156,7 @@ pub async fn runtime_compile(
 
 /// This function is used by `Deno.bundle()` API.
 pub async fn runtime_bundle(
-  global_state: &Arc<GlobalState>,
+  program_state: &Arc<ProgramState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
@@ -1182,7 +1182,7 @@ pub async fn runtime_bundle(
   };
 
   let (root_names, module_graph) = create_runtime_module_graph(
-    &global_state,
+    &program_state,
     permissions.clone(),
     root_name,
     sources,
@@ -1192,7 +1192,7 @@ pub async fn runtime_bundle(
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
-  let unstable = global_state.flags.unstable;
+  let unstable = program_state.flags.unstable;
 
   let mut lib = vec![];
   if let Some(user_libs) = user_options["lib"].take().as_array() {
@@ -1248,7 +1248,7 @@ pub async fn runtime_bundle(
   .to_string();
 
   let json_str =
-    execute_in_tsc(global_state.clone(), req_msg).map_err(extract_js_error)?;
+    execute_in_tsc(program_state.clone(), req_msg).map_err(extract_js_error)?;
   let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
@@ -1258,7 +1258,7 @@ pub async fn runtime_bundle(
 
 /// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile(
-  global_state: Arc<GlobalState>,
+  program_state: Arc<ProgramState>,
   sources: &HashMap<String, String>,
   maybe_options: &Option<String>,
 ) -> Result<Value, AnyError> {
@@ -1285,7 +1285,7 @@ pub async fn runtime_transpile(
   .to_string();
 
   let json_str =
-    execute_in_tsc(global_state, req_msg).map_err(extract_js_error)?;
+    execute_in_tsc(program_state, req_msg).map_err(extract_js_error)?;
   let v = serde_json::from_str::<Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
@@ -1451,8 +1451,8 @@ mod tests {
   use super::*;
   use crate::deno_dir;
   use crate::fs as deno_fs;
-  use crate::global_state::GlobalState;
   use crate::http_cache;
+  use crate::program_state::ProgramState;
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
   use tempfile::TempDir;
@@ -1533,7 +1533,7 @@ mod tests {
       deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
         .unwrap();
     let http_cache = http_cache::HttpCache::new(&dir.root.join("deps"));
-    let mock_state = GlobalState::mock(
+    let mock_state = ProgramState::mock(
       vec![String::from("deno"), String::from("hello.ts")],
       None,
     );
@@ -1593,7 +1593,7 @@ mod tests {
     let module_name =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
 
-    let mock_state = GlobalState::mock(
+    let mock_state = ProgramState::mock(
       vec![
         String::from("deno"),
         p.to_string_lossy().into(),

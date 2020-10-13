@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::fmt_errors::JsError;
-use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::tokio_util::create_basic_runtime;
 use crate::worker::WebWorker;
 use crate::worker::WebWorkerHandle;
@@ -48,7 +48,7 @@ pub type WorkerId = u32;
 fn create_web_worker(
   worker_id: u32,
   name: String,
-  global_state: &Arc<GlobalState>,
+  program_state: &Arc<ProgramState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
@@ -57,7 +57,7 @@ fn create_web_worker(
     name.clone(),
     permissions,
     specifier,
-    global_state.clone(),
+    program_state.clone(),
     has_deno_namespace,
   );
 
@@ -91,13 +91,13 @@ fn create_web_worker(
 fn run_worker_thread(
   worker_id: u32,
   name: String,
-  global_state: &Arc<GlobalState>,
+  program_state: &Arc<ProgramState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), AnyError> {
-  let global_state = global_state.clone();
+  let program_state = program_state.clone();
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
 
@@ -111,7 +111,7 @@ fn run_worker_thread(
     let result = create_web_worker(
       worker_id,
       name,
-      &global_state,
+      &program_state,
       permissions,
       specifier.clone(),
       has_deno_namespace,
@@ -211,7 +211,7 @@ fn op_create_worker(
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
-  let cli_state = super::global_state(state);
+  let cli_state = super::program_state(state);
 
   let (join_handle, worker_handle) = run_worker_thread(
     worker_id,

@@ -26,8 +26,8 @@ pub mod web_worker;
 pub mod websocket;
 pub mod worker_host;
 
-use crate::global_state::GlobalState;
 use crate::metrics::metrics_op;
+use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
@@ -59,22 +59,22 @@ where
 
 /// Helper for checking unstable features. Used for sync ops.
 pub fn check_unstable(state: &OpState, api_name: &str) {
-  state.borrow::<Arc<GlobalState>>().check_unstable(api_name)
+  state.borrow::<Arc<ProgramState>>().check_unstable(api_name)
 }
 
 /// Helper for checking unstable features. Used for async ops.
 pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
   let state = state.borrow();
-  state.borrow::<Arc<GlobalState>>().check_unstable(api_name)
+  state.borrow::<Arc<ProgramState>>().check_unstable(api_name)
 }
 
 /// Helper for extracting the commonly used state. Used for sync ops.
-pub fn global_state(state: &OpState) -> Arc<GlobalState> {
-  state.borrow::<Arc<GlobalState>>().clone()
+pub fn program_state(state: &OpState) -> Arc<ProgramState> {
+  state.borrow::<Arc<ProgramState>>().clone()
 }
 
 /// Helper for extracting the commonly used state. Used for async ops.
-pub fn global_state2(state: &Rc<RefCell<OpState>>) -> Arc<GlobalState> {
+pub fn global_state2(state: &Rc<RefCell<OpState>>) -> Arc<ProgramState> {
   let state = state.borrow();
-  state.borrow::<Arc<GlobalState>>().clone()
+  state.borrow::<Arc<ProgramState>>().clone()
 }

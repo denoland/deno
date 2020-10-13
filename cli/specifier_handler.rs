@@ -3,9 +3,9 @@
 use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
@@ -175,13 +175,13 @@ pub struct FetchHandler {
 
 impl FetchHandler {
   pub fn new(
-    global_state: &Arc<GlobalState>,
+    program_state: &Arc<ProgramState>,
     permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
     let disk_cache = deno_dir.gen_cache;
-    let file_fetcher = global_state.file_fetcher.clone();
+    let file_fetcher = program_state.file_fetcher.clone();
 
     Ok(FetchHandler {
       disk_cache,

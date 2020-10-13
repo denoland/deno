@@ -785,7 +785,7 @@ impl GraphBuilder2 {
   /// graph.
   ///
   /// TODO(@kitsonk) this should really be owned by the graph, but currently
-  /// the lockfile is behind a mutex in global_state, which makes it really
+  /// the lockfile is behind a mutex in program_state, which makes it really
   /// hard to not pass around as a reference, which if the Graph owned it, it
   /// would need lifetime parameters and lifetime parameters are 😭
   pub fn get_graph(
