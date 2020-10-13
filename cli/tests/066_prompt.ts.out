@@ -1,0 +1,8 @@
+[WILDCARD]What is your name? [Jane Doe] Your name is John Doe.
+What is your name? [Jane Doe] Your name is Jane Doe.
+Prompt Your input is foo.
+Question 0 [y/N] Your answer is true
+Question 1 [y/N] Your answer is false
+Question 2 [y/N] Your answer is false
+Confirm [y/N] Your answer is false
+Hi [Enter] Alert [Enter] The end of test
