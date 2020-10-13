@@ -100,10 +100,7 @@ pub fn op_webgpu_compute_pass_end_pass(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.command_encoder_run_compute_pass(
-    *command_encoder,
-    compute_pass,
-  );
+  instance.command_encoder_run_compute_pass(*command_encoder, compute_pass);
 
   Ok(json!({}))
 }

@@ -4,12 +4,12 @@ mod binding;
 mod buffer;
 mod bundle;
 mod command_encoder;
+mod compute_pass;
 mod pipeline;
+mod render_pass;
 mod sampler;
 mod shader;
 mod texture;
-mod render_pass;
-mod compute_pass;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;

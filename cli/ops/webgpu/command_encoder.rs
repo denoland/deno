@@ -278,7 +278,8 @@ pub fn op_webgpu_command_encoder_push_debug_group(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.command_encoder_push_debug_group(*command_encoder, &args.group_label)?;
+  instance
+    .command_encoder_push_debug_group(*command_encoder, &args.group_label)?;
 
   Ok(json!({}))
 }
@@ -335,7 +336,10 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.command_encoder_insert_debug_marker(*command_encoder, &args.marker_label)?;
+  instance.command_encoder_insert_debug_marker(
+    *command_encoder,
+    &args.marker_label,
+  )?;
 
   Ok(json!({}))
 }

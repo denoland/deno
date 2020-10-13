@@ -452,7 +452,13 @@
       return new GPUComputePassEncoder(this.#rid, rid, descriptor.label);
     }
 
-    copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size) {} // TODO: buffer
+    copyBufferToBuffer(
+      source,
+      sourceOffset,
+      destination,
+      destinationOffset,
+      size,
+    ) {} // TODO: buffer
 
     copyBufferToTexture(source, destination, copySize) {} // TODO: buffer
 
@@ -793,7 +799,6 @@
         markerLabel,
       });
     }
-
 
     setPipeline(pipeline) {
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_pipeline", {

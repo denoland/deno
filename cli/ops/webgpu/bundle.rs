@@ -85,7 +85,9 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   let render_bundle = instance.render_bundle_encoder_finish(
@@ -117,11 +119,14 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderPushDebugGroupArgs = serde_json::from_value(args)?;
+  let args: RenderBundleEncoderPushDebugGroupArgs =
+    serde_json::from_value(args)?;
 
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -145,15 +150,20 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderPopDebugGroupArgs = serde_json::from_value(args)?;
+  let args: RenderBundleEncoderPopDebugGroupArgs =
+    serde_json::from_value(args)?;
 
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
-    wgc::command::bundle_ffi::wgpu_render_bundle_pop_debug_group(render_bundle_encoder);
+    wgc::command::bundle_ffi::wgpu_render_bundle_pop_debug_group(
+      render_bundle_encoder,
+    );
   }
 
   Ok(json!({}))
@@ -171,11 +181,14 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderInsertDebugMarkerArgs = serde_json::from_value(args)?;
+  let args: RenderBundleEncoderInsertDebugMarkerArgs =
+    serde_json::from_value(args)?;
 
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -204,7 +217,9 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   wgc::command::bundle_ffi::wgpu_render_bundle_set_pipeline(
@@ -212,7 +227,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
     *state
       .resource_table
       .get_mut::<wgc::id::RenderPipelineId>(args.pipeline)
-      .ok_or_else(bad_resource_id)?
+      .ok_or_else(bad_resource_id)?,
   );
 
   Ok(json!({}))
@@ -237,7 +252,9 @@ pub fn op_webgpu_render_bundle_encoder_draw(
 
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   wgc::command::bundle_ffi::wgpu_render_bundle_draw(
@@ -271,7 +288,9 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
 
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   wgc::command::bundle_ffi::wgpu_render_bundle_draw_indexed(

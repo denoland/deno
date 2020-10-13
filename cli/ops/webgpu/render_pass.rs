@@ -102,12 +102,13 @@ pub fn op_webgpu_render_pass_set_blend_color(
 
   wgc::command::render_ffi::wgpu_render_pass_set_blend_color(
     render_pass,
-    &wgt::Color { // TODO
+    &wgt::Color {
+      // TODO
       r: 0.0,
       g: 0.0,
       b: 0.0,
       a: 0.0,
-    }
+    },
   );
 
   Ok(json!({}))
@@ -165,7 +166,6 @@ pub fn op_webgpu_render_pass_execute_bundles(
       // TODO
     );
   }
-  wgc::command::render_ffi::end_pass
 
   Ok(json!({}))
 }
@@ -198,10 +198,7 @@ pub fn op_webgpu_render_pass_end_pass(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.command_encoder_run_render_pass(
-    *command_encoder,
-    render_pass,
-  )?;
+  instance.command_encoder_run_render_pass(*command_encoder, render_pass)?;
 
   Ok(json!({}))
 }
