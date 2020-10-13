@@ -9,6 +9,7 @@ mod sampler;
 mod shader;
 mod texture;
 mod render_pass;
+mod compute_pass;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -182,6 +183,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(
     rt,
+    "op_webgpu_render_pass_end_pass",
+    render_pass::op_webgpu_render_pass_end_pass,
+  );
+  super::reg_json_sync(
+    rt,
     "op_webgpu_render_pass_push_debug_group",
     render_pass::op_webgpu_render_pass_push_debug_group,
   );
@@ -209,6 +215,37 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_render_pass_draw_indexed",
     render_pass::op_webgpu_render_pass_draw_indexed,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_set_pipeline",
+    compute_pass::op_webgpu_compute_pass_set_pipeline,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_dispatch",
+    compute_pass::op_webgpu_compute_pass_dispatch,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_end_pass",
+    compute_pass::op_webgpu_compute_pass_end_pass,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_push_debug_group",
+    compute_pass::op_webgpu_compute_pass_push_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_pop_debug_group",
+    compute_pass::op_webgpu_compute_pass_pop_debug_group,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_insert_debug_marker",
+    compute_pass::op_webgpu_compute_pass_insert_debug_marker,
   );
 
   super::reg_json_sync(

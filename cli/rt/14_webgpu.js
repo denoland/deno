@@ -190,7 +190,9 @@
         },
       });
 
-      return new GPUComputePipeline(rid, descriptor.label);
+      const pipeline = new GPUComputePipeline(rid, descriptor.label);
+      GPUComputePipelineMap.set(pipeline, rid);
+      return pipeline;
     }
 
     createRenderPipeline(descriptor) {
@@ -367,6 +369,7 @@
     }
   }
 
+  const GPUComputePipelineMap = new WeakMap();
   class GPUComputePipeline {
     #rid;
 
@@ -434,7 +437,7 @@
         },
       );
 
-      return new GPURenderPassEncoder(rid, descriptor.label);
+      return new GPURenderPassEncoder(this.#rid, rid, descriptor.label);
     }
 
     beginComputePass(descriptor = {}) {
@@ -447,7 +450,7 @@
         },
       );
 
-      return new GPUComputePassEncoder(rid, descriptor.label);
+      return new GPUComputePassEncoder(this.#rid, rid, descriptor.label);
     }
 
     copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size) {} // TODO: buffer
@@ -516,9 +519,11 @@
   }
 
   class GPURenderPassEncoder {
+    #commandEncoderRid;
     #rid;
 
-    constructor(rid, label) {
+    constructor(commandEncoderRid, rid, label) {
+      this.#commandEncoderRid = commandEncoderRid;
       this.#rid = rid;
       this.label = label ?? null;
     }
@@ -582,7 +587,13 @@
         bundles,
       });
     }
-    endPass() {} // TODO
+    endPass() {
+      core.jsonOpSync("op_webgpu_render_pass_end_pass", {
+        instanceRid,
+        commandEncoderRid: this.#commandEncoderRid,
+        renderPassRid: this.#rid,
+      });
+    }
 
     setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
 
@@ -653,16 +664,30 @@
   }
 
   class GPUComputePassEncoder {
+    #commandEncoderRid;
     #rid;
 
-    constructor(rid, label) {
+    constructor(commandEncoderRid, rid, label) {
+      this.#commandEncoderRid = commandEncoderRid;
       this.#rid = rid;
       this.label = label ?? null;
     }
 
-    setPipeline(pipeline) {} // TODO
-    dispatch(x, y = 1, z = 1) {} // TODO
-    dispatchIndirect(indirectBuffer, indirectOffset) {} // TODO
+    setPipeline(pipeline) {
+      core.jsonOpSync("op_webgpu_compute_pass_set_pipeline", {
+        computePassRid: this.#rid,
+        pipeline: GPUComputePipelineMap.get(pipeline),
+      });
+    }
+    dispatch(x, y = 1, z = 1) {
+      core.jsonOpSync("op_webgpu_compute_pass_dispatch", {
+        computePassRid: this.#rid,
+        x,
+        y,
+        z,
+      });
+    }
+    dispatchIndirect(indirectBuffer, indirectOffset) {} // TODO: buffer
 
     beginPipelineStatisticsQuery(querySet, queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
@@ -675,7 +700,13 @@
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
-    endPass() {} // TODO
+    endPass() {
+      core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
+        instanceRid,
+        commandEncoderRid: this.#commandEncoderRid,
+        computePassRid: this.#rid,
+      });
+    }
 
     setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
 
@@ -687,9 +718,23 @@
       dynamicOffsetsDataLength,
     ) {} // TODO
 
-    pushDebugGroup(groupLabel) {} // TODO
-    popDebugGroup() {} // TODO
-    insertDebugMarker(markerLabel) {} // TODO
+    pushDebugGroup(groupLabel) {
+      core.jsonOpSync("op_webgpu_compute_pass_push_debug_group", {
+        computePassRid: this.#rid,
+        groupLabel,
+      });
+    }
+    popDebugGroup() {
+      core.jsonOpSync("op_webgpu_compute_pass_pop_debug_group", {
+        computePassRid: this.#rid,
+      });
+    }
+    insertDebugMarker(markerLabel) {
+      core.jsonOpSync("op_webgpu_compute_pass_insert_debug_marker", {
+        computePassRid: this.#rid,
+        markerLabel,
+      });
+    }
   }
 
   class GPUCommandBuffer {

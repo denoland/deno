@@ -172,6 +172,42 @@ pub fn op_webgpu_render_pass_execute_bundles(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RenderPassEndPassArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  render_pass_rid: u32,
+}
+
+pub fn op_webgpu_render_pass_end_pass(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassEndPassArgs = serde_json::from_value(args)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let render_pass = state
+    .resource_table
+    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = state
+    .resource_table
+    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  instance.command_encoder_run_render_pass(
+    *command_encoder,
+    render_pass,
+  )?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RenderPassPushDebugGroupArgs {
   render_pass_rid: u32,
   group_label: String,

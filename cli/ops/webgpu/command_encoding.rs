@@ -178,9 +178,8 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let compute_pass = wgc::command::ComputePass::new(*command_encoder);
   // TODO: should accept label
-  instance.command_encoder_run_compute_pass(*command_encoder, &compute_pass);
+  let compute_pass = wgc::command::ComputePass::new(*command_encoder);
 
   let rid = state
     .resource_table
