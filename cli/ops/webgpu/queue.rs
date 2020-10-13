@@ -141,7 +141,7 @@ pub fn op_webgpu_write_texture(
       mip_level: args.destination.mip_level.unwrap_or(0),
       origin: Default::default(),
     },
-    &zero_copy[0][..],
+    &*zero_copy[0],
     &wgt::TextureDataLayout {
       offset: args.data_layout.offset.unwrap_or(0),
       bytes_per_row: args.data_layout.bytes_per_row,

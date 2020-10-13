@@ -176,11 +176,16 @@
     }
 
     createShaderModule(descriptor) {
-      const { rid } = core.jsonOpSync("op_webgpu_create_shader_module", {
-        instanceRid,
-        deviceRid: this.#rid,
-        ...descriptor,
-      });
+      const { rid } = core.jsonOpSync(
+        "op_webgpu_create_shader_module",
+        {
+          instanceRid,
+          deviceRid: this.#rid,
+          label: descriptor.label,
+          code: (typeof descriptor.code === "string") && descriptor.code,
+        },
+        (descriptor.code instanceof Uint32Array) && descriptor.code,
+      );
 
       const shaderModule = new GPUShaderModule(rid, descriptor.label);
       GPUShaderModuleMap.set(shaderModule, rid);
@@ -306,7 +311,6 @@
     }
   }
 
-  // TODO: https://gpuweb.github.io/gpuweb/#buffer-interface
   const GPUBufferMap = new WeakMap();
   class GPUBuffer {
     #rid;
@@ -720,15 +724,38 @@
       });
     }
 
-    setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
-
     setBindGroup(
       index,
       bindGroup,
       dynamicOffsetsData,
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
-    ) {} // TODO
+    ) {
+      const bind = GPUBindGroupMap.get(bindGroup);
+      if (dynamicOffsetsData instanceof Uint32Array) {
+        core.jsonOpSync(
+          "op_webgpu_render_pass_set_bind_group",
+          {
+            renderPassRid: this.#rid,
+            index,
+            bindGroup: bind,
+            dynamicOffsetsDataStart,
+            dynamicOffsetsDataLength,
+          },
+          dynamicOffsetsData,
+        );
+      } else {
+        dynamicOffsetsData ??= [];
+        core.jsonOpSync("op_webgpu_render_pass_set_bind_group", {
+          renderPassRid: this.#rid,
+          index,
+          bindGroup: bind,
+          dynamicOffsetsData,
+          dynamicOffsetsDataStart: 0,
+          dynamicOffsetsDataLength: dynamicOffsetsData.length,
+        });
+      }
+    }
 
     pushDebugGroup(groupLabel) {
       core.jsonOpSync("op_webgpu_render_pass_push_debug_group", {
@@ -867,15 +894,38 @@
       });
     }
 
-    setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
-
     setBindGroup(
       index,
       bindGroup,
       dynamicOffsetsData,
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
-    ) {} // TODO
+    ) {
+      const bind = GPUBindGroupMap.get(bindGroup);
+      if (dynamicOffsetsData instanceof Uint32Array) {
+        core.jsonOpSync(
+          "op_webgpu_compute_pass_set_bind_group",
+          {
+            computePassRid: this.#rid,
+            index,
+            bindGroup: bind,
+            dynamicOffsetsDataStart,
+            dynamicOffsetsDataLength,
+          },
+          dynamicOffsetsData,
+        );
+      } else {
+        dynamicOffsetsData ??= [];
+        core.jsonOpSync("op_webgpu_compute_pass_set_bind_group", {
+          computePassRid: this.#rid,
+          index,
+          bindGroup: bind,
+          dynamicOffsetsData,
+          dynamicOffsetsDataStart: 0,
+          dynamicOffsetsDataLength: dynamicOffsetsData.length,
+        });
+      }
+    }
 
     pushDebugGroup(groupLabel) {
       core.jsonOpSync("op_webgpu_compute_pass_push_debug_group", {
@@ -929,15 +979,38 @@
       return bundle;
     }
 
-    setBindGroup(index, bindGroup, dynamicOffsets = []) {} // TODO
-
     setBindGroup(
       index,
       bindGroup,
       dynamicOffsetsData,
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
-    ) {} // TODO
+    ) {
+      const bind = GPUBindGroupMap.get(bindGroup);
+      if (dynamicOffsetsData instanceof Uint32Array) {
+        core.jsonOpSync(
+          "op_webgpu_render_bundle_encoder_set_bind_group",
+          {
+            renderBundleEncoderRid: this.#rid,
+            index,
+            bindGroup: bind,
+            dynamicOffsetsDataStart,
+            dynamicOffsetsDataLength,
+          },
+          dynamicOffsetsData,
+        );
+      } else {
+        dynamicOffsetsData ??= [];
+        core.jsonOpSync("op_webgpu_render_bundle_encoder_set_bind_group", {
+          renderBundleEncoderRid: this.#rid,
+          index,
+          bindGroup: bind,
+          dynamicOffsetsData,
+          dynamicOffsetsDataStart: 0,
+          dynamicOffsetsDataLength: dynamicOffsetsData.length,
+        });
+      }
+    }
 
     pushDebugGroup(groupLabel) {
       core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {

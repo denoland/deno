@@ -11,6 +11,8 @@ use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::borrow::Cow;
+use std::ops::Deref;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,14 +20,14 @@ struct CreateShaderModuleArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>, // wgpu#977
-  code: String,
-  source_map: (), // TODO: https://gpuweb.github.io/gpuweb/#shader-module-creation
+  code: Option<String>,
+  source_map: (), // not in wgpu
 }
 
 pub fn op_webgpu_create_shader_module(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: CreateShaderModuleArgs = serde_json::from_value(args)?;
 
@@ -40,7 +42,15 @@ pub fn op_webgpu_create_shader_module(
 
   let shader_module = instance.device_create_shader_module(
     *device,
-    wgc::pipeline::ShaderModuleSource, // TODO
+    match args.code {
+      Some(code) => wgc::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
+      None => wgc::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
+        let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
+        assert!(prefix.is_empty());
+        assert!(suffix.is_empty());
+        data
+      })),
+    },
     std::marker::PhantomData,
   )?;
 

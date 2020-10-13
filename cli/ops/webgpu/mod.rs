@@ -204,6 +204,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(
     rt,
+    "op_webgpu_render_pass_set_bind_group",
+    render_pass::op_webgpu_render_pass_set_bind_group,
+  );
+  super::reg_json_sync(
+    rt,
     "op_webgpu_render_pass_push_debug_group",
     render_pass::op_webgpu_render_pass_push_debug_group,
   );
@@ -275,6 +280,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(
     rt,
+    "op_webgpu_compute_pass_set_bind_group",
+    compute_pass::op_webgpu_compute_pass_set_bind_group,
+  );
+  super::reg_json_sync(
+    rt,
     "op_webgpu_compute_pass_push_debug_group",
     compute_pass::op_webgpu_compute_pass_push_debug_group,
   );
@@ -298,6 +308,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_render_bundle_encoder_finish",
     bundle::op_webgpu_render_bundle_encoder_finish,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_set_bind_group",
+    bundle::op_webgpu_render_bundle_encoder_set_bind_group,
   );
   super::reg_json_sync(
     rt,
@@ -359,6 +374,12 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_write_texture",
     queue::op_webgpu_write_texture,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_shader_module",
+    shader::op_webgpu_create_shader_module,
   );
 }
 

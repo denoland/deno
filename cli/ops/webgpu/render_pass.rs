@@ -216,6 +216,53 @@ pub fn op_webgpu_render_pass_end_pass(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RenderPassSetBindGroupArgs {
+  render_pass_rid: u32,
+  index: u32,
+  bind_group: u32,
+  dynamic_offsets_data: Option<[u32]>,
+  dynamic_offsets_data_start: u64,
+  dynamic_offsets_data_length: usize,
+}
+
+pub fn op_webgpu_render_pass_set_bind_group(
+  state: &mut OpState,
+  args: Value,
+  zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassSetBindGroupArgs = serde_json::from_value(args)?;
+
+  let render_pass = state
+    .resource_table
+    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  unsafe {
+    wgc::command::render_ffi::wgpu_render_pass_set_bind_group(
+      render_pass,
+      args.index,
+      *state
+        .resource_table
+        .get_mut::<wgc::id::BindGroupId>(args.bind_group)
+        .ok_or_else(bad_resource_id)?,
+      match args.dynamic_offsets_data {
+        Some(data) => data.as_ptr(),
+        None => unsafe {
+          let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
+          assert!(prefix.is_empty());
+          assert!(suffix.is_empty());
+          data[args.dynamic_offsets_data_start..].as_ptr()
+        }
+      },
+      args.dynamic_offsets_data_length,
+    );
+  }
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RenderPassPushDebugGroupArgs {
   render_pass_rid: u32,
   group_label: String,

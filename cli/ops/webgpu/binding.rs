@@ -77,7 +77,7 @@ pub fn op_webgpu_create_bind_group_layout(
             wgt::BindGroupLayoutEntry {
               binding: entry.binding,
               visibility: wgt::ShaderStage::from_bits(entry.visibility)
-                .unwrap(), // TODO: dont unwrap
+                .unwrap(),
               ty: match entry.kind {
                 &"uniform-buffer" => wgt::BindingType::UniformBuffer {
                   dynamic: entry.has_dynamic_offset.unwrap_or(false),
@@ -98,26 +98,26 @@ pub fn op_webgpu_create_bind_group_layout(
                   wgt::BindingType::Sampler { comparison: true }
                 }
                 &"sampled-texture" => wgt::BindingType::SampledTexture {
-                  dimension: serialize_dimension(entry.view_dimension.unwrap()), // TODO: dont unwrap
+                  dimension: serialize_dimension(entry.view_dimension.unwrap()),
                   component_type: serialize_texture_component_type(
-                    entry.texture_component_type.unwrap(), // TODO: dont unwrap
+                    entry.texture_component_type.unwrap(),
                   )?,
                   multisampled: false,
                 },
                 &"multisampled-texture" => wgt::BindingType::SampledTexture {
-                  dimension: serialize_dimension(entry.view_dimension.unwrap()), // TODO: dont unwrap
+                  dimension: serialize_dimension(entry.view_dimension.unwrap()),
                   component_type: serialize_texture_component_type(
-                    entry.texture_component_type.unwrap(), // TODO: dont unwrap
+                    entry.texture_component_type.unwrap(),
                   )?,
                   multisampled: true,
                 },
                 &"readonly-storage-texture" => {
                   wgt::BindingType::StorageTexture {
                     dimension: serialize_dimension(
-                      entry.view_dimension.unwrap(), // TODO: dont unwrap
+                      entry.view_dimension.unwrap(),
                     ),
                     format: serialize_texture_format(
-                      entry.storage_texture_format.unwrap(), // TODO: dont unwrap
+                      entry.storage_texture_format.unwrap(),
                     )?,
                     readonly: true,
                   }
@@ -125,10 +125,10 @@ pub fn op_webgpu_create_bind_group_layout(
                 &"writeonly-storage-texture" => {
                   wgt::BindingType::StorageTexture {
                     dimension: serialize_dimension(
-                      entry.view_dimension.unwrap(), // TODO: dont unwrap
+                      entry.view_dimension.unwrap(),
                     ),
                     format: serialize_texture_format(
-                      entry.storage_texture_format.unwrap(), // TODO: dont unwrap
+                      entry.storage_texture_format.unwrap(),
                     )?,
                     readonly: false,
                   }
