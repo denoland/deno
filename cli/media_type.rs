@@ -69,7 +69,13 @@ impl Default for MediaType {
 impl MediaType {
   fn from_path(path: &Path) -> Self {
     match path.extension() {
-      None => MediaType::Unknown,
+      None => match path.file_name() {
+        None => MediaType::Unknown,
+        Some(os_str) => match os_str.to_str() {
+          Some(".tsbuildinfo") => MediaType::TsBuildInfo,
+          _ => MediaType::Unknown,
+        },
+      },
       Some(os_str) => match os_str.to_str() {
         Some("ts") => MediaType::TypeScript,
         Some("tsx") => MediaType::TSX,
@@ -214,7 +220,7 @@ mod tests {
     assert_eq!(format!("{}", MediaType::TSX), "TSX");
     assert_eq!(format!("{}", MediaType::Json), "Json");
     assert_eq!(format!("{}", MediaType::Wasm), "Wasm");
-    assert_eq!(format!("{}", MediaType::TsBuildInfo), "BuildInfo");
+    assert_eq!(format!("{}", MediaType::TsBuildInfo), "TsBuildInfo");
     assert_eq!(format!("{}", MediaType::SourceMap), "SourceMap");
     assert_eq!(format!("{}", MediaType::Unknown), "Unknown");
   }
