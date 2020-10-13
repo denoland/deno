@@ -14,6 +14,12 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::super::reg_json_sync(rt, "op_webgpu_create_bind_group_layout", op_webgpu_create_bind_group_layout);
+  super::super::reg_json_sync(rt, "op_webgpu_create_pipeline_layout", op_webgpu_create_pipeline_layout);
+  super::super::reg_json_sync(rt, "op_webgpu_create_bind_group", op_webgpu_create_bind_group);
+}
+
 fn serialize_texture_component_type(
   component_type: String,
 ) -> Result<wgt::TextureComponentType, AnyError> {

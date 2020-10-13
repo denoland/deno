@@ -13,6 +13,20 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::super::reg_json_sync(rt, "op_webgpu_create_command_encoder", op_webgpu_create_command_encoder);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_begin_render_pass", op_webgpu_command_encoder_begin_render_pass);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_begin_compute_pass", op_webgpu_command_encoder_begin_compute_pass);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_buffer_to_buffer", op_webgpu_command_encoder_copy_buffer_to_buffer);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_buffer_to_texture", op_webgpu_command_encoder_copy_buffer_to_texture);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_texture_to_buffer", op_webgpu_command_encoder_copy_texture_to_buffer);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_texture_to_texture", op_webgpu_command_encoder_copy_texture_to_texture);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_push_debug_group", op_webgpu_command_encoder_push_debug_group);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_pop_debug_group", op_webgpu_command_encoder_pop_debug_group);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_insert_debug_marker", op_webgpu_command_encoder_insert_debug_marker);
+  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_finish", op_webgpu_command_encoder_finish);
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateCommandEncoderArgs {

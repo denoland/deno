@@ -13,6 +13,10 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::super::reg_json_sync(rt, "op_webgpu_create_sampler", op_webgpu_create_sampler);
+}
+
 fn serialize_address_mode(address_mode: Option<String>) -> wgt::AddressMode {
   match address_mode {
     Some(&"clamp-to-edge") => wgt::AddressMode::ClampToEdge,

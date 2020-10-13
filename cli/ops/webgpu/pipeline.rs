@@ -15,6 +15,13 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::super::reg_json_sync(rt, "op_webgpu_create_compute_pipeline", op_webgpu_create_compute_pipeline);
+  super::super::reg_json_sync(rt, "op_webgpu_compute_pipeline_get_bind_group_layout", op_webgpu_compute_pipeline_get_bind_group_layout);
+  super::super::reg_json_sync(rt, "op_webgpu_create_render_pipeline", op_webgpu_create_render_pipeline);
+  super::super::reg_json_sync(rt, "op_webgpu_render_pipeline_get_bind_group_layout", op_webgpu_render_pipeline_get_bind_group_layout);
+}
+
 fn serialize_programmable_stage_descriptor(
   state: &mut OpState,
   programmable_stage_descriptor: GPUProgrammableStageDescriptor,

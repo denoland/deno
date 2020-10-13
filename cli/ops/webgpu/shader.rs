@@ -14,6 +14,10 @@ use std::rc::Rc;
 use std::borrow::Cow;
 use std::ops::Deref;
 
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::super::reg_json_sync(rt, "op_webgpu_create_shader_module", op_webgpu_create_shader_module);
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateShaderModuleArgs {
