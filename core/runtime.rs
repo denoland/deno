@@ -4,10 +4,10 @@ use rusty_v8 as v8;
 
 use crate::bindings;
 use crate::error::attach_handle_to_error;
+use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
-use crate::error::generic_error;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
@@ -509,7 +509,7 @@ impl JsRuntime {
     {
       let context = self.global_context();
       let scope =
-          &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
       scope.perform_microtask_checkpoint();
     }
 
@@ -519,14 +519,14 @@ impl JsRuntime {
     let has_pending_dyn_imports = !{
       state.preparing_dyn_imports.is_empty()
         && state.pending_dyn_imports.is_empty()
-        && state.pending_dyn_mod_evaluate.is_empty()
     };
-    let has_pending_module_evaluation = state_rc.borrow().pending_mod_evaluate.is_some();
-
-    eprintln!("is idle {} {} {}", has_pending_ops, has_pending_dyn_imports, has_pending_module_evaluation);
+    let has_pending_dyn_module_evaluation =
+      !state.pending_dyn_mod_evaluate.is_empty();
+    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
 
     if !has_pending_ops
       && !has_pending_dyn_imports
+      && !has_pending_dyn_module_evaluation
       && !has_pending_module_evaluation
     {
       return Poll::Ready(Ok(()));
@@ -539,18 +539,21 @@ impl JsRuntime {
     }
 
     if has_pending_module_evaluation {
-      if has_pending_ops || has_pending_dyn_imports {
+      if has_pending_ops
+        || has_pending_dyn_imports
+        || has_pending_dyn_module_evaluation
+      {
         state.waker.wake();
       } else {
-        return Poll::Ready(Err(generic_error("Module evaluation is still pending but there are no pending ops or dynamic imports.")))
+        return Poll::Ready(Err(generic_error("Module evaluation is still pending but there are no pending ops or dynamic imports.")));
       }
     }
 
-    if has_pending_dyn_imports {
-      if has_pending_ops || has_pending_module_evaluation {
+    if has_pending_dyn_module_evaluation {
+      if has_pending_ops || has_pending_dyn_imports {
         state.waker.wake();
       } else {
-        return Poll::Ready(Err(generic_error("Dynamically imported module evaluation is still pending but there are no pending ops.")))
+        return Poll::Ready(Err(generic_error("Dynamically imported module evaluation is still pending but there are no pending ops.")));
       }
     }
 
@@ -1113,7 +1116,6 @@ impl JsRuntime {
       if let Some(module_evaluation) = state.pending_mod_evaluate.as_ref() {
         let promise = module_evaluation.promise.get(scope);
         let mut sender = module_evaluation.sender.clone();
-        eprintln!("eval pending module promise id {}", promise.get_identity_hash());
         let promise_state = promise.state();
 
         match promise_state {
@@ -1153,11 +1155,9 @@ impl JsRuntime {
           &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
         let mut state = state_rc.borrow_mut();
-        eprintln!("pending_dyn_mod_evaluate {}", state.pending_dyn_mod_evaluate.len());
         if let Some(&dyn_import_id) =
           state.pending_dyn_mod_evaluate.keys().next()
         {
-          eprintln!("dyn import id {}", dyn_import_id);
           let handle = state
             .pending_dyn_mod_evaluate
             .remove(&dyn_import_id)
@@ -1166,7 +1166,6 @@ impl JsRuntime {
 
           let module_id = handle.module_id;
           let promise = handle.promise.get(scope);
-          eprintln!("dyn import promise id {}", promise.get_identity_hash());
           let _module = handle.module.get(scope);
 
           let promise_state = promise.state();

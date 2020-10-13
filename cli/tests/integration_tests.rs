@@ -2420,9 +2420,16 @@ itest!(top_level_await_loop {
   output: "top_level_await_loop.out",
 });
 
-itest!(top_level_await_timeout_loop {
-  args: "run --allow-read tla3/a.js",
-  output: "top_level_await_timeout_loop.out",
+itest!(top_level_await_circular {
+  args: "run --allow-read top_level_await_circular.js",
+  output: "top_level_await_circular.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_unresolved {
+  args: "run top_level_await_unresolved.js",
+  output: "top_level_await_unresolved.out",
+  exit_code: 1,
 });
 
 itest!(top_level_await {
