@@ -91,7 +91,7 @@ The following signature and MAC algorithms have been implemented:
 - HS512 (HMAC SHA-512)
 - none ([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
 
-## Specification
+## Specifications
 
 - [JSON Web Token](https://tools.ietf.org/html/rfc7519)
 - [JSON Web Signature](https://www.rfc-editor.org/rfc/rfc7515.html)
