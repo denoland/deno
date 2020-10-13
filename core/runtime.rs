@@ -539,9 +539,9 @@ impl JsRuntime {
     }
 
     if has_pending_module_evaluation {
-      if !(has_pending_ops
+      if has_pending_ops
         || has_pending_dyn_imports
-        || has_pending_dyn_module_evaluation)
+        || has_pending_dyn_module_evaluation
       {
         // pass, will be polled again
       } else {
