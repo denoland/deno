@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::global_state::GlobalState;
 use crate::inspector::InspectorSession;
+use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
 use crate::worker::Worker;
 use deno_core::error::AnyError;
@@ -118,20 +118,37 @@ async fn read_line_and_poll(
 }
 
 pub async fn run(
-  global_state: &GlobalState,
+  program_state: &ProgramState,
   mut worker: MainWorker,
 ) -> Result<(), AnyError> {
-  // Our inspector is unable to default to the default context id so we have to specify it here.
-  let context_id: u32 = 1;
-
   let mut session = worker.create_inspector_session();
 
-  let history_file = global_state.dir.root.join("deno_history.txt");
+  let history_file = program_state.dir.root.join("deno_history.txt");
 
   post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
     .await?;
 
-  let helper = Helper {};
+  // Enabling the runtime domain will always send trigger one executionContextCreated for each
+  // context the inspector knows about so we grab the execution context from that since
+  // our inspector does not support a default context (0 is an invalid context id).
+  let mut context_id: u64 = 0;
+  for notification in session.notifications() {
+    let method = notification.get("method").unwrap().as_str().unwrap();
+    let params = notification.get("params").unwrap();
+
+    if method == "Runtime.executionContextCreated" {
+      context_id = params
+        .get("context")
+        .unwrap()
+        .get("id")
+        .unwrap()
+        .as_u64()
+        .unwrap();
+    }
+  }
+
+  let helper = Helper {
+  };
 
   let editor = Arc::new(Mutex::new(Editor::new()));
 

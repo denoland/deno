@@ -2633,6 +2633,11 @@ itest!(deno_doc {
   output: "deno_doc.out",
 });
 
+itest!(deno_doc_importmap {
+  args: "doc --unstable --importmap=doc/importmap.json doc/use_importmap.js",
+  output: "doc/use_importmap.out",
+});
+
 itest!(compiler_js_error {
   args: "run --unstable compiler_js_error.ts",
   output: "compiler_js_error.ts.out",
@@ -2660,16 +2665,6 @@ itest!(ignore_require {
   args: "cache --reload --no-check ignore_require.js",
   output_str: Some(""),
   exit_code: 0,
-});
-
-itest!(top_level_await_bug {
-  args: "run --allow-read top_level_await_bug.js",
-  output: "top_level_await_bug.out",
-});
-
-itest!(top_level_await_bug2 {
-  args: "run --allow-read top_level_await_bug2.js",
-  output: "top_level_await_bug2.out",
 });
 
 #[test]

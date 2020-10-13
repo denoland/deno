@@ -42,16 +42,6 @@ impl PermissionState {
     let message = format!("{}, run again with the {} flag", msg, flag_name);
     Err(custom_error("PermissionDenied", message))
   }
-
-  /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(self, other: &Self) -> Result<(), AnyError> {
-    if self == PermissionState::Denied && other != &PermissionState::Denied
-      || self == PermissionState::Prompt && other == &PermissionState::Granted
-    {
-      return Err(permission_escalation_error());
-    }
-    Ok(())
-  }
 }
 
 impl From<usize> for PermissionState {
@@ -93,23 +83,9 @@ impl Default for PermissionState {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
-  pub global_state: PermissionState,
+  pub program_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
-}
-
-impl<T: Eq + Hash> UnaryPermission<T> {
-  /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(&self, other: &Self) -> Result<(), AnyError> {
-    self.global_state.check_fork(&other.global_state)?;
-    if !self.granted_list.is_superset(&other.granted_list) {
-      return Err(permission_escalation_error());
-    }
-    if !self.denied_list.is_subset(&other.denied_list) {
-      return Err(permission_escalation_error());
-    }
-    Ok(())
-  }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -134,17 +110,17 @@ impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
     Self {
       read: UnaryPermission::<PathBuf> {
-        global_state: PermissionState::from(flags.allow_read),
+        program_state: PermissionState::from(flags.allow_read),
         granted_list: resolve_fs_allowlist(&flags.read_allowlist),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        global_state: PermissionState::from(flags.allow_write),
+        program_state: PermissionState::from(flags.allow_write),
         granted_list: resolve_fs_allowlist(&flags.write_allowlist),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        global_state: PermissionState::from(flags.allow_net),
+        program_state: PermissionState::from(flags.allow_net),
         granted_list: flags.net_allowlist.iter().cloned().collect(),
         ..Default::default()
       },
@@ -176,15 +152,15 @@ impl Permissions {
   pub fn allow_all() -> Self {
     Self {
       read: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       write: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -196,7 +172,7 @@ impl Permissions {
 
   pub fn query_read(&self, path: &Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    if self.read.global_state == PermissionState::Denied
+    if self.read.program_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
         Some(path) => check_path_blocklist(path, &self.read.denied_list),
@@ -204,7 +180,7 @@ impl Permissions {
     {
       return PermissionState::Denied;
     }
-    if self.read.global_state == PermissionState::Granted
+    if self.read.program_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
         Some(path) => check_path_allowlist(path, &self.read.granted_list),
@@ -217,7 +193,7 @@ impl Permissions {
 
   pub fn query_write(&self, path: &Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    if self.write.global_state == PermissionState::Denied
+    if self.write.program_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
         Some(path) => check_path_blocklist(path, &self.write.denied_list),
@@ -225,7 +201,7 @@ impl Permissions {
     {
       return PermissionState::Denied;
     }
-    if self.write.global_state == PermissionState::Granted
+    if self.write.program_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
         Some(path) => check_path_allowlist(path, &self.write.granted_list),
@@ -237,12 +213,12 @@ impl Permissions {
   }
 
   pub fn query_net(&self, host: &str, port: Option<u16>) -> PermissionState {
-    if self.net.global_state == PermissionState::Denied
+    if self.net.program_state == PermissionState::Denied
       || check_host_and_port_list(host, port, &self.net.denied_list)
     {
       return PermissionState::Denied;
     }
-    if self.net.global_state == PermissionState::Granted
+    if self.net.program_state == PermissionState::Granted
       || check_host_and_port_list(host, port, &self.net.granted_list)
     {
       return PermissionState::Granted;
@@ -255,7 +231,7 @@ impl Permissions {
     url: &Option<&str>,
   ) -> Result<PermissionState, AnyError> {
     if url.is_none() {
-      return Ok(self.net.global_state);
+      return Ok(self.net.program_state);
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
@@ -311,7 +287,7 @@ impl Permissions {
             .denied_list
             .retain(|path| !resolved_path.starts_with(path));
           self.read.denied_list.insert(resolved_path);
-          self.read.global_state = PermissionState::Denied;
+          self.read.program_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -321,10 +297,10 @@ impl Permissions {
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests read access") {
           self.read.granted_list.clear();
-          self.read.global_state = PermissionState::Granted;
+          self.read.program_state = PermissionState::Granted;
           return PermissionState::Granted;
         } else {
-          self.read.global_state = PermissionState::Denied;
+          self.read.program_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -353,7 +329,7 @@ impl Permissions {
             .denied_list
             .retain(|path| !resolved_path.starts_with(path));
           self.write.denied_list.insert(resolved_path);
-          self.write.global_state = PermissionState::Denied;
+          self.write.program_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -363,10 +339,10 @@ impl Permissions {
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests write access") {
           self.write.granted_list.clear();
-          self.write.global_state = PermissionState::Granted;
+          self.write.program_state = PermissionState::Granted;
           return PermissionState::Granted;
         } else {
-          self.write.global_state = PermissionState::Denied;
+          self.write.program_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -389,7 +365,7 @@ impl Permissions {
           return Ok(PermissionState::Granted);
         } else {
           self.net.denied_list.insert(url.to_string());
-          self.net.global_state = PermissionState::Denied;
+          self.net.program_state = PermissionState::Denied;
           return Ok(PermissionState::Denied);
         }
       }
@@ -399,10 +375,10 @@ impl Permissions {
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests network access") {
           self.net.granted_list.clear();
-          self.net.global_state = PermissionState::Granted;
+          self.net.program_state = PermissionState::Granted;
           return Ok(PermissionState::Granted);
         } else {
-          self.net.global_state = PermissionState::Denied;
+          self.net.program_state = PermissionState::Denied;
           return Ok(PermissionState::Denied);
         }
       }
@@ -463,8 +439,8 @@ impl Permissions {
         .retain(|path_| !path_.starts_with(&path));
     } else {
       self.read.granted_list.clear();
-      if self.read.global_state == PermissionState::Granted {
-        self.read.global_state = PermissionState::Prompt;
+      if self.read.program_state == PermissionState::Granted {
+        self.read.program_state = PermissionState::Prompt;
       }
     }
     self.query_read(path)
@@ -479,8 +455,8 @@ impl Permissions {
         .retain(|path_| !path_.starts_with(&path));
     } else {
       self.write.granted_list.clear();
-      if self.write.global_state == PermissionState::Granted {
-        self.write.global_state = PermissionState::Prompt;
+      if self.write.program_state == PermissionState::Granted {
+        self.write.program_state = PermissionState::Prompt;
       }
     }
     self.query_write(path)
@@ -494,8 +470,8 @@ impl Permissions {
       self.net.granted_list.remove(*url);
     } else {
       self.net.granted_list.clear();
-      if self.net.global_state == PermissionState::Granted {
-        self.net.global_state = PermissionState::Prompt;
+      if self.net.program_state == PermissionState::Granted {
+        self.net.program_state = PermissionState::Prompt;
       }
     }
     self.query_net_url(url)
@@ -594,35 +570,6 @@ impl Permissions {
     self
       .hrtime
       .check("access to high precision time", "--allow-hrtime")
-  }
-
-  #[allow(clippy::too_many_arguments)]
-  pub fn fork(
-    &self,
-    read: UnaryPermission<PathBuf>,
-    write: UnaryPermission<PathBuf>,
-    net: UnaryPermission<String>,
-    env: PermissionState,
-    run: PermissionState,
-    plugin: PermissionState,
-    hrtime: PermissionState,
-  ) -> Result<Permissions, AnyError> {
-    self.read.check_fork(&read)?;
-    self.write.check_fork(&write)?;
-    self.net.check_fork(&net)?;
-    self.env.check_fork(&env)?;
-    self.run.check_fork(&run)?;
-    self.plugin.check_fork(&plugin)?;
-    self.hrtime.check_fork(&hrtime)?;
-    Ok(Permissions {
-      read,
-      write,
-      net,
-      env,
-      run,
-      plugin,
-      hrtime,
-    })
   }
 }
 
@@ -724,10 +671,6 @@ fn check_host_and_port_list(
   allowlist.contains(host)
     || (port.is_some()
       && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
-}
-
-fn permission_escalation_error() -> AnyError {
-  custom_error("PermissionDenied", "Arguments escalate parent permissions")
 }
 
 #[cfg(test)]
@@ -892,17 +835,17 @@ mod tests {
     let json_perms = r#"
     {
       "read": {
-        "global_state": "Granted",
+        "program_state": "Granted",
         "granted_list": [],
         "denied_list": []
       },
       "write": {
-        "global_state": "Granted",
+        "program_state": "Granted",
         "granted_list": [],
         "denied_list": []
       },
       "net": {
-        "global_state": "Granted",
+        "program_state": "Granted",
         "granted_list": [],
         "denied_list": []
       },
@@ -914,15 +857,15 @@ mod tests {
     "#;
     let perms0 = Permissions {
       read: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       write: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -936,63 +879,18 @@ mod tests {
   }
 
   #[test]
-  fn test_fork() {
-    let perms0 = Permissions::from_flags(&Flags::default());
-    perms0
-      .fork(
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        PermissionState::Prompt,
-        PermissionState::Prompt,
-        PermissionState::Denied,
-        PermissionState::Denied,
-      )
-      .expect("Fork should succeed.");
-    perms0
-      .fork(
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        PermissionState::Granted,
-        PermissionState::Granted,
-        PermissionState::Denied,
-        PermissionState::Denied,
-      )
-      .expect_err("Fork should fail.");
-  }
-
-  #[test]
   fn test_query() {
     let perms1 = Permissions {
       read: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       write: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Granted,
+        program_state: PermissionState::Granted,
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -1002,17 +900,17 @@ mod tests {
     };
     let perms2 = Permissions {
       read: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       write: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         granted_list: ["127.0.0.1:8000".to_string()].iter().cloned().collect(),
         ..Default::default()
       },
@@ -1052,15 +950,15 @@ mod tests {
   fn test_request() {
     let mut perms = Permissions {
       read: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         ..Default::default()
       },
       write: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         ..Default::default()
       },
       env: PermissionState::Prompt,
@@ -1108,17 +1006,17 @@ mod tests {
   fn test_revoke() {
     let mut perms = Permissions {
       read: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       write: UnaryPermission {
-        global_state: PermissionState::Prompt,
+        program_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Denied,
+        program_state: PermissionState::Denied,
         ..Default::default()
       },
       env: PermissionState::Granted,

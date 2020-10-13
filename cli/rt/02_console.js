@@ -157,6 +157,7 @@
     iterableLimit: 100,
     showProxy: false,
     colors: false,
+    getters: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -195,8 +196,13 @@
         return String(value[customInspect]());
       } catch {}
     }
-    // Might be Function/AsyncFunction/GeneratorFunction
-    const cstrName = Object.getPrototypeOf(value).constructor.name;
+    // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
+    let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
+    if (!cstrName) {
+      // If prototype is removed or broken,
+      // use generic 'Function' instead.
+      cstrName = "Function";
+    }
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
       return `[${cstrName}: ${value.name}]`;
@@ -760,31 +766,73 @@
     const red = maybeColor(colors.red, inspectOptions);
 
     for (const key of stringKeys) {
-      let propertyValue;
-      let error = null;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
+      if (inspectOptions.getters) {
+        let propertyValue;
+        let error = null;
+        try {
+          propertyValue = value[key];
+        } catch (error_) {
+          error = error_;
+        }
+        const inspectedValue = error == null
+          ? inspectValueWithQuotes(
+            propertyValue,
+            ctx,
+            level + 1,
+            inspectOptions,
+          )
+          : red(`[Thrown ${error.name}: ${error.message}]`);
+        entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
+      } else {
+        let descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor.get !== undefined && descriptor.set !== undefined) {
+          entries.push(`${maybeQuoteString(key)}: [Getter/Setter]`);
+        } else if (descriptor.get !== undefined) {
+          entries.push(`${maybeQuoteString(key)}: [Getter]`);
+        } else {
+          entries.push(
+            `${maybeQuoteString(key)}: ${
+              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+            }`,
+          );
+        }
       }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
-        : red(`[Thrown ${error.name}: ${error.message}]`);
-      entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
     }
+
     for (const key of symbolKeys) {
-      let propertyValue;
-      let error;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
+      if (inspectOptions.getters) {
+        let propertyValue;
+        let error;
+        try {
+          propertyValue = value[key];
+        } catch (error_) {
+          error = error_;
+        }
+        const inspectedValue = error == null
+          ? inspectValueWithQuotes(
+            propertyValue,
+            ctx,
+            level + 1,
+            inspectOptions,
+          )
+          : red(`Thrown ${error.name}: ${error.message}`);
+        entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
+      } else {
+        let descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor.get !== undefined && descriptor.set !== undefined) {
+          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter/Setter]`);
+        } else if (descriptor.get !== undefined) {
+          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter]`);
+        } else {
+          entries.push(
+            `[${maybeQuoteSymbol(key)}]: ${
+              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+            }`,
+          );
+        }
       }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
-        : red(`Thrown ${error.name}: ${error.message}`);
-      entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
     }
+
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +
       colors.stripColor(entries.join("")).length;

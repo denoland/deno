@@ -89,6 +89,7 @@ impl Metadata {
     Ok(())
   }
 
+  #[cfg(test)]
   pub fn read(cache_filename: &Path) -> Result<Metadata, AnyError> {
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
@@ -143,14 +144,6 @@ impl HttpCache {
     let metadata = fs::read_to_string(metadata_filename)?;
     let metadata: Metadata = serde_json::from_str(&metadata)?;
     Ok((file, metadata.headers))
-  }
-
-  pub fn get_metadata(&self, url: &Url) -> Result<Metadata, AnyError> {
-    let cache_filename = self.location.join(url_to_filename(url));
-    let metadata_filename = Metadata::filename(&cache_filename);
-    let metadata = fs::read_to_string(metadata_filename)?;
-    let metadata: Metadata = serde_json::from_str(&metadata)?;
-    Ok(metadata)
   }
 
   pub fn set(
