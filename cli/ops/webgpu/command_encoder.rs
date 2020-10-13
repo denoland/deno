@@ -192,10 +192,10 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUTextureCopyView {
-  texture: u32,
-  mip_level: Option<u32>,
-  origin: (), // TODO: mixed types
+pub struct GPUTextureCopyView {
+  pub texture: u32,
+  pub mip_level: Option<u32>,
+  pub origin: (), // TODO: mixed types
 }
 
 #[derive(Deserialize)]

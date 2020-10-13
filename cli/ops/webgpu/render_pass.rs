@@ -163,7 +163,18 @@ pub fn op_webgpu_render_pass_execute_bundles(
   unsafe {
     wgc::command::render_ffi::wgpu_render_pass_execute_bundles(
       render_pass,
-      // TODO
+      args
+        .bundles
+        .iter()
+        .map(|rid| {
+          *state
+            .resource_table
+            .get_mut::<wgc::id::RenderBundleId>(*rid)
+            .ok_or_else(bad_resource_id)?
+        })
+        .collect::<[wgc::id::RenderBundleId]>()
+        .as_ptr(),
+      args.bundles.len(),
     );
   }
 

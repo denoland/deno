@@ -6,6 +6,7 @@ mod bundle;
 mod command_encoder;
 mod compute_pass;
 mod pipeline;
+mod queue;
 mod render_pass;
 mod sampler;
 mod shader;
@@ -287,6 +288,17 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_render_bundle_encoder_draw_indexed",
     bundle::op_webgpu_render_bundle_encoder_draw_indexed,
+  );
+
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_queue_submit",
+    queue::op_webgpu_queue_submit,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_write_texture",
+    queue::op_webgpu_write_texture,
   );
 }
 
