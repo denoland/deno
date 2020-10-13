@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::inspector::InspectorSession;
 use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
@@ -7,19 +8,24 @@ use crate::worker::Worker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use regex::Captures;
+use regex::Regex;
 use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Editor;
-use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
+use rustyline_derive::{Completer, Helper, Hinter};
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 // Provides syntax specific helpers to the editor like validation for multi-line edits.
-#[derive(Completer, Helper, Highlighter, Hinter)]
+#[derive(Completer, Helper, Hinter)]
 struct Helper {
+  highlighter: LineHighlighter,
   validator: MatchingBracketValidator,
 }
 
@@ -29,6 +35,82 @@ impl Validator for Helper {
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
     self.validator.validate(ctx)
+  }
+}
+
+impl Highlighter for Helper {
+  fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+    hint.into()
+  }
+
+  fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
+    self.highlighter.highlight(line, pos)
+  }
+
+  fn highlight_candidate<'c>(
+    &self,
+    candidate: &'c str,
+    _completion: rustyline::CompletionType,
+  ) -> Cow<'c, str> {
+    self.highlighter.highlight(candidate, 0)
+  }
+
+  fn highlight_char(&self, line: &str, _: usize) -> bool {
+    !line.is_empty()
+  }
+}
+
+struct LineHighlighter {
+  regex: Regex,
+}
+
+impl LineHighlighter {
+  fn new() -> Self {
+    let regex = Regex::new(
+      r#"(?x)
+      (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
+      (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
+      (?P<regexp>/(?:(?:\\/|[^\n/]))*?/[gimsuy]*) |
+      (?P<number>\d+(?:\.\d+)*(?:e[+-]?\d+)*n?) |
+      (?P<boolean>\b(?:true|false)\b) |
+      (?P<null>\b(?:null)\b) |
+      (?P<undefined>\b(?:undefined)\b) |
+      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch)\b) |
+      "#,
+      )
+      .unwrap();
+
+    Self { regex }
+  }
+}
+
+impl Highlighter for LineHighlighter {
+  fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
+    self
+      .regex
+      .replace_all(&line.to_string(), |caps: &Captures<'_>| {
+        if let Some(cap) = caps.name("comment") {
+          format!("{}", colors::gray(cap.as_str()))
+        } else if let Some(cap) = caps.name("string") {
+          format!("{}", colors::green(cap.as_str()))
+        } else if let Some(cap) = caps.name("regexp") {
+          format!("{}", colors::red(cap.as_str()))
+        } else if let Some(cap) = caps.name("number") {
+          format!("{}", colors::yellow(cap.as_str()))
+        } else if let Some(cap) = caps.name("boolean") {
+          format!("{}", colors::yellow(cap.as_str()))
+        } else if let Some(cap) = caps.name("null") {
+          format!("{}", colors::yellow(cap.as_str()))
+        } else if let Some(cap) = caps.name("undefined") {
+          format!("{}", colors::gray(cap.as_str()))
+        } else if let Some(cap) = caps.name("keyword") {
+          format!("{}", colors::cyan(cap.as_str()))
+        } else {
+          caps[0].to_string()
+        }
+      })
+      .to_string()
+      .into()
   }
 }
 
@@ -116,6 +198,7 @@ pub async fn run(
   }
 
   let helper = Helper {
+    highlighter: LineHighlighter::new(),
     validator: MatchingBracketValidator::new(),
   };
 
