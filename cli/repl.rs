@@ -308,7 +308,7 @@ pub async fn run(
         editor.lock().unwrap().add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
-        break;
+        continue;
       }
       Err(ReadlineError::Eof) => {
         break;
