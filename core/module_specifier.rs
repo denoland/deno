@@ -48,7 +48,7 @@ impl fmt::Display for ModuleResolutionError {
   }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq, serde::Serialize)]
 /// Resolved module specifier
 pub struct ModuleSpecifier(Url);
 

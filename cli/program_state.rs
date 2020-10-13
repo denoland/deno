@@ -3,8 +3,6 @@
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
-use crate::graph::GraphBuilder;
-use crate::graph::TranspileOptions;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
@@ -12,6 +10,8 @@ use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
+use crate::module_graph2::GraphBuilder2;
+use crate::module_graph2::TranspileOptions;
 use crate::permissions::Permissions;
 use crate::specifier_handler::FetchHandler;
 use crate::tsc::CompiledModule;
@@ -36,7 +36,7 @@ pub fn exit_unstable(api_name: &str) {
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-pub struct GlobalState {
+pub struct ProgramState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
@@ -49,7 +49,7 @@ pub struct GlobalState {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
-impl GlobalState {
+impl ProgramState {
   pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
@@ -96,7 +96,7 @@ impl GlobalState {
       None => None,
     };
 
-    let global_state = GlobalState {
+    let program_state = ProgramState {
       dir,
       permissions: Permissions::from_flags(&flags),
       flags,
@@ -106,7 +106,7 @@ impl GlobalState {
       maybe_import_map,
       maybe_inspector_server,
     };
-    Ok(Arc::new(global_state))
+    Ok(Arc::new(program_state))
   }
 
   /// This function is called when new module load is
@@ -130,7 +130,7 @@ impl GlobalState {
       // something that should be handled better in the future.
       let handler =
         Rc::new(RefCell::new(FetchHandler::new(self, permissions.clone())?));
-      let mut builder = GraphBuilder::new(handler, maybe_import_map);
+      let mut builder = GraphBuilder2::new(handler, maybe_import_map);
       builder.insert(&module_specifier).await?;
       let mut graph = builder.get_graph(&self.lockfile)?;
 
@@ -247,7 +247,7 @@ impl GlobalState {
       }
     } else {
       CompiledModule {
-        code: out.source_code.to_string()?,
+        code: out.source_code,
         name: out.url.to_string(),
       }
     };
@@ -269,8 +269,8 @@ impl GlobalState {
   pub fn mock(
     argv: Vec<String>,
     maybe_flags: Option<flags::Flags>,
-  ) -> Arc<GlobalState> {
-    GlobalState::new(flags::Flags {
+  ) -> Arc<ProgramState> {
+    ProgramState::new(flags::Flags {
       argv,
       ..maybe_flags.unwrap_or_default()
     })
@@ -334,7 +334,7 @@ fn needs_compilation(
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(GlobalState::mock(vec![], None));
+  f(ProgramState::mock(vec![], None));
 }
 
 #[test]

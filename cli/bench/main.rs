@@ -88,6 +88,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     ],
     None,
   ),
+  (
+    "bundle",
+    &["bundle", "std/examples/chat/server_test.ts"],
+    None,
+  ),
 ];
 
 const RESULT_KEYS: &[&str] =
