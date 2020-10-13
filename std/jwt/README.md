@@ -1,13 +1,8 @@
-[![nest badge](https://nest.land/badge.svg)](https://nest.land/package/djwt)
+# jwt
 
-# djwt
-
-The absolute minimum to make JSON Web Tokens in deno. Based on
-[JWT](https://tools.ietf.org/html/rfc7519) and
-[JWS](https://www.rfc-editor.org/rfc/rfc7515.html) specifications.
-
-This library is accessible through the https://deno.land/x/ service and the
-https://nest.land/ service.
+Make JSON Web Tokens in deno. Based on
+[JWT](https://tools.ietf.org/html/rfc7519),
+[JWS](https://www.rfc-editor.org/rfc/rfc7515.html) and [JWA](https://www.rfc-editor.org/rfc/rfc7518.html) specifications.
 
 ## Features
 
@@ -33,11 +28,7 @@ process where a web token is represented as the concatenation of
 The following signature and MAC algorithms - which are defined in the JSON Web
 Algorithms (JWA) [specification](https://www.rfc-editor.org/rfc/rfc7518.html) -
 have been implemented already: **HMAC SHA-256** ("HS256"), **HMAC SHA-512**
-("HS512"), **RSASSA-PKCS1-v1_5 SHA-256** ("RS256") and **none**
-([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
-As soon as deno expands its
-[crypto library](https://github.com/denoland/deno/tree/master/std/hash), we will
-add more algorithms.
+("HS512") and **none** ([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
 
 ### Expiration Time
 
@@ -45,110 +36,60 @@ The optional **exp** claim identifies the expiration time on or after which the
 JWT must not be accepted for processing. This library checks if the current
 date/time is before the expiration date/time listed in the **exp** claim.
 
-### Critical Header
-
-This library supports the Critical Header Parameter **crit** which is described
-in the JWS specification
-[here](https://www.rfc-editor.org/rfc/rfc7515.html#section-4.1.11).
-
-Look up
-[this example](https://github.com/timonson/djwt/blob/master/examples/example.ts)
-to see how the **crit** header parameter works.
-
-## API
+## Usage
 
 The API consists mostly of the two functions `create` and `validate`, generating
 and validating a JWT, respectively.
 
-#### create({ key: string, header: Jose, payload: Payload }): Promise\<string>
+### create
 
-The function `create` returns the url-safe encoded JWT as promise.
+Takes a `payload`, `key` and `header` to return the url-safe encoded JWT as promise.
 
-#### validate({ jwt: string, key: string, algorithm: Algorithm | Algorithm[], critHandlers?: Handlers }): Promise\<JwtValidation>
+```typescript
+import { create } from 'https://deno.land/std/jwt/mod.ts'
 
-The function `validate` returns a _promise_. This promise resolves to an
-_object_ with a _union type_ where the boolean property `isValid` serves as
-[discriminant](https://www.typescriptlang.org/docs/handbook/advanced-types.html#discriminated-unions).
-If the JWT is valid (`.isValid === true`), the _type_ of the resolved promise
-is:
-`{ isValid: true; header: Jose; payload: Payload; signature: string; jwt: string; critResult?: unknown[] }`.
-If the JWT is invalid, the promise resolves to
-`{ isValid: false; jwt: unknown; error: JwtError; isExpired: boolean }`.
+create()
+.
+.
+.
 
-The JWS specification [says](https://www.rfc-editor.org/rfc/rfc7515.html#page-8)
-about the payload of a JWS the following:
+```
 
-> The payload can be any content and need not be a representation of a JSON
-> object
+### verify
 
-Therefore, you must verify that the returned value is actually an object and has
-the desired properties. Please take a look at
-[this issue](https://github.com/timonson/djwt/issues/25) for more information.
+Takes a `jwt`, `key` and an object with a the property `algorithm` to return the `payload` of the `jwt` as `promise`, if the `jwt` is valid. Otherwise it throws an `Error`.
 
-#### setExpiration(exp: number | Date): number
+```typescript
+import { verify } from 'https://deno.land/std/jwt/mod.ts'
 
-Additionally there is the helper function `setExpiration` which simplifies
-setting an expiration date. It takes either an `Date` object or a number (in
-seconds) as argument.
+verify()
+.
+.
+.
+```
 
-```javascript
+### setExpiration
+
+Takes either an `Date` object or a `number` (in seconds) as argument and returns the number of seconds since January 1, 1970, 00:00:00 UTC
+
+```typescript
+import { setExpiration } from 'https://deno.land/std/jwt/mod.ts'
+
 // A specific date:
 setExpiration(new Date("2025-07-01"));
 // One hour from now:
 setExpiration(60 * 60);
 ```
 
-## Example
+### decode
 
-Run the following _server_ example with `deno run -A example.ts`:
-
-The server will respond to a **GET** request with a newly created JWT.
-On the other hand, if you send a JWT as data along with a **POST** request, the
-server will check the validity of the JWT.
-
-Always use [versioned imports](https://deno.land/x) for your dependencies. For
-example `https://deno.land/x/djwt@v1.2/create.ts`.
+Takes a `jwt` to return an object with the `header`, `payload` and `signature` properties.
 
 ```typescript
-import { serve } from "https://deno.land/std/http/server.ts";
-import { validate } from "https://deno.land/x/djwt/validate.ts";
-import {
-  create,
-  Jose,
-  Payload,
-  setExpiration,
-} from "https://deno.land/x/djwt/create.ts";
+import { decode } from 'https://deno.land/std/jwt/mod.ts'
 
-const key = "your-secret";
-const payload: Payload = {
-  iss: "joe",
-  exp: setExpiration(60),
-};
-const header: Jose = {
-  alg: "HS256",
-  typ: "JWT",
-};
-
-console.log("server is listening at 0.0.0.0:8000");
-for await (const req of serve("0.0.0.0:8000")) {
-  if (req.method === "GET") {
-    req.respond({ body: (await create({ header, payload, key })) + "\n" });
-  } else {
-    const jwt = new TextDecoder().decode(await Deno.readAll(req.body));
-    (await validate({ jwt, key, algorithm: "HS256" })).isValid
-      ? req.respond({ body: "Valid JWT\n" })
-      : req.respond({ body: "Invalid JWT\n", status: 401 });
-  }
-}
+decode()
+.
+.
+.
 ```
-
-## Applications
-
-To see how djwt can be implemented further, you can find a djwt _middleware_
-implementation for the [Oak](https://oakserver.github.io/oak/) framework
-[here](https://github.com/halvardssm/oak-middleware-jwt).
-
-## Contribution
-
-Every kind of contribution to this project is highly appreciated.
-Please run `deno fmt` on the changed files before making a pull request.
