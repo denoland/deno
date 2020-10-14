@@ -12,6 +12,8 @@ use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
 
+pub use rand; // Re-export rand
+
 /// Execute this crates' JS source files.
 pub fn init(isolate: &mut JsRuntime) {
   let files = vec![(

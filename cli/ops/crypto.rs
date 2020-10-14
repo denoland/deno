@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_crypto::op_get_random_values;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
+use deno_crypto::rand::rngs::StdRng;
+use deno_crypto::rand::SeedableRng;
 
 pub fn init(rt: &mut deno_core::JsRuntime, maybe_seed: Option<u64>) {
   if let Some(seed) = maybe_seed {

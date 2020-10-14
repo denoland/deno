@@ -423,7 +423,6 @@ dependencies = [
  "nix",
  "notify",
  "os_pipe",
- "rand 0.7.3",
  "regex",
  "ring",
  "rustyline",
