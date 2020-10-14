@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-// From https://github.com/PandawanFr/deno_notify
+
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -7,8 +7,8 @@ use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use notify_rust::Notification;
-use serde::Serialize;
 use serde::Deserialize;
+use serde::Serialize;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_notify_send", op_notify_send);
@@ -30,6 +30,9 @@ struct NotificationActions {
   title: String,
 }
 
+// Allow dead spec fields in NotificationOptions
+// ...might be used later?
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct NotificationOptions {
   body: Option<String>,
@@ -38,8 +41,9 @@ struct NotificationOptions {
   badge: Option<String>,
   image: Option<String>,
   vibrate: Option<bool>,
-  requireInteraction: Option<bool>,
-  actions: Option<Vec<String>>,
+  #[serde(rename = "requireInteraction")]
+  require_interaction: Option<bool>,
+  actions: Option<Vec<NotificationActions>>,
   silent: Option<bool>,
 }
 
@@ -67,6 +71,11 @@ fn op_notify_send(
     if let Some(message_value) = &options.body {
       notification.body(&message_value);
     }
+    if let Some(actions) = &options.actions {
+      for action in actions.iter() {
+        notification.action(&action.action, &action.title);
+      }
+    }
     if let Some(icon_value) = &options.icon {
       notification.icon(match icon_value {
         Icon::App(app_name) => {
@@ -81,17 +90,14 @@ fn op_notify_send(
     }
   }
   match notification.show() {
-    Ok(_) => {
-      notification.wait_for_action(|action| {
-        match action {
-          "__closed" => {
-            println!("the notification was closed")
-          },
-          _ => ()
-        }
+    Ok(notif) => {
+      #[cfg(not(target_os = "macos"))]
+      notif.wait_for_action(|action| match action {
+        "__closed" => println!("the notification was closed"),
+        _ => (),
       });
-      return Ok(json!({}))
-    },
+      return Ok(json!({}));
+    }
     Err(error) => return Ok(json!(error.to_string())),
   };
 }
