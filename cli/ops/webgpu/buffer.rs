@@ -111,17 +111,33 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
+  let boxed_sender = Box::new(sender);
+  let sender_ptr = Box::into_raw(boxed_sender);
+  let sender_ptr = unsafe {
+    std::mem::transmute::<*mut oneshot::Sender<Result<(), AnyError>>, *mut u8>(
+      sender_ptr,
+    )
+  };
+
   extern "C" fn buffer_map_future_wrapper(
     status: wgc::resource::BufferMapAsyncStatus,
     user_data: *mut u8,
   ) {
-    sender.send(match status {
+    let sender_ptr = unsafe {
+      std::mem::transmute::<*mut u8, *mut oneshot::Sender<Result<(), AnyError>>>(
+        user_data,
+      )
+    };
+    let boxed_sender = Box::from_raw(sender_ptr);
+    boxed_sender.send(match status {
       wgc::resource::BufferMapAsyncStatus::Success => Ok(()),
-      _ => Err(()), // TODO
+      _ => unreachable!(), // TODO
     });
+    drop(boxed_sender);
   }
 
-  instance.buffer_map_async(
+  // TODO: get "device"
+  wgc::gfx_select!(device => instance.buffer_map_async(
     *buffer,
     args.offset..args.size,
     wgc::resource::BufferMapOperation {
@@ -131,9 +147,9 @@ pub async fn op_webgpu_buffer_get_map_async(
         _ => unreachable!(),
       },
       callback: buffer_map_future_wrapper,
-      user_data: std::ptr::null_mut(),
-    },
-  )?;
+      user_data: sender_ptr,
+    }
+  ))?;
 
   receiver.await??;
 
