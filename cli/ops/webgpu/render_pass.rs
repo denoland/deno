@@ -168,11 +168,11 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUColor {
-  r: f64,
-  g: f64,
-  b: f64,
-  a: f64,
+pub struct GPUColor {
+  pub r: f64,
+  pub g: f64,
+  pub b: f64,
+  pub a: f64,
 }
 
 #[derive(Deserialize)]

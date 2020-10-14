@@ -123,7 +123,8 @@ pub fn op_webgpu_create_command_encoder(
 struct GPURenderPassColorAttachmentDescriptor {
   attachment: u32,
   resolve_target: Option<u32>,
-  load_value: (), // TODO: mixed types
+  load_op: String,
+  load_value: Option<super::render_pass::GPUColor>,
   store_op: Option<String>,
 }
 
@@ -131,10 +132,12 @@ struct GPURenderPassColorAttachmentDescriptor {
 #[serde(rename_all = "camelCase")]
 struct GPURenderPassDepthStencilAttachmentDescriptor {
   attachment: u32,
-  depth_load_value: (), // TODO: mixed types
+  depth_load_op: String,
+  depth_load_value: Option<f32>,
   depth_store_op: String,
   depth_read_only: Option<bool>,
-  stencil_load_value: (), // TODO: mixed types
+  stencil_load_op: String,
+  stencil_load_value: Option<u32>,
   stencil_store_op: String,
   stencil_read_only: Option<bool>,
 }
@@ -180,18 +183,32 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
         })
         .transpose()?
         .map(|texture| *texture),
-      channel: wgc::command::PassChannel {
-        load_op: wgc::command::LoadOp::Clear, // TODO
-        store_op: color_attachment
-          .store_op
-          .map_or(wgc::command::StoreOp::Store, serialize_store_op),
-        clear_value: wgt::Color {
-          r: 0.0,
-          g: 0.0,
-          b: 0.0,
-          a: 0.0
-        },  // TODO
-        read_only: false, // TODO
+      channel: match color_attachment.load_op.as_str() {
+        "load" => wgc::command::PassChannel {
+          load_op: wgc::command::LoadOp::Load,
+          store_op: color_attachment
+            .store_op
+            .map_or(wgc::command::StoreOp::Store, serialize_store_op),
+          clear_value: Default::default(),
+          read_only: false,
+        },
+        "clear" => {
+          let color = color_attachment.load_value.unwrap();
+          wgc::command::PassChannel {
+            load_op: wgc::command::LoadOp::Clear,
+            store_op: color_attachment
+              .store_op
+              .map_or(wgc::command::StoreOp::Store, serialize_store_op),
+            clear_value: wgt::Color {
+              r: color.r,
+              g: color.g,
+              b: color.b,
+              a: color.a,
+            },
+            read_only: false,
+          }
+        },
+        _ => unreachable!(),
       },
     };
 
@@ -206,17 +223,35 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
         .resource_table
         .get_mut::<wgc::id::TextureViewId>(attachment.attachment)
         .ok_or_else(bad_resource_id)?,
-      depth: wgc::command::PassChannel {
-        load_op: wgc::command::LoadOp::Clear, // TODO
-        store_op: serialize_store_op(attachment.depth_store_op),
-        clear_value: 0.0,  // TODO
-        read_only: false, // TODO
+      depth: match attachment.depth_load_op.as_str() {
+        "load" => wgc::command::PassChannel {
+          load_op: wgc::command::LoadOp::Load,
+          store_op: serialize_store_op(attachment.depth_store_op),
+          clear_value: 0.0,
+          read_only: attachment.depth_read_only.unwrap_or(false),
+        },
+        "clear" => wgc::command::PassChannel {
+          load_op: wgc::command::LoadOp::Clear,
+          store_op: serialize_store_op(attachment.depth_store_op),
+          clear_value: attachment.depth_load_value.unwrap(),
+          read_only: attachment.depth_read_only.unwrap_or(false),
+        },
+        _ => unreachable!(),
       },
-      stencil: wgc::command::PassChannel {
-        load_op: wgc::command::LoadOp::Clear, // TODO
-        store_op: serialize_store_op(attachment.stencil_store_op),
-        clear_value: 0,  // TODO
-        read_only: false, // TODO
+      stencil: match attachment.stencil_load_op.as_str() {
+        "load" => wgc::command::PassChannel {
+          load_op: wgc::command::LoadOp::Load,
+          store_op: serialize_store_op(attachment.stencil_store_op),
+          clear_value: 0,
+          read_only: attachment.stencil_read_only.unwrap_or(false),
+        },
+        "clear" => wgc::command::PassChannel {
+          load_op: wgc::command::LoadOp::Clear,
+          store_op: serialize_store_op(attachment.stencil_store_op),
+          clear_value: attachment.stencil_load_value.unwrap(),
+          read_only: attachment.stencil_read_only.unwrap_or(false),
+        },
+        _ => unreachable!(),
       },
     };
 

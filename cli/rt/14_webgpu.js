@@ -543,11 +543,50 @@
     }
 
     beginRenderPass(descriptor) {
+      let depthStencilAttachment;
+      if (descriptor.depthStencilAttachment) {
+        depthStencilAttachment = {
+          ...descriptor.depthStencilAttachment,
+          attachment: GPUTextureViewMap.get(descriptor.depthStencilAttachment.attachment),
+        };
+
+        if (typeof descriptor.depthStencilAttachment.depthLoadValue === "string") {
+          depthStencilAttachment.depthLoadOp = descriptor.depthStencilAttachment.depthLoadValue;
+        } else {
+          depthStencilAttachment.depthLoadOp = "clear";
+          depthStencilAttachment.depthLoadValue = descriptor.depthStencilAttachment.depthLoadValue;
+        }
+
+        if (typeof descriptor.depthStencilAttachment.stencilLoadValue === "string") {
+          depthStencilAttachment.stencilLoadOp = descriptor.depthStencilAttachment.stencilLoadValue;
+        } else {
+          depthStencilAttachment.stencilLoadOp = "clear";
+          depthStencilAttachment.stencilLoadValue = descriptor.depthStencilAttachment.stencilLoadValue;
+        }
+      }
+
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_render_pass",
         {
           commandEncoderRid: this.#rid,
           ...descriptor,
+          colorAttachments: descriptor.colorAttachments.map(colorAttachment => {
+            const attachment = {
+              attachment: GPUTextureViewMap.get(colorAttachment.attachment),
+              resolveTarget: colorAttachment.resolveTarget && GPUTextureViewMap.get(colorAttachment.resolveTarget),
+              storeOp: colorAttachment.storeOp,
+            };
+
+            if (typeof colorAttachment.loadValue === "string") {
+              attachment.loadOp = colorAttachment.loadValue;
+            } else {
+              attachment.loadOp = "clear";
+              attachment.loadValue = normalizeGPUColor(colorAttachment.loadValue);
+            }
+
+            return attachment;
+          }),
+          depthStencilAttachment,
         },
       );
 
