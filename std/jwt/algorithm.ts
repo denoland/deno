@@ -1,7 +1,8 @@
 /*
- * An Unsecured JWT is a JWS using the "alg" Header Parameter value "none" and with
- * the empty string for its JWS Signature value, as defined in the JWA specification;
- * it is an Unsecured JWS with the JWT Claims Set as its JWS Payload. (JWT §6)
+ * Cryptographic algorithms and identifiers for use with this specification are
+ * described in the separate JSON Web Algorithms (JWA) specification:
+ * https://www.rfc-editor.org/rfc/rfc7518
+ * (JSW §1)
  */
 export type Algorithm = "none" | "HS256" | "HS512";
 
