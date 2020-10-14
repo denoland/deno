@@ -302,7 +302,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(new Uint8Array([1, 2, 3])),
     "Uint8Array(3) [ 1, 2, 3 ]",
   );
-  assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
+  assertEquals(stringify(Uint8Array.prototype), "Uint8Array {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }",
@@ -346,6 +346,21 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 /* eslint-enable @typescript-eslint/explicit-function-return-type */
+
+unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
+  const f = function f() {};
+  Reflect.setPrototypeOf(f, null);
+  assertEquals(stringify(f), "[Function: f]");
+  const af = async function af() {};
+  Reflect.setPrototypeOf(af, null);
+  assertEquals(stringify(af), "[Function: af]");
+  const gf = function gf() {};
+  Reflect.setPrototypeOf(gf, null);
+  assertEquals(stringify(gf), "[Function: gf]");
+  const agf = function agf() {};
+  Reflect.setPrototypeOf(agf, null);
+  assertEquals(stringify(agf), "[Function: agf]");
+});
 
 unitTest(function consoleTestStringifyWithDepth(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -832,7 +847,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
+    "B { [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
   );
 });
 
@@ -1494,16 +1509,39 @@ unitTest(function inspectString(): void {
   );
 });
 
-unitTest(function inspectGetterError(): void {
+unitTest(function inspectGetters(): void {
+  assertEquals(
+    stripColor(Deno.inspect({
+      get foo() {
+        return 0;
+      },
+    })),
+    "{ foo: [Getter] }",
+  );
+
+  assertEquals(
+    stripColor(Deno.inspect({
+      get foo() {
+        return 0;
+      },
+    }, { getters: true })),
+    "{ foo: 0 }",
+  );
+
   assertEquals(
     Deno.inspect({
       // deno-lint-ignore getter-return
       get foo() {
         throw new Error("bar");
       },
-    }),
+    }, { getters: true }),
     "{ foo: [Thrown Error: bar] }",
   );
+});
+
+unitTest(function inspectPrototype(): void {
+  class A {}
+  assertEquals(Deno.inspect(A.prototype), "A {}");
 });
 
 unitTest(function inspectSorted(): void {

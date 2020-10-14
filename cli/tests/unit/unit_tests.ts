@@ -74,6 +74,7 @@ import "./umask_test.ts";
 import "./url_test.ts";
 import "./url_search_params_test.ts";
 import "./utime_test.ts";
+import "./worker_types.ts";
 import "./write_file_test.ts";
 import "./write_text_file_test.ts";
 import "./performance_test.ts";

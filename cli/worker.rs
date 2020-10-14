@@ -1,16 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::fmt_errors::JsError;
-use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
+use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics::Metrics;
+use crate::module_loader::CliModuleLoader;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::CliModuleLoader;
+use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
@@ -22,10 +24,8 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use std::env;
-use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -95,24 +95,26 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `MainWorker`
 ///  - `WebWorker`
 pub struct Worker {
-  pub name: String,
-  pub js_runtime: JsRuntime,
-  pub inspector: Option<Box<DenoInspector>>,
-  pub waker: AtomicWaker,
-  pub(crate) internal_channels: WorkerChannelsInternal,
   external_channels: WorkerHandle,
+  inspector: Option<Box<DenoInspector>>,
+  // Following fields are pub because they are accessed
+  // when creating a new WebWorker instance.
+  pub(crate) internal_channels: WorkerChannelsInternal,
+  pub(crate) js_runtime: JsRuntime,
+  pub(crate) name: String,
   should_break_on_first_statement: bool,
+  waker: AtomicWaker,
 }
 
 impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Snapshot,
-    global_state: Arc<GlobalState>,
+    program_state: Arc<ProgramState>,
     module_loader: Rc<CliModuleLoader>,
     is_main: bool,
   ) -> Self {
-    let global_state_ = global_state.clone();
+    let global_state_ = program_state.clone();
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
@@ -129,12 +131,12 @@ impl Worker {
     }
 
     let inspector =
-      if let Some(inspector_server) = &global_state.maybe_inspector_server {
+      if let Some(inspector_server) = &program_state.maybe_inspector_server {
         Some(DenoInspector::new(
           &mut js_runtime,
           Some(inspector_server.clone()),
         ))
-      } else if global_state.flags.coverage || global_state.flags.repl {
+      } else if program_state.flags.coverage || program_state.flags.repl {
         Some(DenoInspector::new(&mut js_runtime, None))
       } else {
         None
@@ -142,18 +144,18 @@ impl Worker {
 
     let should_break_on_first_statement = inspector.is_some()
       && is_main
-      && global_state.flags.inspect_brk.is_some();
+      && program_state.flags.inspect_brk.is_some();
 
     let (internal_channels, external_channels) = create_channels();
 
     Self {
-      name,
-      js_runtime,
-      inspector,
-      waker: AtomicWaker::new(),
-      internal_channels,
       external_channels,
+      inspector,
+      internal_channels,
+      js_runtime,
+      name,
       should_break_on_first_statement,
+      waker: AtomicWaker::new(),
     }
   }
 
@@ -189,22 +191,7 @@ impl Worker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id).await
-  }
-
-  /// Loads, instantiates and executes provided source code
-  /// as module.
-  pub async fn execute_module_from_code(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    code: String,
-  ) -> Result<(), AnyError> {
-    let id = self
-      .js_runtime
-      .load_module(module_specifier, Some(code))
-      .await?;
-    self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id).await
+    self.js_runtime.mod_evaluate(id)
   }
 
   /// Returns a way to communicate with the Worker from other threads.
@@ -221,6 +208,28 @@ impl Worker {
         .wait_for_session_and_break_on_next_statement()
     }
   }
+
+  /// Create new inspector session. This function panics if Worker
+  /// was not configured to create inspector.
+  pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
+    let inspector = self.inspector.as_mut().unwrap();
+
+    InspectorSession::new(&mut **inspector)
+  }
+
+  pub fn poll_event_loop(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
+    // We always poll the inspector if it exists.
+    let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
+    self.waker.register(cx.waker());
+    self.js_runtime.poll_event_loop(cx)
+  }
+
+  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx)).await
+  }
 }
 
 impl Drop for Worker {
@@ -228,32 +237,6 @@ impl Drop for Worker {
     // The Isolate object must outlive the Inspector object, but this is
     // currently not enforced by the type system.
     self.inspector.take();
-  }
-}
-
-impl Future for Worker {
-  type Output = Result<(), AnyError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-
-    // We always poll the inspector if it exists.
-    let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
-    inner.waker.register(cx.waker());
-    inner.js_runtime.poll_unpin(cx)
-  }
-}
-
-impl Deref for Worker {
-  type Target = JsRuntime;
-  fn deref(&self) -> &Self::Target {
-    &self.js_runtime
-  }
-}
-
-impl DerefMut for Worker {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.js_runtime
   }
 }
 
@@ -267,57 +250,58 @@ pub struct MainWorker(Worker);
 
 impl MainWorker {
   pub fn new(
-    global_state: &Arc<GlobalState>,
+    program_state: &Arc<ProgramState>,
     main_module: ModuleSpecifier,
   ) -> Self {
-    let loader = CliModuleLoader::new(global_state.maybe_import_map.clone());
+    let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
     let mut worker = Worker::new(
       "main".to_string(),
       js::deno_isolate_init(),
-      global_state.clone(),
+      program_state.clone(),
       loader,
       true,
     );
+    let js_runtime = &mut worker.js_runtime;
     {
       // All ops registered in this function depend on these
       {
-        let op_state = worker.op_state();
+        let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<GlobalState>>(global_state.clone());
-        op_state.put::<Permissions>(global_state.permissions.clone());
+        op_state.put::<Arc<ProgramState>>(program_state.clone());
+        op_state.put::<Permissions>(program_state.permissions.clone());
       }
 
-      ops::runtime::init(&mut worker, main_module);
-      ops::fetch::init(&mut worker, global_state.flags.ca_file.as_deref());
-      ops::timers::init(&mut worker);
-      ops::worker_host::init(&mut worker);
-      ops::random::init(&mut worker, global_state.flags.seed);
-      ops::reg_json_sync(&mut worker, "op_close", deno_core::op_close);
-      ops::reg_json_sync(&mut worker, "op_resources", deno_core::op_resources);
+      ops::runtime::init(js_runtime, main_module);
+      ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
+      ops::timers::init(js_runtime);
+      ops::worker_host::init(js_runtime);
+      ops::random::init(js_runtime, program_state.flags.seed);
+      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
-        &mut worker,
+        js_runtime,
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
-      ops::errors::init(&mut worker);
-      ops::fs_events::init(&mut worker);
-      ops::fs::init(&mut worker);
-      ops::io::init(&mut worker);
-      ops::net::init(&mut worker);
-      ops::os::init(&mut worker);
-      ops::permissions::init(&mut worker);
-      ops::plugin::init(&mut worker);
-      ops::process::init(&mut worker);
-      ops::runtime_compiler::init(&mut worker);
-      ops::signal::init(&mut worker);
-      ops::tls::init(&mut worker);
-      ops::tty::init(&mut worker);
-      ops::webgpu::init(&mut worker);
-      ops::websocket::init(&mut worker);
+      ops::errors::init(js_runtime);
+      ops::fs_events::init(js_runtime);
+      ops::fs::init(js_runtime);
+      ops::io::init(js_runtime);
+      ops::net::init(js_runtime);
+      ops::os::init(js_runtime);
+      ops::permissions::init(js_runtime);
+      ops::plugin::init(js_runtime);
+      ops::process::init(js_runtime);
+      ops::runtime_compiler::init(js_runtime);
+      ops::signal::init(js_runtime);
+      ops::tls::init(js_runtime);
+      ops::tty::init(js_runtime);
+      ops::webgpu::init(js_runtime);
+      ops::websocket::init(js_runtime);
     }
     {
-      let op_state = worker.op_state();
+      let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       let t = &mut op_state.resource_table;
       let (stdin, stdout, stderr) = get_stdio();
@@ -416,14 +400,14 @@ impl WebWorker {
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
-    global_state: Arc<GlobalState>,
+    program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
   ) -> Self {
     let loader = CliModuleLoader::new_for_worker();
     let mut worker = Worker::new(
       name,
       js::deno_isolate_init(),
-      global_state.clone(),
+      program_state.clone(),
       loader,
       false,
     );
@@ -450,50 +434,46 @@ impl WebWorker {
     {
       let handle = web_worker.thread_safe_handle();
       let sender = web_worker.worker.internal_channels.sender.clone();
-
+      let js_runtime = &mut web_worker.js_runtime;
       // All ops registered in this function depend on these
       {
-        let op_state = web_worker.op_state();
+        let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<GlobalState>>(global_state.clone());
+        op_state.put::<Arc<ProgramState>>(program_state.clone());
         op_state.put::<Permissions>(permissions);
       }
 
-      ops::web_worker::init(&mut web_worker, sender, handle);
-      ops::runtime::init(&mut web_worker, main_module);
-      ops::fetch::init(&mut web_worker, global_state.flags.ca_file.as_deref());
-      ops::timers::init(&mut web_worker);
-      ops::worker_host::init(&mut web_worker);
-      ops::reg_json_sync(&mut web_worker, "op_close", deno_core::op_close);
+      ops::web_worker::init(js_runtime, sender, handle);
+      ops::runtime::init(js_runtime, main_module);
+      ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
+      ops::timers::init(js_runtime);
+      ops::worker_host::init(js_runtime);
+      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
-        &mut web_worker,
-        "op_resources",
-        deno_core::op_resources,
-      );
-      ops::reg_json_sync(
-        &mut web_worker,
+        js_runtime,
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
-      ops::errors::init(&mut web_worker);
-      ops::io::init(&mut web_worker);
-      ops::webgpu::init(&mut web_worker);
-      ops::websocket::init(&mut web_worker);
+      ops::errors::init(js_runtime);
+      ops::io::init(js_runtime);
+      ops::webgpu::init(js_runtime);
+      ops::websocket::init(js_runtime);
 
       if has_deno_namespace {
-        ops::fs_events::init(&mut web_worker);
-        ops::fs::init(&mut web_worker);
-        ops::net::init(&mut web_worker);
-        ops::os::init(&mut web_worker);
-        ops::permissions::init(&mut web_worker);
-        ops::plugin::init(&mut web_worker);
-        ops::process::init(&mut web_worker);
-        ops::random::init(&mut web_worker, global_state.flags.seed);
-        ops::runtime_compiler::init(&mut web_worker);
-        ops::signal::init(&mut web_worker);
-        ops::tls::init(&mut web_worker);
-        ops::tty::init(&mut web_worker);
+        ops::fs_events::init(js_runtime);
+        ops::fs::init(js_runtime);
+        ops::net::init(js_runtime);
+        ops::os::init(js_runtime);
+        ops::permissions::init(js_runtime);
+        ops::plugin::init(js_runtime);
+        ops::process::init(js_runtime);
+        ops::random::init(js_runtime, program_state.flags.seed);
+        ops::runtime_compiler::init(js_runtime);
+        ops::signal::init(js_runtime);
+        ops::tls::init(js_runtime);
+        ops::tty::init(js_runtime);
       }
     }
 
@@ -506,38 +486,27 @@ impl WebWorker {
   pub fn thread_safe_handle(&self) -> WebWorkerHandle {
     self.handle.clone()
   }
-}
 
-impl Deref for WebWorker {
-  type Target = Worker;
-  fn deref(&self) -> &Self::Target {
-    &self.worker
+  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx)).await
   }
-}
 
-impl DerefMut for WebWorker {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.worker
-  }
-}
+  pub fn poll_event_loop(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), AnyError>> {
+    let worker = &mut self.worker;
 
-impl Future for WebWorker {
-  type Output = Result<(), AnyError>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let worker = &mut inner.worker;
-
-    let terminated = inner.handle.terminated.load(Ordering::Relaxed);
+    let terminated = self.handle.terminated.load(Ordering::Relaxed);
 
     if terminated {
       return Poll::Ready(Ok(()));
     }
 
-    if !inner.event_loop_idle {
-      match worker.poll_unpin(cx) {
+    if !self.event_loop_idle {
+      match worker.poll_event_loop(cx) {
         Poll::Ready(r) => {
-          let terminated = inner.handle.terminated.load(Ordering::Relaxed);
+          let terminated = self.handle.terminated.load(Ordering::Relaxed);
           if terminated {
             return Poll::Ready(Ok(()));
           }
@@ -548,13 +517,13 @@ impl Future for WebWorker {
               .try_send(WorkerEvent::Error(e))
               .expect("Failed to post message to host");
           }
-          inner.event_loop_idle = true;
+          self.event_loop_idle = true;
         }
         Poll::Pending => {}
       }
     }
 
-    if let Poll::Ready(r) = inner.terminate_rx.poll_next_unpin(cx) {
+    if let Poll::Ready(r) = self.terminate_rx.poll_next_unpin(cx) {
       // terminate_rx should never be closed
       assert!(r.is_some());
       return Poll::Ready(Ok(()));
@@ -571,7 +540,7 @@ impl Future for WebWorker {
           if let Err(e) = worker.execute(&script) {
             // If execution was terminated during message callback then
             // just ignore it
-            if inner.handle.terminated.load(Ordering::Relaxed) {
+            if self.handle.terminated.load(Ordering::Relaxed) {
               return Poll::Ready(Ok(()));
             }
 
@@ -583,7 +552,7 @@ impl Future for WebWorker {
           }
 
           // Let event loop be polled again
-          inner.event_loop_idle = false;
+          self.event_loop_idle = false;
           worker.waker.wake();
         }
         None => unreachable!(),
@@ -594,12 +563,25 @@ impl Future for WebWorker {
   }
 }
 
+impl Deref for WebWorker {
+  type Target = Worker;
+  fn deref(&self) -> &Self::Target {
+    &self.worker
+  }
+}
+
+impl DerefMut for WebWorker {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.worker
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::flags::DenoSubcommand;
   use crate::flags::Flags;
-  use crate::global_state::GlobalState;
+  use crate::program_state::ProgramState;
   use crate::tokio_util;
   use crate::worker::WorkerEvent;
   use deno_core::serde_json::json;
@@ -613,8 +595,9 @@ mod tests {
       },
       ..Default::default()
     };
-    let global_state = GlobalState::mock(vec!["deno".to_string()], Some(flags));
-    MainWorker::new(&global_state, main_module)
+    let program_state =
+      ProgramState::mock(vec!["deno".to_string()], Some(flags));
+    MainWorker::new(&program_state, main_module)
   }
 
   #[tokio::test]
@@ -630,7 +613,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = (&mut *worker).await {
+    if let Err(e) = worker.run_event_loop().await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -648,7 +631,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = (&mut *worker).await {
+    if let Err(e) = worker.run_event_loop().await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -667,7 +650,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = (&mut *worker).await {
+    if let Err(e) = worker.run_event_loop().await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -700,12 +683,12 @@ mod tests {
   fn create_test_web_worker() -> WebWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let global_state = GlobalState::mock(vec!["deno".to_string()], None);
+    let program_state = ProgramState::mock(vec!["deno".to_string()], None);
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
-      global_state,
+      program_state,
       false,
     );
     worker
@@ -735,7 +718,7 @@ mod tests {
       worker.execute(source).unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker);
+      let r = tokio_util::run_basic(worker.run_event_loop());
       assert!(r.is_ok())
     });
 
@@ -782,7 +765,7 @@ mod tests {
       worker.execute("onmessage = () => { close(); }").unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker);
+      let r = tokio_util::run_basic(worker.run_event_loop());
       assert!(r.is_ok())
     });
 
