@@ -10,7 +10,7 @@ use notify_rust::Notification;
 use serde::Deserialize;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-    super::reg_json_sync(rt, "op_notify_send", op_notify_send);
+  super::reg_json_sync(rt, "op_notify_send", op_notify_send);
 }
 
 #[derive(Deserialize)]
@@ -24,22 +24,42 @@ enum Icon {
 }
 
 #[derive(Deserialize)]
-struct NotificationParams {
+struct NotificationActions {
+  action: String,
   title: String,
-  message: String,
-  icon: Option<Icon>,
 }
 
+#[derive(Deserialize)]
+struct NotificationOptions {
+  message: Option<String>,
+  icon: Option<Icon>,
+  tag: Option<String>,
+  badge: Option<String>,
+  image: Option<String>,
+  vibrate: Option<bool>,
+  requireInteraction: Option<bool>,
+  actions: Option<Vec<String>>,
+  silent: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct NotificationParams {
+  title: String,
+  options: Option<NotificationOptions>,
+}
 
 fn op_notify_send(
-    _state: &mut OpState,
-    args: Value,
-    _zero_copy: &mut [ZeroCopyBuf],
+  _state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: NotificationParams = serde_json::from_value(args)?;
   let mut notification = Notification::new();
-  notification.summary(&args.title).body(&args.message);
-  if let Some(icon_value) = &args.icon {
+  notification.summary(&args.title);
+  if let Some(message_value) = &args.options.message {
+    notification.body(&args.options.message);
+  }
+  if let Some(icon_value) = &args.options.icon {
     notification.icon(match icon_value {
       Icon::App(app_name) => {
         if let Err(error) = set_app_identifier(&app_name) {
@@ -52,14 +72,9 @@ fn op_notify_send(
     });
   }
   match notification.show() {
-    Ok(_) => {
-      return Ok(json!({}))
-    }
-    Err(error) => {
-      return Ok(json!(error.to_string()))
-    }
+    Ok(_) => return Ok(json!({})),
+    Err(error) => return Ok(json!(error.to_string())),
   };
-
 }
 
 #[cfg(not(target_os = "macos"))]
