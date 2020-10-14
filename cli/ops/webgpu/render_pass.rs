@@ -103,9 +103,18 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct GPUColor {
+  r: f64,
+  g: f64,
+  b: f64,
+  a: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RenderPassSetBlendColorArgs {
   render_pass_rid: u32,
-  color: (), // TODO: mixed types
+  color: GPUColor,
 }
 
 pub fn op_webgpu_render_pass_set_blend_color(
@@ -123,11 +132,10 @@ pub fn op_webgpu_render_pass_set_blend_color(
   wgc::command::render_ffi::wgpu_render_pass_set_blend_color(
     render_pass,
     &wgt::Color {
-      // TODO
-      r: 0.0,
-      g: 0.0,
-      b: 0.0,
-      a: 0.0,
+      r: args.color.r,
+      g: args.color.g,
+      b: args.color.b,
+      a: args.color.a,
     },
   );
 
@@ -426,7 +434,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
     if args.size == 0 {
       None
     } else {
-      Some(args.size as std::num::NonZeroU64) // TODO: check
+      Some(args.size as std::num::NonZeroU64)
     },
   );
 
@@ -466,7 +474,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
     if args.size == 0 {
       None
     } else {
-      Some(args.size as std::num::NonZeroU64) // TODO: check
+      Some(args.size as std::num::NonZeroU64)
     },
   );
 

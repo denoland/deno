@@ -101,11 +101,10 @@ pub fn op_webgpu_write_buffer(
       .get_mut::<wgc::id::BufferId>(args.buffer)
       .ok_or_else(bad_resource_id)?,
     args.buffer_offset,
-    &zero_copy[0][if let Some(size) = args.size {
-      args.data_offset..(args.data_offset + size)
-    } else {
-      args.data_offset..
-    }],
+    match args.size {
+      Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
+      None => &zero_copy[0][args.data_offset..],
+    },
   )?;
 
   Ok(json!({}))
@@ -118,7 +117,7 @@ struct QueueWriteTextureArgs {
   queue_rid: u32,
   destination: super::command_encoder::GPUTextureCopyView,
   data_layout: GPUTextureDataLayout,
-  size: (), // TODO: mixed types
+  size: super::texture::GPUExtent3D,
 }
 
 pub fn op_webgpu_write_texture(
@@ -145,7 +144,13 @@ pub fn op_webgpu_write_texture(
         .get_mut::<wgc::id::TextureId>(args.destination.texture)
         .ok_or_else(bad_resource_id)?,
       mip_level: args.destination.mip_level.unwrap_or(0),
-      origin: Default::default(),
+      origin: args.destination.origin.map_or(Default::default(), |origin| {
+        wgt::Origin3d {
+          x: origin.x.unwrap_or(0),
+          y: origin.y.unwrap_or(0),
+          z: origin.z.unwrap_or(0),
+        }
+      }),
     },
     &*zero_copy[0],
     &wgt::TextureDataLayout {
@@ -154,9 +159,9 @@ pub fn op_webgpu_write_texture(
       rows_per_image: args.data_layout.rows_per_image,
     },
     &wgt::Extent3d {
-      width: 0,
-      height: 0,
-      depth: 0,
+      width: args.size.width,
+      height: args.size.height,
+      depth: args.size.depth,
     },
   )?;
 

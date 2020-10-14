@@ -3,6 +3,43 @@
 ((window) => {
   const core = window.Deno.core;
 
+  function normalizeGPUExtent3D(data) {
+    if (Array.isArray(data)) {
+      return {
+        width: data[0],
+        height: data[1],
+        depth: data[2],
+      };
+    } else {
+      return data;
+    }
+  }
+
+  function normalizeGPUOrigin3D(data) {
+    if (Array.isArray(data)) {
+      return {
+        x: data[0],
+        y: data[1],
+        z: data[2],
+      };
+    } else {
+      return data;
+    }
+  }
+
+  function normalizeGPUColor(data) {
+    if (Array.isArray(data)) {
+      return {
+        r: data[0],
+        g: data[1],
+        b: data[2],
+        a: data[3],
+      };
+    } else {
+      return data;
+    }
+  }
+
   let instanceRid; // TODO: use op_webgpu_create_instance
 
   const GPU = {
@@ -96,6 +133,7 @@
         instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
+        size: normalizeGPUExtent3D(descriptor.size),
       });
 
       const texture = new GPUTexture(rid, descriptor.label);
@@ -298,9 +336,13 @@
         {
           instanceRid,
           queueRid: this.#rid,
-          destination,
+          destination: {
+            texture: GPUTextureMap.get(destination.texture),
+            mipLevel: destination.mipLevel,
+            origin: destination.origin ?? normalizeGPUOrigin3D(destination.origin),
+          },
           dataLayout,
-          size,
+          size: normalizeGPUExtent3D(size),
         },
         data,
       );
@@ -549,14 +591,15 @@
           instanceRid,
           commandEncoderRid: this.#rid,
           source: {
-            ...source, // TODO: check
+            ...source,
             buffer: GPUBufferMap.get(source.buffer),
           },
           destination: {
-            ...destination, // TODO: check
             texture: GPUTextureMap.get(destination.texture),
+            mipLevel: destination.mipLevel,
+            origin: destination.origin ?? normalizeGPUOrigin3D(destination.origin),
           },
-          copySize,
+          copySize: normalizeGPUExtent3D(copySize),
         },
       );
     }
@@ -568,14 +611,15 @@
           instanceRid,
           commandEncoderRid: this.#rid,
           source: {
-            ...source, // TODO: check
             texture: GPUTextureMap.get(source.texture),
+            mipLevel: source.mipLevel,
+            origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
           },
           destination: {
-            ...destination, // TODO: check
+            ...destination,
             buffer: GPUBufferMap.get(destination.buffer),
           },
-          copySize,
+          copySize: normalizeGPUExtent3D(copySize),
         },
       );
     }
@@ -587,14 +631,16 @@
           instanceRid,
           commandEncoderRid: this.#rid,
           source: {
-            ...source, // TODO: check
             texture: GPUTextureMap.get(source.texture),
+            mipLevel: source.mipLevel,
+            origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
           },
           destination: {
-            ...destination, // TODO: check
             texture: GPUTextureMap.get(destination.texture),
+            mipLevel: destination.mipLevel,
+            origin: destination.origin ?? normalizeGPUOrigin3D(destination.origin),
           },
-          copySize,
+          copySize: normalizeGPUExtent3D(copySize),
         },
       );
     }
@@ -682,7 +728,7 @@
     setBlendColor(color) {
       core.jsonOpSync("op_webgpu_render_pass_set_blend_color", {
         renderPassRid: this.#rid,
-        color,
+        color: normalizeGPUColor(color),
       });
     }
     setStencilReference(reference) {

@@ -116,11 +116,19 @@ pub fn serialize_dimension(dimension: String) -> wgt::TextureViewDimension {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GPUExtent3D {
+  pub width: u32,
+  pub height: u32,
+  pub depth: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateTextureArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
-  size: (), // TODO: mixed types
+  size: GPUExtent3D,
   mip_level_count: Option<u32>,
   sample_count: Option<u32>,
   dimension: Option<String>,
@@ -148,7 +156,11 @@ pub fn op_webgpu_create_texture(
     *device,
     &wgc::resource::TextureDescriptor {
       label: args.label.map(|label| Cow::Borrowed(&label)),
-      size: Default::default(), // TODO
+      size: wgt::Extent3d {
+        width: args.size.width,
+        height: args.size.height,
+        depth: args.size.depth,
+      },
       mip_level_count: args.mip_level_count.unwrap_or(1),
       sample_count: args.sample_count.unwrap_or(1),
       dimension: match args.dimension {
@@ -159,7 +171,7 @@ pub fn op_webgpu_create_texture(
         None => wgt::TextureDimension::D2,
       },
       format: serialize_texture_format(args.format)?,
-      usage: wgt::TextureUsage::from_bits(args.usage).unwrap(), // TODO: don't unwrap
+      usage: wgt::TextureUsage::from_bits(args.usage).unwrap(),
     },
     std::marker::PhantomData,
   )?;

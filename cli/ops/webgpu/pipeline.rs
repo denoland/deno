@@ -157,8 +157,14 @@ pub fn op_webgpu_create_compute_pipeline(
         args.compute_stage,
       )?,
     },
-    (), // TODO: id_in
-    (), // TODO: look into what this is
+    std::marker::PhantomData,
+    match args.layout { // TODO: check
+      Some(_) => None,
+      None => Some(wgc::device::ImplicitPipelineIds {
+        root_id: std::marker::PhantomData,
+        group_ids: &[std::marker::PhantomData; wgc::MAX_BIND_GROUPS],
+      }),
+    }
   )?;
 
   let rid = state
@@ -380,12 +386,7 @@ pub fn op_webgpu_create_render_pipeline(
               color_blend: color_state
                 .color_blend
                 .map_or(Default::default(), serialize_blend_descriptor),
-              write_mask: color_state.write_mask.map_or(
-                Default::default(),
-                |mask| {
-                  wgt::ColorWrite::from_bits(mask).unwrap() // TODO: don't unwrap
-                },
-              ),
+              write_mask: color_state.write_mask.map_or(Default::default(), |mask| wgt::ColorWrite::from_bits(mask).unwrap()),
             }
           })
           .collect::<Vec<wgt::ColorStateDescriptor>>(),
@@ -487,8 +488,14 @@ pub fn op_webgpu_create_render_pipeline(
         .alpha_to_coverage_enabled
         .unwrap_or(false),
     },
-    (), // TODO: id_in
-    (), // TODO: look into what this is
+    std::marker::PhantomData,
+    match args.layout { // TODO: check
+      Some(_) => None,
+      None => Some(wgc::device::ImplicitPipelineIds {
+        root_id: std::marker::PhantomData,
+        group_ids: &[std::marker::PhantomData; wgc::MAX_BIND_GROUPS],
+      }),
+    }
   )?;
 
   let rid = state

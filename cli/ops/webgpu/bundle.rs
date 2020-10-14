@@ -68,7 +68,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
       sample_count: args.sample_count.unwrap_or(1),
     },
     *device,
-    None, // TODO: check what this is
+    None,
   )?;
 
   let rid = state
@@ -331,7 +331,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
     if args.size == 0 {
       None
     } else {
-      Some(args.size as std::num::NonZeroU64) // TODO: check
+      Some(args.size as std::num::NonZeroU64)
     },
   );
 
@@ -374,7 +374,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
     if args.size == 0 {
       None
     } else {
-      Some(args.size as std::num::NonZeroU64) // TODO: check
+      Some(args.size as std::num::NonZeroU64)
     },
   );
 
