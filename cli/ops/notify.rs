@@ -7,6 +7,7 @@ use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use notify_rust::Notification;
+use serde::Serialize;
 use serde::Deserialize;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -31,7 +32,7 @@ struct NotificationActions {
 
 #[derive(Deserialize)]
 struct NotificationOptions {
-  message: Option<String>,
+  body: Option<String>,
   icon: Option<Icon>,
   tag: Option<String>,
   badge: Option<String>,
@@ -48,6 +49,12 @@ struct NotificationParams {
   options: Option<NotificationOptions>,
 }
 
+#[derive(Serialize, Debug)]
+struct NotificationEvent {
+  kind: String,
+  data: Option<Value>,
+}
+
 fn op_notify_send(
   _state: &mut OpState,
   args: Value,
@@ -56,23 +63,35 @@ fn op_notify_send(
   let args: NotificationParams = serde_json::from_value(args)?;
   let mut notification = Notification::new();
   notification.summary(&args.title);
-  if let Some(message_value) = &args.options.message {
-    notification.body(&args.options.message);
-  }
-  if let Some(icon_value) = &args.options.icon {
-    notification.icon(match icon_value {
-      Icon::App(app_name) => {
-        if let Err(error) = set_app_identifier(&app_name) {
-          return Ok(json!(error.to_string()));
+  if let Some(options) = &args.options {
+    if let Some(message_value) = &options.body {
+      notification.body(&message_value);
+    }
+    if let Some(icon_value) = &options.icon {
+      notification.icon(match icon_value {
+        Icon::App(app_name) => {
+          if let Err(error) = set_app_identifier(&app_name) {
+            return Ok(json!(error.to_string()));
+          }
+          app_name
         }
-        app_name
-      }
-      Icon::Path(file_path) => file_path,
-      Icon::Name(icon_name) => icon_name,
-    });
+        Icon::Path(file_path) => file_path,
+        Icon::Name(icon_name) => icon_name,
+      });
+    }
   }
   match notification.show() {
-    Ok(_) => return Ok(json!({})),
+    Ok(_) => {
+      notification.wait_for_action(|action| {
+        match action {
+          "__closed" => {
+            println!("the notification was closed")
+          },
+          _ => ()
+        }
+      });
+      return Ok(json!({}))
+    },
     Err(error) => return Ok(json!(error.to_string())),
   };
 }
