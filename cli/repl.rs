@@ -167,6 +167,56 @@ async fn read_line_and_poll(
   }
 }
 
+static PRELUDE: &str = r#"
+Object.defineProperty(globalThis, "_", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastEvalResult,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+   console.log("Last evaluation result is no longer saved to _.");
+  },
+});
+
+Object.defineProperty(globalThis, "_error", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastThrownError,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_error", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+
+   console.log("Last thrown error is no longer saved to _error.");
+  },
+});
+"#;
+
+async fn inject_prelude(
+  worker: &mut MainWorker,
+  session: &mut InspectorSession,
+  context_id: u64,
+) -> Result<(), AnyError> {
+  post_message_and_poll(
+    worker,
+    session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": PRELUDE,
+      "contextId": context_id,
+    })),
+  )
+  .await?;
+
+  Ok(())
+}
+
 pub async fn run(
   program_state: &ProgramState,
   mut worker: MainWorker,
@@ -215,47 +265,7 @@ pub async fn run(
   println!("Deno {}", crate::version::DENO);
   println!("exit using ctrl+d or close()");
 
-  let prelude = r#"
-    Object.defineProperty(globalThis, "_", {
-      configurable: true,
-      get: () => Deno[Deno.internal].lastEvalResult,
-      set: (value) => {
-       Object.defineProperty(globalThis, "_", {
-         value: value,
-         writable: true,
-         enumerable: true,
-         configurable: true,
-       });
-       console.log("Last evaluation result is no longer saved to _.");
-      },
-    });
-
-    Object.defineProperty(globalThis, "_error", {
-      configurable: true,
-      get: () => Deno[Deno.internal].lastThrownError,
-      set: (value) => {
-       Object.defineProperty(globalThis, "_error", {
-         value: value,
-         writable: true,
-         enumerable: true,
-         configurable: true,
-       });
-
-       console.log("Last thrown error is no longer saved to _error.");
-      },
-    });
-  "#;
-
-  post_message_and_poll(
-    &mut *worker,
-    &mut session,
-    "Runtime.evaluate",
-    Some(json!({
-      "expression": prelude,
-      "contextId": context_id,
-    })),
-  )
-  .await?;
+  inject_prelude(&mut worker, &mut session, context_id).await?;
 
   loop {
     let line = read_line_and_poll(&mut *worker, editor.clone()).await;
