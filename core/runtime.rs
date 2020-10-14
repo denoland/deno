@@ -506,12 +506,6 @@ impl JsRuntime {
 
     // Top level module
     self.evaluate_pending_module()?;
-    {
-      let context = self.global_context();
-      let scope =
-        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-      scope.perform_microtask_checkpoint();
-    }
 
     let state = state_rc.borrow();
     let has_pending_ops = !state.pending_ops.is_empty();
