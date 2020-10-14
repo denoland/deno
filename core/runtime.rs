@@ -539,7 +539,8 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        return Poll::Ready(Err(generic_error("Module evaluation is still pending but there are no pending ops or dynamic imports.")));
+        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
+        return Poll::Ready(Err(generic_error(msg)));
       }
     }
 
@@ -547,7 +548,8 @@ impl JsRuntime {
       if has_pending_ops || has_pending_dyn_imports {
         // pass, will be polled again
       } else {
-        return Poll::Ready(Err(generic_error("Dynamically imported module evaluation is still pending but there are no pending ops.")));
+        let msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.";
+        return Poll::Ready(Err(generic_error(msg)));
       }
     }
 
