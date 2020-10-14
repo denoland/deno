@@ -237,7 +237,7 @@ pub async fn op_webgpu_request_device(
   let device_features =
     wgc::gfx_select!(device => instance.device_features(device))?;
   let features = deserialize_features(&device_features);
-  let limits = instance.device_limits(device)?;
+  let limits = wgc::gfx_select!(device => instance.device_limits(device))?;
   let json_limits = json!({
      "max_bind_groups": limits.max_bind_groups,
      "max_dynamic_uniform_buffers_per_pipeline_layout": limits.max_dynamic_uniform_buffers_per_pipeline_layout,

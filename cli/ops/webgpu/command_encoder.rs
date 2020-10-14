@@ -178,12 +178,13 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
               resolve_target: color_attachment
                 .resolve_target
                 .map(|rid| {
-                  *state
+                  state
                     .resource_table
                     .get_mut::<wgc::id::TextureViewId>(rid)
                     .ok_or_else(bad_resource_id)
                 })
-                .transpose()?,
+                .transpose()?
+                .map(|texture| *texture),
               channel: wgc::command::PassChannel {
                 load_op: LoadOp::Clear, // TODO
                 store_op: color_attachment
