@@ -79,22 +79,20 @@
           } else {
             length = value.length;
           }
-          return new (value.constructor)(
+          return new value.constructor(
             clonedBuffer,
             value.byteOffset,
             length,
           );
         }
         if (value instanceof Map) {
-          const clonedMap = new Map();
+          const clonedMap = new Map(value);
           objectCloneMemo.set(value, clonedMap);
-          value.forEach((v, k) => clonedMap.set(k, cloneValue(v)));
           return clonedMap;
         }
         if (value instanceof Set) {
-          const clonedSet = new Map();
+          const clonedSet = new Set(value);
           objectCloneMemo.set(value, clonedSet);
-          value.forEach((v, k) => clonedSet.set(k, cloneValue(v)));
           return clonedSet;
         }
 
