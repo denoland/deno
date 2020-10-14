@@ -55,7 +55,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 }
 
 fn serialize_features(features: &wgt::Features) -> Vec<&str> {
-  let mut extensions: Vec<&str> = vec![];5
+  let mut extensions: Vec<&str> = vec![];
 
   if features.contains(wgt::Features::DEPTH_CLAMPING) {
     extensions.push("depth-clamping");

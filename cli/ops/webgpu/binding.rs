@@ -15,9 +15,21 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(rt, "op_webgpu_create_bind_group_layout", op_webgpu_create_bind_group_layout);
-  super::super::reg_json_sync(rt, "op_webgpu_create_pipeline_layout", op_webgpu_create_pipeline_layout);
-  super::super::reg_json_sync(rt, "op_webgpu_create_bind_group", op_webgpu_create_bind_group);
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_bind_group_layout",
+    op_webgpu_create_bind_group_layout,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_pipeline_layout",
+    op_webgpu_create_pipeline_layout,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_bind_group",
+    op_webgpu_create_bind_group,
+  );
 }
 
 fn serialize_texture_component_type(
@@ -79,70 +91,61 @@ pub fn op_webgpu_create_bind_group_layout(
         args
           .entries
           .iter()
-          .map(|entry| {
-            wgt::BindGroupLayoutEntry {
-              binding: entry.binding,
-              visibility: wgt::ShaderStage::from_bits(entry.visibility)
-                .unwrap(),
-              ty: match entry.kind {
-                &"uniform-buffer" => wgt::BindingType::UniformBuffer {
-                  dynamic: entry.has_dynamic_offset.unwrap_or(false),
-                  min_binding_size: entry.min_buffer_binding_size,
-                },
-                &"storage-buffer" => wgt::BindingType::StorageBuffer {
-                  dynamic: entry.has_dynamic_offset.unwrap_or(false),
-                  min_binding_size: entry.min_buffer_binding_size,
-                  readonly: false,
-                },
-                &"readonly-storage-buffer" => wgt::BindingType::StorageBuffer {
-                  dynamic: entry.has_dynamic_offset.unwrap_or(false),
-                  min_binding_size: entry.min_buffer_binding_size,
-                  readonly: true,
-                },
-                &"sampler" => wgt::BindingType::Sampler { comparison: false },
-                &"comparison-sampler" => {
-                  wgt::BindingType::Sampler { comparison: true }
-                }
-                &"sampled-texture" => wgt::BindingType::SampledTexture {
-                  dimension: serialize_dimension(entry.view_dimension.unwrap()),
-                  component_type: serialize_texture_component_type(
-                    entry.texture_component_type.unwrap(),
-                  )?,
-                  multisampled: false,
-                },
-                &"multisampled-texture" => wgt::BindingType::SampledTexture {
-                  dimension: serialize_dimension(entry.view_dimension.unwrap()),
-                  component_type: serialize_texture_component_type(
-                    entry.texture_component_type.unwrap(),
-                  )?,
-                  multisampled: true,
-                },
-                &"readonly-storage-texture" => {
-                  wgt::BindingType::StorageTexture {
-                    dimension: serialize_dimension(
-                      entry.view_dimension.unwrap(),
-                    ),
-                    format: serialize_texture_format(
-                      entry.storage_texture_format.unwrap(),
-                    )?,
-                    readonly: true,
-                  }
-                }
-                &"writeonly-storage-texture" => {
-                  wgt::BindingType::StorageTexture {
-                    dimension: serialize_dimension(
-                      entry.view_dimension.unwrap(),
-                    ),
-                    format: serialize_texture_format(
-                      entry.storage_texture_format.unwrap(),
-                    )?,
-                    readonly: false,
-                  }
-                }
-                _ => unreachable!(),
+          .map(|entry| wgt::BindGroupLayoutEntry {
+            binding: entry.binding,
+            visibility: wgt::ShaderStage::from_bits(entry.visibility).unwrap(),
+            ty: match entry.kind {
+              &"uniform-buffer" => wgt::BindingType::UniformBuffer {
+                dynamic: entry.has_dynamic_offset.unwrap_or(false),
+                min_binding_size: entry.min_buffer_binding_size,
               },
-              count: None,
-            }
+              &"storage-buffer" => wgt::BindingType::StorageBuffer {
+                dynamic: entry.has_dynamic_offset.unwrap_or(false),
+                min_binding_size: entry.min_buffer_binding_size,
+                readonly: false,
+              },
+              &"readonly-storage-buffer" => wgt::BindingType::StorageBuffer {
+                dynamic: entry.has_dynamic_offset.unwrap_or(false),
+                min_binding_size: entry.min_buffer_binding_size,
+                readonly: true,
+              },
+              &"sampler" => wgt::BindingType::Sampler { comparison: false },
+              &"comparison-sampler" => {
+                wgt::BindingType::Sampler { comparison: true }
+              }
+              &"sampled-texture" => wgt::BindingType::SampledTexture {
+                dimension: serialize_dimension(entry.view_dimension.unwrap()),
+                component_type: serialize_texture_component_type(
+                  entry.texture_component_type.unwrap(),
+                )?,
+                multisampled: false,
+              },
+              &"multisampled-texture" => wgt::BindingType::SampledTexture {
+                dimension: serialize_dimension(entry.view_dimension.unwrap()),
+                component_type: serialize_texture_component_type(
+                  entry.texture_component_type.unwrap(),
+                )?,
+                multisampled: true,
+              },
+              &"readonly-storage-texture" => wgt::BindingType::StorageTexture {
+                dimension: serialize_dimension(entry.view_dimension.unwrap()),
+                format: serialize_texture_format(
+                  entry.storage_texture_format.unwrap(),
+                )?,
+                readonly: true,
+              },
+              &"writeonly-storage-texture" => {
+                wgt::BindingType::StorageTexture {
+                  dimension: serialize_dimension(entry.view_dimension.unwrap()),
+                  format: serialize_texture_format(
+                    entry.storage_texture_format.unwrap(),
+                  )?,
+                  readonly: false,
+                }
+              }
+              _ => unreachable!(),
+            },
+            count: None,
           })
           .collect::<Vec<wgt::BindGroupLayoutEntry>>(),
       ),

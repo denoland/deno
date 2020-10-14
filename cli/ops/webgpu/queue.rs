@@ -13,9 +13,21 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(rt, "op_webgpu_queue_submit", op_webgpu_queue_submit);
-  super::super::reg_json_sync(rt, "op_webgpu_write_buffer", op_webgpu_write_buffer);
-  super::super::reg_json_sync(rt, "op_webgpu_write_texture", op_webgpu_write_texture);
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_queue_submit",
+    op_webgpu_queue_submit,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_write_buffer",
+    op_webgpu_write_buffer,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_write_texture",
+    op_webgpu_write_texture,
+  );
 }
 
 #[derive(Deserialize)]
@@ -144,13 +156,14 @@ pub fn op_webgpu_write_texture(
         .get_mut::<wgc::id::TextureId>(args.destination.texture)
         .ok_or_else(bad_resource_id)?,
       mip_level: args.destination.mip_level.unwrap_or(0),
-      origin: args.destination.origin.map_or(Default::default(), |origin| {
-        wgt::Origin3d {
+      origin: args
+        .destination
+        .origin
+        .map_or(Default::default(), |origin| wgt::Origin3d {
           x: origin.x.unwrap_or(0),
           y: origin.y.unwrap_or(0),
           z: origin.z.unwrap_or(0),
-        }
-      }),
+        }),
     },
     &*zero_copy[0],
     &wgt::TextureDataLayout {

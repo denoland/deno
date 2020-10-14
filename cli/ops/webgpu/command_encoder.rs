@@ -14,17 +14,61 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(rt, "op_webgpu_create_command_encoder", op_webgpu_create_command_encoder);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_begin_render_pass", op_webgpu_command_encoder_begin_render_pass);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_begin_compute_pass", op_webgpu_command_encoder_begin_compute_pass);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_buffer_to_buffer", op_webgpu_command_encoder_copy_buffer_to_buffer);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_buffer_to_texture", op_webgpu_command_encoder_copy_buffer_to_texture);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_texture_to_buffer", op_webgpu_command_encoder_copy_texture_to_buffer);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_copy_texture_to_texture", op_webgpu_command_encoder_copy_texture_to_texture);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_push_debug_group", op_webgpu_command_encoder_push_debug_group);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_pop_debug_group", op_webgpu_command_encoder_pop_debug_group);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_insert_debug_marker", op_webgpu_command_encoder_insert_debug_marker);
-  super::super::reg_json_sync(rt, "op_webgpu_command_encoder_finish", op_webgpu_command_encoder_finish);
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_command_encoder",
+    op_webgpu_create_command_encoder,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_begin_render_pass",
+    op_webgpu_command_encoder_begin_render_pass,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_begin_compute_pass",
+    op_webgpu_command_encoder_begin_compute_pass,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_copy_buffer_to_buffer",
+    op_webgpu_command_encoder_copy_buffer_to_buffer,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_copy_buffer_to_texture",
+    op_webgpu_command_encoder_copy_buffer_to_texture,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_copy_texture_to_buffer",
+    op_webgpu_command_encoder_copy_texture_to_buffer,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_copy_texture_to_texture",
+    op_webgpu_command_encoder_copy_texture_to_texture,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_push_debug_group",
+    op_webgpu_command_encoder_push_debug_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_pop_debug_group",
+    op_webgpu_command_encoder_pop_debug_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_insert_debug_marker",
+    op_webgpu_command_encoder_insert_debug_marker,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_command_encoder_finish",
+    op_webgpu_command_encoder_finish,
+  );
 }
 
 fn serialize_store_op(store_op: String) -> wgc::command::StoreOp {
@@ -147,9 +191,11 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
               }),
               channel: wgc::command::PassChannel {
                 load_op: LoadOp::Clear, // TODO
-                store_op: color_attachment.store_op.map_or(wgc::command::StoreOp::Store, serialize_store_op),
-                clear_value: (), // TODO
-                read_only: false // TODO
+                store_op: color_attachment
+                  .store_op
+                  .map_or(wgc::command::StoreOp::Store, serialize_store_op),
+                clear_value: (),  // TODO
+                read_only: false, // TODO
               },
             }
           })
@@ -166,15 +212,19 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
               .ok_or_else(bad_resource_id)?,
             depth: wgc::command::PassChannel {
               load_op: LoadOp::Clear, // TODO
-              store_op: serialize_store_op(depth_stencil_attachment.depth_store_op),
-              clear_value: (), // TODO
-              read_only: false // TODO
+              store_op: serialize_store_op(
+                depth_stencil_attachment.depth_store_op,
+              ),
+              clear_value: (),  // TODO
+              read_only: false, // TODO
             },
             stencil: wgc::command::PassChannel {
               load_op: LoadOp::Clear, // TODO
-              store_op: serialize_store_op(depth_stencil_attachment.stencil_store_op),
-              clear_value: (), // TODO
-              read_only: false // TODO
+              store_op: serialize_store_op(
+                depth_stencil_attachment.stencil_store_op,
+              ),
+              clear_value: (),  // TODO
+              read_only: false, // TODO
             },
           }
         },
@@ -344,13 +394,14 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
         .get_mut::<wgc::id::TextureId>(args.destination.texture)
         .ok_or_else(bad_resource_id)?,
       mip_level: args.destination.mip_level.unwrap_or(0),
-      origin: args.destination.origin.map_or(Default::default(), |origin| {
-        wgt::Origin3d {
+      origin: args
+        .destination
+        .origin
+        .map_or(Default::default(), |origin| wgt::Origin3d {
           x: origin.x.unwrap_or(0),
           y: origin.y.unwrap_or(0),
           z: origin.z.unwrap_or(0),
-        }
-      }),
+        }),
     },
     &wgt::Extent3d {
       width: args.copy_size.width,
@@ -403,7 +454,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
           y: origin.y.unwrap_or(0),
           z: origin.z.unwrap_or(0),
         }
-      })
+      }),
     },
     &wgc::command::BufferCopyView {
       buffer: *state
@@ -475,13 +526,14 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
         .get_mut::<wgc::id::TextureId>(args.destination.texture)
         .ok_or_else(bad_resource_id)?,
       mip_level: args.destination.mip_level.unwrap_or(0),
-      origin: args.destination.origin.map_or(Default::default(), |origin| {
-        wgt::Origin3d {
+      origin: args
+        .destination
+        .origin
+        .map_or(Default::default(), |origin| wgt::Origin3d {
           x: origin.x.unwrap_or(0),
           y: origin.y.unwrap_or(0),
           z: origin.z.unwrap_or(0),
-        }
-      }),
+        }),
     },
     &wgt::Extent3d {
       width: args.copy_size.width,

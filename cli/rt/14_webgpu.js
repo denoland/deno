@@ -69,7 +69,7 @@
     constructor(rid, data) {
       this.#rid = rid;
       this.#name = data.name;
-      this.#extensions = Object.freeze(data.features);
+      this.#features = Object.freeze(data.features);
     }
 
     async requestDevice(descriptor = {}) {
@@ -82,7 +82,7 @@
         },
       );
 
-      return new GPUDevice(this, data);
+      return new GPUDevice(this, rid, data);
     }
   }
 
@@ -260,11 +260,11 @@
       return pipeline;
     }
 
-    async createReadyComputePipeline(descriptor) {
+    createReadyComputePipeline(_descriptor) {
       throw new Error("Not yet implemented"); // easy polyfill
     }
 
-    async createReadyRenderPipeline(descriptor) {
+    createReadyRenderPipeline(_descriptor) {
       throw new Error("Not yet implemented"); // easy polyfill
     }
 
@@ -290,7 +290,7 @@
       return new GPURenderBundleEncoder(rid, descriptor.label);
     }
 
-    createQuerySet(descriptor) {
+    createQuerySet(_descriptor) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
   }
@@ -311,7 +311,7 @@
         ),
       });
     }
-    createFence(descriptor = {}) {
+    createFence(_descriptor = {}) {
       throw new Error("Not yet implemented");
     }
 
@@ -339,7 +339,8 @@
           destination: {
             texture: GPUTextureMap.get(destination.texture),
             mipLevel: destination.mipLevel,
-            origin: destination.origin ?? normalizeGPUOrigin3D(destination.origin),
+            origin: destination.origin ??
+              normalizeGPUOrigin3D(destination.origin),
           },
           dataLayout,
           size: normalizeGPUExtent3D(size),
@@ -348,7 +349,7 @@
       );
     }
 
-    copyImageBitmapToTexture(source, destination, copySize) {
+    copyImageBitmapToTexture(_source, _destination, _copySize) {
       throw new Error("Not yet implemented");
     }
   }
@@ -474,7 +475,7 @@
       this.label = label ?? null;
     }
 
-    async compilationInfo() {
+    compilationInfo() {
       throw new Error("Not yet implemented"); // wgpu#977
     }
   }
@@ -597,7 +598,8 @@
           destination: {
             texture: GPUTextureMap.get(destination.texture),
             mipLevel: destination.mipLevel,
-            origin: destination.origin ?? normalizeGPUOrigin3D(destination.origin),
+            origin: destination.origin ??
+              normalizeGPUOrigin3D(destination.origin),
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -638,7 +640,8 @@
           destination: {
             texture: GPUTextureMap.get(destination.texture),
             mipLevel: destination.mipLevel,
-            origin: destination.origin ?? normalizeGPUOrigin3D(destination.origin),
+            origin: destination.origin ??
+              normalizeGPUOrigin3D(destination.origin),
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -666,16 +669,16 @@
       });
     }
 
-    writeTimestamp(querySet, queryIndex) {
+    writeTimestamp(_querySet, _queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
     resolveQuerySet(
-      querySet,
-      firstQuery,
-      queryCount,
-      destination,
-      destinationOffset,
+      _querySet,
+      _firstQuery,
+      _queryCount,
+      _destination,
+      _destinationOffset,
     ) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
@@ -738,21 +741,21 @@
       });
     }
 
-    beginOcclusionQuery(queryIndex) {
+    beginOcclusionQuery(_queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
     endOcclusionQuery() {
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
-    beginPipelineStatisticsQuery(querySet, queryIndex) {
+    beginPipelineStatisticsQuery(_querySet, _queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
     endPipelineStatisticsQuery() {
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
-    writeTimestamp(querySet, queryIndex) {
+    writeTimestamp(_querySet, _queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
@@ -921,14 +924,14 @@
       });
     }
 
-    beginPipelineStatisticsQuery(querySet, queryIndex) {
+    beginPipelineStatisticsQuery(_querySet, _queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
     endPipelineStatisticsQuery() {
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
-    writeTimestamp(querySet, queryIndex) {
+    writeTimestamp(_querySet, _queryIndex) {
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
@@ -1135,7 +1138,7 @@
         indirectOffset,
       });
     }
-    drawIndexedIndirect(indirectBuffer, indirectOffset) {
+    drawIndexedIndirect(_indirectBuffer, _indirectOffset) {
       throw new Error("Not yet implemented");
     }
   }

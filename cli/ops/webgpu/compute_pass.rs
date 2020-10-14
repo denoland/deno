@@ -12,14 +12,46 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_set_pipeline", op_webgpu_compute_pass_set_pipeline);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_dispatch", op_webgpu_compute_pass_dispatch);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_dispatch_indirect", op_webgpu_compute_pass_dispatch_indirect);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_end_pass", op_webgpu_compute_pass_end_pass);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_set_bind_group", op_webgpu_compute_pass_set_bind_group);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_push_debug_group", op_webgpu_compute_pass_push_debug_group);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_pop_debug_group", op_webgpu_compute_pass_pop_debug_group);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pass_insert_debug_marker", op_webgpu_compute_pass_insert_debug_marker);
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_set_pipeline",
+    op_webgpu_compute_pass_set_pipeline,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_dispatch",
+    op_webgpu_compute_pass_dispatch,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_dispatch_indirect",
+    op_webgpu_compute_pass_dispatch_indirect,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_end_pass",
+    op_webgpu_compute_pass_end_pass,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_set_bind_group",
+    op_webgpu_compute_pass_set_bind_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_push_debug_group",
+    op_webgpu_compute_pass_push_debug_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_pop_debug_group",
+    op_webgpu_compute_pass_pop_debug_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pass_insert_debug_marker",
+    op_webgpu_compute_pass_insert_debug_marker,
+  );
 }
 
 #[derive(Deserialize)]
@@ -186,7 +218,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
           data[args.dynamic_offsets_data_start..].as_ptr()
-        }
+        },
       },
       args.dynamic_offsets_data_length,
     );

@@ -16,10 +16,26 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(rt, "op_webgpu_create_compute_pipeline", op_webgpu_create_compute_pipeline);
-  super::super::reg_json_sync(rt, "op_webgpu_compute_pipeline_get_bind_group_layout", op_webgpu_compute_pipeline_get_bind_group_layout);
-  super::super::reg_json_sync(rt, "op_webgpu_create_render_pipeline", op_webgpu_create_render_pipeline);
-  super::super::reg_json_sync(rt, "op_webgpu_render_pipeline_get_bind_group_layout", op_webgpu_render_pipeline_get_bind_group_layout);
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_compute_pipeline",
+    op_webgpu_create_compute_pipeline,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_compute_pipeline_get_bind_group_layout",
+    op_webgpu_compute_pipeline_get_bind_group_layout,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_render_pipeline",
+    op_webgpu_create_render_pipeline,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_pipeline_get_bind_group_layout",
+    op_webgpu_render_pipeline_get_bind_group_layout,
+  );
 }
 
 fn serialize_programmable_stage_descriptor(
@@ -158,13 +174,14 @@ pub fn op_webgpu_create_compute_pipeline(
       )?,
     },
     std::marker::PhantomData,
-    match args.layout { // TODO: check
+    match args.layout {
+      // TODO: check
       Some(_) => None,
       None => Some(wgc::device::ImplicitPipelineIds {
         root_id: std::marker::PhantomData,
         group_ids: &[std::marker::PhantomData; wgc::MAX_BIND_GROUPS],
       }),
-    }
+    },
   )?;
 
   let rid = state
@@ -377,17 +394,19 @@ pub fn op_webgpu_create_render_pipeline(
         args
           .color_states
           .iter()
-          .map(|color_state| {
-            wgt::ColorStateDescriptor {
-              format: serialize_texture_format(color_state.format.clone())?,
-              alpha_blend: color_state
-                .alpha_blend
-                .map_or(Default::default(), serialize_blend_descriptor),
-              color_blend: color_state
-                .color_blend
-                .map_or(Default::default(), serialize_blend_descriptor),
-              write_mask: color_state.write_mask.map_or(Default::default(), |mask| wgt::ColorWrite::from_bits(mask).unwrap()),
-            }
+          .map(|color_state| wgt::ColorStateDescriptor {
+            format: serialize_texture_format(color_state.format.clone())?,
+            alpha_blend: color_state
+              .alpha_blend
+              .map_or(Default::default(), serialize_blend_descriptor),
+            color_blend: color_state
+              .color_blend
+              .map_or(Default::default(), serialize_blend_descriptor),
+            write_mask: color_state
+              .write_mask
+              .map_or(Default::default(), |mask| {
+                wgt::ColorWrite::from_bits(mask).unwrap()
+              }),
           })
           .collect::<Vec<wgt::ColorStateDescriptor>>(),
       ),
@@ -489,13 +508,14 @@ pub fn op_webgpu_create_render_pipeline(
         .unwrap_or(false),
     },
     std::marker::PhantomData,
-    match args.layout { // TODO: check
+    match args.layout {
+      // TODO: check
       Some(_) => None,
       None => Some(wgc::device::ImplicitPipelineIds {
         root_id: std::marker::PhantomData,
         group_ids: &[std::marker::PhantomData; wgc::MAX_BIND_GROUPS],
       }),
-    }
+    },
   )?;
 
   let rid = state

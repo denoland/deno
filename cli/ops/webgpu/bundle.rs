@@ -15,19 +15,71 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(rt, "op_webgpu_create_render_bundle_encoder", op_webgpu_create_render_bundle_encoder);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_finish", op_webgpu_render_bundle_encoder_finish);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_set_bind_group", op_webgpu_render_bundle_encoder_set_bind_group);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_push_debug_group", op_webgpu_render_bundle_encoder_push_debug_group);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_pop_debug_group", op_webgpu_render_bundle_encoder_pop_debug_group);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_insert_debug_marker", op_webgpu_render_bundle_encoder_insert_debug_marker);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_set_pipeline", op_webgpu_render_bundle_encoder_set_pipeline);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_set_index_buffer", op_webgpu_render_bundle_encoder_set_index_buffer);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_set_vertex_buffer", op_webgpu_render_bundle_encoder_set_vertex_buffer);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_draw", op_webgpu_render_bundle_encoder_draw);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_draw_indexed", op_webgpu_render_bundle_encoder_draw_indexed);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_draw_indirect", op_webgpu_render_bundle_encoder_draw_indirect);
-  super::super::reg_json_sync(rt, "op_webgpu_render_bundle_encoder_draw_indexed_indirect", op_webgpu_render_bundle_encoder_draw_indexed_indirect);
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_render_bundle_encoder",
+    op_webgpu_create_render_bundle_encoder,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_finish",
+    op_webgpu_render_bundle_encoder_finish,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_set_bind_group",
+    op_webgpu_render_bundle_encoder_set_bind_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_push_debug_group",
+    op_webgpu_render_bundle_encoder_push_debug_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_pop_debug_group",
+    op_webgpu_render_bundle_encoder_pop_debug_group,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_insert_debug_marker",
+    op_webgpu_render_bundle_encoder_insert_debug_marker,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_set_pipeline",
+    op_webgpu_render_bundle_encoder_set_pipeline,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_set_index_buffer",
+    op_webgpu_render_bundle_encoder_set_index_buffer,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_set_vertex_buffer",
+    op_webgpu_render_bundle_encoder_set_vertex_buffer,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_draw",
+    op_webgpu_render_bundle_encoder_draw,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_draw_indexed",
+    op_webgpu_render_bundle_encoder_draw_indexed,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_draw_indirect",
+    op_webgpu_render_bundle_encoder_draw_indirect,
+  );
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_render_bundle_encoder_draw_indexed_indirect",
+    op_webgpu_render_bundle_encoder_draw_indexed_indirect,
+  );
 }
 
 #[derive(Deserialize)]
@@ -161,7 +213,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
           data[args.dynamic_offsets_data_start..].as_ptr()
-        }
+        },
       },
       args.dynamic_offsets_data_length,
     );

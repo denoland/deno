@@ -9,13 +9,17 @@ use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::ops::Deref;
+use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(rt, "op_webgpu_create_shader_module", op_webgpu_create_shader_module);
+  super::super::reg_json_sync(
+    rt,
+    "op_webgpu_create_shader_module",
+    op_webgpu_create_shader_module,
+  );
 }
 
 #[derive(Deserialize)]
