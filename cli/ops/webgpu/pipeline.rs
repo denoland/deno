@@ -168,7 +168,7 @@ pub fn op_webgpu_create_compute_pipeline(
 
   let descriptor = wgc::pipeline::ComputePipelineDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
-    layout: layout.transpose()?,
+    layout,
     compute_stage: serialize_programmable_stage_descriptor(
       state,
       args.compute_stage,
@@ -388,14 +388,14 @@ pub fn op_webgpu_create_render_pipeline(
       .resource_table
       .get_mut::<wgc::id::PipelineLayoutId>(rid)
       .ok_or_else(bad_resource_id)?;
-    Some(id)
+    Some(*id)
   } else {
     None
   };
 
   let descriptor = wgc::pipeline::RenderPipelineDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
-    layout: layout.transpose()?,
+    layout,
     vertex_stage: serialize_programmable_stage_descriptor(
       state,
       args.vertex_stage,

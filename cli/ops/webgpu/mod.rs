@@ -173,13 +173,13 @@ pub async fn op_webgpu_request_device(
   let args: RequestDeviceArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
+  let adapter = *state
+    .resource_table
+    .get_mut::<wgc::id::AdapterId>(args.adapter_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let adapter = state
-    .resource_table
-    .get_mut::<wgc::id::AdapterId>(args.adapter_rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut features = wgt::Features::default();
@@ -227,8 +227,8 @@ pub async fn op_webgpu_request_device(
       }),
     shader_validation: false,
   };
-  let device = wgc::gfx_select!(*adapter => instance.adapter_request_device(
-    *adapter,
+  let device = wgc::gfx_select!(adapter => instance.adapter_request_device(
+    adapter,
     &descriptor,
     None,
     std::marker::PhantomData
