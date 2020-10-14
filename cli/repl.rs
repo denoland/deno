@@ -16,7 +16,6 @@ use rustyline::validate::Validator;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Highlighter, Hinter};
-use std::cmp;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
 use std::sync::mpsc::Receiver;
@@ -55,47 +54,19 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let end_slice = &line[pos..];
-    let start_slice = &line[..pos];
+    let fallback = format!(".{}", line);
 
-    let end_offset: usize = start_slice.rfind('}').map_or_else(
-      || {
-        end_slice
-          .rfind(|c| c == ' ' || c == '\n' || c == ')')
-          .map_or_else(|| line.len(), |i| pos + i)
-      },
-      |i| pos + i,
-    );
-
-    let start_offset: usize = match line.get(end_offset - 1..end_offset) {
-      Some(")") => start_slice.rfind('('),
-      Some("}") => start_slice.rfind('{'),
-      Some(_) => {
-        start_slice.rfind(|c| c == ' ' || c == '\n' || c == '(' || c == '{')
-      }
-      None => None,
-    }
-    .map_or(0, |i| cmp::min(i, end_offset));
-
-    let slice = if let Some(slice) = line.get(start_offset..end_offset) {
-      slice.replace('{', "").replace('}', "").replace('`', "")
-    } else {
-      return Ok((pos, Vec::new()));
+    let (prefix, suffix) = match line.rfind('.') {
+      Some(index) => line.split_at(index),
+      None => ("globalThis", fallback.as_str()),
     };
-
-    let mut parts: Vec<&str> =
-      slice.rsplitn(2, |c| c == '.' || c == '[').collect();
-
-    if parts.len() == 1 {
-      parts.push("(globalThis)");
-    }
 
     let evaluate_response = self
       .post_message(
         "Runtime.evaluate",
         Some(json!({
           "contextId": self.context_id,
-          "expression": parts[1],
+          "expression": prefix,
           "throwOnSideEffect": true,
           "timeout": 200,
         })),
@@ -119,17 +90,15 @@ impl Completer for Helper {
           .unwrap();
 
         if let Some(result) = get_properties_response.get("result") {
-          let offset: usize = cmp::min(line.len(), pos - parts[0].len());
-
           let candidates = result
             .as_array()
             .unwrap()
             .iter()
             .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
-            .filter(|r| r.starts_with(&parts[0]))
+            .filter(|r| r.starts_with(&suffix[1..]))
             .collect();
 
-          return Ok((offset, candidates));
+          return Ok((pos - (suffix.len() - 1), candidates));
         }
       }
     }
