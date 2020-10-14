@@ -136,7 +136,6 @@ pub async fn op_webgpu_buffer_get_map_async(
     drop(boxed_sender);
   }
 
-  // TODO: get "device"
   wgc::gfx_select!(buffer => instance.buffer_map_async(
     buffer,
     args.offset..args.size,

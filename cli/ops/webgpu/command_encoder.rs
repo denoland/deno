@@ -185,7 +185,12 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
         store_op: color_attachment
           .store_op
           .map_or(wgc::command::StoreOp::Store, serialize_store_op),
-        clear_value: (),  // TODO
+        clear_value: wgt::Color {
+          r: 0.0,
+          g: 0.0,
+          b: 0.0,
+          a: 0.0
+        },  // TODO
         read_only: false, // TODO
       },
     };
@@ -204,13 +209,13 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       depth: wgc::command::PassChannel {
         load_op: wgc::command::LoadOp::Clear, // TODO
         store_op: serialize_store_op(attachment.depth_store_op),
-        clear_value: (),  // TODO
+        clear_value: 0.0,  // TODO
         read_only: false, // TODO
       },
       stencil: wgc::command::PassChannel {
         load_op: wgc::command::LoadOp::Clear, // TODO
         store_op: serialize_store_op(attachment.stencil_store_op),
-        clear_value: (),  // TODO
+        clear_value: 0,  // TODO
         read_only: false, // TODO
       },
     };
