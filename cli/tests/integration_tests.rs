@@ -2421,6 +2421,28 @@ itest!(wasm_unreachable {
   exit_code: 1,
 });
 
+itest!(top_level_await_order {
+  args: "run --allow-read top_level_await_order.js",
+  output: "top_level_await_order.out",
+});
+
+itest!(top_level_await_loop {
+  args: "run --allow-read top_level_await_loop.js",
+  output: "top_level_await_loop.out",
+});
+
+itest!(top_level_await_circular {
+  args: "run --allow-read top_level_await_circular.js",
+  output: "top_level_await_circular.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_unresolved {
+  args: "run top_level_await_unresolved.js",
+  output: "top_level_await_unresolved.out",
+  exit_code: 1,
+});
+
 itest!(top_level_await {
   args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
