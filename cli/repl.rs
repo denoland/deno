@@ -378,7 +378,7 @@ pub async fn run(
             "Runtime.callFunctionOn",
             Some(json!({
               "executionContextId": context_id,
-              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
+              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: !Deno.noColor }); }",
               "arguments": [
                 evaluate_result,
               ],
