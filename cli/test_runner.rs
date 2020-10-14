@@ -82,11 +82,12 @@ pub fn render_test_file(
     json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
   };
 
-  let run_tests_cmd = format!(
-    "// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
+  test_file.push_str("// @ts-ignore\n");
+
+  test_file.push_str(&format!(
+    "await Deno[Deno.internal].runTests({});\n",
     options
-  );
-  test_file.push_str(&run_tests_cmd);
+  ));
 
   test_file
 }

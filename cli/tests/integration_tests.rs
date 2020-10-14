@@ -1646,6 +1646,12 @@ itest!(deno_test_no_check {
   output: "deno_test.out",
 });
 
+itest!(deno_test_unresolved_promise {
+  args: "test test_unresolved_promise.js",
+  exit_code: 1,
+  output: "deno_test_unresolved_promise.out",
+});
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
