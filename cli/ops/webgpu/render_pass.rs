@@ -253,20 +253,20 @@ pub fn op_webgpu_render_pass_execute_bundles(
     .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let mut render_bundle_ids = vec![];
+
+  for rid in &args.bundles {
+    let bundle_id = state
+      .resource_table
+      .get_mut::<wgc::id::RenderBundleId>(*rid)
+      .ok_or_else(bad_resource_id)?;
+    render_bundle_ids.push(*bundle_id);
+  }
+
   unsafe {
     wgc::command::render_ffi::wgpu_render_pass_execute_bundles(
       render_pass,
-      args
-        .bundles
-        .iter()
-        .map(|rid| {
-          *state
-            .resource_table
-            .get_mut::<wgc::id::RenderBundleId>(*rid)
-            .ok_or_else(bad_resource_id)?
-        })
-        .collect::<Vec<wgc::id::RenderBundleId>>()
-        .as_ptr(),
+      render_bundle_ids.as_ptr(),
       args.bundles.len(),
     );
   }

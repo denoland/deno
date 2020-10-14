@@ -50,16 +50,15 @@ pub fn op_webgpu_queue_submit(
     .get_mut::<wgc::id::QueueId>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let ids = args
-    .command_buffers
-    .iter()
-    .map(|rid| {
-      *state
-        .resource_table
-        .get_mut::<wgc::id::CommandBufferId>(*rid)
-        .ok_or_else(bad_resource_id)?
-    })
-    .collect::<Vec<wgc::id::CommandBufferId>>();
+  let mut ids = vec![];
+
+  for rid in &args.command_buffers {
+    let buffer_id = state
+      .resource_table
+      .get_mut::<wgc::id::CommandBufferId>(*rid)
+      .ok_or_else(bad_resource_id)?;
+    ids.push(*buffer_id);
+  }
 
   wgc::gfx_select!(*queue => instance.queue_submit(*queue, &ids))?;
 

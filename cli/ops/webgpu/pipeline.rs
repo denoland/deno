@@ -156,17 +156,19 @@ pub fn op_webgpu_create_compute_pipeline(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let layout = if let Some(rid) = args.layout {
+    let id = state
+      .resource_table
+      .get_mut::<wgc::id::PipelineLayoutId>(rid)
+      .ok_or_else(bad_resource_id)?;
+    Some(*id)
+  } else {
+    None
+  };
+
   let descriptor = wgc::pipeline::ComputePipelineDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
-    layout: args
-      .layout
-      .map(|rid| {
-        *state
-          .resource_table
-          .get_mut::<wgc::id::PipelineLayoutId>(rid)
-          .ok_or_else(bad_resource_id)
-      })
-      .transpose()?,
+    layout: layout.transpose()?,
     compute_stage: serialize_programmable_stage_descriptor(
       state,
       args.compute_stage,
@@ -339,17 +341,61 @@ pub fn op_webgpu_create_render_pipeline(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let mut color_states = vec![];
+
+  for color_state in &args.color_states {
+    let state = wgt::ColorStateDescriptor {
+      format: serialize_texture_format(color_state.format.clone())?,
+      alpha_blend: color_state
+        .alpha_blend
+        .map_or(Default::default(), serialize_blend_descriptor),
+      color_blend: color_state
+        .color_blend
+        .map_or(Default::default(), serialize_blend_descriptor),
+      write_mask: color_state.write_mask.map_or(Default::default(), |mask| {
+        wgt::ColorWrite::from_bits(mask).unwrap()
+      }),
+    };
+    color_states.push(state);
+  }
+
+  let mut depth_stencil_state = None;
+
+  if let Some(state) = &args.depth_stencil_state {
+    depth_stencil_state = Some(wgt::DepthStencilStateDescriptor {
+      format: serialize_texture_format(state.format)?,
+      depth_write_enabled: state.depth_write_enabled.unwrap_or(false),
+      depth_compare: state
+        .depth_compare
+        .map_or(wgt::CompareFunction::Always, serialize_compare_function),
+      stencil: wgt::StencilStateDescriptor {
+        front: state.stencil_front.map_or(
+          wgt::StencilStateFaceDescriptor::IGNORE,
+          serialize_stencil_state_face_descriptor,
+        ),
+        back: state.stencil_front.map_or(
+          wgt::StencilStateFaceDescriptor::IGNORE,
+          serialize_stencil_state_face_descriptor,
+        ),
+        read_mask: state.stencil_read_mask.unwrap_or(0xFFFFFFFF),
+        write_mask: state.stencil_write_mask.unwrap_or(0xFFFFFFFF),
+      },
+    });
+  }
+
+  let layout = if let Some(rid) = args.layout {
+    let id = state
+      .resource_table
+      .get_mut::<wgc::id::PipelineLayoutId>(rid)
+      .ok_or_else(bad_resource_id)?;
+    Some(id)
+  } else {
+    None
+  };
+
   let descriptor = wgc::pipeline::RenderPipelineDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
-    layout: args
-      .layout
-      .map(|rid| {
-        *state
-          .resource_table
-          .get_mut::<wgc::id::PipelineLayoutId>(rid)
-          .ok_or_else(bad_resource_id)
-      })
-      .transpose()?,
+    layout: layout.transpose()?,
     vertex_stage: serialize_programmable_stage_descriptor(
       state,
       args.vertex_stage,
@@ -398,47 +444,8 @@ pub fn op_webgpu_create_render_pipeline(
       "triangle-strip" => wgt::PrimitiveTopology::TriangleStrip,
       _ => unreachable!(),
     },
-    color_states: Cow::Owned(
-      args
-        .color_states
-        .iter()
-        .map(|color_state| wgt::ColorStateDescriptor {
-          format: serialize_texture_format(color_state.format.clone())?,
-          alpha_blend: color_state
-            .alpha_blend
-            .map_or(Default::default(), serialize_blend_descriptor),
-          color_blend: color_state
-            .color_blend
-            .map_or(Default::default(), serialize_blend_descriptor),
-          write_mask: color_state
-            .write_mask
-            .map_or(Default::default(), |mask| {
-              wgt::ColorWrite::from_bits(mask).unwrap()
-            }),
-        })
-        .collect::<Vec<wgt::ColorStateDescriptor>>(),
-    ),
-    depth_stencil_state: args.depth_stencil_state.map(|state| {
-      wgt::DepthStencilStateDescriptor {
-        format: serialize_texture_format(state.format)?,
-        depth_write_enabled: state.depth_write_enabled.unwrap_or(false),
-        depth_compare: state
-          .depth_compare
-          .map_or(wgt::CompareFunction::Always, serialize_compare_function),
-        stencil: wgt::StencilStateDescriptor {
-          front: state.stencil_front.map_or(
-            wgt::StencilStateFaceDescriptor::IGNORE,
-            serialize_stencil_state_face_descriptor,
-          ),
-          back: state.stencil_front.map_or(
-            wgt::StencilStateFaceDescriptor::IGNORE,
-            serialize_stencil_state_face_descriptor,
-          ),
-          read_mask: state.stencil_read_mask.unwrap_or(0xFFFFFFFF),
-          write_mask: state.stencil_write_mask.unwrap_or(0xFFFFFFFF),
-        },
-      }
-    }),
+    color_states: Cow::Owned(color_states),
+    depth_stencil_state,
     vertex_state: args.vertex_state.map_or(
       wgc::pipeline::VertexStateDescriptor {
         index_format: Default::default(),

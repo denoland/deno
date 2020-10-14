@@ -95,15 +95,15 @@ pub fn op_webgpu_create_render_bundle_encoder(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let mut color_formats = vec![];
+
+  for format in &args.color_formats {
+    color_formats.push(serialize_texture_format(format.clone())?);
+  }
+
   let descriptor = wgc::command::RenderBundleEncoderDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
-    color_formats: Cow::Owned(
-      args
-        .color_formats
-        .iter()
-        .map(|format| serialize_texture_format(format.clone())?)
-        .collect::<Vec<wgt::TextureFormat>>(),
-    ),
+    color_formats: Cow::Owned(color_formats),
     depth_stencil_format: args
       .depth_stencil_format
       .map(serialize_texture_format)

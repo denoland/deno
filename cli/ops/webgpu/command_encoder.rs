@@ -162,69 +162,67 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let mut color_attachments = vec![];
+
+  for color_attachment in args.color_attachments {
+    let attachment = wgc::command::ColorAttachmentDescriptor {
+      attachment: *state
+        .resource_table
+        .get_mut::<wgc::id::TextureViewId>(color_attachment.attachment)
+        .ok_or_else(bad_resource_id)?,
+      resolve_target: color_attachment
+        .resolve_target
+        .map(|rid| {
+          state
+            .resource_table
+            .get_mut::<wgc::id::TextureViewId>(rid)
+            .ok_or_else(bad_resource_id)
+        })
+        .transpose()?
+        .map(|texture| *texture),
+      channel: wgc::command::PassChannel {
+        load_op: wgc::command::LoadOp::Clear, // TODO
+        store_op: color_attachment
+          .store_op
+          .map_or(wgc::command::StoreOp::Store, serialize_store_op),
+        clear_value: (),  // TODO
+        read_only: false, // TODO
+      },
+    };
+
+    color_attachments.push(attachment)
+  }
+
+  let mut depth_stencil_attachment = None;
+
+  if let Some(attachment) = args.depth_stencil_attachment {
+    let attachment = wgc::command::DepthStencilAttachmentDescriptor {
+      attachment: *state
+        .resource_table
+        .get_mut::<wgc::id::TextureViewId>(attachment.attachment)
+        .ok_or_else(bad_resource_id)?,
+      depth: wgc::command::PassChannel {
+        load_op: wgc::command::LoadOp::Clear, // TODO
+        store_op: serialize_store_op(attachment.depth_store_op),
+        clear_value: (),  // TODO
+        read_only: false, // TODO
+      },
+      stencil: wgc::command::PassChannel {
+        load_op: wgc::command::LoadOp::Clear, // TODO
+        store_op: serialize_store_op(attachment.stencil_store_op),
+        clear_value: (),  // TODO
+        read_only: false, // TODO
+      },
+    };
+
+    depth_stencil_attachment = Some(attachment);
+  }
+
   let render_pass = wgc::command::RenderPass::new(
     *command_encoder,
     wgc::command::RenderPassDescriptor {
-      color_attachments: Cow::Owned(
-        args
-          .color_attachments
-          .iter()
-          .map(|color_attachment| {
-            wgc::command::ColorAttachmentDescriptor {
-              attachment: *state
-                .resource_table
-                .get_mut::<wgc::id::TextureViewId>(color_attachment.attachment)
-                .ok_or_else(bad_resource_id)?,
-              resolve_target: color_attachment
-                .resolve_target
-                .map(|rid| {
-                  state
-                    .resource_table
-                    .get_mut::<wgc::id::TextureViewId>(rid)
-                    .ok_or_else(bad_resource_id)
-                })
-                .transpose()?
-                .map(|texture| *texture),
-              channel: wgc::command::PassChannel {
-                load_op: LoadOp::Clear, // TODO
-                store_op: color_attachment
-                  .store_op
-                  .map_or(wgc::command::StoreOp::Store, serialize_store_op),
-                clear_value: (),  // TODO
-                read_only: false, // TODO
-              },
-            }
-          })
-          .collect::<Vec<wgc::command::ColorAttachmentDescriptor>>(),
-      ),
-      depth_stencil_attachment: args.depth_stencil_attachment.map(
-        |depth_stencil_attachment| {
-          &wgc::command::DepthStencilAttachmentDescriptor {
-            attachment: *state
-              .resource_table
-              .get_mut::<wgc::id::TextureViewId>(
-                depth_stencil_attachment.attachment,
-              )
-              .ok_or_else(bad_resource_id)?,
-            depth: wgc::command::PassChannel {
-              load_op: LoadOp::Clear, // TODO
-              store_op: serialize_store_op(
-                depth_stencil_attachment.depth_store_op,
-              ),
-              clear_value: (),  // TODO
-              read_only: false, // TODO
-            },
-            stencil: wgc::command::PassChannel {
-              load_op: LoadOp::Clear, // TODO
-              store_op: serialize_store_op(
-                depth_stencil_attachment.stencil_store_op,
-              ),
-              clear_value: (),  // TODO
-              read_only: false, // TODO
-            },
-          }
-        },
-      ),
+      color_attachments: Cow::Owned(color_attachments),
+      depth_stencil_attachment: depth_stencil_attachment.as_ref(),
     },
   );
 
