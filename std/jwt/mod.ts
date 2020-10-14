@@ -58,15 +58,27 @@ export function decode(
   payload: unknown;
   signature: unknown;
 } {
+  function tryToParsePayload(input: string) {
+    try {
+      const obj = JSON.parse(input);
+      if (typeof obj === "object") return obj;
+    } catch {
+      return input;
+    }
+  }
+
   const parsedArray = jwt
     .split(".")
     .map(base64url.decode)
     .map((uint8Array, index) =>
-      index === 2
-        ? convertUint8ArrayToHex(uint8Array)
-        : JSON.parse(new TextDecoder().decode(uint8Array))
+      index === 0
+        ? JSON.parse(new TextDecoder().decode(uint8Array))
+        : index === 1
+        ? tryToParsePayload(new TextDecoder().decode(uint8Array))
+        : convertUint8ArrayToHex(uint8Array)
     );
   if (parsedArray.length !== 3) throw TypeError("serialization is invalid");
+
   return {
     header: parsedArray[0],
     payload: parsedArray[1],
@@ -145,6 +157,14 @@ export async function verify(
 
 const encoder = new TextEncoder();
 
+/*
+ * The JWS Compact Serialization represents digitally signed or MACed content as a
+ * compact, URL-safe string.  This string is:
+ *       BASE64URL(UTF8(JWS Protected Header)) || '.' ||
+ *       BASE64URL(JWS Payload) || '.' ||
+ *       BASE64URL(JWS Signature)
+ * (JSW §7.1)
+ */
 function createSigningInput(header: Header, payload: Payload): string {
   return `${
     base64url.encode(

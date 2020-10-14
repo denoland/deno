@@ -1,6 +1,6 @@
 # jwt
 
-Create and verify JSON Web Tokens.
+Create and verify JSON Web Tokens. The JWS Compact Serialization is used.
 
 ## JSON Web Token
 

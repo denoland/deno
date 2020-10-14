@@ -27,17 +27,13 @@ const key = "your-secret";
 
 Deno.test("[jwt] isTokenObject", function () {
   assert(isTokenObject({ header, payload, signature }));
+  assert(isTokenObject({ header, payload: "payloadAsString", signature }));
   assert(
-    isTokenObject({ header, payload: "payloadAsString", signature }),
-  );
-  assert(
-    isTokenObject(
-      {
-        header,
-        payload: { exp },
-        signature,
-      },
-    ),
+    isTokenObject({
+      header,
+      payload: { exp },
+      signature,
+    }),
   );
 
   // @ts-ignore */
@@ -73,41 +69,51 @@ Deno.test("[jwt] create", async function () {
 });
 
 Deno.test("[jwt] verify", async function () {
-  await assertThrowsAsync(
-    async () => {
-      // @ts-ignore */
-      const jwt = await create("", key, { header: "invalid" });
-      await verify(jwt, key, { algorithm: "HS512" });
-    },
-    Error,
+  assertEquals(
+    await verify(await create("", key, { header: { alg: "HS256" } }), key, {
+      algorithm: "HS256",
+    }),
+    "",
   );
+  assertEquals(
+    await verify(await create("abc", key, { header: { alg: "HS256" } }), key, {
+      algorithm: "HS256",
+    }),
+    "abc",
+  );
+  assertEquals(
+    await verify(
+      await create(payload, key, { header: { alg: "HS256" } }),
+      key,
+      {
+        algorithm: "HS256",
+      },
+    ),
+    payload,
+  );
+  await assertThrowsAsync(async () => {
+    // @ts-ignore */
+    const jwt = await create("", key, { header: "invalid" });
+    await verify(jwt, key, { algorithm: "HS512" });
+  }, Error);
 
-  await assertThrowsAsync(
-    async () => {
-      // @ts-ignore */
-      const jwt = await create("", key, { header: { alg: "invalidAlg" } });
-      await verify(jwt, key, { algorithm: "HS512" });
-    },
-    Error,
-  );
+  await assertThrowsAsync(async () => {
+    // @ts-ignore */
+    const jwt = await create("", key, { header: { alg: "invalidAlg" } });
+    await verify(jwt, key, { algorithm: "HS512" });
+  }, Error);
 
-  await assertThrowsAsync(
-    async () => {
-      // @ts-ignore */
-      const jwt = await create({ header: {}, payload });
-      await verify(jwt, key, { algorithm: "HS512" });
-    },
-    Error,
-  );
+  await assertThrowsAsync(async () => {
+    // @ts-ignore */
+    const jwt = await create({ header: {}, payload });
+    await verify(jwt, key, { algorithm: "HS512" });
+  }, Error);
 
-  await assertThrowsAsync(
-    async () => {
-      // @ts-ignore */
-      const jwt = await create({ header, payload });
-      await verify(jwt, key, { algorithm: "HS512" });
-    },
-    Error,
-  );
+  await assertThrowsAsync(async () => {
+    // @ts-ignore */
+    const jwt = await create({ header, payload });
+    await verify(jwt, key, { algorithm: "HS512" });
+  }, Error);
 
   await assertThrowsAsync(
     async () => {
@@ -142,10 +148,6 @@ Deno.test("[jwt] decode", async function () {
     decode("aaa");
   }, SyntaxError);
   assertThrows(() => {
-    // SyntaxError: Unexpected end of JSON input
-    decode("ImEi..ImEi");
-  }, SyntaxError);
-  assertThrows(() => {
     // TypeError: Illegal base64url string!
     decode("a");
   }, TypeError);
@@ -171,10 +173,7 @@ Deno.test("[jwt] decode", async function () {
     signature:
       "49f94ac7044948c78a285d904f87f0a4c7897f7e8f3a4eb2255fda750b2cc397",
   });
-  assertEquals(
-    await create(payload, "your-256-bit-secret", { header }),
-    jwt,
-  );
+  assertEquals(await create(payload, "your-256-bit-secret", { header }), jwt);
 });
 
 Deno.test("[jwt] expired token", async function () {
@@ -206,13 +205,9 @@ Deno.test("[jwt] none algorithm", async function () {
     dummy: 100,
   };
   const jwt = await create(payload, key, { header });
-  const validatedPayload = await verify(
-    jwt,
-    "keyIsIgnored",
-    {
-      algorithm: "none",
-    },
-  );
+  const validatedPayload = await verify(jwt, "keyIsIgnored", {
+    algorithm: "none",
+  });
   assertEquals(validatedPayload, payload);
 });
 
