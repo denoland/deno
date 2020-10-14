@@ -37,6 +37,9 @@ export interface Header {
   [key: string]: unknown;
 }
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
 }
@@ -51,6 +54,14 @@ export function setExpiration(exp: number | Date): number {
   );
 }
 
+function tryToParsePayload(input: string) {
+  try {
+    return JSON.parse(input);
+  } catch {
+    return input;
+  }
+}
+
 export function decode(
   jwt: string
 ): {
@@ -58,22 +69,14 @@ export function decode(
   payload: unknown;
   signature: unknown;
 } {
-  function tryToParsePayload(input: string) {
-    try {
-      return JSON.parse(input);
-    } catch {
-      return input;
-    }
-  }
-
   const parsedArray = jwt
     .split(".")
     .map(base64url.decode)
     .map((uint8Array, index) =>
       index === 0
-        ? JSON.parse(new TextDecoder().decode(uint8Array))
+        ? JSON.parse(decoder.decode(uint8Array))
         : index === 1
-        ? tryToParsePayload(new TextDecoder().decode(uint8Array))
+        ? tryToParsePayload(decoder.decode(uint8Array))
         : convertUint8ArrayToHex(uint8Array)
     );
   if (parsedArray.length !== 3) throw TypeError("serialization is invalid");
@@ -153,8 +156,6 @@ export async function verify(
 
   return payload;
 }
-
-const encoder = new TextEncoder();
 
 /*
  * The JWS Compact Serialization represents digitally signed or MACed content as a
