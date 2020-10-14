@@ -13,7 +13,6 @@ mod shader;
 mod texture;
 
 use deno_core::error::bad_resource_id;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -98,7 +97,7 @@ pub fn op_webgpu_create_instance(
 
   let rid = state
     .resource_table
-    .add("webGPUInstance", Box::new(adapter));
+    .add("webGPUInstance", Box::new(instance));
 
   Ok(json!({
     "rid": rid,

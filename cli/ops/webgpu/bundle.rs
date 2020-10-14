@@ -1,18 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::texture::serialize_texture_format;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::error::{bad_resource_id, not_supported};
+use deno_core::error::bad_resource_id;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::super::reg_json_sync(
@@ -74,11 +70,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     rt,
     "op_webgpu_render_bundle_encoder_draw_indirect",
     op_webgpu_render_bundle_encoder_draw_indirect,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_render_bundle_encoder_draw_indexed_indirect",
-    op_webgpu_render_bundle_encoder_draw_indexed_indirect,
   );
 }
 
@@ -494,7 +485,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
     .ok_or_else(bad_resource_id)?;
 
   wgc::command::bundle_ffi::wgpu_render_bundle_draw_indexed(
-    render_pass,
+    render_bundle_encoder,
     args.index_count,
     args.instance_count,
     args.first_index,
@@ -529,38 +520,6 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
 
   wgc::command::bundle_ffi::wgpu_render_bundle_draw_indirect(
     render_bundle_encoder,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
-      .ok_or_else(bad_resource_id)?,
-    args.indirect_offset,
-  );
-
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderDrawIndexedIndirectArgs {
-  render_pass_rid: u32,
-  indirect_buffer: u32,
-  indirect_offset: u64,
-}
-
-pub fn op_webgpu_render_bundle_encoder_draw_indexed_indirect(
-  state: &mut OpState,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let args: RenderPassDrawIndexedIndirectArgs = serde_json::from_value(args)?;
-
-  let render_pass = state
-    .resource_table
-    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
-
-  wgc::command::bundle_ffi::wgpu_render_pass_draw_indexed_indirect(
-    render_pass,
     *state
       .resource_table
       .get_mut::<wgc::id::BufferId>(args.indirect_buffer)

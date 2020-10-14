@@ -2,18 +2,14 @@
 
 use super::sampler::serialize_compare_function;
 use super::texture::serialize_texture_format;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::error::{bad_resource_id, not_supported};
+use deno_core::error::bad_resource_id;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::super::reg_json_sync(
