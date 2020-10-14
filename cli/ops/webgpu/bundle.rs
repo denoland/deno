@@ -183,6 +183,10 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
 ) -> Result<Value, AnyError> {
   let args: RenderBundleEncoderSetBindGroupArgs = serde_json::from_value(args)?;
 
+  let bind_group_id = *state
+    .resource_table
+    .get::<wgc::id::BindGroupId>(args.bind_group)
+    .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder = state
     .resource_table
     .get_mut::<wgc::command::RenderBundleEncoder>(
@@ -194,18 +198,15 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
     wgc::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
       render_bundle_encoder,
       args.index,
-      *state
-        .resource_table
-        .get_mut::<wgc::id::BindGroupId>(args.bind_group)
-        .ok_or_else(bad_resource_id)?,
+      bind_group_id,
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
-        None => unsafe {
+        None => {
           let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
           data[args.dynamic_offsets_data_start..].as_ptr()
-        },
+        }
       },
       args.dynamic_offsets_data_length,
     );
@@ -322,6 +323,10 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 ) -> Result<Value, AnyError> {
   let args: RenderBundleEncoderSetPipelineArgs = serde_json::from_value(args)?;
 
+  let pipeline_id = *state
+    .resource_table
+    .get::<wgc::id::RenderPipelineId>(args.pipeline)
+    .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder = state
     .resource_table
     .get_mut::<wgc::command::RenderBundleEncoder>(
@@ -331,10 +336,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 
   wgc::command::bundle_ffi::wgpu_render_bundle_set_pipeline(
     render_bundle_encoder,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::RenderPipelineId>(args.pipeline)
-      .ok_or_else(bad_resource_id)?,
+    pipeline_id,
   );
 
   Ok(json!({}))
@@ -358,6 +360,10 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
   let args: RenderBundleEncoderSetIndexBufferArgs =
     serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.buffer)
+    .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder = state
     .resource_table
     .get_mut::<wgc::command::RenderBundleEncoder>(
@@ -367,10 +373,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
 
   wgc::command::bundle_ffi::wgpu_render_bundle_set_index_buffer(
     render_bundle_encoder,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.offset,
     std::num::NonZeroU64::new(args.size),
   );
@@ -396,6 +399,10 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   let args: RenderBundleEncoderSetVertexBufferArgs =
     serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.buffer)
+    .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder = state
     .resource_table
     .get_mut::<wgc::command::RenderBundleEncoder>(
@@ -406,10 +413,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   wgc::command::bundle_ffi::wgpu_render_bundle_set_vertex_buffer(
     render_bundle_encoder,
     args.slot,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.offset,
     std::num::NonZeroU64::new(args.size),
   );
@@ -504,6 +508,10 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
 ) -> Result<Value, AnyError> {
   let args: RenderBundleEncoderDrawIndirectArgs = serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.indirect_buffer)
+    .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder = state
     .resource_table
     .get_mut::<wgc::command::RenderBundleEncoder>(
@@ -513,10 +521,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
 
   wgc::command::bundle_ffi::wgpu_render_bundle_draw_indirect(
     render_bundle_encoder,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.indirect_offset,
   );
 

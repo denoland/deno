@@ -248,20 +248,20 @@ pub fn op_webgpu_render_pass_execute_bundles(
 ) -> Result<Value, AnyError> {
   let args: RenderPassExecuteBundlesArgs = serde_json::from_value(args)?;
 
-  let render_pass = state
-    .resource_table
-    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
-
   let mut render_bundle_ids = vec![];
 
   for rid in &args.bundles {
     let bundle_id = state
       .resource_table
-      .get_mut::<wgc::id::RenderBundleId>(*rid)
+      .get::<wgc::id::RenderBundleId>(*rid)
       .ok_or_else(bad_resource_id)?;
     render_bundle_ids.push(*bundle_id);
   }
+
+  let render_pass = state
+    .resource_table
+    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
 
   unsafe {
     wgc::command::render_ffi::wgpu_render_pass_execute_bundles(
@@ -289,20 +289,20 @@ pub fn op_webgpu_render_pass_end_pass(
 ) -> Result<Value, AnyError> {
   let args: RenderPassEndPassArgs = serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let render_pass = state
+    .resource_table
+    .get::<wgc::command::RenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let render_pass = state
-    .resource_table
-    .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_run_render_pass(*command_encoder, render_pass))?;
+  wgc::gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass))?;
 
   Ok(json!({}))
 }
@@ -325,6 +325,10 @@ pub fn op_webgpu_render_pass_set_bind_group(
 ) -> Result<Value, AnyError> {
   let args: RenderPassSetBindGroupArgs = serde_json::from_value(args)?;
 
+  let bind_group_id = *state
+    .resource_table
+    .get::<wgc::id::BindGroupId>(args.bind_group)
+    .ok_or_else(bad_resource_id)?;
   let render_pass = state
     .resource_table
     .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
@@ -334,18 +338,15 @@ pub fn op_webgpu_render_pass_set_bind_group(
     wgc::command::render_ffi::wgpu_render_pass_set_bind_group(
       render_pass,
       args.index,
-      *state
-        .resource_table
-        .get_mut::<wgc::id::BindGroupId>(args.bind_group)
-        .ok_or_else(bad_resource_id)?,
+      bind_group_id,
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
-        None => unsafe {
+        None => {
           let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
           data[args.dynamic_offsets_data_start..].as_ptr()
-        },
+        }
       },
       args.dynamic_offsets_data_length,
     );
@@ -451,6 +452,10 @@ pub fn op_webgpu_render_pass_set_pipeline(
 ) -> Result<Value, AnyError> {
   let args: RenderPassSetPipelineArgs = serde_json::from_value(args)?;
 
+  let pipeline_id = *state
+    .resource_table
+    .get::<wgc::id::RenderPipelineId>(args.pipeline)
+    .ok_or_else(bad_resource_id)?;
   let render_pass = state
     .resource_table
     .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
@@ -458,10 +463,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
 
   wgc::command::render_ffi::wgpu_render_pass_set_pipeline(
     render_pass,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::RenderPipelineId>(args.pipeline)
-      .ok_or_else(bad_resource_id)?,
+    pipeline_id,
   );
 
   Ok(json!({}))
@@ -484,6 +486,10 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 ) -> Result<Value, AnyError> {
   let args: RenderPassSetIndexBufferArgs = serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.buffer)
+    .ok_or_else(bad_resource_id)?;
   let render_pass = state
     .resource_table
     .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
@@ -491,10 +497,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 
   wgc::command::render_ffi::wgpu_render_pass_set_index_buffer(
     render_pass,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.offset,
     std::num::NonZeroU64::new(args.size),
   );
@@ -519,6 +522,10 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
 ) -> Result<Value, AnyError> {
   let args: RenderPassSetVertexBufferArgs = serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.buffer)
+    .ok_or_else(bad_resource_id)?;
   let render_pass = state
     .resource_table
     .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
@@ -527,10 +534,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
   wgc::command::render_ffi::wgpu_render_pass_set_vertex_buffer(
     render_pass,
     args.slot,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.offset,
     std::num::NonZeroU64::new(args.size),
   );
@@ -621,6 +625,10 @@ pub fn op_webgpu_render_pass_draw_indirect(
 ) -> Result<Value, AnyError> {
   let args: RenderPassDrawIndirectArgs = serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.indirect_buffer)
+    .ok_or_else(bad_resource_id)?;
   let render_pass = state
     .resource_table
     .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
@@ -628,10 +636,7 @@ pub fn op_webgpu_render_pass_draw_indirect(
 
   wgc::command::render_ffi::wgpu_render_pass_draw_indirect(
     render_pass,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.indirect_offset,
   );
 
@@ -653,6 +658,10 @@ pub fn op_webgpu_render_pass_draw_indexed_indirect(
 ) -> Result<Value, AnyError> {
   let args: RenderPassDrawIndexedIndirectArgs = serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.indirect_buffer)
+    .ok_or_else(bad_resource_id)?;
   let render_pass = state
     .resource_table
     .get_mut::<wgc::command::RenderPass>(args.render_pass_rid)
@@ -660,10 +669,7 @@ pub fn op_webgpu_render_pass_draw_indexed_indirect(
 
   wgc::command::render_ffi::wgpu_render_pass_draw_indexed_indirect(
     render_pass,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.indirect_offset,
   );
 

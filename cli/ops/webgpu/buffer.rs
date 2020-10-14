@@ -54,13 +54,13 @@ pub fn op_webgpu_create_buffer(
 ) -> Result<Value, AnyError> {
   let args: CreateBufferArgs = serde_json::from_value(args)?;
 
+  let device = *state
+    .resource_table
+    .get::<wgc::id::DeviceId>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = state
-    .resource_table
-    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::BufferDescriptor {
@@ -69,8 +69,8 @@ pub fn op_webgpu_create_buffer(
     usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
-  let buffer = wgc::gfx_select!(*device => instance.device_create_buffer(
-    *device,
+  let buffer = wgc::gfx_select!(device => instance.device_create_buffer(
+    device,
     &descriptor,
     std::marker::PhantomData
   ))?;
@@ -128,12 +128,11 @@ pub async fn op_webgpu_buffer_get_map_async(
         user_data,
       )
     };
-    let boxed_sender = Box::from_raw(sender_ptr);
+    let boxed_sender = unsafe { Box::from_raw(sender_ptr) };
     boxed_sender.send(match status {
       wgc::resource::BufferMapAsyncStatus::Success => Ok(()),
       _ => unreachable!(), // TODO
     });
-    drop(boxed_sender);
   }
 
   wgc::gfx_select!(buffer => instance.buffer_map_async(
@@ -167,27 +166,27 @@ struct BufferGetMappedRangeArgs {
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: Value,
-  zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: BufferGetMappedRangeArgs = serde_json::from_value(args)?;
 
+  let buffer = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.buffer_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let buffer = state
-    .resource_table
-    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  let slice_pointer = wgc::gfx_select!(*buffer => instance.buffer_get_mapped_range(
-    *buffer,
+  let slice_pointer = wgc::gfx_select!(buffer => instance.buffer_get_mapped_range(
+    buffer,
     args.offset,
     std::num::NonZeroU64::new(args.size)
   ))?;
 
   // TODO: use
-  let slice = unsafe {
+  let _slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
   };
 
@@ -208,16 +207,16 @@ pub fn op_webgpu_buffer_unmap(
 ) -> Result<Value, AnyError> {
   let args: BufferUnmapArgs = serde_json::from_value(args)?;
 
+  let buffer = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.buffer_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let buffer = state
-    .resource_table
-    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  wgc::gfx_select!(*buffer => instance.buffer_unmap(*buffer))?;
+  wgc::gfx_select!(buffer => instance.buffer_unmap(buffer))?;
 
   Ok(json!({}))
 }

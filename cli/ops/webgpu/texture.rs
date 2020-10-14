@@ -147,13 +147,13 @@ pub fn op_webgpu_create_texture(
 ) -> Result<Value, AnyError> {
   let args: CreateTextureArgs = serde_json::from_value(args)?;
 
+  let device = *state
+    .resource_table
+    .get::<wgc::id::DeviceId>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = state
-    .resource_table
-    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::TextureDescriptor {
@@ -178,8 +178,8 @@ pub fn op_webgpu_create_texture(
     usage: wgt::TextureUsage::from_bits(args.usage).unwrap(),
   };
 
-  let texture = wgc::gfx_select!(*device => instance.device_create_texture(
-    *device,
+  let texture = wgc::gfx_select!(device => instance.device_create_texture(
+    device,
     &descriptor,
     std::marker::PhantomData
   ))?;
@@ -213,13 +213,13 @@ pub fn op_webgpu_create_texture_view(
 ) -> Result<Value, AnyError> {
   let args: CreateTextureViewArgs = serde_json::from_value(args)?;
 
+  let texture = *state
+    .resource_table
+    .get_mut::<wgc::id::TextureId>(args.texture_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let texture = state
-    .resource_table
-    .get_mut::<wgc::id::TextureId>(args.texture_rid)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::TextureViewDescriptor {
@@ -244,8 +244,8 @@ pub fn op_webgpu_create_texture_view(
       args.array_layer_count.unwrap_or(0),
     ),
   };
-  let texture_view = wgc::gfx_select!(*texture => instance.texture_create_view(
-    *texture,
+  let texture_view = wgc::gfx_select!(texture => instance.texture_create_view(
+    texture,
     &descriptor,
     std::marker::PhantomData
   ))?;

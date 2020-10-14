@@ -41,13 +41,9 @@ pub fn op_webgpu_queue_submit(
 ) -> Result<Value, AnyError> {
   let args: QueueSubmitArgs = serde_json::from_value(args)?;
 
-  let instance = state
+  let queue = *state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let queue = state
-    .resource_table
-    .get_mut::<wgc::id::QueueId>(args.queue_rid)
+    .get::<wgc::id::QueueId>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut ids = vec![];
@@ -55,12 +51,17 @@ pub fn op_webgpu_queue_submit(
   for rid in &args.command_buffers {
     let buffer_id = state
       .resource_table
-      .get_mut::<wgc::id::CommandBufferId>(*rid)
+      .get::<wgc::id::CommandBufferId>(*rid)
       .ok_or_else(bad_resource_id)?;
     ids.push(*buffer_id);
   }
 
-  wgc::gfx_select!(*queue => instance.queue_submit(*queue, &ids))?;
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  wgc::gfx_select!(queue => instance.queue_submit(queue, &ids))?;
 
   Ok(json!({}))
 }
@@ -91,26 +92,26 @@ pub fn op_webgpu_write_buffer(
 ) -> Result<Value, AnyError> {
   let args: QueueWriteBufferArgs = serde_json::from_value(args)?;
 
+  let queue = *state
+    .resource_table
+    .get::<wgc::id::QueueId>(args.queue_rid)
+    .ok_or_else(bad_resource_id)?;
+  let buffer = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.buffer)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let queue = state
-    .resource_table
-    .get_mut::<wgc::id::QueueId>(args.queue_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  let buffer = state
-    .resource_table
-    .get_mut::<wgc::id::BufferId>(args.buffer)
-    .ok_or_else(bad_resource_id)?;
   let data = match args.size {
     Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
     None => &zero_copy[0][args.data_offset..],
   };
-  wgc::gfx_select!(*queue => instance.queue_write_buffer(
-    *queue,
-    *buffer,
+  wgc::gfx_select!(queue => instance.queue_write_buffer(
+    queue,
+    buffer,
     args.buffer_offset,
     data
   ))?;
@@ -135,20 +136,21 @@ pub fn op_webgpu_write_texture(
 ) -> Result<Value, AnyError> {
   let args: QueueWriteTextureArgs = serde_json::from_value(args)?;
 
+  let texture = *state
+    .resource_table
+    .get::<wgc::id::TextureId>(args.destination.texture)
+    .ok_or_else(bad_resource_id)?;
+  let queue = *state
+    .resource_table
+    .get::<wgc::id::QueueId>(args.queue_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let queue = state
-    .resource_table
-    .get_mut::<wgc::id::QueueId>(args.queue_rid)
-    .ok_or_else(bad_resource_id)?;
 
   let destination = wgc::command::TextureCopyView {
-    texture: *state
-      .resource_table
-      .get_mut::<wgc::id::TextureId>(args.destination.texture)
-      .ok_or_else(bad_resource_id)?,
+    texture,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
       .destination
@@ -164,8 +166,8 @@ pub fn op_webgpu_write_texture(
     bytes_per_row: args.data_layout.bytes_per_row.unwrap_or(0),
     rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
   };
-  wgc::gfx_select!(*queue => instance.queue_write_texture(
-    *queue,
+  wgc::gfx_select!(queue => instance.queue_write_texture(
+    queue,
     &destination,
     &*zero_copy[0],
     &data_layout,

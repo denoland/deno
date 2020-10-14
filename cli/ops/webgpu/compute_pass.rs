@@ -65,6 +65,10 @@ pub fn op_webgpu_compute_pass_set_pipeline(
 ) -> Result<Value, AnyError> {
   let args: ComputePassSetPipelineArgs = serde_json::from_value(args)?;
 
+  let pipeline_id = *state
+    .resource_table
+    .get_mut::<wgc::id::ComputePipelineId>(args.pipeline)
+    .ok_or_else(bad_resource_id)?;
   let compute_pass = state
     .resource_table
     .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
@@ -72,10 +76,7 @@ pub fn op_webgpu_compute_pass_set_pipeline(
 
   wgc::command::compute_ffi::wgpu_compute_pass_set_pipeline(
     compute_pass,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::ComputePipelineId>(args.pipeline)
-      .ok_or_else(bad_resource_id)?,
+    pipeline_id,
   );
 
   Ok(json!({}))
@@ -127,6 +128,10 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
 ) -> Result<Value, AnyError> {
   let args: ComputePassDispatchIndirectArgs = serde_json::from_value(args)?;
 
+  let buffer_id = *state
+    .resource_table
+    .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
+    .ok_or_else(bad_resource_id)?;
   let compute_pass = state
     .resource_table
     .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
@@ -134,10 +139,7 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
 
   wgc::command::compute_ffi::wgpu_compute_pass_dispatch_indirect(
     compute_pass,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer_id,
     args.indirect_offset,
   );
 
@@ -159,21 +161,21 @@ pub fn op_webgpu_compute_pass_end_pass(
 ) -> Result<Value, AnyError> {
   let args: ComputePassEndPassArgs = serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let compute_pass = state
+    .resource_table
+    .get::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let compute_pass = state
-    .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
-    .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_run_compute_pass(
-    *command_encoder,
+  wgc::gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(
+    command_encoder,
     compute_pass
   ))?;
 
@@ -198,6 +200,11 @@ pub fn op_webgpu_compute_pass_set_bind_group(
 ) -> Result<Value, AnyError> {
   let args: ComputePassSetBindGroupArgs = serde_json::from_value(args)?;
 
+  let bind_group_id = *state
+    .resource_table
+    .get::<wgc::id::BindGroupId>(args.bind_group)
+    .ok_or_else(bad_resource_id)?;
+
   let compute_pass = state
     .resource_table
     .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
@@ -207,18 +214,15 @@ pub fn op_webgpu_compute_pass_set_bind_group(
     wgc::command::compute_ffi::wgpu_compute_pass_set_bind_group(
       compute_pass,
       args.index,
-      *state
-        .resource_table
-        .get_mut::<wgc::id::BindGroupId>(args.bind_group)
-        .ok_or_else(bad_resource_id)?,
+      bind_group_id,
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
-        None => unsafe {
+        None => {
           let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
           data[args.dynamic_offsets_data_start..].as_ptr()
-        },
+        }
       },
       args.dynamic_offsets_data_length,
     );

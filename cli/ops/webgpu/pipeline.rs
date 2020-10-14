@@ -35,13 +35,13 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 }
 
 fn serialize_programmable_stage_descriptor(
-  state: &mut OpState,
+  state: &OpState,
   programmable_stage_descriptor: GPUProgrammableStageDescriptor,
 ) -> Result<wgc::pipeline::ProgrammableStageDescriptor, AnyError> {
   Ok(wgc::pipeline::ProgrammableStageDescriptor {
     module: *state
       .resource_table
-      .get_mut::<wgc::id::ShaderModuleId>(programmable_stage_descriptor.module)
+      .get::<wgc::id::ShaderModuleId>(programmable_stage_descriptor.module)
       .ok_or_else(bad_resource_id)?,
     entry_point: Cow::Owned(programmable_stage_descriptor.entry_point),
   })
@@ -147,19 +147,15 @@ pub fn op_webgpu_create_compute_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateComputePipelineArgs = serde_json::from_value(args)?;
 
-  let instance = state
+  let device = *state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = state
-    .resource_table
-    .get_mut::<wgc::id::DeviceId>(args.device_rid)
+    .get::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
   let layout = if let Some(rid) = args.layout {
     let id = state
       .resource_table
-      .get_mut::<wgc::id::PipelineLayoutId>(rid)
+      .get::<wgc::id::PipelineLayoutId>(rid)
       .ok_or_else(bad_resource_id)?;
     Some(*id)
   } else {
@@ -181,8 +177,14 @@ pub fn op_webgpu_create_compute_pipeline(
       group_ids: &[std::marker::PhantomData; wgc::MAX_BIND_GROUPS],
     }),
   };
-  let (compute_pipeline, _) = wgc::gfx_select!(*device => instance.device_create_compute_pipeline(
-    *device,
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  let (compute_pipeline, _) = wgc::gfx_select!(device => instance.device_create_compute_pipeline(
+    device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
@@ -213,17 +215,17 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   let args: ComputePipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
+  let compute_pipeline = *state
+    .resource_table
+    .get::<wgc::id::ComputePipelineId>(args.compute_pipeline_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let compute_pipeline = state
-    .resource_table
-    .get_mut::<wgc::id::ComputePipelineId>(args.compute_pipeline_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  let bind_group_layout = wgc::gfx_select!(*compute_pipeline => instance
-    .compute_pipeline_get_bind_group_layout(*compute_pipeline, args.index))?;
+  let bind_group_layout = wgc::gfx_select!(compute_pipeline => instance
+    .compute_pipeline_get_bind_group_layout(compute_pipeline, args.index))?;
 
   let rid = state
     .resource_table
@@ -332,13 +334,9 @@ pub fn op_webgpu_create_render_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateRenderPipelineArgs = serde_json::from_value(args)?;
 
-  let instance = state
+  let device = *state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = state
-    .resource_table
-    .get_mut::<wgc::id::DeviceId>(args.device_rid)
+    .get::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut color_states = vec![];
@@ -386,29 +384,36 @@ pub fn op_webgpu_create_render_pipeline(
   let layout = if let Some(rid) = args.layout {
     let id = state
       .resource_table
-      .get_mut::<wgc::id::PipelineLayoutId>(rid)
+      .get::<wgc::id::PipelineLayoutId>(rid)
       .ok_or_else(bad_resource_id)?;
     Some(*id)
   } else {
     None
   };
 
+  let fragment_stage =
+    if let Some(programmable_stage_descriptor) = args.fragment_stage {
+      Some(serialize_programmable_stage_descriptor(
+        state,
+        programmable_stage_descriptor,
+      )?)
+    } else {
+      None
+    };
+
+  let vertex_stage =
+    serialize_programmable_stage_descriptor(state, args.vertex_stage)?;
+
+  let instance = state
+    .resource_table
+    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+
   let descriptor = wgc::pipeline::RenderPipelineDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
     layout,
-    vertex_stage: serialize_programmable_stage_descriptor(
-      state,
-      args.vertex_stage,
-    )?,
-    fragment_stage: args
-      .fragment_stage
-      .map(|programmable_stage_descriptor| {
-        serialize_programmable_stage_descriptor(
-          state,
-          programmable_stage_descriptor,
-        )
-      })
-      .transpose()?,
+    vertex_stage,
+    fragment_stage,
     rasterization_state: args.rasterization_state.map(|rasterization_state| {
       wgt::RasterizationStateDescriptor {
         front_face: match rasterization_state.front_face {
@@ -536,8 +541,9 @@ pub fn op_webgpu_create_render_pipeline(
       group_ids: &[std::marker::PhantomData; wgc::MAX_BIND_GROUPS],
     }),
   };
-  let (render_pipeline, _) = wgc::gfx_select!(*device => instance.device_create_render_pipeline(
-    *device,
+
+  let (render_pipeline, _) = wgc::gfx_select!(device => instance.device_create_render_pipeline(
+    device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
@@ -568,17 +574,17 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   let args: RenderPipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
+  let render_pipeline = *state
+    .resource_table
+    .get_mut::<wgc::id::RenderPipelineId>(args.render_pipeline_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let render_pipeline = state
-    .resource_table
-    .get_mut::<wgc::id::RenderPipelineId>(args.render_pipeline_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  let bind_group_layout = wgc::gfx_select!(*render_pipeline => instance
-    .render_pipeline_get_bind_group_layout(*render_pipeline, args.index))?;
+  let bind_group_layout = wgc::gfx_select!(render_pipeline => instance
+    .render_pipeline_get_bind_group_layout(render_pipeline, args.index))?;
 
   let rid = state
     .resource_table

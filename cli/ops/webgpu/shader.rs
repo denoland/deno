@@ -34,13 +34,13 @@ pub fn op_webgpu_create_shader_module(
 ) -> Result<Value, AnyError> {
   let args: CreateShaderModuleArgs = serde_json::from_value(args)?;
 
+  let device = *state
+    .resource_table
+    .get::<wgc::id::DeviceId>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = state
-    .resource_table
-    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
   let source = match args.code {
@@ -52,8 +52,8 @@ pub fn op_webgpu_create_shader_module(
       data
     })),
   };
-  let shader_module = wgc::gfx_select!(*device => instance.device_create_shader_module(
-    *device,
+  let shader_module = wgc::gfx_select!(device => instance.device_create_shader_module(
+    device,
     source,
     std::marker::PhantomData
   ))?;

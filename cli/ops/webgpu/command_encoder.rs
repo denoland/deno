@@ -91,20 +91,20 @@ pub fn op_webgpu_create_command_encoder(
 ) -> Result<Value, AnyError> {
   let args: CreateCommandEncoderArgs = serde_json::from_value(args)?;
 
+  let device = *state
+    .resource_table
+    .get::<wgc::id::DeviceId>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = state
-    .resource_table
-    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgt::CommandEncoderDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
   };
-  let command_encoder = wgc::gfx_select!(*device => instance.device_create_command_encoder(
-    *device,
+  let command_encoder = wgc::gfx_select!(device => instance.device_create_command_encoder(
+    device,
     &descriptor,
     std::marker::PhantomData
   ))?;
@@ -160,9 +160,9 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
 ) -> Result<Value, AnyError> {
   let args: CommandEncoderBeginRenderPassArgs = serde_json::from_value(args)?;
 
-  let command_encoder = state
+  let command_encoder = *state
     .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut color_attachments = vec![];
@@ -259,7 +259,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   }
 
   let render_pass = wgc::command::RenderPass::new(
-    *command_encoder,
+    command_encoder,
     wgc::command::RenderPassDescriptor {
       color_attachments: Cow::Owned(color_attachments),
       depth_stencil_attachment: depth_stencil_attachment.as_ref(),
@@ -325,25 +325,25 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   let args: CommandEncoderCopyBufferToBufferArgs =
     serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let source = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.source)
+    .ok_or_else(bad_resource_id)?;
+  let destination = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.destination)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  let source = *state
-    .resource_table
-    .get_mut::<wgc::id::BufferId>(args.source)
-    .ok_or_else(bad_resource_id)?;
-  let destination = *state
-    .resource_table
-    .get_mut::<wgc::id::BufferId>(args.destination)
-    .ok_or_else(bad_resource_id)?;
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_copy_buffer_to_buffer(
-    *command_encoder,
+  wgc::gfx_select!(command_encoder => instance.command_encoder_copy_buffer_to_buffer(
+    command_encoder,
     source,
     args.source_offset,
     destination,
@@ -397,20 +397,25 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   let args: CommandEncoderCopyBufferToTextureArgs =
     serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let source_buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.source.buffer)
+    .ok_or_else(bad_resource_id)?;
+  let destination_texture_id = *state
+    .resource_table
+    .get::<wgc::id::TextureId>(args.destination.texture)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
   let source = wgc::command::BufferCopyView {
-    buffer: *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.source.buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer: source_buffer_id,
     layout: wgt::TextureDataLayout {
       offset: args.source.offset.unwrap_or(0),
       bytes_per_row: args.source.bytes_per_row.unwrap_or(0),
@@ -418,10 +423,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     },
   };
   let destination = wgc::command::TextureCopyView {
-    texture: *state
-      .resource_table
-      .get_mut::<wgc::id::TextureId>(args.destination.texture)
-      .ok_or_else(bad_resource_id)?,
+    texture: destination_texture_id,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
       .destination
@@ -432,8 +434,8 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
         z: origin.z.unwrap_or(0),
       }),
   };
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_copy_buffer_to_texture(
-    *command_encoder,
+  wgc::gfx_select!(command_encoder => instance.command_encoder_copy_buffer_to_texture(
+    command_encoder,
     &source,
     &destination,
     &wgt::Extent3d {
@@ -464,20 +466,25 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   let args: CommandEncoderCopyTextureToBufferArgs =
     serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let source_texture_id = *state
+    .resource_table
+    .get::<wgc::id::TextureId>(args.source.texture)
+    .ok_or_else(bad_resource_id)?;
+  let destination_buffer_id = *state
+    .resource_table
+    .get::<wgc::id::BufferId>(args.destination.buffer)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
   let source = wgc::command::TextureCopyView {
-    texture: *state
-      .resource_table
-      .get_mut::<wgc::id::TextureId>(args.source.texture)
-      .ok_or_else(bad_resource_id)?,
+    texture: source_texture_id,
     mip_level: args.source.mip_level.unwrap_or(0),
     origin: args.source.origin.map_or(Default::default(), |origin| {
       wgt::Origin3d {
@@ -488,18 +495,15 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     }),
   };
   let destination = wgc::command::BufferCopyView {
-    buffer: *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.destination.buffer)
-      .ok_or_else(bad_resource_id)?,
+    buffer: destination_buffer_id,
     layout: wgt::TextureDataLayout {
       offset: args.destination.offset.unwrap_or(0),
       bytes_per_row: args.destination.bytes_per_row.unwrap_or(0),
       rows_per_image: args.destination.rows_per_image.unwrap_or(0),
     },
   };
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_copy_texture_to_buffer(
-    *command_encoder,
+  wgc::gfx_select!(command_encoder => instance.command_encoder_copy_texture_to_buffer(
+    command_encoder,
     &source,
     &destination,
     &wgt::Extent3d {
@@ -530,20 +534,25 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   let args: CommandEncoderCopyTextureToTextureArgs =
     serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let source_texture_id = *state
+    .resource_table
+    .get::<wgc::id::TextureId>(args.source.texture)
+    .ok_or_else(bad_resource_id)?;
+  let destination_texture_id = *state
+    .resource_table
+    .get::<wgc::id::TextureId>(args.destination.texture)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
   let source = wgc::command::TextureCopyView {
-    texture: *state
-      .resource_table
-      .get_mut::<wgc::id::TextureId>(args.source.texture)
-      .ok_or_else(bad_resource_id)?,
+    texture: source_texture_id,
     mip_level: args.source.mip_level.unwrap_or(0),
     origin: args.source.origin.map_or(Default::default(), |origin| {
       wgt::Origin3d {
@@ -554,10 +563,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     }),
   };
   let destination = wgc::command::TextureCopyView {
-    texture: *state
-      .resource_table
-      .get_mut::<wgc::id::TextureId>(args.destination.texture)
-      .ok_or_else(bad_resource_id)?,
+    texture: destination_texture_id,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
       .destination
@@ -568,8 +574,8 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
         z: origin.z.unwrap_or(0),
       }),
   };
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_copy_texture_to_texture(
-    *command_encoder,
+  wgc::gfx_select!(command_encoder => instance.command_encoder_copy_texture_to_texture(
+    command_encoder,
     &source,
     &destination,
     &wgt::Extent3d {
@@ -597,17 +603,17 @@ pub fn op_webgpu_command_encoder_push_debug_group(
 ) -> Result<Value, AnyError> {
   let args: CommandEncoderPushDebugGroupArgs = serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  wgc::gfx_select!(*command_encoder => instance
-    .command_encoder_push_debug_group(*command_encoder, &args.group_label))?;
+  wgc::gfx_select!(command_encoder => instance
+    .command_encoder_push_debug_group(command_encoder, &args.group_label))?;
 
   Ok(json!({}))
 }
@@ -626,16 +632,16 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
 ) -> Result<Value, AnyError> {
   let args: CommandEncoderPopDebugGroupArgs = serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_pop_debug_group(*command_encoder))?;
+  wgc::gfx_select!(command_encoder => instance.command_encoder_pop_debug_group(command_encoder))?;
 
   Ok(json!({}))
 }
@@ -655,17 +661,17 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
 ) -> Result<Value, AnyError> {
   let args: CommandEncoderInsertDebugMarkerArgs = serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
 
-  wgc::gfx_select!(*command_encoder => instance.command_encoder_insert_debug_marker(
-    *command_encoder,
+  wgc::gfx_select!(command_encoder => instance.command_encoder_insert_debug_marker(
+    command_encoder,
     &args.marker_label
   ))?;
 
@@ -687,20 +693,20 @@ pub fn op_webgpu_command_encoder_finish(
 ) -> Result<Value, AnyError> {
   let args: CommandEncoderFinishArgs = serde_json::from_value(args)?;
 
+  let command_encoder = *state
+    .resource_table
+    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let command_encoder = state
-    .resource_table
-    .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgt::CommandBufferDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
   };
-  let command_buffer = wgc::gfx_select!(*command_encoder => instance.command_encoder_finish(
-    *command_encoder,
+  let command_buffer = wgc::gfx_select!(command_encoder => instance.command_encoder_finish(
+    command_encoder,
     &descriptor
   ))?;
 

@@ -79,13 +79,13 @@ pub fn op_webgpu_create_sampler(
 ) -> Result<Value, AnyError> {
   let args: CreateSamplerArgs = serde_json::from_value(args)?;
 
+  let device = *state
+    .resource_table
+    .get::<wgc::id::DeviceId>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = state
-    .resource_table
-    .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::SamplerDescriptor {
@@ -105,8 +105,8 @@ pub fn op_webgpu_create_sampler(
     compare: args.compare.map(serialize_compare_function),
     anisotropy_clamp: args.max_anisotropy,
   };
-  let sampler = wgc::gfx_select!(*device => instance.device_create_sampler(
-    *device,
+  let sampler = wgc::gfx_select!(device => instance.device_create_sampler(
+    device,
     &descriptor,
     std::marker::PhantomData
   ))?;
