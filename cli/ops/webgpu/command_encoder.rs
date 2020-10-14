@@ -207,7 +207,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
             },
             read_only: false,
           }
-        },
+        }
         _ => unreachable!(),
       },
     };

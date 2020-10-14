@@ -47,7 +47,7 @@ fn serialize_programmable_stage_descriptor(
   })
 }
 
-fn serialize_stencil_operation(operation: String) -> wgt::StencilOperation {
+fn serialize_stencil_operation(operation: &String) -> wgt::StencilOperation {
   match operation.as_str() {
     "keep" => wgt::StencilOperation::Keep,
     "zero" => wgt::StencilOperation::Zero,
@@ -62,25 +62,29 @@ fn serialize_stencil_operation(operation: String) -> wgt::StencilOperation {
 }
 
 fn serialize_stencil_state_face_descriptor(
-  state: GPUStencilStateFaceDescriptor,
+  state: &GPUStencilStateFaceDescriptor,
 ) -> wgt::StencilStateFaceDescriptor {
   wgt::StencilStateFaceDescriptor {
     compare: state
       .compare
+      .as_ref()
       .map_or(wgt::CompareFunction::Always, serialize_compare_function),
     fail_op: state
       .fail_op
+      .as_ref()
       .map_or(wgt::StencilOperation::Keep, serialize_stencil_operation),
     depth_fail_op: state
       .depth_fail_op
+      .as_ref()
       .map_or(wgt::StencilOperation::Keep, serialize_stencil_operation),
     pass_op: state
       .pass_op
+      .as_ref()
       .map_or(wgt::StencilOperation::Keep, serialize_stencil_operation),
   }
 }
 
-fn serialize_blend_factor(blend_factor: String) -> wgt::BlendFactor {
+fn serialize_blend_factor(blend_factor: &String) -> wgt::BlendFactor {
   match blend_factor.as_str() {
     "zero" => wgt::BlendFactor::Zero,
     "one" => wgt::BlendFactor::One,
@@ -100,16 +104,18 @@ fn serialize_blend_factor(blend_factor: String) -> wgt::BlendFactor {
 }
 
 fn serialize_blend_descriptor(
-  blend: GPUBlendDescriptor,
+  blend: &GPUBlendDescriptor,
 ) -> wgt::BlendDescriptor {
   wgt::BlendDescriptor {
     src_factor: blend
       .src_factor
+      .as_ref()
       .map_or(wgt::BlendFactor::One, serialize_blend_factor),
     dst_factor: blend
       .dst_factor
+      .as_ref()
       .map_or(wgt::BlendFactor::Zero, serialize_blend_factor),
-    operation: match blend.operation {
+    operation: match &blend.operation {
       Some(operation) => match operation.as_str() {
         "add" => wgt::BlendOperation::Add,
         "subtract" => wgt::BlendOperation::Subtract,
@@ -162,13 +168,13 @@ pub fn op_webgpu_create_compute_pipeline(
     None
   };
 
+  let compute_stage =
+    serialize_programmable_stage_descriptor(state, args.compute_stage)?;
+
   let descriptor = wgc::pipeline::ComputePipelineDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),
     layout,
-    compute_stage: serialize_programmable_stage_descriptor(
-      state,
-      args.compute_stage,
-    )?,
+    compute_stage,
   };
   let implicit_pipelines = match args.layout {
     Some(_) => None,
@@ -346,9 +352,11 @@ pub fn op_webgpu_create_render_pipeline(
       format: serialize_texture_format(color_state.format.clone())?,
       alpha_blend: color_state
         .alpha_blend
+        .as_ref()
         .map_or(Default::default(), serialize_blend_descriptor),
       color_blend: color_state
         .color_blend
+        .as_ref()
         .map_or(Default::default(), serialize_blend_descriptor),
       write_mask: color_state.write_mask.map_or(Default::default(), |mask| {
         wgt::ColorWrite::from_bits(mask).unwrap()
@@ -365,13 +373,14 @@ pub fn op_webgpu_create_render_pipeline(
       depth_write_enabled: state.depth_write_enabled.unwrap_or(false),
       depth_compare: state
         .depth_compare
+        .as_ref()
         .map_or(wgt::CompareFunction::Always, serialize_compare_function),
       stencil: wgt::StencilStateDescriptor {
-        front: state.stencil_front.map_or(
+        front: state.stencil_front.as_ref().map_or(
           wgt::StencilStateFaceDescriptor::IGNORE,
           serialize_stencil_state_face_descriptor,
         ),
-        back: state.stencil_front.map_or(
+        back: state.stencil_front.as_ref().map_or(
           wgt::StencilStateFaceDescriptor::IGNORE,
           serialize_stencil_state_face_descriptor,
         ),

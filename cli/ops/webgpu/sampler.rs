@@ -40,7 +40,7 @@ fn serialize_filter_mode(filter_mode: Option<String>) -> wgt::FilterMode {
   }
 }
 
-pub fn serialize_compare_function(compare: String) -> wgt::CompareFunction {
+pub fn serialize_compare_function(compare: &String) -> wgt::CompareFunction {
   match compare.as_str() {
     "never" => wgt::CompareFunction::Never,
     "less" => wgt::CompareFunction::Less,
@@ -102,7 +102,7 @@ pub fn op_webgpu_create_sampler(
     lod_max_clamp: args
       .lod_max_clamp
       .unwrap_or(wgc::resource::SamplerDescriptor::default().lod_max_clamp),
-    compare: args.compare.map(serialize_compare_function),
+    compare: args.compare.as_ref().map(serialize_compare_function),
     anisotropy_clamp: args.max_anisotropy,
   };
   let sampler = wgc::gfx_select!(device => instance.device_create_sampler(
