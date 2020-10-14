@@ -6,13 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-### 1.4.4 / 2020.10.03
+### 1.4.6 / 2020.10.10
+
+- fix: 100% CPU idling problem by reverting #7672 (#7911)
+- fix(op_crate/web): add padding on URLSearchParam (#7905)
+- fix(op_crates/fetch): Stringify and parse Request URLs (#7838)
+- refactor(core): Implement Serialize for ModuleSpecifier (#7900)
+- upgrade: Rust 1.47.0 (#7886)
+
+### 1.4.5 / 2020.10.08
 
 - feat(unstable): Revert "enable importsNotUsedAsValues by default #7413"
   (#7800)
 - fix: Update worker types to better align to lib.dom.d.ts (#7843)
-- fix(cli/ops/fs): Don't force Windows paths separate paths with forward slash
-  (#7833)
+- fix(cli/ops/fs): Preserve Windows path separators in Deno.realPath() (#7833)
 - fix(cli/rt/console): Don't require a prototype to detect a class instance
   (#7869)
 - fix(cli/rt/error_stack): Improve message line formatting (#7860)

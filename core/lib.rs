@@ -22,6 +22,7 @@ mod zero_copy_buf;
 // Re-exports
 pub use futures;
 pub use rusty_v8 as v8;
+pub use serde;
 pub use serde_json;
 pub use url;
 
