@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -172,7 +172,10 @@ pub fn op_webgpu_compute_pass_end_pass(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.command_encoder_run_compute_pass(*command_encoder, compute_pass);
+  wgc::gfx_select!(*command_encoder => instance.command_encoder_run_compute_pass(
+    *command_encoder,
+    compute_pass
+  ))?;
 
   Ok(json!({}))
 }
@@ -183,8 +186,8 @@ struct ComputePassSetBindGroupArgs {
   compute_pass_rid: u32,
   index: u32,
   bind_group: u32,
-  dynamic_offsets_data: Option<[u32]>,
-  dynamic_offsets_data_start: u64,
+  dynamic_offsets_data: Option<Vec<u32>>,
+  dynamic_offsets_data_start: usize,
   dynamic_offsets_data_length: usize,
 }
 

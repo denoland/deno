@@ -53,33 +53,17 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   shader::init(rt);
 }
 
-fn serialize_features(features: &wgt::Features) -> Vec<&str> {
-  let mut extensions: Vec<&str> = vec![];
+fn deserialize_features(features: &wgt::Features) -> Vec<&str> {
+  let mut return_features: Vec<&str> = vec![];
 
   if features.contains(wgt::Features::DEPTH_CLAMPING) {
-    extensions.push("depth-clamping");
-  }
-  if features.contains(wgt::Features) {
-    // TODO
-    extensions.push("depth24unorm-stencil8");
-  }
-  if features.contains(wgt::Features) {
-    // TODO
-    extensions.push("depth32float-stencil8");
-  }
-  if features.contains(wgt::Features) {
-    // TODO
-    extensions.push("pipeline-statistics-query");
+    return_features.push("depth-clamping");
   }
   if features.contains(wgt::Features::TEXTURE_COMPRESSION_BC) {
-    extensions.push("texture-compression-bc");
-  }
-  if features.contains(wgt::Features) {
-    // TODO
-    extensions.push("timestamp-query");
+    return_features.push("texture-compression-bc");
   }
 
-  extensions
+  return_features
 }
 
 pub type WgcInstance = wgc::hub::Global<wgc::hub::IdentityManagerFactory>;
@@ -124,25 +108,30 @@ pub async fn op_webgpu_request_adapter(
     .get_mut::<WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let adapter = instance.request_adapter(
-    &wgc::instance::RequestAdapterOptions {
-      power_preference: match args.power_preference {
-        Some(&"low-power") => wgt::PowerPreference::LowPower,
-        Some(&"high-performance") => wgt::PowerPreference::HighPerformance,
-        Some(_) => unreachable!(),
-        None => wgt::PowerPreference::Default,
+  let descriptor = wgc::instance::RequestAdapterOptions {
+    power_preference: match args.power_preference {
+      Some(power_preference) => match power_preference.as_str() {
+        "low-power" => wgt::PowerPreference::LowPower,
+        "high-performance" => wgt::PowerPreference::HighPerformance,
+        _ => unreachable!(),
       },
-      compatible_surface: None, // windowless
+      None => wgt::PowerPreference::Default,
     },
-    wgc::instance::AdapterInputs::Mask(wgt::BackendBit::PRIMARY, ()), // TODO
+    compatible_surface: None, // windowless
+  };
+  let adapter = instance.request_adapter(
+    &descriptor,
+    wgc::instance::AdapterInputs::Mask(wgt::BackendBit::PRIMARY, |_| {
+      std::marker::PhantomData
+    }),
   )?;
 
-  let name = instance.adapter_get_info(adapter)?.name;
-  let features = serialize_features(&instance.adapter_features(adapter)?);
+  let name =
+    wgc::gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
+  let adapter_features =
+    wgc::gfx_select!(adapter => instance.adapter_features(adapter))?;
+  let features = deserialize_features(&adapter_features);
 
-  let rid = state
-    .resource_table
-    .add("webGPUInstance", Box::new(instance));
   let rid = state.resource_table.add("webGPUAdapter", Box::new(adapter));
 
   Ok(json!({
@@ -155,16 +144,15 @@ pub async fn op_webgpu_request_adapter(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GPULimits {
-  // TODO: each should be Option
-  max_bind_groups: u32,
-  max_dynamic_uniform_buffers_per_pipeline_layout: u32,
-  max_dynamic_storage_buffers_per_pipeline_layout: u32,
-  max_sampled_textures_per_shader_stage: u32,
-  max_samplers_per_shader_stage: u32,
-  max_storage_buffers_per_shader_stage: u32,
-  max_storage_textures_per_shader_stage: u32,
-  max_uniform_buffers_per_shader_stage: u32,
-  max_uniform_buffer_binding_size: u32,
+  max_bind_groups: Option<u32>,
+  max_dynamic_uniform_buffers_per_pipeline_layout: Option<u32>,
+  max_dynamic_storage_buffers_per_pipeline_layout: Option<u32>,
+  max_sampled_textures_per_shader_stage: Option<u32>,
+  max_samplers_per_shader_stage: Option<u32>,
+  max_storage_buffers_per_shader_stage: Option<u32>,
+  max_storage_textures_per_shader_stage: Option<u32>,
+  max_uniform_buffers_per_shader_stage: Option<u32>,
+  max_uniform_buffer_binding_size: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -173,7 +161,7 @@ struct RequestDeviceArgs {
   instance_rid: u32,
   adapter_rid: u32,
   label: Option<String>, // wgpu#976
-  features: Option<[String]>,
+  features: Option<Vec<String>>,
   limits: Option<GPULimits>,
 }
 
@@ -194,38 +182,61 @@ pub async fn op_webgpu_request_device(
     .get_mut::<wgc::id::AdapterId>(args.adapter_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let device = instance.adapter_request_device(
-    *adapter,
-    &wgt::DeviceDescriptor {
-      features: Default::default(), // TODO
-      limits: args.limits.map_or(Default::default(), |limits| {
-        wgt::Limits {
-          max_bind_groups: limits.max_bind_groups,
-          max_dynamic_uniform_buffers_per_pipeline_layout: limits
-            .max_dynamic_uniform_buffers_per_pipeline_layout,
-          max_dynamic_storage_buffers_per_pipeline_layout: limits
-            .max_dynamic_storage_buffers_per_pipeline_layout,
-          max_sampled_textures_per_shader_stage: limits
-            .max_sampled_textures_per_shader_stage,
-          max_samplers_per_shader_stage: limits.max_samplers_per_shader_stage,
-          max_storage_buffers_per_shader_stage: limits
-            .max_storage_buffers_per_shader_stage,
-          max_storage_textures_per_shader_stage: limits
-            .max_storage_textures_per_shader_stage,
-          max_uniform_buffers_per_shader_stage: limits
-            .max_uniform_buffers_per_shader_stage,
-          max_uniform_buffer_binding_size: limits
-            .max_uniform_buffer_binding_size,
-          max_push_constant_size: 0, // TODO
-        }
-      }),
-      shader_validation: false, // TODO
-    },
-    None,
-    std::marker::PhantomData,
-  )?;
+  let mut features = wgt::Features::default();
 
-  let features = serialize_features(&instance.device_features(device)?);
+  if let Some(passed_features) = args.features {
+    if passed_features.contains(&"depth-clamping".to_string()) {
+      features.set(wgt::Features::DEPTH_CLAMPING, true);
+    }
+    if passed_features.contains(&"texture-compression-bc".to_string()) {
+      features.set(wgt::Features::TEXTURE_COMPRESSION_BC, true);
+    }
+  }
+
+  let descriptor = wgt::DeviceDescriptor {
+    features,
+    limits: args
+      .limits
+      .map_or(Default::default(), |limits| wgt::Limits {
+        max_bind_groups: limits.max_bind_groups.unwrap_or(4),
+        max_dynamic_uniform_buffers_per_pipeline_layout: limits
+          .max_dynamic_uniform_buffers_per_pipeline_layout
+          .unwrap_or(8),
+        max_dynamic_storage_buffers_per_pipeline_layout: limits
+          .max_dynamic_storage_buffers_per_pipeline_layout
+          .unwrap_or(4),
+        max_sampled_textures_per_shader_stage: limits
+          .max_sampled_textures_per_shader_stage
+          .unwrap_or(16),
+        max_samplers_per_shader_stage: limits
+          .max_samplers_per_shader_stage
+          .unwrap_or(16),
+        max_storage_buffers_per_shader_stage: limits
+          .max_storage_buffers_per_shader_stage
+          .unwrap_or(4),
+        max_storage_textures_per_shader_stage: limits
+          .max_storage_textures_per_shader_stage
+          .unwrap_or(4),
+        max_uniform_buffers_per_shader_stage: limits
+          .max_uniform_buffers_per_shader_stage
+          .unwrap_or(12),
+        max_uniform_buffer_binding_size: limits
+          .max_uniform_buffer_binding_size
+          .unwrap_or(16384),
+        max_push_constant_size: 0,
+      }),
+    shader_validation: false,
+  };
+  let device = wgc::gfx_select!(*adapter => instance.adapter_request_device(
+    *adapter,
+    &descriptor,
+    None,
+    std::marker::PhantomData
+  ))?;
+
+  let device_features =
+    wgc::gfx_select!(device => instance.device_features(device))?;
+  let features = deserialize_features(&device_features);
   let limits = instance.device_limits(device)?;
   let json_limits = json!({
      "max_bind_groups": limits.max_bind_groups,

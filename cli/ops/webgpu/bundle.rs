@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::texture::serialize_texture_format;
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -78,7 +78,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 struct CreateRenderBundleEncoderArgs {
   device_rid: u32,
   label: Option<String>,
-  color_formats: [String],
+  color_formats: Vec<String>,
   depth_stencil_format: Option<String>,
   sample_count: Option<u32>,
 }
@@ -95,24 +95,23 @@ pub fn op_webgpu_create_render_bundle_encoder(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let render_bundle_encoder = wgc::command::RenderBundleEncoder::new(
-    &wgc::command::RenderBundleEncoderDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      color_formats: Cow::Owned(
-        args
-          .color_formats
-          .iter()
-          .map(|format| serialize_texture_format(format.clone())?)
-          .collect::<Vec<wgt::TextureFormat>>(),
-      ),
-      depth_stencil_format: args
-        .depth_stencil_format
-        .map(|format| serialize_texture_format(format)?),
-      sample_count: args.sample_count.unwrap_or(1),
-    },
-    *device,
-    None,
-  )?;
+  let descriptor = wgc::command::RenderBundleEncoderDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    color_formats: Cow::Owned(
+      args
+        .color_formats
+        .iter()
+        .map(|format| serialize_texture_format(format.clone())?)
+        .collect::<Vec<wgt::TextureFormat>>(),
+    ),
+    depth_stencil_format: args
+      .depth_stencil_format
+      .map(serialize_texture_format)
+      .transpose()?,
+    sample_count: args.sample_count.unwrap_or(1),
+  };
+  let render_bundle_encoder =
+    wgc::command::RenderBundleEncoder::new(&descriptor, *device, None)?;
 
   let rid = state
     .resource_table
@@ -149,13 +148,13 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     )
     .ok_or_else(bad_resource_id)?;
 
-  let render_bundle = instance.render_bundle_encoder_finish(
-    render_bundle_encoder, // TODO
+  let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
+    *render_bundle_encoder,
     &wgc::command::RenderBundleDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
+      label: args.label.map(|label| Cow::Owned(label)),
     },
-    std::marker::PhantomData,
-  )?;
+    std::marker::PhantomData
+  ))?;
 
   let rid = state
     .resource_table
@@ -172,8 +171,8 @@ struct RenderBundleEncoderSetBindGroupArgs {
   render_bundle_encoder_rid: u32,
   index: u32,
   bind_group: u32,
-  dynamic_offsets_data: Option<[u32]>,
-  dynamic_offsets_data_start: u64,
+  dynamic_offsets_data: Option<Vec<u32>>,
+  dynamic_offsets_data_start: usize,
   dynamic_offsets_data_length: usize,
 }
 
@@ -186,7 +185,9 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
 
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(args.compute_pass_rid)
+    .get_mut::<wgc::command::RenderBundleEncoder>(
+      args.render_bundle_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -371,11 +372,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
       .get_mut::<wgc::id::BufferId>(args.buffer)
       .ok_or_else(bad_resource_id)?,
     args.offset,
-    if args.size == 0 {
-      None
-    } else {
-      Some(args.size as std::num::NonZeroU64)
-    },
+    std::num::NonZeroU64::new(args.size),
   );
 
   Ok(json!({}))
@@ -414,11 +411,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
       .get_mut::<wgc::id::BufferId>(args.buffer)
       .ok_or_else(bad_resource_id)?,
     args.offset,
-    if args.size == 0 {
-      None
-    } else {
-      Some(args.size as std::num::NonZeroU64)
-    },
+    std::num::NonZeroU64::new(args.size),
   );
 
   Ok(json!({}))

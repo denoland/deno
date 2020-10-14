@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -43,19 +43,20 @@ pub fn op_webgpu_create_shader_module(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let shader_module = instance.device_create_shader_module(
+  let source = match args.code {
+    Some(code) => wgc::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
+    None => wgc::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
+      let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
+      assert!(prefix.is_empty());
+      assert!(suffix.is_empty());
+      data
+    })),
+  };
+  let shader_module = wgc::gfx_select!(*device => instance.device_create_shader_module(
     *device,
-    match args.code {
-      Some(code) => wgc::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
-      None => wgc::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
-        let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
-        assert!(prefix.is_empty());
-        assert!(suffix.is_empty());
-        data
-      })),
-    },
-    std::marker::PhantomData,
-  )?;
+    source,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state
     .resource_table

@@ -82,7 +82,10 @@
         },
       );
 
-      return new GPUDevice(this, rid, data);
+      return new GPUDevice(this, rid, {
+        label: descriptor.label,
+        ...data,
+      });
     }
   }
 
@@ -113,7 +116,8 @@
       this.#rid = rid;
       this.#features = Object.freeze(data.features);
       this.#limits = data.limits;
-      this.#defaultQueue = new GPUQueue(rid); // TODO: label?
+      this.#defaultQueue = new GPUQueue(rid, data.label);
+      this.label = data.label;
     }
 
     createBuffer(descriptor) {
@@ -542,7 +546,6 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_render_pass",
         {
-          instanceRid,
           commandEncoderRid: this.#rid,
           ...descriptor,
         },
@@ -555,7 +558,6 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_compute_pass",
         {
-          instanceRid,
           commandEncoderRid: this.#rid,
           ...descriptor,
         },

@@ -25,95 +25,95 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 pub fn serialize_texture_format(
   format: String,
 ) -> Result<wgt::TextureFormat, AnyError> {
-  Ok(match format {
+  Ok(match format.as_str() {
     // 8-bit formats
-    &"r8unorm" => wgt::TextureFormat::R8Unorm,
-    &"r8snorm" => wgt::TextureFormat::R8Snorm,
-    &"r8uint" => wgt::TextureFormat::R8Uint,
-    &"r8sint" => wgt::TextureFormat::R8Sint,
+    "r8unorm" => wgt::TextureFormat::R8Unorm,
+    "r8snorm" => wgt::TextureFormat::R8Snorm,
+    "r8uint" => wgt::TextureFormat::R8Uint,
+    "r8sint" => wgt::TextureFormat::R8Sint,
 
     // 16-bit formats
-    &"r16uint" => wgt::TextureFormat::R16Uint,
-    &"r16sint" => wgt::TextureFormat::R16Sint,
-    &"r16float" => wgt::TextureFormat::R16Float,
-    &"rg8unorm" => wgt::TextureFormat::Rg8Unorm,
-    &"rg8snorm" => wgt::TextureFormat::Rg8Snorm,
-    &"rg8uint" => wgt::TextureFormat::Rg8Uint,
-    &"rg8sint" => wgt::TextureFormat::Rg8Sint,
+    "r16uint" => wgt::TextureFormat::R16Uint,
+    "r16sint" => wgt::TextureFormat::R16Sint,
+    "r16float" => wgt::TextureFormat::R16Float,
+    "rg8unorm" => wgt::TextureFormat::Rg8Unorm,
+    "rg8snorm" => wgt::TextureFormat::Rg8Snorm,
+    "rg8uint" => wgt::TextureFormat::Rg8Uint,
+    "rg8sint" => wgt::TextureFormat::Rg8Sint,
 
     // 32-bit formats
-    &"r32uint" => wgt::TextureFormat::R32Uint,
-    &"r32sint" => wgt::TextureFormat::R32Sint,
-    &"r32float" => wgt::TextureFormat::R32Float,
-    &"rg16uint" => wgt::TextureFormat::Rg16Uint,
-    &"rg16sint" => wgt::TextureFormat::Rg16Sint,
-    &"rg16float" => wgt::TextureFormat::Rg16Float,
-    &"rgba8unorm" => wgt::TextureFormat::Rgba8Unorm,
-    &"rgba8unorm-srgb" => wgt::TextureFormat::Rgba8UnormSrgb,
-    &"rgba8snorm" => wgt::TextureFormat::Rgba8Snorm,
-    &"rgba8uint" => wgt::TextureFormat::Rgba8Uint,
-    &"rgba8sint" => wgt::TextureFormat::Rgba8Sint,
-    &"bgra8unorm" => wgt::TextureFormat::Bgra8Unorm,
-    &"bgra8unorm-srgb" => wgt::TextureFormat::Bgra8UnormSrgb,
+    "r32uint" => wgt::TextureFormat::R32Uint,
+    "r32sint" => wgt::TextureFormat::R32Sint,
+    "r32float" => wgt::TextureFormat::R32Float,
+    "rg16uint" => wgt::TextureFormat::Rg16Uint,
+    "rg16sint" => wgt::TextureFormat::Rg16Sint,
+    "rg16float" => wgt::TextureFormat::Rg16Float,
+    "rgba8unorm" => wgt::TextureFormat::Rgba8Unorm,
+    "rgba8unorm-srgb" => wgt::TextureFormat::Rgba8UnormSrgb,
+    "rgba8snorm" => wgt::TextureFormat::Rgba8Snorm,
+    "rgba8uint" => wgt::TextureFormat::Rgba8Uint,
+    "rgba8sint" => wgt::TextureFormat::Rgba8Sint,
+    "bgra8unorm" => wgt::TextureFormat::Bgra8Unorm,
+    "bgra8unorm-srgb" => wgt::TextureFormat::Bgra8UnormSrgb,
     // Packed 32-bit formats
-    &"rgb9e5ufloat" => return Err(not_supported()), // wgpu#967
-    &"rgb10a2unorm" => wgt::TextureFormat::Rgb10a2Unorm,
-    &"rg11b10ufloat" => wgt::TextureFormat::Rg11b10Float,
+    "rgb9e5ufloat" => return Err(not_supported()), // wgpu#967
+    "rgb10a2unorm" => wgt::TextureFormat::Rgb10a2Unorm,
+    "rg11b10ufloat" => wgt::TextureFormat::Rg11b10Float,
 
     // 64-bit formats
-    &"rg32uint" => wgt::TextureFormat::Rg32Uint,
-    &"rg32sint" => wgt::TextureFormat::Rg32Sint,
-    &"rg32float" => wgt::TextureFormat::Rg32Float,
-    &"rgba16uint" => wgt::TextureFormat::Rgba16Uint,
-    &"rgba16sint" => wgt::TextureFormat::Rgba16Sint,
-    &"rgba16float" => wgt::TextureFormat::Rgba16Float,
+    "rg32uint" => wgt::TextureFormat::Rg32Uint,
+    "rg32sint" => wgt::TextureFormat::Rg32Sint,
+    "rg32float" => wgt::TextureFormat::Rg32Float,
+    "rgba16uint" => wgt::TextureFormat::Rgba16Uint,
+    "rgba16sint" => wgt::TextureFormat::Rgba16Sint,
+    "rgba16float" => wgt::TextureFormat::Rgba16Float,
 
     // 128-bit formats
-    &"rgba32uint" => wgt::TextureFormat::Rgba32Uint,
-    &"rgba32sint" => wgt::TextureFormat::Rgba32Sint,
-    &"rgba32float" => wgt::TextureFormat::Rgba32Float,
+    "rgba32uint" => wgt::TextureFormat::Rgba32Uint,
+    "rgba32sint" => wgt::TextureFormat::Rgba32Sint,
+    "rgba32float" => wgt::TextureFormat::Rgba32Float,
 
     // Depth and stencil formats
-    &"stencil8" => return Err(not_supported()), // wgpu#967
-    &"depth16unorm" => return Err(not_supported()), // wgpu#967
-    &"depth24plus" => wgt::TextureFormat::Depth24Plus,
-    &"depth24plus-stencil8" => wgt::TextureFormat::Depth24PlusStencil8,
-    &"depth32float" => wgt::TextureFormat::Depth32Float,
+    "stencil8" => return Err(not_supported()), // wgpu#967
+    "depth16unorm" => return Err(not_supported()), // wgpu#967
+    "depth24plus" => wgt::TextureFormat::Depth24Plus,
+    "depth24plus-stencil8" => wgt::TextureFormat::Depth24PlusStencil8,
+    "depth32float" => wgt::TextureFormat::Depth32Float,
 
     // BC compressed formats usable if "texture-compression-bc" is both
     // supported by the device/user agent and enabled in requestDevice.
-    &"bc1-rgba-unorm" => wgt::TextureFormat::Bc1RgbaUnorm,
-    &"bc1-rgba-unorm-srgb" => wgt::TextureFormat::Bc1RgbaUnormSrgb,
-    &"bc2-rgba-unorm" => wgt::TextureFormat::Bc2RgbaUnorm,
-    &"bc2-rgba-unorm-srgb" => wgt::TextureFormat::Bc2RgbaUnormSrgb,
-    &"bc3-rgba-unorm" => wgt::TextureFormat::Bc3RgbaUnorm,
-    &"bc3-rgba-unorm-srgb" => wgt::TextureFormat::Bc3RgbaUnormSrgb,
-    &"bc4-r-unorm" => wgt::TextureFormat::Bc4RUnorm,
-    &"bc4-r-snorm" => wgt::TextureFormat::Bc4RSnorm,
-    &"bc5-rg-unorm" => wgt::TextureFormat::Bc5RgUnorm,
-    &"bc5-rg-snorm" => wgt::TextureFormat::Bc5RgSnorm,
-    &"bc6h-rgb-ufloat" => wgt::TextureFormat::Bc6hRgbUfloat,
-    &"bc6h-rgb-float" => wgt::TextureFormat::Bc6hRgbSfloat, // wgpu#967
-    &"bc7-rgba-unorm" => wgt::TextureFormat::Bc7RgbaUnorm,
-    &"bc7-rgba-unorm-srgb" => wgt::TextureFormat::Bc7RgbaUnormSrgb,
+    "bc1-rgba-unorm" => wgt::TextureFormat::Bc1RgbaUnorm,
+    "bc1-rgba-unorm-srgb" => wgt::TextureFormat::Bc1RgbaUnormSrgb,
+    "bc2-rgba-unorm" => wgt::TextureFormat::Bc2RgbaUnorm,
+    "bc2-rgba-unorm-srgb" => wgt::TextureFormat::Bc2RgbaUnormSrgb,
+    "bc3-rgba-unorm" => wgt::TextureFormat::Bc3RgbaUnorm,
+    "bc3-rgba-unorm-srgb" => wgt::TextureFormat::Bc3RgbaUnormSrgb,
+    "bc4-r-unorm" => wgt::TextureFormat::Bc4RUnorm,
+    "bc4-r-snorm" => wgt::TextureFormat::Bc4RSnorm,
+    "bc5-rg-unorm" => wgt::TextureFormat::Bc5RgUnorm,
+    "bc5-rg-snorm" => wgt::TextureFormat::Bc5RgSnorm,
+    "bc6h-rgb-ufloat" => wgt::TextureFormat::Bc6hRgbUfloat,
+    "bc6h-rgb-float" => wgt::TextureFormat::Bc6hRgbSfloat, // wgpu#967
+    "bc7-rgba-unorm" => wgt::TextureFormat::Bc7RgbaUnorm,
+    "bc7-rgba-unorm-srgb" => wgt::TextureFormat::Bc7RgbaUnormSrgb,
 
     // "depth24unorm-stencil8" extension
-    &"depth24unorm-stencil8" => return Err(not_supported()), // wgpu#967
+    "depth24unorm-stencil8" => return Err(not_supported()), // wgpu#967
 
     // "depth32float-stencil8" extension
-    &"depth32float-stencil8" => return Err(not_supported()), // wgpu#967
+    "depth32float-stencil8" => return Err(not_supported()), // wgpu#967
     _ => unreachable!(),
   })
 }
 
 pub fn serialize_dimension(dimension: String) -> wgt::TextureViewDimension {
-  match dimension {
-    &"1d" => wgt::TextureViewDimension::D1,
-    &"2d" => wgt::TextureViewDimension::D2,
-    &"2d-array" => wgt::TextureViewDimension::D2Array,
-    &"cube" => wgt::TextureViewDimension::Cube,
-    &"cube-array" => wgt::TextureViewDimension::CubeArray,
-    &"3d" => wgt::TextureViewDimension::D3,
+  match dimension.as_str() {
+    "1d" => wgt::TextureViewDimension::D1,
+    "2d" => wgt::TextureViewDimension::D2,
+    "2d-array" => wgt::TextureViewDimension::D2Array,
+    "cube" => wgt::TextureViewDimension::Cube,
+    "cube-array" => wgt::TextureViewDimension::CubeArray,
+    "3d" => wgt::TextureViewDimension::D3,
     _ => unreachable!(),
   }
 }
@@ -156,29 +156,33 @@ pub fn op_webgpu_create_texture(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let texture = instance.device_create_texture(
-    *device,
-    &wgc::resource::TextureDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      size: wgt::Extent3d {
-        width: args.size.width,
-        height: args.size.height,
-        depth: args.size.depth,
-      },
-      mip_level_count: args.mip_level_count.unwrap_or(1),
-      sample_count: args.sample_count.unwrap_or(1),
-      dimension: match args.dimension {
-        Some(&"1d") => wgt::TextureDimension::D1,
-        Some(&"2d") => wgt::TextureDimension::D2,
-        Some(&"3d") => wgt::TextureDimension::D3,
-        Some(_) => unreachable!(),
-        None => wgt::TextureDimension::D2,
-      },
-      format: serialize_texture_format(args.format)?,
-      usage: wgt::TextureUsage::from_bits(args.usage).unwrap(),
+  let descriptor = wgc::resource::TextureDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    size: wgt::Extent3d {
+      width: args.size.width,
+      height: args.size.height,
+      depth: args.size.depth,
     },
-    std::marker::PhantomData,
-  )?;
+    mip_level_count: args.mip_level_count.unwrap_or(1),
+    sample_count: args.sample_count.unwrap_or(1),
+    dimension: match args.dimension {
+      Some(dimension) => match dimension.as_str() {
+        "1d" => wgt::TextureDimension::D1,
+        "2d" => wgt::TextureDimension::D2,
+        "3d" => wgt::TextureDimension::D3,
+        _ => unreachable!(),
+      },
+      None => wgt::TextureDimension::D2,
+    },
+    format: serialize_texture_format(args.format)?,
+    usage: wgt::TextureUsage::from_bits(args.usage).unwrap(),
+  };
+
+  let texture = wgc::gfx_select!(*device => instance.device_create_texture(
+    *device,
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state.resource_table.add("webGPUTexture", Box::new(texture));
 
@@ -197,9 +201,9 @@ struct CreateTextureViewArgs {
   dimension: Option<String>,
   aspect: Option<String>,
   base_mip_level: Option<u32>,
-  mip_level_count: Option<std::num::NonZeroU32>,
+  mip_level_count: Option<u32>,
   base_array_layer: Option<u32>,
-  array_layer_count: Option<std::num::NonZeroU32>,
+  array_layer_count: Option<u32>,
 }
 
 pub fn op_webgpu_create_texture_view(
@@ -218,28 +222,33 @@ pub fn op_webgpu_create_texture_view(
     .get_mut::<wgc::id::TextureId>(args.texture_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let texture_view = instance.texture_create_view(
-    *texture,
-    &wgc::resource::TextureViewDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      format: args.format.map(|format| serialize_texture_format(format)?),
-      dimension: args
-        .dimension
-        .map(|dimension| serialize_dimension(dimension)),
-      aspect: match args.aspect {
-        Some(&"all") => wgt::TextureAspect::All,
-        Some(&"stencil-only") => wgt::TextureAspect::StencilOnly,
-        Some(&"depth-only") => wgt::TextureAspect::DepthOnly,
-        Some(_) => unreachable!(),
-        None => wgt::TextureAspect::All,
+  let descriptor = wgc::resource::TextureViewDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    format: args.format.map(serialize_texture_format).transpose()?,
+    dimension: args
+      .dimension
+      .map(|dimension| serialize_dimension(dimension)),
+    aspect: match args.aspect {
+      Some(aspect) => match aspect.as_str() {
+        "all" => wgt::TextureAspect::All,
+        "stencil-only" => wgt::TextureAspect::StencilOnly,
+        "depth-only" => wgt::TextureAspect::DepthOnly,
+        _ => unreachable!(),
       },
-      base_mip_level: args.base_mip_level.unwrap_or(0),
-      level_count: args.mip_level_count,
-      base_array_layer: args.base_array_layer.unwrap_or(0),
-      array_layer_count: args.array_layer_count,
+      None => wgt::TextureAspect::All,
     },
-    std::marker::PhantomData,
-  )?;
+    base_mip_level: args.base_mip_level.unwrap_or(0),
+    level_count: std::num::NonZeroU32::new(args.mip_level_count.unwrap_or(0)),
+    base_array_layer: args.base_array_layer.unwrap_or(0),
+    array_layer_count: std::num::NonZeroU32::new(
+      args.array_layer_count.unwrap_or(0),
+    ),
+  };
+  let texture_view = wgc::gfx_select!(*texture => instance.texture_create_view(
+    *texture,
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state
     .resource_table

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -31,7 +31,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 struct QueueSubmitArgs {
   instance_rid: u32,
   queue_rid: u32,
-  command_buffers: [u32],
+  command_buffers: Vec<u32>,
 }
 
 pub fn op_webgpu_queue_submit(
@@ -50,19 +50,18 @@ pub fn op_webgpu_queue_submit(
     .get_mut::<wgc::id::QueueId>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.queue_submit(
-    *queue,
-    &args
-      .command_buffers
-      .iter()
-      .map(|rid| {
-        *state
-          .resource_table
-          .get_mut::<wgc::id::CommandBufferId>(*rid)
-          .ok_or_else(bad_resource_id)?
-      })
-      .collect::<[wgc::id::CommandBufferId]>(),
-  )?;
+  let ids = args
+    .command_buffers
+    .iter()
+    .map(|rid| {
+      *state
+        .resource_table
+        .get_mut::<wgc::id::CommandBufferId>(*rid)
+        .ok_or_else(bad_resource_id)?
+    })
+    .collect::<Vec<wgc::id::CommandBufferId>>();
+
+  wgc::gfx_select!(*queue => instance.queue_submit(*queue, &ids))?;
 
   Ok(json!({}))
 }
@@ -82,8 +81,8 @@ struct QueueWriteBufferArgs {
   queue_rid: u32,
   buffer: u32,
   buffer_offset: u64,
-  data_offset: u64,
-  size: Option<u64>,
+  data_offset: usize,
+  size: Option<usize>,
 }
 
 pub fn op_webgpu_write_buffer(
@@ -102,18 +101,20 @@ pub fn op_webgpu_write_buffer(
     .get_mut::<wgc::id::QueueId>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.queue_write_buffer(
+  let buffer = state
+    .resource_table
+    .get_mut::<wgc::id::BufferId>(args.buffer)
+    .ok_or_else(bad_resource_id)?;
+  let data = match args.size {
+    Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
+    None => &zero_copy[0][args.data_offset..],
+  };
+  wgc::gfx_select!(*queue => instance.queue_write_buffer(
     *queue,
-    *state
-      .resource_table
-      .get_mut::<wgc::id::BufferId>(args.buffer)
-      .ok_or_else(bad_resource_id)?,
+    *buffer,
     args.buffer_offset,
-    match args.size {
-      Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
-      None => &zero_copy[0][args.data_offset..],
-    },
-  )?;
+    data
+  ))?;
 
   Ok(json!({}))
 }
@@ -144,35 +145,37 @@ pub fn op_webgpu_write_texture(
     .get_mut::<wgc::id::QueueId>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.queue_write_texture(
+  let destination = wgc::command::TextureCopyView {
+    texture: *state
+      .resource_table
+      .get_mut::<wgc::id::TextureId>(args.destination.texture)
+      .ok_or_else(bad_resource_id)?,
+    mip_level: args.destination.mip_level.unwrap_or(0),
+    origin: args
+      .destination
+      .origin
+      .map_or(Default::default(), |origin| wgt::Origin3d {
+        x: origin.x.unwrap_or(0),
+        y: origin.y.unwrap_or(0),
+        z: origin.z.unwrap_or(0),
+      }),
+  };
+  let data_layout = wgt::TextureDataLayout {
+    offset: args.data_layout.offset.unwrap_or(0),
+    bytes_per_row: args.data_layout.bytes_per_row.unwrap_or(0),
+    rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
+  };
+  wgc::gfx_select!(*queue => instance.queue_write_texture(
     *queue,
-    &wgc::command::TextureCopyView {
-      texture: *state
-        .resource_table
-        .get_mut::<wgc::id::TextureId>(args.destination.texture)
-        .ok_or_else(bad_resource_id)?,
-      mip_level: args.destination.mip_level.unwrap_or(0),
-      origin: args
-        .destination
-        .origin
-        .map_or(Default::default(), |origin| wgt::Origin3d {
-          x: origin.x.unwrap_or(0),
-          y: origin.y.unwrap_or(0),
-          z: origin.z.unwrap_or(0),
-        }),
-    },
+    &destination,
     &*zero_copy[0],
-    &wgt::TextureDataLayout {
-      offset: args.data_layout.offset.unwrap_or(0),
-      bytes_per_row: args.data_layout.bytes_per_row,
-      rows_per_image: args.data_layout.rows_per_image,
-    },
+    &data_layout,
     &wgt::Extent3d {
       width: args.size.width,
       height: args.size.height,
       depth: args.size.depth,
-    },
-  )?;
+    }
+  ))?;
 
   Ok(json!({}))
 }

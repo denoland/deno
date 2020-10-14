@@ -2,6 +2,7 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::oneshot;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
@@ -18,7 +19,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     "op_webgpu_create_buffer",
     op_webgpu_create_buffer,
   );
-  super::super::reg_json_sync(
+  super::super::reg_json_async(
     rt,
     "op_webgpu_buffer_get_map_async",
     op_webgpu_buffer_get_map_async,
@@ -62,16 +63,17 @@ pub fn op_webgpu_create_buffer(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let buffer = instance.device_create_buffer(
+  let descriptor = wgc::resource::BufferDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    size: args.size,
+    usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
+    mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
+  };
+  let buffer = wgc::gfx_select!(*device => instance.device_create_buffer(
     *device,
-    &wgc::resource::BufferDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      size: args.size,
-      usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
-      mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
-    },
-    std::marker::PhantomData,
-  )?;
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state.resource_table.add("webGPUBuffer", Box::new(buffer));
 
@@ -107,6 +109,18 @@ pub async fn op_webgpu_buffer_get_map_async(
     .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
+
+  extern "C" fn buffer_map_future_wrapper(
+    status: wgc::resource::BufferMapAsyncStatus,
+    user_data: *mut u8,
+  ) {
+    sender.send(match status {
+      wgc::resource::BufferMapAsyncStatus::Success => Ok(()),
+      _ => Err(()), // TODO
+    });
+  }
+
   instance.buffer_map_async(
     *buffer,
     args.offset..args.size,
@@ -116,10 +130,12 @@ pub async fn op_webgpu_buffer_get_map_async(
         2 => wgc::device::HostMap::Read,
         _ => unreachable!(),
       },
-      callback: (),  // TODO
-      user_data: (), // TODO
+      callback: buffer_map_future_wrapper,
+      user_data: std::ptr::null_mut(),
     },
   )?;
+
+  receiver.await??;
 
   Ok(json!({}))
 }
@@ -130,7 +146,7 @@ struct BufferGetMappedRangeArgs {
   instance_rid: u32,
   buffer_rid: u32,
   offset: u64,
-  size: std::num::NonZeroU64,
+  size: u64,
 }
 
 pub fn op_webgpu_buffer_get_mapped_range(
@@ -149,9 +165,16 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let slice_pointer = wgc::gfx_select!(*buffer => instance.buffer_get_mapped_range(
+    *buffer,
+    args.offset,
+    std::num::NonZeroU64::new(args.size)
+  ))?;
+
   // TODO: use
-  let slice_pointer =
-    instance.buffer_get_mapped_range(*buffer, args.offset, Some(args.size))?;
+  let slice = unsafe {
+    std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
+  };
 
   Ok(json!({}))
 }
@@ -179,7 +202,7 @@ pub fn op_webgpu_buffer_unmap(
     .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.buffer_unmap(*buffer)?;
+  wgc::gfx_select!(*buffer => instance.buffer_unmap(*buffer))?;
 
   Ok(json!({}))
 }

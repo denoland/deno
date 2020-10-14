@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -19,33 +19,37 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 fn serialize_address_mode(address_mode: Option<String>) -> wgt::AddressMode {
   match address_mode {
-    Some(&"clamp-to-edge") => wgt::AddressMode::ClampToEdge,
-    Some(&"repeat") => wgt::AddressMode::Repeat,
-    Some(&"mirror-repeat") => wgt::AddressMode::MirrorRepeat,
-    Some(_) => unreachable!(),
+    Some(address_mode) => match address_mode.as_str() {
+      "clamp-to-edge" => wgt::AddressMode::ClampToEdge,
+      "repeat" => wgt::AddressMode::Repeat,
+      "mirror-repeat" => wgt::AddressMode::MirrorRepeat,
+      _ => unreachable!(),
+    },
     None => wgt::AddressMode::ClampToEdge,
   }
 }
 
 fn serialize_filter_mode(filter_mode: Option<String>) -> wgt::FilterMode {
   match filter_mode {
-    Some(&"nearest") => wgt::FilterMode::Nearest,
-    Some(&"linear") => wgt::FilterMode::Linear,
-    Some(_) => unreachable!(),
+    Some(filter_mode) => match filter_mode.as_str() {
+      "nearest" => wgt::FilterMode::Nearest,
+      "linear" => wgt::FilterMode::Linear,
+      _ => unreachable!(),
+    },
     None => wgt::FilterMode::Nearest,
   }
 }
 
 pub fn serialize_compare_function(compare: String) -> wgt::CompareFunction {
-  match compare {
-    &"never" => wgt::CompareFunction::Never,
-    &"less" => wgt::CompareFunction::Less,
-    &"equal" => wgt::CompareFunction::Equal,
-    &"less-equal" => wgt::CompareFunction::LessEqual,
-    &"greater" => wgt::CompareFunction::Greater,
-    &"not-equal" => wgt::CompareFunction::NotEqual,
-    &"greater-equal" => wgt::CompareFunction::GreaterEqual,
-    &"always" => wgt::CompareFunction::Always,
+  match compare.as_str() {
+    "never" => wgt::CompareFunction::Never,
+    "less" => wgt::CompareFunction::Less,
+    "equal" => wgt::CompareFunction::Equal,
+    "less-equal" => wgt::CompareFunction::LessEqual,
+    "greater" => wgt::CompareFunction::Greater,
+    "not-equal" => wgt::CompareFunction::NotEqual,
+    "greater-equal" => wgt::CompareFunction::GreaterEqual,
+    "always" => wgt::CompareFunction::Always,
     _ => unreachable!(),
   }
 }
@@ -84,25 +88,28 @@ pub fn op_webgpu_create_sampler(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let sampler = instance.device_create_sampler(
+  let descriptor = wgc::resource::SamplerDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    address_modes: [
+      serialize_address_mode(args.address_mode_u),
+      serialize_address_mode(args.address_mode_v),
+      serialize_address_mode(args.address_mode_w),
+    ],
+    mag_filter: serialize_filter_mode(args.mag_filter),
+    min_filter: serialize_filter_mode(args.min_filter),
+    mipmap_filter: serialize_filter_mode(args.mipmap_filter),
+    lod_min_clamp: args.lod_min_clamp.unwrap_or(0.0),
+    lod_max_clamp: args
+      .lod_max_clamp
+      .unwrap_or(wgc::resource::SamplerDescriptor::default().lod_max_clamp),
+    compare: args.compare.map(serialize_compare_function),
+    anisotropy_clamp: args.max_anisotropy,
+  };
+  let sampler = wgc::gfx_select!(*device => instance.device_create_sampler(
     *device,
-    &wgc::resource::SamplerDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      address_modes: [
-        serialize_address_mode(args.address_mode_u),
-        serialize_address_mode(args.address_mode_v),
-        serialize_address_mode(args.address_mode_w),
-      ],
-      mag_filter: serialize_filter_mode(args.mag_filter),
-      min_filter: serialize_filter_mode(args.min_filter),
-      mipmap_filter: serialize_filter_mode(args.mipmap_filter),
-      lod_min_clamp: args.lod_min_clamp.unwrap_or(0.0),
-      lod_max_clamp: args.lod_max_clamp.unwrap_or(f32::MAX), // TODO: check
-      compare: args.compare.map(serialize_compare_function),
-      anisotropy_clamp: args.max_anisotropy,
-    },
-    std::marker::PhantomData,
-  )?;
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state.resource_table.add("webGPUTexture", Box::new(sampler));
 

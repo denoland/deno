@@ -31,11 +31,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 fn serialize_texture_component_type(
   component_type: String,
 ) -> Result<wgt::TextureComponentType, AnyError> {
-  Ok(match component_type {
-    &"float" => wgt::TextureComponentType::Float,
-    &"sint" => wgt::TextureComponentType::Sint,
-    &"uint" => wgt::TextureComponentType::Uint,
-    &"depth-comparison" => return Err(not_supported()),
+  Ok(match component_type.as_str() {
+    "float" => wgt::TextureComponentType::Float,
+    "sint" => wgt::TextureComponentType::Sint,
+    "uint" => wgt::TextureComponentType::Uint,
+    "depth-comparison" => return Err(not_supported()),
     _ => unreachable!(),
   })
 }
@@ -48,7 +48,7 @@ struct GPUBindGroupLayoutEntry {
   #[serde(rename = "type")]
   kind: String,
   has_dynamic_offset: Option<bool>,
-  min_buffer_binding_size: Option<std::num::NonZeroU64>,
+  min_buffer_binding_size: Option<u64>,
   view_dimension: Option<String>,
   texture_component_type: Option<String>,
   storage_texture_format: Option<String>,
@@ -60,7 +60,7 @@ struct CreateBindGroupLayoutArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
-  entries: [GPUBindGroupLayoutEntry],
+  entries: Vec<GPUBindGroupLayoutEntry>,
 }
 
 pub fn op_webgpu_create_bind_group_layout(
@@ -79,75 +79,80 @@ pub fn op_webgpu_create_bind_group_layout(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let bind_group_layout = instance.device_create_bind_group_layout(
-    *device,
-    &wgc::binding_model::BindGroupLayoutDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      entries: Cow::Owned(
-        args
-          .entries
-          .iter()
-          .map(|entry| wgt::BindGroupLayoutEntry {
-            binding: entry.binding,
-            visibility: wgt::ShaderStage::from_bits(entry.visibility).unwrap(),
-            ty: match entry.kind {
-              &"uniform-buffer" => wgt::BindingType::UniformBuffer {
-                dynamic: entry.has_dynamic_offset.unwrap_or(false),
-                min_binding_size: entry.min_buffer_binding_size,
-              },
-              &"storage-buffer" => wgt::BindingType::StorageBuffer {
-                dynamic: entry.has_dynamic_offset.unwrap_or(false),
-                min_binding_size: entry.min_buffer_binding_size,
-                readonly: false,
-              },
-              &"readonly-storage-buffer" => wgt::BindingType::StorageBuffer {
-                dynamic: entry.has_dynamic_offset.unwrap_or(false),
-                min_binding_size: entry.min_buffer_binding_size,
-                readonly: true,
-              },
-              &"sampler" => wgt::BindingType::Sampler { comparison: false },
-              &"comparison-sampler" => {
-                wgt::BindingType::Sampler { comparison: true }
-              }
-              &"sampled-texture" => wgt::BindingType::SampledTexture {
-                dimension: serialize_dimension(entry.view_dimension.unwrap()),
-                component_type: serialize_texture_component_type(
-                  entry.texture_component_type.unwrap(),
-                )?,
-                multisampled: false,
-              },
-              &"multisampled-texture" => wgt::BindingType::SampledTexture {
-                dimension: serialize_dimension(entry.view_dimension.unwrap()),
-                component_type: serialize_texture_component_type(
-                  entry.texture_component_type.unwrap(),
-                )?,
-                multisampled: true,
-              },
-              &"readonly-storage-texture" => wgt::BindingType::StorageTexture {
-                dimension: serialize_dimension(entry.view_dimension.unwrap()),
-                format: serialize_texture_format(
-                  entry.storage_texture_format.unwrap(),
-                )?,
-                readonly: true,
-              },
-              &"writeonly-storage-texture" => {
-                wgt::BindingType::StorageTexture {
-                  dimension: serialize_dimension(entry.view_dimension.unwrap()),
-                  format: serialize_texture_format(
-                    entry.storage_texture_format.unwrap(),
-                  )?,
-                  readonly: false,
-                }
-              }
-              _ => unreachable!(),
+  let descriptor = wgc::binding_model::BindGroupLayoutDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    entries: Cow::Owned(
+      args
+        .entries
+        .iter()
+        .map(|entry| wgt::BindGroupLayoutEntry {
+          binding: entry.binding,
+          visibility: wgt::ShaderStage::from_bits(entry.visibility).unwrap(),
+          ty: match entry.kind.as_str() {
+            "uniform-buffer" => wgt::BindingType::UniformBuffer {
+              dynamic: entry.has_dynamic_offset.unwrap_or(false),
+              min_binding_size: std::num::NonZeroU64::new(
+                entry.min_buffer_binding_size.unwrap_or(0),
+              ),
             },
-            count: None,
-          })
-          .collect::<Vec<wgt::BindGroupLayoutEntry>>(),
-      ),
-    },
-    std::marker::PhantomData,
-  )?;
+            "storage-buffer" => wgt::BindingType::StorageBuffer {
+              dynamic: entry.has_dynamic_offset.unwrap_or(false),
+              min_binding_size: std::num::NonZeroU64::new(
+                entry.min_buffer_binding_size.unwrap_or(0),
+              ),
+              readonly: false,
+            },
+            "readonly-storage-buffer" => wgt::BindingType::StorageBuffer {
+              dynamic: entry.has_dynamic_offset.unwrap_or(false),
+              min_binding_size: std::num::NonZeroU64::new(
+                entry.min_buffer_binding_size.unwrap_or(0),
+              ),
+              readonly: true,
+            },
+            "sampler" => wgt::BindingType::Sampler { comparison: false },
+            "comparison-sampler" => {
+              wgt::BindingType::Sampler { comparison: true }
+            }
+            "sampled-texture" => wgt::BindingType::SampledTexture {
+              dimension: serialize_dimension(entry.view_dimension.unwrap()),
+              component_type: serialize_texture_component_type(
+                entry.texture_component_type.unwrap(),
+              )?,
+              multisampled: false,
+            },
+            "multisampled-texture" => wgt::BindingType::SampledTexture {
+              dimension: serialize_dimension(entry.view_dimension.unwrap()),
+              component_type: serialize_texture_component_type(
+                entry.texture_component_type.unwrap(),
+              )?,
+              multisampled: true,
+            },
+            "readonly-storage-texture" => wgt::BindingType::StorageTexture {
+              dimension: serialize_dimension(entry.view_dimension.unwrap()),
+              format: serialize_texture_format(
+                entry.storage_texture_format.unwrap(),
+              )?,
+              readonly: true,
+            },
+            "writeonly-storage-texture" => wgt::BindingType::StorageTexture {
+              dimension: serialize_dimension(entry.view_dimension.unwrap()),
+              format: serialize_texture_format(
+                entry.storage_texture_format.unwrap(),
+              )?,
+              readonly: false,
+            },
+            _ => unreachable!(),
+          },
+          count: None,
+        })
+        .collect::<Vec<wgt::BindGroupLayoutEntry>>(),
+    ),
+  };
+  let bind_group_layout = wgc::gfx_select!(*device => instance.device_create_bind_group_layout(
+    *device,
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state
     .resource_table
@@ -164,7 +169,7 @@ struct CreatePipelineLayoutArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
-  bind_group_layouts: [u32],
+  bind_group_layouts: Vec<u32>,
 }
 
 pub fn op_webgpu_create_pipeline_layout(
@@ -183,26 +188,27 @@ pub fn op_webgpu_create_pipeline_layout(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let pipeline_layout = instance.device_create_pipeline_layout(
+  let descriptor = wgc::binding_model::PipelineLayoutDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    bind_group_layouts: Cow::Owned(
+      args
+        .bind_group_layouts
+        .iter()
+        .map(|rid| {
+          state
+            .resource_table
+            .get_mut::<wgc::id::BindGroupLayoutId>(*rid)
+            .ok_or_else(bad_resource_id)?
+        })
+        .collect::<Vec<wgc::id::BindGroupLayoutId>>(),
+    ),
+    push_constant_ranges: Default::default(),
+  };
+  let pipeline_layout = wgc::gfx_select!(*device => instance.device_create_pipeline_layout(
     *device,
-    &wgc::binding_model::PipelineLayoutDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      bind_group_layouts: Cow::Owned(
-        args
-          .bind_group_layouts
-          .iter()
-          .map(|rid| {
-            state
-              .resource_table
-              .get_mut::<wgc::id::BindGroupLayoutId>(*rid)
-              .ok_or_else(bad_resource_id)?
-          })
-          .collect::<Vec<wgc::id::BindGroupLayoutId>>(),
-      ),
-      push_constant_ranges: Default::default(),
-    },
-    std::marker::PhantomData,
-  )?;
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state
     .resource_table
@@ -220,7 +226,7 @@ struct GPUBindGroupEntry {
   kind: String,
   resource: u32,
   offset: Option<u64>,
-  size: Option<std::num::NonZeroU64>,
+  size: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -230,7 +236,7 @@ struct CreateBindGroupArgs {
   device_rid: u32,
   label: Option<String>,
   layout: u32,
-  entries: [GPUBindGroupEntry],
+  entries: Vec<GPUBindGroupEntry>,
 }
 
 pub fn op_webgpu_create_bind_group(
@@ -249,55 +255,54 @@ pub fn op_webgpu_create_bind_group(
     .get_mut::<wgc::id::DeviceId>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let bind_group = instance.device_create_bind_group(
-    *device,
-    &wgc::binding_model::BindGroupDescriptor {
-      label: args.label.map(|label| Cow::Borrowed(&label)),
-      layout: *state
-        .resource_table
-        .get_mut::<wgc::id::BindGroupLayoutId>(args.layout)
-        .ok_or_else(bad_resource_id)?,
-      entries: Cow::Owned(
-        args
-          .entries
-          .iter()
-          .map(|entry| wgc::binding_model::BindGroupEntry {
-            binding: entry.binding,
-            resource: match entry.resource_kind {
-              &"GPUSampler" => wgc::binding_model::BindingResource::Sampler(
+  let descriptor = wgc::binding_model::BindGroupDescriptor {
+    label: args.label.map(|label| Cow::Owned(label)),
+    layout: *state
+      .resource_table
+      .get_mut::<wgc::id::BindGroupLayoutId>(args.layout)
+      .ok_or_else(bad_resource_id)?,
+    entries: Cow::Owned(
+      args
+        .entries
+        .iter()
+        .map(|entry| wgc::binding_model::BindGroupEntry {
+          binding: entry.binding,
+          resource: match entry.kind.as_str() {
+            "GPUSampler" => wgc::binding_model::BindingResource::Sampler(
+              *state
+                .resource_table
+                .get_mut::<wgc::id::SamplerId>(entry.resource)
+                .ok_or_else(bad_resource_id)?,
+            ),
+            "GPUTextureView" => {
+              wgc::binding_model::BindingResource::TextureView(
                 *state
                   .resource_table
-                  .get_mut::<wgc::id::SamplerId>(entry.resource)
+                  .get_mut::<wgc::id::TextureViewId>(entry.resource)
                   .ok_or_else(bad_resource_id)?,
-              ),
-              &"GPUTextureView" => {
-                wgc::binding_model::BindingResource::TextureView(
-                  *state
-                    .resource_table
-                    .get_mut::<wgc::id::TextureViewId>(entry.resource)
-                    .ok_or_else(bad_resource_id)?,
-                )
-              }
-              &"GPUBufferBinding" => {
-                wgc::binding_model::BindingResource::Buffer(
-                  wgc::binding_model::BufferBinding {
-                    buffer_id: *state
-                      .resource_table
-                      .get_mut::<wgc::id::BufferId>(entry.resource)
-                      .ok_or_else(bad_resource_id)?,
-                    offset: entry.offset.unwrap_or(0),
-                    size: entry.size,
-                  },
-                )
-              }
-              _ => unreachable!(),
-            },
-          })
-          .collect::<Vec<wgc::binding_model::BindGroupEntry>>(),
-      ),
-    },
-    std::marker::PhantomData,
-  )?;
+              )
+            }
+            "GPUBufferBinding" => wgc::binding_model::BindingResource::Buffer(
+              wgc::binding_model::BufferBinding {
+                buffer_id: *state
+                  .resource_table
+                  .get_mut::<wgc::id::BufferId>(entry.resource)
+                  .ok_or_else(bad_resource_id)?,
+                offset: entry.offset.unwrap_or(0),
+                size: std::num::NonZeroU64::new(entry.size.unwrap_or(0)),
+              },
+            ),
+            _ => unreachable!(),
+          },
+        })
+        .collect::<Vec<wgc::binding_model::BindGroupEntry>>(),
+    ),
+  };
+  let bind_group = wgc::gfx_select!(*device => instance.device_create_bind_group(
+    *device,
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
 
   let rid = state
     .resource_table

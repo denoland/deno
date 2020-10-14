@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -238,7 +238,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
 #[serde(rename_all = "camelCase")]
 struct RenderPassExecuteBundlesArgs {
   render_pass_rid: u32,
-  bundles: [u32],
+  bundles: Vec<u32>,
 }
 
 pub fn op_webgpu_render_pass_execute_bundles(
@@ -265,7 +265,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
             .get_mut::<wgc::id::RenderBundleId>(*rid)
             .ok_or_else(bad_resource_id)?
         })
-        .collect::<[wgc::id::RenderBundleId]>()
+        .collect::<Vec<wgc::id::RenderBundleId>>()
         .as_ptr(),
       args.bundles.len(),
     );
@@ -302,7 +302,7 @@ pub fn op_webgpu_render_pass_end_pass(
     .get_mut::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  instance.command_encoder_run_render_pass(*command_encoder, render_pass)?;
+  wgc::gfx_select!(*command_encoder => instance.command_encoder_run_render_pass(*command_encoder, render_pass))?;
 
   Ok(json!({}))
 }
@@ -313,8 +313,8 @@ struct RenderPassSetBindGroupArgs {
   render_pass_rid: u32,
   index: u32,
   bind_group: u32,
-  dynamic_offsets_data: Option<[u32]>,
-  dynamic_offsets_data_start: u64,
+  dynamic_offsets_data: Option<Vec<u32>>,
+  dynamic_offsets_data_start: usize,
   dynamic_offsets_data_length: usize,
 }
 
@@ -496,11 +496,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
       .get_mut::<wgc::id::BufferId>(args.buffer)
       .ok_or_else(bad_resource_id)?,
     args.offset,
-    if args.size == 0 {
-      None
-    } else {
-      Some(args.size as std::num::NonZeroU64)
-    },
+    std::num::NonZeroU64::new(args.size),
   );
 
   Ok(json!({}))
@@ -536,11 +532,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
       .get_mut::<wgc::id::BufferId>(args.buffer)
       .ok_or_else(bad_resource_id)?,
     args.offset,
-    if args.size == 0 {
-      None
-    } else {
-      Some(args.size as std::num::NonZeroU64)
-    },
+    std::num::NonZeroU64::new(args.size),
   );
 
   Ok(json!({}))
