@@ -100,13 +100,13 @@ pub async fn op_webgpu_buffer_get_map_async(
   let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
+  let buffer = *state
+    .resource_table
+    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let buffer = state
-    .resource_table
-    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
 
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
@@ -137,8 +137,8 @@ pub async fn op_webgpu_buffer_get_map_async(
   }
 
   // TODO: get "device"
-  wgc::gfx_select!(device => instance.buffer_map_async(
-    *buffer,
+  wgc::gfx_select!(buffer => instance.buffer_map_async(
+    buffer,
     args.offset..args.size,
     wgc::resource::BufferMapOperation {
       host: match args.mode {
