@@ -1940,6 +1940,12 @@ itest!(_073_worker_error {
   exit_code: 1,
 });
 
+itest!(_074_worker_nested_error {
+  args: "run -A 074_worker_nested_error.ts",
+  output: "074_worker_nested_error.ts.out",
+  exit_code: 1,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

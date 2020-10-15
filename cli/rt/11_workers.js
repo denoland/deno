@@ -146,11 +146,10 @@
             if (globalThis instanceof Window) {
               throw new Error("Unhandled error event reached main worker.");
             } else {
-              // TODO(nayeemrmn): Propagate the error event to the parent worker
-              // **without** throwing. Probably need to op into Rust with
-              // `event.error` and send it, but we need a `WebWorker` reference
-              // in the op context which is hard.
-              throw new Error("Unhandled error event in child worker.");
+              core.jsonOpSync(
+                "op_host_unhandled_error",
+                { message: event.error.message },
+              );
             }
           }
           continue;
@@ -166,11 +165,10 @@
             if (globalThis instanceof Window) {
               throw new Error("Unhandled error event reached main worker.");
             } else {
-              // TODO(nayeemrmn): Propagate the error event to the parent worker
-              // **without** throwing. Probably need to op into Rust with
-              // `event.error` and send it, but we need a `WebWorker` reference
-              // in the op context which is hard.
-              throw new Error("Unhandled error event in child worker.");
+              core.jsonOpSync(
+                "op_host_unhandled_error",
+                { message: event.error.message },
+              );
             }
           }
           continue;
