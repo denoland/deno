@@ -137,11 +137,11 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   wgc::gfx_select!(buffer => instance.buffer_map_async(
     buffer,
-    args.offset..args.size,
+    args.offset..(args.offset + args.size),
     wgc::resource::BufferMapOperation {
       host: match args.mode {
         1 => wgc::device::HostMap::Read,
-        2 => wgc::device::HostMap::Read,
+        2 => wgc::device::HostMap::Write,
         _ => unreachable!(),
       },
       callback: buffer_map_future_wrapper,

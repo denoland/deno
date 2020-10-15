@@ -370,7 +370,8 @@
   class GPUBuffer {
     #rid;
     #size;
-    #mappedSize; // TODO: is this OK?
+    #mappedSize;
+    #mappedOffset;
 
     constructor(rid, label, size) {
       this.#rid = rid;
@@ -379,19 +380,19 @@
     }
 
     async mapAsync(mode, offset = 0, size = undefined) {
-      this.#mappedSize = size ?? this.#size; // TODO: is this OK?
+      this.#mappedOffset = offset;
+      this.#mappedSize = size ?? (this.#size - offset);
       await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
         instanceRid,
         bufferRid: this.#rid,
         mode,
         offset,
         size: this.#mappedSize,
-      } // TODO: is this OK?
-      );
+      });
     }
 
     getMappedRange(offset = 0, size = undefined) {
-      const buf = new ArrayBuffer(size ?? this.#mappedSize); // TODO: is this OK?
+      const buf = new ArrayBuffer(size ?? ((this.#mappedOffset + this.#mappedSize) - offset));
 
       core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
@@ -399,7 +400,7 @@
           instanceRid,
           bufferRid: this.#rid,
           offset,
-          size,
+          size: size ?? this.#mappedSize,
         },
         buf,
       );
@@ -415,7 +416,7 @@
     }
 
     destroy() {
-      throw new Error("Not yet implemented"); // wgpu master
+      throw new Error("Not yet implemented");
     }
   }
 
@@ -440,7 +441,7 @@
     }
 
     destroy() {
-      throw new Error("Not yet implemented"); // wgpu master
+      throw new Error("Not yet implemented");
     }
   }
 
