@@ -1,6 +1,6 @@
 # jwt
 
-Create and verify JSON Web Tokens. The JWS Compact Serialization is used.
+Create and verify JSON Web Tokens.
 
 ## JSON Web Token
 
@@ -90,6 +90,10 @@ The following signature and MAC algorithms have been implemented:
 - HS256 (HMAC SHA-256)
 - HS512 (HMAC SHA-512)
 - none ([_Unsecured JWTs_](https://tools.ietf.org/html/rfc7519#section-6)).
+
+## Serialization
+
+This application uses the JWS Compact Serialization only.
 
 ## Specifications
 

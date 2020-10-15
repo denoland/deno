@@ -1,8 +1,7 @@
 /*
- * Cryptographic algorithms and identifiers for use with this specification are
- * described in the separate JSON Web Algorithms (JWA) specification:
+ * JSW §1: Cryptographic algorithms and identifiers for use with this specification
+ * are described in the separate JSON Web Algorithms (JWA) specification:
  * https://www.rfc-editor.org/rfc/rfc7518
- * (JSW §1)
  */
 export type Algorithm = "none" | "HS256" | "HS512";
 

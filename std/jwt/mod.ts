@@ -7,12 +7,13 @@ import {
 } from "./signature.ts";
 import { verify as verifyAlgorithm } from "./algorithm.ts";
 /*
- * The following Claim Names are registered in the IANA "JSON Web Token Claims"
- * registry established by Section 10.1. None of the claims defined below are
- * intended to be mandatory to use or implement in all cases, but rather they
- * provide a starting point for a set of useful, interoperable claims.
+ * JWT §4.1: The following Claim Names are registered in the IANA
+ * "JSON Web Token Claims" registry established by Section 10.1. None of the
+ * claims defined below are intended to be mandatory to use or implement in all
+ * cases, but rather they provide a starting point for a set of useful,
+ * interoperable claims.
  * Applications using JWTs should define which specific claims they use and when
- * they are required or optional. (JWT §4.1)
+ * they are required or optional.
  */
 export interface PayloadObject {
   iss?: string;
@@ -28,9 +29,9 @@ export interface PayloadObject {
 export type Payload = PayloadObject | string;
 
 /*
- * The "alg" value is a case-sensitive ASCII string containing a StringOrURI value.
- * This Header Parameter MUST be present and MUST be understood and processed by
- * implementations. (JWS §4.1.1)
+ * JWS §4.1.1: The "alg" value is a case-sensitive ASCII string containing a 
+ * StringOrURI value. This Header Parameter MUST be present and MUST be
+ * understood and processed by implementations.
  */
 export interface Header {
   alg: Algorithm;
@@ -135,9 +136,9 @@ export async function verify(
   const { header, payload, signature } = obj;
 
   /*
-   * The "crit" (critical) Header Parameter indicates that extensions to this
-   * specification and/or [JWA] are being used that MUST be understood and
-   * processed. (JWS §4.1.11)
+   * JWS §4.1.11: The "crit" (critical) Header Parameter indicates that 
+   * extensions to this specification and/or [JWA] are being used that MUST be
+   * understood and processed.
    */
   if ("crit" in obj.header) {
     throw new Error("implementation does not process 'crit' header parameter");
@@ -158,12 +159,11 @@ export async function verify(
 }
 
 /*
- * The JWS Compact Serialization represents digitally signed or MACed content as a
- * compact, URL-safe string.  This string is:
+ * JSW §7.1: The JWS Compact Serialization represents digitally signed or MACed 
+ * content as a compact, URL-safe string. This string is:
  *       BASE64URL(UTF8(JWS Protected Header)) || '.' ||
  *       BASE64URL(JWS Payload) || '.' ||
  *       BASE64URL(JWS Signature)
- * (JSW §7.1)
  */
 function createSigningInput(header: Header, payload: Payload): string {
   return `${
