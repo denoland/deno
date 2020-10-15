@@ -9,8 +9,6 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
-use futures::future::Future;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::TryInto;
@@ -20,7 +18,9 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Poll;
 use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::runtime;
@@ -60,7 +60,7 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let rid = state.resource_table.add("tcpListener", Box::new(listener));
+  let rid = state.new_resource_table.add("tcpListener", Box::new(listener));
   Ok(serde_json::json!({ "rid": rid }))
 }
 
@@ -78,17 +78,17 @@ fn op_close(
     .unwrap();
   debug!("close rid={}", rid);
   state
-    .resource_table
+    .new_resource_table
     .close(rid)
     .map(|_| serde_json::json!(()))
     .ok_or_else(bad_resource_id)
 }
 
-fn op_accept(
+async fn op_accept(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _bufs: BufVec,
-) -> impl Future<Output = Result<Value, AnyError>> {
+) -> Result<Value, AnyError> {
   let rid: u32 = args
     .get("rid")
     .unwrap()
@@ -98,24 +98,23 @@ fn op_accept(
     .unwrap();
   debug!("accept rid={}", rid);
 
-  poll_fn(move |cx| {
-    let resource_table = &mut state.borrow_mut().resource_table;
+  let mut listener = {
+    let resource_table = &mut state.borrow_mut().new_resource_table;
+    resource_table.check_out::<TcpListener>(rid)?
+  };
 
-    let listener = resource_table
-      .get_mut::<TcpListener>(rid)
-      .ok_or_else(bad_resource_id)?;
-    listener.poll_accept(cx)?.map(|(stream, _addr)| {
-      let rid = resource_table.add("tcpStream", Box::new(stream));
-      Ok(serde_json::json!({ "rid": rid }))
-    })
-  })
+  let (stream, _addr) = listener.resource.accept().await?;
+  let resource_table = &mut state.borrow_mut().new_resource_table;
+  resource_table.check_back::<TcpListener>(rid, listener.resource)?;
+  let rid = resource_table.add("tcpStream", Box::new(stream));
+  Ok(serde_json::json!({ "rid": rid }))
 }
 
-fn op_read(
+async fn op_read(
   state: Rc<RefCell<OpState>>,
   args: Value,
   mut bufs: BufVec,
-) -> impl Future<Output = Result<Value, AnyError>> {
+) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
 
   let rid: u32 = args
@@ -127,23 +126,25 @@ fn op_read(
     .unwrap();
   debug!("read rid={}", rid);
 
-  poll_fn(move |cx| -> Poll<Result<Value, AnyError>> {
-    let resource_table = &mut state.borrow_mut().resource_table;
+  let mut stream = {
+    let resource_table = &mut state.borrow_mut().new_resource_table;
+    resource_table.check_out::<TcpStream>(rid)?
+  };
 
-    let stream = resource_table
-      .get_mut::<TcpStream>(rid)
-      .ok_or_else(bad_resource_id)?;
-    Pin::new(stream)
-      .poll_read(cx, &mut bufs[0])?
-      .map(|nread| Ok(serde_json::json!({ "nread": nread })))
-  })
+  // eprintln!("buf len {}", bufs[0].len());
+  let nread = stream.resource.read(&mut bufs[0]).await?;
+  {
+    let resource_table = &mut state.borrow_mut().new_resource_table;
+    resource_table.check_back::<TcpStream>(rid, stream.resource)?;
+  }
+  Ok(serde_json::json!({ "nread": nread }))
 }
 
-fn op_write(
+async fn op_write(
   state: Rc<RefCell<OpState>>,
   args: Value,
   bufs: BufVec,
-) -> impl Future<Output = Result<Value, AnyError>> {
+) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
 
   let rid: u32 = args
@@ -155,16 +156,17 @@ fn op_write(
     .unwrap();
   debug!("write rid={}", rid);
 
-  poll_fn(move |cx| {
-    let resource_table = &mut state.borrow_mut().resource_table;
+  let mut stream = {
+    let resource_table = &mut state.borrow_mut().new_resource_table;
+    resource_table.check_out::<TcpStream>(rid)?
+  };
 
-    let stream = resource_table
-      .get_mut::<TcpStream>(rid)
-      .ok_or_else(bad_resource_id)?;
-    Pin::new(stream)
-      .poll_write(cx, &bufs[0])?
-      .map(|nwritten| Ok(serde_json::json!({ "nwritten": nwritten })))
-  })
+  let nwritten = stream.resource.write(&bufs[0]).await?;
+  {
+    let resource_table = &mut state.borrow_mut().new_resource_table;
+    resource_table.check_back::<TcpStream>(rid, stream.resource)?;
+  }
+  Ok(serde_json::json!({ "nwritten": nwritten }))
 }
 
 fn main() {

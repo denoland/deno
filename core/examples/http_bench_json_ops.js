@@ -41,18 +41,27 @@ function close(rid) {
 }
 
 async function serve(rid) {
-  while (true) {
-    const nread = await read(rid, requestBuf);
-    if (nread <= 0) {
-      break;
+  try {
+    while (true) {
+      const nread = await read(rid, requestBuf);
+      if (nread < 0) {
+        Deno.core.print(`break on read ${rid} ${nread}\n`);
+        break;
+      }
+      // Deno.core.print(`read success ${rid} ${nread}\n`);
+  
+      const nwritten = await write(rid, responseBuf);
+      if (nwritten < 0) {
+        Deno.core.print("break on write\n");
+        break;
+      }
     }
-
-    const nwritten = await write(rid, responseBuf);
-    if (nwritten < 0) {
-      break;
-    }
+  } catch (e) {
+    Deno.core.print(`error ${rid} ${e}\n`);
+  } finally {
+    // Deno.core.print(`closing ${rid}\n`);
+    close(rid);
   }
-  close(rid);
 }
 
 async function main() {

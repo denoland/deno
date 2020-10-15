@@ -49,6 +49,10 @@ pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("BadResource", message)
 }
 
+pub fn resource_busy() -> AnyError {
+  custom_error("ResourceBusy", "Resource is busy")
+}
+
 pub fn bad_resource_id() -> AnyError {
   custom_error("BadResource", "Bad resource ID")
 }

@@ -33,6 +33,7 @@ pub enum Op {
 
 pub struct OpState {
   pub resource_table: crate::ResourceTable,
+  pub new_resource_table: crate::NewResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: crate::runtime::GetErrorClassFn,
   gotham_state: GothamState,
@@ -45,6 +46,7 @@ impl Default for OpState {
   fn default() -> OpState {
     OpState {
       resource_table: crate::ResourceTable::default(),
+      new_resource_table: crate::NewResourceTable::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: GothamState::default(),
