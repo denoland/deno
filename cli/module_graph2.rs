@@ -679,12 +679,8 @@ impl Graph2 {
     specifier: &'a ModuleSpecifier,
   ) -> &'a ModuleSpecifier {
     let mut s = specifier;
-    loop {
-      if let Some(redirect) = self.redirects.get(s) {
-        s = redirect;
-      } else {
-        break;
-      }
+    while let Some(redirect) = self.redirects.get(s) {
+      s = redirect;
     }
     s
   }
