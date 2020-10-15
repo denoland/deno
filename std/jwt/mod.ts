@@ -25,7 +25,7 @@ export interface PayloadObject {
   [key: string]: unknown;
 }
 
-export type Payload = PayloadObject | string | unknown[] | null;
+export type Payload = PayloadObject | string;
 
 /*
  * The "alg" value is a case-sensitive ASCII string containing a StringOrURI value.
@@ -50,7 +50,7 @@ function isExpired(exp: number, leeway = 0): boolean {
  */
 export function setExpiration(exp: number | Date): number {
   return Math.round(
-    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000
+    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
   );
 }
 
@@ -63,7 +63,7 @@ function tryToParsePayload(input: string) {
 }
 
 export function decode(
-  jwt: string
+  jwt: string,
 ): {
   header: unknown;
   payload: unknown;
@@ -111,7 +111,7 @@ export async function verify(
     algorithm = "HS512",
   }: {
     algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
-  } = {}
+  } = {},
 ): Promise<Payload> {
   const obj = decode(jwt) as TokenObject;
 
@@ -166,13 +166,17 @@ export async function verify(
  * (JSW §7.1)
  */
 function createSigningInput(header: Header, payload: Payload): string {
-  return `${base64url.encode(
-    encoder.encode(JSON.stringify(header))
-  )}.${base64url.encode(
-    encoder.encode(
-      typeof payload === "string" ? payload : JSON.stringify(payload)
+  return `${
+    base64url.encode(
+      encoder.encode(JSON.stringify(header)),
     )
-  )}`;
+  }.${
+    base64url.encode(
+      encoder.encode(
+        typeof payload === "string" ? payload : JSON.stringify(payload),
+      ),
+    )
+  }`;
 }
 
 export async function create(
@@ -182,7 +186,7 @@ export async function create(
     header = { alg: "HS512", typ: "JWT" },
   }: {
     header?: Header;
-  } = {}
+  } = {},
 ): Promise<string> {
   const signingInput = createSigningInput(header, payload);
   const signature = await createSignature(header.alg, key, signingInput);

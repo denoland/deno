@@ -63,13 +63,12 @@ Deno.test("[jwt] create", async function () {
     "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.bnVsbA.tv7DbhvALc5Eq2sC61Y9IZlG2G15hvJoug9UO6iwmE_UZOLva8EC-9PURg7IIj6f-F9jFWix8vCn9WaAMHR1AA",
   );
   assertEquals(
-    await create([], key),
+    await create("[]", key),
     "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.W10.BqmZ-tVI9a-HDx6PpMiBdMq6lzcaqO9sW6pImw-NRajCCmRrVi6IgMhEw7lvOG6sxhteceVMl8_xFRGverJJWw",
   );
 });
 
 Deno.test("[jwt] verify", async function () {
-
   assertEquals(
     await verify(await create("", key, { header: { alg: "HS256" } }), key, {
       algorithm: "HS256",
@@ -83,23 +82,15 @@ Deno.test("[jwt] verify", async function () {
     "abc",
   );
   await assertEquals(
-    await verify(await create(null, key), key),
-    null
-  );
-  await assertEquals(
     await verify(await create("null", key), key),
-    null
+    null,
   );
-  
+
   await assertEquals(
     await verify(await create("true", key), key),
-    true
+    true,
   );
-  await assertEquals(
-    // @ts-ignore */
-    await verify(await create(true, key), key),
-    true
-  );
+
   assertEquals(
     await verify(
       await create(payload, key, { header: { alg: "HS256" } }),
@@ -112,17 +103,16 @@ Deno.test("[jwt] verify", async function () {
   );
   await assertEquals(
     await verify(await create({}, key), key),
-    {}
+    {},
   );
   await assertEquals(
-    await verify(await create([], key), key),
-    []
+    await verify(await create("[]", key), key),
+    [],
   );
   await assertEquals(
-    await verify(await create(["a", 1, true], key), key),
-    ["a", 1, true]
+    await verify(await create(`["a", 1, true]`, key), key),
+    ["a", 1, true],
   );
-  
 
   await assertThrowsAsync(async () => {
     // @ts-ignore */
