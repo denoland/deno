@@ -51,6 +51,7 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
+pub mod tsc2;
 mod tsc_config;
 mod upgrade;
 mod version;

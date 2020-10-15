@@ -354,10 +354,10 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   const af = async function af() {};
   Reflect.setPrototypeOf(af, null);
   assertEquals(stringify(af), "[Function: af]");
-  const gf = function gf() {};
+  const gf = function* gf() {};
   Reflect.setPrototypeOf(gf, null);
   assertEquals(stringify(gf), "[Function: gf]");
-  const agf = function agf() {};
+  const agf = async function* agf() {};
   Reflect.setPrototypeOf(agf, null);
   assertEquals(stringify(agf), "[Function: agf]");
 });
