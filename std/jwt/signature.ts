@@ -25,6 +25,12 @@ function encrypt(
   }
 }
 
+/*
+ * Create a signature
+ * @param algorithm
+ * @param key
+ * @param input
+ */
 export async function create(
   algorithm: Algorithm,
   key: string,
@@ -33,6 +39,13 @@ export async function create(
   return convertHexToBase64url(await encrypt(algorithm, key, input));
 }
 
+/*
+ * Verify a signature
+ * @param signature
+ * @param key
+ * @param alg
+ * @param signingInput
+ */
 export async function verify({
   signature,
   key,

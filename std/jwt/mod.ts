@@ -48,12 +48,14 @@ function isExpired(exp: number, leeway = 0): boolean {
 /*
  * Helper function: setExpiration()
  * returns the number of seconds since January 1, 1970, 00:00:00 UTC
+ * @param number in seconds or Date object
  */
 export function setExpiration(exp: number | Date): number {
   return Math.round(
     (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
   );
 }
+
 
 function tryToParsePayload(input: string) {
   try {
@@ -63,6 +65,10 @@ function tryToParsePayload(input: string) {
   }
 }
 
+/*
+ * Decodes a jwt into an { header, payload, signature } object
+ * @param jwt
+ */
 export function decode(
   jwt: string,
 ): {
@@ -95,6 +101,9 @@ export type TokenObject = {
   signature: string;
 };
 
+/*
+ * @param object
+ */
 export function isTokenObject(object: TokenObject): object is TokenObject {
   return (
     typeof object?.signature === "string" &&
@@ -105,6 +114,12 @@ export function isTokenObject(object: TokenObject): object is TokenObject {
   );
 }
 
+/*
+ * Verify a jwt
+ * @param jwt
+ * @param key
+ * @param object with property 'algorithm'
+ */
 export async function verify(
   jwt: string,
   key: string,
@@ -112,7 +127,7 @@ export async function verify(
     algorithm = "HS512",
   }: {
     algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
-  } = {},
+  } = {} ,
 ): Promise<Payload> {
   const obj = decode(jwt) as TokenObject;
 
@@ -179,6 +194,12 @@ function createSigningInput(header: Header, payload: Payload): string {
   }`;
 }
 
+/*
+ * Create a jwt
+ * @param payload
+ * @param key
+ * @param object with property 'header'
+ */
 export async function create(
   payload: Payload,
   key: string,
