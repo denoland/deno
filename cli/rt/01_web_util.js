@@ -86,15 +86,18 @@
           );
         }
         if (value instanceof Map) {
-          const clonedMap = new Map(value);
+          const clonedMap = new Map();
           objectCloneMemo.set(value, clonedMap);
+          value.forEach((v, k) => { clonedMap.set(cloneValue(k), cloneValue(v)) });
           return clonedMap;
         }
         if (value instanceof Set) {
-          const clonedSet = new Set(value);
+          // assumes that cloneValue still takes only one argument
+          const clonedSet = new Set([...value].map(cloneValue));
           objectCloneMemo.set(value, clonedSet);
           return clonedSet;
         }
+
 
         const clonedObj = {};
         objectCloneMemo.set(value, clonedObj);
