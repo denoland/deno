@@ -222,11 +222,12 @@ impl LineHighlighter {
       (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
       (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
       (?P<regexp>/(?:(?:\\/|[^\n/]))*?/[gimsuy]*) |
-      (?P<number>\d+(?:\.\d+)*(?:e[+-]?\d+)*n?) |
+      (?P<number>\d+(?:\.\d+)?(?:e[+-]?\d+)*n?) |
+      (?P<infinity>\b(?:Infinity)\b) |
       (?P<boolean>\b(?:true|false)\b) |
       (?P<null>\b(?:null)\b) |
       (?P<undefined>\b(?:undefined)\b) |
-      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch)\b) |
+      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch|this)\b) |
       "#,
       )
       .unwrap();
@@ -256,6 +257,8 @@ impl Highlighter for LineHighlighter {
           format!("{}", colors::gray(cap.as_str()))
         } else if let Some(cap) = caps.name("keyword") {
           format!("{}", colors::cyan(cap.as_str()))
+        } else if let Some(cap) = caps.name("infinity") {
+          format!("{}", colors::yellow(cap.as_str()))
         } else {
           caps[0].to_string()
         }
