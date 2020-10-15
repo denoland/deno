@@ -547,21 +547,31 @@
       if (descriptor.depthStencilAttachment) {
         depthStencilAttachment = {
           ...descriptor.depthStencilAttachment,
-          attachment: GPUTextureViewMap.get(descriptor.depthStencilAttachment.attachment),
+          attachment: GPUTextureViewMap.get(
+            descriptor.depthStencilAttachment.attachment,
+          ),
         };
 
-        if (typeof descriptor.depthStencilAttachment.depthLoadValue === "string") {
-          depthStencilAttachment.depthLoadOp = descriptor.depthStencilAttachment.depthLoadValue;
+        if (
+          typeof descriptor.depthStencilAttachment.depthLoadValue === "string"
+        ) {
+          depthStencilAttachment.depthLoadOp =
+            descriptor.depthStencilAttachment.depthLoadValue;
         } else {
           depthStencilAttachment.depthLoadOp = "clear";
-          depthStencilAttachment.depthLoadValue = descriptor.depthStencilAttachment.depthLoadValue;
+          depthStencilAttachment.depthLoadValue =
+            descriptor.depthStencilAttachment.depthLoadValue;
         }
 
-        if (typeof descriptor.depthStencilAttachment.stencilLoadValue === "string") {
-          depthStencilAttachment.stencilLoadOp = descriptor.depthStencilAttachment.stencilLoadValue;
+        if (
+          typeof descriptor.depthStencilAttachment.stencilLoadValue === "string"
+        ) {
+          depthStencilAttachment.stencilLoadOp =
+            descriptor.depthStencilAttachment.stencilLoadValue;
         } else {
           depthStencilAttachment.stencilLoadOp = "clear";
-          depthStencilAttachment.stencilLoadValue = descriptor.depthStencilAttachment.stencilLoadValue;
+          depthStencilAttachment.stencilLoadValue =
+            descriptor.depthStencilAttachment.stencilLoadValue;
         }
       }
 
@@ -570,22 +580,27 @@
         {
           commandEncoderRid: this.#rid,
           ...descriptor,
-          colorAttachments: descriptor.colorAttachments.map(colorAttachment => {
-            const attachment = {
-              attachment: GPUTextureViewMap.get(colorAttachment.attachment),
-              resolveTarget: colorAttachment.resolveTarget && GPUTextureViewMap.get(colorAttachment.resolveTarget),
-              storeOp: colorAttachment.storeOp,
-            };
+          colorAttachments: descriptor.colorAttachments.map(
+            (colorAttachment) => {
+              const attachment = {
+                attachment: GPUTextureViewMap.get(colorAttachment.attachment),
+                resolveTarget: colorAttachment.resolveTarget &&
+                  GPUTextureViewMap.get(colorAttachment.resolveTarget),
+                storeOp: colorAttachment.storeOp,
+              };
 
-            if (typeof colorAttachment.loadValue === "string") {
-              attachment.loadOp = colorAttachment.loadValue;
-            } else {
-              attachment.loadOp = "clear";
-              attachment.loadValue = normalizeGPUColor(colorAttachment.loadValue);
-            }
+              if (typeof colorAttachment.loadValue === "string") {
+                attachment.loadOp = colorAttachment.loadValue;
+              } else {
+                attachment.loadOp = "clear";
+                attachment.loadValue = normalizeGPUColor(
+                  colorAttachment.loadValue,
+                );
+              }
 
-            return attachment;
-          }),
+              return attachment;
+            },
+          ),
           depthStencilAttachment,
         },
       );

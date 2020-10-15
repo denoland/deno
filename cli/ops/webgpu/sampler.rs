@@ -69,7 +69,7 @@ struct CreateSamplerArgs {
   lod_min_clamp: Option<f32>,
   lod_max_clamp: Option<f32>,
   compare: Option<String>,
-  max_anisotropy: Option<std::num::NonZeroU8>,
+  max_anisotropy: Option<u8>,
 }
 
 pub fn op_webgpu_create_sampler(
@@ -103,7 +103,9 @@ pub fn op_webgpu_create_sampler(
       .lod_max_clamp
       .unwrap_or(wgc::resource::SamplerDescriptor::default().lod_max_clamp),
     compare: args.compare.as_ref().map(serialize_compare_function),
-    anisotropy_clamp: args.max_anisotropy,
+    anisotropy_clamp: std::num::NonZeroU8::new(
+      args.max_anisotropy.unwrap_or(0),
+    ),
   };
   let sampler = wgc::gfx_select!(device => instance.device_create_sampler(
     device,
