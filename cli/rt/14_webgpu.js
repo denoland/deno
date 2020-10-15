@@ -40,14 +40,22 @@
     }
   }
 
-  let instanceRid; // TODO: use op_webgpu_create_instance
+  let instanceRid;
 
-  const GPU = {
+  function getInstanceRid() {
+    if (!instanceRid) {
+      const { rid } = core.jsonOpSync("op_webgpu_create_instance");
+      instanceRid = rid;
+    }
+    return instanceRid;
+  }
+
+  const gpu = {
     async requestAdapter(options = {}) {
       const { rid, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_adapter",
         {
-          instanceRid,
+          instanceRid: getInstanceRid(),
           ...options,
         },
       );
@@ -1207,6 +1215,6 @@
   }
 
   window.__bootstrap.webGPU = {
-    webGPU: GPU,
+    gpu,
   };
 })(this);

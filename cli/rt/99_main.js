@@ -25,6 +25,7 @@ delete Object.prototype.__proto__;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
+  const webGPU = window.__bootstrap.webGPU;
   const webSocket = window.__bootstrap.webSocket;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
@@ -276,10 +277,19 @@ delete Object.prototype.__proto__;
     setTimeout: util.writable(timers.setTimeout),
   };
 
+  const windowOrWorkerNavigatorProperties = {
+    gpu: webGPU.gpu,
+  };
+
+  const mainRuntimeNavigatorProperties = {
+    ...windowOrWorkerNavigatorProperties,
+  };
+
   const mainRuntimeGlobalProperties = {
     Window: util.nonEnumerable(Window),
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
+    navigator: util.readOnly(mainRuntimeNavigatorProperties),
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
     // it seems those two properties should be available to workers as well
     onload: util.writable(null),
@@ -291,9 +301,14 @@ delete Object.prototype.__proto__;
     prompt: util.writable(prompt.prompt),
   };
 
+  const workerRuntimeNavigatorProperties = {
+    ...windowOrWorkerNavigatorProperties,
+  };
+
   const workerRuntimeGlobalProperties = {
     WorkerGlobalScope: util.nonEnumerable(WorkerGlobalScope),
     DedicatedWorkerGlobalScope: util.nonEnumerable(DedicatedWorkerGlobalScope),
+    navigator: util.readOnly(workerRuntimeNavigatorProperties),
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),
