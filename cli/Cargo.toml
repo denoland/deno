@@ -75,7 +75,7 @@ walkdir = "2.3.1"
 warp = { version = "0.2.5", features = ["tls"] }
 semver-parser = "0.9.0"
 uuid = { version = "0.8.1", features = ["v4"] }
-wgc = { package = "wgpu-core", version = "0.6.4" }
+wgc = { package = "wgpu-core", version = "0.6.5" }
 wgt = { package = "wgpu-types", version = "0.6.1" }
 
 [target.'cfg(windows)'.dependencies]

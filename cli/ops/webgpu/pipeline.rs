@@ -311,7 +311,7 @@ struct GPUVertexBufferLayoutDescriptor {
 #[serde(rename_all = "camelCase")]
 struct GPUVertexStateDescriptor {
   index_format: Option<String>,
-  vertex_buffers: Option<Vec<GPUVertexBufferLayoutDescriptor>>, // ODO: nullable
+  vertex_buffers: Option<Vec<Option<GPUVertexBufferLayoutDescriptor>>>,
 }
 
 #[derive(Deserialize)]
@@ -479,59 +479,69 @@ pub fn op_webgpu_create_render_pipeline(
             Cow::Owned(
               vertex_buffers
                 .iter()
-                .map(|buffer| wgc::pipeline::VertexBufferDescriptor {
-                  stride: buffer.array_stride,
-                  step_mode: match buffer.step_mode.clone() {
-                    Some(step_mode) => match step_mode.as_str() {
-                      "vertex" => wgt::InputStepMode::Vertex,
-                      "instance" => wgt::InputStepMode::Instance,
-                      _ => unreachable!(),
-                    },
-                    None => wgt::InputStepMode::Vertex,
-                  },
-                  attributes: Cow::Owned(
-                    buffer
-                      .attributes
-                      .iter()
-                      .map(|attribute| wgt::VertexAttributeDescriptor {
-                        offset: attribute.offset,
-                        format: match attribute.format.as_str() {
-                          "uchar2" => wgt::VertexFormat::Uchar2,
-                          "uchar4" => wgt::VertexFormat::Uchar4,
-                          "char2" => wgt::VertexFormat::Char2,
-                          "char4" => wgt::VertexFormat::Char4,
-                          "uchar2norm" => wgt::VertexFormat::Uchar2Norm,
-                          "uchar4norm" => wgt::VertexFormat::Uchar4,
-                          "char2norm" => wgt::VertexFormat::Char2Norm,
-                          "char4norm" => wgt::VertexFormat::Char4Norm,
-                          "ushort2" => wgt::VertexFormat::Ushort2,
-                          "ushort4" => wgt::VertexFormat::Ushort4,
-                          "short2" => wgt::VertexFormat::Short2,
-                          "short4" => wgt::VertexFormat::Short4,
-                          "ushort2norm" => wgt::VertexFormat::Ushort2Norm,
-                          "ushort4norm" => wgt::VertexFormat::Ushort4Norm,
-                          "short2norm" => wgt::VertexFormat::Short2Norm,
-                          "short4norm" => wgt::VertexFormat::Short4Norm,
-                          "half2" => wgt::VertexFormat::Half2,
-                          "half4" => wgt::VertexFormat::Half4,
-                          "float" => wgt::VertexFormat::Float,
-                          "float2" => wgt::VertexFormat::Float2,
-                          "float3" => wgt::VertexFormat::Float3,
-                          "float4" => wgt::VertexFormat::Float4,
-                          "uint" => wgt::VertexFormat::Uint,
-                          "uint2" => wgt::VertexFormat::Uint2,
-                          "uint3" => wgt::VertexFormat::Uint3,
-                          "uint4" => wgt::VertexFormat::Uint4,
-                          "int" => wgt::VertexFormat::Int,
-                          "int2" => wgt::VertexFormat::Int2,
-                          "int3" => wgt::VertexFormat::Int3,
-                          "int4" => wgt::VertexFormat::Int4,
+                .map(|buffer| {
+                  if let Some(buffer) = buffer {
+                    wgc::pipeline::VertexBufferDescriptor {
+                      stride: buffer.array_stride,
+                      step_mode: match buffer.step_mode.clone() {
+                        Some(step_mode) => match step_mode.as_str() {
+                          "vertex" => wgt::InputStepMode::Vertex,
+                          "instance" => wgt::InputStepMode::Instance,
                           _ => unreachable!(),
                         },
-                        shader_location: attribute.shader_location,
-                      })
-                      .collect::<Vec<wgt::VertexAttributeDescriptor>>(),
-                  ),
+                        None => wgt::InputStepMode::Vertex,
+                      },
+                      attributes: Cow::Owned(
+                        buffer
+                          .attributes
+                          .iter()
+                          .map(|attribute| wgt::VertexAttributeDescriptor {
+                            offset: attribute.offset,
+                            format: match attribute.format.as_str() {
+                              "uchar2" => wgt::VertexFormat::Uchar2,
+                              "uchar4" => wgt::VertexFormat::Uchar4,
+                              "char2" => wgt::VertexFormat::Char2,
+                              "char4" => wgt::VertexFormat::Char4,
+                              "uchar2norm" => wgt::VertexFormat::Uchar2Norm,
+                              "uchar4norm" => wgt::VertexFormat::Uchar4,
+                              "char2norm" => wgt::VertexFormat::Char2Norm,
+                              "char4norm" => wgt::VertexFormat::Char4Norm,
+                              "ushort2" => wgt::VertexFormat::Ushort2,
+                              "ushort4" => wgt::VertexFormat::Ushort4,
+                              "short2" => wgt::VertexFormat::Short2,
+                              "short4" => wgt::VertexFormat::Short4,
+                              "ushort2norm" => wgt::VertexFormat::Ushort2Norm,
+                              "ushort4norm" => wgt::VertexFormat::Ushort4Norm,
+                              "short2norm" => wgt::VertexFormat::Short2Norm,
+                              "short4norm" => wgt::VertexFormat::Short4Norm,
+                              "half2" => wgt::VertexFormat::Half2,
+                              "half4" => wgt::VertexFormat::Half4,
+                              "float" => wgt::VertexFormat::Float,
+                              "float2" => wgt::VertexFormat::Float2,
+                              "float3" => wgt::VertexFormat::Float3,
+                              "float4" => wgt::VertexFormat::Float4,
+                              "uint" => wgt::VertexFormat::Uint,
+                              "uint2" => wgt::VertexFormat::Uint2,
+                              "uint3" => wgt::VertexFormat::Uint3,
+                              "uint4" => wgt::VertexFormat::Uint4,
+                              "int" => wgt::VertexFormat::Int,
+                              "int2" => wgt::VertexFormat::Int2,
+                              "int3" => wgt::VertexFormat::Int3,
+                              "int4" => wgt::VertexFormat::Int4,
+                              _ => unreachable!(),
+                            },
+                            shader_location: attribute.shader_location,
+                          })
+                          .collect::<Vec<wgt::VertexAttributeDescriptor>>(),
+                      ),
+                    }
+                  } else {
+                    wgc::pipeline::VertexBufferDescriptor {
+                      stride: 0,
+                      step_mode: wgt::InputStepMode::Vertex,
+                      attributes: Default::default(),
+                    }
+                  }
                 })
                 .collect::<Vec<wgc::pipeline::VertexBufferDescriptor>>(),
             )
