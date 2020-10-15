@@ -1106,7 +1106,7 @@ pub async fn runtime_compile(
   } else {
     lib.push("deno.window".to_string());
     if unstable {
-      lib.push("deno.window.unstable");
+      lib.push("deno.window.unstable".to_string());
     }
   }
 
