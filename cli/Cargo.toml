@@ -65,7 +65,7 @@ swc_common = { version = "=0.10.3", features = ["sourcemap"] }
 swc_ecmascript = { version = "=0.9.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
-tokio = { version = "0.2.22", features = ["full"] }
+tokio = { version = "0.3.0", features = ["full"] }
 tokio-rustls = "0.14.1"
 # Keep in-sync with warp.
 tokio-tungstenite = "0.11.0"

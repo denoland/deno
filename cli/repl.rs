@@ -133,7 +133,7 @@ async fn post_message_and_poll(
         // A zero delay is long enough to yield the thread in order to prevent the loop from
         // running hot for messages that are taking longer to resolve like for example an
         // evaluation of top level await.
-        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
       }
     }
   }
@@ -151,7 +151,7 @@ async fn read_line_and_poll(
     // Because an inspector websocket client may choose to connect at anytime when we have an
     // inspector server we need to keep polling the worker to pick up new connections.
     let mut timeout =
-      tokio::time::delay_for(tokio::time::Duration::from_millis(1000));
+      tokio::time::sleep(tokio::time::Duration::from_millis(1000));
 
     tokio::select! {
       result = &mut line => {
