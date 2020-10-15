@@ -1572,6 +1572,16 @@ itest!(_017_import_redirect {
   output: "017_import_redirect.ts.out",
 });
 
+itest!(_017_import_redirect_nocheck {
+  args: "run --quiet --reload --no-check 017_import_redirect.ts",
+  output: "017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_info {
+  args: "info --quiet --reload 017_import_redirect.ts",
+  output: "017_import_redirect_info.out",
+});
+
 itest!(_018_async_catch {
   args: "run --quiet --reload 018_async_catch.ts",
   output: "018_async_catch.ts.out",
