@@ -98,7 +98,6 @@
           return clonedSet;
         }
 
-
         const clonedObj = {};
         objectCloneMemo.set(value, clonedObj);
         const sourceKeys = Object.getOwnPropertyNames(value);
