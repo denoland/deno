@@ -201,7 +201,7 @@ impl Module {
   ) -> Self {
     let mut module = Module {
       specifier: cached_module.specifier,
-      maybe_import_map: maybe_import_map,
+      maybe_import_map,
       media_type: cached_module.media_type,
       source: cached_module.source,
       source_path: cached_module.source_path,
@@ -436,6 +436,30 @@ impl Graph2 {
     self.modules.contains_key(s)
   }
 
+  /// Update the handler with any modules that are marked as _dirty_ and update
+  /// any build info if present.
+  fn flush(&mut self) -> Result<(), AnyError> {
+    let mut handler = self.handler.borrow_mut();
+    for (_, module) in self.modules.iter_mut() {
+      if module.is_dirty {
+        if let Some(emit) = &module.maybe_emit {
+          handler.set_cache(&module.specifier, emit)?;
+        }
+        if let Some(version) = &module.maybe_version {
+          handler.set_version(&module.specifier, version.clone())?;
+        }
+        module.is_dirty = false;
+      }
+    }
+    for root_specifier in self.roots.iter() {
+      if let Some(ts_build_info) = &self.maybe_ts_build_info {
+        handler.set_ts_build_info(root_specifier, ts_build_info.to_owned())?;
+      }
+    }
+
+    Ok(())
+  }
+
   fn get_info(
     &self,
     specifier: &ModuleSpecifier,
@@ -514,6 +538,32 @@ impl Graph2 {
     ModuleInfoMap::new(map)
   }
 
+  pub fn get_media_type(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    if let Some(module) = self.get_module(specifier) {
+      Some(module.media_type)
+    } else {
+      None
+    }
+  }
+
+  fn get_module(&self, specifier: &ModuleSpecifier) -> Option<&Module> {
+    let s = self.resolve_specifier(specifier);
+    self.modules.get(s)
+  }
+
+  /// Get the source for a given module specifier.  If the module is not part
+  /// of the graph, the result will be `None`.
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if let Some(module) = self.get_module(specifier) {
+      Some(module.source.clone())
+    } else {
+      None
+    }
+  }
+
   /// Return a structure which provides information about the module graph and
   /// the relationship of the modules in the graph.  This structure is used to
   /// provide information for the `info` subcommand.
@@ -549,56 +599,6 @@ impl Graph2 {
       module,
       total_size,
     })
-  }
-
-  /// Update the handler with any modules that are marked as _dirty_ and update
-  /// any build info if present.
-  fn flush(&mut self) -> Result<(), AnyError> {
-    let mut handler = self.handler.borrow_mut();
-    for (_, module) in self.modules.iter_mut() {
-      if module.is_dirty {
-        if let Some(emit) = &module.maybe_emit {
-          handler.set_cache(&module.specifier, emit)?;
-        }
-        if let Some(version) = &module.maybe_version {
-          handler.set_version(&module.specifier, version.clone())?;
-        }
-        module.is_dirty = false;
-      }
-    }
-    for root_specifier in self.roots.iter() {
-      if let Some(ts_build_info) = &self.maybe_ts_build_info {
-        handler.set_ts_build_info(root_specifier, ts_build_info.to_owned())?;
-      }
-    }
-
-    Ok(())
-  }
-
-  pub fn get_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    if let Some(module) = self.get_module(specifier) {
-      Some(module.media_type)
-    } else {
-      None
-    }
-  }
-
-  fn get_module(&self, specifier: &ModuleSpecifier) -> Option<&Module> {
-    let s = self.resolve_specifier(specifier);
-    self.modules.get(s)
-  }
-
-  /// Get the source for a given module specifier.  If the module is not part
-  /// of the graph, the result will be `None`.
-  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    if let Some(module) = self.get_module(specifier) {
-      Some(module.source.clone())
-    } else {
-      None
-    }
   }
 
   /// Verify the subresource integrity of the graph based upon the optional
