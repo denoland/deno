@@ -69,7 +69,11 @@ deno run --allow-read --allow-write --unstable main.ts
 ```
 
 To make sure that API producing the error is unstable, check the
-[`lib.deno.ns.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.ns.unstable.d.ts), [`lib.deno.window.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.window.unstable.d.ts), [`lib.deno.worker.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.worker.unstable.d.ts), and [`lib.deno.shared_globals.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.shared_globals.unstable.d.ts)
+[`lib.deno.ns.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.ns.unstable.d.ts),
+[`lib.deno.window.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.window.unstable.d.ts),
+[`lib.deno.worker.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.worker.unstable.d.ts),
+and
+[`lib.deno.shared_globals.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.shared_globals.unstable.d.ts)
 declaration files.
 
 This problem should be fixed in the near future. Feel free to omit the flag if

@@ -489,7 +489,10 @@ delete Object.prototype.__proto__;
   ts.libMap.set("deno.ns.unstable", "lib.deno.ns.unstable.d.ts");
   ts.libMap.set("deno.window.unstable", "lib.deno.window.unstable.d.ts");
   ts.libMap.set("deno.worker.unstable", "lib.deno.worker.unstable.d.ts");
-  ts.libMap.set("deno.shared_globals.unstable", "lib.deno.shared_globals.unstable.d.ts");
+  ts.libMap.set(
+    "deno.shared_globals.unstable",
+    "lib.deno.shared_globals.unstable.d.ts",
+  );
 
   // this pre-populates the cache at snapshot time of our library files, so they
   // are available in the future when needed.
