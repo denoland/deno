@@ -486,7 +486,10 @@ delete Object.prototype.__proto__;
   ts.libMap.set("deno.window", "lib.deno.window.d.ts");
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
-  ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
+  ts.libMap.set("deno.ns.unstable", "lib.deno.ns.unstable.d.ts");
+  ts.libMap.set("deno.window.unstable", "lib.deno.window.unstable.d.ts");
+  ts.libMap.set("deno.worker.unstable", "lib.deno.worker.unstable.d.ts");
+  ts.libMap.set("deno.shared_globals.unstable", "lib.deno.shared_globals.unstable.d.ts");
 
   // this pre-populates the cache at snapshot time of our library files, so they
   // are available in the future when needed.
@@ -515,7 +518,19 @@ delete Object.prototype.__proto__;
     ts.ScriptTarget.ESNext,
   );
   host.getSourceFile(
-    `${ASSETS}lib.deno.unstable.d.ts`,
+    `${ASSETS}lib.deno.ns.unstable.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  host.getSourceFile(
+    `${ASSETS}lib.deno.window.unstable.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  host.getSourceFile(
+    `${ASSETS}lib.deno.worker.unstable.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  host.getSourceFile(
+    `${ASSETS}lib.deno.shared_globals.unstable.d.ts`,
     ts.ScriptTarget.ESNext,
   );
 

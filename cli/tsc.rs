@@ -54,7 +54,10 @@ pub const AVAILABLE_LIBS: &[&str] = &[
   "deno.window",
   "deno.worker",
   "deno.shared_globals",
-  "deno.unstable",
+  "deno.ns.unstable",
+  "deno.window.unstable",
+  "deno.worker.unstable",
+  "deno.shared_globals.unstable",
   "dom",
   "dom.iterable",
   "es5",
@@ -493,7 +496,11 @@ impl TsCompiler {
     };
 
     if unstable {
-      lib.push("deno.unstable");
+      if target == "main" {
+        lib.push("deno.window.unstable")
+      } else {
+        lib.push("deno.worker.unstable")
+      };
     }
 
     let mut compiler_options = json!({
@@ -612,7 +619,11 @@ impl TsCompiler {
     };
 
     if unstable {
-      lib.push("deno.unstable");
+      if target == "main" {
+        lib.push("deno.window.unstable")
+      } else {
+        lib.push("deno.worker.unstable")
+      };
     }
 
     let mut compiler_options = json!({
@@ -1094,10 +1105,9 @@ pub async fn runtime_compile(
     lib.extend(libs);
   } else {
     lib.push("deno.window".to_string());
-  }
-
-  if unstable {
-    lib.push("deno.unstable".to_string());
+    if unstable {
+      lib.push("deno.window.unstable");
+    }
   }
 
   let mut compiler_options = json!({
@@ -1204,10 +1214,9 @@ pub async fn runtime_bundle(
     lib.extend(libs);
   } else {
     lib.push("deno.window".to_string());
-  }
-
-  if unstable {
-    lib.push("deno.unstable".to_string());
+    if unstable {
+      lib.push("deno.window.unstable");
+    }
   }
 
   let mut compiler_options = json!({

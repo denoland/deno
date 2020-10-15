@@ -154,7 +154,12 @@ fn get_types(unstable: bool) -> String {
   );
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::js::UNSTABLE_NS_LIB,));
+    types.push_str(&format!(
+      "\n{}\n{}\n{}",
+      crate::js::UNSTABLE_DENO_NS_LIB,
+      crate::js::UNSTABLE_SHARED_GLOBALS_LIB,
+      crate::js::UNSTABLE_WINDOW_LIB,
+    ));
   }
 
   types

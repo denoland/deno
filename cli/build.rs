@@ -75,8 +75,20 @@ fn create_compiler_snapshot(
     cwd.join("dts/lib.deno.ns.d.ts"),
   );
   custom_libs.insert(
-    "lib.deno.unstable.d.ts".to_string(),
-    cwd.join("dts/lib.deno.unstable.d.ts"),
+    "lib.deno.window.unstable.d.ts".to_string(),
+    cwd.join("dts/lib.deno.window.unstable.d.ts"),
+  );
+  custom_libs.insert(
+    "lib.deno.worker.unstable.d.ts".to_string(),
+    cwd.join("dts/lib.deno.worker.unstable.d.ts"),
+  );
+  custom_libs.insert(
+    "lib.deno.shared_globals.unstable.d.ts".to_string(),
+    cwd.join("dts/lib.deno.shared_globals.unstable.d.ts"),
+  );
+  custom_libs.insert(
+    "lib.deno.ns.unstable.d.ts".to_string(),
+    cwd.join("dts/lib.deno.ns.unstable.d.ts"),
   );
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {

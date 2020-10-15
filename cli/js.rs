@@ -14,7 +14,11 @@ pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
-pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
+pub static UNSTABLE_DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.unstable.d.ts");
+pub static UNSTABLE_SHARED_GLOBALS_LIB: &str =
+  include_str!("dts/lib.deno.shared_globals.unstable.d.ts");
+pub static UNSTABLE_WINDOW_LIB: &str =
+  include_str!("dts/lib.deno.window.unstable.d.ts");
 
 pub fn deno_isolate_init() -> Snapshot {
   debug!("Deno isolate init with snapshots.");

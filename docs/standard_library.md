@@ -14,11 +14,11 @@ Deno is released.
 
 We strongly suggest to always use imports with pinned version of standard
 library to avoid unintended changes. For example, rather than linking to the
-master branch of code, which may change at any time, potentially causing
+$CLI_VERSION branch of code, which may change at any time, potentially causing
 compilation errors or unexpected behavior:
 
 ```typescript
-// imports from master, this should be avoided
+// imports from $CLI_VERSION, this should be avoided
 import { copy } from "https://deno.land/std/fs/copy.ts";
 ```
 
@@ -68,9 +68,9 @@ Solution to that problem requires adding `--unstable` flag:
 deno run --allow-read --allow-write --unstable main.ts
 ```
 
-To make sure that API producing error is unstable check
-[`lib.deno.unstable.d.ts`](https://github.com/denoland/deno/blob/$CLI_VERSION/cli/dts/lib.deno.unstable.d.ts)
-declaration.
+To make sure that API producing the error is unstable, check the
+[`lib.deno.ns.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.ns.unstable.d.ts), [`lib.deno.window.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.window.unstable.d.ts), [`lib.deno.worker.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.worker.unstable.d.ts), and [`lib.deno.shared_globals.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.shared_globals.unstable.d.ts)
+declaration files.
 
 This problem should be fixed in the near future. Feel free to omit the flag if
 the particular modules you depend on compile successfully without it.

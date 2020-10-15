@@ -15,8 +15,8 @@ Passing this flag does a few things:
 
 - It enables the use of unstable APIs during runtime.
 - It adds the
-  [`lib.deno.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/dts/lib.deno.unstable.d.ts)
-  file to the list of TypeScript definitions that are used for type checking.
+  [`lib.deno.ns.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.ns.unstable.d.ts), [`lib.deno.window.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.window.unstable.d.ts), [`lib.deno.worker.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.worker.unstable.d.ts), and [`lib.deno.shared_globals.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/$CLI_VERSION/cli/dts/lib.deno.shared_globals.unstable.d.ts)
+  files to the list of TypeScript definitions that are used for type checking.
   This includes the output of `deno types`.
 
 You should be aware that many unstable APIs have **not undergone a security
