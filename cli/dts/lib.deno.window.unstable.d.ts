@@ -3,4 +3,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-var */
 
 /// <reference no-default-lib="true" />
-/// <reference lib="deno.shared_globals" />
+/// <reference lib="deno.ns.unstable" />
+/// <reference lib="deno.shared_globals.unstable" />
