@@ -233,7 +233,7 @@ impl Module {
 
   /// Return `true` if the current hash of the module matches the stored
   /// version.
-  pub fn emit_valid(&self, config: &[u8]) -> bool {
+  pub fn is_emit_valid(&self, config: &[u8]) -> bool {
     if let Some(version) = self.maybe_version.clone() {
       version == get_version(&self.source, version::DENO, config)
     } else {
@@ -674,13 +674,25 @@ impl Graph2 {
     Ok(result)
   }
 
+  /// Takes a module specifier and returns the "final" specifier, accounting for
+  /// any redirects that may have occurred.
   fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a ModuleSpecifier,
   ) -> &'a ModuleSpecifier {
     let mut s = specifier;
+    let mut seen = HashSet::new();
+    seen.insert(s.clone());
     while let Some(redirect) = self.redirects.get(s) {
+      if !seen.insert(redirect.clone()) {
+        eprintln!("An infinite loop of module redirections detected.\n  Original specifier: {}", specifier);
+        break;
+      }
       s = redirect;
+      if seen.len() > 5 {
+        eprintln!("An excessive number of module redirections detected.\n  Original specifier: {}", specifier);
+        break;
+      }
     }
     s
   }
@@ -743,7 +755,7 @@ impl Graph2 {
       }
       let config = ts_config.as_bytes();
       // skip modules that already have a valid emit
-      if module.maybe_emit.is_some() && module.emit_valid(&config) {
+      if module.maybe_emit.is_some() && module.is_emit_valid(&config) {
         continue;
       }
       if module.maybe_parsed_module.is_none() {
@@ -1039,7 +1051,7 @@ pub mod tests {
       maybe_version,
       ..Module::default()
     };
-    assert!(module.emit_valid(b""));
+    assert!(module.is_emit_valid(b""));
 
     let source = "console.log(42);".to_string();
     let old_source = "console.log(43);";
@@ -1049,7 +1061,7 @@ pub mod tests {
       maybe_version,
       ..Module::default()
     };
-    assert!(!module.emit_valid(b""));
+    assert!(!module.is_emit_valid(b""));
 
     let source = "console.log(42);".to_string();
     let maybe_version = Some(get_version(&source, "0.0.0", b""));
@@ -1058,14 +1070,14 @@ pub mod tests {
       maybe_version,
       ..Module::default()
     };
-    assert!(!module.emit_valid(b""));
+    assert!(!module.is_emit_valid(b""));
 
     let source = "console.log(42);".to_string();
     let module = Module {
       source,
       ..Module::default()
     };
-    assert!(!module.emit_valid(b""));
+    assert!(!module.is_emit_valid(b""));
   }
 
   #[test]
