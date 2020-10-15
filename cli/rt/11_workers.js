@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { Window } = window.__bootstrap.globalInterfaces;
   const { log } = window.__bootstrap.util;
 
   function createWorker(
@@ -142,7 +143,15 @@
         if (type === "terminalError") {
           this.#terminated = true;
           if (!this.#handleError(event.error)) {
-            throw Error(event.error.message);
+            if (globalThis instanceof Window) {
+              throw new Error("Unhandled error event reached main worker.");
+            } else {
+              // TODO(nayeemrmn): Propagate the error event to the parent worker
+              // **without** throwing. Probably need to op into Rust with
+              // `event.error` and send it, but we need a `WebWorker` reference
+              // in the op context which is hard.
+              throw new Error("Unhandled error event in child worker.");
+            }
           }
           continue;
         }
@@ -154,7 +163,15 @@
 
         if (type === "error") {
           if (!this.#handleError(event.error)) {
-            throw Error(event.error.message);
+            if (globalThis instanceof Window) {
+              throw new Error("Unhandled error event reached main worker.");
+            } else {
+              // TODO(nayeemrmn): Propagate the error event to the parent worker
+              // **without** throwing. Probably need to op into Rust with
+              // `event.error` and send it, but we need a `WebWorker` reference
+              // in the op context which is hard.
+              throw new Error("Unhandled error event in child worker.");
+            }
           }
           continue;
         }

@@ -1934,6 +1934,12 @@ fn _066_prompt() {
   util::test_pty(args, output, input);
 }
 
+itest!(_073_worker_error {
+  args: "run -A 073_worker_error.ts",
+  output: "073_worker_error.ts.out",
+  exit_code: 1,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

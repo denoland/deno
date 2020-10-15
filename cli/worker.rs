@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::fmt_errors::JsError;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorSession;
@@ -510,6 +511,12 @@ impl WebWorker {
           }
 
           if let Err(e) = r {
+            eprintln!(
+              "{}: Uncaught (in worker \"{}\") {}",
+              colors::red_bold("error"),
+              worker.name.to_string(),
+              e.to_string().trim_start_matches("Uncaught "),
+            );
             let mut sender = worker.internal_channels.sender.clone();
             sender
               .try_send(WorkerEvent::Error(e))

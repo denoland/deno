@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::fmt_errors::JsError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
@@ -162,6 +163,12 @@ fn run_worker_thread(
     }
 
     if let Err(e) = result {
+      eprintln!(
+        "{}: Uncaught (in worker \"{}\") {}",
+        colors::red_bold("error"),
+        name,
+        e.to_string().trim_start_matches("Uncaught "),
+      );
       sender
         .try_send(WorkerEvent::TerminalError(e))
         .expect("Failed to post message to host");
