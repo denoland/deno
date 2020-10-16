@@ -41,6 +41,10 @@ export interface Header {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+/*
+ * JWT §4.1.4: Implementers MAY provide for some small leeway to account for
+ * clock skew.
+ */
 function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
 }
