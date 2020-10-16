@@ -1,11 +1,11 @@
-import type { Algorithm, AlgorithmInput } from "./algorithm.ts";
+import type { Algorithm, AlgorithmInput } from "./_algorithm.ts";
 import * as base64url from "../encoding/base64url.ts";
 import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 import {
   create as createSignature,
   verify as verifySignature,
-} from "./signature.ts";
-import { verify as verifyAlgorithm } from "./algorithm.ts";
+} from "./_signature.ts";
+import { verify as verifyAlgorithm } from "./_algorithm.ts";
 /*
  * JWT §4.1: The following Claim Names are registered in the IANA
  * "JSON Web Token Claims" registry established by Section 10.1. None of the
@@ -50,11 +50,11 @@ function isExpired(exp: number, leeway = 0): boolean {
 }
 
 /**
- * Helper function: setExpiration()
+ * Helper function: createExpiration()
  * returns the number of seconds since January 1, 1970, 00:00:00 UTC
  * @param number in seconds or Date object
  */
-export function setExpiration(exp: number | Date): number {
+export function createExpiration(exp: number | Date): number {
   return Math.round(
     (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
   );

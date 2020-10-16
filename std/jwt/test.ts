@@ -1,9 +1,9 @@
 import {
   create,
+  createExpiration,
   decode,
   Header,
   isTokenObject,
-  setExpiration,
   verify,
 } from "./mod.ts";
 
@@ -22,7 +22,7 @@ const payload = {
   name: "John Doe",
 };
 const signature = "abc";
-const exp = setExpiration(new Date("2035-07-01"));
+const exp = createExpiration(new Date("2035-07-01"));
 const key = "your-secret";
 
 Deno.test("[jwt] isTokenObject", function () {
@@ -144,8 +144,11 @@ Deno.test("[jwt] verify", async function () {
   );
 });
 
-Deno.test("[jwt] setExpiration", function () {
-  assertEquals(setExpiration(10), setExpiration(new Date(Date.now() + 10000)));
+Deno.test("[jwt] createExpiration", function () {
+  assertEquals(
+    createExpiration(10),
+    createExpiration(new Date(Date.now() + 10000)),
+  );
 });
 
 Deno.test("[jwt] decode", async function () {
@@ -198,7 +201,7 @@ Deno.test("[jwt] expired token", async function () {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
-    exp: setExpiration(-20000),
+    exp: createExpiration(-20000),
   };
   const header: Header = {
     alg: "HS256",

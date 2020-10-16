@@ -5,7 +5,7 @@ import {
   convertHexToBase64url,
   create as createSignature,
   verify as verifySignature,
-} from "./signature.ts";
+} from "./_signature.ts";
 
 const algorithm = "HS256";
 const key = "m$y-key";

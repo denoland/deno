@@ -1,4 +1,4 @@
-import type { Algorithm } from "./algorithm.ts";
+import type { Algorithm } from "./_algorithm.ts";
 import { HmacSha256 } from "../hash/sha256.ts";
 import { HmacSha512 } from "../hash/sha512.ts";
 import { encode as convertUint8ArrayToBase64url } from "../encoding/base64url.ts";
