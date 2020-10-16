@@ -5,7 +5,7 @@
  */
 export type Algorithm = "none" | "HS256" | "HS512";
 export type AlgorithmInput = Algorithm | Array<Exclude<Algorithm, "none">>;
-/*
+/**
  * Verify the algorithm
  * @param algorithm as string or multiple algorithms in an array excluding 'none'
  * @param the algorithm from the jwt header

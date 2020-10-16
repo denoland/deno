@@ -27,7 +27,7 @@ function encrypt(
   }
 }
 
-/*
+/**
  * Create a signature
  * @param algorithm
  * @param key
@@ -41,7 +41,7 @@ export async function create(
   return convertHexToBase64url(await encrypt(algorithm, key, input));
 }
 
-/*
+/**
  * Verify a signature
  * @param signature
  * @param key

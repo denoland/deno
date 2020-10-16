@@ -49,7 +49,7 @@ function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
 }
 
-/*
+/**
  * Helper function: setExpiration()
  * returns the number of seconds since January 1, 1970, 00:00:00 UTC
  * @param number in seconds or Date object
@@ -68,7 +68,7 @@ function tryToParsePayload(input: string): unknown {
   }
 }
 
-/*
+/**
  * Decodes a jwt into an { header, payload, signature } object
  * @param jwt
  */
@@ -106,7 +106,7 @@ export type TokenObject = {
   signature: string;
 };
 
-/*
+/**
  * @param object
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,7 +132,7 @@ export type VerifyOptions = {
   algorithm?: AlgorithmInput;
 };
 
-/*
+/**
  * Verify a jwt
  * @param jwt
  * @param key
@@ -203,7 +203,7 @@ function createSigningInput(header: Header, payload: Payload): string {
   }`;
 }
 
-/*
+/**
  * Create a jwt
  * @param payload
  * @param key
