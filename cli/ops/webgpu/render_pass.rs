@@ -293,13 +293,13 @@ pub fn op_webgpu_render_pass_end_pass(
     .resource_table
     .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
+  let instance = state
+    .resource_table
+    .get::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?.clone();
   let render_pass = state
     .resource_table
     .get::<wgc::command::RenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = state
-    .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgc::gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass))?;

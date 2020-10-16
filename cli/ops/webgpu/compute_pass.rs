@@ -161,6 +161,10 @@ pub fn op_webgpu_compute_pass_end_pass(
 ) -> Result<Value, AnyError> {
   let args: ComputePassEndPassArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?.clone();
   let command_encoder = *state
     .resource_table
     .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
@@ -168,10 +172,6 @@ pub fn op_webgpu_compute_pass_end_pass(
   let compute_pass = state
     .resource_table
     .get::<wgc::command::ComputePass>(args.compute_pass_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = state
-    .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgc::gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(

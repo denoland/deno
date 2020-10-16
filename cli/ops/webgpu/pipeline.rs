@@ -153,6 +153,12 @@ pub fn op_webgpu_create_compute_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateComputePipelineArgs = serde_json::from_value(args)?;
 
+
+  let instance = state
+    .resource_table
+    .get::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?.clone();
+
   let device = *state
     .resource_table
     .get::<wgc::id::DeviceId>(args.device_rid)
@@ -183,11 +189,6 @@ pub fn op_webgpu_create_compute_pipeline(
       group_ids: &[std::marker::PhantomData; wgc::MAX_BIND_GROUPS],
     }),
   };
-
-  let instance = state
-    .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
 
   let (compute_pipeline, _) = wgc::gfx_select!(device => instance.device_create_compute_pipeline(
     device,
@@ -340,6 +341,10 @@ pub fn op_webgpu_create_render_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateRenderPipelineArgs = serde_json::from_value(args)?;
 
+  let instance = state
+    .resource_table
+    .get::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?.clone();
   let device = *state
     .resource_table
     .get::<wgc::id::DeviceId>(args.device_rid)
@@ -369,7 +374,7 @@ pub fn op_webgpu_create_render_pipeline(
 
   if let Some(state) = &args.depth_stencil_state {
     depth_stencil_state = Some(wgt::DepthStencilStateDescriptor {
-      format: serialize_texture_format(state.format)?,
+      format: serialize_texture_format(state.format.clone())?,
       depth_write_enabled: state.depth_write_enabled.unwrap_or(false),
       depth_compare: state
         .depth_compare
@@ -412,11 +417,6 @@ pub fn op_webgpu_create_render_pipeline(
 
   let vertex_stage =
     serialize_programmable_stage_descriptor(state, args.vertex_stage)?;
-
-  let instance = state
-    .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::pipeline::RenderPipelineDescriptor {
     label: args.label.map(|label| Cow::Owned(label)),

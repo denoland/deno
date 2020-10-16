@@ -139,17 +139,17 @@ pub fn op_webgpu_render_bundle_encoder_finish(
 
   let instance = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WgcInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?.clone();
   let render_bundle_encoder = state
     .resource_table
-    .get_mut::<wgc::command::RenderBundleEncoder>(
+    .get::<wgc::command::RenderBundleEncoder>(
       args.render_bundle_encoder_rid,
     )
-    .ok_or_else(bad_resource_id)?;
+    .ok_or_else(bad_resource_id)?.clone();
 
   let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
-    *render_bundle_encoder,
+    render_bundle_encoder,
     &wgc::command::RenderBundleDescriptor {
       label: args.label.map(|label| Cow::Owned(label)),
     },
