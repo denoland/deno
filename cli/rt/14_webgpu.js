@@ -208,21 +208,21 @@
             return {
               binding: entry.binding,
               kind: "GPUSampler",
-              resource: GPUSamplerMap.get(entry),
+              resource: GPUSamplerMap.get(entry.resource),
             };
           } else if (entry instanceof GPUTextureView) {
             return {
               binding: entry.binding,
               kind: "GPUTextureView",
-              resource: GPUTextureViewMap.get(entry),
+              resource: GPUTextureViewMap.get(entry.resource),
             };
           } else {
             return {
               binding: entry.binding,
-              kind: "GPUBuffer",
-              resource: GPUBufferMap.get(entry.buffer),
-              offset: entry.offset,
-              size: entry.size,
+              kind: "GPUBufferBinding",
+              resource: GPUBufferMap.get(entry.resource.buffer),
+              offset: entry.resource.offset,
+              size: entry.resource.size,
             };
           }
         }),
