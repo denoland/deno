@@ -209,7 +209,7 @@ Deno.test("[jwt] expired token", async function () {
   try {
     await verify(jwt, key, { algorithm: "HS256" });
   } catch (error) {
-    assertEquals(error.message, "jwt is expired");
+    assertEquals(error.message, "The jwt is expired.");
   }
 });
 
@@ -253,7 +253,10 @@ Deno.test("[jwt] HS256 algorithm", async function () {
       algorithm: "HS256",
     });
   } catch (error) {
-    assertEquals(error.message, "algorithms do not match");
+    assertEquals(
+      error.message,
+      `The token's algorithm does not match the specified algorithm "HS256".`,
+    );
   }
 });
 

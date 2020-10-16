@@ -21,7 +21,9 @@ function encrypt(
     case "HS512":
       return new HmacSha512(key).update(message).toString();
     default:
-      throw new RangeError(`algorithm '${alg}' in header is not supported`);
+      throw new RangeError(
+        `The algorithm of "${alg}" in the header is not supported.`,
+      );
   }
 }
 

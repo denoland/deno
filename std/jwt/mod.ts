@@ -89,7 +89,9 @@ export function decode(
         ? tryToParsePayload(decoder.decode(uint8Array))
         : convertUint8ArrayToHex(uint8Array)
     );
-  if (parsedArray.length !== 3) throw TypeError("serialization is invalid");
+  if (parsedArray.length !== 3) {
+    throw TypeError("The serialization is invalid.");
+  }
 
   return {
     header: parsedArray[0],
@@ -115,12 +117,12 @@ export function isTokenObject(object: any): object is TokenObject {
       typeof object?.header?.alg === "string"
     )
   ) {
-    throw new Error(`jwt is invalid`);
+    throw new Error(`The jwt is invalid.`);
   }
   if (
     typeof object?.payload?.exp === "number" && isExpired(object.payload.exp)
   ) {
-    throw RangeError("jwt is expired");
+    throw RangeError("The jwt is expired.");
   }
   return true;
 }
@@ -144,7 +146,9 @@ export async function verify(
 
   if (isTokenObject(obj)) {
     if (!verifyAlgorithm(algorithm, obj.header.alg)) {
-      throw new Error(`algorithms do not match`);
+      throw new Error(
+        `The token's algorithm does not match the specified algorithm "${algorithm}".`,
+      );
     }
 
     const { header, payload, signature } = obj;
@@ -156,7 +160,7 @@ export async function verify(
      */
     if ("crit" in obj.header) {
       throw new Error(
-        "implementation does not process 'crit' header parameter",
+        "The 'crit' header parameter is currently not supported by this library.",
       );
     }
 
@@ -168,7 +172,9 @@ export async function verify(
         signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
       }))
     ) {
-      throw new Error("signatures do not match");
+      throw new Error(
+        "The token's signature does not match the verification signature.",
+      );
     }
 
     return payload;
