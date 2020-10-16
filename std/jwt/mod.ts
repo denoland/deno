@@ -56,7 +56,7 @@ export function setExpiration(exp: number | Date): number {
   );
 }
 
-function tryToParsePayload(input: string) {
+function tryToParsePayload(input: string): unknown {
   try {
     return JSON.parse(input);
   } catch {

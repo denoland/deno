@@ -54,7 +54,7 @@ export async function verify({
 }: {
   signature: string;
   key: string;
-  alg: Algorithm | "none";
+  alg: Algorithm;
   signingInput: string;
 }): Promise<boolean> {
   return signature === (await encrypt(alg, key, signingInput));
