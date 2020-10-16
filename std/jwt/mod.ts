@@ -1,4 +1,4 @@
-import type { Algorithm } from "./algorithm.ts";
+import type { Algorithm, AlgorithmInput } from "./algorithm.ts";
 import * as base64url from "../encoding/base64url.ts";
 import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 import {
@@ -120,12 +120,17 @@ export function isTokenObject(object: any): object is TokenObject {
     throw new Error(`The jwt is invalid.`);
   }
   if (
-    typeof object?.payload?.exp === "number" && isExpired(object.payload.exp)
+    typeof object?.payload?.exp === "number" &&
+    isExpired(object.payload.exp)
   ) {
     throw RangeError("The jwt is expired.");
   }
   return true;
 }
+
+export type VerifyOptions = {
+  algorithm?: AlgorithmInput;
+};
 
 /*
  * Verify a jwt
@@ -136,11 +141,7 @@ export function isTokenObject(object: any): object is TokenObject {
 export async function verify(
   jwt: string,
   key: string,
-  {
-    algorithm = "HS512",
-  }: {
-    algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
-  } = {},
+  { algorithm = "HS512" }: VerifyOptions = {},
 ): Promise<unknown> {
   const obj = decode(jwt);
 
