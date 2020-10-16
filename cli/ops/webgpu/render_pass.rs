@@ -296,7 +296,8 @@ pub fn op_webgpu_render_pass_end_pass(
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?.clone();
+    .ok_or_else(bad_resource_id)?
+    .clone();
   let render_pass = state
     .resource_table
     .get::<wgc::command::RenderPass>(args.render_pass_rid)
@@ -474,7 +475,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
 struct RenderPassSetIndexBufferArgs {
   render_pass_rid: u32,
   buffer: u32,
-  index_format: String, // wgpu#978
+  _index_format: String, // wgpu#978
   offset: u64,
   size: u64,
 }

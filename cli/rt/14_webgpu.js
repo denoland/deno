@@ -97,7 +97,7 @@
     }
   }
 
-  // TODO: https://gpuweb.github.io/gpuweb/#telemetry
+  // TODO: https://gpuweb.github.io/gpuweb/#errors-and-debugging
   class GPUDevice extends EventTarget {
     #rid;
     #adapter;
@@ -392,7 +392,9 @@
     }
 
     getMappedRange(offset = 0, size = undefined) {
-      const buf = new ArrayBuffer(size ?? ((this.#mappedOffset + this.#mappedSize) - offset));
+      const buf = new ArrayBuffer(
+        size ?? ((this.#mappedOffset + this.#mappedSize) - offset),
+      );
 
       core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",

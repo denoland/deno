@@ -160,7 +160,7 @@ struct GPULimits {
 struct RequestDeviceArgs {
   instance_rid: u32,
   adapter_rid: u32,
-  label: Option<String>, // wgpu#976
+  _label: Option<String>, // wgpu#976
   features: Option<Vec<String>>,
   limits: Option<GPULimits>,
 }

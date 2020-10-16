@@ -22,9 +22,9 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 struct CreateShaderModuleArgs {
   instance_rid: u32,
   device_rid: u32,
-  label: Option<String>, // wgpu#977
+  _label: Option<String>, // wgpu#977
   code: Option<String>,
-  source_map: (), // not in wgpu
+  _source_map: (), // not in wgpu
 }
 
 pub fn op_webgpu_create_shader_module(

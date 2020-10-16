@@ -81,7 +81,7 @@ struct CreateCommandEncoderArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
-  measure_execution_time: Option<bool>, // waiting for wgpu to add measure_execution_time
+  _measure_execution_time: Option<bool>, // waiting for wgpu to add measure_execution_time
 }
 
 pub fn op_webgpu_create_command_encoder(
@@ -146,11 +146,11 @@ struct GPURenderPassDepthStencilAttachmentDescriptor {
 #[serde(rename_all = "camelCase")]
 struct CommandEncoderBeginRenderPassArgs {
   command_encoder_rid: u32,
-  label: Option<String>, // wgpu#974
+  _label: Option<String>, // wgpu#974
   color_attachments: Vec<GPURenderPassColorAttachmentDescriptor>,
   depth_stencil_attachment:
     Option<GPURenderPassDepthStencilAttachmentDescriptor>,
-  occlusion_query_set: u32, // wgpu#721
+  _occlusion_query_set: u32, // wgpu#721
 }
 
 pub fn op_webgpu_command_encoder_begin_render_pass(
@@ -279,7 +279,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
 #[serde(rename_all = "camelCase")]
 struct CommandEncoderBeginComputePassArgs {
   command_encoder_rid: u32,
-  label: Option<String>, // wgpu#974
+  _label: Option<String>, // wgpu#974
 }
 
 pub fn op_webgpu_command_encoder_begin_compute_pass(

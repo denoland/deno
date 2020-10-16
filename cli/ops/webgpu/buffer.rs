@@ -129,10 +129,12 @@ pub async fn op_webgpu_buffer_get_map_async(
       )
     };
     let boxed_sender = unsafe { Box::from_raw(sender_ptr) };
-    boxed_sender.send(match status {
-      wgc::resource::BufferMapAsyncStatus::Success => Ok(()),
-      _ => unreachable!(), // TODO
-    });
+    boxed_sender
+      .send(match status {
+        wgc::resource::BufferMapAsyncStatus::Success => Ok(()),
+        _ => unreachable!(), // TODO
+      })
+      .unwrap();
   }
 
   wgc::gfx_select!(buffer => instance.buffer_map_async(

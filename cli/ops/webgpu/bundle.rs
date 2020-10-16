@@ -137,16 +137,15 @@ pub fn op_webgpu_render_bundle_encoder_finish(
 ) -> Result<Value, AnyError> {
   let args: RenderBundleEncoderFinishArgs = serde_json::from_value(args)?;
 
+  let render_bundle_encoder = *state
+    .resource_table
+    .remove::<wgc::command::RenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?.clone();
-  let render_bundle_encoder = state
-    .resource_table
-    .get::<wgc::command::RenderBundleEncoder>(
-      args.render_bundle_encoder_rid,
-    )
-    .ok_or_else(bad_resource_id)?.clone();
+    .ok_or_else(bad_resource_id)?
+    .clone();
 
   let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
@@ -347,7 +346,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 struct RenderBundleEncoderSetIndexBufferArgs {
   render_bundle_encoder_rid: u32,
   buffer: u32,
-  index_format: String, // wgpu#978
+  _index_format: String, // wgpu#978
   offset: u64,
   size: u64,
 }

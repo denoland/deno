@@ -153,11 +153,11 @@ pub fn op_webgpu_create_compute_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateComputePipelineArgs = serde_json::from_value(args)?;
 
-
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?.clone();
+    .ok_or_else(bad_resource_id)?
+    .clone();
 
   let device = *state
     .resource_table
@@ -344,7 +344,8 @@ pub fn op_webgpu_create_render_pipeline(
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?.clone();
+    .ok_or_else(bad_resource_id)?
+    .clone();
   let device = *state
     .resource_table
     .get::<wgc::id::DeviceId>(args.device_rid)
@@ -385,7 +386,7 @@ pub fn op_webgpu_create_render_pipeline(
           wgt::StencilStateFaceDescriptor::IGNORE,
           serialize_stencil_state_face_descriptor,
         ),
-        back: state.stencil_front.as_ref().map_or(
+        back: state.stencil_back.as_ref().map_or(
           wgt::StencilStateFaceDescriptor::IGNORE,
           serialize_stencil_state_face_descriptor,
         ),
