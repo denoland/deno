@@ -178,12 +178,13 @@ pub fn op_webgpu_buffer_get_mapped_range(
     std::num::NonZeroU64::new(args.size)
   ))?;
 
-  // TODO: use
-  let _slice = unsafe {
+  let slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
   };
 
-  Ok(json!({}))
+  Ok(json!({
+    "buffer": slice,
+  }))
 }
 
 #[derive(Deserialize)]

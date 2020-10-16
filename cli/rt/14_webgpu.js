@@ -135,7 +135,12 @@
         ...descriptor,
       });
 
-      const buffer = new GPUBuffer(rid, descriptor.label, descriptor.size);
+      const buffer = new GPUBuffer(
+        rid,
+        descriptor.label,
+        descriptor.size,
+        descriptor.mappedAtCreation,
+      );
       GPUBufferMap.set(buffer, rid);
       return buffer;
     }
@@ -373,10 +378,15 @@
     #mappedSize;
     #mappedOffset;
 
-    constructor(rid, label, size) {
+    constructor(rid, label, size, mappedAtCreation) {
       this.#rid = rid;
       this.label = label ?? null;
       this.#size = size;
+
+      if (mappedAtCreation) {
+        this.#mappedSize = size;
+        this.#mappedOffset = 0;
+      }
     }
 
     async mapAsync(mode, offset = 0, size = undefined) {
@@ -392,11 +402,7 @@
     }
 
     getMappedRange(offset = 0, size = undefined) {
-      const buf = new ArrayBuffer(
-        size ?? ((this.#mappedOffset + this.#mappedSize) - offset),
-      );
-
-      core.jsonOpSync(
+      const { buffer } = core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
         {
           instanceRid,
@@ -404,10 +410,9 @@
           offset,
           size: size ?? this.#mappedSize,
         },
-        buf,
       );
 
-      return buf;
+      return new Uint8Array(buffer).buffer;
     }
 
     unmap() {
