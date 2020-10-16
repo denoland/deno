@@ -430,6 +430,43 @@ export function assertNotMatch(
 }
 
 /**
+ * Make an assertion that `actual` object is a subset of `expected` object, deeply.
+ * If not, then throw.
+ */
+export function assertObjectMatch(
+  actual: object,
+  expected: object,
+): void {
+  const seen = new WeakMap();
+  return assertEquals(
+    (function filter(a: object, b: object): object {
+      // Prevent infinite loop with circular references with same filter
+      if ((seen.has(a)) && (seen.get(a) === b)) {
+        return a;
+      }
+      seen.set(a, b);
+      // Iterate through keys present in both actual and expected
+      // and filter recursively on object references
+      const filtered = {} as { [key: string]: unknown };
+      for (
+        const [key, value] of Object.entries(a).filter(([key]) => key in b)
+      ) {
+        if (typeof value === "object") {
+          const subset = (b as { [key: string]: unknown })[key];
+          if ((typeof subset === "object") && (subset)) {
+            filtered[key] = filter(value, subset);
+            continue;
+          }
+        }
+        filtered[key] = value;
+      }
+      return filtered;
+    })(actual, expected),
+    expected,
+  );
+}
+
+/**
  * Forcefully throws a failed assertion
  */
 export function fail(msg?: string): void {

@@ -9,6 +9,7 @@ import {
   assertNotEquals,
   assertNotMatch,
   assertNotStrictEquals,
+  assertObjectMatch,
   assertStrictEquals,
   assertStringContains,
   assertThrows,
@@ -257,6 +258,160 @@ Deno.test("testingAssertStringNotMatchingThrows", function (): void {
     didThrow = true;
   }
   assert(didThrow);
+});
+
+Deno.test("testingAssertObjectMatching", function (): void {
+  const a = { foo: true, bar: false };
+  const b = { ...a, baz: a };
+  const c = { ...b, qux: b };
+  const d = { corge: c, grault: c };
+  const e = { foo: true } as { [key: string]: unknown };
+  e.bar = e;
+  // Simple subset
+  assertObjectMatch(a, {
+    foo: true,
+  });
+  // Subset with another subset
+  assertObjectMatch(b, {
+    foo: true,
+    baz: { bar: false },
+  });
+  // Subset with multiple subsets
+  assertObjectMatch(c, {
+    foo: true,
+    baz: { bar: false },
+    qux: {
+      baz: { foo: true },
+    },
+  });
+  // Subset with same object reference as subset
+  assertObjectMatch(d, {
+    corge: {
+      foo: true,
+      qux: { bar: false },
+    },
+    grault: {
+      bar: false,
+      qux: { foo: true },
+    },
+  });
+  // Subset with circular reference
+  assertObjectMatch(e, {
+    foo: true,
+    bar: {
+      bar: {
+        bar: {
+          foo: true,
+        },
+      },
+    },
+  });
+  // Missing key
+  {
+    let didThrow;
+    try {
+      assertObjectMatch({
+        foo: true,
+      }, {
+        foo: true,
+        bar: false,
+      });
+      didThrow = false;
+    } catch (e) {
+      assert(e instanceof AssertionError);
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
+  }
+  // Simple subset
+  {
+    let didThrow;
+    try {
+      assertObjectMatch(a, {
+        foo: false,
+      });
+      didThrow = false;
+    } catch (e) {
+      assert(e instanceof AssertionError);
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
+  }
+  // Subset with another subset
+  {
+    let didThrow;
+    try {
+      assertObjectMatch(b, {
+        foo: true,
+        baz: { bar: true },
+      });
+      didThrow = false;
+    } catch (e) {
+      assert(e instanceof AssertionError);
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
+  }
+  // Subset with multiple subsets
+  {
+    let didThrow;
+    try {
+      assertObjectMatch(c, {
+        foo: true,
+        baz: { bar: false },
+        qux: {
+          baz: { foo: false },
+        },
+      });
+      didThrow = false;
+    } catch (e) {
+      assert(e instanceof AssertionError);
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
+  }
+  // Subset with same object reference as subset
+  {
+    let didThrow;
+    try {
+      assertObjectMatch(d, {
+        corge: {
+          foo: true,
+          qux: { bar: true },
+        },
+        grault: {
+          bar: false,
+          qux: { foo: false },
+        },
+      });
+      didThrow = false;
+    } catch (e) {
+      assert(e instanceof AssertionError);
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
+  }
+  // Subset with circular reference
+  {
+    let didThrow;
+    try {
+      assertObjectMatch(e, {
+        foo: true,
+        bar: {
+          bar: {
+            bar: {
+              foo: false,
+            },
+          },
+        },
+      });
+      didThrow = false;
+    } catch (e) {
+      assert(e instanceof AssertionError);
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
+  }
 });
 
 Deno.test("testingAssertsUnimplemented", function (): void {
