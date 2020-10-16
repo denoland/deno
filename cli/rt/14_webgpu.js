@@ -206,16 +206,19 @@
         entries: descriptor.entries.map((entry) => {
           if (entry instanceof GPUSampler) {
             return {
+              binding: entry.binding,
               kind: "GPUSampler",
               resource: GPUSamplerMap.get(entry),
             };
           } else if (entry instanceof GPUTextureView) {
             return {
+              binding: entry.binding,
               kind: "GPUTextureView",
               resource: GPUTextureViewMap.get(entry),
             };
           } else {
             return {
+              binding: entry.binding,
               kind: "GPUBuffer",
               resource: GPUBufferMap.get(entry.buffer),
               offset: entry.offset,
@@ -237,9 +240,12 @@
           instanceRid,
           deviceRid: this.#rid,
           label: descriptor.label,
-          code: (typeof descriptor.code === "string") && descriptor.code,
+          code: (typeof descriptor.code === "string")
+            ? descriptor.code
+            : undefined,
+          sourceMap: descriptor.sourceMap,
         },
-        (descriptor.code instanceof Uint32Array) && descriptor.code,
+        (descriptor.code instanceof Uint32Array) ? descriptor.code : undefined,
       );
 
       const shaderModule = new GPUShaderModule(rid, descriptor.label);
@@ -252,8 +258,9 @@
         instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
-        layout: descriptor.layout &&
-          GPUPipelineLayoutMap.get(descriptor.layout),
+        layout: descriptor.layout
+          ? GPUPipelineLayoutMap.get(descriptor.layout)
+          : undefined,
         computeStage: {
           module: GPUShaderModuleMap.get(descriptor.computeStage.module),
           entryPoint: descriptor.computeStage.entryPoint,
@@ -377,6 +384,8 @@
     #size;
     #mappedSize;
     #mappedOffset;
+    #mappedRid;
+    #mappedBuffer;
 
     constructor(rid, label, size, mappedAtCreation) {
       this.#rid = rid;
@@ -402,7 +411,7 @@
     }
 
     getMappedRange(offset = 0, size = undefined) {
-      const { buffer } = core.jsonOpSync(
+      const { buffer, rid } = core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
         {
           instanceRid,
@@ -412,14 +421,17 @@
         },
       );
 
-      return new Uint8Array(buffer).buffer;
+      this.#mappedRid = rid;
+      this.#mappedBuffer = new Uint8Array(buffer);
+      return this.#mappedBuffer.buffer;
     }
 
     unmap() {
       core.jsonOpSync("op_webgpu_buffer_unmap", {
         instanceRid,
         bufferRid: this.#rid,
-      });
+        mappedRid: this.#mappedRid,
+      }, this.#mappedBuffer);
     }
 
     destroy() {
@@ -600,8 +612,9 @@
             (colorAttachment) => {
               const attachment = {
                 attachment: GPUTextureViewMap.get(colorAttachment.attachment),
-                resolveTarget: colorAttachment.resolveTarget &&
-                  GPUTextureViewMap.get(colorAttachment.resolveTarget),
+                resolveTarget: colorAttachment.resolveTarget
+                  ? GPUTextureViewMap.get(colorAttachment.resolveTarget)
+                  : undefined,
                 storeOp: colorAttachment.storeOp,
               };
 

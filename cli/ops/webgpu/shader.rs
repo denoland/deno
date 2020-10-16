@@ -24,7 +24,7 @@ struct CreateShaderModuleArgs {
   device_rid: u32,
   _label: Option<String>, // wgpu#977
   code: Option<String>,
-  _source_map: (), // not in wgpu
+  _source_map: Option<()>, // not in wgpu
 }
 
 pub fn op_webgpu_create_shader_module(

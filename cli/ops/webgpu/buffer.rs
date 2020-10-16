@@ -182,8 +182,16 @@ pub fn op_webgpu_buffer_get_mapped_range(
     std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
   };
 
+  let mut buf: Vec<u8> = vec![0; slice.len()];
+  buf.copy_from_slice(slice);
+
+  let rid = state
+    .resource_table
+    .add("webGPUBufferMapped", Box::new(slice));
+
   Ok(json!({
-    "buffer": slice,
+    "rid": rid,
+    "buffer": buf,
   }))
 }
 
@@ -192,12 +200,13 @@ pub fn op_webgpu_buffer_get_mapped_range(
 struct BufferUnmapArgs {
   instance_rid: u32,
   buffer_rid: u32,
+  mapped_rid: u32,
 }
 
 pub fn op_webgpu_buffer_unmap(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: BufferUnmapArgs = serde_json::from_value(args)?;
 
@@ -205,10 +214,16 @@ pub fn op_webgpu_buffer_unmap(
     .resource_table
     .get::<wgc::id::BufferId>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
+  let mapped = *state
+    .resource_table
+    .remove::<&mut [u8]>(args.mapped_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state
     .resource_table
     .get_mut::<super::WgcInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+
+  mapped.copy_from_slice(&*zero_copy[0]);
 
   wgc::gfx_select!(buffer => instance.buffer_unmap(buffer))?;
 
