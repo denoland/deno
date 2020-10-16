@@ -14,12 +14,8 @@ use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::rc::Rc;
-use std::task::Poll;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -60,7 +56,9 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let rid = state.new_resource_table.add("tcpListener", Box::new(listener));
+  let rid = state
+    .new_resource_table
+    .add("tcpListener", Box::new(listener));
   Ok(serde_json::json!({ "rid": rid }))
 }
 
