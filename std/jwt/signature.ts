@@ -9,7 +9,7 @@ export function convertHexToBase64url(input: string): string {
 }
 
 function encrypt(
-  alg: Algorithm | "none",
+  alg: Algorithm,
   key: string,
   message: string,
 ): string {
