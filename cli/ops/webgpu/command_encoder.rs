@@ -101,7 +101,7 @@ pub fn op_webgpu_create_command_encoder(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgt::CommandEncoderDescriptor {
-    label: args.label.map(|label| Cow::Owned(label)),
+    label: args.label.map(Cow::Owned),
   };
   let command_encoder = wgc::gfx_select!(device => instance.device_create_command_encoder(
     device,
@@ -703,7 +703,7 @@ pub fn op_webgpu_command_encoder_finish(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgt::CommandBufferDescriptor {
-    label: args.label.map(|label| Cow::Owned(label)),
+    label: args.label.map(Cow::Owned),
   };
   let command_buffer = wgc::gfx_select!(command_encoder => instance.command_encoder_finish(
     command_encoder,

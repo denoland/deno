@@ -64,7 +64,7 @@ pub fn op_webgpu_create_buffer(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::BufferDescriptor {
-    label: args.label.map(|label| Cow::Owned(label)),
+    label: args.label.map(Cow::Owned),
     size: args.size,
     usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),

@@ -102,7 +102,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
   }
 
   let descriptor = wgc::command::RenderBundleEncoderDescriptor {
-    label: args.label.map(|label| Cow::Owned(label)),
+    label: args.label.map(Cow::Owned),
     color_formats: Cow::Owned(color_formats),
     depth_stencil_format: args
       .depth_stencil_format
@@ -150,7 +150,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
   let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
     &wgc::command::RenderBundleDescriptor {
-      label: args.label.map(|label| Cow::Owned(label)),
+      label: args.label.map(Cow::Owned),
     },
     std::marker::PhantomData
   ))?;
@@ -237,9 +237,10 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
+    let label = std::ffi::CString::new(args.group_label).unwrap();
     wgc::command::bundle_ffi::wgpu_render_bundle_push_debug_group(
       render_bundle_encoder,
-      std::ffi::CString::new(args.group_label).unwrap().as_ptr(),
+      label.as_ptr(),
     );
   }
 
@@ -299,9 +300,10 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
+    let label = std::ffi::CString::new(args.marker_label).unwrap();
     wgc::command::bundle_ffi::wgpu_render_bundle_insert_debug_marker(
       render_bundle_encoder,
-      std::ffi::CString::new(args.marker_label).unwrap().as_ptr(),
+      label.as_ptr(),
     );
   }
 

@@ -40,8 +40,8 @@ fn serialize_filter_mode(filter_mode: Option<String>) -> wgt::FilterMode {
   }
 }
 
-pub fn serialize_compare_function(compare: &String) -> wgt::CompareFunction {
-  match compare.as_str() {
+pub fn serialize_compare_function(compare: &str) -> wgt::CompareFunction {
+  match compare {
     "never" => wgt::CompareFunction::Never,
     "less" => wgt::CompareFunction::Less,
     "equal" => wgt::CompareFunction::Equal,
@@ -89,7 +89,7 @@ pub fn op_webgpu_create_sampler(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::SamplerDescriptor {
-    label: args.label.map(|label| Cow::Owned(label)),
+    label: args.label.map(Cow::Owned),
     address_modes: [
       serialize_address_mode(args.address_mode_u),
       serialize_address_mode(args.address_mode_v),
@@ -102,7 +102,10 @@ pub fn op_webgpu_create_sampler(
     lod_max_clamp: args
       .lod_max_clamp
       .unwrap_or(wgc::resource::SamplerDescriptor::default().lod_max_clamp),
-    compare: args.compare.as_ref().map(serialize_compare_function),
+    compare: args
+      .compare
+      .as_ref()
+      .map(|compare| serialize_compare_function(compare)),
     anisotropy_clamp: std::num::NonZeroU8::new(
       args.max_anisotropy.unwrap_or(0),
     ),

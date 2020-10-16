@@ -157,7 +157,7 @@ pub fn op_webgpu_create_texture(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::TextureDescriptor {
-    label: args.label.map(|label| Cow::Owned(label)),
+    label: args.label.map(Cow::Owned),
     size: wgt::Extent3d {
       width: args.size.width,
       height: args.size.height,
@@ -223,11 +223,9 @@ pub fn op_webgpu_create_texture_view(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgc::resource::TextureViewDescriptor {
-    label: args.label.map(|label| Cow::Owned(label)),
+    label: args.label.map(Cow::Owned),
     format: args.format.map(serialize_texture_format).transpose()?,
-    dimension: args
-      .dimension
-      .map(|dimension| serialize_dimension(dimension)),
+    dimension: args.dimension.map(serialize_dimension),
     aspect: match args.aspect {
       Some(aspect) => match aspect.as_str() {
         "all" => wgt::TextureAspect::All,
