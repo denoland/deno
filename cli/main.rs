@@ -51,7 +51,7 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
-pub mod tsc2;
+mod tsc2;
 mod tsc_config;
 mod upgrade;
 mod version;
@@ -181,7 +181,7 @@ async fn info_command(
       program_state.maybe_import_map.clone(),
     );
     builder.insert(&specifier).await?;
-    let graph = builder.get_graph(&program_state.lockfile)?;
+    let graph = builder.get_graph(&program_state.lockfile);
     let info = graph.info()?;
 
     if json {
@@ -323,7 +323,7 @@ async fn bundle_command(
       program_state.maybe_import_map.clone(),
     );
     builder.insert(&module_specifier).await?;
-    let graph = builder.get_graph(&program_state.lockfile)?;
+    let graph = builder.get_graph(&program_state.lockfile);
 
     let (s, stats, maybe_ignored_options) =
       graph.bundle(module_graph2::BundleOptions {

@@ -107,8 +107,9 @@ impl DiskCache {
       }
       scheme => {
         unimplemented!(
-          "Don't know how to create cache name for scheme: {}",
-          scheme
+          "Don't know how to create cache name for scheme: {}\n  Url: {}",
+          scheme,
+          url
         );
       }
     };

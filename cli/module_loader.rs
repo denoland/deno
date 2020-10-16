@@ -92,11 +92,10 @@ impl ModuleLoader for CliModuleLoader {
       state.borrow::<Arc<ProgramState>>().clone()
     };
 
-    // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
+    // TODO(@kitsonk) this shouldn't be async
     let fut = async move {
       let compiled_module = program_state
-        .fetch_compiled_module(module_specifier, maybe_referrer)
-        .await?;
+        .fetch_compiled_module(module_specifier, maybe_referrer)?;
       Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
         // due to redirections.
@@ -114,7 +113,7 @@ impl ModuleLoader for CliModuleLoader {
     op_state: Rc<RefCell<OpState>>,
     _load_id: ModuleLoadId,
     module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<String>,
+    _maybe_referrer: Option<String>,
     is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     let module_specifier = module_specifier.clone();
@@ -133,24 +132,13 @@ impl ModuleLoader for CliModuleLoader {
     let program_state = state.borrow::<Arc<ProgramState>>().clone();
     drop(state);
 
-    // TODO(bartlomieju): I'm not sure if it's correct to ignore
-    // bad referrer - this is the case for `Deno.core.evalContext()` where
-    // `ref_str` is `<unknown>`.
-    let maybe_referrer = if let Some(ref_str) = maybe_referrer {
-      ModuleSpecifier::resolve_url(&ref_str).ok()
-    } else {
-      None
-    };
-
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
       program_state
         .prepare_module_load(
           module_specifier,
-          maybe_referrer,
           target_lib,
           permissions,
-          is_dyn_import,
           maybe_import_map,
         )
         .await
