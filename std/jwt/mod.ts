@@ -29,7 +29,7 @@ export interface PayloadObject {
 export type Payload = PayloadObject | string;
 
 /*
- * JWS §4.1.1: The "alg" value is a case-sensitive ASCII string containing a 
+ * JWS §4.1.1: The "alg" value is a case-sensitive ASCII string containing a
  * StringOrURI value. This Header Parameter MUST be present and MUST be
  * understood and processed by implementations.
  */
@@ -55,7 +55,6 @@ export function setExpiration(exp: number | Date): number {
     (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
   );
 }
-
 
 function tryToParsePayload(input: string) {
   try {
@@ -97,21 +96,29 @@ export function decode(
 
 export type TokenObject = {
   header: Header;
-  payload: PayloadObject | string;
+  payload: unknown;
   signature: string;
 };
 
 /*
  * @param object
  */
-export function isTokenObject(object: TokenObject): object is TokenObject {
-  return (
-    typeof object?.signature === "string" &&
-    typeof object?.header?.alg === "string" &&
-    (typeof object?.payload === "object" && object?.payload?.exp
-      ? typeof object.payload.exp === "number"
-      : true)
-  );
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isTokenObject(object: any): object is TokenObject {
+  if (
+    !(
+      typeof object?.signature === "string" &&
+      typeof object?.header?.alg === "string"
+    )
+  ) {
+    throw new Error(`jwt is invalid`);
+  }
+  if (
+    typeof object?.payload?.exp === "number" && isExpired(object.payload.exp)
+  ) {
+    throw RangeError("jwt is expired");
+  }
+  return true;
 }
 
 /*
@@ -127,54 +134,45 @@ export async function verify(
     algorithm = "HS512",
   }: {
     algorithm?: Algorithm | Array<Exclude<Algorithm, "none">>;
-  } = {} ,
-): Promise<Payload> {
-  const obj = decode(jwt) as TokenObject;
+  } = {},
+): Promise<unknown> {
+  const obj = decode(jwt);
 
-  if (!isTokenObject(obj)) {
-    throw new Error(`jwt is invalid`);
+  if (isTokenObject(obj)) {
+    if (!verifyAlgorithm(algorithm, obj.header.alg)) {
+      throw new Error(`algorithms do not match`);
+    }
+
+    const { header, payload, signature } = obj;
+
+    /*
+     * JWS §4.1.11: The "crit" (critical) Header Parameter indicates that
+     * extensions to this specification and/or [JWA] are being used that MUST be
+     * understood and processed.
+     */
+    if ("crit" in obj.header) {
+      throw new Error(
+        "implementation does not process 'crit' header parameter",
+      );
+    }
+
+    if (
+      !(await verifySignature({
+        signature,
+        key,
+        alg: header.alg,
+        signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
+      }))
+    ) {
+      throw new Error("signatures do not match");
+    }
+
+    return payload;
   }
-
-  if (
-    obj?.payload !== null &&
-    typeof obj?.payload === "object" &&
-    "exp" in obj.payload &&
-    isExpired(obj.payload.exp!, 1)
-  ) {
-    throw RangeError("jwt is expired");
-  }
-
-  if (!verifyAlgorithm(algorithm, obj.header.alg)) {
-    throw new Error(`algorithms do not match`);
-  }
-
-  const { header, payload, signature } = obj;
-
-  /*
-   * JWS §4.1.11: The "crit" (critical) Header Parameter indicates that 
-   * extensions to this specification and/or [JWA] are being used that MUST be
-   * understood and processed.
-   */
-  if ("crit" in obj.header) {
-    throw new Error("implementation does not process 'crit' header parameter");
-  }
-
-  if (
-    !(await verifySignature({
-      signature,
-      key,
-      alg: header.alg,
-      signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
-    }))
-  ) {
-    throw new Error("signatures do not match");
-  }
-
-  return payload;
 }
 
 /*
- * JSW §7.1: The JWS Compact Serialization represents digitally signed or MACed 
+ * JSW §7.1: The JWS Compact Serialization represents digitally signed or MACed
  * content as a compact, URL-safe string. This string is:
  *       BASE64URL(UTF8(JWS Protected Header)) || '.' ||
  *       BASE64URL(JWS Payload) || '.' ||

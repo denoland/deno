@@ -36,12 +36,18 @@ Deno.test("[jwt] isTokenObject", function () {
     }),
   );
 
-  // @ts-ignore */
-  assertEquals(isTokenObject("invalid"), false);
-  // @ts-ignore */
-  assertEquals(isTokenObject({ header: "invalid" }), false);
-  // @ts-ignore */
-  assertEquals(isTokenObject({ signature: 123 }), false);
+  assertThrows(() => {
+    // @ts-ignore */
+    isTokenObject("invalid");
+  }, Error);
+  assertThrows(() => {
+    // @ts-ignore */
+    isTokenObject({ header: "invalid" });
+  }, Error);
+  assertThrows(() => {
+    // @ts-ignore */
+    isTokenObject({ signature: 123 });
+  }, Error);
 });
 
 Deno.test("[jwt] create", async function () {
@@ -81,15 +87,9 @@ Deno.test("[jwt] verify", async function () {
     }),
     "abc",
   );
-  await assertEquals(
-    await verify(await create("null", key), key),
-    null,
-  );
+  await assertEquals(await verify(await create("null", key), key), null);
 
-  await assertEquals(
-    await verify(await create("true", key), key),
-    true,
-  );
+  await assertEquals(await verify(await create("true", key), key), true);
 
   assertEquals(
     await verify(
@@ -101,18 +101,13 @@ Deno.test("[jwt] verify", async function () {
     ),
     payload,
   );
-  await assertEquals(
-    await verify(await create({}, key), key),
-    {},
-  );
-  await assertEquals(
-    await verify(await create("[]", key), key),
-    [],
-  );
-  await assertEquals(
-    await verify(await create(`["a", 1, true]`, key), key),
-    ["a", 1, true],
-  );
+  await assertEquals(await verify(await create({}, key), key), {});
+  await assertEquals(await verify(await create("[]", key), key), []);
+  await assertEquals(await verify(await create(`["a", 1, true]`, key), key), [
+    "a",
+    1,
+    true,
+  ]);
 
   await assertThrowsAsync(async () => {
     // @ts-ignore */
