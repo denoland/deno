@@ -434,12 +434,13 @@ export function assertNotMatch(
  * If not, then throw.
  */
 export function assertObjectMatch(
-  actual: object,
-  expected: object,
+  actual: { [key: string]: unknown },
+  expected: { [key: string]: unknown },
 ): void {
+  type loose = { [key: string]: unknown };
   const seen = new WeakMap();
   return assertEquals(
-    (function filter(a: object, b: object): object {
+    (function filter(a: loose, b: loose): loose {
       // Prevent infinite loop with circular references with same filter
       if ((seen.has(a)) && (seen.get(a) === b)) {
         return a;
@@ -447,14 +448,14 @@ export function assertObjectMatch(
       seen.set(a, b);
       // Iterate through keys present in both actual and expected
       // and filter recursively on object references
-      const filtered = {} as { [key: string]: unknown };
+      const filtered = {} as loose;
       for (
         const [key, value] of Object.entries(a).filter(([key]) => key in b)
       ) {
         if (typeof value === "object") {
-          const subset = (b as { [key: string]: unknown })[key];
+          const subset = (b as loose)[key];
           if ((typeof subset === "object") && (subset)) {
-            filtered[key] = filter(value, subset);
+            filtered[key] = filter(value as loose, subset as loose);
             continue;
           }
         }
