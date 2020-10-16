@@ -124,6 +124,10 @@ impl ErrorBuffer {
   pub fn new() -> Self {
     Self(Arc::new(RwLock::new(Vec::new())))
   }
+
+  pub fn has_error(&self) -> bool {
+    !self.0.read().unwrap().is_empty()
+  }
 }
 
 impl Emitter for ErrorBuffer {
@@ -352,15 +356,30 @@ pub fn parse(
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
 
+  let error_buffer_ = error_buffer.clone();
+  let handler_ = &handler;
+
   let sm = &source_map;
   let module = parser.parse_module().map_err(move |err| {
-    let mut diagnostic = err.into_diagnostic(&handler);
-    diagnostic.emit();
+    err.into_diagnostic(handler_).emit();
 
-    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
+    DiagnosticBuffer::from_error_buffer(error_buffer_, |span| {
       sm.lookup_char_pos(span.lo)
     })
   })?;
+
+  for err in parser.take_errors() {
+    err.into_diagnostic(&handler).emit();
+  }
+
+  if error_buffer.has_error() {
+    let diagnostic_buffer =
+      DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
+        sm.lookup_char_pos(span.lo)
+      });
+    return Err(diagnostic_buffer.into());
+  }
+
   let leading_comments =
     comments.with_leading(module.span.lo, |comments| comments.to_vec());
 
