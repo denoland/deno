@@ -168,8 +168,7 @@ pub fn op_webgpu_create_compute_pipeline(
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?
-    .clone();
+    .ok_or_else(bad_resource_id)?;
 
   let device = *state
     .resource_table
@@ -356,8 +355,7 @@ pub fn op_webgpu_create_render_pipeline(
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?
-    .clone();
+    .ok_or_else(bad_resource_id)?;
   let device = *state
     .resource_table
     .get::<wgc::id::DeviceId>(args.device_rid)

@@ -164,8 +164,7 @@ pub fn op_webgpu_compute_pass_end_pass(
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?
-    .clone();
+    .ok_or_else(bad_resource_id)?;
   let command_encoder = *state
     .resource_table
     .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)

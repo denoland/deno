@@ -144,8 +144,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
   let instance = state
     .resource_table
     .get::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?
-    .clone();
+    .ok_or_else(bad_resource_id)?;
 
   let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,

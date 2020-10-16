@@ -112,22 +112,13 @@ pub async fn op_webgpu_buffer_get_map_async(
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
   let boxed_sender = Box::new(sender);
-  let sender_ptr = Box::into_raw(boxed_sender);
-  let sender_ptr = unsafe {
-    std::mem::transmute::<*mut oneshot::Sender<Result<(), AnyError>>, *mut u8>(
-      sender_ptr,
-    )
-  };
+  let sender_ptr = Box::into_raw(boxed_sender) as *mut u8;
 
   extern "C" fn buffer_map_future_wrapper(
     status: wgc::resource::BufferMapAsyncStatus,
     user_data: *mut u8,
   ) {
-    let sender_ptr = unsafe {
-      std::mem::transmute::<*mut u8, *mut oneshot::Sender<Result<(), AnyError>>>(
-        user_data,
-      )
-    };
+    let sender_ptr = user_data as *mut oneshot::Sender<Result<(), AnyError>>;
     let boxed_sender = unsafe { Box::from_raw(sender_ptr) };
     boxed_sender
       .send(match status {
