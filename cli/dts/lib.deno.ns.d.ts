@@ -1226,7 +1226,7 @@ declare namespace Deno {
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
-   *  encoded string. Reading a directory returns an empty string.
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = Deno.readTextFileSync("hello.txt");
@@ -1237,7 +1237,7 @@ declare namespace Deno {
   export function readTextFileSync(path: string | URL): string;
 
   /** Asynchronously reads and returns the entire contents of a file as utf8
-   *  encoded string. Reading a directory returns an empty string.
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = await Deno.readTextFile("hello.txt");
