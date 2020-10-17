@@ -6,56 +6,57 @@ Create and verify JSON Web Tokens.
 
 ### create
 
-Takes a `payload`, `key` and `header` and returns the url-safe encoded `jwt`.
+Takes a `payload`, `key` and `header` and returns the url-safe encoded `token`.
 
 ```typescript
-import { create } from "https://deno.land/std/jwt/mod.ts";
+import { create } from "https://deno.land/std/token/mod.ts";
 
 const payload = { foo: "bar" };
 const key = "secret";
 
-const jwt = await create(payload, key); // eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ
+const token = await create(payload, key); // eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ
 ```
 
 **Specific algorithm**
 
 ```typescript
-const jwt = await create(payload, key, { header: { alg: "HS256" } });
+const token = await create(payload, key, { header: { alg: "HS256" } });
 ```
 
 ### verify
 
-Takes a `jwt`, `key` and an optional `options` object and returns the `payload`
-of the `jwt` if the `jwt` is valid. Otherwise it throws an `Error`.
+Takes a `token`, `key` and an optional `options` object and returns the
+`payload` of the `token` if the `token` is valid. Otherwise it throws an
+`Error`.
 
 ```typescript
-import { verify } from "https://deno.land/std/jwt/mod.ts";
+import { verify } from "https://deno.land/std/token/mod.ts";
 
-const jwt =
+const token =
   "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ";
 const key = "secret";
 
-const payload = await verify(jwt, key); // { foo: "bar" }
+const payload = await verify(token, key); // { foo: "bar" }
 ```
 
 **Specific algorithm**
 
 ```ts
-const payload = await verify(jwt, key, { algorithm: "HS256" });
+const payload = await verify(token, key, { algorithm: "HS256" });
 ```
 
 ### decode
 
-Takes a `jwt` to return an object with the `header`, `payload` and `signature`
-properties if the `jwt` is valid. Otherwise it throws an `Error`.
+Takes a `token` to return an object with the `header`, `payload` and `signature`
+properties if the `token` is valid. Otherwise it throws an `Error`.
 
 ```typescript
-import { decode } from "https://deno.land/std/jwt/mod.ts";
+import { decode } from "https://deno.land/std/token/mod.ts";
 
-const jwt =
+const token =
   "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ";
 
-const { payload, signature, header } = await decode(jwt); // { header: { alg: "HS512", typ: "JWT" }, payload: { foo: "bar" }, signature: "e22f90d58d280d9ba72e06a8ae4a9b60d70d7e7e4281d178f54bc9edd510e0655342fa6c30b1c00646415a9f6c821cb7a953ac79cea139cbb84676c5912df4cd" }
+const { payload, signature, header } = await decode(token); // { header: { alg: "HS512", typ: "JWT" }, payload: { foo: "bar" }, signature: "e22f90d58d280d9ba72e06a8ae4a9b60d70d7e7e4281d178f54bc9edd510e0655342fa6c30b1c00646415a9f6c821cb7a953ac79cea139cbb84676c5912df4cd" }
 ```
 
 ## Expiration
@@ -67,7 +68,7 @@ date/time is before the expiration date/time listed in the **exp** claim.
 
 ```typescript
 const oneHour = 60 * 60;
-const jwt = await create({ exp: Date.now() + oneHour }, "secret");
+const token = await create({ exp: Date.now() + oneHour }, "secret");
 ```
 
 ## Algorithms
