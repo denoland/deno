@@ -86,26 +86,24 @@ export function decode(
           return convertUint8ArrayToHex(uint8Array);
       }
       throw TypeError("The serialization is invalid.");
-    }) as [any, any, any];
+    });
 
   const [header, payload, signature] = parsedArray;
 
   if (
     !(
       (typeof signature === "string" &&
-        typeof (header as Header)?.alg === "string") &&
-      (typeof (payload as Payload) === "object" &&
-          (payload as PayloadObject)?.exp !== undefined
-        ? typeof (payload as PayloadObject).exp === "number"
-        : true)
+          typeof header?.alg === "string") && payload?.exp !== undefined
+        ? typeof payload.exp === "number"
+        : true
     )
   ) {
     throw new Error(`The token is invalid.`);
   }
 
   if (
-    typeof (payload as PayloadObject)?.exp === "number" &&
-    isExpired((payload as PayloadObject).exp!)
+    typeof payload?.exp === "number" &&
+    isExpired(payload.exp)
   ) {
     throw RangeError("The token is expired.");
   }
