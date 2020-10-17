@@ -170,16 +170,6 @@ pub struct HttpBody {
   pos: usize,
 }
 
-impl HttpBody {
-  pub fn from(body: Response) -> Self {
-    Self {
-      response: body,
-      chunk: None,
-      pos: 0,
-    }
-  }
-}
-
 impl AsyncRead for HttpBody {
   fn poll_read(
     self: Pin<&mut Self>,

@@ -76,7 +76,8 @@ for await (const req of s) {
 You can find a more in depth introduction, examples, and environment setup
 guides in the [manual](https://deno.land/manual).
 
-More in-depth info can be found in the runtime [documentation](doc.deno.land).
+More in-depth info can be found in the runtime
+[documentation](https://doc.deno.land).
 
 ### Contributing
 

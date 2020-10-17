@@ -9,28 +9,27 @@ extern crate log;
 
 mod ast;
 mod checksum;
-pub mod colors;
+mod colors;
 mod coverage;
-pub mod deno_dir;
-pub mod diagnostics;
+mod deno_dir;
+mod diagnostics;
 mod diff;
 mod disk_cache;
-pub mod errors;
+mod errors;
 mod file_fetcher;
 mod file_watcher;
-pub mod flags;
+mod flags;
 mod flags_allow_net;
 mod fmt;
-pub mod fmt_errors;
+mod fmt_errors;
 mod fs;
-pub mod global_state;
 mod global_timer;
-pub mod http_cache;
+mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
 mod inspector;
-pub mod installer;
+mod installer;
 mod js;
 mod lint;
 mod lockfile;
@@ -38,32 +37,34 @@ mod media_type;
 mod metrics;
 mod module_graph;
 mod module_graph2;
+mod module_loader;
 mod op_fetch_asset;
-pub mod ops;
-pub mod permissions;
+mod ops;
+mod permissions;
+mod program_state;
 mod repl;
-pub mod resolve_addr;
-pub mod signal;
-pub mod source_maps;
+mod resolve_addr;
+mod signal;
+mod source_maps;
 mod specifier_handler;
-pub mod state;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
+pub mod tsc2;
 mod tsc_config;
 mod upgrade;
-pub mod version;
-pub mod worker;
+mod version;
+mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::fs as deno_fs;
-use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -77,10 +78,10 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
-use global_state::exit_unstable;
 use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
+use program_state::exit_unstable;
 use std::cell::RefCell;
 use std::env;
 use std::io::Read;
@@ -113,7 +114,7 @@ where
 }
 
 fn print_cache_info(
-  state: &Arc<GlobalState>,
+  state: &Arc<ProgramState>,
   json: bool,
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
@@ -167,19 +168,19 @@ async fn info_command(
   if json && !flags.unstable {
     exit_unstable("--json");
   }
-  let global_state = GlobalState::new(flags)?;
+  let program_state = ProgramState::new(flags)?;
   if let Some(specifier) = maybe_specifier {
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
     let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
-      &global_state,
+      &program_state,
       Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(
       handler,
-      global_state.maybe_import_map.clone(),
+      program_state.maybe_import_map.clone(),
     );
     builder.insert(&specifier).await?;
-    let graph = builder.get_graph(&global_state.lockfile)?;
+    let graph = builder.get_graph(&program_state.lockfile)?;
     let info = graph.info()?;
 
     if json {
@@ -190,7 +191,7 @@ async fn info_command(
     Ok(())
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&global_state, json)
+    print_cache_info(&program_state, json)
   }
 }
 
@@ -202,9 +203,9 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let program_state = ProgramState::new(flags.clone())?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  let mut worker = MainWorker::new(&program_state, main_module.clone());
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
@@ -235,12 +236,12 @@ async fn cache_command(
 ) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$cache.ts").unwrap();
-  let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  let program_state = ProgramState::new(flags)?;
+  let mut worker = MainWorker::new(&program_state, main_module.clone());
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
-    // TODO(bartlomieju): don't use `preload_module` in favor of calling "GlobalState::prepare_module_load()"
+    // TODO(bartlomieju): don't use `preload_module` in favor of calling "ProgramState::prepare_module_load()"
     // explicitly? Seems wasteful to create multiple worker just to run TS compiler
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
@@ -257,8 +258,8 @@ async fn eval_command(
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
-  let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  let program_state = ProgramState::new(flags)?;
+  let mut worker = MainWorker::new(&program_state, main_module.clone());
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -281,7 +282,7 @@ async fn eval_command(
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
-  global_state
+  program_state
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
   debug!("main_module {}", &main_module);
@@ -300,7 +301,7 @@ async fn bundle_command(
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
-  let global_state = GlobalState::new(flags)?;
+  let program_state = ProgramState::new(flags)?;
 
   info!(
     "{} {}",
@@ -308,9 +309,9 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = global_state
+  let output = program_state
     .ts_compiler
-    .bundle(&global_state, module_specifier)
+    .bundle(&program_state, module_specifier)
     .await?;
 
   debug!(">>>>> bundle END");
@@ -391,12 +392,12 @@ async fn doc_command(
   maybe_filter: Option<String>,
   private: bool,
 ) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let program_state = ProgramState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   let loader = Box::new(DocLoader {
-    fetcher: global_state.file_fetcher.clone(),
-    maybe_import_map: global_state.maybe_import_map.clone(),
+    fetcher: program_state.file_fetcher.clone(),
+    maybe_import_map: program_state.maybe_import_map.clone(),
   });
   let doc_parser = doc::DocParser::new(loader, private);
 
@@ -455,18 +456,18 @@ async fn doc_command(
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
-  let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  let program_state = ProgramState::new(flags)?;
+  let mut worker = MainWorker::new(&program_state, main_module.clone());
   worker.run_event_loop().await?;
 
-  repl::run(&global_state, worker).await
+  repl::run(&program_state, worker).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let program_state = ProgramState::new(flags.clone())?;
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
-  let mut worker = MainWorker::new(&global_state.clone(), main_module.clone());
+  let mut worker = MainWorker::new(&program_state.clone(), main_module.clone());
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -481,7 +482,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
-  global_state
+  program_state
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
 
@@ -495,11 +496,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let global_state = GlobalState::new(flags.clone())?;
+  let program_state = ProgramState::new(flags.clone())?;
 
   let mut module_graph_loader = module_graph::ModuleGraphLoader::new(
-    global_state.file_fetcher.clone(),
-    global_state.maybe_import_map.clone(),
+    program_state.file_fetcher.clone(),
+    program_state.maybe_import_map.clone(),
     Permissions::allow_all(),
     false,
     false,
@@ -515,7 +516,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .map(|url| url.to_file_path().unwrap())
     .collect();
 
-  if let Some(import_map) = global_state.flags.import_map_path.clone() {
+  if let Some(import_map) = program_state.flags.import_map_path.clone() {
     paths_to_watch.push(
       Url::parse(&format!("file://{}", &import_map))?
         .to_file_path()
@@ -525,9 +526,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func(&paths_to_watch, move || {
-    // FIXME(bartlomieju): GlobalState must be created on each restart - otherwise file fetcher
+    // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
     // will use cached source files
-    let gs = GlobalState::new(flags.clone()).unwrap();
+    let gs = ProgramState::new(flags.clone()).unwrap();
     let main_module = main_module.clone();
     async move {
       let mut worker = MainWorker::new(&gs, main_module.clone());
@@ -554,8 +555,8 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   }
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let global_state = GlobalState::new(flags.clone())?;
-  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  let program_state = ProgramState::new(flags.clone())?;
+  let mut worker = MainWorker::new(&program_state, main_module.clone());
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -572,7 +573,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
+  let program_state = ProgramState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
@@ -596,7 +597,7 @@ async fn test_command(
   );
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker = MainWorker::new(&global_state, main_module.clone());
+  let mut worker = MainWorker::new(&program_state, main_module.clone());
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
@@ -607,7 +608,7 @@ async fn test_command(
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
-  global_state
+  program_state
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
 
@@ -783,7 +784,6 @@ pub fn main() {
     } => {
       upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
     }
-    _ => unreachable!(),
   };
 
   let result = tokio_util::run_basic(fut);

@@ -213,7 +213,7 @@ export default class Buffer extends Uint8Array {
     if (typeof value == "string") {
       encoding = checkEncoding(encoding, false);
       if (encoding === "hex") return new Buffer(hex.decodeString(value).buffer);
-      if (encoding === "base64") return new Buffer(base64.decode(value));
+      if (encoding === "base64") return new Buffer(base64.decode(value).buffer);
       return new Buffer(new TextEncoder().encode(value).buffer);
     }
 

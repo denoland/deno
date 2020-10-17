@@ -1572,6 +1572,16 @@ itest!(_017_import_redirect {
   output: "017_import_redirect.ts.out",
 });
 
+itest!(_017_import_redirect_nocheck {
+  args: "run --quiet --reload --no-check 017_import_redirect.ts",
+  output: "017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_info {
+  args: "info --quiet --reload 017_import_redirect.ts",
+  output: "017_import_redirect_info.out",
+});
+
 itest!(_018_async_catch {
   args: "run --quiet --reload 018_async_catch.ts",
   output: "018_async_catch.ts.out",
@@ -1644,6 +1654,12 @@ itest!(deno_test_no_check {
   args: "test --no-check test_runner_test.ts",
   exit_code: 1,
   output: "deno_test.out",
+});
+
+itest!(deno_test_unresolved_promise {
+  args: "test test_unresolved_promise.js",
+  exit_code: 1,
+  output: "deno_test_unresolved_promise.out",
 });
 
 #[test]
@@ -1916,6 +1932,17 @@ itest!(_065_import_map_info {
     "info --quiet --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "065_import_map_info.out",
 });
+
+#[cfg(unix)]
+#[test]
+fn _066_prompt() {
+  let args = "run --unstable 066_prompt.ts";
+  let output = "066_prompt.ts.out";
+  // These are answers to prompt, confirm, and alert calls.
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\n\n\n";
+
+  util::test_pty(args, output, input);
+}
 
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
@@ -2407,6 +2434,28 @@ itest!(wasm_streaming {
 itest!(wasm_unreachable {
   args: "run wasm_unreachable.js",
   output: "wasm_unreachable.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_order {
+  args: "run --allow-read top_level_await_order.js",
+  output: "top_level_await_order.out",
+});
+
+itest!(top_level_await_loop {
+  args: "run --allow-read top_level_await_loop.js",
+  output: "top_level_await_loop.out",
+});
+
+itest!(top_level_await_circular {
+  args: "run --allow-read top_level_await_circular.js",
+  output: "top_level_await_circular.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_unresolved {
+  args: "run top_level_await_unresolved.js",
+  output: "top_level_await_unresolved.out",
   exit_code: 1,
 });
 

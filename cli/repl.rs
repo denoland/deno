@@ -1,21 +1,26 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::global_state::GlobalState;
+use crate::colors;
 use crate::inspector::InspectorSession;
+use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
 use crate::worker::Worker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use regex::Captures;
+use regex::Regex;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Context;
 use rustyline::Editor;
-use rustyline_derive::{Helper, Highlighter, Hinter};
+use rustyline_derive::{Helper, Hinter};
+use std::borrow::Cow;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
 use std::sync::mpsc::Receiver;
@@ -26,11 +31,12 @@ use std::sync::Mutex;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
-#[derive(Helper, Highlighter, Hinter)]
+#[derive(Helper, Hinter)]
 struct Helper {
   context_id: u64,
   message_tx: SyncSender<(String, Option<Value>)>,
   response_rx: Receiver<Result<Value, AnyError>>,
+  highlighter: LineHighlighter,
   validator: MatchingBracketValidator,
 }
 
@@ -116,6 +122,82 @@ impl Validator for Helper {
   }
 }
 
+impl Highlighter for Helper {
+  fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+    hint.into()
+  }
+
+  fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
+    self.highlighter.highlight(line, pos)
+  }
+
+  fn highlight_candidate<'c>(
+    &self,
+    candidate: &'c str,
+    _completion: rustyline::CompletionType,
+  ) -> Cow<'c, str> {
+    self.highlighter.highlight(candidate, 0)
+  }
+
+  fn highlight_char(&self, line: &str, _: usize) -> bool {
+    !line.is_empty()
+  }
+}
+
+struct LineHighlighter {
+  regex: Regex,
+}
+
+impl LineHighlighter {
+  fn new() -> Self {
+    let regex = Regex::new(
+      r#"(?x)
+      (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
+      (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
+      (?P<regexp>/(?:(?:\\/|[^\n/]))*?/[gimsuy]*) |
+      (?P<number>\d+(?:\.\d+)*(?:e[+-]?\d+)*n?) |
+      (?P<boolean>\b(?:true|false)\b) |
+      (?P<null>\b(?:null)\b) |
+      (?P<undefined>\b(?:undefined)\b) |
+      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch)\b) |
+      "#,
+      )
+      .unwrap();
+
+    Self { regex }
+  }
+}
+
+impl Highlighter for LineHighlighter {
+  fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
+    self
+      .regex
+      .replace_all(&line.to_string(), |caps: &Captures<'_>| {
+        if let Some(cap) = caps.name("comment") {
+          format!("{}", colors::gray(cap.as_str()))
+        } else if let Some(cap) = caps.name("string") {
+          format!("{}", colors::green(cap.as_str()))
+        } else if let Some(cap) = caps.name("regexp") {
+          format!("{}", colors::red(cap.as_str()))
+        } else if let Some(cap) = caps.name("number") {
+          format!("{}", colors::yellow(cap.as_str()))
+        } else if let Some(cap) = caps.name("boolean") {
+          format!("{}", colors::yellow(cap.as_str()))
+        } else if let Some(cap) = caps.name("null") {
+          format!("{}", colors::yellow(cap.as_str()))
+        } else if let Some(cap) = caps.name("undefined") {
+          format!("{}", colors::gray(cap.as_str()))
+        } else if let Some(cap) = caps.name("keyword") {
+          format!("{}", colors::cyan(cap.as_str()))
+        } else {
+          caps[0].to_string()
+        }
+      })
+      .to_string()
+      .into()
+  }
+}
+
 async fn post_message_and_poll(
   worker: &mut Worker,
   session: &mut InspectorSession,
@@ -179,13 +261,63 @@ async fn read_line_and_poll(
   }
 }
 
+static PRELUDE: &str = r#"
+Object.defineProperty(globalThis, "_", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastEvalResult,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+   console.log("Last evaluation result is no longer saved to _.");
+  },
+});
+
+Object.defineProperty(globalThis, "_error", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastThrownError,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_error", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+
+   console.log("Last thrown error is no longer saved to _error.");
+  },
+});
+"#;
+
+async fn inject_prelude(
+  worker: &mut MainWorker,
+  session: &mut InspectorSession,
+  context_id: u64,
+) -> Result<(), AnyError> {
+  post_message_and_poll(
+    worker,
+    session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": PRELUDE,
+      "contextId": context_id,
+    })),
+  )
+  .await?;
+
+  Ok(())
+}
+
 pub async fn run(
-  global_state: &GlobalState,
+  program_state: &ProgramState,
   mut worker: MainWorker,
 ) -> Result<(), AnyError> {
   let mut session = worker.create_inspector_session();
 
-  let history_file = global_state.dir.root.join("deno_history.txt");
+  let history_file = program_state.dir.root.join("deno_history.txt");
 
   post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
     .await?;
@@ -216,6 +348,7 @@ pub async fn run(
     context_id,
     message_tx,
     response_rx,
+    highlighter: LineHighlighter::new(),
     validator: MatchingBracketValidator::new(),
   };
 
@@ -232,47 +365,7 @@ pub async fn run(
   println!("Deno {}", crate::version::DENO);
   println!("exit using ctrl+d or close()");
 
-  let prelude = r#"
-    Object.defineProperty(globalThis, "_", {
-      configurable: true,
-      get: () => Deno[Deno.internal].lastEvalResult,
-      set: (value) => {
-       Object.defineProperty(globalThis, "_", {
-         value: value,
-         writable: true,
-         enumerable: true,
-         configurable: true,
-       });
-       console.log("Last evaluation result is no longer saved to _.");
-      },
-    });
-
-    Object.defineProperty(globalThis, "_error", {
-      configurable: true,
-      get: () => Deno[Deno.internal].lastThrownError,
-      set: (value) => {
-       Object.defineProperty(globalThis, "_error", {
-         value: value,
-         writable: true,
-         enumerable: true,
-         configurable: true,
-       });
-
-       console.log("Last thrown error is no longer saved to _error.");
-      },
-    });
-  "#;
-
-  post_message_and_poll(
-    &mut *worker,
-    &mut session,
-    "Runtime.evaluate",
-    Some(json!({
-      "expression": prelude,
-      "contextId": context_id,
-    })),
-  )
-  .await?;
+  inject_prelude(&mut worker, &mut session, context_id).await?;
 
   loop {
     let line = read_line_and_poll(
@@ -386,18 +479,18 @@ pub async fn run(
         // consistent with the previous implementation we just get the preview result from
         // Deno.inspectArgs.
         let inspect_response =
-                  post_message_and_poll(
-                    &mut *worker,
-                    &mut session,
-                    "Runtime.callFunctionOn",
-                    Some(json!({
-                      "executionContextId": context_id,
-                      "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
-                      "arguments": [
-                        evaluate_result,
-                      ],
-                    })),
-                  ).await?;
+          post_message_and_poll(
+            &mut *worker,
+            &mut session,
+            "Runtime.callFunctionOn",
+            Some(json!({
+              "executionContextId": context_id,
+              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: !Deno.noColor }); }",
+              "arguments": [
+                evaluate_result,
+              ],
+            })),
+          ).await?;
 
         let inspect_result = inspect_response.get("result").unwrap();
 

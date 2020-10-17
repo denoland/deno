@@ -43,7 +43,6 @@ pub enum DenoSubcommand {
     files: Vec<String>,
     ignore: Vec<String>,
   },
-  Help,
   Info {
     json: bool,
     file: Option<String>,
