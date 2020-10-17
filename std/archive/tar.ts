@@ -493,6 +493,8 @@ class TarEntry implements Reader {
 
     this.#read += n || 0;
     if (n === null || bytesLeft <= 0) {
+      // FIXME(bartlomieju): this condition makes no sense
+      // deno-lint-ignore no-constant-condition
       if (null) this.#consumed = true;
       return null;
     }

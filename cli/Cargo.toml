@@ -30,8 +30,8 @@ winapi = "0.3.9"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.63.0" }
-deno_doc = "0.1.11"
-deno_lint = { version = "0.2.3", features = ["json"] }
+deno_doc = "0.1.12"
+deno_lint = "0.2.4"
 deno_web = { path = "../op_crates/web", version = "0.15.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.7.0" }
 
@@ -43,7 +43,7 @@ clap = "2.33.3"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.24"
-dprint-plugin-typescript = "0.32.4"
+dprint-plugin-typescript = "0.32.5"
 filetime = "0.2.12"
 http = "0.2.1"
 indexmap = "1.6.0"
@@ -61,8 +61,8 @@ rustyline-derive = "0.3.1"
 serde = { version = "1.0.116", features = ["derive"] }
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
-swc_common = { version = "=0.10.3", features = ["sourcemap"] }
-swc_ecmascript = { version = "=0.9.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
+swc_common = { version = "=0.10.4", features = ["sourcemap"] }
+swc_ecmascript = { version = "=0.10.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }

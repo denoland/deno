@@ -1530,7 +1530,6 @@ unitTest(function inspectGetters(): void {
 
   assertEquals(
     Deno.inspect({
-      // deno-lint-ignore getter-return
       get foo() {
         throw new Error("bar");
       },
