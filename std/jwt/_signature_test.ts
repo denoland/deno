@@ -38,7 +38,7 @@ Deno.test("[jwt] verify signature", async function () {
   const validSignature = await verifySignature({
     signature,
     key,
-    alg: header.alg,
+    algorithm: header.alg,
     signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
   });
 

@@ -9,11 +9,11 @@ export function convertHexToBase64url(input: string): string {
 }
 
 function encrypt(
-  alg: Algorithm,
+  algorithm: Algorithm,
   key: string,
   message: string,
 ): string {
-  switch (alg) {
+  switch (algorithm) {
     case "none":
       return "";
     case "HS256":
@@ -22,7 +22,7 @@ function encrypt(
       return new HmacSha512(key).update(message).toString();
     default:
       throw new RangeError(
-        `The algorithm of "${alg}" in the header is not supported.`,
+        `The algorithm of '${algorithm}' in the header is not supported.`,
       );
   }
 }
@@ -51,13 +51,13 @@ export async function create(
 export async function verify({
   signature,
   key,
-  alg,
+  algorithm,
   signingInput,
 }: {
   signature: string;
   key: string;
-  alg: Algorithm;
+  algorithm: Algorithm;
   signingInput: string;
 }): Promise<boolean> {
-  return signature === (await encrypt(alg, key, signingInput));
+  return signature === (await encrypt(algorithm, key, signingInput));
 }
