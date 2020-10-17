@@ -1,11 +1,11 @@
-import type { Algorithm, AlgorithmInput } from "./_algorithm.ts"
-import * as base64url from "../encoding/base64url.ts"
-import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts"
+import type { Algorithm, AlgorithmInput } from "./_algorithm.ts";
+import * as base64url from "../encoding/base64url.ts";
+import { encodeToString as convertUint8ArrayToHex } from "../encoding/hex.ts";
 import {
   create as createSignature,
   verify as verifySignature,
-} from "./_signature.ts"
-import { verify as verifyAlgorithm } from "./_algorithm.ts"
+} from "./_signature.ts";
+import { verify as verifyAlgorithm } from "./_algorithm.ts";
 
 /*
  * JWT §4.1: The following Claim Names are registered in the IANA
@@ -17,17 +17,17 @@ import { verify as verifyAlgorithm } from "./_algorithm.ts"
  * they are required or optional.
  */
 export interface PayloadObject {
-  iss?: string
-  sub?: string
-  aud?: string[] | string
-  exp?: number
-  nbf?: number
-  iat?: number
-  jti?: string
-  [key: string]: unknown
+  iss?: string;
+  sub?: string;
+  aud?: string[] | string;
+  exp?: number;
+  nbf?: number;
+  iat?: number;
+  jti?: string;
+  [key: string]: unknown;
 }
 
-export type Payload = PayloadObject | string
+export type Payload = PayloadObject | string;
 
 /*
  * JWS §4.1.1: The "alg" value is a case-sensitive ASCII string containing a
@@ -35,12 +35,12 @@ export type Payload = PayloadObject | string
  * understood and processed by implementations.
  */
 export interface Header {
-  alg: Algorithm
-  [key: string]: unknown
+  alg: Algorithm;
+  [key: string]: unknown;
 }
 
-const encoder = new TextEncoder()
-const decoder = new TextDecoder()
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 /*
  * JWT §4.1.4: Implementers MAY provide for some small leeway to account for
@@ -52,9 +52,9 @@ function isExpired(exp: number, leeway = 0): boolean {
 
 function tryToParsePayload(input: string): unknown {
   try {
-    return JSON.parse(input)
+    return JSON.parse(input);
   } catch {
-    return input
+    return input;
   }
 }
 
@@ -65,9 +65,9 @@ function tryToParsePayload(input: string): unknown {
 export function decode(
   token: string,
 ): {
-  header: Header
-  payload: unknown
-  signature: string
+  header: Header;
+  payload: unknown;
+  signature: string;
 } {
   const parsedArray = token
     .split(".")
@@ -88,7 +88,7 @@ export function decode(
       throw TypeError("The serialization is invalid.");
     }) as [any, any, any];
 
-  const [header, payload, signature] = parsedArray
+  const [header, payload, signature] = parsedArray;
 
   if (
     !(
@@ -118,8 +118,8 @@ export function decode(
 }
 
 export type VerifyOptions = {
-  algorithm?: AlgorithmInput
-}
+  algorithm?: AlgorithmInput;
+};
 
 /**
  * Verifies a token.
@@ -161,10 +161,10 @@ export async function verify(
   ) {
     throw new Error(
       "The token's signature does not match the verification signature.",
-    )
+    );
   }
 
-  return payload
+  return payload;
 }
 
 /*
@@ -175,15 +175,17 @@ export async function verify(
  *       BASE64URL(JWS Signature)
  */
 function createSigningInput(header: Header, payload: Payload): string {
-  return `${base64url.encode(
-    encoder.encode(JSON.stringify(header)),
-  )
-    }.${base64url.encode(
+  return `${
+    base64url.encode(
+      encoder.encode(JSON.stringify(header)),
+    )
+  }.${
+    base64url.encode(
       encoder.encode(
         typeof payload === "string" ? payload : JSON.stringify(payload),
       ),
     )
-    }`
+  }`;
 }
 
 /**
@@ -198,7 +200,7 @@ export async function create(
   {
     header = { alg: "HS512", typ: "JWT" },
   }: {
-    header?: Header
+    header?: Header;
   } = {},
 ): Promise<string> {
   const signingInput = createSigningInput(header, payload);
