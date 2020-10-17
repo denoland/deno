@@ -50,17 +50,6 @@ function isExpired(exp: number, leeway = 0): boolean {
   return exp + leeway < Date.now() / 1000;
 }
 
-/**
- * Helper function: createExpiration()
- * returns the number of seconds since January 1, 1970, 00:00:00 UTC
- * @param number in seconds or Date object
- */
-export function createExpiration(exp: number | Date): number {
-  return Math.round(
-    (exp instanceof Date ? exp.getTime() : Date.now() + exp * 1000) / 1000,
-  );
-}
-
 function tryToParsePayload(input: string): unknown {
   try {
     return JSON.parse(input);

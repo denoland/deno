@@ -1,4 +1,4 @@
-import { create, createExpiration, decode, Header, verify } from "./mod.ts";
+import { create, decode, Header, verify } from "./mod.ts";
 
 import {
   assertEquals,
@@ -109,13 +109,6 @@ Deno.test("[jwt] verify", async function () {
   );
 });
 
-Deno.test("[jwt] createExpiration", function () {
-  assertEquals(
-    createExpiration(10),
-    createExpiration(new Date(Date.now() + 10000)),
-  );
-});
-
 Deno.test("[jwt] decode", async function () {
   assertEquals(
     decode(
@@ -166,7 +159,7 @@ Deno.test("[jwt] expired token", async function () {
   const payload = {
     iss: "joe",
     jti: "123456789abc",
-    exp: createExpiration(-20000),
+    exp: Date.now() - 100,
   };
   const header: Header = {
     alg: "HS256",

@@ -60,27 +60,14 @@ const { payload, signature, header } = await decode(jwt); // { header: { alg: "H
 
 ## Expiration
 
-### setExpiration
-
-Takes either an `Date` object or a `number` (in seconds) as argument and returns
-the number of seconds since January 1, 1970, 00:00:00 UTC
-
-```typescript
-import { setExpiration } from "https://deno.land/std/jwt/mod.ts";
-
-// A specific date:
-setExpiration(new Date("2025-07-01"));
-// One hour from now:
-setExpiration(60 * 60);
-```
-
-The optional **exp** claim in the payload that identifies the expiration time on
-or after which the JWT must not be accepted for processing. This module checks
-if the current date/time is before the expiration date/time listed in the
-**exp** claim.
+The optional **exp** claim in the payload (number of seconds since January 1,
+1970, 00:00:00 UTC) that identifies the expiration time on or after which the
+JWT must not be accepted for processing. This module checks if the current
+date/time is before the expiration date/time listed in the **exp** claim.
 
 ```typescript
-const jwt = await create({ exp: setExpiration(60 * 60) }, "secret");
+const oneHour = 60 * 60;
+const jwt = await create({ exp: Date.now() + oneHour }, "secret");
 ```
 
 ## Algorithms
