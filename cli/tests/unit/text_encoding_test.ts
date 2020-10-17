@@ -104,10 +104,10 @@ unitTest(function textDecoderASCII(): void {
 unitTest(function textDecoderErrorEncoding(): void {
   let didThrow = false;
   try {
-    new TextDecoder("foo");
+    new TextDecoder("Foo");
   } catch (e) {
     didThrow = true;
-    assertEquals(e.message, "The encoding label provided ('foo') is invalid.");
+    assertEquals(e.message, "The encoding label provided ('Foo') is invalid.");
   }
   assert(didThrow);
 });
