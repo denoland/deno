@@ -51,6 +51,14 @@ impl Helper {
   }
 }
 
+fn is_word_boundary(c: char) -> bool {
+    if c == '.' {
+        false
+    } else {
+        char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+    }
+}
+
 impl Completer for Helper {
   type Candidate = String;
 
@@ -60,10 +68,21 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let fallback = format!(".{}", line);
+    let start = line[..pos]
+      .rfind(is_word_boundary)
+      .map_or_else(|| 0, |i| i);
+    let end = line[pos..]
+      .rfind(is_word_boundary)
+      .map_or_else(|| pos, |i| pos + i);
 
-    let (prefix, suffix) = match line.rfind('.') {
-      Some(index) => line.split_at(index),
+    let word = &line[start..end];
+    let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
+    let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
+
+    let fallback = format!(".{}", word);
+
+    let (prefix, suffix) = match word.rfind('.') {
+      Some(index) => word.split_at(index),
       None => ("globalThis", fallback.as_str()),
     };
 
