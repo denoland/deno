@@ -52,11 +52,11 @@ impl Helper {
 }
 
 fn is_word_boundary(c: char) -> bool {
-    if c == '.' {
-        false
-    } else {
-        char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
-    }
+  if c == '.' {
+    false
+  } else {
+    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  }
 }
 
 impl Completer for Helper {
@@ -68,9 +68,7 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let start = line[..pos]
-      .rfind(is_word_boundary)
-      .map_or_else(|| 0, |i| i);
+    let start = line[..pos].rfind(is_word_boundary).map_or_else(|| 0, |i| i);
     let end = line[pos..]
       .rfind(is_word_boundary)
       .map_or_else(|| pos, |i| pos + i);
