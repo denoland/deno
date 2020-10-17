@@ -6,6 +6,7 @@ import {
   verify as verifySignature,
 } from "./_signature.ts";
 import { verify as verifyAlgorithm } from "./_algorithm.ts";
+
 /*
  * JWT §4.1: The following Claim Names are registered in the IANA
  * "JSON Web Token Claims" registry established by Section 10.1. None of the
@@ -75,9 +76,9 @@ function tryToParsePayload(input: string): unknown {
 export function decode(
   jwt: string,
 ): {
-  header: unknown;
+  header: Header;
   payload: unknown;
-  signature: unknown;
+  signature: string;
 } {
   const parsedArray = jwt
     .split(".")
@@ -89,8 +90,25 @@ export function decode(
         ? tryToParsePayload(decoder.decode(uint8Array))
         : convertUint8ArrayToHex(uint8Array)
     );
+
   if (parsedArray.length !== 3) {
     throw TypeError("The serialization is invalid.");
+  }
+
+  if (
+    !(
+      typeof parsedArray[2] === "string" &&
+      typeof parsedArray[0]?.alg === "string"
+    )
+  ) {
+    throw new Error(`The jwt is invalid.`);
+  }
+
+  if (
+    typeof parsedArray[1]?.exp === "number" &&
+    isExpired(parsedArray[1].exp)
+  ) {
+    throw RangeError("The jwt is expired.");
   }
 
   return {
@@ -98,34 +116,6 @@ export function decode(
     payload: parsedArray[1],
     signature: parsedArray[2],
   };
-}
-
-export type TokenObject = {
-  header: Header;
-  payload: unknown;
-  signature: string;
-};
-
-/**
- * @param object
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isTokenObject(object: any): object is TokenObject {
-  if (
-    !(
-      typeof object?.signature === "string" &&
-      typeof object?.header?.alg === "string"
-    )
-  ) {
-    throw new Error(`The jwt is invalid.`);
-  }
-  if (
-    typeof object?.payload?.exp === "number" &&
-    isExpired(object.payload.exp)
-  ) {
-    throw RangeError("The jwt is expired.");
-  }
-  return true;
 }
 
 export type VerifyOptions = {
@@ -145,41 +135,39 @@ export async function verify(
 ): Promise<unknown> {
   const obj = decode(jwt);
 
-  if (isTokenObject(obj)) {
-    if (!verifyAlgorithm(algorithm, obj.header.alg)) {
-      throw new Error(
-        `The token's algorithm does not match the specified algorithm "${algorithm}".`,
-      );
-    }
-
-    const { header, payload, signature } = obj;
-
-    /*
-     * JWS §4.1.11: The "crit" (critical) Header Parameter indicates that
-     * extensions to this specification and/or [JWA] are being used that MUST be
-     * understood and processed.
-     */
-    if ("crit" in obj.header) {
-      throw new Error(
-        "The 'crit' header parameter is currently not supported by this library.",
-      );
-    }
-
-    if (
-      !(await verifySignature({
-        signature,
-        key,
-        alg: header.alg,
-        signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
-      }))
-    ) {
-      throw new Error(
-        "The token's signature does not match the verification signature.",
-      );
-    }
-
-    return payload;
+  if (!verifyAlgorithm(algorithm, obj.header.alg)) {
+    throw new Error(
+      `The token's algorithm does not match the specified algorithm "${algorithm}".`,
+    );
   }
+
+  const { header, payload, signature } = obj;
+
+  /*
+   * JWS §4.1.11: The "crit" (critical) Header Parameter indicates that
+   * extensions to this specification and/or [JWA] are being used that MUST be
+   * understood and processed.
+   */
+  if ("crit" in obj.header) {
+    throw new Error(
+      "The 'crit' header parameter is currently not supported by this library.",
+    );
+  }
+
+  if (
+    !(await verifySignature({
+      signature,
+      key,
+      alg: header.alg,
+      signingInput: jwt.slice(0, jwt.lastIndexOf(".")),
+    }))
+  ) {
+    throw new Error(
+      "The token's signature does not match the verification signature.",
+    );
+  }
+
+  return payload;
 }
 
 /*

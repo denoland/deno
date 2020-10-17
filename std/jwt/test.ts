@@ -1,14 +1,6 @@
-import {
-  create,
-  createExpiration,
-  decode,
-  Header,
-  isTokenObject,
-  verify,
-} from "./mod.ts";
+import { create, createExpiration, decode, Header, verify } from "./mod.ts";
 
 import {
-  assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
@@ -21,34 +13,7 @@ const header: Header = {
 const payload = {
   name: "John Doe",
 };
-const signature = "abc";
-const exp = createExpiration(new Date("2035-07-01"));
 const key = "your-secret";
-
-Deno.test("[jwt] isTokenObject", function () {
-  assert(isTokenObject({ header, payload, signature }));
-  assert(isTokenObject({ header, payload: "payloadAsString", signature }));
-  assert(
-    isTokenObject({
-      header,
-      payload: { exp },
-      signature,
-    }),
-  );
-
-  assertThrows(() => {
-    // @ts-ignore */
-    isTokenObject("invalid");
-  }, Error);
-  assertThrows(() => {
-    // @ts-ignore */
-    isTokenObject({ header: "invalid" });
-  }, Error);
-  assertThrows(() => {
-    // @ts-ignore */
-    isTokenObject({ signature: 123 });
-  }, Error);
-});
 
 Deno.test("[jwt] create", async function () {
   const key = "secret";
