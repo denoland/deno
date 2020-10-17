@@ -1,7 +1,7 @@
 # Read-eval-print-loop
 
-`deno repl` starts an read-eval-print-loop, which lets you interactively build up
-program state in the global context.
+`deno repl` starts an read-eval-print-loop, which lets you interactively build
+up program state in the global context.
 
 ## Keybindings
 
@@ -35,7 +35,7 @@ program state in the global context.
 | Ctrl-Y                | Paste from Yank buffer (Meta-Y to paste next yank instead)                                       |
 | Ctrl-Z                | Suspend (Unix only)                                                                              |
 | Ctrl-_                | Undo                                                                                             |
-| Meta-0, 1, ..., -     | Specify the digit to the argument. `–` starts a negative argument.                           |
+| Meta-0, 1, ..., -     | Specify the digit to the argument. `–` starts a negative argument.                               |
 | Meta-<                | Move to first entry in history                                                                   |
 | Meta->                | Move to last entry in history                                                                    |
 | Meta-B, Alt-Left      | Move cursor to previous word                                                                     |
