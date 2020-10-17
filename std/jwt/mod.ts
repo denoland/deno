@@ -133,22 +133,20 @@ export async function verify(
   key: string,
   { algorithm = "HS512" }: VerifyOptions = {},
 ): Promise<unknown> {
-  const obj = decode(jwt);
+  const { header, payload, signature } = decode(jwt);
 
-  if (!verifyAlgorithm(algorithm, obj.header.alg)) {
+  if (!verifyAlgorithm(algorithm, header.alg)) {
     throw new Error(
       `The token's algorithm does not match the specified algorithm "${algorithm}".`,
     );
   }
-
-  const { header, payload, signature } = obj;
 
   /*
    * JWS §4.1.11: The "crit" (critical) Header Parameter indicates that
    * extensions to this specification and/or [JWA] are being used that MUST be
    * understood and processed.
    */
-  if ("crit" in obj.header) {
+  if ("crit" in header) {
     throw new Error(
       "The 'crit' header parameter is currently not supported by this library.",
     );
