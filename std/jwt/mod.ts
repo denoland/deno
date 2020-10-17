@@ -109,7 +109,7 @@ export function decode(
   }
 
   return {
-    header: header as Header,
+    header,
     payload,
     signature,
   };
