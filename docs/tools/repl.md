@@ -7,10 +7,6 @@ up program state in the global context.
 
 | Keystroke             | Action                                                                                           |
 | --------------------- | ------------------------------------------------------------------------------------------------ |
-| End                   | Move cursor to end of line                                                                       |
-| Home                  | Move cursor to the beginning of line                                                             |
-| Left                  | Move cursor one character left                                                                   |
-| Right                 | Move cursor one character right                                                                  |
 | Ctrl-A, Home          | Move cursor to the beginning of line                                                             |
 | Ctrl-B, Left          | Move cursor one character left                                                                   |
 | Ctrl-C                | Interrupt/Cancel edition                                                                         |
