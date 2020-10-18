@@ -691,6 +691,7 @@ declare namespace Deno {
   /** The Deno abstraction for reading and writing files. */
   export class File
     implements
+      Resource,
       Reader,
       ReaderSync,
       Writer,
@@ -698,7 +699,6 @@ declare namespace Deno {
       Seeker,
       SeekerSync,
       Closer {
-    readonly rid: number;
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
@@ -710,11 +710,11 @@ declare namespace Deno {
   }
 
   /** A handle for `stdin`. */
-  export const stdin: Reader & ReaderSync & Closer & { readonly rid: number };
+  export const stdin: Resource & Reader & ReaderSync & Closer;
   /** A handle for `stdout`. */
-  export const stdout: Writer & WriterSync & Closer & { readonly rid: number };
+  export const stdout: Resource & Writer & WriterSync & Closer;
   /** A handle for `stderr`. */
-  export const stderr: Writer & WriterSync & Closer & { readonly rid: number };
+  export const stderr: Resource & Writer & WriterSync & Closer;
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -1657,13 +1657,11 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
-  export interface Conn extends Reader, Writer, Closer {
+  export interface Conn extends Resource, Reader, Writer, Closer {
     /** The local address of the connection. */
     readonly localAddr: Addr;
     /** The remote address of the connection. */
     readonly remoteAddr: Addr;
-    /** The resource ID of the connection. */
-    readonly rid: number;
     /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
      * callers should just use `close()`.
      *
@@ -1800,6 +1798,10 @@ declare namespace Deno {
    */
   export function metrics(): Metrics;
 
+  export interface Resource {
+    readonly rid: number;
+  }
+
   interface ResourceMap {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [rid: number]: any;
@@ -1847,8 +1849,7 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): AsyncIterableIterator<FsEvent>;
 
-  export class Process<T extends RunOptions = RunOptions> {
-    readonly rid: number;
+  export class Process<T extends RunOptions = RunOptions> implements Resource {
     readonly pid: number;
     readonly stdin: T["stdin"] extends "piped" ? Writer & Closer
       : (Writer & Closer) | null;
