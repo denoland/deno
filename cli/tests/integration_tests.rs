@@ -1572,6 +1572,16 @@ itest!(_017_import_redirect {
   output: "017_import_redirect.ts.out",
 });
 
+itest!(_017_import_redirect_nocheck {
+  args: "run --quiet --reload --no-check 017_import_redirect.ts",
+  output: "017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_info {
+  args: "info --quiet --reload 017_import_redirect.ts",
+  output: "017_import_redirect_info.out",
+});
+
 itest!(_018_async_catch {
   args: "run --quiet --reload 018_async_catch.ts",
   output: "018_async_catch.ts.out",
@@ -1644,6 +1654,12 @@ itest!(deno_test_no_check {
   args: "test --no-check test_runner_test.ts",
   exit_code: 1,
   output: "deno_test.out",
+});
+
+itest!(deno_test_unresolved_promise {
+  args: "test test_unresolved_promise.js",
+  exit_code: 1,
+  output: "deno_test_unresolved_promise.out",
 });
 
 #[test]
@@ -2418,6 +2434,28 @@ itest!(wasm_streaming {
 itest!(wasm_unreachable {
   args: "run wasm_unreachable.js",
   output: "wasm_unreachable.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_order {
+  args: "run --allow-read top_level_await_order.js",
+  output: "top_level_await_order.out",
+});
+
+itest!(top_level_await_loop {
+  args: "run --allow-read top_level_await_loop.js",
+  output: "top_level_await_loop.out",
+});
+
+itest!(top_level_await_circular {
+  args: "run --allow-read top_level_await_circular.js",
+  output: "top_level_await_circular.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_unresolved {
+  args: "run top_level_await_unresolved.js",
+  output: "top_level_await_unresolved.out",
   exit_code: 1,
 });
 
