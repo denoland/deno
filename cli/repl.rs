@@ -217,6 +217,31 @@ async fn inject_prelude(
   Ok(())
 }
 
+pub async fn is_closing(
+  worker: &mut MainWorker,
+  session: &mut InspectorSession,
+  context_id: u64,
+) -> Result<bool, AnyError> {
+  let closed = post_message_and_poll(
+    worker,
+    session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": "(globalThis.closed)",
+      "contextId": context_id,
+    })),
+  )
+  .await?
+  .get("result")
+  .unwrap()
+  .get("value")
+  .unwrap()
+  .as_bool()
+  .unwrap();
+
+  Ok(closed)
+}
+
 pub async fn run(
   program_state: &ProgramState,
   mut worker: MainWorker,
@@ -267,7 +292,7 @@ pub async fn run(
 
   inject_prelude(&mut worker, &mut session, context_id).await?;
 
-  loop {
+  while !is_closing(&mut worker, &mut session, context_id).await? {
     let line = read_line_and_poll(&mut *worker, editor.clone()).await;
     match line {
       Ok(line) => {
@@ -314,27 +339,6 @@ pub async fn run(
           } else {
             evaluate_response
           };
-
-        let is_closing = post_message_and_poll(
-          &mut *worker,
-          &mut session,
-          "Runtime.evaluate",
-          Some(json!({
-            "expression": "(globalThis.closed)",
-            "contextId": context_id,
-          })),
-        )
-        .await?
-        .get("result")
-        .unwrap()
-        .get("value")
-        .unwrap()
-        .as_bool()
-        .unwrap();
-
-        if is_closing {
-          break;
-        }
 
         let evaluate_result = evaluate_response.get("result").unwrap();
         let evaluate_exception_details =
