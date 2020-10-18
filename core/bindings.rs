@@ -297,7 +297,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
 
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
-      let error = message.get_value();
+      let error = message.get_value().unwrap();
       let error_global = v8::Global::new(scope, error);
       state
         .pending_promise_exceptions
