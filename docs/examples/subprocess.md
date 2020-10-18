@@ -10,7 +10,7 @@
   [stdin](https://doc.deno.land/builtin/stable#Deno.stdin),
   [stdout](https://doc.deno.land/builtin/stable#Deno.stdout) and
   [stderr](https://doc.deno.land/builtin/stable#Deno.stderr) streams.
-- Use a specific shell by providing its path/name and it's string input switch, e.g. `Deno.run({cmd: ["bash", "-c",'"ls -la"']});
+- Use a specific shell by providing its path/name and its string input switch, e.g. `Deno.run({cmd: ["bash", "-c", '"ls -la"']});
 
 ## Simple example
 
