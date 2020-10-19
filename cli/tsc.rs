@@ -586,7 +586,8 @@ impl TsCompiler {
         if !check_passed {
           eprintln!(
             "Subresource integrity check failed --lock={}\n{}",
-            g.filename, graph_file.url
+            g.filename.display(),
+            graph_file.url
           );
           std::process::exit(10);
         }

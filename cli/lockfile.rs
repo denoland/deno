@@ -4,18 +4,17 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use std::collections::BTreeMap;
 use std::io::Result;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
   write: bool,
   map: BTreeMap<String, String>,
-  pub filename: String,
+  pub filename: PathBuf,
 }
 
 impl Lockfile {
-  pub fn new(filename: String, write: bool) -> Result<Lockfile> {
-    debug!("lockfile \"{}\", write: {}", filename, write);
-
+  pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile> {
     let map = if write {
       BTreeMap::new()
     } else {
@@ -46,7 +45,7 @@ impl Lockfile {
       .open(&self.filename)?;
     use std::io::Write;
     f.write_all(s.as_bytes())?;
-    debug!("lockfile write {}", self.filename);
+    debug!("lockfile write {}", self.filename.display());
     Ok(())
   }
 
@@ -93,7 +92,7 @@ mod tests {
   use std::io::Write;
   use tempfile::TempDir;
 
-  fn setup() -> (TempDir, String) {
+  fn setup() -> (TempDir, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
 
     let file_path = temp_dir.path().join("valid_lockfile.json");
@@ -106,8 +105,7 @@ mod tests {
 
     file.write_all(value.to_string().as_bytes()).unwrap();
 
-    let file_path_buf = temp_dir.path().join("valid_lockfile.json");
-    let file_path = file_path_buf.to_str().expect("file path fail").to_string();
+    let file_path = temp_dir.path().join("valid_lockfile.json");
 
     (temp_dir, file_path)
   }
@@ -118,7 +116,7 @@ mod tests {
 
   #[test]
   fn new_nonexistent_lockfile() {
-    let file_path = String::from("nonexistent_lock_file.json");
+    let file_path = PathBuf::from("nonexistent_lock_file.json");
     assert!(Lockfile::new(file_path, false).is_err());
   }
 

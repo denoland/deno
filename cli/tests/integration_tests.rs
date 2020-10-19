@@ -1139,6 +1139,14 @@ fn repl_test_pty_multiline() {
     master.write_all(b"(\n1 + 2\n)\n").unwrap();
     master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
     master.write_all(b"`\nfoo\n`\n").unwrap();
+    master.write_all(b"`\n\\`\n`\n").unwrap();
+    master.write_all(b"'{'\n").unwrap();
+    master.write_all(b"'('\n").unwrap();
+    master.write_all(b"'['\n").unwrap();
+    master.write_all(b"/{/'\n").unwrap();
+    master.write_all(b"/(/'\n").unwrap();
+    master.write_all(b"/[/'\n").unwrap();
+    master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
     let mut output = String::new();
@@ -1147,6 +1155,14 @@ fn repl_test_pty_multiline() {
     assert!(output.contains('3'));
     assert!(output.contains("{ foo: \"foo\" }"));
     assert!(output.contains("\"\\nfoo\\n\""));
+    assert!(output.contains("\"\\n`\\n\""));
+    assert!(output.contains("\"{\""));
+    assert!(output.contains("\"(\""));
+    assert!(output.contains("\"[\""));
+    assert!(output.contains("/{/"));
+    assert!(output.contains("/(/"));
+    assert!(output.contains("/{/"));
+    assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
 
     fork.wait().unwrap();
   } else {
@@ -1854,13 +1870,6 @@ itest!(_033_import_map {
   args:
     "run --quiet --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
   output: "033_import_map.out",
-});
-
-itest!(import_map_no_unstable {
-  args:
-    "run --quiet --reload --importmap=importmaps/import_map.json importmaps/test.ts",
-  output: "import_map_no_unstable.out",
-  exit_code: 70,
 });
 
 itest!(_034_onload {

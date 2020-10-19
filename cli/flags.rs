@@ -110,7 +110,7 @@ pub struct Flags {
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
-  pub lock: Option<String>,
+  pub lock: Option<PathBuf>,
   pub lock_write: bool,
   pub log_level: Option<Level>,
   pub net_allowlist: Vec<String>,
@@ -372,11 +372,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  permission_args_parse(flags, matches);
-  config_arg_parse(flags, matches);
-  reload_arg_parse(flags, matches);
-  ca_file_arg_parse(flags, matches);
-  no_check_arg_parse(flags, matches);
+  runtime_args_parse(flags, matches, true);
 
   let root = if matches.is_present("root") {
     let install_root = matches.value_of("root").unwrap();
@@ -501,7 +497,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
     let lockfile = matches.value_of("lock").unwrap();
-    flags.lock = Some(lockfile.to_string());
+    flags.lock = Some(PathBuf::from(lockfile));
   }
   if matches.is_present("lock-write") {
     flags.lock_write = true;
@@ -725,7 +721,7 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
-  permission_args(SubCommand::with_name("install"))
+  runtime_args(SubCommand::with_name("install"), true)
         .setting(AppSettings::TrailingVarArg)
         .arg(
           Arg::with_name("cmd")
@@ -751,10 +747,6 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .short("f")
             .help("Forcefully overwrite existing installation")
             .takes_value(false))
-        .arg(no_check_arg())
-        .arg(reload_arg())
-        .arg(ca_file_arg())
-        .arg(config_arg())
         .about("Install script as an executable")
         .long_about(
 "Installs a script as an executable in the installation root's bin directory.
@@ -1348,6 +1340,7 @@ fn importmap_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("importmap")
     .long("importmap")
     .value_name("FILE")
+    .requires("unstable")
     .help("UNSTABLE: Load import map file")
     .long_help(
       "UNSTABLE:
@@ -2120,7 +2113,7 @@ mod tests {
         config_path: Some("tsconfig.json".to_string()),
         no_check: true,
         reload: true,
-        lock: Some("lock.json".to_string()),
+        lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
@@ -2174,7 +2167,7 @@ mod tests {
         config_path: Some("tsconfig.json".to_string()),
         no_check: true,
         reload: true,
-        lock: Some("lock.json".to_string()),
+        lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
@@ -2337,7 +2330,7 @@ mod tests {
           out_file: None,
         },
         lock_write: true,
-        lock: Some("lock.json".to_string()),
+        lock: Some(PathBuf::from("lock.json")),
         ..Flags::default()
       }
     );
@@ -2365,6 +2358,7 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
+      "--unstable",
       "--importmap=importmap.json",
       "script.ts"
     ]);
@@ -2374,6 +2368,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
+        unstable: true,
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()
       }
@@ -2385,6 +2380,7 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "info",
+      "--unstable",
       "--importmap=importmap.json",
       "script.ts"
     ]);
@@ -2395,6 +2391,7 @@ mod tests {
           file: Some("script.ts".to_string()),
           json: false,
         },
+        unstable: true,
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()
       }
@@ -2406,6 +2403,7 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "cache",
+      "--unstable",
       "--importmap=importmap.json",
       "script.ts"
     ]);
@@ -2415,6 +2413,7 @@ mod tests {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
+        unstable: true,
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()
       }
@@ -2426,6 +2425,7 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "doc",
+      "--unstable",
       "--importmap=importmap.json",
       "script.ts"
     ]);
@@ -2438,6 +2438,7 @@ mod tests {
           json: false,
           filter: None,
         },
+        unstable: true,
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()
       }
@@ -2522,87 +2523,32 @@ mod tests {
   }
 
   #[test]
-  fn install_with_args() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "install",
-      "--reload",
-      "--allow-net",
-      "--allow-read",
-      "-n",
-      "file_server",
-      "https://deno.land/std/http/file_server.ts"
-    ]);
+  fn install_with_flags() {
+    #[rustfmt::skip]
+    let r = flags_from_vec_safe(svec!["deno", "install", "--unstable", "--importmap", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Install {
           name: Some("file_server".to_string()),
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: vec![],
-          root: None,
-          force: false,
-        },
-        reload: true,
-        allow_net: true,
-        allow_read: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn install_with_config() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "install",
-      "--config",
-      "tsconfig.json",
-      "https://deno.land/std/examples/colors.ts"
-    ]);
-
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Install {
-          name: None,
-          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
-          args: svec![],
-          root: None,
-          force: false,
-        },
-        config_path: Some("tsconfig.json".to_owned()),
-        ..Flags::default()
-      }
-    )
-  }
-
-  #[test]
-  fn install_with_args_and_dir_and_force() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "install",
-      "--root",
-      "/usr/local",
-      "-f",
-      "--allow-net",
-      "--allow-read",
-      "-n",
-      "file_server",
-      "https://deno.land/std/http/file_server.ts",
-      "arg1",
-      "arg2"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Install {
-          name: Some("file_server".to_string()),
-          module_url: "https://deno.land/std/http/file_server.ts".to_string(),
-          args: svec!["arg1", "arg2"],
-          root: Some(PathBuf::from("/usr/local")),
+          args: svec!["foo", "bar"],
+          root: Some(PathBuf::from("/foo")),
           force: true,
         },
+        unstable: true,
+        import_map_path: Some("import_map.json".to_string()),
+        no_remote: true,
+        config_path: Some("tsconfig.json".to_string()),
+        no_check: true,
+        reload: true,
+        lock: Some(PathBuf::from("lock.json")),
+        lock_write: true,
+        ca_file: Some("example.crt".to_string()),
+        cached_only: true,
+        v8_flags: Some(svec!["--help", "--random-seed=1"]),
+        seed: Some(1),
+        inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: true,
         allow_read: true,
         ..Flags::default()
@@ -2858,7 +2804,7 @@ mod tests {
           script: "script.ts".to_string(),
         },
         lock_write: true,
-        lock: Some("lock.json".to_string()),
+        lock: Some(PathBuf::from("lock.json")),
         ..Flags::default()
       }
     );
@@ -3053,33 +2999,6 @@ mod tests {
         subcommand: DenoSubcommand::Info {
           json: false,
           file: Some("https://example.com".to_string()),
-        },
-        ca_file: Some("example.crt".to_owned()),
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn install_with_cafile() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "install",
-      "--cert",
-      "example.crt",
-      "-n",
-      "deno_colors",
-      "https://deno.land/std/examples/colors.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Install {
-          name: Some("deno_colors".to_string()),
-          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
-          args: vec![],
-          root: None,
-          force: false,
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()

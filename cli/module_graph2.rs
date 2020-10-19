@@ -615,7 +615,8 @@ impl Graph2 {
         let valid = lockfile.check_or_insert(&specifier, &module.source);
         if !valid {
           return Err(
-            InvalidSource(ms.clone(), lockfile.filename.clone()).into(),
+            InvalidSource(ms.clone(), lockfile.filename.display().to_string())
+              .into(),
           );
         }
       }
@@ -1243,8 +1244,7 @@ pub mod tests {
     let fixtures = c.join("tests/module_graph");
     let lockfile_path = fixtures.join("lockfile.json");
     let lockfile =
-      Lockfile::new(lockfile_path.to_string_lossy().to_string(), false)
-        .expect("could not load lockfile");
+      Lockfile::new(lockfile_path, false).expect("could not load lockfile");
     let maybe_lockfile = Some(Mutex::new(lockfile));
     let handler = Rc::new(RefCell::new(MockSpecifierHandler {
       fixtures,
@@ -1269,8 +1269,7 @@ pub mod tests {
     let fixtures = c.join("tests/module_graph");
     let lockfile_path = fixtures.join("lockfile_fail.json");
     let lockfile =
-      Lockfile::new(lockfile_path.to_string_lossy().to_string(), false)
-        .expect("could not load lockfile");
+      Lockfile::new(lockfile_path, false).expect("could not load lockfile");
     let maybe_lockfile = Some(Mutex::new(lockfile));
     let handler = Rc::new(RefCell::new(MockSpecifierHandler {
       fixtures,
