@@ -315,7 +315,7 @@ export class MultipartReader {
           suffix: ext,
         });
 
-        let file = await Deno.open(filepath, { write: true });
+        const file = await Deno.open(filepath, { write: true });
 
         try {
           const size = await Deno.copy(new MultiReader(buf, p), file);
