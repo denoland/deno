@@ -1139,6 +1139,13 @@ fn repl_test_pty_multiline() {
     master.write_all(b"(\n1 + 2\n)\n").unwrap();
     master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
     master.write_all(b"`\nfoo\n`\n").unwrap();
+    master.write_all(b"`\n\\`\n`\n").unwrap();
+    master.write_all(b"'{'\n").unwrap();
+    master.write_all(b"'('\n").unwrap();
+    master.write_all(b"'['\n").unwrap();
+    master.write_all(b"/{/'\n").unwrap();
+    master.write_all(b"/(/'\n").unwrap();
+    master.write_all(b"/[/'\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
     let mut output = String::new();
@@ -1147,6 +1154,13 @@ fn repl_test_pty_multiline() {
     assert!(output.contains('3'));
     assert!(output.contains("{ foo: \"foo\" }"));
     assert!(output.contains("\"\\nfoo\\n\""));
+    assert!(output.contains("\"\\n`\\n\""));
+    assert!(output.contains("\"{\""));
+    assert!(output.contains("\"(\""));
+    assert!(output.contains("\"[\""));
+    assert!(output.contains("/{/"));
+    assert!(output.contains("/(/"));
+    assert!(output.contains("/{/"));
 
     fork.wait().unwrap();
   } else {
