@@ -2,8 +2,8 @@
 
 use crate::ast::{self, Location};
 use crate::flags::Flags;
-use crate::global_state::GlobalState;
 use crate::media_type::MediaType;
+use crate::program_state::ProgramState;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::{error::AnyError, ModuleSpecifier};
@@ -157,8 +157,8 @@ pub async fn parse_jsdocs(
   source_files: &[Url],
   flags: Flags,
 ) -> Result<Vec<(Location, String)>, AnyError> {
-  let global_state = GlobalState::new(flags.clone())?;
-  let loader = Box::new(global_state.file_fetcher.clone());
+  let program_state = ProgramState::new(flags.clone())?;
+  let loader = Box::new(program_state.file_fetcher.clone());
 
   let doc_parser = DocParser::new(loader, false);
   let mut results = vec![];

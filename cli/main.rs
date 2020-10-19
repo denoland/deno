@@ -15,12 +15,8 @@ mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
-<<<<<<< HEAD
 mod doctest_runner;
-pub mod errors;
-=======
 mod errors;
->>>>>>> master
 mod file_fetcher;
 mod file_watcher;
 mod flags;
