@@ -1306,7 +1306,7 @@ fn repl_test_pty_multiline() {
     let mut output = String::new();
     master.read_to_string(&mut output).unwrap();
 
-    assert!(output.contains("3"));
+    assert!(output.contains('3'));
     assert!(output.contains("{ foo: \"foo\" }"));
     fork.wait().unwrap();
   } else {
