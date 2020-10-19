@@ -3,7 +3,7 @@
 `deno repl` starts an read-eval-print-loop, which lets you interactively build
 up program state in the global context.
 
-## Keybindings
+## Keyboard shortcuts
 
 | Keystroke             | Action                                                                                           |
 | --------------------- | ------------------------------------------------------------------------------------------------ |
