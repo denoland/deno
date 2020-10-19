@@ -10,21 +10,122 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use regex::Captures;
 use regex::Regex;
+use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::Context;
 use rustyline::Editor;
-use rustyline_derive::{Completer, Helper, Hinter};
+use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
+use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-// Provides syntax specific helpers to the editor like validation for multi-line edits.
-#[derive(Completer, Helper, Hinter)]
+// Provides helpers to the editor like validation for multi-line edits, completion candidates for
+// tab completion.
+#[derive(Helper, Hinter)]
 struct Helper {
+  context_id: u64,
+  message_tx: SyncSender<(String, Option<Value>)>,
+  response_rx: Receiver<Result<Value, AnyError>>,
   highlighter: LineHighlighter,
+}
+
+impl Helper {
+  fn post_message(
+    &self,
+    method: &str,
+    params: Option<Value>,
+  ) -> Result<Value, AnyError> {
+    self.message_tx.send((method.to_string(), params))?;
+    self.response_rx.recv()?
+  }
+}
+
+fn is_word_boundary(c: char) -> bool {
+  if c == '.' {
+    false
+  } else {
+    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  }
+}
+
+impl Completer for Helper {
+  type Candidate = String;
+
+  fn complete(
+    &self,
+    line: &str,
+    pos: usize,
+    _ctx: &Context<'_>,
+  ) -> Result<(usize, Vec<String>), ReadlineError> {
+    let start = line[..pos].rfind(is_word_boundary).map_or_else(|| 0, |i| i);
+    let end = line[pos..]
+      .rfind(is_word_boundary)
+      .map_or_else(|| pos, |i| pos + i);
+
+    let word = &line[start..end];
+    let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
+    let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
+
+    let fallback = format!(".{}", word);
+
+    let (prefix, suffix) = match word.rfind('.') {
+      Some(index) => word.split_at(index),
+      None => ("globalThis", fallback.as_str()),
+    };
+
+    let evaluate_response = self
+      .post_message(
+        "Runtime.evaluate",
+        Some(json!({
+          "contextId": self.context_id,
+          "expression": prefix,
+          "throwOnSideEffect": true,
+          "timeout": 200,
+        })),
+      )
+      .unwrap();
+
+    if evaluate_response.get("exceptionDetails").is_some() {
+      let candidates = Vec::new();
+      return Ok((pos, candidates));
+    }
+
+    if let Some(result) = evaluate_response.get("result") {
+      if let Some(object_id) = result.get("objectId") {
+        let get_properties_response = self
+          .post_message(
+            "Runtime.getProperties",
+            Some(json!({
+              "objectId": object_id,
+            })),
+          )
+          .unwrap();
+
+        if let Some(result) = get_properties_response.get("result") {
+          let candidates = result
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+            .filter(|r| r.starts_with(&suffix[1..]))
+            .collect();
+
+          return Ok((pos - (suffix.len() - 1), candidates));
+        }
+      }
+    }
+
+    Ok((pos, Vec::new()))
+  }
 }
 
 impl Validator for Helper {
@@ -192,17 +293,27 @@ async fn post_message_and_poll(
 
 async fn read_line_and_poll(
   worker: &mut Worker,
+  session: &mut InspectorSession,
+  message_rx: &Receiver<(String, Option<Value>)>,
+  response_tx: &Sender<Result<Value, AnyError>>,
   editor: Arc<Mutex<Editor<Helper>>>,
 ) -> Result<String, ReadlineError> {
   let mut line =
     tokio::task::spawn_blocking(move || editor.lock().unwrap().readline("> "));
 
   let mut poll_worker = true;
+
   loop {
+    for (method, params) in message_rx.try_iter() {
+      response_tx
+        .send(session.post_message(&method, params).await)
+        .unwrap();
+    }
+
     // Because an inspector websocket client may choose to connect at anytime when we have an
     // inspector server we need to keep polling the worker to pick up new connections.
     let mut timeout =
-      tokio::time::delay_for(tokio::time::Duration::from_millis(1000));
+      tokio::time::delay_for(tokio::time::Duration::from_millis(100));
 
     tokio::select! {
       result = &mut line => {
@@ -212,7 +323,7 @@ async fn read_line_and_poll(
         poll_worker = false;
       }
       _ = &mut timeout => {
-          poll_worker = true
+        poll_worker = true
       }
     }
   }
@@ -323,7 +434,13 @@ pub async fn run(
     }
   }
 
+  let (message_tx, message_rx) = sync_channel(1);
+  let (response_tx, response_rx) = channel();
+
   let helper = Helper {
+    context_id,
+    message_tx,
+    response_rx,
     highlighter: LineHighlighter::new(),
   };
 
@@ -343,7 +460,14 @@ pub async fn run(
   inject_prelude(&mut worker, &mut session, context_id).await?;
 
   while !is_closing(&mut worker, &mut session, context_id).await? {
-    let line = read_line_and_poll(&mut *worker, editor.clone()).await;
+    let line = read_line_and_poll(
+      &mut *worker,
+      &mut session,
+      &message_rx,
+      &response_tx,
+      editor.clone(),
+    )
+    .await;
     match line {
       Ok(line) => {
         // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
@@ -396,30 +520,30 @@ pub async fn run(
 
         if evaluate_exception_details.is_some() {
           post_message_and_poll(
-            &mut *worker,
-            &mut session,
-            "Runtime.callFunctionOn",
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
-              "arguments": [
-                evaluate_result,
-              ],
-            })),
-          ).await?;
+                    &mut *worker,
+                    &mut session,
+                    "Runtime.callFunctionOn",
+                    Some(json!({
+                      "executionContextId": context_id,
+                      "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
+                      "arguments": [
+                        evaluate_result,
+                      ],
+                    })),
+                  ).await?;
         } else {
           post_message_and_poll(
-            &mut *worker,
-            &mut session,
-            "Runtime.callFunctionOn",
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
-              "arguments": [
-                evaluate_result,
-              ],
-            })),
-          ).await?;
+                    &mut *worker,
+                    &mut session,
+                    "Runtime.callFunctionOn",
+                    Some(json!({
+                      "executionContextId": context_id,
+                      "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+                      "arguments": [
+                        evaluate_result,
+                      ],
+                    })),
+                  ).await?;
         }
 
         // TODO(caspervonb) we should investigate using previews here but to keep things
