@@ -1292,6 +1292,36 @@ fn repl_test_multiline() {
 }
 
 #[test]
+fn repl_test_pty_multiline() {
+  use util::pty::fork::*;
+  use std::io::Read;
+
+  let tests_path = util::tests_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+      master.write_all(b"(\n1 + 2\n)\n").unwrap();
+      master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
+      master.write_all(b"close();\n").unwrap();
+
+      let mut output = String::new();
+      master.read_to_string(&mut output).unwrap();
+
+      assert!(output.contains("3"));
+      assert!(output.contains("{ foo: \"foo\" }"));
+      fork.wait().unwrap();
+  } else {
+    util::deno_cmd()
+      .current_dir(tests_path)
+      .env("NO_COLOR", "1")
+      .arg("repl")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+  }
+}
+
+#[test]
 fn repl_test_import() {
   let (out, _) = util::run_and_collect_output(
     true,
