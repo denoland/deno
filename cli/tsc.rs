@@ -417,7 +417,7 @@ impl TsCompiler {
         {
           let existing_hash = crate::checksum::gen(&[
             &source_file.source_code.as_bytes(),
-            version::DENO.as_bytes(),
+            &version::DENO.as_bytes(),
           ]);
           let expected_hash =
             file_info["version"].as_str().unwrap().to_string();
@@ -988,7 +988,7 @@ fn execute_in_tsc(
   }
 
   let bootstrap_script = format!(
-    "globalThis.bootstrapCompilerRuntime({{ debugFlag: {} }})",
+    "globalThis.startup({{ debugFlag: {}, legacy: true }})",
     debug_flag
   );
   js_runtime.execute("<compiler>", &bootstrap_script)?;

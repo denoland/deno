@@ -33,6 +33,7 @@ pub struct CachedModule {
   pub maybe_types: Option<String>,
   pub maybe_version: Option<String>,
   pub media_type: MediaType,
+  pub requested_specifier: ModuleSpecifier,
   pub source: String,
   pub source_path: PathBuf,
   pub specifier: ModuleSpecifier,
@@ -41,6 +42,7 @@ pub struct CachedModule {
 #[cfg(test)]
 impl Default for CachedModule {
   fn default() -> Self {
+    let specifier = ModuleSpecifier::resolve_url("file:///example.js").unwrap();
     CachedModule {
       maybe_dependencies: None,
       maybe_emit: None,
@@ -48,10 +50,10 @@ impl Default for CachedModule {
       maybe_types: None,
       maybe_version: None,
       media_type: MediaType::Unknown,
+      requested_specifier: specifier.clone(),
       source: "".to_string(),
       source_path: PathBuf::new(),
-      specifier: ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts")
-        .unwrap(),
+      specifier,
     }
   }
 }
@@ -192,16 +194,16 @@ impl FetchHandler {
 }
 
 impl SpecifierHandler for FetchHandler {
-  fn fetch(&mut self, specifier: ModuleSpecifier) -> FetchFuture {
+  fn fetch(&mut self, requested_specifier: ModuleSpecifier) -> FetchFuture {
     let permissions = self.permissions.clone();
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
 
     async move {
       let source_file = file_fetcher
-        .fetch_source_file(&specifier, None, permissions)
+        .fetch_source_file(&requested_specifier, None, permissions)
         .await?;
-      let url = source_file.url;
+      let url = source_file.url.clone();
       let filename = disk_cache.get_cache_filename_with_extension(&url, "meta");
       let maybe_version = if let Ok(bytes) = disk_cache.get(&filename) {
         if let Ok(compiled_file_metadata) =
@@ -232,6 +234,7 @@ impl SpecifierHandler for FetchHandler {
         maybe_emit_path =
           Some((disk_cache.location.join(emit_path), maybe_map_path));
       };
+      let specifier = ModuleSpecifier::from(url);
 
       Ok(CachedModule {
         maybe_dependencies: None,
@@ -240,6 +243,7 @@ impl SpecifierHandler for FetchHandler {
         maybe_types: source_file.types_header,
         maybe_version,
         media_type: source_file.media_type,
+        requested_specifier,
         source: source_file.source_code,
         source_path: source_file.filename,
         specifier,

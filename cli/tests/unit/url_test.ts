@@ -192,6 +192,8 @@ unitTest(function urlModifyPathname(): void {
   // deno-lint-ignore no-self-assign
   url.pathname = url.pathname;
   assertEquals(url.pathname, "/baz%23qat%20qux");
+  url.pathname = "\\a\\b\\c";
+  assertEquals(url.pathname, "/a/b/c");
 });
 
 unitTest(function urlModifyHash(): void {

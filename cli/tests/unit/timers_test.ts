@@ -380,3 +380,55 @@ unitTest(async function timerIgnoresDateOverride(): Promise<void> {
   }
   assertEquals(hasThrown, 1);
 });
+
+unitTest({ perms: { hrtime: true } }, function sleepSync(): void {
+  const start = performance.now();
+  Deno.sleepSync(10);
+  const after = performance.now();
+  assert(after - start >= 10);
+});
+
+unitTest(
+  { perms: { hrtime: true } },
+  async function sleepSyncShorterPromise(): Promise<void> {
+    const perf = performance;
+    const short = 5;
+    const long = 10;
+
+    const start = perf.now();
+    const p = sleepAsync(short).then(() => {
+      const after = perf.now();
+      // pending promises should resolve after the main thread comes out of sleep
+      assert(after - start >= long);
+    });
+    Deno.sleepSync(long);
+
+    await p;
+  },
+);
+
+unitTest(
+  { perms: { hrtime: true } },
+  async function sleepSyncLongerPromise(): Promise<void> {
+    const perf = performance;
+    const short = 5;
+    const long = 10;
+
+    const start = perf.now();
+    const p = sleepAsync(long).then(() => {
+      const after = perf.now();
+      // sleeping for less than the duration of a promise should have no impact
+      // on the resolution of that promise
+      assert(after - start >= long);
+    });
+    Deno.sleepSync(short);
+
+    await p;
+  },
+);
+
+function sleepAsync(delay: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(), delay);
+  });
+}
