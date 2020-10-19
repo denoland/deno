@@ -161,7 +161,6 @@ fn get_version(source: &str, version: &str, config: &[u8]) -> String {
 struct Module {
   dependencies: DependencyMap,
   is_dirty: bool,
-  is_hydrated: bool,
   is_parsed: bool,
   maybe_emit: Option<Emit>,
   maybe_emit_path: Option<(PathBuf, Option<PathBuf>)>,
@@ -180,7 +179,6 @@ impl Default for Module {
     Module {
       dependencies: HashMap::new(),
       is_dirty: false,
-      is_hydrated: false,
       is_parsed: false,
       maybe_emit: None,
       maybe_emit_path: None,
@@ -189,7 +187,7 @@ impl Default for Module {
       maybe_types: None,
       maybe_version: None,
       media_type: MediaType::Unknown,
-      specifier: ModuleSpecifier::resolve_url("https://deno.land/x/").unwrap(),
+      specifier: ModuleSpecifier::resolve_url("file:///example.js").unwrap(),
       source: "".to_string(),
       source_path: PathBuf::new(),
     }
@@ -198,51 +196,49 @@ impl Default for Module {
 
 impl Module {
   pub fn new(
-    specifier: ModuleSpecifier,
+    cached_module: CachedModule,
     maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
   ) -> Self {
-    Module {
-      specifier,
+    let mut module = Module {
+      specifier: cached_module.specifier,
       maybe_import_map,
-      ..Module::default()
-    }
-  }
-
-  /// Return `true` if the current hash of the module matches the stored
-  /// version.
-  pub fn emit_valid(&self, config: &[u8]) -> bool {
-    if let Some(version) = self.maybe_version.clone() {
-      version == get_version(&self.source, version::DENO, config)
-    } else {
-      false
-    }
-  }
-
-  pub fn hydrate(&mut self, cached_module: CachedModule) {
-    self.media_type = cached_module.media_type;
-    self.source = cached_module.source;
-    self.source_path = cached_module.source_path;
-    self.maybe_emit = cached_module.maybe_emit;
-    self.maybe_emit_path = cached_module.maybe_emit_path;
-    if self.maybe_import_map.is_none() {
+      media_type: cached_module.media_type,
+      source: cached_module.source,
+      source_path: cached_module.source_path,
+      maybe_emit: cached_module.maybe_emit,
+      maybe_emit_path: cached_module.maybe_emit_path,
+      maybe_version: cached_module.maybe_version,
+      is_dirty: false,
+      ..Self::default()
+    };
+    if module.maybe_import_map.is_none() {
       if let Some(dependencies) = cached_module.maybe_dependencies {
-        self.dependencies = dependencies;
-        self.is_parsed = true;
+        module.dependencies = dependencies;
+        module.is_parsed = true;
       }
     }
-    self.maybe_types = if let Some(ref specifier) = cached_module.maybe_types {
+    module.maybe_types = if let Some(ref specifier) = cached_module.maybe_types
+    {
       Some((
         specifier.clone(),
-        self
+        module
           .resolve_import(&specifier, None)
           .expect("could not resolve module"),
       ))
     } else {
       None
     };
-    self.maybe_version = cached_module.maybe_version;
-    self.is_dirty = false;
-    self.is_hydrated = true;
+    module
+  }
+
+  /// Return `true` if the current hash of the module matches the stored
+  /// version.
+  pub fn is_emit_valid(&self, config: &[u8]) -> bool {
+    if let Some(version) = self.maybe_version.clone() {
+      version == get_version(&self.source, version::DENO, config)
+    } else {
+      false
+    }
   }
 
   pub fn parse(&mut self) -> Result<(), AnyError> {
@@ -415,6 +411,7 @@ pub struct Graph2 {
   handler: Rc<RefCell<dyn SpecifierHandler>>,
   maybe_ts_build_info: Option<String>,
   modules: HashMap<ModuleSpecifier, Module>,
+  redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
   roots: Vec<ModuleSpecifier>,
 }
 
@@ -429,8 +426,38 @@ impl Graph2 {
       handler,
       maybe_ts_build_info: None,
       modules: HashMap::new(),
+      redirects: HashMap::new(),
       roots: Vec::new(),
     }
+  }
+
+  fn contains_module(&self, specifier: &ModuleSpecifier) -> bool {
+    let s = self.resolve_specifier(specifier);
+    self.modules.contains_key(s)
+  }
+
+  /// Update the handler with any modules that are marked as _dirty_ and update
+  /// any build info if present.
+  fn flush(&mut self) -> Result<(), AnyError> {
+    let mut handler = self.handler.borrow_mut();
+    for (_, module) in self.modules.iter_mut() {
+      if module.is_dirty {
+        if let Some(emit) = &module.maybe_emit {
+          handler.set_cache(&module.specifier, emit)?;
+        }
+        if let Some(version) = &module.maybe_version {
+          handler.set_version(&module.specifier, version.clone())?;
+        }
+        module.is_dirty = false;
+      }
+    }
+    for root_specifier in self.roots.iter() {
+      if let Some(ts_build_info) = &self.maybe_ts_build_info {
+        handler.set_ts_build_info(root_specifier, ts_build_info.to_owned())?;
+      }
+    }
+
+    Ok(())
   }
 
   fn get_info(
@@ -440,7 +467,7 @@ impl Graph2 {
     totals: &mut HashMap<ModuleSpecifier, usize>,
   ) -> ModuleInfo {
     let not_seen = seen.insert(specifier.clone());
-    let module = self.modules.get(specifier).unwrap();
+    let module = self.get_module(specifier).unwrap();
     let mut deps = Vec::new();
     let mut total_size = None;
 
@@ -511,6 +538,32 @@ impl Graph2 {
     ModuleInfoMap::new(map)
   }
 
+  pub fn get_media_type(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    if let Some(module) = self.get_module(specifier) {
+      Some(module.media_type)
+    } else {
+      None
+    }
+  }
+
+  fn get_module(&self, specifier: &ModuleSpecifier) -> Option<&Module> {
+    let s = self.resolve_specifier(specifier);
+    self.modules.get(s)
+  }
+
+  /// Get the source for a given module specifier.  If the module is not part
+  /// of the graph, the result will be `None`.
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if let Some(module) = self.get_module(specifier) {
+      Some(module.source.clone())
+    } else {
+      None
+    }
+  }
+
   /// Return a structure which provides information about the module graph and
   /// the relationship of the modules in the graph.  This structure is used to
   /// provide information for the `info` subcommand.
@@ -520,7 +573,7 @@ impl Graph2 {
     }
 
     let module = self.roots[0].clone();
-    let m = self.modules.get(&module).unwrap();
+    let m = self.get_module(&module).unwrap();
 
     let mut seen = HashSet::new();
     let mut totals = HashMap::new();
@@ -546,51 +599,6 @@ impl Graph2 {
       module,
       total_size,
     })
-  }
-
-  /// Update the handler with any modules that are marked as _dirty_ and update
-  /// any build info if present.
-  fn flush(&mut self) -> Result<(), AnyError> {
-    let mut handler = self.handler.borrow_mut();
-    for (_, module) in self.modules.iter_mut() {
-      if module.is_dirty {
-        if let Some(emit) = &module.maybe_emit {
-          handler.set_cache(&module.specifier, emit)?;
-        }
-        if let Some(version) = &module.maybe_version {
-          handler.set_version(&module.specifier, version.clone())?;
-        }
-        module.is_dirty = false;
-      }
-    }
-    for root_specifier in self.roots.iter() {
-      if let Some(ts_build_info) = &self.maybe_ts_build_info {
-        handler.set_ts_build_info(root_specifier, ts_build_info.to_owned())?;
-      }
-    }
-
-    Ok(())
-  }
-
-  pub fn get_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    if let Some(module) = self.modules.get(specifier) {
-      Some(module.media_type)
-    } else {
-      None
-    }
-  }
-
-  /// Get the source for a given module specifier.  If the module is not part
-  /// of the graph, the result will be `None`.
-  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    if let Some(module) = self.modules.get(specifier) {
-      Some(module.source.clone())
-    } else {
-      None
-    }
   }
 
   /// Verify the subresource integrity of the graph based upon the optional
@@ -624,10 +632,10 @@ impl Graph2 {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if !self.modules.contains_key(referrer) {
+    if !self.contains_module(referrer) {
       return Err(MissingSpecifier(referrer.to_owned()).into());
     }
-    let module = self.modules.get(referrer).unwrap();
+    let module = self.get_module(referrer).unwrap();
     if !module.dependencies.contains_key(specifier) {
       return Err(
         MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
@@ -647,13 +655,13 @@ impl Graph2 {
           MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
         );
       };
-    if !self.modules.contains_key(&resolved_specifier) {
+    if !self.contains_module(&resolved_specifier) {
       return Err(
         MissingDependency(referrer.to_owned(), resolved_specifier.to_string())
           .into(),
       );
     }
-    let dep_module = self.modules.get(&resolved_specifier).unwrap();
+    let dep_module = self.get_module(&resolved_specifier).unwrap();
     // In the case that there is a X-TypeScript-Types or a triple-slash types,
     // then the `maybe_types` specifier will be populated and we should use that
     // instead.
@@ -664,6 +672,29 @@ impl Graph2 {
     };
 
     Ok(result)
+  }
+
+  /// Takes a module specifier and returns the "final" specifier, accounting for
+  /// any redirects that may have occurred.
+  fn resolve_specifier<'a>(
+    &'a self,
+    specifier: &'a ModuleSpecifier,
+  ) -> &'a ModuleSpecifier {
+    let mut s = specifier;
+    let mut seen = HashSet::new();
+    seen.insert(s.clone());
+    while let Some(redirect) = self.redirects.get(s) {
+      if !seen.insert(redirect.clone()) {
+        eprintln!("An infinite loop of module redirections detected.\n  Original specifier: {}", specifier);
+        break;
+      }
+      s = redirect;
+      if seen.len() > 5 {
+        eprintln!("An excessive number of module redirections detected.\n  Original specifier: {}", specifier);
+        break;
+      }
+    }
+    s
   }
 
   /// Transpile (only transform) the graph, updating any emitted modules
@@ -724,7 +755,7 @@ impl Graph2 {
       }
       let config = ts_config.as_bytes();
       // skip modules that already have a valid emit
-      if module.maybe_emit.is_some() && module.emit_valid(&config) {
+      if module.maybe_emit.is_some() && module.is_emit_valid(&config) {
         continue;
       }
       if module.maybe_parsed_module.is_none() {
@@ -794,9 +825,8 @@ impl GraphBuilder2 {
   /// module into the graph.
   fn visit(&mut self, cached_module: CachedModule) -> Result<(), AnyError> {
     let specifier = cached_module.specifier.clone();
-    let mut module =
-      Module::new(specifier.clone(), self.maybe_import_map.clone());
-    module.hydrate(cached_module);
+    let requested_specifier = cached_module.requested_specifier.clone();
+    let mut module = Module::new(cached_module, self.maybe_import_map.clone());
     if !module.is_parsed {
       let has_types = module.maybe_types.is_some();
       module.parse()?;
@@ -820,6 +850,12 @@ impl GraphBuilder2 {
     }
     if let Some((_, specifier)) = module.maybe_types.as_ref() {
       self.fetch(specifier)?;
+    }
+    if specifier != requested_specifier {
+      self
+        .graph
+        .redirects
+        .insert(requested_specifier, specifier.clone());
     }
     self.graph.modules.insert(specifier, module);
 
@@ -921,6 +957,7 @@ pub mod tests {
 
       Ok(CachedModule {
         source,
+        requested_specifier: specifier.clone(),
         source_path,
         specifier,
         media_type,
@@ -1014,7 +1051,7 @@ pub mod tests {
       maybe_version,
       ..Module::default()
     };
-    assert!(module.emit_valid(b""));
+    assert!(module.is_emit_valid(b""));
 
     let source = "console.log(42);".to_string();
     let old_source = "console.log(43);";
@@ -1024,7 +1061,7 @@ pub mod tests {
       maybe_version,
       ..Module::default()
     };
-    assert!(!module.emit_valid(b""));
+    assert!(!module.is_emit_valid(b""));
 
     let source = "console.log(42);".to_string();
     let maybe_version = Some(get_version(&source, "0.0.0", b""));
@@ -1033,14 +1070,14 @@ pub mod tests {
       maybe_version,
       ..Module::default()
     };
-    assert!(!module.emit_valid(b""));
+    assert!(!module.is_emit_valid(b""));
 
     let source = "console.log(42);".to_string();
     let module = Module {
       source,
       ..Module::default()
     };
-    assert!(!module.emit_valid(b""));
+    assert!(!module.is_emit_valid(b""));
   }
 
   #[test]
