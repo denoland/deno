@@ -12,7 +12,6 @@ use regex::Captures;
 use regex::Regex;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
-use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
@@ -26,7 +25,6 @@ use std::sync::Mutex;
 #[derive(Completer, Helper, Hinter)]
 struct Helper {
   highlighter: LineHighlighter,
-  validator: MatchingBracketValidator,
 }
 
 impl Validator for Helper {
@@ -34,7 +32,42 @@ impl Validator for Helper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    self.validator.validate(ctx)
+    let mut stack: Vec<char> = Vec::new();
+    for c in ctx.input().chars() {
+      match c {
+        '(' | '[' | '{' => stack.push(c),
+        ')' | ']' | '}' => match (stack.pop(), c) {
+          (Some('('), ')') | (Some('['), ']') | (Some('{'), '}') => {}
+          (Some(left), _) => {
+            return Ok(ValidationResult::Invalid(Some(format!(
+              "Mismatched pairs: {:?} is not properly closed",
+              left
+            ))))
+          }
+          (None, c) => {
+            return Ok(ValidationResult::Invalid(Some(format!(
+              "Mismatched pairs: {:?} is unpaired",
+              c
+            ))))
+          }
+        },
+        '`' => {
+          if stack.is_empty() || stack.last().unwrap() != &c {
+            stack.push(c);
+          } else {
+            stack.pop();
+          }
+        }
+
+        _ => {}
+      }
+    }
+
+    if !stack.is_empty() {
+      return Ok(ValidationResult::Incomplete);
+    }
+
+    Ok(ValidationResult::Valid(None))
   }
 }
 
@@ -274,7 +307,6 @@ pub async fn run(
 
   let helper = Helper {
     highlighter: LineHighlighter::new(),
-    validator: MatchingBracketValidator::new(),
   };
 
   let editor = Arc::new(Mutex::new(Editor::new()));
