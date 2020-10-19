@@ -981,7 +981,7 @@
         );
       }
       if (!decoders.has(encoding) && encoding !== "utf-8") {
-        throw new TypeError(`Internal decoder ('${encoding}') not found.`);
+        throw new RangeError(`Internal decoder ('${encoding}') not found.`);
       }
       this.#encoding = encoding;
     }
