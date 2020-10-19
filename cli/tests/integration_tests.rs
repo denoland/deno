@@ -1290,6 +1290,7 @@ fn repl_test_multiline() {
   assert!(err.is_empty());
 }
 
+#[cfg(unix)]
 #[test]
 fn repl_test_pty_multiline() {
   use std::io::Read;
