@@ -1812,13 +1812,6 @@ itest!(_033_import_map {
   output: "033_import_map.out",
 });
 
-itest!(import_map_no_unstable {
-  args:
-    "run --quiet --reload --importmap=importmaps/import_map.json importmaps/test.ts",
-  output: "import_map_no_unstable.out",
-  exit_code: 70,
-});
-
 itest!(_034_onload {
   args: "run --quiet --reload 034_onload/main.ts",
   output: "034_onload.out",

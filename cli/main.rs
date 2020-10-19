@@ -203,7 +203,10 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone())?;
+  let mut preload_flags = flags.clone();
+  preload_flags.inspect = None;
+  preload_flags.inspect_brk = None;
+  let program_state = ProgramState::new(preload_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker = MainWorker::new(&program_state, main_module.clone());
   // First, fetch and compile the module; this step ensures that the module exists.
