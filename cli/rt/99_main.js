@@ -27,6 +27,7 @@ delete Object.prototype.__proto__;
   const fileReader = window.__bootstrap.fileReader;
   const webSocket = window.__bootstrap.webSocket;
   const fetch = window.__bootstrap.fetch;
+  const prompt = window.__bootstrap.prompt;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
@@ -285,6 +286,9 @@ delete Object.prototype.__proto__;
     onunload: util.writable(null),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
+    alert: util.writable(prompt.alert),
+    confirm: util.writable(prompt.confirm),
+    prompt: util.writable(prompt.prompt),
   };
 
   const workerRuntimeGlobalProperties = {

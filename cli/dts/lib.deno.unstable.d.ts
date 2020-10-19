@@ -1312,6 +1312,17 @@ declare namespace Deno {
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
+
+  /** *UNSTABLE**: new API, yet to be vetted.
+   *
+   * SleepSync puts the main thread to sleep synchronously for a given amount of
+   * time in milliseconds.
+   *
+   * ```ts
+   * Deno.sleepSync(10);
+   * ```
+   */
+  export function sleepSync(millis: number): Promise<void>;
 }
 
 declare function fetch(
