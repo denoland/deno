@@ -81,11 +81,7 @@ impl Validator for Helper {
       }
     }
 
-    if !stack.is_empty() {
-      return Ok(ValidationResult::Incomplete);
-    }
-
-    if literal == Some('`') {
+    if !stack.is_empty() || literal == Some('`') {
       return Ok(ValidationResult::Incomplete);
     }
 
