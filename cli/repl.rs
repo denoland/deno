@@ -402,7 +402,8 @@ pub async fn run(
         editor.lock().unwrap().add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
-        break;
+        println!("exit using ctrl+d or close()");
+        continue;
       }
       Err(ReadlineError::Eof) => {
         break;
