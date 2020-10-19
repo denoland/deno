@@ -9,9 +9,9 @@ up program state in the global context.
 | --------------------- | ------------------------------------------------------------------------------------------------ |
 | Ctrl-A, Home          | Move cursor to the beginning of line                                                             |
 | Ctrl-B, Left          | Move cursor one character left                                                                   |
-| Ctrl-C                | Interrupt/Cancel edition                                                                         |
-| Ctrl-D                | If if line _is_ empty; End of File                                                               |
-| Ctrl-D, Del           | If line is _not_ empty; delete character under cursor                                            |
+| Ctrl-C                | Interrupt and cancel the current edit                                                            |
+| Ctrl-D                | If if line _is_ empty, signal end of line                                                        |
+| Ctrl-D, Del           | If line is _not_ empty, delete character under cursor                                            |
 | Ctrl-E, End           | Move cursor to end of line                                                                       |
 | Ctrl-F, Right         | Move cursor one character right                                                                  |
 | Ctrl-H, Backspace     | Delete character before cursor                                                                   |
