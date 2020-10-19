@@ -6,15 +6,16 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-extern crate semver_parser;
-use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
 use crate::AnyError;
 use deno_core::error::custom_error;
-
+use deno_core::futures::FutureExt;
+use deno_core::url::Url;
+use deno_fetch::reqwest;
+use deno_fetch::reqwest::redirect::Policy;
+use deno_fetch::reqwest::Client;
 use regex::Regex;
-use reqwest::{redirect::Policy, Client};
 use semver_parser::version::parse as semver_parse;
 use semver_parser::version::Version;
 use std::fs;
@@ -27,7 +28,6 @@ use std::process::Command;
 use std::process::Stdio;
 use std::string::String;
 use tempfile::TempDir;
-use url::Url;
 
 // TODO(ry) Auto detect target triples for the uploaded files.
 #[cfg(windows)]

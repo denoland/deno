@@ -2,23 +2,23 @@
 import {
   _format,
   assert,
-  assertNotEquals,
-  assertStringContains,
   assertArrayContains,
-  assertMatch,
-  assertNotMatch,
   assertEquals,
-  assertStrictEquals,
+  AssertionError,
+  assertMatch,
+  assertNotEquals,
+  assertNotMatch,
   assertNotStrictEquals,
+  assertStrictEquals,
+  assertStringContains,
   assertThrows,
   assertThrowsAsync,
-  AssertionError,
   equal,
   fail,
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, gray, bold, yellow, stripColor } from "../fmt/colors.ts";
+import { bold, gray, green, red, stripColor, yellow } from "../fmt/colors.ts";
 
 Deno.test("testingEqual", function (): void {
   assert(equal("world", "world"));
@@ -336,8 +336,10 @@ const createHeader = (): string[] => [
   "",
 ];
 
-const added: (s: string) => string = (s: string): string => green(bold(s));
-const removed: (s: string) => string = (s: string): string => red(bold(s));
+const added: (s: string) => string = (s: string): string =>
+  green(bold(stripColor(s)));
+const removed: (s: string) => string = (s: string): string =>
+  red(bold(stripColor(s)));
 
 Deno.test({
   name: "pass case",

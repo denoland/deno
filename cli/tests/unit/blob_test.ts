@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { concat } from "../../../std/bytes/mod.ts";
 import { decode } from "../../../std/encoding/utf8.ts";
 
@@ -61,6 +61,7 @@ unitTest(function blobShouldNotThrowError(): void {
   assertEquals(hasThrown, false);
 });
 
+/* TODO https://github.com/denoland/deno/issues/7540
 unitTest(function nativeEndLine(): void {
   const options = {
     ending: "native",
@@ -69,6 +70,7 @@ unitTest(function nativeEndLine(): void {
 
   assertEquals(blob.size, Deno.build.os === "windows" ? 12 : 11);
 });
+*/
 
 unitTest(async function blobText(): Promise<void> {
   const blob = new Blob(["Hello World"]);

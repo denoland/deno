@@ -1,19 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
 use deno_core::error::bad_resource_id;
 #[cfg(unix)]
-use futures::future::poll_fn;
+use deno_core::futures::future::poll_fn;
 #[cfg(unix)]
-use serde_derive::Deserialize;
+use deno_core::serde_json;
+#[cfg(unix)]
+use deno_core::serde_json::json;
+#[cfg(unix)]
+use serde::Deserialize;
 #[cfg(unix)]
 use std::task::Waker;
 #[cfg(unix)]
@@ -48,7 +52,7 @@ fn op_signal_bind(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.signal");
+  super::check_unstable(state, "Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
   let rid = state.resource_table.add(
     "signal",
@@ -68,7 +72,7 @@ async fn op_signal_poll(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::cli_state2(&state).check_unstable("Deno.signal");
+  super::check_unstable2(&state, "Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
@@ -92,7 +96,7 @@ pub fn op_signal_unbind(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.signal");
+  super::check_unstable(state, "Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let resource = state.resource_table.get_mut::<SignalStreamResource>(rid);

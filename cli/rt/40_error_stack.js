@@ -3,17 +3,16 @@
 ((window) => {
   // Some of the code here is adapted directly from V8 and licensed under a BSD
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
-  const colors = window.__bootstrap.colors;
+  const core = window.Deno.core;
   const assert = window.__bootstrap.util.assert;
   const internals = window.__bootstrap.internals;
-  const dispatchJson = window.__bootstrap.dispatchJson;
 
   function opFormatDiagnostics(diagnostics) {
-    return dispatchJson.sendSync("op_format_diagnostic", diagnostics);
+    return core.jsonOpSync("op_format_diagnostic", diagnostics);
   }
 
   function opApplySourceMap(location) {
-    const res = dispatchJson.sendSync("op_apply_source_map", location);
+    const res = core.jsonOpSync("op_apply_source_map", location);
     return {
       fileName: res.fileName,
       lineNumber: res.lineNumber,
@@ -74,81 +73,42 @@
     };
   }
 
-  function getMethodCall(callSite) {
-    let result = "";
-
-    const typeName = callSite.getTypeName();
-    const methodName = callSite.getMethodName();
-    const functionName = callSite.getFunctionName();
-
-    if (functionName) {
-      if (typeName) {
-        const startsWithTypeName = functionName.startsWith(typeName);
-        if (!startsWithTypeName) {
-          result += `${typeName}.`;
-        }
-      }
-      result += functionName;
-
-      if (methodName) {
-        if (!functionName.endsWith(methodName)) {
-          result += ` [as ${methodName}]`;
-        }
-      }
-    } else {
-      if (typeName) {
-        result += `${typeName}.`;
-      }
-      if (methodName) {
-        result += methodName;
-      } else {
-        result += "<anonymous>";
-      }
-    }
-
-    return result;
-  }
-
-  function getFileLocation(callSite, internal = false) {
-    const cyan = internal ? colors.gray : colors.cyan;
-    const yellow = internal ? colors.gray : colors.yellow;
-    const black = internal ? colors.gray : (s) => s;
+  // Keep in sync with `cli/fmt_errors.rs`.
+  function formatLocation(callSite) {
     if (callSite.isNative()) {
-      return cyan("native");
+      return "native";
     }
 
     let result = "";
 
     const fileName = callSite.getFileName();
-    if (!fileName && callSite.isEval()) {
-      const evalOrigin = callSite.getEvalOrigin();
-      assert(evalOrigin != null);
-      result += cyan(`${evalOrigin}, `);
-    }
 
     if (fileName) {
-      result += cyan(fileName);
+      result += fileName;
     } else {
-      result += cyan("<anonymous>");
+      if (callSite.isEval()) {
+        const evalOrigin = callSite.getEvalOrigin();
+        assert(evalOrigin != null);
+        result += `${evalOrigin}, `;
+      }
+      result += "<anonymous>";
     }
 
     const lineNumber = callSite.getLineNumber();
     if (lineNumber != null) {
-      result += `${black(":")}${yellow(lineNumber.toString())}`;
+      result += `:${lineNumber}`;
 
       const columnNumber = callSite.getColumnNumber();
       if (columnNumber != null) {
-        result += `${black(":")}${yellow(columnNumber.toString())}`;
+        result += `:${columnNumber}`;
       }
     }
 
     return result;
   }
 
-  function callSiteToString(callSite, internal = false) {
-    const cyan = internal ? colors.gray : colors.cyan;
-    const black = internal ? colors.gray : (s) => s;
-
+  // Keep in sync with `cli/fmt_errors.rs`.
+  function formatCallSite(callSite) {
     let result = "";
     const functionName = callSite.getFunctionName();
 
@@ -159,35 +119,53 @@
     const isMethodCall = !(isTopLevel || isConstructor);
 
     if (isAsync) {
-      result += colors.gray("async ");
+      result += "async ";
     }
     if (isPromiseAll) {
-      result += colors.bold(
-        colors.italic(
-          black(`Promise.all (index ${callSite.getPromiseIndex()})`),
-        ),
-      );
+      result += `Promise.all (index ${callSite.getPromiseIndex()})`;
       return result;
     }
     if (isMethodCall) {
-      result += colors.bold(colors.italic(black(getMethodCall(callSite))));
-    } else if (isConstructor) {
-      result += colors.gray("new ");
+      const typeName = callSite.getTypeName();
+      const methodName = callSite.getMethodName();
+
       if (functionName) {
-        result += colors.bold(colors.italic(black(functionName)));
+        if (typeName) {
+          if (!functionName.startsWith(typeName)) {
+            result += `${typeName}.`;
+          }
+        }
+        result += functionName;
+        if (methodName) {
+          if (!functionName.endsWith(methodName)) {
+            result += ` [as ${methodName}]`;
+          }
+        }
       } else {
-        result += cyan("<anonymous>");
+        if (typeName) {
+          result += `${typeName}.`;
+        }
+        if (methodName) {
+          result += methodName;
+        } else {
+          result += "<anonymous>";
+        }
+      }
+    } else if (isConstructor) {
+      result += "new ";
+      if (functionName) {
+        result += functionName;
+      } else {
+        result += "<anonymous>";
       }
     } else if (functionName) {
-      result += colors.bold(colors.italic(black(functionName)));
+      result += functionName;
     } else {
-      result += getFileLocation(callSite, internal);
+      result += formatLocation(callSite);
       return result;
     }
 
-    result += ` ${black("(")}${getFileLocation(callSite, internal)}${
-      black(")")
-    }`;
+    result += ` (${formatLocation(callSite)})`;
     return result;
   }
 
@@ -236,21 +214,25 @@
     );
     Object.defineProperties(error, {
       __callSiteEvals: { value: [], configurable: true },
-      __formattedFrames: { value: [], configurable: true },
     });
+    const formattedCallSites = [];
     for (const callSite of mappedCallSites) {
       error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-      const isInternal = callSite.getFileName()?.startsWith("deno:") ?? false;
-      error.__formattedFrames.push(callSiteToString(callSite, isInternal));
+      formattedCallSites.push(formatCallSite(callSite));
     }
     Object.freeze(error.__callSiteEvals);
-    Object.freeze(error.__formattedFrames);
-    return (
-      `${error.name}: ${error.message}\n` +
-      error.__formattedFrames
-        .map((s) => `    at ${colors.stripColor(s)}`)
-        .join("\n")
-    );
+    const message = error.message !== undefined ? error.message : "";
+    const name = error.name !== undefined ? error.name : "Error";
+    let messageLine;
+    if (name != "" && message != "") {
+      messageLine = `${name}: ${message}`;
+    } else if ((name || message) != "") {
+      messageLine = name || message;
+    } else {
+      messageLine = "";
+    }
+    return messageLine +
+      formattedCallSites.map((s) => `\n    at ${s}`).join("");
   }
 
   function setPrepareStackTrace(ErrorConstructor) {

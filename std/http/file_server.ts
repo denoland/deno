@@ -6,13 +6,13 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-import { posix, extname } from "../path/mod.ts";
+import { extname, posix } from "../path/mod.ts";
 import {
+  HTTPSOptions,
   listenAndServe,
   listenAndServeTLS,
-  ServerRequest,
   Response,
-  HTTPSOptions,
+  ServerRequest,
 } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../_util/assert.ts";

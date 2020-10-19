@@ -9,10 +9,10 @@ You can use import maps with the `--importmap=<FILE>` CLI flag.
 
 Current limitations:
 
-- single import map
-- no fallback URLs
-- Deno does not support `std:` namespace
-- supports only `file:`, `http:` and `https:` schemes
+- single import map.
+- no fallback URLs.
+- Deno does not support `std:` namespace.
+- supports only `file:`, `http:` and `https:` schemes.
 
 Example:
 

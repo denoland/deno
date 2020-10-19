@@ -4,10 +4,12 @@ use crate::diagnostics::Diagnostics;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
-use serde_json::Value;
+use serde::Deserialize;
 use std::collections::HashMap;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -37,7 +39,7 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      &super::cli_state(state).global_state.ts_compiler,
+      &super::program_state(state).ts_compiler,
     );
 
   Ok(json!({

@@ -1,10 +1,11 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
-  fail,
   assertThrows,
+  fail,
 } from "../testing/asserts.ts";
-import EventEmitter, { WrappedFunction, once, on } from "./events.ts";
+import EventEmitter, { on, once, WrappedFunction } from "./events.ts";
 
 const shouldNeverBeEmitted = () => {
   fail("Should never be called");

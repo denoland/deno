@@ -1,17 +1,19 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
-use crate::http_util::HttpBody;
 use crate::metrics::metrics_op;
 use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::ready;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
-use futures::future::poll_fn;
-use futures::future::FutureExt;
-use futures::ready;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -29,9 +31,6 @@ use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
-
-#[cfg(windows)]
-extern crate winapi;
 
 lazy_static! {
   /// Due to portability issues on Windows handle to stdout is created from raw
@@ -184,14 +183,12 @@ impl StreamResourceHolder {
 }
 
 pub enum StreamResource {
-  Stdin(tokio::io::Stdin, TTYMetadata),
   FsFile(Option<(tokio::fs::File, FileMetadata)>),
   TcpStream(Option<tokio::net::TcpStream>),
   #[cfg(not(windows))]
   UnixStream(tokio::net::UnixStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-  HttpBody(Box<HttpBody>),
   ChildStdin(tokio::process::ChildStdin),
   ChildStdout(tokio::process::ChildStdout),
   ChildStderr(tokio::process::ChildStderr),
@@ -223,7 +220,6 @@ impl DenoAsyncRead for StreamResource {
     let f: &mut dyn UnpinAsyncRead = match self {
       FsFile(Some((f, _))) => f,
       FsFile(None) => return Poll::Ready(Err(resource_unavailable())),
-      Stdin(f, _) => f,
       TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
@@ -231,7 +227,6 @@ impl DenoAsyncRead for StreamResource {
       ServerTlsStream(f) => f,
       ChildStdout(f) => f,
       ChildStderr(f) => f,
-      HttpBody(f) => f,
       _ => return Err(bad_resource_id()).into(),
     };
     let v = ready!(Pin::new(f).poll_read(cx, buf))?;

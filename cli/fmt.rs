@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-//! This module provides file formating utilities using
+//! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dsherret/dprint-plugin-typescript).
 //!
 //! At the moment it is only consumed using CLI but in
@@ -13,6 +13,7 @@ use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
@@ -78,13 +79,13 @@ async fn check_source_files(
             let _g = output_lock.lock().unwrap();
             match diff(&file_text, &formatted_text) {
               Ok(diff) => {
-                println!();
-                println!(
+                info!("");
+                info!(
                   "{} {}:",
                   colors::bold("from"),
                   file_path.display().to_string()
                 );
-                println!("{}", diff);
+                info!("{}", diff);
               }
               Err(e) => {
                 eprintln!(
@@ -113,7 +114,7 @@ async fn check_source_files(
   let checked_files_str =
     format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
-    println!("Checked {}", checked_files_str);
+    info!("Checked {}", checked_files_str);
     Ok(())
   } else {
     let not_formatted_files_str = files_str(not_formatted_files_count);
@@ -151,7 +152,7 @@ async fn format_source_files(
             )?;
             formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
-            println!("{}", file_path.to_string_lossy());
+            info!("{}", file_path.to_string_lossy());
           }
         }
         Err(e) => {
@@ -173,7 +174,7 @@ async fn format_source_files(
   );
 
   let checked_files_count = checked_files_count.load(Ordering::Relaxed);
-  println!(
+  info!(
     "Checked {} {}",
     checked_files_count,
     files_str(checked_files_count)
@@ -211,7 +212,7 @@ fn format_stdin(check: bool) -> Result<(), AnyError> {
 }
 
 fn files_str(len: usize) -> &'static str {
-  if len == 1 {
+  if len <= 1 {
     "file"
   } else {
     "files"
@@ -236,8 +237,10 @@ pub fn collect_files(
   let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
-    target_files
-      .extend(files_in_subtree(std::env::current_dir()?, is_supported));
+    target_files.extend(files_in_subtree(
+      std::env::current_dir()?.canonicalize()?,
+      is_supported,
+    ));
   } else {
     for arg in files {
       let p = PathBuf::from(arg);

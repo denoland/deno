@@ -53,8 +53,6 @@ __bootstrap.denoNs = {
   env: __bootstrap.os.env,
   exit: __bootstrap.os.exit,
   execPath: __bootstrap.os.execPath,
-  resources: __bootstrap.resources.resources,
-  close: __bootstrap.resources.close,
   Buffer: __bootstrap.buffer.Buffer,
   readAll: __bootstrap.buffer.readAll,
   readAllSync: __bootstrap.buffer.readAllSync,
@@ -82,6 +80,7 @@ __bootstrap.denoNs = {
   listen: __bootstrap.net.listen,
   connectTls: __bootstrap.tls.connectTls,
   listenTls: __bootstrap.tls.listenTls,
+  sleepSync: __bootstrap.timers.sleepSync,
 };
 
 __bootstrap.denoNsUnstable = {

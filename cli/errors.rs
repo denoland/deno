@@ -11,9 +11,11 @@
 
 use crate::ast::DiagnosticBuffer;
 use crate::import_map::ImportMapError;
-use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::url;
 use deno_core::ModuleResolutionError;
+use deno_fetch::reqwest;
 use rustyline::error::ReadlineError;
 use std::env;
 use std::error::Error;
@@ -131,7 +133,7 @@ fn get_request_error_class(error: &reqwest::Error) -> &'static str {
 fn get_serde_json_error_class(
   error: &serde_json::error::Error,
 ) -> &'static str {
-  use serde_json::error::*;
+  use deno_core::serde_json::error::*;
   match error.classify() {
     Category::Io => error
       .source()
@@ -171,7 +173,7 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
 }
 
 pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
-  get_custom_error_class(e)
+  deno_core::error::get_custom_error_class(e)
     .or_else(|| {
       e.downcast_ref::<dlopen::Error>()
         .map(get_dlopen_error_class)

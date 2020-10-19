@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::normalize_path;
 use std::env::current_dir;
 use std::error::Error;
@@ -46,7 +48,7 @@ impl fmt::Display for ModuleResolutionError {
   }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq, serde::Serialize)]
 /// Resolved module specifier
 pub struct ModuleSpecifier(Url);
 

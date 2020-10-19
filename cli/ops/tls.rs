@@ -1,17 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::io::{StreamResource, StreamResourceHolder};
+use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::futures::future::poll_fn;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
-use serde_derive::Deserialize;
-use serde_json::Value;
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;
 use std::fs::File;
@@ -72,11 +76,12 @@ async fn op_start_tls(
     domain.push_str("localhost");
   }
   {
-    let cli_state = super::cli_state2(&state);
-    cli_state.check_unstable("Deno.startTls");
-    cli_state.check_net(&domain, 0)?;
+    super::check_unstable2(&state, "Deno.startTls");
+    let s = state.borrow();
+    let permissions = s.borrow::<Permissions>();
+    permissions.check_net(&domain, 0)?;
     if let Some(path) = cert_file.clone() {
-      cli_state.check_read(Path::new(&path))?;
+      permissions.check_read(Path::new(&path))?;
     }
   }
   let mut resource_holder = {
@@ -143,10 +148,11 @@ async fn op_connect_tls(
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   {
-    let cli_state = super::cli_state2(&state);
-    cli_state.check_net(&args.hostname, args.port)?;
+    let s = state.borrow();
+    let permissions = s.borrow::<Permissions>();
+    permissions.check_net(&args.hostname, args.port)?;
     if let Some(path) = cert_file.clone() {
-      cli_state.check_read(Path::new(&path))?;
+      permissions.check_read(Path::new(&path))?;
     }
   }
   let mut domain = args.hostname.clone();
@@ -318,10 +324,10 @@ fn op_listen_tls(
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
-    let cli_state = super::cli_state(state);
-    cli_state.check_net(&args.hostname, args.port)?;
-    cli_state.check_read(Path::new(&cert_file))?;
-    cli_state.check_read(Path::new(&key_file))?;
+    let permissions = state.borrow::<Permissions>();
+    permissions.check_net(&args.hostname, args.port)?;
+    permissions.check_read(Path::new(&cert_file))?;
+    permissions.check_read(Path::new(&key_file))?;
   }
   let mut config = ServerConfig::new(NoClientAuth::new());
   config

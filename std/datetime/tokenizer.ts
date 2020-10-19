@@ -1,13 +1,20 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 export type Token = {
   type: string;
   value: string | number;
   index: number;
+  [key: string]: unknown;
 };
 
-interface ReceiverResult {
-  [name: string]: string | number;
+export interface ReceiverResult {
+  [name: string]: string | number | unknown;
 }
-export type CallbackResult = { type: string; value: string | number };
+export type CallbackResult = {
+  type: string;
+  value: string | number;
+  [key: string]: unknown;
+};
 type CallbackFunction = (value: unknown) => CallbackResult;
 
 export type TestResult = { value: unknown; length: number } | undefined;

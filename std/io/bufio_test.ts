@@ -1,17 +1,18 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Based on https://github.com/golang/go/blob/891682/src/bufio/bufio_test.go
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 import { assert, assertEquals, fail } from "../testing/asserts.ts";
 import {
+  BufferFullError,
   BufReader,
   BufWriter,
   BufWriterSync,
-  BufferFullError,
   PartialReadError,
   ReadLineResult,
-  readStringDelim,
   readLines,
+  readStringDelim,
 } from "./bufio.ts";
 import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";

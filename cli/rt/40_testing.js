@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { gray, green, italic, red, yellow } = window.__bootstrap.colors;
+  const core = window.Deno.core;
+  const colors = window.__bootstrap.colors;
   const { exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
   const { exposeForTest } = window.__bootstrap.internals;
   const { metrics } = window.__bootstrap.metrics;
-  const { resources } = window.__bootstrap.resources;
   const { assert } = window.__bootstrap.util;
 
   const disabledConsole = new Console(() => {});
@@ -19,6 +19,8 @@
   }
 
   function formatDuration(time = 0) {
+    const gray = colors.maybeColor(colors.gray);
+    const italic = colors.maybeColor(colors.italic);
     const timeStr = `(${time}ms)`;
     return gray(italic(timeStr));
   }
@@ -64,9 +66,9 @@ finishing test case.`,
     fn,
   ) {
     return async function resourceSanitizer() {
-      const pre = resources();
+      const pre = core.resources();
       await fn();
-      const post = resources();
+      const post = core.resources();
 
       const preStr = JSON.stringify(pre, null, 2);
       const postStr = JSON.stringify(post, null, 2);
@@ -139,6 +141,9 @@ finishing test case.`;
   }
 
   function reportToConsole(message) {
+    const green = colors.maybeColor(colors.green);
+    const red = colors.maybeColor(colors.red);
+    const yellow = colors.maybeColor(colors.yellow);
     const redFailed = red("FAILED");
     const greenOk = green("ok");
     const yellowIgnored = yellow("ignored");

@@ -1,20 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use serde::Deserialize;
 use serde::Serialize;
-use serde_derive::Deserialize;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
@@ -91,7 +94,9 @@ fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    super::cli_state(state).check_read(&PathBuf::from(path))?;
+    state
+      .borrow::<Permissions>()
+      .check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };

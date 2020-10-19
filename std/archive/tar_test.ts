@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /**
  * Tar test
  *
@@ -8,9 +9,9 @@
  * **to run this test**
  * deno run --allow-read archive/tar_test.ts
  */
-import { assertEquals, assert } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
 
-import { resolve, dirname, fromFileUrl } from "../path/mod.ts";
+import { dirname, fromFileUrl, resolve } from "../path/mod.ts";
 import { Tar, Untar } from "./tar.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
@@ -112,7 +113,9 @@ Deno.test("appendFileWithLongNameToTarArchive", async function (): Promise<
   const untar = new Untar(tar.getReader());
   const result = await untar.extract();
   assert(result !== null);
+  assert(!result.consumed);
   const untarText = new TextDecoder("utf-8").decode(await Deno.readAll(result));
+  assert(result.consumed);
 
   // tests
   assertEquals(result.fileName, fileName);
@@ -136,6 +139,7 @@ Deno.test("untarAsyncIterator", async function (): Promise<void> {
   // read data from a tar archive
   const untar = new Untar(tar.getReader());
 
+  let lastEntry;
   for await (const entry of untar) {
     const expected = entries.shift();
     assert(expected);
@@ -144,11 +148,14 @@ Deno.test("untarAsyncIterator", async function (): Promise<void> {
     if (expected.filePath) {
       content = await Deno.readFile(expected.filePath);
     }
-
     assertEquals(content, await Deno.readAll(entry));
     assertEquals(expected.name, entry.fileName);
-  }
 
+    if (lastEntry) assert(lastEntry.consumed);
+    lastEntry = entry;
+  }
+  assert(lastEntry);
+  assert(lastEntry.consumed);
   assertEquals(entries.length, 0);
 });
 

@@ -1,8 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::metrics::metrics_op;
+use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
@@ -11,9 +16,7 @@ use deno_core::OpId;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
-use futures::prelude::*;
-use serde_derive::Deserialize;
-use serde_json::Value;
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -39,9 +42,9 @@ pub fn op_open_plugin(
   let args: OpenPluginArgs = serde_json::from_value(args)?;
   let filename = PathBuf::from(&args.filename);
 
-  let cli_state = super::cli_state(state);
-  cli_state.check_unstable("Deno.openPlugin");
-  cli_state.check_plugin(&filename)?;
+  super::check_unstable(state, "Deno.openPlugin");
+  let permissions = state.borrow::<Permissions>();
+  permissions.check_plugin(&filename)?;
 
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;

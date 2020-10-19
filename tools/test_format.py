@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # This program fails if ./tools/format.py changes any files.
 
 import sys
@@ -12,8 +13,8 @@ def main():
         ["git", "status", "-uno", "--porcelain", "--ignore-submodules"],
         exit_on_fail=True)
     if result.out:
-        print "Run tools/format.py "
-        print result.out
+        print("Run tools/format.py ")
+        print(result.out)
         sys.exit(1)
 
 

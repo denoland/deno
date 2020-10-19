@@ -1,6 +1,7 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as hex from "../encoding/hex.ts";
 import * as base64 from "../encoding/base64.ts";
-import { notImplemented, normalizeEncoding } from "./_utils.ts";
+import { normalizeEncoding, notImplemented } from "./_utils.ts";
 
 const notImplementedEncodings = [
   "ascii",
@@ -212,7 +213,7 @@ export default class Buffer extends Uint8Array {
     if (typeof value == "string") {
       encoding = checkEncoding(encoding, false);
       if (encoding === "hex") return new Buffer(hex.decodeString(value).buffer);
-      if (encoding === "base64") return new Buffer(base64.decode(value));
+      if (encoding === "base64") return new Buffer(base64.decode(value).buffer);
       return new Buffer(new TextEncoder().encode(value).buffer);
     }
 

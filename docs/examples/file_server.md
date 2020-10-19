@@ -4,9 +4,9 @@
 
 - Use the Deno standard library
   [file_server.ts](https://deno.land/std@$STD_VERSION/http/file_server.ts) to
-  run your own file server and access your files from your web browser
+  run your own file server and access your files from your web browser.
 - Run [Deno install](../tools/script_installer.md) to install the file server
-  locally
+  locally.
 
 ## Example
 

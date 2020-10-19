@@ -3,12 +3,10 @@
 mod dispatch_minimal;
 pub use dispatch_minimal::MinimalOp;
 
-pub mod compiler;
 pub mod errors;
 pub mod fetch;
 pub mod fs;
 pub mod fs_events;
-pub mod idna;
 pub mod io;
 pub mod net;
 #[cfg(unix)]
@@ -18,8 +16,6 @@ pub mod permissions;
 pub mod plugin;
 pub mod process;
 pub mod random;
-pub mod repl;
-pub mod resources;
 pub mod runtime;
 pub mod runtime_compiler;
 pub mod signal;
@@ -31,17 +27,19 @@ pub mod websocket;
 pub mod worker_host;
 
 use crate::metrics::metrics_op;
+use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
+use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_json::Value;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn reg_json_async<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
@@ -59,13 +57,24 @@ where
   rt.register_op(name, metrics_op(json_op_sync(op_fn)));
 }
 
+/// Helper for checking unstable features. Used for sync ops.
+pub fn check_unstable(state: &OpState, api_name: &str) {
+  state.borrow::<Arc<ProgramState>>().check_unstable(api_name)
+}
+
+/// Helper for checking unstable features. Used for async ops.
+pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
+  let state = state.borrow();
+  state.borrow::<Arc<ProgramState>>().check_unstable(api_name)
+}
+
 /// Helper for extracting the commonly used state. Used for sync ops.
-pub fn cli_state(state: &OpState) -> Rc<crate::state::CliState> {
-  state.borrow::<Rc<crate::state::CliState>>().clone()
+pub fn program_state(state: &OpState) -> Arc<ProgramState> {
+  state.borrow::<Arc<ProgramState>>().clone()
 }
 
 /// Helper for extracting the commonly used state. Used for async ops.
-pub fn cli_state2(state: &Rc<RefCell<OpState>>) -> Rc<crate::state::CliState> {
+pub fn global_state2(state: &Rc<RefCell<OpState>>) -> Arc<ProgramState> {
   let state = state.borrow();
-  state.borrow::<Rc<crate::state::CliState>>().clone()
+  state.borrow::<Arc<ProgramState>>().clone()
 }

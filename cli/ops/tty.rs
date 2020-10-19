@@ -7,11 +7,13 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::last_os_error;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde_derive::Deserialize;
-use serde_derive::Serialize;
-use serde_json::Value;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[cfg(unix)]
 use deno_core::error::not_supported;
@@ -62,7 +64,7 @@ fn op_set_raw(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.setRaw");
+  super::check_unstable(state, "Deno.setRaw");
 
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
@@ -88,7 +90,6 @@ fn op_set_raw(
 
     // For now, only stdin.
     let handle = match &mut resource_holder.resource {
-      StreamResource::Stdin(..) => std::io::stdin().as_raw_handle(),
       StreamResource::FsFile(ref mut option_file_metadata) => {
         if let Some((tokio_file, metadata)) = option_file_metadata.take() {
           match tokio_file.try_into_std() {
@@ -154,9 +155,6 @@ fn op_set_raw(
     if is_raw {
       let (raw_fd, maybe_tty_mode) =
         match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
@@ -196,9 +194,6 @@ fn op_set_raw(
       // Try restore saved mode.
       let (raw_fd, maybe_tty_mode) =
         match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
@@ -251,7 +246,6 @@ fn op_isatty(
       }
     }
     Err(StreamResource::FsFile(_)) => unreachable!(),
-    Err(StreamResource::Stdin(..)) => Ok(atty::is(atty::Stream::Stdin)),
     _ => Ok(false),
   })?;
   Ok(json!(isatty))
@@ -273,7 +267,7 @@ fn op_console_size(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::cli_state(state).check_unstable("Deno.consoleSize");
+  super::check_unstable(state, "Deno.consoleSize");
 
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;

@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { bytesToUuid } from "./_common.ts";
 
 const UUID_RE = new RegExp(
@@ -7,6 +6,10 @@ const UUID_RE = new RegExp(
   "i",
 );
 
+/**
+ * Validates the UUID v1
+ * @param id UUID value
+ */
 export function validate(id: string): boolean {
   return UUID_RE.test(id);
 }
@@ -26,6 +29,12 @@ type V1Options = {
   rng?: () => number[];
 };
 
+/**
+ * Generates a RFC4122 v1 UUID (time-based)
+ * @param options Can use RFC time sequence values as overwrites
+ * @param buf Can allow the UUID to be written in byte-form starting at the offset
+ * @param offset Index to start writing on the UUID bytes in buffer
+ */
 export function generate(
   options?: V1Options | null,
   buf?: number[],

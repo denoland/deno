@@ -3,9 +3,10 @@
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use deno_core::error::AnyError;
+use deno_core::serde_json::json;
+use deno_core::url::Url;
 use std::path::Path;
 use std::path::PathBuf;
-use url::Url;
 
 fn is_supported(p: &Path) -> bool {
   use std::path::Component;
@@ -81,11 +82,12 @@ pub fn render_test_file(
     json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
   };
 
-  let run_tests_cmd = format!(
-    "// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
+  test_file.push_str("// @ts-ignore\n");
+
+  test_file.push_str(&format!(
+    "await Deno[Deno.internal].runTests({});\n",
     options
-  );
-  test_file.push_str(&run_tests_cmd);
+  ));
 
   test_file
 }

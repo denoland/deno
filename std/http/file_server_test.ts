@@ -3,8 +3,8 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
-import { serveFile, FileServerArgs } from "./file_server.ts";
-import { resolve, dirname, join, fromFileUrl } from "../path/mod.ts";
+import { FileServerArgs, serveFile } from "./file_server.ts";
+import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
 type FileServerCfg = Omit<FileServerArgs, "_"> & { target?: string };
@@ -200,6 +200,7 @@ Deno.test("file_server running as library", async function (): Promise<void> {
   try {
     const res = await fetch("http://localhost:8000");
     assertEquals(res.status, 200);
+    const _ = await res.text();
   } finally {
     await killFileServer();
   }

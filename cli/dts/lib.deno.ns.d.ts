@@ -1225,8 +1225,8 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
-  /** Synchronously reads and returns the entire contents of a file as utf8 encoded string
-   *  encoded string. Reading a directory returns an empty string.
+  /** Synchronously reads and returns the entire contents of a file as utf8
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = Deno.readTextFileSync("hello.txt");
@@ -1236,8 +1236,8 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function readTextFileSync(path: string | URL): string;
 
-  /** Asynchronously reads and returns the entire contents of a file as a utf8
-   *  encoded string. Reading a directory returns an empty data array.
+  /** Asynchronously reads and returns the entire contents of a file as utf8
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = await Deno.readTextFile("hello.txt");
@@ -1941,19 +1941,23 @@ declare namespace Deno {
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
   export interface InspectOptions {
-    /** Traversal depth for nested objects. Defaults to 4. */
-    depth?: number;
-    /** Sort Object, Set and Map entries by key. Defaults to false. */
-    sorted?: boolean;
-    /** Add a trailing comma for multiline collections. Defaults to false. */
-    trailingComma?: boolean;
+    /** Stylize output with ANSI colors. Defaults to false. */
+    colors?: boolean;
     /** Try to fit more than one entry of a collection on the same line.
      * Defaults to true. */
     compact?: boolean;
+    /** Traversal depth for nested objects. Defaults to 4. */
+    depth?: number;
     /** The maximum number of iterable entries to print. Defaults to 100. */
     iterableLimit?: number;
     /** Show a Proxy's target and handler. Defaults to false. */
     showProxy?: boolean;
+    /** Sort Object, Set and Map entries by key. Defaults to false. */
+    sorted?: boolean;
+    /** Add a trailing comma for multiline collections. Defaults to false. */
+    trailingComma?: boolean;
+    /*** Evaluate the result of calling getters. Defaults to false. */
+    getters?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by
