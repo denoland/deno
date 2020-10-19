@@ -13,7 +13,6 @@ use regex::Regex;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
-use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
@@ -37,7 +36,6 @@ struct Helper {
   message_tx: SyncSender<(String, Option<Value>)>,
   response_rx: Receiver<Result<Value, AnyError>>,
   highlighter: LineHighlighter,
-  validator: MatchingBracketValidator,
 }
 
 impl Helper {
@@ -135,7 +133,42 @@ impl Validator for Helper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    self.validator.validate(ctx)
+    let mut stack: Vec<char> = Vec::new();
+    for c in ctx.input().chars() {
+      match c {
+        '(' | '[' | '{' => stack.push(c),
+        ')' | ']' | '}' => match (stack.pop(), c) {
+          (Some('('), ')') | (Some('['), ']') | (Some('{'), '}') => {}
+          (Some(left), _) => {
+            return Ok(ValidationResult::Invalid(Some(format!(
+              "Mismatched pairs: {:?} is not properly closed",
+              left
+            ))))
+          }
+          (None, c) => {
+            return Ok(ValidationResult::Invalid(Some(format!(
+              "Mismatched pairs: {:?} is unpaired",
+              c
+            ))))
+          }
+        },
+        '`' => {
+          if stack.is_empty() || stack.last().unwrap() != &c {
+            stack.push(c);
+          } else {
+            stack.pop();
+          }
+        }
+
+        _ => {}
+      }
+    }
+
+    if !stack.is_empty() {
+      return Ok(ValidationResult::Incomplete);
+    }
+
+    Ok(ValidationResult::Valid(None))
   }
 }
 
@@ -328,6 +361,31 @@ async fn inject_prelude(
   Ok(())
 }
 
+pub async fn is_closing(
+  worker: &mut MainWorker,
+  session: &mut InspectorSession,
+  context_id: u64,
+) -> Result<bool, AnyError> {
+  let closed = post_message_and_poll(
+    worker,
+    session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": "(globalThis.closed)",
+      "contextId": context_id,
+    })),
+  )
+  .await?
+  .get("result")
+  .unwrap()
+  .get("value")
+  .unwrap()
+  .as_bool()
+  .unwrap();
+
+  Ok(closed)
+}
+
 pub async fn run(
   program_state: &ProgramState,
   mut worker: MainWorker,
@@ -366,7 +424,6 @@ pub async fn run(
     message_tx,
     response_rx,
     highlighter: LineHighlighter::new(),
-    validator: MatchingBracketValidator::new(),
   };
 
   let editor = Arc::new(Mutex::new(Editor::new()));
@@ -384,7 +441,7 @@ pub async fn run(
 
   inject_prelude(&mut worker, &mut session, context_id).await?;
 
-  loop {
+  while !is_closing(&mut worker, &mut session, context_id).await? {
     let line = read_line_and_poll(
       &mut *worker,
       &mut session,
@@ -439,27 +496,6 @@ pub async fn run(
             evaluate_response
           };
 
-        let is_closing = post_message_and_poll(
-          &mut *worker,
-          &mut session,
-          "Runtime.evaluate",
-          Some(json!({
-            "expression": "(globalThis.closed)",
-            "contextId": context_id,
-          })),
-        )
-        .await?
-        .get("result")
-        .unwrap()
-        .get("value")
-        .unwrap()
-        .as_bool()
-        .unwrap();
-
-        if is_closing {
-          break;
-        }
-
         let evaluate_result = evaluate_response.get("result").unwrap();
         let evaluate_exception_details =
           evaluate_response.get("exceptionDetails");
@@ -511,21 +547,19 @@ pub async fn run(
 
         let inspect_result = inspect_response.get("result").unwrap();
 
-        match evaluate_exception_details {
-          Some(_) => eprintln!(
-            "Uncaught {}",
-            inspect_result.get("value").unwrap().as_str().unwrap()
-          ),
-          None => println!(
-            "{}",
-            inspect_result.get("value").unwrap().as_str().unwrap()
-          ),
-        }
+        let value = inspect_result.get("value").unwrap().as_str().unwrap();
+        let output = match evaluate_exception_details {
+          Some(_) => format!("Uncaught {}", value),
+          None => value.to_string(),
+        };
+
+        println!("{}", output);
 
         editor.lock().unwrap().add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
-        break;
+        println!("exit using ctrl+d or close()");
+        continue;
       }
       Err(ReadlineError::Eof) => {
         break;
