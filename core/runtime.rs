@@ -162,22 +162,6 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-/// Minimum and maximum bytes of heap used in an isolate
-pub struct HeapLimits {
-  /// By default V8 starts with a small heap and dynamically grows it to match
-  /// the set of live objects. This may lead to ineffective garbage collections
-  /// at startup if the live set is large. Setting the initial heap size avoids
-  /// such garbage collections. Note that this does not affect young generation
-  /// garbage collections.
-  pub initial: usize,
-  /// When the heap size approaches `max`, V8 will perform series of
-  /// garbage collections and invoke the
-  /// [NearHeapLimitCallback](TODO).
-  /// If the garbage collections do not help and the callback does not
-  /// increase the limit, then V8 will crash with V8::FatalProcessOutOfMemory.
-  pub max: usize,
-}
-
 #[derive(Default)]
 pub struct RuntimeOptions {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
@@ -202,17 +186,12 @@ pub struct RuntimeOptions {
   /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
 
-  /// This is useful for controlling memory usage of scripts.
-  ///
-  /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
-  ///
-  /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
-  /// to prevent v8 from crashing when reaching the upper limit.
-  pub heap_limits: Option<HeapLimits>,
+  /// Isolate creation parameters.
+  pub create_params: Option<v8::CreateParams>,
 }
 
 impl JsRuntime {
-  pub fn new(options: RuntimeOptions) -> Self {
+  pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
@@ -234,7 +213,10 @@ impl JsRuntime {
       }
       (isolate, Some(creator))
     } else {
-      let mut params = v8::Isolate::create_params()
+      let mut params = options
+        .create_params
+        .take()
+        .unwrap_or_else(v8::Isolate::create_params)
         .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
@@ -246,10 +228,6 @@ impl JsRuntime {
       } else {
         false
       };
-
-      if let Some(heap_limits) = options.heap_limits {
-        params = params.heap_limits(heap_limits.initial, heap_limits.max)
-      }
 
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
@@ -2078,12 +2056,9 @@ pub mod tests {
 
   #[test]
   fn test_heap_limits() {
-    let heap_limits = HeapLimits {
-      initial: 0,
-      max: 20 * 1024, // 20 kB
-    };
+    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      heap_limits: Some(heap_limits),
+      create_params: Some(create_params),
       ..Default::default()
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();
@@ -2124,12 +2099,9 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_multiple() {
-    let heap_limits = HeapLimits {
-      initial: 0,
-      max: 20 * 1024, // 20 kB
-    };
+    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      heap_limits: Some(heap_limits),
+      create_params: Some(create_params),
       ..Default::default()
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();

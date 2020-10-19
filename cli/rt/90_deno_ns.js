@@ -80,6 +80,7 @@ __bootstrap.denoNs = {
   listen: __bootstrap.net.listen,
   connectTls: __bootstrap.tls.connectTls,
   listenTls: __bootstrap.tls.listenTls,
+  sleepSync: __bootstrap.timers.sleepSync,
 };
 
 __bootstrap.denoNsUnstable = {
