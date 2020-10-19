@@ -3,6 +3,8 @@
 ^^^^^^^^^^^^^^^^^^^
     at [WILDCARD]file1.js:1:0
 
+    hint: [WILDCARD]
+
 (no-empty) Empty block statement
 while (false) {}
               ^^

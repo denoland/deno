@@ -485,7 +485,10 @@ class TarEntry implements Reader {
       entryBytesLeft,
     );
 
-    if (entryBytesLeft <= 0) return null;
+    if (entryBytesLeft <= 0) {
+      this.#consumed = true;
+      return null;
+    }
 
     const block = new Uint8Array(bufSize);
     const n = await readBlock(this.#reader, block);
@@ -493,9 +496,7 @@ class TarEntry implements Reader {
 
     this.#read += n || 0;
     if (n === null || bytesLeft <= 0) {
-      // FIXME(bartlomieju): this condition makes no sense
-      // deno-lint-ignore no-constant-condition
-      if (null) this.#consumed = true;
+      if (n === null) this.#consumed = true;
       return null;
     }
 
