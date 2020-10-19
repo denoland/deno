@@ -1178,6 +1178,66 @@ fn repl_test_pty_multiline() {
 }
 
 #[test]
+fn run_watch_with_importmap_and_relative_paths() {
+  fn create_relative_tmp_file(
+    directory: &TempDir,
+    filename: &'static str,
+    filecontent: &'static str,
+  ) -> std::path::PathBuf {
+    let absolute_path = directory.path().join(filename);
+    std::fs::write(&absolute_path, filecontent).expect("error writing file");
+    let relative_path = absolute_path
+      .strip_prefix(util::root_path())
+      .expect("unable to create relative temporary file")
+      .to_owned();
+    assert!(relative_path.is_relative());
+    relative_path
+  }
+  let temp_directory =
+    TempDir::new_in(util::root_path()).expect("tempdir fail");
+  let file_to_watch = create_relative_tmp_file(
+    &temp_directory,
+    "file_to_watch.js",
+    "console.log('Hello world');",
+  );
+  let import_map_path = create_relative_tmp_file(
+    &temp_directory,
+    "import_map.json",
+    "{\"imports\": {}}",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--watch")
+    .arg("--importmap")
+    .arg(&import_map_path)
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+
+  child.kill().unwrap();
+
+  drop(file_to_watch);
+  drop(import_map_path);
+  temp_directory.close().unwrap();
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
