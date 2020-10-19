@@ -391,21 +391,19 @@ pub async fn run(
 
         let inspect_result = inspect_response.get("result").unwrap();
 
-        match evaluate_exception_details {
-          Some(_) => eprintln!(
-            "Uncaught {}",
-            inspect_result.get("value").unwrap().as_str().unwrap()
-          ),
-          None => println!(
-            "{}",
-            inspect_result.get("value").unwrap().as_str().unwrap()
-          ),
-        }
+        let value = inspect_result.get("value").unwrap().as_str().unwrap();
+        let output = match evaluate_exception_details {
+          Some(_) => format!("Uncaught {}", value),
+          None => value.to_string(),
+        };
+
+        println!("{}", output);
 
         editor.lock().unwrap().add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
-        break;
+        println!("exit using ctrl+d or close()");
+        continue;
       }
       Err(ReadlineError::Eof) => {
         break;
