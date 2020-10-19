@@ -33,7 +33,33 @@ impl Validator for Helper {
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
     let mut stack: Vec<char> = Vec::new();
+    let mut literal: Option<char> = None;
+    let mut escape: bool = false;
+
     for c in ctx.input().chars() {
+      if escape {
+        escape = false;
+        continue;
+      }
+
+      if c == '\\' {
+        escape = true;
+        continue;
+      }
+
+      if let Some(v) = literal {
+        if c == v {
+          literal = None
+        }
+
+        continue;
+      } else {
+        literal = match c {
+          '`' | '"' | '/' | '\'' => Some(c),
+          _ => None,
+        };
+      }
+
       match c {
         '(' | '[' | '{' => stack.push(c),
         ')' | ']' | '}' => match (stack.pop(), c) {
@@ -51,19 +77,11 @@ impl Validator for Helper {
             ))))
           }
         },
-        '`' => {
-          if stack.is_empty() || stack.last().unwrap() != &c {
-            stack.push(c);
-          } else {
-            stack.pop();
-          }
-        }
-
         _ => {}
       }
     }
 
-    if !stack.is_empty() {
+    if !stack.is_empty() || literal == Some('`') {
       return Ok(ValidationResult::Incomplete);
     }
 
