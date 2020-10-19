@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -17,7 +18,7 @@ use std::str::FromStr;
 /// file, that we want to deserialize out of the final config for a transpile.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TranspileConfigOptions {
+pub struct EmitConfigOptions {
   pub check_js: bool,
   pub emit_decorator_metadata: bool,
   pub jsx: String,
@@ -248,13 +249,17 @@ impl TsConfig {
     }
   }
 
-  /// Return the current configuration as a `TranspileConfigOptions` structure.
-  pub fn as_transpile_config(
-    &self,
-  ) -> Result<TranspileConfigOptions, AnyError> {
-    let options: TranspileConfigOptions =
-      serde_json::from_value(self.0.clone())?;
-    Ok(options)
+  /// Return the current configuration as a `EmitOptions` structure.
+  pub fn as_emit_options(&self) -> Result<ast::EmitOptions, AnyError> {
+    let options: EmitConfigOptions = serde_json::from_value(self.0.clone())?;
+    Ok(ast::EmitOptions {
+      check_js: options.check_js,
+      emit_metadata: options.emit_decorator_metadata,
+      inline_source_map: true,
+      jsx_factory: options.jsx_factory,
+      jsx_fragment_factory: options.jsx_fragment_factory,
+      transform_jsx: options.jsx == "react",
+    })
   }
 }
 

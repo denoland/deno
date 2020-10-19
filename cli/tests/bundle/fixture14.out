@@ -1,0 +1,25 @@
+const lib = function() {
+    const a = function() {
+        const a1 = [];
+        return {
+            a: a1
+        };
+    }();
+    const b = function() {
+        const b1 = [];
+        return {
+            b: b1
+        };
+    }();
+    const c = function() {
+        const c1;
+        return {
+            c: c1
+        };
+    }();
+    const mod;
+    return {
+        mod
+    };
+}();
+console.log(lib);

@@ -839,6 +839,49 @@ fn bundle_exports() {
 }
 
 #[test]
+fn bundle_exports_no_check() {
+  // First we have to generate a bundle of some module that has exports.
+  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+  assert!(mod1.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--no-check")
+    .arg(mod1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./mod1.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn bundle_circular() {
   // First we have to generate a bundle of some module that has exports.
   let circular1 = util::root_path().join("cli/tests/subdir/circular1.ts");
@@ -1016,6 +1059,52 @@ fn bundle_import_map() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
+    .arg("--importmap")
+    .arg(import_map_path)
+    .arg("--unstable")
+    .arg(import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./import_map.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_import_map_no_check() {
+  let import = util::root_path().join("cli/tests/bundle_im.ts");
+  let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
+  assert!(import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("import_map.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--no-check")
     .arg("--importmap")
     .arg(import_map_path)
     .arg("--unstable")
