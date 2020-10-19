@@ -191,7 +191,7 @@ fn deno_http(deno_exe: &str) -> Result<HttpBenchmarkResult> {
       "--allow-net",
       "--reload",
       "--unstable",
-      "std/http/http_bench.ts",
+      "std/http/bench.ts",
       &server_addr(port),
     ],
     port,

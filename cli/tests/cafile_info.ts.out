@@ -1,12 +1,13 @@
 local: [WILDCARD]https[WILDCARD]localhost_PORT5545[WILDCARD]
 type: TypeScript
 deps: 8 unique (total [WILDCARD])
+
 https://localhost:5545/cli/tests/cafile_info.ts ([WILDCARD])
-├── https://localhost:5545/cli/tests/subdir/mt_text_typescript.t1.ts ([WILDCARD])
-├── https://localhost:5545/cli/tests/subdir/mt_video_vdn.t2.ts ([WILDCARD])
-├── https://localhost:5545/cli/tests/subdir/mt_video_mp2t.t3.ts ([WILDCARD])
-├── https://localhost:5545/cli/tests/subdir/mt_application_x_typescript.t4.ts ([WILDCARD])
-├── https://localhost:5545/cli/tests/subdir/mt_text_javascript.j1.js ([WILDCARD])
 ├── https://localhost:5545/cli/tests/subdir/mt_application_ecmascript.j2.js ([WILDCARD])
+├── https://localhost:5545/cli/tests/subdir/mt_application_x_javascript.j4.js ([WILDCARD])
+├── https://localhost:5545/cli/tests/subdir/mt_application_x_typescript.t4.ts ([WILDCARD])
 ├── https://localhost:5545/cli/tests/subdir/mt_text_ecmascript.j3.js ([WILDCARD])
-└── https://localhost:5545/cli/tests/subdir/mt_application_x_javascript.j4.js ([WILDCARD])
+├── https://localhost:5545/cli/tests/subdir/mt_text_javascript.j1.js ([WILDCARD])
+├── https://localhost:5545/cli/tests/subdir/mt_text_typescript.t1.ts ([WILDCARD])
+├── https://localhost:5545/cli/tests/subdir/mt_video_mp2t.t3.ts ([WILDCARD])
+└── https://localhost:5545/cli/tests/subdir/mt_video_vdn.t2.ts ([WILDCARD])

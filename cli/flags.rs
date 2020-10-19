@@ -43,7 +43,6 @@ pub enum DenoSubcommand {
     files: Vec<String>,
     ignore: Vec<String>,
   },
-  Help,
   Info {
     json: bool,
     file: Option<String>,
@@ -120,6 +119,7 @@ pub struct Flags {
   pub no_remote: bool,
   pub read_allowlist: Vec<PathBuf>,
   pub reload: bool,
+  pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
   pub v8_flags: Option<Vec<String>>,
@@ -447,6 +447,7 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false);
+  flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -632,6 +633,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  importmap_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").map(String::from);
@@ -976,6 +978,7 @@ Show documentation for runtime built-ins:
     deno doc
     deno doc --builtin Deno.Listener",
     )
+    .arg(importmap_arg())
     .arg(reload_arg())
     .arg(
       Arg::with_name("json")
@@ -2142,6 +2145,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         allow_net: true,
         allow_env: true,
@@ -2162,6 +2166,7 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
+        repl: true,
         subcommand: DenoSubcommand::Repl,
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
@@ -2409,6 +2414,29 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
+        },
+        import_map_path: Some("importmap.json".to_owned()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn doc_importmap() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "doc",
+      "--importmap=importmap.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          source_file: Some("script.ts".to_owned()),
+          private: false,
+          json: false,
+          filter: None,
         },
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()

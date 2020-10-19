@@ -786,7 +786,7 @@
 
         this._stream = new ReadableStream({
           start(controller) {
-            controller.enqueue(buf);
+            controller.enqueue(new Uint8Array(buf));
             controller.close();
           },
         });
@@ -985,8 +985,9 @@
         this.headers = new Headers(input.headers);
         this.credentials = input.credentials;
         this._stream = input._stream;
-      } else if (typeof input === "string") {
-        this.url = input;
+      } else {
+        // TODO(nayeemrmn): Base from `--location` when implemented and set.
+        this.url = new URL(String(input)).href;
       }
 
       if (init && "method" in init) {

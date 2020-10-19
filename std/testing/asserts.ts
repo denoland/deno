@@ -3,7 +3,7 @@
  * for AssertionError messages in browsers. */
 
 import { bold, gray, green, red, stripColor, white } from "../fmt/colors.ts";
-import diff, { DiffResult, DiffType } from "./diff.ts";
+import { diff, DiffResult, DiffType } from "./_diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
