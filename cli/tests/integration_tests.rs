@@ -1232,7 +1232,7 @@ fn repl_test_eof() {
 
 #[test]
 fn repl_test_strict() {
-  let (_, err) = util::run_and_collect_output(
+  let (out, err) = util::run_and_collect_output(
     true,
     "repl",
     Some(vec![
@@ -1243,12 +1243,11 @@ fn repl_test_strict() {
     None,
     false,
   );
-  assert!(err.contains(
+  assert!(out.contains(
     "Uncaught TypeError: Cannot add property c, object is not extensible"
   ));
+  assert!(err.is_empty());
 }
-
-const REPL_MSG: &str = "exit using ctrl+d or close()\n";
 
 #[test]
 fn repl_test_close_command() {
@@ -1312,8 +1311,8 @@ fn repl_test_eval_unterminated() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("Unexpected end of input"));
+  assert!(out.contains("Unexpected end of input"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -1325,8 +1324,8 @@ fn repl_test_reference_error() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("not_a_variable is not defined"));
+  assert!(out.contains("not_a_variable is not defined"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -1338,8 +1337,8 @@ fn repl_test_syntax_error() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("Unexpected identifier"));
+  assert!(out.contains("Unexpected identifier"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -1351,8 +1350,8 @@ fn repl_test_type_error() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("console is not a function"));
+  assert!(out.contains("console is not a function"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -1425,8 +1424,8 @@ fn repl_test_save_last_thrown() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("1\n"));
-  assert_eq!(err, "Uncaught 1\n");
+  assert!(out.ends_with("Uncaught 1\n1\n"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -1453,10 +1452,11 @@ fn repl_test_assign_underscore_error() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(
-    out.ends_with("Last thrown error is no longer saved to _error.\n1\n1\n")
-  );
-  assert_eq!(err, "Uncaught 2\n");
+  println!("{}", out);
+  assert!(out.ends_with(
+    "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"
+  ));
+  assert!(err.is_empty());
 }
 
 #[test]
