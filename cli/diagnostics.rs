@@ -127,7 +127,7 @@ fn format_message(msg: &str, code: &u64) -> String {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticCategory {
   Warning,
   Error,
@@ -172,7 +172,7 @@ impl From<i64> for DiagnosticCategory {
   }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
   message_text: String,
@@ -199,26 +199,26 @@ impl DiagnosticMessageChain {
   }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
   pub line: u64,
   pub character: u64,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
-  category: DiagnosticCategory,
-  code: u64,
-  start: Option<Position>,
-  end: Option<Position>,
-  message_text: Option<String>,
-  message_chain: Option<DiagnosticMessageChain>,
-  source: Option<String>,
-  source_line: Option<String>,
-  file_name: Option<String>,
-  related_information: Option<Vec<Diagnostic>>,
+  pub category: DiagnosticCategory,
+  pub code: u64,
+  pub start: Option<Position>,
+  pub end: Option<Position>,
+  pub message_text: Option<String>,
+  pub message_chain: Option<DiagnosticMessageChain>,
+  pub source: Option<String>,
+  pub source_line: Option<String>,
+  pub file_name: Option<String>,
+  pub related_information: Option<Vec<Diagnostic>>,
 }
 
 impl Diagnostic {
@@ -346,7 +346,7 @@ impl fmt::Display for Diagnostic {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Diagnostics(pub Vec<Diagnostic>);
 
 impl<'de> Deserialize<'de> for Diagnostics {

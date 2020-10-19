@@ -25,6 +25,7 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -77,6 +78,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
   super::reg_json_sync(rt, "op_now", op_now);
+  super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 
 fn op_global_timer_stop(
@@ -156,4 +158,20 @@ fn op_now(
     "seconds": seconds,
     "subsecNanos": subsec_nanos,
   }))
+}
+
+#[derive(Deserialize)]
+struct SleepArgs {
+  millis: u64,
+}
+
+fn op_sleep_sync(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.sleepSync");
+  let args: SleepArgs = serde_json::from_value(args)?;
+  sleep(Duration::from_millis(args.millis));
+  Ok(json!({}))
 }

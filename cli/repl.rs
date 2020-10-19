@@ -12,7 +12,6 @@ use regex::Captures;
 use regex::Regex;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
-use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
@@ -26,7 +25,6 @@ use std::sync::Mutex;
 #[derive(Completer, Helper, Hinter)]
 struct Helper {
   highlighter: LineHighlighter,
-  validator: MatchingBracketValidator,
 }
 
 impl Validator for Helper {
@@ -34,7 +32,42 @@ impl Validator for Helper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    self.validator.validate(ctx)
+    let mut stack: Vec<char> = Vec::new();
+    for c in ctx.input().chars() {
+      match c {
+        '(' | '[' | '{' => stack.push(c),
+        ')' | ']' | '}' => match (stack.pop(), c) {
+          (Some('('), ')') | (Some('['), ']') | (Some('{'), '}') => {}
+          (Some(left), _) => {
+            return Ok(ValidationResult::Invalid(Some(format!(
+              "Mismatched pairs: {:?} is not properly closed",
+              left
+            ))))
+          }
+          (None, c) => {
+            return Ok(ValidationResult::Invalid(Some(format!(
+              "Mismatched pairs: {:?} is unpaired",
+              c
+            ))))
+          }
+        },
+        '`' => {
+          if stack.is_empty() || stack.last().unwrap() != &c {
+            stack.push(c);
+          } else {
+            stack.pop();
+          }
+        }
+
+        _ => {}
+      }
+    }
+
+    if !stack.is_empty() {
+      return Ok(ValidationResult::Incomplete);
+    }
+
+    Ok(ValidationResult::Valid(None))
   }
 }
 
@@ -167,6 +200,81 @@ async fn read_line_and_poll(
   }
 }
 
+static PRELUDE: &str = r#"
+Object.defineProperty(globalThis, "_", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastEvalResult,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+   console.log("Last evaluation result is no longer saved to _.");
+  },
+});
+
+Object.defineProperty(globalThis, "_error", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastThrownError,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_error", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+
+   console.log("Last thrown error is no longer saved to _error.");
+  },
+});
+"#;
+
+async fn inject_prelude(
+  worker: &mut MainWorker,
+  session: &mut InspectorSession,
+  context_id: u64,
+) -> Result<(), AnyError> {
+  post_message_and_poll(
+    worker,
+    session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": PRELUDE,
+      "contextId": context_id,
+    })),
+  )
+  .await?;
+
+  Ok(())
+}
+
+pub async fn is_closing(
+  worker: &mut MainWorker,
+  session: &mut InspectorSession,
+  context_id: u64,
+) -> Result<bool, AnyError> {
+  let closed = post_message_and_poll(
+    worker,
+    session,
+    "Runtime.evaluate",
+    Some(json!({
+      "expression": "(globalThis.closed)",
+      "contextId": context_id,
+    })),
+  )
+  .await?
+  .get("result")
+  .unwrap()
+  .get("value")
+  .unwrap()
+  .as_bool()
+  .unwrap();
+
+  Ok(closed)
+}
+
 pub async fn run(
   program_state: &ProgramState,
   mut worker: MainWorker,
@@ -199,7 +307,6 @@ pub async fn run(
 
   let helper = Helper {
     highlighter: LineHighlighter::new(),
-    validator: MatchingBracketValidator::new(),
   };
 
   let editor = Arc::new(Mutex::new(Editor::new()));
@@ -215,49 +322,9 @@ pub async fn run(
   println!("Deno {}", crate::version::DENO);
   println!("exit using ctrl+d or close()");
 
-  let prelude = r#"
-    Object.defineProperty(globalThis, "_", {
-      configurable: true,
-      get: () => Deno[Deno.internal].lastEvalResult,
-      set: (value) => {
-       Object.defineProperty(globalThis, "_", {
-         value: value,
-         writable: true,
-         enumerable: true,
-         configurable: true,
-       });
-       console.log("Last evaluation result is no longer saved to _.");
-      },
-    });
+  inject_prelude(&mut worker, &mut session, context_id).await?;
 
-    Object.defineProperty(globalThis, "_error", {
-      configurable: true,
-      get: () => Deno[Deno.internal].lastThrownError,
-      set: (value) => {
-       Object.defineProperty(globalThis, "_error", {
-         value: value,
-         writable: true,
-         enumerable: true,
-         configurable: true,
-       });
-
-       console.log("Last thrown error is no longer saved to _error.");
-      },
-    });
-  "#;
-
-  post_message_and_poll(
-    &mut *worker,
-    &mut session,
-    "Runtime.evaluate",
-    Some(json!({
-      "expression": prelude,
-      "contextId": context_id,
-    })),
-  )
-  .await?;
-
-  loop {
+  while !is_closing(&mut worker, &mut session, context_id).await? {
     let line = read_line_and_poll(&mut *worker, editor.clone()).await;
     match line {
       Ok(line) => {
@@ -305,27 +372,6 @@ pub async fn run(
             evaluate_response
           };
 
-        let is_closing = post_message_and_poll(
-          &mut *worker,
-          &mut session,
-          "Runtime.evaluate",
-          Some(json!({
-            "expression": "(globalThis.closed)",
-            "contextId": context_id,
-          })),
-        )
-        .await?
-        .get("result")
-        .unwrap()
-        .get("value")
-        .unwrap()
-        .as_bool()
-        .unwrap();
-
-        if is_closing {
-          break;
-        }
-
         let evaluate_result = evaluate_response.get("result").unwrap();
         let evaluate_exception_details =
           evaluate_response.get("exceptionDetails");
@@ -368,7 +414,7 @@ pub async fn run(
             "Runtime.callFunctionOn",
             Some(json!({
               "executionContextId": context_id,
-              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: true}); }",
+              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: !Deno.noColor }); }",
               "arguments": [
                 evaluate_result,
               ],
@@ -377,21 +423,19 @@ pub async fn run(
 
         let inspect_result = inspect_response.get("result").unwrap();
 
-        match evaluate_exception_details {
-          Some(_) => eprintln!(
-            "Uncaught {}",
-            inspect_result.get("value").unwrap().as_str().unwrap()
-          ),
-          None => println!(
-            "{}",
-            inspect_result.get("value").unwrap().as_str().unwrap()
-          ),
-        }
+        let value = inspect_result.get("value").unwrap().as_str().unwrap();
+        let output = match evaluate_exception_details {
+          Some(_) => format!("Uncaught {}", value),
+          None => value.to_string(),
+        };
+
+        println!("{}", output);
 
         editor.lock().unwrap().add_history_entry(line.as_str());
       }
       Err(ReadlineError::Interrupted) => {
-        break;
+        println!("exit using ctrl+d or close()");
+        continue;
       }
       Err(ReadlineError::Eof) => {
         break;

@@ -24,6 +24,7 @@ export const {
   relative,
   resolve,
   sep,
+  toFileUrl,
   toNamespacedPath,
 } = path;
 

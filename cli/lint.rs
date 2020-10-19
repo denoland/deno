@@ -222,6 +222,7 @@ impl LintReporter for PrettyLintReporter {
       &pretty_message,
       &source_lines,
       d.range.clone(),
+      d.hint.as_ref(),
       &fmt_errors::format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
         Some(d.range.start.line as i64),
@@ -256,6 +257,7 @@ pub fn format_diagnostic(
   message_line: &str,
   source_lines: &[&str],
   range: deno_lint::diagnostic::Range,
+  maybe_hint: Option<&String>,
   formatted_location: &str,
 ) -> String {
   let mut lines = vec![];
@@ -284,12 +286,23 @@ pub fn format_diagnostic(
     }
   }
 
-  format!(
-    "{}\n{}\n    at {}",
-    message_line,
-    lines.join("\n"),
-    formatted_location
-  )
+  if let Some(hint) = maybe_hint {
+    format!(
+      "{}\n{}\n    at {}\n\n    {} {}",
+      message_line,
+      lines.join("\n"),
+      formatted_location,
+      colors::gray("hint:"),
+      hint,
+    )
+  } else {
+    format!(
+      "{}\n{}\n    at {}",
+      message_line,
+      lines.join("\n"),
+      formatted_location
+    )
+  }
 }
 
 #[derive(Serialize)]
