@@ -440,3 +440,16 @@ export function fromFileUrl(url: string | URL): string {
     url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
   );
 }
+
+/** Converts a path string to a file URL.
+ *
+ *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
+ */
+export function toFileUrl(path: string): URL {
+  if (!isAbsolute(path)) {
+    throw new TypeError("Must be an absolute path.");
+  }
+  const url = new URL("file:///");
+  url.pathname = path.replace(/%/g, "%25").replace(/\\/g, "%5C");
+  return url;
+}
