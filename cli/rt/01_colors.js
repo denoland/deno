@@ -10,9 +10,7 @@
   }
 
   function run(str, code) {
-    return !globalThis || !globalThis.Deno || globalThis.Deno.noColor
-      ? str
-      : `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
+    return `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
   }
 
   function bold(str) {
@@ -72,6 +70,10 @@
     return string.replace(ANSI_PATTERN, "");
   }
 
+  function maybeColor(fn) {
+    return !(globalThis.Deno?.noColor ?? false) ? fn : (s) => s;
+  }
+
   window.__bootstrap.colors = {
     bold,
     italic,
@@ -85,5 +87,6 @@
     magenta,
     dim,
     stripColor,
+    maybeColor,
   };
 })(this);

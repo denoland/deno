@@ -786,7 +786,7 @@
 
         this._stream = new ReadableStream({
           start(controller) {
-            controller.enqueue(buf);
+            controller.enqueue(new Uint8Array(buf));
             controller.close();
           },
         });

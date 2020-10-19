@@ -57,7 +57,7 @@ fn compiler_snapshot() {
     .execute(
       "<anon>",
       r#"
-    if (!(bootstrapCompilerRuntime)) {
+    if (!(startup)) {
         throw Error("bad");
       }
       console.log(`ts version: ${ts.version}`);

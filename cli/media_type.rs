@@ -10,7 +10,7 @@ use std::path::PathBuf;
 // Update carefully!
 #[allow(non_camel_case_types)]
 #[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum MediaType {
   JavaScript = 0,
   JSX = 1,
@@ -19,7 +19,9 @@ pub enum MediaType {
   TSX = 4,
   Json = 5,
   Wasm = 6,
-  Unknown = 8,
+  TsBuildInfo = 7,
+  SourceMap = 8,
+  Unknown = 9,
 }
 
 impl fmt::Display for MediaType {
@@ -32,6 +34,8 @@ impl fmt::Display for MediaType {
       MediaType::TSX => "TSX",
       MediaType::Json => "Json",
       MediaType::Wasm => "Wasm",
+      MediaType::TsBuildInfo => "TsBuildInfo",
+      MediaType::SourceMap => "SourceMap",
       MediaType::Unknown => "Unknown",
     };
     write!(f, "{}", value)
@@ -56,10 +60,22 @@ impl<'a> From<&'a String> for MediaType {
   }
 }
 
+impl Default for MediaType {
+  fn default() -> Self {
+    MediaType::Unknown
+  }
+}
+
 impl MediaType {
   fn from_path(path: &Path) -> Self {
     match path.extension() {
-      None => MediaType::Unknown,
+      None => match path.file_name() {
+        None => MediaType::Unknown,
+        Some(os_str) => match os_str.to_str() {
+          Some(".tsbuildinfo") => MediaType::TsBuildInfo,
+          _ => MediaType::Unknown,
+        },
+      },
       Some(os_str) => match os_str.to_str() {
         Some("ts") => MediaType::TypeScript,
         Some("tsx") => MediaType::TSX,
@@ -69,9 +85,41 @@ impl MediaType {
         Some("cjs") => MediaType::JavaScript,
         Some("json") => MediaType::Json,
         Some("wasm") => MediaType::Wasm,
+        Some("tsbuildinfo") => MediaType::TsBuildInfo,
+        Some("map") => MediaType::SourceMap,
         _ => MediaType::Unknown,
       },
     }
+  }
+
+  /// Convert a MediaType to a `ts.Extension`.
+  ///
+  /// *NOTE* This is defined in TypeScript as a string based enum.  Changes to
+  /// that enum in TypeScript should be reflected here.
+  pub fn as_ts_extension(&self) -> String {
+    let ext = match self {
+      MediaType::JavaScript => ".js",
+      MediaType::JSX => ".jsx",
+      MediaType::TypeScript => ".ts",
+      MediaType::Dts => ".d.ts",
+      MediaType::TSX => ".tsx",
+      MediaType::Json => ".json",
+      // TypeScript doesn't have an "unknown", so we will treat WASM as JS for
+      // mapping purposes, though in reality, it is unlikely to ever be passed
+      // to the compiler.
+      MediaType::Wasm => ".js",
+      MediaType::TsBuildInfo => ".tsbuildinfo",
+      // TypeScript doesn't have an "source map", so we will treat SourceMap as
+      // JS for mapping purposes, though in reality, it is unlikely to ever be
+      // passed to the compiler.
+      MediaType::SourceMap => ".js",
+      // TypeScript doesn't have an "unknown", so we will treat WASM as JS for
+      // mapping purposes, though in reality, it is unlikely to ever be passed
+      // to the compiler.
+      MediaType::Unknown => ".js",
+    };
+
+    ext.into()
   }
 }
 
@@ -88,7 +136,9 @@ impl Serialize for MediaType {
       MediaType::TSX => 4 as i32,
       MediaType::Json => 5 as i32,
       MediaType::Wasm => 6 as i32,
-      MediaType::Unknown => 8 as i32,
+      MediaType::TsBuildInfo => 7 as i32,
+      MediaType::SourceMap => 8 as i32,
+      MediaType::Unknown => 9 as i32,
     };
     Serialize::serialize(&value, serializer)
   }
@@ -133,6 +183,14 @@ mod tests {
       MediaType::JavaScript
     );
     assert_eq!(
+      MediaType::from(Path::new("foo/.tsbuildinfo")),
+      MediaType::TsBuildInfo
+    );
+    assert_eq!(
+      MediaType::from(Path::new("foo/bar.js.map")),
+      MediaType::SourceMap
+    );
+    assert_eq!(
       MediaType::from(Path::new("foo/bar.txt")),
       MediaType::Unknown
     );
@@ -148,7 +206,9 @@ mod tests {
     assert_eq!(json!(MediaType::TSX), json!(4));
     assert_eq!(json!(MediaType::Json), json!(5));
     assert_eq!(json!(MediaType::Wasm), json!(6));
-    assert_eq!(json!(MediaType::Unknown), json!(8));
+    assert_eq!(json!(MediaType::TsBuildInfo), json!(7));
+    assert_eq!(json!(MediaType::SourceMap), json!(8));
+    assert_eq!(json!(MediaType::Unknown), json!(9));
   }
 
   #[test]
@@ -160,6 +220,8 @@ mod tests {
     assert_eq!(format!("{}", MediaType::TSX), "TSX");
     assert_eq!(format!("{}", MediaType::Json), "Json");
     assert_eq!(format!("{}", MediaType::Wasm), "Wasm");
+    assert_eq!(format!("{}", MediaType::TsBuildInfo), "TsBuildInfo");
+    assert_eq!(format!("{}", MediaType::SourceMap), "SourceMap");
     assert_eq!(format!("{}", MediaType::Unknown), "Unknown");
   }
 }
