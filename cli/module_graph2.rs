@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::parse;
+use crate::ast::transpile_module;
 use crate::ast::BundleHook;
-use crate::ast::BundleLoader;
-use crate::ast::BundleResolver;
+use crate::ast::EmitOptions;
 use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::import_map::ImportMap;
@@ -41,7 +41,6 @@ use std::rc::Rc;
 use std::result;
 use std::sync::Mutex;
 use std::time::Instant;
-use swc_ecmascript::dep_graph::DependencyKind;
 
 lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -110,6 +109,59 @@ impl fmt::Display for GraphError {
 }
 
 impl Error for GraphError {}
+
+/// A structure for handling bundle loading, which is implemented here, to
+/// avoid a circular dependency with `ast`.
+struct BundleLoader<'a> {
+  cm: Rc<swc_common::SourceMap>,
+  graph: &'a Graph2,
+  emit_options: &'a EmitOptions,
+}
+
+impl<'a> BundleLoader<'a> {
+  pub fn new(
+    graph: &'a Graph2,
+    emit_options: &'a EmitOptions,
+    cm: Rc<swc_common::SourceMap>,
+  ) -> Self {
+    BundleLoader {
+      cm,
+      graph,
+      emit_options,
+    }
+  }
+}
+
+impl swc_bundler::Load for BundleLoader<'_> {
+  fn load(
+    &self,
+    file: &swc_common::FileName,
+  ) -> Result<(Rc<swc_common::SourceFile>, swc_ecmascript::ast::Module), AnyError>
+  {
+    match file {
+      swc_common::FileName::Custom(filename) => {
+        let specifier = ModuleSpecifier::resolve_url_or_path(filename)
+          .context("Failed to convert swc FileName to ModuleSpecifier.")?;
+        if let Some(src) = self.graph.get_source(&specifier) {
+          let media_type = self
+            .graph
+            .get_media_type(&specifier)
+            .context("Looking up media type during bundling.")?;
+          transpile_module(
+            filename,
+            &src,
+            &media_type,
+            self.emit_options,
+            self.cm.clone(),
+          )
+        } else {
+          Err(MissingDependency(specifier, "<bundle>".to_string()).into())
+        }
+      }
+      _ => unreachable!("Received request for unsupported filename {:?}", file),
+    }
+  }
+}
 
 /// An enum which represents the parsed out values of references in source code.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -276,10 +328,9 @@ impl Module {
 
     // Parse out all the syntactical dependencies for a module
     let dependencies = parsed_module.analyze_dependencies();
-    for desc in dependencies
-      .iter()
-      .filter(|desc| desc.kind != DependencyKind::Require)
-    {
+    for desc in dependencies.iter().filter(|desc| {
+      desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
+    }) {
       let location = Location {
         filename: self.specifier.to_string(),
         col: desc.col,
@@ -304,8 +355,8 @@ impl Module {
         .dependencies
         .entry(desc.specifier.to_string())
         .or_default();
-      if desc.kind == DependencyKind::ExportType
-        || desc.kind == DependencyKind::ImportType
+      if desc.kind == swc_ecmascript::dep_graph::DependencyKind::ExportType
+        || desc.kind == swc_ecmascript::dep_graph::DependencyKind::ImportType
       {
         dep.maybe_type = Some(specifier);
       } else {
@@ -461,19 +512,18 @@ impl Graph2 {
     }));
     let maybe_ignored_options =
       ts_config.merge_user_config(options.maybe_config_path)?;
-    let emit_options = ts_config.as_emit_options()?;
+    let emit_options: EmitOptions = ts_config.into();
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
     ));
-    let loader = BundleLoader::new(self, cm.clone(), &emit_options);
-    let resolver = BundleResolver::new(self);
+    let loader = BundleLoader::new(self, &emit_options, cm.clone());
     let hook = Box::new(BundleHook);
     let globals = swc_common::Globals::new();
     let bundler = swc_bundler::Bundler::new(
       &globals,
       cm.clone(),
       loader,
-      resolver,
+      self,
       swc_bundler::Config::default(),
       hook,
     );
@@ -804,7 +854,7 @@ impl Graph2 {
     let maybe_ignored_options =
       ts_config.merge_user_config(options.maybe_config_path)?;
 
-    let emit_options = ts_config.as_emit_options()?;
+    let emit_options: EmitOptions = ts_config.clone().into();
 
     let mut emit_count: u128 = 0;
     for (_, module) in self.modules.iter_mut() {
@@ -848,6 +898,27 @@ impl Graph2 {
     ]);
 
     Ok((stats, maybe_ignored_options))
+  }
+}
+
+impl swc_bundler::Resolve for Graph2 {
+  fn resolve(
+    &self,
+    referrer: &swc_common::FileName,
+    specifier: &str,
+  ) -> Result<swc_common::FileName, AnyError> {
+    let referrer = if let swc_common::FileName::Custom(referrer) = referrer {
+      ModuleSpecifier::resolve_url_or_path(referrer)
+        .context("Cannot resolve swc FileName to a module specifier")?
+    } else {
+      unreachable!(
+        "An unexpected referrer was passed when bundling: {:?}",
+        referrer
+      )
+    };
+    let specifier = self.resolve(specifier, &referrer)?;
+
+    Ok(swc_common::FileName::Custom(specifier.to_string()))
   }
 }
 
