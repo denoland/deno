@@ -60,7 +60,7 @@ pub fn init(
         sender
           .try_send(WorkerEvent::Error(generic_error(args.message)))
           .expect("Failed to propagate error event to parent worker");
-        Ok(json!({}))
+        Ok(json!(true))
       } else {
         Err(generic_error("Cannot be called from main worker."))
       }
