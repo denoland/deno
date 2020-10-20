@@ -153,6 +153,106 @@ Deno.test({
   },
 })
 
+
+Deno.test({
+  name: "[std/datetime] parse timeZone",
+  fn: () => {
+    // symbol: X
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000Z", "yyyy-MM-dd'T'HH:mm:ss.SSSX"),
+      new Date("2020-10-20T11:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+00", "yyyy-MM-dd'T'HH:mm:ss.SSSX"),
+      new Date("2020-10-20T11:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+01", "yyyy-MM-dd'T'HH:mm:ss.SSSX"),
+      new Date("2020-10-20T10:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000-01", "yyyy-MM-dd'T'HH:mm:ss.SSSX"),
+      new Date("2020-10-20T12:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+08", "yyyy-MM-dd'T'HH:mm:ss.SSSX"),
+      new Date("2020-10-20T03:00:00.000Z"),
+    );
+
+    // symbol: XX
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+0000", "yyyy-MM-dd'T'HH:mm:ss.SSSXX"),
+      new Date("2020-10-20T11:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+0100", "yyyy-MM-dd'T'HH:mm:ss.SSSXX"),
+      new Date("2020-10-20T10:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000-0100", "yyyy-MM-dd'T'HH:mm:ss.SSSXX"),
+      new Date("2020-10-20T12:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+0530", "yyyy-MM-dd'T'HH:mm:ss.SSSXX"),
+      new Date("2020-10-20T05:30:00.000Z"),
+    );
+
+    // symbol: XXX
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+00:00", "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"),
+      new Date("2020-10-20T11:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+01:00", "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"),
+      new Date("2020-10-20T10:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000-01:00", "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"),
+      new Date("2020-10-20T12:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+08:00", "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"),
+      new Date("2020-10-20T03:00:00.000Z"),
+    );
+    
+    // symbol: XXXX
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+000000", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXX"),
+      new Date("2020-10-20T11:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+0100", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXX"),
+      new Date("2020-10-20T10:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000-0100", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXX"),
+      new Date("2020-10-20T12:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+075258", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXX"),
+      new Date("2020-10-20T03:07:02.000Z"),
+    );
+
+    // symbol: XXXXX
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+00:00:00", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX"),
+      new Date("2020-10-20T11:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+01:00", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX"),
+      new Date("2020-10-20T10:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000-01:00", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX"),
+      new Date("2020-10-20T12:00:00.000Z"),
+    );
+    assertEquals(
+      datetime.parse("2020-10-20T11:00:00.000+07:52:58", "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX"),
+      new Date("2020-10-20T03:07:02.000Z"),
+    );
+  },
+});
+
 Deno.test({
   name: "[std/datetime] invalidParseDateTimeFormatThrows",
   fn: () => {

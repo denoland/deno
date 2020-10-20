@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { DateTimeFormatter, Options } from "./_formatter.ts";
+import { DateTimeFormatter } from "./_formatter.ts";
 
 export const SECOND = 1e3;
 export const MINUTE = SECOND * 60;
