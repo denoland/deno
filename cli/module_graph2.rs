@@ -1,7 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
 use crate::ast::parse;
+use crate::ast::transpile_module;
+use crate::ast::BundleHook;
+use crate::ast::EmitOptions;
 use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::import_map::ImportMap;
@@ -21,6 +23,7 @@ use crate::tsc_config::TsConfig;
 use crate::version;
 use crate::AnyError;
 
+use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json::json;
@@ -38,7 +41,6 @@ use std::rc::Rc;
 use std::result;
 use std::sync::Mutex;
 use std::time::Instant;
-use swc_ecmascript::dep_graph::DependencyKind;
 
 lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -107,6 +109,59 @@ impl fmt::Display for GraphError {
 }
 
 impl Error for GraphError {}
+
+/// A structure for handling bundle loading, which is implemented here, to
+/// avoid a circular dependency with `ast`.
+struct BundleLoader<'a> {
+  cm: Rc<swc_common::SourceMap>,
+  graph: &'a Graph2,
+  emit_options: &'a EmitOptions,
+}
+
+impl<'a> BundleLoader<'a> {
+  pub fn new(
+    graph: &'a Graph2,
+    emit_options: &'a EmitOptions,
+    cm: Rc<swc_common::SourceMap>,
+  ) -> Self {
+    BundleLoader {
+      cm,
+      graph,
+      emit_options,
+    }
+  }
+}
+
+impl swc_bundler::Load for BundleLoader<'_> {
+  fn load(
+    &self,
+    file: &swc_common::FileName,
+  ) -> Result<(Rc<swc_common::SourceFile>, swc_ecmascript::ast::Module), AnyError>
+  {
+    match file {
+      swc_common::FileName::Custom(filename) => {
+        let specifier = ModuleSpecifier::resolve_url_or_path(filename)
+          .context("Failed to convert swc FileName to ModuleSpecifier.")?;
+        if let Some(src) = self.graph.get_source(&specifier) {
+          let media_type = self
+            .graph
+            .get_media_type(&specifier)
+            .context("Looking up media type during bundling.")?;
+          transpile_module(
+            filename,
+            &src,
+            &media_type,
+            self.emit_options,
+            self.cm.clone(),
+          )
+        } else {
+          Err(MissingDependency(specifier, "<bundle>".to_string()).into())
+        }
+      }
+      _ => unreachable!("Received request for unsupported filename {:?}", file),
+    }
+  }
+}
 
 /// An enum which represents the parsed out values of references in source code.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -273,10 +328,9 @@ impl Module {
 
     // Parse out all the syntactical dependencies for a module
     let dependencies = parsed_module.analyze_dependencies();
-    for desc in dependencies
-      .iter()
-      .filter(|desc| desc.kind != DependencyKind::Require)
-    {
+    for desc in dependencies.iter().filter(|desc| {
+      desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
+    }) {
       let location = Location {
         filename: self.specifier.to_string(),
         col: desc.col,
@@ -301,8 +355,8 @@ impl Module {
         .dependencies
         .entry(desc.specifier.to_string())
         .or_default();
-      if desc.kind == DependencyKind::ExportType
-        || desc.kind == DependencyKind::ImportType
+      if desc.kind == swc_ecmascript::dep_graph::DependencyKind::ExportType
+        || desc.kind == swc_ecmascript::dep_graph::DependencyKind::ImportType
       {
         dep.maybe_type = Some(specifier);
       } else {
@@ -392,6 +446,12 @@ impl fmt::Display for Stats {
   }
 }
 
+#[derive(Debug, Default)]
+pub struct BundleOptions {
+  pub debug: bool,
+  pub maybe_config_path: Option<String>,
+}
+
 /// A structure which provides options when transpiling modules.
 #[derive(Debug, Default)]
 pub struct TranspileOptions {
@@ -429,6 +489,76 @@ impl Graph2 {
       redirects: HashMap::new(),
       roots: Vec::new(),
     }
+  }
+
+  /// Transform the module graph into a single JavaScript module which is
+  /// returned as a `String` in the result.
+  pub fn bundle(
+    &self,
+    options: BundleOptions,
+  ) -> Result<(String, Stats, Option<IgnoredCompilerOptions>), AnyError> {
+    if self.roots.is_empty() || self.roots.len() > 1 {
+      return Err(NotSupported(format!("Bundling is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
+    }
+
+    let start = Instant::now();
+    let root_specifier = self.roots[0].clone();
+    let mut ts_config = TsConfig::new(json!({
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+    }));
+    let maybe_ignored_options =
+      ts_config.merge_user_config(options.maybe_config_path)?;
+    let emit_options: EmitOptions = ts_config.into();
+    let cm = Rc::new(swc_common::SourceMap::new(
+      swc_common::FilePathMapping::empty(),
+    ));
+    let loader = BundleLoader::new(self, &emit_options, cm.clone());
+    let hook = Box::new(BundleHook);
+    let globals = swc_common::Globals::new();
+    let bundler = swc_bundler::Bundler::new(
+      &globals,
+      cm.clone(),
+      loader,
+      self,
+      swc_bundler::Config::default(),
+      hook,
+    );
+    let mut entries = HashMap::new();
+    entries.insert(
+      "bundle".to_string(),
+      swc_common::FileName::Custom(root_specifier.to_string()),
+    );
+    let output = bundler
+      .bundle(entries)
+      .context("Unable to output bundle during Graph2::bundle().")?;
+    let mut buf = Vec::new();
+    {
+      let mut emitter = swc_ecmascript::codegen::Emitter {
+        cfg: swc_ecmascript::codegen::Config { minify: false },
+        cm: cm.clone(),
+        comments: None,
+        wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
+          cm, "\n", &mut buf, None,
+        )),
+      };
+
+      emitter
+        .emit_module(&output[0].module)
+        .context("Unable to emit bundle during Graph2::bundle().")?;
+    }
+
+    let s = String::from_utf8(buf)
+      .context("Emitted bundle is an invalid utf-8 string.")?;
+    let stats = Stats(vec![
+      ("Files".to_string(), self.modules.len() as u128),
+      ("Total time".to_string(), start.elapsed().as_millis()),
+    ]);
+
+    Ok((s, stats, maybe_ignored_options))
   }
 
   fn contains_module(&self, specifier: &ModuleSpecifier) -> bool {
@@ -725,16 +855,7 @@ impl Graph2 {
     let maybe_ignored_options =
       ts_config.merge_user_config(options.maybe_config_path)?;
 
-    let compiler_options = ts_config.as_transpile_config()?;
-    let check_js = compiler_options.check_js;
-    let transform_jsx = compiler_options.jsx == "react";
-    let emit_options = ast::TranspileOptions {
-      emit_metadata: compiler_options.emit_decorator_metadata,
-      inline_source_map: true,
-      jsx_factory: compiler_options.jsx_factory,
-      jsx_fragment_factory: compiler_options.jsx_fragment_factory,
-      transform_jsx,
-    };
+    let emit_options: EmitOptions = ts_config.clone().into();
 
     let mut emit_count: u128 = 0;
     for (_, module) in self.modules.iter_mut() {
@@ -748,7 +869,7 @@ impl Graph2 {
       }
       // if we don't have check_js enabled, we won't touch non TypeScript
       // modules
-      if !(check_js
+      if !(emit_options.check_js
         || module.media_type == MediaType::TSX
         || module.media_type == MediaType::TypeScript)
       {
@@ -778,6 +899,27 @@ impl Graph2 {
     ]);
 
     Ok((stats, maybe_ignored_options))
+  }
+}
+
+impl swc_bundler::Resolve for Graph2 {
+  fn resolve(
+    &self,
+    referrer: &swc_common::FileName,
+    specifier: &str,
+  ) -> Result<swc_common::FileName, AnyError> {
+    let referrer = if let swc_common::FileName::Custom(referrer) = referrer {
+      ModuleSpecifier::resolve_url_or_path(referrer)
+        .context("Cannot resolve swc FileName to a module specifier")?
+    } else {
+      unreachable!(
+        "An unexpected referrer was passed when bundling: {:?}",
+        referrer
+      )
+    };
+    let specifier = self.resolve(specifier, &referrer)?;
+
+    Ok(swc_common::FileName::Custom(specifier.to_string()))
   }
 }
 
@@ -1092,6 +1234,50 @@ pub mod tests {
     assert!(module.maybe_version.is_none());
     module.set_version(b"");
     assert_eq!(module.maybe_version, expected);
+  }
+
+  #[tokio::test]
+  async fn test_graph_bundle() {
+    let tests = vec![
+      ("file:///tests/fixture01.ts", "fixture01.out"),
+      ("file:///tests/fixture02.ts", "fixture02.out"),
+      ("file:///tests/fixture03.ts", "fixture03.out"),
+      ("file:///tests/fixture04.ts", "fixture04.out"),
+      ("file:///tests/fixture05.ts", "fixture05.out"),
+      ("file:///tests/fixture06.ts", "fixture06.out"),
+      ("file:///tests/fixture07.ts", "fixture07.out"),
+      ("file:///tests/fixture08.ts", "fixture08.out"),
+      ("file:///tests/fixture09.ts", "fixture09.out"),
+      ("file:///tests/fixture10.ts", "fixture10.out"),
+      ("file:///tests/fixture11.ts", "fixture11.out"),
+      ("file:///tests/fixture12.ts", "fixture12.out"),
+      ("file:///tests/fixture13.ts", "fixture13.out"),
+      ("file:///tests/fixture14.ts", "fixture14.out"),
+    ];
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/bundle");
+
+    for (specifier, expected_str) in tests {
+      let specifier = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+        fixtures: fixtures.clone(),
+        ..MockSpecifierHandler::default()
+      }));
+      let mut builder = GraphBuilder2::new(handler.clone(), None);
+      builder
+        .insert(&specifier)
+        .await
+        .expect("module not inserted");
+      let graph = builder.get_graph(&None).expect("could not get graph");
+      let (actual, stats, maybe_ignored_options) = graph
+        .bundle(BundleOptions::default())
+        .expect("could not bundle");
+      assert_eq!(stats.0.len(), 2);
+      assert_eq!(maybe_ignored_options, None);
+      let expected_path = fixtures.join(expected_str);
+      let expected = fs::read_to_string(expected_path).unwrap();
+      assert_eq!(actual, expected, "fixture: {}", specifier);
+    }
   }
 
   #[tokio::test]

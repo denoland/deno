@@ -402,14 +402,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  // TODO(nayeemrmn): Replace the next couple lines with `compile_args_parse()`
-  // once `deno bundle --no-check` is supported.
-  importmap_arg_parse(flags, matches);
-  no_remote_arg_parse(flags, matches);
-  config_arg_parse(flags, matches);
-  reload_arg_parse(flags, matches);
-  lock_args_parse(flags, matches);
-  ca_file_arg_parse(flags, matches);
+  compile_args_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -776,16 +769,7 @@ These must be added to the path manually if required.")
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("bundle")
-    // TODO(nayeemrmn): Replace the next couple lines with `compile_args()` once
-    // `deno bundle --no-check` is supported.
-    .arg(importmap_arg())
-    .arg(no_remote_arg())
-    .arg(config_arg())
-    .arg(reload_arg())
-    .arg(lock_arg())
-    .arg(lock_write_arg())
-    .arg(ca_file_arg())
+  compile_args(SubCommand::with_name("bundle"))
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
@@ -2348,6 +2332,24 @@ mod tests {
           source_file: "source.ts".to_string(),
           out_file: None,
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_nocheck() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "bundle", "--no-check", "script.ts"])
+        .unwrap();
+    assert_eq!(
+      r,
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "script.ts".to_string(),
+          out_file: None,
+        },
+        no_check: true,
         ..Flags::default()
       }
     );

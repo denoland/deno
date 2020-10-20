@@ -17,7 +17,7 @@ use std::str::FromStr;
 /// file, that we want to deserialize out of the final config for a transpile.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TranspileConfigOptions {
+pub struct EmitConfigOptions {
   pub check_js: bool,
   pub emit_decorator_metadata: bool,
   pub jsx: String,
@@ -202,7 +202,7 @@ pub fn parse_config(
 
 /// A structure for managing the configuration of TypeScript
 #[derive(Debug, Clone)]
-pub struct TsConfig(Value);
+pub struct TsConfig(pub Value);
 
 impl TsConfig {
   /// Create a new `TsConfig` with the base being the `value` supplied.
@@ -246,15 +246,6 @@ impl TsConfig {
     } else {
       Ok(None)
     }
-  }
-
-  /// Return the current configuration as a `TranspileConfigOptions` structure.
-  pub fn as_transpile_config(
-    &self,
-  ) -> Result<TranspileConfigOptions, AnyError> {
-    let options: TranspileConfigOptions =
-      serde_json::from_value(self.0.clone())?;
-    Ok(options)
   }
 }
 
