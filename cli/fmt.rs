@@ -36,7 +36,7 @@ pub async fn format(
   check: bool,
   exclude: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args.get(0).unwrap().to_str().unwrap() == "-" {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return format_stdin(check);
   }
   // collect all files provided.

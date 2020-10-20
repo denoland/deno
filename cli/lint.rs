@@ -44,7 +44,7 @@ pub async fn lint_files(
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args.get(0).unwrap().to_str().unwrap() == "-" {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
     // TODO don't use unwrap here
     return lint_stdin(json);
   }
