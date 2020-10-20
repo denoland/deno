@@ -6,10 +6,10 @@ import {
   TestFunction,
   TestResult,
   Tokenizer,
-} from "./tokenizer.ts";
+} from "./_tokenizer.ts"
 
 function digits(value: string | number, count = 2): string {
-  return String(value).padStart(count, "0");
+  return String(value).padStart(count, "0")
 }
 
 // as declared as in namespace Intl
@@ -25,32 +25,32 @@ type DateTimeFormatPartTypes =
   | "timeZoneName"
   // | "weekday"
   | "year"
-  | "fractionalSecond";
+  | "fractionalSecond"
 
 interface DateTimeFormatPart {
-  type: DateTimeFormatPartTypes;
-  value: string;
+  type: DateTimeFormatPartTypes
+  value: string
 }
 
-type TimeZone = "UTC";
+type TimeZone = "UTC"
 
 interface Options {
-  timeZone?: TimeZone;
+  timeZone?: TimeZone
 }
 
 function createLiteralTestFunction(value: string): TestFunction {
   return (string: string): TestResult => {
     return string.startsWith(value)
       ? { value, length: value.length }
-      : undefined;
-  };
+      : undefined
+  }
 }
 
 function createMatchTestFunction(match: RegExp): TestFunction {
   return (string: string): TestResult => {
-    const result = match.exec(string);
-    if (result) return { value: result, length: result[0].length };
-  };
+    const result = match.exec(string)
+    if (result) return { value: result, length: result[0].length }
+  }
 }
 
 // according to unicode symbols (http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table)
@@ -142,6 +142,27 @@ const defaultRules = [
     }),
   },
 
+  {
+    test: createLiteralTestFunction("XXXXX"),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 5 }),
+  },
+  {
+    test: createLiteralTestFunction("XXXX"),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 4 }),
+  },
+  {
+    test: createLiteralTestFunction("XXX"),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 3 }),
+  },
+  {
+    test: createLiteralTestFunction("XX"),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 2 }),
+  },
+  {
+    test: createLiteralTestFunction("X"),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 1 }),
+  },
+
   // quoted literal
   {
     test: createMatchTestFunction(/^(')(?<value>\\.|[^\']*)\1/),
@@ -158,414 +179,467 @@ const defaultRules = [
       value: (match as RegExpExecArray)[0],
     }),
   },
-];
+]
 
 type FormatPart = {
-  type: DateTimeFormatPartTypes;
-  value: string | number;
-  hour12?: boolean;
-};
-type Format = FormatPart[];
+  type: DateTimeFormatPartTypes
+  value: string | number
+  hour12?: boolean
+}
+type Format = FormatPart[]
 
 export class DateTimeFormatter {
-  #format: Format;
+  #format: Format
 
   constructor(formatString: string, rules: Rule[] = defaultRules) {
-    const tokenizer = new Tokenizer(rules);
+    const tokenizer = new Tokenizer(rules)
     this.#format = tokenizer.tokenize(
       formatString,
       ({ type, value, hour12 }) => {
         const result = {
           type,
           value,
-        } as unknown as ReceiverResult;
-        if (hour12) result.hour12 = hour12 as boolean;
-        return result;
+        } as unknown as ReceiverResult
+        if (hour12) result.hour12 = hour12 as boolean
+        return result
       },
-    ) as Format;
+    ) as Format
   }
 
   format(date: Date, options: Options = {}): string {
-    let string = "";
+    let string = ""
 
-    const utc = options.timeZone === "UTC";
+    const utc = options.timeZone === "UTC"
 
     for (const token of this.#format) {
-      const type = token.type;
+
+      const type = token.type
 
       switch (type) {
         case "year": {
-          const value = utc ? date.getUTCFullYear() : date.getFullYear();
+          const value = utc ? date.getUTCFullYear() : date.getFullYear()
           switch (token.value) {
             case "numeric": {
-              string += value;
-              break;
+              string += value
+              break
             }
             case "2-digit": {
-              string += digits(value, 2).slice(-2);
-              break;
+              string += digits(value, 2).slice(-2)
+              break
             }
             default:
               throw Error(
                 `FormatterError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "month": {
-          const value = (utc ? date.getUTCMonth() : date.getMonth()) + 1;
+          const value = (utc ? date.getUTCMonth() : date.getMonth()) + 1
           switch (token.value) {
             case "numeric": {
-              string += value;
-              break;
+              string += value
+              break
             }
             case "2-digit": {
-              string += digits(value, 2);
-              break;
+              string += digits(value, 2)
+              break
             }
             default:
               throw Error(
                 `FormatterError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "day": {
-          const value = utc ? date.getUTCDate() : date.getDate();
+          const value = utc ? date.getUTCDate() : date.getDate()
           switch (token.value) {
             case "numeric": {
-              string += value;
-              break;
+              string += value
+              break
             }
             case "2-digit": {
-              string += digits(value, 2);
-              break;
+              string += digits(value, 2)
+              break
             }
             default:
               throw Error(
                 `FormatterError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "hour": {
-          let value = utc ? date.getUTCHours() : date.getHours();
-          value -= token.hour12 && date.getHours() > 12 ? 12 : 0;
+          let value = utc ? date.getUTCHours() : date.getHours()
+          value -= token.hour12 && date.getHours() > 12 ? 12 : 0
           switch (token.value) {
             case "numeric": {
-              string += value;
-              break;
+              string += value
+              break
             }
             case "2-digit": {
-              string += digits(value, 2);
-              break;
+              string += digits(value, 2)
+              break
             }
             default:
               throw Error(
                 `FormatterError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "minute": {
-          const value = utc ? date.getUTCMinutes() : date.getMinutes();
+          const value = utc ? date.getUTCMinutes() : date.getMinutes()
           switch (token.value) {
             case "numeric": {
-              string += value;
-              break;
+              string += value
+              break
             }
             case "2-digit": {
-              string += digits(value, 2);
-              break;
+              string += digits(value, 2)
+              break
             }
             default:
               throw Error(
                 `FormatterError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "second": {
-          const value = utc ? date.getUTCSeconds() : date.getSeconds();
+          const value = utc ? date.getUTCSeconds() : date.getSeconds()
           switch (token.value) {
             case "numeric": {
-              string += value;
-              break;
+              string += value
+              break
             }
             case "2-digit": {
-              string += digits(value, 2);
-              break;
+              string += digits(value, 2)
+              break
             }
             default:
               throw Error(
                 `FormatterError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "fractionalSecond": {
           const value = utc
             ? date.getUTCMilliseconds()
-            : date.getMilliseconds();
-          string += digits(value, Number(token.value));
-          break;
+            : date.getMilliseconds()
+          string += digits(value, Number(token.value))
+          break
         }
         // FIXME(bartlomieju)
         case "timeZoneName": {
           // string += utc ? "Z" : token.value
-          break;
+          break
         }
         case "dayPeriod": {
-          string += token.value ? (date.getHours() >= 12 ? "PM" : "AM") : "";
-          break;
+          string += token.value ? (date.getHours() >= 12 ? "PM" : "AM") : ""
+          break
         }
         case "literal": {
-          string += token.value;
-          break;
+          string += token.value
+          break
         }
 
         default:
-          throw Error(`FormatterError: { ${token.type} ${token.value} }`);
+          throw Error(`FormatterError: { ${token.type} ${token.value} }`)
       }
     }
 
-    return string;
+    return string
   }
 
   parseToParts(string: string): DateTimeFormatPart[] {
-    const parts: DateTimeFormatPart[] = [];
+    const parts: DateTimeFormatPart[] = []
 
     for (const token of this.#format) {
-      const type = token.type;
+      const type = token.type
 
-      let value = "";
+      let value = ""
       switch (token.type) {
         case "year": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,4}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{1,4}/.exec(string)?.[0] as string
+              break
             }
             case "2-digit": {
-              value = /^\d{1,2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{1,2}/.exec(string)?.[0] as string
+              break
             }
           }
-          break;
+          break
         }
         case "month": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{1,2}/.exec(string)?.[0] as string
+              break
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{2}/.exec(string)?.[0] as string
+              break
             }
             case "narrow": {
-              value = /^[a-zA-Z]+/.exec(string)?.[0] as string;
-              break;
+              value = /^[a-zA-Z]+/.exec(string)?.[0] as string
+              break
             }
             case "short": {
-              value = /^[a-zA-Z]+/.exec(string)?.[0] as string;
-              break;
+              value = /^[a-zA-Z]+/.exec(string)?.[0] as string
+              break
             }
             case "long": {
-              value = /^[a-zA-Z]+/.exec(string)?.[0] as string;
-              break;
+              value = /^[a-zA-Z]+/.exec(string)?.[0] as string
+              break
             }
             default:
               throw Error(
                 `ParserError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "day": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{1,2}/.exec(string)?.[0] as string
+              break
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{2}/.exec(string)?.[0] as string
+              break
             }
             default:
               throw Error(
                 `ParserError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "hour": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0] as string;
+              value = /^\d{1,2}/.exec(string)?.[0] as string
               if (token.hour12 && parseInt(value) > 12) {
                 console.error(
                   `Trying to parse hour greater than 12. Use 'H' instead of 'h'.`,
-                );
+                )
               }
-              break;
+              break
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0] as string;
+              value = /^\d{2}/.exec(string)?.[0] as string
               if (token.hour12 && parseInt(value) > 12) {
                 console.error(
                   `Trying to parse hour greater than 12. Use 'HH' instead of 'hh'.`,
-                );
+                )
               }
-              break;
+              break
             }
             default:
               throw Error(
                 `ParserError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "minute": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{1,2}/.exec(string)?.[0] as string
+              break
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{2}/.exec(string)?.[0] as string
+              break
             }
             default:
               throw Error(
                 `ParserError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "second": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{1,2}/.exec(string)?.[0] as string
+              break
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0] as string;
-              break;
+              value = /^\d{2}/.exec(string)?.[0] as string
+              break
             }
             default:
               throw Error(
                 `ParserError: value "${token.value}" is not supported`,
-              );
+              )
           }
-          break;
+          break
         }
         case "fractionalSecond": {
           value = new RegExp(`^\\d{${token.value}}`).exec(string)
-            ?.[0] as string;
-          break;
+            ?.[0] as string
+          break
         }
         case "timeZoneName": {
-          value = token.value as string;
-          break;
+          if (string.startsWith("Z")) {
+            value = "UTC"
+          } else {
+            switch (token.value) {              
+              case 1: {
+                value = /^(?:\+|-)\d{2}(?:\d{2})?/.exec(string)?.[0] as string
+                break
+              }
+              case 2: {
+                value = /^(?:\+|-)\d{4}/.exec(string)?.[0] as string
+                break
+              }
+              case 3: {
+                value = /^(?:\+|-)\d{2}:\d{2}/.exec(string)?.[0] as string
+                break
+              }
+              case 4: {
+                value = /^(?:\+|-)\d{4}(?:\d{2})?/.exec(string)?.[0] as string
+                break
+              }
+              case 5: {
+                value = /^(?:\+|-)\d{2}:\d{2}(?::\d{2})?/.exec(string)?.[0] as string
+                break
+              }
+              default:
+                throw Error(
+                  `ParserError: value "${token.value}" is not supported`,
+                )
+            }
+          }
+          break
         }
         case "dayPeriod": {
-          value = /^(A|P)M/.exec(string)?.[0] as string;
-          break;
+          value = /^(A|P)M/.exec(string)?.[0] as string
+          break
         }
         case "literal": {
           if (!string.startsWith(token.value as string)) {
             throw Error(
               `Literal "${token.value}" not found "${string.slice(0, 25)}"`,
-            );
+            )
           }
-          value = token.value as string;
-          break;
+          value = token.value as string
+          break
         }
-
         default:
-          throw Error(`${token.type} ${token.value}`);
+          throw Error(`${token.type} ${token.value}`)
       }
 
       if (!value) {
         throw Error(
-          `value not valid for token { ${type} ${value} } ${
-            string.slice(
-              0,
-              25,
-            )
+          `value not valid for token { ${type} ${value} } ${string.slice(
+            0,
+            25,
+          )
           }`,
-        );
+        )
       }
-      parts.push({ type, value });
+      parts.push({ type, value })
 
-      string = string.slice(value.length);
+      string = string.slice(value.length)
     }
 
     if (string.length) {
       throw Error(
         `datetime string was not fully parsed! ${string.slice(0, 25)}`,
-      );
+      )
     }
 
-    return parts;
+    return parts
   }
 
   partsToDate(parts: DateTimeFormatPart[]): Date {
-    const date = new Date();
-    const utc = parts.find(
-      (part) => part.type === "timeZoneName" && part.value === "UTC",
-    );
+    const date = new Date()
+    const timeZoneToken = parts.find((part) => part.type === "timeZoneName")
 
-    utc ? date.setUTCHours(0, 0, 0, 0) : date.setHours(0, 0, 0, 0);
+    const utc = timeZoneToken?.value === "UTC"
+    if (utc) {
+      date.setUTCHours(0, 0, 0, 0)
+    } else {
+      date.setHours(0, 0, 0, 0)
+    }
+
     for (const part of parts) {
       switch (part.type) {
         case "year": {
-          const value = Number(part.value.padStart(4, "20"));
-          utc ? date.setUTCFullYear(value) : date.setFullYear(value);
-          break;
+          const value = Number(part.value.padStart(4, "20"))
+          utc ? date.setUTCFullYear(value) : date.setFullYear(value)
+          break
         }
         case "month": {
-          const value = Number(part.value) - 1;
-          utc ? date.setUTCMonth(value) : date.setMonth(value);
-          break;
+          const value = Number(part.value) - 1
+          utc ? date.setUTCMonth(value) : date.setMonth(value)
+          break
         }
         case "day": {
-          const value = Number(part.value);
-          utc ? date.setUTCDate(value) : date.setDate(value);
-          break;
+          const value = Number(part.value)
+          utc ? date.setUTCDate(value) : date.setDate(value)
+          break
         }
         case "hour": {
-          let value = Number(part.value);
+          let value = Number(part.value)
           const dayPeriod = parts.find(
             (part: DateTimeFormatPart) => part.type === "dayPeriod",
-          );
-          if (dayPeriod?.value === "PM") value += 12;
-          utc ? date.setUTCHours(value) : date.setHours(value);
-          break;
+          )
+          if (dayPeriod?.value === "PM") value += 12
+          utc ? date.setUTCHours(value) : date.setHours(value)
+          break
         }
         case "minute": {
-          const value = Number(part.value);
-          utc ? date.setUTCMinutes(value) : date.setMinutes(value);
-          break;
+          const value = Number(part.value)
+          utc ? date.setUTCMinutes(value) : date.setMinutes(value)
+          break
         }
         case "second": {
-          const value = Number(part.value);
-          utc ? date.setUTCSeconds(value) : date.setSeconds(value);
-          break;
+          const value = Number(part.value)
+          utc ? date.setUTCSeconds(value) : date.setSeconds(value)
+          break
         }
         case "fractionalSecond": {
-          const value = Number(part.value);
-          utc ? date.setUTCMilliseconds(value) : date.setMilliseconds(value);
-          break;
+          const value = Number(part.value)
+          utc ? date.setUTCMilliseconds(value) : date.setMilliseconds(value)
+          break
+        }
+        case "timeZoneName": {
+          // const value = part.value;
+          break
         }
       }
     }
-    return date;
+
+    if (timeZoneToken && !utc) {
+      const localOffset = date.getTimezoneOffset() * 60 * 1000
+      // const yearStart = new Date(date);
+      // yearStart.setUTCFullYear(date.getUTCFullYear(), 0, 0);
+      // const localOffset = date.getTime() - yearStart.getTime() + (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
+
+      const timeZone = timeZoneToken?.value
+      const offsets = timeZone?.includes(":") ? timeZone.split(":").map(Number) : timeZone!.match(/\D*\d{2}/g)!.map(Number) || []
+      const hours = offsets[0] !== undefined ? offsets[0] : 0
+      const minutes = offsets[1] !== undefined ? offsets[1] : 0
+      const seconds = offsets[2] !== undefined ? offsets[2] : 0
+      const offset = (((60*hours + minutes) * 60) + seconds) * 1000
+      date.setTime(date.getTime() - localOffset - offset)
+
+    }
+
+    return date
   }
 
   parse(string: string): Date {
-    const parts = this.parseToParts(string);
-    return this.partsToDate(parts);
+    const parts = this.parseToParts(string)
+    return this.partsToDate(parts)
   }
 }
