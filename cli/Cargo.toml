@@ -61,6 +61,7 @@ rustyline-derive = "0.3.1"
 serde = { version = "1.0.116", features = ["derive"] }
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
+swc_bundler = "=0.11.3"
 swc_common = { version = "=0.10.4", features = ["sourcemap"] }
 swc_ecmascript = { version = "=0.10.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
 tempfile = "3.1.0"

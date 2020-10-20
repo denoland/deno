@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::fmt_errors::JsError;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorSession;
@@ -275,7 +276,7 @@ impl MainWorker {
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime);
+      ops::worker_host::init(js_runtime, None);
       ops::random::init(js_runtime, program_state.flags.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
@@ -443,11 +444,11 @@ impl WebWorker {
         op_state.put::<Permissions>(permissions);
       }
 
-      ops::web_worker::init(js_runtime, sender, handle);
+      ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime);
+      ops::worker_host::init(js_runtime, Some(sender));
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -510,6 +511,12 @@ impl WebWorker {
           }
 
           if let Err(e) = r {
+            eprintln!(
+              "{}: Uncaught (in worker \"{}\") {}",
+              colors::red_bold("error"),
+              worker.name.to_string(),
+              e.to_string().trim_start_matches("Uncaught "),
+            );
             let mut sender = worker.internal_channels.sender.clone();
             sender
               .try_send(WorkerEvent::Error(e))
