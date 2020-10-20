@@ -7,8 +7,8 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const util = window.__bootstrap.util;
-  const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const eventTarget = window.__bootstrap.eventTarget;
+  const globalInterfaces = window.__bootstrap.globalInterfaces;
   const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -192,42 +192,6 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("URIError", URIError);
   }
 
-  class Window extends EventTarget {
-    constructor(key) {
-      if (key !== illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
-      }
-    }
-
-    get [Symbol.toStringTag]() {
-      return "Window";
-    }
-  }
-
-  class WorkerGlobalScope extends EventTarget {
-    constructor(key) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
-      }
-    }
-
-    get [Symbol.toStringTag]() {
-      return "WorkerGlobalScope";
-    }
-  }
-
-  class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
-    constructor(key) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
-      }
-    }
-
-    get [Symbol.toStringTag]() {
-      return "DedicatedWorkerGlobalScope";
-    }
-  }
-
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
     Blob: util.nonEnumerable(fetch.Blob),
@@ -277,7 +241,7 @@ delete Object.prototype.__proto__;
   };
 
   const mainRuntimeGlobalProperties = {
-    Window: util.nonEnumerable(Window),
+    Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
@@ -292,8 +256,9 @@ delete Object.prototype.__proto__;
   };
 
   const workerRuntimeGlobalProperties = {
-    WorkerGlobalScope: util.nonEnumerable(WorkerGlobalScope),
-    DedicatedWorkerGlobalScope: util.nonEnumerable(DedicatedWorkerGlobalScope),
+    WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
+    DedicatedWorkerGlobalScope:
+      globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),

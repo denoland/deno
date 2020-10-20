@@ -839,6 +839,49 @@ fn bundle_exports() {
 }
 
 #[test]
+fn bundle_exports_no_check() {
+  // First we have to generate a bundle of some module that has exports.
+  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+  assert!(mod1.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--no-check")
+    .arg(mod1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./mod1.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn bundle_circular() {
   // First we have to generate a bundle of some module that has exports.
   let circular1 = util::root_path().join("cli/tests/subdir/circular1.ts");
@@ -1052,6 +1095,52 @@ fn bundle_import_map() {
 }
 
 #[test]
+fn bundle_import_map_no_check() {
+  let import = util::root_path().join("cli/tests/bundle_im.ts");
+  let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
+  assert!(import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("import_map.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--no-check")
+    .arg("--importmap")
+    .arg(import_map_path)
+    .arg("--unstable")
+    .arg(import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./import_map.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
 fn info_with_compiled_source() {
   let _g = util::http_server();
   let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
@@ -1139,6 +1228,14 @@ fn repl_test_pty_multiline() {
     master.write_all(b"(\n1 + 2\n)\n").unwrap();
     master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
     master.write_all(b"`\nfoo\n`\n").unwrap();
+    master.write_all(b"`\n\\`\n`\n").unwrap();
+    master.write_all(b"'{'\n").unwrap();
+    master.write_all(b"'('\n").unwrap();
+    master.write_all(b"'['\n").unwrap();
+    master.write_all(b"/{/'\n").unwrap();
+    master.write_all(b"/(/'\n").unwrap();
+    master.write_all(b"/[/'\n").unwrap();
+    master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
     let mut output = String::new();
@@ -1147,6 +1244,14 @@ fn repl_test_pty_multiline() {
     assert!(output.contains('3'));
     assert!(output.contains("{ foo: \"foo\" }"));
     assert!(output.contains("\"\\nfoo\\n\""));
+    assert!(output.contains("\"\\n`\\n\""));
+    assert!(output.contains("\"{\""));
+    assert!(output.contains("\"(\""));
+    assert!(output.contains("\"[\""));
+    assert!(output.contains("/{/"));
+    assert!(output.contains("/(/"));
+    assert!(output.contains("/{/"));
+    assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
 
     fork.wait().unwrap();
   } else {
@@ -1159,6 +1264,66 @@ fn repl_test_pty_multiline() {
       .wait()
       .unwrap();
   }
+}
+
+#[test]
+fn run_watch_with_importmap_and_relative_paths() {
+  fn create_relative_tmp_file(
+    directory: &TempDir,
+    filename: &'static str,
+    filecontent: &'static str,
+  ) -> std::path::PathBuf {
+    let absolute_path = directory.path().join(filename);
+    std::fs::write(&absolute_path, filecontent).expect("error writing file");
+    let relative_path = absolute_path
+      .strip_prefix(util::root_path())
+      .expect("unable to create relative temporary file")
+      .to_owned();
+    assert!(relative_path.is_relative());
+    relative_path
+  }
+  let temp_directory =
+    TempDir::new_in(util::root_path()).expect("tempdir fail");
+  let file_to_watch = create_relative_tmp_file(
+    &temp_directory,
+    "file_to_watch.js",
+    "console.log('Hello world');",
+  );
+  let import_map_path = create_relative_tmp_file(
+    &temp_directory,
+    "import_map.json",
+    "{\"imports\": {}}",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--watch")
+    .arg("--importmap")
+    .arg(&import_map_path)
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+
+  child.kill().unwrap();
+
+  drop(file_to_watch);
+  drop(import_map_path);
+  temp_directory.close().unwrap();
 }
 
 #[test]
@@ -1796,13 +1961,6 @@ itest!(_033_import_map {
   output: "033_import_map.out",
 });
 
-itest!(import_map_no_unstable {
-  args:
-    "run --quiet --reload --importmap=importmaps/import_map.json importmaps/test.ts",
-  output: "import_map_no_unstable.out",
-  exit_code: 70,
-});
-
 itest!(_034_onload {
   args: "run --quiet --reload 034_onload/main.ts",
   output: "034_onload.out",
@@ -1977,6 +2135,18 @@ fn _066_prompt() {
 
   util::test_pty(args, output, input);
 }
+
+itest!(_073_worker_error {
+  args: "run -A 073_worker_error.ts",
+  output: "073_worker_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(_074_worker_nested_error {
+  args: "run -A 074_worker_nested_error.ts",
+  output: "074_worker_nested_error.ts.out",
+  exit_code: 1,
+});
 
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
