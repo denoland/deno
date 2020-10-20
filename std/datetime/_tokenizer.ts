@@ -43,6 +43,7 @@ export class Tokenizer {
     string: string,
     receiver = (token: Token): ReceiverResult => token,
   ): ReceiverResult[] {
+    const initialString = string
     function* generator(rules: Rule[]): IterableIterator<ReceiverResult> {
       let index = 0;
       for (const rule of rules) {
@@ -67,7 +68,7 @@ export class Tokenizer {
 
     if (string.length) {
       throw new Error(
-        `parser error: string not fully parsed! ${string.slice(0, 25)}`,
+        `Unexpected character at position ${initialString.length-string.length} in "${initialString}"`,
       );
     }
 
