@@ -3,7 +3,6 @@
 use crate::media_type::MediaType;
 use crate::tsc_config;
 
-use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
@@ -422,12 +421,13 @@ pub fn transpile_module(
     Some(&comments),
   );
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
+  let sm = cm.clone();
   let module = parser.parse_module().map_err(move |err| {
     let mut diagnostic = err.into_diagnostic(&handler);
     diagnostic.emit();
 
     DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
-      cm.lookup_char_pos(span.lo)
+      sm.lookup_char_pos(span.lo)
     })
   })?;
   // TODO(@kitsonk) DRY-up with ::transpile()
