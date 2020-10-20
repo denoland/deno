@@ -434,10 +434,10 @@ export function assertNotMatch(
  * If not, then throw.
  */
 export function assertObjectMatch(
-  actual: { [key: string]: unknown },
-  expected: { [key: string]: unknown },
+  actual: Record<string | symbol, unknown>,
+  expected: Record<string | symbol, unknown>,
 ): void {
-  type loose = { [key: string]: unknown };
+  type loose = Record<string | symbol, unknown>;
   const seen = new WeakMap();
   return assertEquals(
     (function filter(a: loose, b: loose): loose {

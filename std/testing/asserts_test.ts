@@ -261,12 +261,14 @@ Deno.test("testingAssertStringNotMatchingThrows", function (): void {
 });
 
 Deno.test("testingAssertObjectMatching", function (): void {
+  const sym = Symbol("foo");
   const a = { foo: true, bar: false };
   const b = { ...a, baz: a };
   const c = { ...b, qux: b };
   const d = { corge: c, grault: c };
   const e = { foo: true } as { [key: string]: unknown };
   e.bar = e;
+  const f = { [sym]: true, bar: false };
   // Simple subset
   assertObjectMatch(a, {
     foo: true,
@@ -306,6 +308,10 @@ Deno.test("testingAssertObjectMatching", function (): void {
       },
     },
   });
+  // Subset with same symbol
+  assertObjectMatch(f, {
+    [sym]: true
+  })
   // Missing key
   {
     let didThrow;
@@ -404,6 +410,20 @@ Deno.test("testingAssertObjectMatching", function (): void {
             },
           },
         },
+      });
+      didThrow = false;
+    } catch (e) {
+      assert(e instanceof AssertionError);
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
+  }
+  // Subset with symbol key but with string key subset
+  {
+    let didThrow;
+    try {
+      assertObjectMatch(f, {
+        foo: true,
       });
       didThrow = false;
     } catch (e) {
