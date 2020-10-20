@@ -9,7 +9,7 @@ Create and verify JSON Web Tokens.
 Takes a `payload`, `key` and `header` and returns the url-safe encoded `token`.
 
 ```typescript
-import { create } from "https://deno.land/std/jwt/mod.ts";
+import { create } from "https://deno.land/std@$STD_VERSION/jwt/mod.ts";
 
 const payload = { foo: "bar" };
 const key = "secret";
@@ -30,7 +30,7 @@ Takes a `token`, `key` and an optional `options` object and returns the
 `Error`.
 
 ```typescript
-import { verify } from "https://deno.land/std/jwt/mod.ts";
+import { verify } from "https://deno.land/std@$STD_VERSION/jwt/mod.ts";
 
 const token =
   "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.WePl7achkd0oGNB8XRF_LJwxlyiPZqpdNgdKpDboAjSTsWq-aOGNynTp8TOv8KjonFym8vwFwppXOLoLXbkIaQ";
@@ -51,7 +51,7 @@ Takes a `token` to return an object with the `header`, `payload` and `signature`
 properties if the `token` is valid. Otherwise it throws an `Error`.
 
 ```typescript
-import { decode } from "https://deno.land/std/jwt/mod.ts";
+import { decode } from "https://deno.land/std@$STD_VERSION/jwt/mod.ts";
 
 const token =
   "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.WePl7achkd0oGNB8XRF_LJwxlyiPZqpdNgdKpDboAjSTsWq-aOGNynTp8TOv8KjonFym8vwFwppXOLoLXbkIaQ";
