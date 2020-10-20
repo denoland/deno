@@ -9,12 +9,12 @@ Create and verify JSON Web Tokens.
 Takes a `payload`, `key` and `header` and returns the url-safe encoded `token`.
 
 ```typescript
-import { create } from "https://deno.land/std/token/mod.ts";
+import { create } from "https://deno.land/std@$STD_VERSION/jwt/mod.ts";
 
 const payload = { foo: "bar" };
 const key = "secret";
 
-const token = await create(payload, key); // eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ
+const token = await create(payload, key); // eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.WePl7achkd0oGNB8XRF_LJwxlyiPZqpdNgdKpDboAjSTsWq-aOGNynTp8TOv8KjonFym8vwFwppXOLoLXbkIaQ
 ```
 
 **Specific algorithm**
@@ -30,10 +30,10 @@ Takes a `token`, `key` and an optional `options` object and returns the
 `Error`.
 
 ```typescript
-import { verify } from "https://deno.land/std/token/mod.ts";
+import { verify } from "https://deno.land/std@$STD_VERSION/jwt/mod.ts";
 
 const token =
-  "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ";
+  "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.WePl7achkd0oGNB8XRF_LJwxlyiPZqpdNgdKpDboAjSTsWq-aOGNynTp8TOv8KjonFym8vwFwppXOLoLXbkIaQ";
 const key = "secret";
 
 const payload = await verify(token, key); // { foo: "bar" }
@@ -51,12 +51,12 @@ Takes a `token` to return an object with the `header`, `payload` and `signature`
 properties if the `token` is valid. Otherwise it throws an `Error`.
 
 ```typescript
-import { decode } from "https://deno.land/std/token/mod.ts";
+import { decode } from "https://deno.land/std@$STD_VERSION/jwt/mod.ts";
 
 const token =
-  "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.4i-Q1Y0oDZunLgaorkqbYNcNfn5CgdF49UvJ7dUQ4GVTQvpsMLHABkZBWp9sghy3qVOsec6hOcu4RnbFkS30zQ";
+  "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.WePl7achkd0oGNB8XRF_LJwxlyiPZqpdNgdKpDboAjSTsWq-aOGNynTp8TOv8KjonFym8vwFwppXOLoLXbkIaQ";
 
-const { payload, signature, header } = await decode(token); // { header: { alg: "HS512", typ: "JWT" }, payload: { foo: "bar" }, signature: "e22f90d58d280d9ba72e06a8ae4a9b60d70d7e7e4281d178f54bc9edd510e0655342fa6c30b1c00646415a9f6c821cb7a953ac79cea139cbb84676c5912df4cd" }
+const { payload, signature, header } = await decode(token); // { header: { alg: "HS512", typ: "JWT" }, payload: { foo: "bar" }, signature: "59e3e5eda72191dd2818d07c5d117f2c9c3197288f66aa5d36074aa436e8023493b16abe68e18dca74e9f133aff0a8e89c5ca6f2fc05c29a5738ba0b5db90869" }
 ```
 
 ## Expiration
