@@ -46,7 +46,7 @@ This module provides an implementation of the WebAssembly System Interface.
 - [x] poll_oneoff
 - [x] proc_exit
 - [ ] proc_raise
-- [ ] sched_yield
+- [x] sched_yield
 - [x] random_get
 - [ ] sock_recv
 - [ ] sock_send
