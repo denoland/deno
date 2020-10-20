@@ -242,7 +242,7 @@ pub fn install(
   if let Some(import_map_path) = flags.import_map_path {
     let mut copy_path = file_path.clone();
     copy_path.set_extension("import_map.json");
-    executable_args.push("--importmap".to_string());
+    executable_args.push("--import-map".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
     extra_files.push((copy_path, fs::read_to_string(import_map_path)?));
   }
