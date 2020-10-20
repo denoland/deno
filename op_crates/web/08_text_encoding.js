@@ -973,8 +973,8 @@
       if (options.fatal) {
         this.fatal = true;
       }
-      label = String(label).trim().toLowerCase();
-      const encoding = encodings.get(label);
+      const _label = String(label).trim().toLowerCase();
+      const encoding = encodings.get(_label);
       if (!encoding) {
         throw new RangeError(
           `The encoding label provided ('${label}') is invalid.`,

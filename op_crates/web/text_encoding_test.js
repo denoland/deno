@@ -163,10 +163,10 @@ function textDecoderASCII() {
 function textDecoderErrorEncoding() {
   let didThrow = false;
   try {
-    new TextDecoder("foo");
+    new TextDecoder("Foo");
   } catch (e) {
     didThrow = true;
-    assert(e.message === "The encoding label provided ('foo') is invalid.");
+    assert(e.message === "The encoding label provided ('Foo') is invalid.");
   }
   assert(didThrow);
 }
