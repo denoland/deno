@@ -434,10 +434,10 @@ export function assertNotMatch(
  * If not, then throw.
  */
 export function assertObjectMatch(
-  actual: Record<string | symbol, unknown>,
-  expected: Record<string | symbol, unknown>,
+  actual: Record<PropertyKey, unknown>,
+  expected: Record<PropertyKey, unknown>,
 ): void {
-  type loose = Record<string | symbol, unknown>;
+  type loose = Record<PropertyKey, unknown>;
   const seen = new WeakMap();
   return assertEquals(
     (function filter(a: loose, b: loose): loose {
@@ -446,12 +446,16 @@ export function assertObjectMatch(
         return a;
       }
       seen.set(a, b);
-      // Iterate through keys present in both actual and expected
-      // and filter recursively on object references
+      // Filter keys and symbols which are present in both actual and expected
       const filtered = {} as loose;
-      for (
-        const [key, value] of Object.entries(a).filter(([key]) => key in b)
-      ) {
+      const entries = [
+        ...Object.getOwnPropertyNames(a),
+        ...Object.getOwnPropertySymbols(a),
+      ]
+        .filter((key) => key in b)
+        .map((key) => [key, a[key as string]]) as Array<[string, unknown]>;
+      // Build filtered object and filter recursively on nested objects references
+      for (const [key, value] of entries) {
         if (typeof value === "object") {
           const subset = (b as loose)[key];
           if ((typeof subset === "object") && (subset)) {
