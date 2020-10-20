@@ -310,8 +310,8 @@ Deno.test("testingAssertObjectMatching", function (): void {
   });
   // Subset with same symbol
   assertObjectMatch(f, {
-    [sym]: true
-  })
+    [sym]: true,
+  });
   // Missing key
   {
     let didThrow;
