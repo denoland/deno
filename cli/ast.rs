@@ -401,6 +401,16 @@ pub fn transpile_module(
   emit_options: &EmitOptions,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
+  // TODO(@kitsonk) DRY-up with ::parse()
+  let error_buffer = ErrorBuffer::new();
+  let handler = Handler::with_emitter_and_flags(
+    Box::new(error_buffer.clone()),
+    HandlerFlags {
+      can_emit_warnings: true,
+      dont_buffer_diagnostics: true,
+      ..HandlerFlags::default()
+    },
+  );
   let comments = SingleThreadedComments::default();
   let syntax = get_syntax(media_type);
   let source_file =
@@ -412,12 +422,14 @@ pub fn transpile_module(
     Some(&comments),
   );
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-  // TODO(@kitsonk) this seems to be a problem with the type of result
-  // from `.parse_module` that cannot be coerced.
-  let module = match parser.parse_module() {
-    Ok(m) => m,
-    Err(err) => bail!("Parsing failed: {:?}", err),
-  };
+  let module = parser.parse_module().map_err(move |err| {
+    let mut diagnostic = err.into_diagnostic(&handler);
+    diagnostic.emit();
+
+    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
+      cm.lookup_char_pos(span.lo)
+    })
+  })?;
   // TODO(@kitsonk) DRY-up with ::transpile()
   let jsx_pass = react::react(
     cm,
