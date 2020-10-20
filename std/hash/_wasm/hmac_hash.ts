@@ -1,10 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import init, {
-  source,
-  HmacSha256Hash,
-  HmacSha512Hash,
-} from "./wasm.js";
+import init, { HmacSha256Hash, HmacSha512Hash, source } from "./wasm.js";
 
 import type { HmacHasher, Message } from "../hmac_hasher.ts";
 
@@ -16,8 +12,8 @@ export class HmacHash implements HmacHasher {
   #inner: HmacHashMethods;
   #digested: boolean;
 
-  constructor(algorithm: string,key: string) {
-    switch(algorithm) {
+  constructor(algorithm: string, key: string) {
+    switch (algorithm) {
       case "sha256": {
         this.#inner = new HmacSha256Hash(key);
         break;
@@ -38,14 +34,12 @@ export class HmacHash implements HmacHasher {
    * @param data data to update
    */
   update(data: Message): this {
-
     this.#inner.update(data);
     return this;
   }
 
   /** Returns final hash */
   digest(): ArrayBuffer {
-    console.log("digest",this.#inner,this.#digested);
     if (this.#digested) throw new Error("hash: already digested");
 
     this.#digested = true;

@@ -25,7 +25,7 @@
     "std/**/testdata",
     "std/**/vendor",
     "std/node_modules",
-    "std/hash/_wasm",
+    "std/hash/_wasm/wasm.js",
     "target",
     "third_party"
   ],

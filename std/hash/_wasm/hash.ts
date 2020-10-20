@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import init, {
-  source,
   create_hash as createHash,
-  update_hash as updateHash,
-  digest_hash as digestHash,
   DenoHash,
+  digest_hash as digestHash,
+  source,
+  update_hash as updateHash,
 } from "./wasm.js";
 
 import * as hex from "../../encoding/hex.ts";
