@@ -213,9 +213,9 @@ async fn install_command(
 
 async fn lint_command(
   flags: Flags,
-  files: Vec<String>,
+  files: Vec<PathBuf>,
   list_rules: bool,
-  ignore: Vec<String>,
+  ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
