@@ -45,7 +45,6 @@ pub async fn lint_files(
   json: bool,
 ) -> Result<(), AnyError> {
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    // TODO don't use unwrap here
     return lint_stdin(json);
   }
   let mut target_files = collect_files(args)?;
