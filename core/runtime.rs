@@ -4,6 +4,7 @@ use rusty_v8 as v8;
 
 use crate::bindings;
 use crate::error::attach_handle_to_error;
+use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
@@ -84,10 +85,16 @@ pub struct JsRuntime {
   allocations: IsolateAllocations,
 }
 
-type DynImportModEvaluate =
-  (ModuleId, v8::Global<v8::Promise>, v8::Global<v8::Module>);
-type ModEvaluate =
-  (v8::Global<v8::Promise>, mpsc::Sender<Result<(), AnyError>>);
+struct DynImportModEvaluate {
+  module_id: ModuleId,
+  promise: v8::Global<v8::Promise>,
+  module: v8::Global<v8::Module>,
+}
+
+struct ModEvaluate {
+  promise: v8::Global<v8::Promise>,
+  sender: mpsc::Sender<Result<(), AnyError>>,
+}
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
@@ -97,8 +104,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
-  pub(crate) pending_dyn_mod_evaluate: HashMap<i32, DynImportModEvaluate>,
-  pub(crate) pending_mod_evaluate: HashMap<ModuleId, ModEvaluate>,
+  pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
+  pending_mod_evaluate: Option<ModEvaluate>,
   pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
@@ -155,22 +162,6 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-/// Minimum and maximum bytes of heap used in an isolate
-pub struct HeapLimits {
-  /// By default V8 starts with a small heap and dynamically grows it to match
-  /// the set of live objects. This may lead to ineffective garbage collections
-  /// at startup if the live set is large. Setting the initial heap size avoids
-  /// such garbage collections. Note that this does not affect young generation
-  /// garbage collections.
-  pub initial: usize,
-  /// When the heap size approaches `max`, V8 will perform series of
-  /// garbage collections and invoke the
-  /// [NearHeapLimitCallback](TODO).
-  /// If the garbage collections do not help and the callback does not
-  /// increase the limit, then V8 will crash with V8::FatalProcessOutOfMemory.
-  pub max: usize,
-}
-
 #[derive(Default)]
 pub struct RuntimeOptions {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
@@ -195,17 +186,12 @@ pub struct RuntimeOptions {
   /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
 
-  /// This is useful for controlling memory usage of scripts.
-  ///
-  /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
-  ///
-  /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
-  /// to prevent v8 from crashing when reaching the upper limit.
-  pub heap_limits: Option<HeapLimits>,
+  /// Isolate creation parameters.
+  pub create_params: Option<v8::CreateParams>,
 }
 
 impl JsRuntime {
-  pub fn new(options: RuntimeOptions) -> Self {
+  pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
@@ -227,7 +213,10 @@ impl JsRuntime {
       }
       (isolate, Some(creator))
     } else {
-      let mut params = v8::Isolate::create_params()
+      let mut params = options
+        .create_params
+        .take()
+        .unwrap_or_else(v8::Isolate::create_params)
         .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
@@ -239,10 +228,6 @@ impl JsRuntime {
       } else {
         false
       };
-
-      if let Some(heap_limits) = options.heap_limits {
-        params = params.heap_limits(heap_limits.initial, heap_limits.max)
-      }
 
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
@@ -273,7 +258,7 @@ impl JsRuntime {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: HashMap::new(),
-      pending_mod_evaluate: HashMap::new(),
+      pending_mod_evaluate: None,
       shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
@@ -476,8 +461,13 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    // Top level modules
-    self.evaluate_pending_modules()?;
+    // Ops
+    {
+      let overflow_response = self.poll_pending_ops(cx);
+      self.async_op_response(overflow_response)?;
+      self.drain_macrotasks()?;
+      self.check_promise_exceptions()?;
+    }
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
@@ -492,24 +482,25 @@ impl JsRuntime {
       self.check_promise_exceptions()?;
     }
 
-    // Ops
-    {
-      let overflow_response = self.poll_pending_ops(cx);
-      self.async_op_response(overflow_response)?;
-      self.drain_macrotasks()?;
-      self.check_promise_exceptions()?;
-    }
+    // Top level module
+    self.evaluate_pending_module()?;
 
     let state = state_rc.borrow();
-    let is_idle = {
-      state.pending_ops.is_empty()
-        && state.pending_dyn_imports.is_empty()
-        && state.preparing_dyn_imports.is_empty()
-        && state.pending_dyn_mod_evaluate.is_empty()
-        && state.pending_mod_evaluate.is_empty()
-    };
+    let has_pending_ops = !state.pending_ops.is_empty();
 
-    if is_idle {
+    let has_pending_dyn_imports = !{
+      state.preparing_dyn_imports.is_empty()
+        && state.pending_dyn_imports.is_empty()
+    };
+    let has_pending_dyn_module_evaluation =
+      !state.pending_dyn_mod_evaluate.is_empty();
+    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
+
+    if !has_pending_ops
+      && !has_pending_dyn_imports
+      && !has_pending_dyn_module_evaluation
+      && !has_pending_module_evaluation
+    {
       return Poll::Ready(Ok(()));
     }
 
@@ -517,6 +508,27 @@ impl JsRuntime {
     // during this turn of event loop.
     if state.have_unpolled_ops.get() {
       state.waker.wake();
+    }
+
+    if has_pending_module_evaluation {
+      if has_pending_ops
+        || has_pending_dyn_imports
+        || has_pending_dyn_module_evaluation
+      {
+        // pass, will be polled again
+      } else {
+        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
+        return Poll::Ready(Err(generic_error(msg)));
+      }
+    }
+
+    if has_pending_dyn_module_evaluation {
+      if has_pending_ops || has_pending_dyn_imports {
+        // pass, will be polled again
+      } else {
+        let msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.";
+        return Poll::Ready(Err(generic_error(msg)));
+      }
     }
 
     Poll::Pending
@@ -774,9 +786,16 @@ impl JsRuntime {
         state.pending_promise_exceptions.remove(&promise_id);
         let promise_global = v8::Global::new(scope, promise);
         let module_global = v8::Global::new(scope, module);
+
+        let dyn_import_mod_evaluate = DynImportModEvaluate {
+          module_id: id,
+          promise: promise_global,
+          module: module_global,
+        };
+
         state
           .pending_dyn_mod_evaluate
-          .insert(load_id, (id, promise_global, module_global));
+          .insert(load_id, dyn_import_mod_evaluate);
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -848,9 +867,16 @@ impl JsRuntime {
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_id);
         let promise_global = v8::Global::new(scope, promise);
-        state
-          .pending_mod_evaluate
-          .insert(id, (promise_global, sender));
+        assert!(
+          state.pending_mod_evaluate.is_none(),
+          "There is already pending top level module evaluation"
+        );
+
+        state.pending_mod_evaluate = Some(ModEvaluate {
+          promise: promise_global,
+          sender,
+        });
+        scope.perform_microtask_checkpoint();
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -1038,7 +1064,20 @@ impl JsRuntime {
     }
   }
 
-  fn evaluate_pending_modules(&mut self) -> Result<(), AnyError> {
+  /// "deno_core" runs V8 with "--harmony-top-level-await"
+  /// flag on - it means that each module evaluation returns a promise
+  /// from V8.
+  ///
+  /// This promise resolves after all dependent modules have also
+  /// resolved. Each dependent module may perform calls to "import()" and APIs
+  /// using async ops will add futures to the runtime's event loop.
+  /// It means that the promise returned from module evaluation will
+  /// resolve only after all futures in the event loop are done.
+  ///
+  /// Thus during turn of event loop we need to check if V8 has
+  /// resolved or rejected the promise. If the promise is still pending
+  /// then another turn of event loop must be performed.
+  fn evaluate_pending_module(&mut self) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
     let context = self.global_context();
@@ -1048,28 +1087,26 @@ impl JsRuntime {
 
       let mut state = state_rc.borrow_mut();
 
-      if let Some(&module_id) = state.pending_mod_evaluate.keys().next() {
-        let handle = state.pending_mod_evaluate.remove(&module_id).unwrap();
-        drop(state);
-
-        let promise = handle.0.get(scope);
-        let mut sender = handle.1.clone();
-
+      if let Some(module_evaluation) = state.pending_mod_evaluate.as_ref() {
+        let promise = module_evaluation.promise.get(scope);
+        let mut sender = module_evaluation.sender.clone();
         let promise_state = promise.state();
 
         match promise_state {
           v8::PromiseState::Pending => {
-            state_rc
-              .borrow_mut()
-              .pending_mod_evaluate
-              .insert(module_id, handle);
-            state_rc.borrow().waker.wake();
+            // pass, poll_event_loop will decide if
+            // runtime would be woken soon
           }
           v8::PromiseState::Fulfilled => {
+            state.pending_mod_evaluate.take();
+            scope.perform_microtask_checkpoint();
             sender.try_send(Ok(())).unwrap();
           }
           v8::PromiseState::Rejected => {
             let exception = promise.result(scope);
+            state.pending_mod_evaluate.take();
+            drop(state);
+            scope.perform_microtask_checkpoint();
             let err1 = exception_to_err_result::<()>(scope, exception)
               .map_err(|err| attach_handle_to_error(scope, err, exception))
               .unwrap_err();
@@ -1101,9 +1138,9 @@ impl JsRuntime {
             .unwrap();
           drop(state);
 
-          let module_id = handle.0;
-          let promise = handle.1.get(scope);
-          let _module = handle.2.get(scope);
+          let module_id = handle.module_id;
+          let promise = handle.promise.get(scope);
+          let _module = handle.module.get(scope);
 
           let promise_state = promise.state();
 
@@ -1113,7 +1150,6 @@ impl JsRuntime {
                 .borrow_mut()
                 .pending_dyn_mod_evaluate
                 .insert(dyn_import_id, handle);
-              state_rc.borrow().waker.wake();
               None
             }
             v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
@@ -2020,12 +2056,9 @@ pub mod tests {
 
   #[test]
   fn test_heap_limits() {
-    let heap_limits = HeapLimits {
-      initial: 0,
-      max: 20 * 1024, // 20 kB
-    };
+    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      heap_limits: Some(heap_limits),
+      create_params: Some(create_params),
       ..Default::default()
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();
@@ -2066,12 +2099,9 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_multiple() {
-    let heap_limits = HeapLimits {
-      initial: 0,
-      max: 20 * 1024, // 20 kB
-    };
+    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      heap_limits: Some(heap_limits),
+      create_params: Some(create_params),
       ..Default::default()
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();

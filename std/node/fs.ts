@@ -38,7 +38,6 @@ export {
   copyFileSync,
   exists,
   existsSync,
-  // not sure about those
   lstat,
   lstatSync,
   mkdir,

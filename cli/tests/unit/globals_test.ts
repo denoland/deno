@@ -36,6 +36,14 @@ unitTest(function globalThisEqualsSelf(): void {
   assert(globalThis === self);
 });
 
+unitTest(function globalThisInstanceofWindow(): void {
+  assert(globalThis instanceof Window);
+});
+
+unitTest(function globalThisInstanceofEventTarget(): void {
+  assert(globalThis instanceof EventTarget);
+});
+
 unitTest(function DenoNamespaceExists(): void {
   assert(Deno != null);
 });

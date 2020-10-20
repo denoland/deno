@@ -120,13 +120,9 @@ Deno.test({
   name: "open with flag 'r'",
   fn() {
     const file = join(temp_dir, "some_random_file3");
-    assertThrows(
-      () => {
-        openSync(file, "r");
-      },
-      Error,
-      "No such file or directory (os error 2)",
-    );
+    assertThrows(() => {
+      openSync(file, "r");
+    }, Error);
   },
 });
 
@@ -134,13 +130,9 @@ Deno.test({
   name: "open with flag 'r+'",
   fn() {
     const file = join(temp_dir, "some_random_file4");
-    assertThrows(
-      () => {
-        openSync(file, "r+");
-      },
-      Error,
-      "No such file or directory (os error 2)",
-    );
+    assertThrows(() => {
+      openSync(file, "r+");
+    }, Error);
   },
 });
 

@@ -32,9 +32,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Structure representing local or remote file.
-///
-/// In case of remote file `url` might be different than originally requested URL, if so
-/// `redirect_source_url` will contain original URL and `url` will be equal to final location.
 #[derive(Debug, Clone)]
 pub struct SourceFile {
   pub url: Url,
