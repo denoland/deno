@@ -181,7 +181,7 @@ async fn info_command(
       handler,
       program_state.maybe_import_map.clone(),
     );
-    builder.insert(&specifier, false).await?;
+    builder.add(&specifier, false).await?;
     let graph = builder.get_graph(&program_state.lockfile);
     let info = graph.info()?;
 
@@ -324,7 +324,7 @@ async fn bundle_command(
       handler,
       program_state.maybe_import_map.clone(),
     );
-    builder.insert(&module_specifier, false).await?;
+    builder.add(&module_specifier, false).await?;
     let graph = builder.get_graph(&program_state.lockfile);
 
     let (s, stats, maybe_ignored_options) =

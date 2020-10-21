@@ -33,12 +33,11 @@ pub enum HandlerError {
   /// A fetch error, where we have a location associated with it.
   FetchErrorWithLocation(String, Location),
 }
-use HandlerError::*;
 
 impl fmt::Display for HandlerError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      FetchErrorWithLocation(ref err, ref location) => {
+      HandlerError::FetchErrorWithLocation(ref err, ref location) => {
         write!(f, "{}\n    at {}", err, location)
       }
     }
@@ -258,7 +257,8 @@ impl SpecifierHandler for FetchHandler {
         .map_err(|err| {
           if let Some(location) = maybe_location {
             if !is_dynamic {
-              FetchErrorWithLocation(err.to_string(), location).into()
+              HandlerError::FetchErrorWithLocation(err.to_string(), location)
+                .into()
             } else {
               err
             }

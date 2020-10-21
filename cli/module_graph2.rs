@@ -89,26 +89,25 @@ pub enum GraphError {
   /// A unsupported media type was attempted to be imported as a module.
   UnsupportedImportType(ModuleSpecifier, MediaType),
 }
-use GraphError::*;
 
 impl fmt::Display for GraphError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      InvalidDowngrade(ref specifier, ref location) => write!(f, "Modules imported via https are not allowed to import http modules.\n  Importing: {}\n    at {}", specifier, location),
-      InvalidLocalImport(ref specifier, ref location) => write!(f, "Remote modules are not allowed to import local modules.\n  Importing: {}\n    at {}", specifier, location),
-      InvalidSource(ref specifier, ref lockfile) => write!(f, "The source code is invalid, as it does not match the expected hash in the lock file.\n  Specifier: {}\n  Lock file: {}", specifier, lockfile.to_str().unwrap()),
-      MissingDependency(ref referrer, specifier) => write!(
+      GraphError::InvalidDowngrade(ref specifier, ref location) => write!(f, "Modules imported via https are not allowed to import http modules.\n  Importing: {}\n    at {}", specifier, location),
+      GraphError::InvalidLocalImport(ref specifier, ref location) => write!(f, "Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.\n  Importing: {}\n    at {}", specifier, location),
+      GraphError::InvalidSource(ref specifier, ref lockfile) => write!(f, "The source code is invalid, as it does not match the expected hash in the lock file.\n  Specifier: {}\n  Lock file: {}", specifier, lockfile.to_str().unwrap()),
+      GraphError::MissingDependency(ref referrer, specifier) => write!(
         f,
         "The graph is missing a dependency.\n  Specifier: {} from {}",
         specifier, referrer
       ),
-      MissingSpecifier(ref specifier) => write!(
+      GraphError::MissingSpecifier(ref specifier) => write!(
         f,
         "The graph is missing a specifier.\n  Specifier: {}",
         specifier
       ),
-      NotSupported(ref msg) => write!(f, "{}", msg),
-      UnsupportedImportType(ref specifier, ref media_type) => write!(f, "An unsupported media type was attempted to be imported as a module.\n  Specifier: {}\n  MediaType: {}", specifier, media_type),
+      GraphError::NotSupported(ref msg) => write!(f, "{}", msg),
+      GraphError::UnsupportedImportType(ref specifier, ref media_type) => write!(f, "An unsupported media type was attempted to be imported as a module.\n  Specifier: {}\n  MediaType: {}", specifier, media_type),
     }
   }
 }
@@ -160,7 +159,10 @@ impl swc_bundler::Load for BundleLoader<'_> {
             self.cm.clone(),
           )
         } else {
-          Err(MissingDependency(specifier, "<bundle>".to_string()).into())
+          Err(
+            GraphError::MissingDependency(specifier, "<bundle>".to_string())
+              .into(),
+          )
         }
       }
       _ => unreachable!("Received request for unsupported filename {:?}", file),
@@ -445,14 +447,18 @@ impl Module {
 
     // Disallow downgrades from HTTPS to HTTP
     if referrer_scheme == "https" && specifier_scheme == "http" {
-      return Err(InvalidDowngrade(specifier.clone(), location).into());
+      return Err(
+        GraphError::InvalidDowngrade(specifier.clone(), location).into(),
+      );
     }
 
     // Disallow a remote URL from trying to import a local URL
     if (referrer_scheme == "https" || referrer_scheme == "http")
       && !(specifier_scheme == "https" || specifier_scheme == "http")
     {
-      return Err(InvalidLocalImport(specifier.clone(), location).into());
+      return Err(
+        GraphError::InvalidLocalImport(specifier.clone(), location).into(),
+      );
     }
 
     Ok(specifier)
@@ -567,11 +573,26 @@ pub struct TranspileOptions {
 /// be able to manipulate and handle the graph.
 #[derive(Debug)]
 pub struct Graph2 {
+  /// A reference to the specifier handler that will retrieve and cache modules
+  /// for the graph.
   handler: Rc<RefCell<dyn SpecifierHandler>>,
+  /// Optional TypeScript build info that will be passed to `tsc` if `tsc` is
+  /// invoked.
   maybe_tsbuildinfo: Option<String>,
+  /// The modules that are part of the graph.
   modules: HashMap<ModuleSpecifier, Module>,
+  /// A map of redirects, where a module specifier is redirected to another
+  /// module specifier by the handler.  All modules references should be
+  /// resolved internally via this, before attempting to access the module via
+  /// the handler, to make sure the correct modules is being dealt with.
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
+  /// The module specifiers that have been uniquely added to the graph, which
+  /// does not include any transient dependencies.
   roots: Vec<ModuleSpecifier>,
+  /// If all of the root modules are dynamically imported, then this is true.
+  /// This is used to ensure correct `--reload` behavior, where subsequent
+  /// calls to a module graph where the emit is already valid do not cause the
+  /// graph to re-emit.
   roots_dynamic: bool,
 }
 
@@ -599,7 +620,7 @@ impl Graph2 {
     options: BundleOptions,
   ) -> Result<(String, Stats, Option<IgnoredCompilerOptions>), AnyError> {
     if self.roots.is_empty() || self.roots.len() > 1 {
-      return Err(NotSupported(format!("Bundling is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
+      return Err(GraphError::NotSupported(format!("Bundling is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
 
     let start = Instant::now();
@@ -793,7 +814,7 @@ impl Graph2 {
           module.set_version(&config);
           module.is_dirty = true;
         } else {
-          return Err(MissingSpecifier(specifier.clone()).into());
+          return Err(GraphError::MissingSpecifier(specifier.clone()).into());
         }
       }
     }
@@ -949,7 +970,7 @@ impl Graph2 {
   /// provide information for the `info` subcommand.
   pub fn info(&self) -> Result<ModuleGraphInfo, AnyError> {
     if self.roots.is_empty() || self.roots.len() > 1 {
-      return Err(NotSupported(format!("Info is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
+      return Err(GraphError::NotSupported(format!("Info is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
 
     let module = self.roots[0].clone();
@@ -1011,7 +1032,10 @@ impl Graph2 {
         let specifier = module.specifier.to_string();
         let valid = lockfile.check_or_insert(&specifier, &module.source);
         if !valid {
-          eprintln!("{}", InvalidSource(ms.clone(), lockfile.filename.clone()));
+          eprintln!(
+            "{}",
+            GraphError::InvalidSource(ms.clone(), lockfile.filename.clone())
+          );
           std::process::exit(10);
         }
       }
@@ -1051,12 +1075,16 @@ impl Graph2 {
     prefer_types: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
     if !self.contains_module(referrer) {
-      return Err(MissingSpecifier(referrer.to_owned()).into());
+      return Err(GraphError::MissingSpecifier(referrer.to_owned()).into());
     }
     let module = self.get_module(referrer).unwrap();
     if !module.dependencies.contains_key(specifier) {
       return Err(
-        MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
+        GraphError::MissingDependency(
+          referrer.to_owned(),
+          specifier.to_owned(),
+        )
+        .into(),
       );
     }
     let dependency = module.dependencies.get(specifier).unwrap();
@@ -1070,13 +1098,20 @@ impl Graph2 {
       code_specifier
     } else {
       return Err(
-        MissingDependency(referrer.to_owned(), specifier.to_owned()).into(),
+        GraphError::MissingDependency(
+          referrer.to_owned(),
+          specifier.to_owned(),
+        )
+        .into(),
       );
     };
     if !self.contains_module(&resolved_specifier) {
       return Err(
-        MissingDependency(referrer.to_owned(), resolved_specifier.to_string())
-          .into(),
+        GraphError::MissingDependency(
+          referrer.to_owned(),
+          resolved_specifier.to_string(),
+        )
+        .into(),
       );
     }
     let dep_module = self.get_module(&resolved_specifier).unwrap();
@@ -1237,6 +1272,33 @@ impl GraphBuilder2 {
     }
   }
 
+  /// Add a module into the graph based on a module specifier.  The module
+  /// and any dependencies will be fetched from the handler.  The module will
+  /// also be treated as a _root_ module in the graph.
+  pub async fn add(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    is_dynamic: bool,
+  ) -> Result<(), AnyError> {
+    self.fetch(specifier, &None, is_dynamic)?;
+
+    loop {
+      let cached_module = self.pending.next().await.unwrap()?;
+      let is_root = &cached_module.specifier == specifier;
+      self.visit(cached_module, is_root)?;
+      if self.pending.is_empty() {
+        break;
+      }
+    }
+
+    if !self.graph.roots.contains(specifier) {
+      self.graph.roots.push(specifier.clone());
+      self.graph.roots_dynamic = self.graph.roots_dynamic && is_dynamic;
+    }
+
+    Ok(())
+  }
+
   /// Request a module to be fetched from the handler and queue up its future
   /// to be awaited to be resolved.
   fn fetch(
@@ -1278,7 +1340,11 @@ impl GraphBuilder2 {
       | MediaType::TsBuildInfo
       | MediaType::Unknown => {
         return Err(
-          UnsupportedImportType(module.specifier, module.media_type).into(),
+          GraphError::UnsupportedImportType(
+            module.specifier,
+            module.media_type,
+          )
+          .into(),
         );
       }
       _ => (),
@@ -1315,33 +1381,6 @@ impl GraphBuilder2 {
         .insert(requested_specifier, specifier.clone());
     }
     self.graph.modules.insert(specifier, module);
-
-    Ok(())
-  }
-
-  /// Insert a module into the graph based on a module specifier.  The module
-  /// and any dependencies will be fetched from the handler.  The module will
-  /// also be treated as a _root_ module in the graph.
-  pub async fn insert(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    is_dynamic: bool,
-  ) -> Result<(), AnyError> {
-    self.fetch(specifier, &None, is_dynamic)?;
-
-    loop {
-      let cached_module = self.pending.next().await.unwrap()?;
-      let is_root = &cached_module.specifier == specifier;
-      self.visit(cached_module, is_root)?;
-      if self.pending.is_empty() {
-        break;
-      }
-    }
-
-    if !self.graph.roots.contains(specifier) {
-      self.graph.roots.push(specifier.clone());
-      self.graph.roots_dynamic = self.graph.roots_dynamic && is_dynamic;
-    }
 
     Ok(())
   }
@@ -1495,7 +1534,7 @@ pub mod tests {
     }));
     let mut builder = GraphBuilder2::new(handler.clone(), None);
     builder
-      .insert(&specifier, false)
+      .add(&specifier, false)
       .await
       .expect("module not inserted");
 
@@ -1603,7 +1642,7 @@ pub mod tests {
       }));
       let mut builder = GraphBuilder2::new(handler.clone(), None);
       builder
-        .insert(&specifier, false)
+        .add(&specifier, false)
         .await
         .expect("module not inserted");
       let graph = builder.get_graph(&None);
@@ -1697,7 +1736,7 @@ pub mod tests {
     }));
     let mut builder = GraphBuilder2::new(handler.clone(), None);
     builder
-      .insert(&specifier, false)
+      .add(&specifier, false)
       .await
       .expect_err("should have errored");
   }
@@ -1811,7 +1850,7 @@ pub mod tests {
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
     builder
-      .insert(&specifier, false)
+      .add(&specifier, false)
       .await
       .expect("module not inserted");
     builder.get_graph(&maybe_lockfile);

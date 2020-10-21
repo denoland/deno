@@ -350,7 +350,7 @@ mod tests {
     }));
     let mut builder = GraphBuilder2::new(handler.clone(), None);
     builder
-      .insert(&specifier, false)
+      .add(&specifier, false)
       .await
       .expect("module not inserted");
     let graph = Rc::new(RefCell::new(builder.get_graph(&None)));
@@ -574,7 +574,7 @@ mod tests {
     }));
     let mut builder = GraphBuilder2::new(handler.clone(), None);
     builder
-      .insert(&specifier, false)
+      .add(&specifier, false)
       .await
       .expect("module not inserted");
     let graph = Rc::new(RefCell::new(builder.get_graph(&None)));
@@ -584,7 +584,6 @@ mod tests {
       "esModuleInterop": true,
       "emitDecoratorMetadata": false,
       "incremental": true,
-      "isolatedModules": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",

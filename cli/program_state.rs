@@ -132,7 +132,7 @@ impl ProgramState {
       self.permissions.clone(),
     )?));
     let mut builder = GraphBuilder2::new(handler, maybe_import_map);
-    builder.insert(&specifier, is_dynamic).await?;
+    builder.add(&specifier, is_dynamic).await?;
     let mut graph = builder.get_graph(&self.lockfile);
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_path = self.flags.config_path.clone();
