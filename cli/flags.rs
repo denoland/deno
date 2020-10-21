@@ -40,8 +40,8 @@ pub enum DenoSubcommand {
   },
   Fmt {
     check: bool,
-    files: Vec<String>,
-    ignore: Vec<String>,
+    files: Vec<PathBuf>,
+    ignore: Vec<PathBuf>,
   },
   Info {
     json: bool,
@@ -55,8 +55,8 @@ pub enum DenoSubcommand {
     force: bool,
   },
   Lint {
-    files: Vec<String>,
-    ignore: Vec<String>,
+    files: Vec<PathBuf>,
+    ignore: Vec<PathBuf>,
     rules: bool,
     json: bool,
   },
@@ -106,7 +106,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub config_path: Option<String>,
   pub coverage: bool,
-  pub ignore: Vec<String>,
+  pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
@@ -357,11 +357,11 @@ fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let files = match matches.values_of("files") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   flags.subcommand = DenoSubcommand::Fmt {
@@ -639,11 +639,11 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let files = match matches.values_of("files") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   let rules = matches.is_present("rules");
@@ -1781,7 +1781,10 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: false,
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
+          files: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
         },
         ..Flags::default()
       }
@@ -1827,7 +1830,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint {
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
+          files: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
           rules: false,
           json: false,
           ignore: vec![],
@@ -1850,7 +1856,10 @@ mod tests {
           files: vec![],
           rules: false,
           json: false,
-          ignore: svec!["script_1.ts", "script_2.ts"],
+          ignore: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
         },
         unstable: true,
         ..Flags::default()
@@ -1883,7 +1892,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint {
-          files: vec!["script_1.ts".to_string()],
+          files: vec![PathBuf::from("script_1.ts")],
           rules: false,
           json: true,
           ignore: vec![],
