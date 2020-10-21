@@ -84,7 +84,7 @@ impl ProgramState {
         None => None,
         Some(file_path) => {
           if !flags.unstable {
-            exit_unstable("--importmap")
+            exit_unstable("--import-map")
           }
           Some(ImportMap::load(file_path)?)
         }
