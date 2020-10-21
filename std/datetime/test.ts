@@ -387,3 +387,13 @@ Deno.test({
     assertEquals(difference.hours, 1);
   },
 });
+
+Deno.test({
+  name: "[std/datetime] constants",
+  fn(): void {
+    assertEquals(datetime.MINUTE, 1e3 * 60);
+    assertEquals(datetime.HOUR, datetime.MINUTE * 60);
+    assertEquals(datetime.DAY, datetime.HOUR * 24);
+    assertEquals(datetime.WEEK, datetime.DAY * 7);
+  },
+});
