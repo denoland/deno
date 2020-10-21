@@ -130,7 +130,7 @@ pub trait SpecifierHandler {
   /// not expected to be cached for each module, but are "lazily" checked when
   /// a root module is identified.  The `emit_type` also indicates what form
   /// of the module the build info is valid for.
-  fn get_ts_build_info(
+  fn get_tsbuildinfo(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<String>, AnyError>;
@@ -151,10 +151,10 @@ pub trait SpecifierHandler {
   ) -> Result<(), AnyError>;
 
   /// Set the build info for a module specifier, also providing the cache type.
-  fn set_ts_build_info(
+  fn set_tsbuildinfo(
     &mut self,
     specifier: &ModuleSpecifier,
-    ts_build_info: String,
+    tsbuildinfo: String,
   ) -> Result<(), AnyError>;
 
   /// Set the graph dependencies for a given module specifier.
@@ -317,31 +317,31 @@ impl SpecifierHandler for FetchHandler {
     .boxed_local()
   }
 
-  fn get_ts_build_info(
+  fn get_tsbuildinfo(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<String>, AnyError> {
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
-    if let Ok(ts_build_info) = self.disk_cache.get(&filename) {
-      return Ok(Some(String::from_utf8(ts_build_info)?));
+    if let Ok(tsbuildinfo) = self.disk_cache.get(&filename) {
+      return Ok(Some(String::from_utf8(tsbuildinfo)?));
     }
 
     Ok(None)
   }
 
-  fn set_ts_build_info(
+  fn set_tsbuildinfo(
     &mut self,
     specifier: &ModuleSpecifier,
-    ts_build_info: String,
+    tsbuildinfo: String,
   ) -> Result<(), AnyError> {
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
     self
       .disk_cache
-      .set(&filename, ts_build_info.as_bytes())
+      .set(&filename, tsbuildinfo.as_bytes())
       .map_err(|e| e.into())
   }
 

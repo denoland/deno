@@ -673,6 +673,7 @@ impl Graph2 {
     options: CheckOptions,
   ) -> Result<(Stats, Diagnostics, Option<IgnoredCompilerOptions>), AnyError>
   {
+    let unstable = options.lib == TypeLib::UnstableDenoWindow || options.lib == TypeLib::UnstableDenoWorker;
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) is this really needed?
@@ -680,7 +681,7 @@ impl Graph2 {
       // Enabled by default to align to transpile/swc defaults
       "experimentalDecorators": true,
       "incremental": true,
-      "isolatedModules": true,
+      "isolatedModules": unstable,
       "lib": options.lib,
       "module": "esnext",
       "strict": true,
@@ -816,7 +817,7 @@ impl Graph2 {
     }
     for root_specifier in self.roots.iter() {
       if let Some(tsbuildinfo) = &self.maybe_tsbuildinfo {
-        handler.set_ts_build_info(root_specifier, tsbuildinfo.to_owned())?;
+        handler.set_tsbuildinfo(root_specifier, tsbuildinfo.to_owned())?;
       }
     }
 
@@ -1374,7 +1375,7 @@ pub mod tests {
   pub struct MockSpecifierHandler {
     pub fixtures: PathBuf,
     pub maybe_tsbuildinfo: Option<String>,
-    pub ts_build_info_calls: Vec<(ModuleSpecifier, String)>,
+    pub tsbuildinfo_calls: Vec<(ModuleSpecifier, String)>,
     pub cache_calls: Vec<(ModuleSpecifier, Emit)>,
     pub deps_calls: Vec<(ModuleSpecifier, DependencyMap)>,
     pub types_calls: Vec<(ModuleSpecifier, String)>,
@@ -1430,7 +1431,7 @@ pub mod tests {
     ) -> FetchFuture {
       Box::pin(future::ready(self.get_cache(specifier)))
     }
-    fn get_ts_build_info(
+    fn get_tsbuildinfo(
       &self,
       _specifier: &ModuleSpecifier,
     ) -> Result<Option<String>, AnyError> {
@@ -1452,15 +1453,15 @@ pub mod tests {
       self.types_calls.push((specifier.clone(), types));
       Ok(())
     }
-    fn set_ts_build_info(
+    fn set_tsbuildinfo(
       &mut self,
       specifier: &ModuleSpecifier,
-      ts_build_info: String,
+      tsbuildinfo: String,
     ) -> Result<(), AnyError> {
-      self.maybe_tsbuildinfo = Some(ts_build_info.clone());
+      self.maybe_tsbuildinfo = Some(tsbuildinfo.clone());
       self
-        .ts_build_info_calls
-        .push((specifier.clone(), ts_build_info));
+        .tsbuildinfo_calls
+        .push((specifier.clone(), tsbuildinfo));
       Ok(())
     }
     fn set_deps(
@@ -1635,7 +1636,7 @@ pub mod tests {
     assert!(diagnostics.0.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
-    assert_eq!(h.ts_build_info_calls.len(), 1);
+    assert_eq!(h.tsbuildinfo_calls.len(), 1);
   }
 
   #[tokio::test]
@@ -1658,7 +1659,7 @@ pub mod tests {
     assert!(diagnostics.0.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 0);
-    assert_eq!(h.ts_build_info_calls.len(), 1);
+    assert_eq!(h.tsbuildinfo_calls.len(), 1);
   }
 
   #[tokio::test]
