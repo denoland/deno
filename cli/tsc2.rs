@@ -163,16 +163,23 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let specifier = ModuleSpecifier::resolve_url_or_path(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
+  let mut media_type = MediaType::Unknown;
   let data = if &v.specifier == "deno:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.clone()
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if &v.specifier == "deno:///none.d.ts" {
     hash = Some("1".to_string());
+    media_type = MediaType::TypeScript;
     Some("declare var a: any;\nexport = a;\n".to_string())
   } else {
     let graph = state.graph.borrow();
     let maybe_source = graph.get_source(&specifier);
+    media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
+      media_type
+    } else {
+      MediaType::Unknown
+    };
     if let Some(source) = &maybe_source {
       let mut data = vec![source.as_bytes().to_owned()];
       data.extend_from_slice(&state.hash_data);
@@ -181,7 +188,9 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     maybe_source
   };
 
-  Ok(json!({ "data": data, "hash": hash }))
+  Ok(
+    json!({ "data": data, "hash": hash, "scriptKind": media_type.as_ts_script_kind() }),
+  )
 }
 
 #[derive(Debug, Deserialize)]

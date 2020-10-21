@@ -368,7 +368,7 @@ delete Object.prototype.__proto__;
         }
 
         /** @type {{ data: string; hash: string; }} */
-        const { data, hash } = core.jsonOpSync(
+        const { data, hash, scriptKind } = core.jsonOpSync(
           "op_load",
           { specifier },
         );
@@ -377,6 +377,8 @@ delete Object.prototype.__proto__;
           specifier,
           data,
           languageVersion,
+          false,
+          scriptKind,
         );
         sourceFile.moduleName = specifier;
         sourceFile.version = hash;
@@ -467,11 +469,13 @@ delete Object.prototype.__proto__;
           specifiers,
           base,
         });
-        return resolved.map(([resolvedFileName, extension]) => ({
+        let r = resolved.map(([resolvedFileName, extension]) => ({
           resolvedFileName,
           extension,
           isExternalLibraryImport: false,
         }));
+        debug(r);
+        return r;
       }
     },
     createHash(data) {

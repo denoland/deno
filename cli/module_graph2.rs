@@ -752,13 +752,25 @@ impl Graph2 {
 
     let mut graph = graph.borrow_mut();
     graph.maybe_tsbuildinfo = response.maybe_tsbuildinfo;
-    if !response.emitted_files.is_empty() {
+    // Only process changes to the graph if there are no diagnostics and there
+    // were files emitted.
+    if response.diagnostics.0.is_empty() && !response.emitted_files.is_empty() {
       let mut codes = HashMap::new();
       let mut maps = HashMap::new();
+      let check_js = config.get_check_js();
       for emit in &response.emitted_files {
         if let Some(specifiers) = &emit.maybe_specifiers {
           assert!(specifiers.len() == 1, "Unexpected specifier length");
           let specifier = specifiers[0].clone();
+          // Sometimes if tsc sees a CommonJS file it will _helpfully_ output it
+          // to ESM, which we don't really want unless someone has enabled the
+          // check_js option.
+          if !check_js
+            && graph.get_media_type(&specifier) == Some(MediaType::JavaScript)
+          {
+            debug!("skipping emit for {}", specifier);
+            continue;
+          }
           match emit.media_type {
             MediaType::JavaScript => {
               codes.insert(specifier, emit.data.clone());

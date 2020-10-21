@@ -121,6 +121,19 @@ impl MediaType {
 
     ext.into()
   }
+
+  /// Map the media type to a `ts.ScriptKind`
+  pub fn as_ts_script_kind(&self) -> i32 {
+    match self {
+      MediaType::JavaScript => 1,
+      MediaType::JSX => 2,
+      MediaType::TypeScript => 3,
+      MediaType::Dts => 3,
+      MediaType::TSX => 4,
+      MediaType::Json => 5,
+      _ => 0,
+    }
+  }
 }
 
 impl Serialize for MediaType {

@@ -2766,6 +2766,11 @@ itest!(tsx_imports {
   output: "tsx_imports.ts.out",
 });
 
+itest!(fix_exotic_specifiers {
+  args: "run --quiet --reload fix_exotic_specifiers.ts",
+  output: "fix_exotic_specifiers.ts.out",
+});
+
 itest!(fix_js_import_js {
   args: "run --quiet --reload fix_js_import_js.ts",
   output: "fix_js_import_js.ts.out",
