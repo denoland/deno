@@ -226,6 +226,9 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
             media_type.as_ts_extension(),
           ));
         }
+        // in certain situations, like certain dynamic imports, we won't have
+        // the source file in the graph, so we will return a fake module to
+        // make tsc happy.
         Err(_) => {
           resolved.push(("deno:///none.d.ts".to_string(), ".d.ts".to_string()));
         }

@@ -316,7 +316,6 @@ impl Module {
   /// Parse a module, populating the structure with data retrieved from the
   /// source of the module.
   pub fn parse(&mut self) -> Result<(), AnyError> {
-    debug!("parse: {}", self.specifier);
     let parsed_module = parse(&self.specifier, &self.source, &self.media_type)?;
 
     // parse out any triple slash references
@@ -674,10 +673,6 @@ impl Graph2 {
     options: CheckOptions,
   ) -> Result<(Stats, Diagnostics, Option<IgnoredCompilerOptions>), AnyError>
   {
-    debug!(
-      "check: emit={} lib={:?} maybe_config_path={:?}, reload={}",
-      options.emit, options.lib, options.maybe_config_path, options.reload
-    );
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) is this really needed?
@@ -799,11 +794,9 @@ impl Graph2 {
     for (_, module) in self.modules.iter_mut() {
       if module.is_dirty {
         if let Some(emit) = &module.maybe_emit {
-          debug!("set_cache {}", module.specifier);
           handler.set_cache(&module.specifier, emit)?;
         }
         if let Some(version) = &module.maybe_version {
-          debug!("set_version {} {}", module.specifier, version);
           handler.set_version(&module.specifier, version.clone())?;
         }
         module.is_dirty = false;
@@ -940,7 +933,6 @@ impl Graph2 {
   /// the relationship of the modules in the graph.  This structure is used to
   /// provide information for the `info` subcommand.
   pub fn info(&self) -> Result<ModuleGraphInfo, AnyError> {
-    debug!("info");
     if self.roots.is_empty() || self.roots.len() > 1 {
       return Err(NotSupported(format!("Info is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
@@ -1026,6 +1018,17 @@ impl Graph2 {
   /// Given a string specifier and a referring module specifier, provide the
   /// resulting module specifier and media type for the module that is part of
   /// the graph.
+  ///
+  /// # Arguments
+  ///
+  /// * `specifier` - The string form of the module specifier that needs to be
+  ///   resolved.
+  /// * `referrer` - The referring `ModuleSpecifier`.
+  /// * `prefer_types` - When resolving to a module specifier, determine if a
+  ///   type dependency is preferred over a code dependency.  This is set to
+  ///   `true` when resolving module names for `tsc` as it needs the type
+  ///   dependency over the code, while other consumers do not handle type only
+  ///   dependencies.
   pub fn resolve(
     &self,
     specifier: &str,
@@ -1105,17 +1108,13 @@ impl Graph2 {
   ///
   /// # Arguments
   ///
-  /// - `options` - A structure of options which impact how the code is
+  /// * `options` - A structure of options which impact how the code is
   ///   transpiled.
   ///
   pub fn transpile(
     &mut self,
     options: TranspileOptions,
   ) -> Result<(Stats, Option<IgnoredCompilerOptions>), AnyError> {
-    debug!(
-      "transpile: maybe_config_path={:?}, reload={}",
-      options.maybe_config_path, options.reload
-    );
     let start = Instant::now();
 
     let mut ts_config = TsConfig::new(json!({
@@ -1313,10 +1312,6 @@ impl GraphBuilder2 {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> Result<(), AnyError> {
-    debug!(
-      "Builder::insert() - specifier: {}, is_dynamic: {}",
-      specifier, is_dynamic
-    );
     self.fetch(specifier, &None, is_dynamic)?;
 
     loop {
@@ -1580,8 +1575,7 @@ pub mod tests {
       ("file:///tests/fixture11.ts", "fixture11.out"),
       ("file:///tests/fixture12.ts", "fixture12.out"),
       ("file:///tests/fixture13.ts", "fixture13.out"),
-      // FIXME
-      // ("file:///tests/fixture14.ts", "fixture14.out"),
+      ("file:///tests/fixture14.ts", "fixture14.out"),
     ];
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/bundle");

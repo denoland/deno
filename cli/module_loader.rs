@@ -83,7 +83,7 @@ impl ModuleLoader for CliModuleLoader {
     op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-    _is_dyn_import: bool,
+    _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.to_owned();
     let module_url_specified = module_specifier.to_string();
@@ -112,11 +112,11 @@ impl ModuleLoader for CliModuleLoader {
     &self,
     op_state: Rc<RefCell<OpState>>,
     _load_id: ModuleLoadId,
-    module_specifier: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
-    is_dyn_import: bool,
+    is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    let module_specifier = module_specifier.clone();
+    let specifier = specifier.clone();
     let target_lib = self.target_lib.clone();
     let maybe_import_map = self.import_map.clone();
     let state = op_state.borrow();
@@ -124,7 +124,7 @@ impl ModuleLoader for CliModuleLoader {
     // Only "main" module is loaded without permission check,
     // ie. module that is associated with "is_main" state
     // and is not a dynamic import.
-    let permissions = if self.is_main && !is_dyn_import {
+    let permissions = if self.is_main && !is_dynamic {
       Permissions::allow_all()
     } else {
       state.borrow::<Permissions>().clone()
@@ -136,11 +136,11 @@ impl ModuleLoader for CliModuleLoader {
     async move {
       program_state
         .prepare_module_load(
-          module_specifier,
+          specifier,
           target_lib,
           permissions,
+          is_dynamic,
           maybe_import_map,
-          is_dyn_import,
         )
         .await
     }

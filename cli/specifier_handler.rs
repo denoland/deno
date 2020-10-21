@@ -105,6 +105,7 @@ pub struct Dependency {
   /// Flags if the dependency is a dynamic import or not.  This will be set to
   /// `true` if it is, otherwise `false`.
   pub is_dynamic: bool,
+  /// The location in the source code where the dependency statement occurred.
   pub location: Location,
   /// The module specifier that resolves to the runtime code dependency for the
   /// module.

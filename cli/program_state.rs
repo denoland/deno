@@ -119,20 +119,20 @@ impl ProgramState {
   /// and traspilation.
   pub async fn prepare_module_load(
     self: &Arc<Self>,
-    module_specifier: ModuleSpecifier,
+    specifier: ModuleSpecifier,
     target_lib: TargetLib,
     permissions: Permissions,
-    maybe_import_map: Option<ImportMap>,
     is_dynamic: bool,
+    maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
-    let module_specifier = module_specifier.clone();
+    let specifier = specifier.clone();
     let handler = Rc::new(RefCell::new(FetchHandler::new(
       self,
       permissions.clone(),
       self.permissions.clone(),
     )?));
     let mut builder = GraphBuilder2::new(handler, maybe_import_map);
-    builder.insert(&module_specifier, is_dynamic).await?;
+    builder.insert(&specifier, is_dynamic).await?;
     let mut graph = builder.get_graph(&self.lockfile);
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_path = self.flags.config_path.clone();
