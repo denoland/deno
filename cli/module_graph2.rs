@@ -673,7 +673,9 @@ impl Graph2 {
     options: CheckOptions,
   ) -> Result<(Stats, Diagnostics, Option<IgnoredCompilerOptions>), AnyError>
   {
-    let unstable = options.lib == TypeLib::UnstableDenoWindow || options.lib == TypeLib::UnstableDenoWorker;
+    // TODO(@kitsonk) set to `true` in followup PR
+    let unstable = options.lib == TypeLib::UnstableDenoWindow
+      || options.lib == TypeLib::UnstableDenoWorker;
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) is this really needed?
