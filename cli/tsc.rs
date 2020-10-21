@@ -106,6 +106,7 @@ pub const AVAILABLE_LIBS: &[&str] = &[
   "esnext.promise",
   "esnext.string",
   "esnext.symbol",
+  "esnext.weakref",
   "scripthost",
   "webworker",
   "webworker.importscripts",

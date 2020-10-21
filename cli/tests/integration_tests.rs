@@ -2641,6 +2641,11 @@ itest!(wasm_unreachable {
   exit_code: 1,
 });
 
+itest!(weakref {
+  args: "run --quiet --reload weakref.ts",
+  output: "weakref.ts.out",
+});
+
 itest!(top_level_await_order {
   args: "run --allow-read top_level_await_order.js",
   output: "top_level_await_order.out",
