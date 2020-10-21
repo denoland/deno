@@ -436,7 +436,8 @@ mod tests {
       actual,
       json!({
         "data": "console.log(\"hello deno\");\n",
-        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729"
+        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
+        "scriptKind": 3,
       })
     );
   }
@@ -459,7 +460,8 @@ mod tests {
       actual,
       json!({
         "data": "some content",
-        "hash": null
+        "hash": null,
+        "scriptKind": 0,
       })
     );
   }
@@ -477,6 +479,7 @@ mod tests {
       json!({
         "data": null,
         "hash": null,
+        "scriptKind": 0,
       })
     )
   }
