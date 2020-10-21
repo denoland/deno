@@ -182,15 +182,8 @@ fn op_system_cpu_info(
   super::check_unstable(state, "Deno.systemCpuInfo");
   state.borrow::<Permissions>().check_env()?;
 
-  let cores = match sys_info::cpu_num() {
-    Ok(num) => num,
-    Err(_) => return Ok(json!({})),
-  };
-
-  let speed = match sys_info::cpu_speed() {
-    Ok(speed) => speed,
-    Err(_) => return Ok(json!({})),
-  };
+  let cores = sys_info::cpu_num().ok();
+  let speed = sys_info::cpu_speed().ok();
 
   Ok(json!({
     "cores": cores,
