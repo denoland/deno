@@ -175,12 +175,13 @@ async fn info_command(
     let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
       &program_state,
       Permissions::allow_all(),
+      Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(
       handler,
       program_state.maybe_import_map.clone(),
     );
-    builder.insert(&specifier).await?;
+    builder.insert(&specifier, false).await?;
     let graph = builder.get_graph(&program_state.lockfile);
     let info = graph.info()?;
 
@@ -317,12 +318,13 @@ async fn bundle_command(
     let handler = Rc::new(RefCell::new(FetchHandler::new(
       &program_state,
       Permissions::allow_all(),
+      Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(
       handler,
       program_state.maybe_import_map.clone(),
     );
-    builder.insert(&module_specifier).await?;
+    builder.insert(&module_specifier, false).await?;
     let graph = builder.get_graph(&program_state.lockfile);
 
     let (s, stats, maybe_ignored_options) =

@@ -123,12 +123,16 @@ impl ProgramState {
     target_lib: TargetLib,
     permissions: Permissions,
     maybe_import_map: Option<ImportMap>,
+    is_dynamic: bool,
   ) -> Result<(), AnyError> {
     let module_specifier = module_specifier.clone();
-    let handler =
-      Rc::new(RefCell::new(FetchHandler::new(self, permissions.clone())?));
+    let handler = Rc::new(RefCell::new(FetchHandler::new(
+      self,
+      permissions.clone(),
+      self.permissions.clone(),
+    )?));
     let mut builder = GraphBuilder2::new(handler, maybe_import_map);
-    builder.insert(&module_specifier).await?;
+    builder.insert(&module_specifier, is_dynamic).await?;
     let mut graph = builder.get_graph(&self.lockfile);
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_path = self.flags.config_path.clone();
@@ -203,7 +207,14 @@ impl ProgramState {
         code: String::from_utf8(code).unwrap(),
         name: out.url.to_string(),
       }
-    } else if out.media_type != MediaType::JavaScript {
+    // We expect a compiled source for any non-JavaScript files, except for
+    // local files that have an unknown media type and no referrer (root modules
+    // that do not have an extension.)
+    } else if out.media_type != MediaType::JavaScript
+      && !(out.media_type == MediaType::Unknown
+        && maybe_referrer.is_none()
+        && url.scheme() == "file")
+    {
       let message = if let Some(referrer) = maybe_referrer {
         format!("Compiled module not found \"{}\"\n  From: {}\n    If the source module contains only types, use `import type` and `export type` to import it instead.", module_specifier, referrer)
       } else {

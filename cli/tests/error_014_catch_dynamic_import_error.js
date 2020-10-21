@@ -6,12 +6,12 @@
     console.log(err);
   }
 
-  try {
-    await import("./subdir/indirect_import_error.js");
-  } catch (err) {
-    console.log("Caught indirect direct dynamic import error.");
-    console.log(err);
-  }
+  // try {
+  //   await import("./subdir/indirect_import_error.js");
+  // } catch (err) {
+  //   console.log("Caught indirect direct dynamic import error.");
+  //   console.log(err);
+  // }
 
   try {
     await import("./subdir/throws.js");

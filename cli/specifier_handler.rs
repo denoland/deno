@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast::Location;
 use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFileFetcher;
@@ -8,7 +9,6 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
@@ -25,6 +25,27 @@ use std::sync::Arc;
 pub type DependencyMap = HashMap<String, Dependency>;
 pub type FetchFuture =
   Pin<Box<(dyn Future<Output = Result<CachedModule, AnyError>> + 'static)>>;
+
+/// A group of errors that represent errors that can occur with an
+/// an implementation of `SpecifierHandler`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum HandlerError {
+  /// A fetch error, where we have a location associated with it.
+  FetchErrorWithLocation(String, Location),
+}
+use HandlerError::*;
+
+impl fmt::Display for HandlerError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      FetchErrorWithLocation(ref err, ref location) => {
+        write!(f, "{}\n    at {}", err, location)
+      }
+    }
+  }
+}
+
+impl std::error::Error for HandlerError {}
 
 #[derive(Debug, Clone)]
 pub struct CachedModule {
@@ -81,6 +102,10 @@ impl Default for Emit {
 
 #[derive(Debug, Clone, Default)]
 pub struct Dependency {
+  /// Flags if the dependency is a dynamic import or not.  This will be set to
+  /// `true` if it is, otherwise `false`.
+  pub is_dynamic: bool,
+  pub location: Location,
   /// The module specifier that resolves to the runtime code dependency for the
   /// module.
   pub maybe_code: Option<ModuleSpecifier>,
@@ -95,7 +120,8 @@ pub trait SpecifierHandler {
   fn fetch(
     &mut self,
     specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    maybe_location: Option<Location>,
+    is_dynamic: bool,
   ) -> FetchFuture;
 
   /// Get the optional build info from the cache for a given module specifier.
@@ -180,12 +206,14 @@ pub struct FetchHandler {
   disk_cache: DiskCache,
   file_fetcher: SourceFileFetcher,
   permissions: Permissions,
+  permissions_dynamic: Permissions,
 }
 
 impl FetchHandler {
   pub fn new(
     program_state: &Arc<ProgramState>,
     permissions: Permissions,
+    permissions_dynamic: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
@@ -196,6 +224,7 @@ impl FetchHandler {
       disk_cache,
       file_fetcher,
       permissions,
+      permissions_dynamic,
     })
   }
 }
@@ -204,31 +233,38 @@ impl SpecifierHandler for FetchHandler {
   fn fetch(
     &mut self,
     requested_specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    maybe_location: Option<Location>,
+    is_dynamic: bool,
   ) -> FetchFuture {
-    let permissions = self.permissions.clone();
+    let permissions = if is_dynamic {
+      self.permissions_dynamic.clone()
+    } else {
+      self.permissions.clone()
+    };
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
-    let fetch_context = if let Some(referrer) = maybe_referrer {
-      // TODO(@kitsonk) no totally happy with this logic here.  Need to handle
-      // the synthetic modules like test and eval earlier in the chain.
-      if referrer.to_string().contains("$deno$") {
-        format!("Cannot resolve module \"{}\".", requested_specifier)
+    let maybe_referrer: Option<ModuleSpecifier> =
+      if let Some(location) = &maybe_location {
+        Some(location.clone().into())
       } else {
-        format!(
-          "Cannot resolve module \"{}\".\n  Imported from: {}",
-          requested_specifier, referrer
-        )
-      }
-    } else {
-      format!("Cannot resolve module \"{}\".", requested_specifier)
-    };
+        None
+      };
 
     async move {
       let source_file = file_fetcher
-        .fetch_source_file(&requested_specifier, None, permissions)
+        .fetch_source_file(&requested_specifier, maybe_referrer, permissions)
         .await
-        .context(fetch_context)?;
+        .map_err(|err| {
+          if let Some(location) = maybe_location {
+            if !is_dynamic {
+              FetchErrorWithLocation(err.to_string(), location).into()
+            } else {
+              err
+            }
+          } else {
+            err
+          }
+        })?;
       let url = source_file.url.clone();
       let is_remote = url.scheme() != "file";
       let filename = disk_cache.get_cache_filename_with_extension(&url, "meta");
@@ -396,6 +432,7 @@ pub mod tests {
       disk_cache,
       file_fetcher,
       permissions: Permissions::allow_all(),
+      permissions_dynamic: Permissions::default(),
     };
 
     (temp_dir, fetch_handler)
@@ -409,8 +446,10 @@ pub mod tests {
       "http://localhost:4545/cli/tests/subdir/mod2.ts",
     )
     .unwrap();
-    let cached_module: CachedModule =
-      file_fetcher.fetch(specifier.clone(), None).await.unwrap();
+    let cached_module: CachedModule = file_fetcher
+      .fetch(specifier.clone(), None, false)
+      .await
+      .unwrap();
     assert!(cached_module.maybe_emit.is_none());
     assert!(cached_module.maybe_dependencies.is_none());
     assert_eq!(cached_module.media_type, MediaType::TypeScript);
@@ -429,15 +468,19 @@ pub mod tests {
       "http://localhost:4545/cli/tests/subdir/mod2.ts",
     )
     .unwrap();
-    let cached_module: CachedModule =
-      file_fetcher.fetch(specifier.clone(), None).await.unwrap();
+    let cached_module: CachedModule = file_fetcher
+      .fetch(specifier.clone(), None, false)
+      .await
+      .unwrap();
     assert!(cached_module.maybe_emit.is_none());
     let code = String::from("some code");
     file_fetcher
       .set_cache(&specifier, &Emit::Cli((code, None)))
       .expect("could not set cache");
-    let cached_module: CachedModule =
-      file_fetcher.fetch(specifier.clone(), None).await.unwrap();
+    let cached_module: CachedModule = file_fetcher
+      .fetch(specifier.clone(), None, false)
+      .await
+      .unwrap();
     assert_eq!(
       cached_module.maybe_emit,
       Some(Emit::Cli(("some code".to_string(), None)))
@@ -453,7 +496,7 @@ pub mod tests {
     )
     .unwrap();
     let cached_module: CachedModule =
-      file_fetcher.fetch(specifier, None).await.unwrap();
+      file_fetcher.fetch(specifier, None, false).await.unwrap();
     assert_eq!(cached_module.is_remote, true);
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let specifier = ModuleSpecifier::resolve_url_or_path(
@@ -461,7 +504,7 @@ pub mod tests {
     )
     .unwrap();
     let cached_module: CachedModule =
-      file_fetcher.fetch(specifier, None).await.unwrap();
+      file_fetcher.fetch(specifier, None, false).await.unwrap();
     assert_eq!(cached_module.is_remote, false);
   }
 }

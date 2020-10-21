@@ -1809,9 +1809,9 @@ itest!(_022_info_flag_script {
   http_server: true,
 });
 
-itest!(_023_no_ext_with_headers {
-  args: "run --reload 023_no_ext_with_headers",
-  output: "023_no_ext_with_headers.out",
+itest!(_023_no_ext {
+  args: "run --reload 023_no_ext",
+  output: "023_no_ext.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -2020,7 +2020,7 @@ itest!(_044_bad_resource {
 });
 
 itest!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
+  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });

@@ -47,7 +47,7 @@ use swc_ecmascript::visit::FoldWith;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct Location {
   pub filename: String,
   pub line: usize,
@@ -69,6 +69,12 @@ impl Into<Location> for swc_common::Loc {
       line: self.line,
       col: self.col_display,
     }
+  }
+}
+
+impl Into<ModuleSpecifier> for Location {
+  fn into(self) -> ModuleSpecifier {
+    ModuleSpecifier::resolve_url_or_path(&self.filename).unwrap()
   }
 }
 

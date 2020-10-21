@@ -140,6 +140,7 @@ impl ModuleLoader for CliModuleLoader {
           target_lib,
           permissions,
           maybe_import_map,
+          is_dyn_import,
         )
         .await
     }
