@@ -361,38 +361,18 @@ impl Module {
         line: desc.line,
       };
 
-      // When building a module graph, we can often eagerly resolve dynamic
-      // imports, but in some cases, we need to not error when analyzing the
-      // dependencies, like when we have unprefixed imports.  Those should only
-      // throw if the dynamic import is actually loaded.  This logic handles
-      // those situations.
+      // In situations where there is a potential issue with resolving the
+      // import specifier, that ends up being a module resolution error for a
+      // code dependency, we should not throw in the `ModuleGraph` but instead
+      // wait until runtime and throw there, as with dynamic imports they need
+      // to be catchable, which means they need to be resolved at runtime.
       let maybe_specifier =
         match self.resolve_import(&desc.specifier, Some(location.clone())) {
           Ok(specifier) => Some(specifier),
           Err(any_error) => {
             match any_error.downcast_ref::<ModuleResolutionError>() {
-              Some(ModuleResolutionError::ImportPrefixMissing(
-                specifier,
-                maybe_referrer,
-              )) => {
-                if desc.is_dynamic {
-                  debug!(
-                    "Ignoring dynamic specifier: {} imported in {}",
-                    desc.specifier, self.specifier
-                  );
-                  None
-                } else {
-                  return Err(
-                    ModuleResolutionError::ImportPrefixMissing(
-                      specifier.clone(),
-                      maybe_referrer.clone(),
-                    )
-                    .into(),
-                  );
-                }
-              }
+              Some(ModuleResolutionError::ImportPrefixMissing(_, _)) => None,
               _ => {
-                debug!("other error");
                 return Err(any_error);
               }
             }
