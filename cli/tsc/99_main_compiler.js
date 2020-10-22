@@ -185,7 +185,9 @@ delete Object.prototype.__proto__;
       case MediaType.JSX:
         return ts.Extension.Jsx;
       case MediaType.TypeScript:
-        return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
+        return ts.Extension.Ts;
+      case MediaType.Dts:
+        return ts.Extension.Dts;
       case MediaType.TSX:
         return ts.Extension.Tsx;
       case MediaType.Wasm:
