@@ -32,14 +32,14 @@ https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
 
 ```ts
 import {
-  assertArrayContains,
+  assertArrayIncludes,
   assertEquals,
 } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;
   assertEquals(x, 3);
-  assertArrayContains([1, 2, 3, 4, 5, 6], [3], "Expected 3 to be in the array");
+  assertArrayIncludes([1, 2, 3, 4, 5, 6], [3], "Expected 3 to be in the array");
 });
 ```
 
