@@ -410,7 +410,6 @@ delete Object.prototype.__proto__;
         let maybeSpecifiers;
         if (sourceFiles) {
           maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
-          debug(`  specifiers: ${maybeSpecifiers.join(", ")}`);
         }
         return core.jsonOpSync(
           "op_emit",
@@ -474,7 +473,6 @@ delete Object.prototype.__proto__;
           extension,
           isExternalLibraryImport: false,
         }));
-        debug(r);
         return r;
       }
     },

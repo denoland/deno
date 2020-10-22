@@ -1294,6 +1294,10 @@ impl GraphBuilder2 {
     if !self.graph.roots.contains(specifier) {
       self.graph.roots.push(specifier.clone());
       self.graph.roots_dynamic = self.graph.roots_dynamic && is_dynamic;
+      if self.graph.maybe_tsbuildinfo.is_none() {
+        let handler = self.graph.handler.borrow();
+        self.graph.maybe_tsbuildinfo = handler.get_tsbuildinfo(specifier)?;
+      }
     }
 
     Ok(())

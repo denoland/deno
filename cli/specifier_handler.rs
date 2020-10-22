@@ -325,10 +325,10 @@ impl SpecifierHandler for FetchHandler {
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
     if let Ok(tsbuildinfo) = self.disk_cache.get(&filename) {
-      return Ok(Some(String::from_utf8(tsbuildinfo)?));
+      Ok(Some(String::from_utf8(tsbuildinfo)?))
+    } else {
+      Ok(None)
     }
-
-    Ok(None)
   }
 
   fn set_tsbuildinfo(
@@ -339,6 +339,7 @@ impl SpecifierHandler for FetchHandler {
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
+    debug!("set_tsbuildinfo - filename {:?}", filename);
     self
       .disk_cache
       .set(&filename, tsbuildinfo.as_bytes())
