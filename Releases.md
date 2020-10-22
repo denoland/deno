@@ -487,7 +487,7 @@ Changes in std version 0.59.0:
 - fix(std/node): fix readFile types, add encoding types (#6451)
 - fix(std/node): global process should usable (#6392)
 - fix(std/node/process): env, argv exports (#6455)
-- fix(std/testing) assertArrayIncludes should work with any array-like (#6402)
+- fix(std/testing) assertArrayContains should work with any array-like (#6402)
 - fix(std/testing): assertThrows gracefully fails if non-Error thrown (#6330)
 - refactor(std/testing): Remove unuseful statement (#6486)
 - refactor: shift copyBytes and tweak deps to reduce dependencies (#6469)
@@ -589,7 +589,7 @@ Changes in std version 0.56.0:
 
 - feat(std/testing): benching progress callback (#5941)
 - feat(std/encoding): add base64url module (#5976)
-- fix(std/testing/asserts): Format values in assertArrayIncludes() (#6060)
+- fix(std/testing/asserts): Format values in assertArrayContains() (#6060)
 
 ### 1.0.4 / 2020.06.02
 
@@ -1949,7 +1949,7 @@ In deno_std
 - Add fs extras: ensureDir, ensureFile, readJson, emptyDir, move, exists (#269,
   #266, #264, #263, #260)
 - Datetime module improvement (#259)
-- asserts: Add unimplemented, unreachable, assertNotEquals, assertArrayIncludes
+- asserts: Add unimplemented, unreachable, assertNotEquals, assertArrayContains
   (#246, #248)
 
 ### v0.3.2 / 2019.03.06
