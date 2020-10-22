@@ -8,6 +8,7 @@ delete Object.prototype.__proto__;
   const core = Deno.core;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
+  const globalInterfaces = window.__bootstrap.globalInterfaces;
   const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -26,6 +27,7 @@ delete Object.prototype.__proto__;
   const fileReader = window.__bootstrap.fileReader;
   const webSocket = window.__bootstrap.webSocket;
   const fetch = window.__bootstrap.fetch;
+  const prompt = window.__bootstrap.prompt;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
@@ -226,24 +228,20 @@ delete Object.prototype.__proto__;
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
-    addEventListener: util.readOnly(EventTarget.prototype.addEventListener),
     atob: util.writable(atob),
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
     console: util.writable(new Console(core.print)),
     crypto: util.readOnly(crypto),
-    dispatchEvent: util.readOnly(EventTarget.prototype.dispatchEvent),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
-    removeEventListener: util.readOnly(
-      EventTarget.prototype.removeEventListener,
-    ),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
   };
 
   const mainRuntimeGlobalProperties = {
+    Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
@@ -252,9 +250,15 @@ delete Object.prototype.__proto__;
     onunload: util.writable(null),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
+    alert: util.writable(prompt.alert),
+    confirm: util.writable(prompt.confirm),
+    prompt: util.writable(prompt.prompt),
   };
 
   const workerRuntimeGlobalProperties = {
+    WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
+    DedicatedWorkerGlobalScope:
+      globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),
@@ -277,6 +281,7 @@ delete Object.prototype.__proto__;
     hasBootstrapped = true;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
+    Object.setPrototypeOf(globalThis, Window.prototype);
     eventTarget.setEventTargetData(globalThis);
     // Registers the handler for window.onload function.
     globalThis.addEventListener("load", (e) => {
@@ -341,6 +346,7 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
+    Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
     eventTarget.setEventTargetData(globalThis);
     const { unstableFlag, pid, noColor, args } = runtimeStart(
       internalName ?? name,

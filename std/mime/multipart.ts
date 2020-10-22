@@ -3,7 +3,6 @@ import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
-import { tempFile } from "../io/util.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { assert } from "../_util/assert.ts";
@@ -310,10 +309,14 @@ export class MultipartReader {
       if (n > maxMemory) {
         // too big, write to disk and flush buffer
         const ext = extname(p.fileName);
-        const { file, filepath } = await tempFile(".", {
+        const filepath = await Deno.makeTempFile({
+          dir: ".",
           prefix: "multipart-",
-          postfix: ext,
+          suffix: ext,
         });
+
+        const file = await Deno.open(filepath, { write: true });
+
         try {
           const size = await Deno.copy(new MultiReader(buf, p), file);
 
