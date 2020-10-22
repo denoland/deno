@@ -485,6 +485,8 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43f2838195edbfc5604bdf668a80921c9d8a3e9be6b913ded856a560353aec65"
 dependencies = [
  "futures",
  "lazy_static",
@@ -509,6 +511,8 @@ dependencies = [
 [[package]]
 name = "deno_lint"
 version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c06a21dfcb8144754fab1165ceb637a3abe13f3d58885976f9b9892be7f5dc0"
 dependencies = [
  "lazy_static",
  "log",
@@ -589,6 +593,8 @@ dependencies = [
 [[package]]
 name = "dprint-plugin-typescript"
 version = "0.32.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c5b6a8ba5f3aa6e9ae503e8ca19ce1072194282b5b96d5afbd42537c8b68522"
 dependencies = [
  "dprint-core",
  "serde",

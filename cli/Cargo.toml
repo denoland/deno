@@ -30,8 +30,8 @@ winapi = "0.3.9"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.64.0" }
-deno_doc = { version = "0.1.13", path = "../../deno_doc" }
-deno_lint = { version = "0.2.5", path = "../../deno_lint" }
+deno_doc = "0.1.13"
+deno_lint = "0.2.5"
 deno_web = { path = "../op_crates/web", version = "0.15.1" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.7.1" }
 
@@ -43,7 +43,7 @@ clap = "2.33.3"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.24"
-dprint-plugin-typescript = { version = "0.32.6", path = "../../dprint-plugin-typescript" }
+dprint-plugin-typescript = "0.32.6"
 filetime = "0.2.12"
 http = "0.2.1"
 indexmap = "1.6.0"
