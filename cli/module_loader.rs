@@ -121,14 +121,8 @@ impl ModuleLoader for CliModuleLoader {
     let maybe_import_map = self.import_map.clone();
     let state = op_state.borrow();
 
-    // Only "main" module is loaded without permission check,
-    // ie. module that is associated with "is_main" state
-    // and is not a dynamic import.
-    let permissions = if self.is_main && !is_dynamic {
-      Permissions::allow_all()
-    } else {
-      state.borrow::<Permissions>().clone()
-    };
+    // The permissions that should be applied to any dynamically imported module
+    let dynamic_permissions = state.borrow::<Permissions>().clone();
     let program_state = state.borrow::<Arc<ProgramState>>().clone();
     drop(state);
 
@@ -138,7 +132,7 @@ impl ModuleLoader for CliModuleLoader {
         .prepare_module_load(
           specifier,
           target_lib,
-          permissions,
+          dynamic_permissions,
           is_dynamic,
           maybe_import_map,
         )

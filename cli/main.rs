@@ -174,7 +174,8 @@ async fn info_command(
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
     let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
       &program_state,
-      Permissions::allow_all(),
+      // info accesses dynamically imported modules just for their information
+      // so we allow access to all of them.
       Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(
@@ -317,7 +318,8 @@ async fn bundle_command(
   let output = if flags.no_check {
     let handler = Rc::new(RefCell::new(FetchHandler::new(
       &program_state,
-      Permissions::allow_all(),
+      // when bundling, dynamic imports are only access for their type safety,
+      // therefore we will allow the graph to access any module.
       Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(

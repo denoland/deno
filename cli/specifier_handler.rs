@@ -101,8 +101,7 @@ impl Default for Emit {
 
 #[derive(Debug, Clone)]
 pub struct Dependency {
-  /// Flags if the dependency is a dynamic import or not.  This will be set to
-  /// `true` if it is, otherwise `false`.
+  /// Flags if the dependency is a dynamic import or not.
   pub is_dynamic: bool,
   /// The location in the source code where the dependency statement occurred.
   pub location: Location,
@@ -214,17 +213,18 @@ impl CompiledFileMetadata {
 /// existing `file_fetcher` interface, which will eventually be refactored to
 /// align it more to the `SpecifierHandler` trait.
 pub struct FetchHandler {
+  /// An instance of disk where generated (emitted) files are stored.
   disk_cache: DiskCache,
+  /// A set of permissions to apply to dynamic imports.
+  dynamic_permissions: Permissions,
+  /// A clone of the `program_state` file fetcher.
   file_fetcher: SourceFileFetcher,
-  permissions: Permissions,
-  permissions_dynamic: Permissions,
 }
 
 impl FetchHandler {
   pub fn new(
     program_state: &Arc<ProgramState>,
-    permissions: Permissions,
-    permissions_dynamic: Permissions,
+    dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
@@ -233,9 +233,8 @@ impl FetchHandler {
 
     Ok(FetchHandler {
       disk_cache,
+      dynamic_permissions,
       file_fetcher,
-      permissions,
-      permissions_dynamic,
     })
   }
 }
@@ -247,10 +246,13 @@ impl SpecifierHandler for FetchHandler {
     maybe_location: Option<Location>,
     is_dynamic: bool,
   ) -> FetchFuture {
+    // When the module graph fetches dynamic modules, the set of dynamic
+    // permissions need to be applied.  Other static imports have all
+    // permissions.
     let permissions = if is_dynamic {
-      self.permissions_dynamic.clone()
+      self.dynamic_permissions.clone()
     } else {
-      self.permissions.clone()
+      Permissions::allow_all()
     };
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
@@ -443,9 +445,8 @@ pub mod tests {
 
     let fetch_handler = FetchHandler {
       disk_cache,
+      dynamic_permissions: Permissions::default(),
       file_fetcher,
-      permissions: Permissions::allow_all(),
-      permissions_dynamic: Permissions::default(),
     };
 
     (temp_dir, fetch_handler)

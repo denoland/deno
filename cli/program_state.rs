@@ -121,16 +121,13 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     target_lib: TargetLib,
-    permissions: Permissions,
+    dynamic_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let specifier = specifier.clone();
-    let handler = Rc::new(RefCell::new(FetchHandler::new(
-      self,
-      permissions.clone(),
-      self.permissions.clone(),
-    )?));
+    let handler =
+      Rc::new(RefCell::new(FetchHandler::new(self, dynamic_permissions)?));
     let mut builder = GraphBuilder2::new(handler, maybe_import_map);
     builder.add(&specifier, is_dynamic).await?;
     let mut graph = builder.get_graph(&self.lockfile);
