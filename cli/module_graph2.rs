@@ -17,6 +17,7 @@ use crate::js;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::specifier_handler::CachedModule;
+use crate::specifier_handler::Dependency;
 use crate::specifier_handler::DependencyMap;
 use crate::specifier_handler::Emit;
 use crate::specifier_handler::FetchFuture;
@@ -328,8 +329,10 @@ impl Module {
           TypeScriptReference::Path(import) => {
             let specifier =
               self.resolve_import(&import, Some(location.clone()))?;
-            let dep = self.dependencies.entry(import).or_default();
-            dep.location = location;
+            let dep = self
+              .dependencies
+              .entry(import)
+              .or_insert_with(|| Dependency::new(location));
             dep.maybe_code = Some(specifier);
           }
           TypeScriptReference::Types(import) => {
@@ -342,8 +345,10 @@ impl Module {
               // this value changes
               self.maybe_types = Some((import.clone(), specifier));
             } else {
-              let dep = self.dependencies.entry(import).or_default();
-              dep.location = location;
+              let dep = self
+                .dependencies
+                .entry(import)
+                .or_insert_with(|| Dependency::new(location));
               dep.maybe_type = Some(specifier);
             }
           }
@@ -395,8 +400,7 @@ impl Module {
       let dep = self
         .dependencies
         .entry(desc.specifier.to_string())
-        .or_default();
-      dep.location = location;
+        .or_insert_with(|| Dependency::new(location));
       dep.is_dynamic = desc.is_dynamic;
       if let Some(specifier) = maybe_specifier {
         if desc.kind == swc_ecmascript::dep_graph::DependencyKind::ExportType

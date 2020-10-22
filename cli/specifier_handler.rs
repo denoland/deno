@@ -99,7 +99,7 @@ impl Default for Emit {
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Dependency {
   /// Flags if the dependency is a dynamic import or not.  This will be set to
   /// `true` if it is, otherwise `false`.
@@ -112,6 +112,17 @@ pub struct Dependency {
   /// The module specifier that resolves to the type only dependency for the
   /// module.
   pub maybe_type: Option<ModuleSpecifier>,
+}
+
+impl Dependency {
+  pub fn new(location: Location) -> Self {
+    Dependency {
+      is_dynamic: false,
+      location,
+      maybe_code: None,
+      maybe_type: None,
+    }
+  }
 }
 
 pub trait SpecifierHandler {

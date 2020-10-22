@@ -47,7 +47,7 @@ use swc_ecmascript::visit::FoldWith;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Location {
   pub filename: String,
   pub line: usize,
