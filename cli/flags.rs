@@ -694,7 +694,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
-        .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
