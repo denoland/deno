@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::select;
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 const DEBOUNCE_TIMEOUT_MS: Duration = Duration::from_millis(200);
@@ -93,16 +94,28 @@ where
   let mut debounce = Debounce::new(receiver, DEBOUNCE_TIMEOUT_MS);
   loop {
     let func = error_handler(closure());
-    func.await;
-    info!(
-      "{} Process terminated! Restarting on file change...",
-      colors::intense_blue("Watcher")
-    );
-    wait_for_file_change(&mut debounce).await?;
-    info!(
-      "{} File change detected! Restarting!",
-      colors::intense_blue("Watcher")
-    );
+    let mut is_file_changed = false;
+    select! {
+      _ = wait_for_file_change(&mut debounce) => {
+        is_file_changed = true;
+        info!(
+          "{} File change detected! Restarting!",
+          colors::intense_blue("Watcher"),
+        );
+      },
+      _ = func => {},
+    }
+    if !is_file_changed {
+      info!(
+        "{} Process terminated! Restarting on file change...",
+        colors::intense_blue("Watcher"),
+      );
+      wait_for_file_change(&mut debounce).await?;
+      info!(
+        "{} File change detected! Restarting!",
+        colors::intense_blue("Watcher"),
+      );
+    }
   }
 }
 
