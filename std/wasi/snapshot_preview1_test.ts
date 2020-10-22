@@ -35,6 +35,7 @@ const tests = [
   "testdata/wasi_fd_write_file.wasm",
   "testdata/wasi_fd_write_stderr.wasm",
   "testdata/wasi_fd_write_stdout.wasm",
+  "testdata/wasi_path_open.wasm",
   "testdata/wasi_proc_exit.wasm",
   "testdata/wasi_random_get.wasm",
   "testdata/wasi_sched_yield.wasm",
