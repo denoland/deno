@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "futures",
  "lazy_static",
@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "lazy_static",
  "log",
@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.32.5"
+version = "0.32.6"
 dependencies = [
  "dprint-core",
  "serde",
