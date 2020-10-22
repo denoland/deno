@@ -33,7 +33,6 @@ fn std_tests() {
 fn std_lint() {
   let status = util::deno_cmd()
     .arg("lint")
-    .arg("--unstable")
     .arg(format!(
       "--ignore={}",
       util::root_path().join("std/node/tests").to_string_lossy()
@@ -4037,7 +4036,6 @@ fn lint_ignore_unexplicit_files() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("lint")
-    .arg("--unstable")
     .arg("--ignore=./")
     .stderr(std::process::Stdio::piped())
     .spawn()
