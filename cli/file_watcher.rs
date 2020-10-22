@@ -90,7 +90,7 @@ where
   F: Fn() -> WatchFuture,
 {
   let (_watcher, receiver) = new_watcher(paths)?;
-  let debounce = Mutex::new(Debounce::new(receiver, DEBOUNCE_TIMEOUT_MS));
+  let mut debounce = Debounce::new(receiver, DEBOUNCE_TIMEOUT_MS);
   loop {
     let func = error_handler(closure());
     func.await;
@@ -98,7 +98,7 @@ where
       "{} Process terminated! Restarting on file change...",
       colors::intense_blue("Watcher")
     );
-    wait_for_file_change(&debounce).await?;
+    wait_for_file_change(&mut debounce).await?;
     info!(
       "{} File change detected! Restarting!",
       colors::intense_blue("Watcher")
@@ -106,10 +106,8 @@ where
   }
 }
 
-async fn wait_for_file_change(
-  debounce: &Mutex<Debounce>,
-) -> Result<(), AnyError> {
-  while let Some(event) = debounce.lock().unwrap().next().await {
+async fn wait_for_file_change(debounce: &mut Debounce) -> Result<(), AnyError> {
+  while let Some(event) = debounce.next().await {
     match event.kind {
       EventKind::Create(_) => break,
       EventKind::Modify(_) => break,
