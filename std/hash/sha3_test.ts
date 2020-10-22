@@ -6,9 +6,13 @@ import {
   Keccak256,
   Keccak384,
   Keccak512,
+  // deno-lint-ignore camelcase
   Sha3_224,
+  // deno-lint-ignore camelcase
   Sha3_256,
+  // deno-lint-ignore camelcase
   Sha3_384,
+  // deno-lint-ignore camelcase
   Sha3_512,
   Shake128,
   Shake256,
@@ -17,6 +21,7 @@ import * as hex from "../encoding/hex.ts";
 
 const millionAs = "a".repeat(1000000);
 
+// deno-lint-ignore camelcase
 const testSetSha3_224 = [
   ["", "6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7"],
   ["abc", "e642824c3f8cf24ad09234ee7d3c766fc9a3a5168d0c94ad73b46fdf"],
@@ -31,6 +36,7 @@ const testSetSha3_224 = [
   [millionAs, "d69335b93325192e516a912e6d19a15cb51c6ed5c15243e7a7fd653c"],
 ];
 
+// deno-lint-ignore camelcase
 const testSetSha3_256 = [
   ["", "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"],
   ["abc", "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"],
@@ -48,6 +54,7 @@ const testSetSha3_256 = [
   ],
 ];
 
+// deno-lint-ignore camelcase
 const testSetSha3_384 = [
   [
     "",
@@ -71,6 +78,7 @@ const testSetSha3_384 = [
   ],
 ];
 
+// deno-lint-ignore camelcase
 const testSetSha3_512 = [
   [
     "",
@@ -165,6 +173,7 @@ const testSetShake128 = [
   [millionAs, "9d222c79c4ff9d092cf6ca86143aa411"],
 ];
 
+// deno-lint-ignore camelcase
 const testSetShake128_224 = [
   ["", "7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eac"],
   ["abc", "5881092dd818bf5cf8a3ddb793fbcba74097d5c526a6d35f97b83351"],
@@ -175,6 +184,7 @@ const testSetShake128_224 = [
   [millionAs, "9d222c79c4ff9d092cf6ca86143aa411e369973808ef97093255826c"],
 ];
 
+// deno-lint-ignore camelcase
 const testSetShake128_2048 = [
   [
     "",
@@ -207,6 +217,7 @@ const testSetShake256 = [
   ],
 ];
 
+// deno-lint-ignore camelcase
 const testSetShake256_128 = [
   ["", "46b9dd2b0ba88d13233b3feb743eeb24"],
   ["abc", "483366601360a8771c6863080cc4114d"],
@@ -217,6 +228,7 @@ const testSetShake256_128 = [
   [millionAs, "3578a7a4ca9137569cdf76ed617d31bb"],
 ];
 
+// deno-lint-ignore camelcase
 const testSetShake256_384 = [
   [
     "",
@@ -236,6 +248,7 @@ const testSetShake256_384 = [
   ],
 ];
 
+// deno-lint-ignore camelcase
 const testSetShake256_512 = [
   [
     "",
