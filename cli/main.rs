@@ -216,16 +216,12 @@ async fn install_command(
 }
 
 async fn lint_command(
-  flags: Flags,
+  _flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("lint");
-  }
-
   if list_rules {
     lint::print_rules_list();
     return Ok(());
