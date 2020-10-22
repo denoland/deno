@@ -441,7 +441,6 @@ fn fmt_test() {
     .current_dir(util::root_path())
     .arg("fmt")
     .arg(format!("--ignore={}", badly_formatted_str))
-    .arg("--unstable")
     .arg("--check")
     .arg(badly_formatted_str)
     .spawn()
@@ -2237,7 +2236,7 @@ itest!(fmt_check_formatted_files {
 });
 
 itest!(fmt_check_ignore {
-  args: "fmt --check --unstable --ignore=fmt/formatted1.js fmt/",
+  args: "fmt --check --ignore=fmt/formatted1.js fmt/",
   output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
 });
@@ -4053,7 +4052,6 @@ fn fmt_ignore_unexplicit_files() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg("--unstable")
     .arg("--check")
     .arg("--ignore=./")
     .stderr(std::process::Stdio::piped())
