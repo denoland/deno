@@ -50,12 +50,10 @@ impl Stream for Debounce {
 
   fn poll_next(
     self: Pin<&mut Self>,
-    _cx: &mut Context,
+    cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
-    dbg!("ccccccccccccccccc");
     if let Ok(Ok(event)) = inner.rx.try_recv() {
-      dbg!(&event);
       if matches!(inner.last_event.as_ref(), Some(last_event) if last_event == &event)
       {
         // if received event is the same as previous one, reset timeout
@@ -64,16 +62,14 @@ impl Stream for Debounce {
       inner.last_event = Some(event);
     }
 
-    dbg!("dddddddddddd");
     match &inner.last_event {
       Some(_) if inner.start_time.elapsed() >= inner.debounce_time => {
-        dbg!("eeeeeeeeeeeeeeee");
         inner.start_time = Instant::now();
         let event = mem::take(&mut inner.last_event);
         Poll::Ready(event)
       }
       _ => {
-        dbg!("fffffffffffff");
+        cx.waker().wake_by_ref();
         Poll::Pending
       }
     }
@@ -125,9 +121,7 @@ where
 }
 
 async fn wait_for_file_change(debounce: &mut Debounce) -> Result<(), AnyError> {
-  dbg!("bbbbbbbbbbbb");
   while let Some(event) = debounce.next().await {
-    dbg!(&event);
     match event.kind {
       EventKind::Create(_) => break,
       EventKind::Modify(_) => break,
@@ -148,7 +142,7 @@ fn new_watcher(
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      //dbg!(&res);
+      dbg!(&res);
       let res2 = res.map_err(AnyError::from);
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
