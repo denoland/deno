@@ -1218,14 +1218,12 @@ export default class Context {
           (dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) == LOOKUPFLAGS_SYMLINK_FOLLOW
         ) {
           try {
-            path = Deno.readLinkSync(resolvedPath);
+            path = Deno.realPathSync(resolvedPath);
 
             if (relative(entry.path, path).startsWith("..")) {
-              console.log("FOLLOW NOT CAPABLE", resolvedPath);
               return ERRNO_NOTCAPABLE;
             }
           } catch (_err) {
-            path = resolvedPath;
           }
         }
 
