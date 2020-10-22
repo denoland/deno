@@ -27,7 +27,7 @@ type WatchFuture = Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
 struct Debounce {
   rx: Receiver<Result<NotifyEvent, AnyError>>,
   debounce_time: Duration,
-  start_time: Instant,
+  start_time: Option<Instant>,
   last_event: Option<NotifyEvent>,
 }
 
@@ -39,7 +39,7 @@ impl Debounce {
     Self {
       rx,
       debounce_time,
-      start_time: Instant::now(),
+      start_time: None,
       last_event: None,
     }
   }
@@ -54,17 +54,28 @@ impl Stream for Debounce {
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     if let Ok(Ok(event)) = inner.rx.try_recv() {
-      if matches!(inner.last_event.as_ref(), Some(last_event) if last_event == &event)
-      {
-        // if received event is the same as previous one, reset timeout
-        inner.start_time = Instant::now();
+      match inner.last_event.as_ref() {
+        Some(last_event) if *last_event == event => {
+          // if received event is the same as previous one, reset timeout
+          inner.start_time = Some(Instant::now());
+        }
+        None => {
+          // if received event is the first event, reset timeout
+          inner.start_time = Some(Instant::now());
+        }
+        _ => {}
       }
+
       inner.last_event = Some(event);
     }
 
     match &inner.last_event {
-      Some(_) if inner.start_time.elapsed() >= inner.debounce_time => {
-        inner.start_time = Instant::now();
+      Some(_)
+        if inner.start_time.map_or(false, |start_time| {
+          start_time.elapsed() >= inner.debounce_time
+        }) =>
+      {
+        inner.start_time = None;
         let event = mem::take(&mut inner.last_event);
         Poll::Ready(event)
       }
@@ -142,7 +153,6 @@ fn new_watcher(
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      dbg!(&res);
       let res2 = res.map_err(AnyError::from);
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
