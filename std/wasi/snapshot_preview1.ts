@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { resolve, relative } from "../path/mod.ts";
+import { relative, resolve } from "../path/mod.ts";
 
 const CLOCKID_REALTIME = 0;
 const CLOCKID_MONOTONIC = 1;
@@ -1202,27 +1202,31 @@ export default class Context {
         }
 
         const textDecoder = new TextDecoder();
-	const pathData = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-	const resolvedPath = resolve(entry.path!, textDecoder.decode(pathData));
+        const pathData = new Uint8Array(
+          this.memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const resolvedPath = resolve(entry.path!, textDecoder.decode(pathData));
 
-	if (relative(entry.path, resolvedPath).startsWith('..')) {
+        if (relative(entry.path, resolvedPath).startsWith("..")) {
           return ERRNO_NOTCAPABLE;
         }
 
-	let path;
-	if ((dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0) {
+        let path;
+        if ((dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0) {
           path = resolvedPath;
-	  console.log("PATH", path, entry.path, textDecoder.decode(pathData));
+          console.log("PATH", path, entry.path, textDecoder.decode(pathData));
         } else {
           path = Deno.realPathSync(resolvedPath);
-	  console.log('REALPATH', path);
-	  try {
-	    if (relative(entry.path, path).startsWith('..')) {
-	      return ERRNO_NOTCAPABLE;
-	    }
-	  } catch (_err) {
-	    path = resolvedPath;
-	  }
+          console.log("REALPATH", path);
+          try {
+            if (relative(entry.path, path).startsWith("..")) {
+              return ERRNO_NOTCAPABLE;
+            }
+          } catch (_err) {
+            path = resolvedPath;
+          }
         }
 
         if ((oflags & OFLAGS_DIRECTORY) !== 0) {
