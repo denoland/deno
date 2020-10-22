@@ -50,28 +50,28 @@ impl Stream for Debounce {
     self: Pin<&mut Self>,
     _cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
-    let mut _self = self.get_mut();
+    let mut self_mut = self.get_mut();
     let mut timeout = Instant::now();
     let mut recv = false;
     loop {
-      if let Ok(result) = _self.rx.try_recv() {
+      if let Ok(result) = self_mut.rx.try_recv() {
         if let Ok(event) = result {
-          if event == _self.last_event {
+          if event == self_mut.last_event {
             // if received event is the same as previous one reset timeout
             timeout = Instant::now();
           }
           // we want to emit only the last received event
-          _self.last_event = event;
+          self_mut.last_event = event;
           // event received with success
           recv = true;
         }
       }
       // if event successfully received and debounce time has passed break and emit last event
-      if recv && timeout.elapsed() >= _self.debounce_time {
+      if recv && timeout.elapsed() >= self_mut.debounce_time {
         break;
       }
     }
-    Poll::Ready(Some(_self.last_event.clone()))
+    Poll::Ready(Some(self_mut.last_event.clone()))
   }
 }
 
