@@ -2824,13 +2824,13 @@ itest!(deno_test_coverage {
 });
 
 itest!(deno_lint {
-  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args: "lint lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_quiet {
-  args: "lint --unstable --quiet lint/file1.js",
+  args: "lint --quiet lint/file1.js",
   output: "lint/expected_quiet.out",
   exit_code: 1,
 });
@@ -2843,19 +2843,19 @@ itest!(deno_lint_json {
 });
 
 itest!(deno_lint_ignore {
-  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
+  args: "lint --ignore=lint/file1.js,lint/malformed.js lint/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_glob {
-  args: "lint --unstable --ignore=lint/malformed.js lint/",
+  args: "lint --ignore=lint/malformed.js lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_from_stdin {
-  args: "lint --unstable -",
+  args: "lint -",
   input: Some("let a: any;"),
   output: "lint/expected_from_stdin.out",
   exit_code: 1,
@@ -2869,14 +2869,14 @@ itest!(deno_lint_from_stdin_json {
 });
 
 itest!(deno_lint_rules {
-  args: "lint --unstable --rules",
+  args: "lint --rules",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
 
 // Make sure that the rules are printed if quiet option is enabled.
 itest!(deno_lint_rules_quiet {
-  args: "lint --unstable --rules -q",
+  args: "lint --rules -q",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
