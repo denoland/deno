@@ -15,10 +15,9 @@ use notify::Watcher;
 use std::mem;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::{mpsc, mpsc::Receiver};
 use std::time::{Duration, Instant};
 use tokio::select;
-use tokio::sync::{mpsc, mpsc::Receiver};
 
 const DEBOUNCE_TIMEOUT_MS: Duration = Duration::from_millis(200);
 
@@ -53,23 +52,30 @@ impl Stream for Debounce {
     self: Pin<&mut Self>,
     _cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
-    let self_mut = self.get_mut();
-    if let Ok(Ok(event)) = self_mut.rx.try_recv() {
-      if matches!(self_mut.last_event.as_ref(), Some(last_event) if last_event == &event)
+    let inner = self.get_mut();
+    dbg!("ccccccccccccccccc");
+    if let Ok(Ok(event)) = inner.rx.try_recv() {
+      dbg!(&event);
+      if matches!(inner.last_event.as_ref(), Some(last_event) if last_event == &event)
       {
         // if received event is the same as previous one, reset timeout
-        self_mut.start_time = Instant::now();
+        inner.start_time = Instant::now();
       }
-      self_mut.last_event = Some(event);
+      inner.last_event = Some(event);
     }
 
-    match &self_mut.last_event {
-      Some(_) if self_mut.start_time.elapsed() >= self_mut.debounce_time => {
-        self_mut.start_time = Instant::now();
-        let event = mem::take(&mut self_mut.last_event);
+    dbg!("dddddddddddd");
+    match &inner.last_event {
+      Some(_) if inner.start_time.elapsed() >= inner.debounce_time => {
+        dbg!("eeeeeeeeeeeeeeee");
+        inner.start_time = Instant::now();
+        let event = mem::take(&mut inner.last_event);
         Poll::Ready(event)
       }
-      _ => Poll::Pending,
+      _ => {
+        dbg!("fffffffffffff");
+        Poll::Pending
+      }
     }
   }
 }
@@ -119,7 +125,9 @@ where
 }
 
 async fn wait_for_file_change(debounce: &mut Debounce) -> Result<(), AnyError> {
+  dbg!("bbbbbbbbbbbb");
   while let Some(event) = debounce.next().await {
+    dbg!(&event);
     match event.kind {
       EventKind::Create(_) => break,
       EventKind::Modify(_) => break,
@@ -136,16 +144,15 @@ fn new_watcher(
   (RecommendedWatcher, Receiver<Result<NotifyEvent, AnyError>>),
   AnyError,
 > {
-  let (sender, receiver) = mpsc::channel::<Result<NotifyEvent, AnyError>>(16);
-  let sender = Mutex::new(sender);
+  let (sender, receiver) = mpsc::channel::<Result<NotifyEvent, AnyError>>();
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+      //dbg!(&res);
       let res2 = res.map_err(AnyError::from);
-      let mut sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
-      let _ = sender.try_send(res2);
+      let _ = sender.send(res2);
     })?;
 
   watcher.configure(Config::PreciseEvents(true)).unwrap();
