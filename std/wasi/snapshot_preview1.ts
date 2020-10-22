@@ -1213,15 +1213,15 @@ export default class Context {
           return ERRNO_NOTCAPABLE;
         }
 
-        let path;
-        if ((dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0) {
-          path = resolvedPath;
-          console.log("PATH", path, entry.path, textDecoder.decode(pathData));
-        } else {
-          path = Deno.realPathSync(resolvedPath);
-          console.log("REALPATH", path);
+        let path = resolvedPath;
+        if (
+          (dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) == LOOKUPFLAGS_SYMLINK_FOLLOW
+        ) {
           try {
+            path = Deno.readLinkSync(resolvedPath);
+
             if (relative(entry.path, path).startsWith("..")) {
+              console.log("FOLLOW NOT CAPABLE", resolvedPath);
               return ERRNO_NOTCAPABLE;
             }
           } catch (_err) {
