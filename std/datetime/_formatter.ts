@@ -34,7 +34,7 @@ interface DateTimeFormatPart {
 
 type TimeZone = "UTC"
 
-export interface Options {
+interface Options {
   timeZone?: TimeZone
 }
 
@@ -144,44 +144,23 @@ const defaultRules = [
 
   {
     test: createLiteralTestFunction("XXXXX"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 5, meta: "uppercase" }),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 5 }),
   },
   {
     test: createLiteralTestFunction("XXXX"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 4, meta: "uppercase" }),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 4 }),
   },
   {
     test: createLiteralTestFunction("XXX"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 3, meta: "uppercase" }),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 3 }),
   },
   {
     test: createLiteralTestFunction("XX"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 2, meta: "uppercase" }),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 2 }),
   },
   {
     test: createLiteralTestFunction("X"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 1, meta: "uppercase" }),
-  },
-
-  {
-    test: createLiteralTestFunction("xxxxx"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 5, meta: "lowercase" }),
-  },
-  {
-    test: createLiteralTestFunction("xxxx"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 4, meta: "lowercase" }),
-  },
-  {
-    test: createLiteralTestFunction("xxx"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 3, meta: "lowercase" }),
-  },
-  {
-    test: createLiteralTestFunction("xx"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 2, meta: "lowercase" }),
-  },
-  {
-    test: createLiteralTestFunction("x"),
-    fn: (): CallbackResult => ({ type: "timeZoneName", value: 1, meta: "lowercase" }),
+    fn: (): CallbackResult => ({ type: "timeZoneName", value: 1 }),
   },
 
   // quoted literal
@@ -222,7 +201,6 @@ export class DateTimeFormatter {
           value,
         } as unknown as ReceiverResult
         if (hour12) result.hour12 = hour12 as boolean
-        if (meta) result.meta = meta as string
         return result
       },
     ) as Format
@@ -355,9 +333,7 @@ export class DateTimeFormatter {
           break
         }
         case "timeZoneName": {
-          if (utc) {
-            string += "Z"
-          }
+          // string += utc ? "Z" : token.value
           break
         }
         case "dayPeriod": {
@@ -379,9 +355,6 @@ export class DateTimeFormatter {
 
   parseToParts(string: string): DateTimeFormatPart[] {
     const parts: DateTimeFormatPart[] = []
-    const initialString = string
-    console.log(this.#format)
-    
     for (const token of this.#format) {
       const type = token.type
 
@@ -513,12 +486,10 @@ export class DateTimeFormatter {
           break
         }
         case "timeZoneName": {
-          console.log(token);
-          
           if (string.startsWith("Z")) {
             value = "UTC"
           } else {
-            switch (token.value) {
+            switch (token.value) {              
               case 1: {
                 value = /^(?:\+|-)\d{2}(?:\d{2})?/.exec(string)?.[0] as string
                 break
@@ -541,7 +512,7 @@ export class DateTimeFormatter {
               }
               default:
                 throw Error(
-                  `The token "(${token.type}, ${token.value})" is not supported.`,
+                  `ParserError: value "${token.value}" is not supported`,
                 )
             }
           }
@@ -554,7 +525,7 @@ export class DateTimeFormatter {
         case "literal": {
           if (!string.startsWith(token.value as string)) {
             throw Error(
-              `Literal "${string[0]}" does not match "${token.value}" `,
+              `Literal "${token.value}" not found "${string.slice(0, 25)}"`,
             )
           }
           value = token.value as string
@@ -566,7 +537,11 @@ export class DateTimeFormatter {
 
       if (!value) {
         throw Error(
-          `The token value { ${type} ${value} } is invalid.`,
+          `value not valid for token { ${type} ${value} } ${string.slice(
+            0,
+            25,
+          )
+          }`,
         )
       }
       parts.push({ type, value })
@@ -575,9 +550,9 @@ export class DateTimeFormatter {
     }
 
     if (string.length) {
-        throw new Error(
-          `Unexpected character at position ${initialString.length-string.length} in "${initialString}"`,
-        );
+      throw Error(
+        `datetime string was not fully parsed! ${string.slice(0, 25)}`,
+      )
     }
 
     return parts
@@ -636,6 +611,7 @@ export class DateTimeFormatter {
           break
         }
         case "timeZoneName": {
+          // const value = part.value;
           break
         }
         case "dayPeriod": {
@@ -653,12 +629,16 @@ export class DateTimeFormatter {
 
     if (timeZoneToken && !utc) {
       const localOffset = date.getTimezoneOffset() * 60 * 1000
+      // const yearStart = new Date(date);
+      // yearStart.setUTCFullYear(date.getUTCFullYear(), 0, 0);
+      // const localOffset = date.getTime() - yearStart.getTime() + (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
+
       const timeZone = timeZoneToken?.value
       const offsets = timeZone?.includes(":") ? timeZone.split(":").map(Number) : timeZone!.match(/\D*\d{2}/g)!.map(Number) || []
-      const hours = offsets[0] || 0
-      const minutes = offsets[1] || 0
-      const seconds = offsets[2] || 0
-      const offset = (((60 * hours + minutes) * 60) + seconds) * 1000
+      const hours = offsets[0] !== undefined ? offsets[0] : 0
+      const minutes = offsets[1] !== undefined ? offsets[1] : 0
+      const seconds = offsets[2] !== undefined ? offsets[2] : 0
+      const offset = (((60*hours + minutes) * 60) + seconds) * 1000
       date.setTime(date.getTime() - localOffset - offset)
 
     }
