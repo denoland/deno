@@ -63,7 +63,7 @@ delete Object.prototype.__proto__;
     opCloseWorker();
   }
 
-  // TODO(bartlomieju): remove these funtions
+  // TODO(bartlomieju): remove these functions
   // Stuff for workers
   const onmessage = () => {};
   const onerror = () => {};
