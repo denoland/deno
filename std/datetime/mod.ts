@@ -132,21 +132,24 @@ export function isLeap(year: Date | number): boolean {
   );
 }
 
-export type Unit =
-  | "milliseconds"
-  | "seconds"
-  | "minutes"
-  | "hours"
-  | "days"
-  | "weeks"
-  | "months"
-  | "quarters"
-  | "years";
+export enum Unit {
+  milliseconds = "milliseconds",
+  seconds = "seconds",
+  minutes = "minutes",
+  hours = "hours",
+  days = "days",
+  weeks = "weeks",
+  months = "months",
+  quarters = "quarters",
+  years = "years",
+}
 
-export type DifferenceFormat = Partial<Record<Unit, number>>;
+export type DifferenceUnit = keyof typeof Unit;
+
+export type DifferenceFormat = Partial<Record<DifferenceUnit, number>>;
 
 export type DifferenceOptions = {
-  units?: Unit[];
+  units?: DifferenceUnit[];
 };
 
 /**
