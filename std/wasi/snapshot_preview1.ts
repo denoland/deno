@@ -1211,6 +1211,7 @@ export default class Context {
 
         console.log("RESOLVED PATH: %s", resolvedPath);
         if (relative(entry.path, resolvedPath).startsWith("..")) {
+          console.log("RESOLVED NOTCAPABLE");
           return ERRNO_NOTCAPABLE;
         }
 
@@ -1223,6 +1224,7 @@ export default class Context {
 
             console.log("RESOLVED REAL PATH: %s", path);
             if (relative(entry.path, path).startsWith("..")) {
+              console.log("RESOLVED REAL NOTCAPABLE");
               return ERRNO_NOTCAPABLE;
             }
           } catch (_err) {
