@@ -2,46 +2,48 @@
 
 Simple helper to help parse date strings into `Date`, with additional functions.
 
-## Symbols
+## Usage
 
 The following symbols from
 [unicode LDML](http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table)
 are supported:
 
-- `yyyy` - numeric year.
-- `yy` - 2-digit year.
-- `M` - numeric month.
-- `MM` - 2-digit month.
-- `d` - numeric day.
-- `dd` - 2-digit day.
+|       Symbol | Description               | Example              |
+| -----------: | ------------------------- | -------------------- |
+|           yy | 2-digit year              | 1, 01                |
+|         yyyy | numeric year              | 2001                 |
+|            M | numeric month             | 2, 02                |
+|           MM | 2-digit month             | 02                   |
+|            d | numeric month             | 3, 03                |
+|           dd | 2-digit month             | 03                   |
+|            H | numeric hour (0-23 hours) | 4, 04                |
+|           HH | 2-digit hour (0-23 hours) | 23                   |
+|            h | numeric hour (1-12 hours) | 5, 05                |
+|           hh | 2-digit hour (1-12 hours) | 11                   |
+|            m | numeric minute            | 6, 06                |
+|           mm | 2-digit minute            | 06                   |
+|            s | numeric second            | 7, 07                |
+|           ss | 2-digit second            | 07                   |
+|            S | 1-digit fractional second | 8                    |
+|           SS | 2-digit fractional second | 08                   |
+|          SSS | 3-digit fractional second | 008                  |
+|            Z | timezone                  | -0800                |
+|        ZZZZZ | timezone                  | Z, -08:00, -07:30:58 |
+|            a | day period                | AM, PM               |
+| '\<literal>' | literal                   | 'foo'                |
+|  <separator> | separator                 | ./-                  |
+|              |                           |                      |
 
-- `H` - numeric hour (0-23 hours).
-- `HH` - 2-digit hour (00-23 hours).
-- `h` - numeric hour (1-12 hours).
-- `hh` - 2-digit hour (01-12 hours).
-- `m` - numeric minute.
-- `mm` - 2-digit minute.
-- `s` - numeric second.
-- `ss` - 2-digit second.
-- `S` - 1-digit fractionalSecond.
-- `SS` - 2-digit fractionalSecond.
-- `SSS` - 3-digit fractionalSecond.
-
-- `a` - dayPeriod, either `AM` or `PM`.
-
-- `'foo'` - quoted literal.
-- `./-` - unquoted literal.
-
-## Methods
+## Functions
 
 ### parse
 
 Takes an input `string` and a `formatString` to parse to a `date`.
 
 ```ts
-import { parse } from "https://deno.land/std@STD_VERSION/datetime/mod.ts";
+import { parse } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
-parse("20-01-2019", "dd-MM-yyyy"); // Date(2019, 0, 20)
+parse("22-10-1993", "dd-MM-yyyy"); // Date("1993-10-22")
 ```
 
 ### format
@@ -51,7 +53,7 @@ Takes an input `date` and a `formatString` to format to a `string`.
 ```ts
 import { format } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
-format(new Date(2019, 0, 20), "dd-MM-yyyy"); // "20-01-2019"
+format(new Date("1993-10-22"), "dd-MM-yyyy"); // "22.10.1993"
 ```
 
 ### dayOfYear
@@ -61,7 +63,7 @@ Returns the number of the day in the year.
 ```ts
 import { dayOfYear } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
-dayOfYear(new Date("2019-03-11T03:24:00")); // 70
+dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
 ```
 
 ### weekOfYear
@@ -82,7 +84,7 @@ https://tools.ietf.org/html/rfc7231#section-7.1.1.1 )
 ```js
 import { toIMF } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
-toIMF(new Date(0)); // => returns "Thu, 01 Jan 1970 00:00:00 GMT"
+toIMF(new Date(0)); // "Thu, 01 Jan 1970 00:00:00 GMT"
 ```
 
 ### isLeap
@@ -93,11 +95,8 @@ otherwise.
 ```js
 import { isLeap } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
-isLeap(new Date("1970-01-01")); // => returns false
-isLeap(new Date("1972-01-01")); // => returns true
-isLeap(new Date("2000-01-01")); // => returns true
-isLeap(new Date("2100-01-01")); // => returns false
-isLeap(1972); // => returns true
+isLeap(new Date("1970-01-01")); // false
+isLeap(1972); // returns true
 ```
 
 ### difference
@@ -105,70 +104,35 @@ isLeap(1972); // => returns true
 Returns the difference of the 2 given dates in the given units. If the units are
 omitted, it returns the difference in the all available units.
 
-Available units: "milliseconds", "seconds", "minutes", "hours", "days", "weeks",
-"months", "quarters", "years"
+Available units:
+
+- `"milliseconds"`
+- `"seconds"`
+- `"minutes"`
+- `"hours"`
+- `"days"`
+- `"weeks",`
+- `"months"`
+- `"quarters"`
+- `"years"`
 
 ```js
 import { difference } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
 
-const date0 = new Date("2018-05-14");
-const date1 = new Date("2020-05-13");
-
-difference(date0, date1, { units: ["days", "months", "years"] });
-// => returns { days: 730, months: 23, years: 1 }
-
-difference(date0, date1);
-// => returns {
-//   milliseconds: 63072000000,
-//   seconds: 63072000,
-//   minutes: 1051200,
-//   hours: 17520,
-//   days: 730,
-//   weeks: 104,
-//   months: 23,
-//   quarters: 5,
-//   years: 1
-// }
+difference(
+  new Date("2018-05-14"),
+  new Date("2020-05-13"),
+  { units: ["days", "months", "years"] },
+); // { days: 730, months: 23, years: 1 }
 ```
 
 ## Constants
 
-### SECOND
-
-```
-import { SECOND } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
-
-console.log(SECOND); // => 1000
-```
-
-### MINUTE
-
-```
-import { MINUTE } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
-
-console.log(MINUTE); // => 60000 (60 * 1000)
-```
-
-### HOUR
-
-```
-import { HOUR } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
-
-console.log(HOUR); // => 3600000 (60 * 60 * 1000)
-```
-
-### DAY
-
-```
-import { DAY } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
-
-console.log(DAY); // => 86400000 (24 * 60 * 60 * 1000)
-```
-
-### WEEK
-
-```
-import { WEEK } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
-
-console.log(WEEK); // => 604800000 (7 * 24 * 60 * 60 * 1000)
-```
+|      Constant | Description                        | Value     |
+| ------------: | ---------------------------------- | --------- |
+|        SECOND | number of milliseconds in a second | 1000      |
+|        MINUTE | number of milliseconds in a minute | 60000     |
+|          HOUR | number of milliseconds in a hour   | 3600000   |
+|           DAY | number of milliseconds in a day    | 86400000  |
+|          WEEK | number of milliseconds in a week   | 604800000 |
+| DAYS_PER_WEEK | number of days in a week           | 7         |
