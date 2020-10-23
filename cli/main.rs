@@ -182,9 +182,10 @@ async fn info_command(
     let mut builder = module_graph2::GraphBuilder2::new(
       handler,
       program_state.maybe_import_map.clone(),
+      program_state.lockfile.clone(),
     );
     builder.add(&specifier, false).await?;
-    let graph = builder.get_graph(&program_state.lockfile);
+    let graph = builder.get_graph();
     let info = graph.info()?;
 
     if json {
@@ -321,9 +322,10 @@ async fn bundle_command(
   let mut builder = module_graph2::GraphBuilder2::new(
     handler,
     program_state.maybe_import_map.clone(),
+    program_state.lockfile.clone(),
   );
   builder.add(&module_specifier, false).await?;
-  let graph = builder.get_graph(&program_state.lockfile);
+  let graph = builder.get_graph();
 
   let debug = flags.log_level == Some(log::Level::Debug);
   if !flags.no_check {

@@ -48,7 +48,7 @@ pub struct ProgramState {
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: SourceFileFetcher,
   pub ts_compiler: TsCompiler,
-  pub lockfile: Option<Mutex<Lockfile>>,
+  pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
@@ -78,7 +78,7 @@ impl ProgramState {
 
     let lockfile = if let Some(filename) = &flags.lock {
       let lockfile = Lockfile::new(filename.clone(), flags.lock_write)?;
-      Some(Mutex::new(lockfile))
+      Some(Arc::new(Mutex::new(lockfile)))
     } else {
       None
     };
@@ -128,9 +128,10 @@ impl ProgramState {
     let specifier = specifier.clone();
     let handler =
       Rc::new(RefCell::new(FetchHandler::new(self, dynamic_permissions)?));
-    let mut builder = GraphBuilder2::new(handler, maybe_import_map);
+    let mut builder =
+      GraphBuilder2::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;
-    let mut graph = builder.get_graph(&self.lockfile);
+    let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_path = self.flags.config_path.clone();
 
