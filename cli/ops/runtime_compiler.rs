@@ -103,7 +103,7 @@ async fn op_transpile(
   }));
 
   let user_options = if let Some(options) = args.options {
-    tsc_config::parse_raw_config(&options)?
+    tsc_config::parse_config_with_ignored_options(&options)?
   } else {
     json!({})
   };

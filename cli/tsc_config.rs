@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -168,6 +169,42 @@ pub fn parse_raw_config(config_text: &str) -> Result<Value, AnyError> {
   Ok(jsonc_to_serde(jsonc))
 }
 
+/// Parse provided options and return error if config contains
+/// ignored options.
+pub fn parse_config_with_ignored_options(
+  config_text: &str,
+) -> Result<Value, AnyError> {
+  assert!(!config_text.is_empty());
+  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
+  let config: HashMap<String, Value> =
+    serde_json::from_value(jsonc_to_serde(jsonc))?;
+  let (compiler_options, ignored) = parse_ignored_options(config);
+
+  if !ignored.is_empty() {
+    let err_msg = format!("Unsupported compiler options.\n  The following options were ignored:\n    {}", ignored.join(", "));
+    return Err(generic_error(err_msg));
+  }
+  let options_value = serde_json::to_value(compiler_options)?;
+  Ok(options_value)
+}
+
+fn parse_ignored_options(
+  options: HashMap<String, Value>,
+) -> (HashMap<String, Value>, Vec<String>) {
+  let mut compiler_options: HashMap<String, Value> = HashMap::new();
+  let mut items: Vec<String> = Vec::new();
+
+  for (key, value) in options.iter() {
+    if IGNORED_COMPILER_OPTIONS.contains(&key.as_str()) {
+      items.push(key.to_owned());
+    } else {
+      compiler_options.insert(key.to_owned(), value.to_owned());
+    }
+  }
+
+  (compiler_options, items)
+}
+
 /// Take a string of JSONC, parse it and return a serde `Value` of the text.
 /// The result also contains any options that were ignored.
 pub fn parse_config(
@@ -177,18 +214,13 @@ pub fn parse_config(
   assert!(!config_text.is_empty());
   let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
   let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
-  let mut compiler_options: HashMap<String, Value> = HashMap::new();
-  let mut items: Vec<String> = Vec::new();
 
-  if let Some(in_compiler_options) = config.compiler_options {
-    for (key, value) in in_compiler_options.iter() {
-      if IGNORED_COMPILER_OPTIONS.contains(&key.as_str()) {
-        items.push(key.to_owned());
-      } else {
-        compiler_options.insert(key.to_owned(), value.to_owned());
-      }
-    }
-  }
+  let (compiler_options, items) =
+    if let Some(in_compiler_options) = config.compiler_options {
+      parse_ignored_options(in_compiler_options)
+    } else {
+      (HashMap::new(), Vec::new())
+    };
   let options_value = serde_json::to_value(compiler_options)?;
   let ignored_options = if !items.is_empty() {
     Some(IgnoredCompilerOptions {
