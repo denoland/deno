@@ -18,7 +18,6 @@ use deno_core::OpState;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -92,6 +91,11 @@ async fn op_transpile(
   let args: TranspileArgs = serde_json::from_value(args)?;
 
   let mut compiler_options = tsc_config::TsConfig::new(json!({
+    "checkJs": true,
+    "emitDecoratorMetadata": false,
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
     "esModuleInterop": true,
     "module": "esnext",
     "sourceMap": true,
@@ -110,7 +114,7 @@ async fn op_transpile(
   let mut emit_map = HashMap::new();
 
   for (specifier, source) in args.sources {
-    let media_type = MediaType::from(&PathBuf::from(&specifier));
+    let media_type = MediaType::from(&specifier);
     let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
     let parsed_module = ast::parse(&module_specifier, &source, &media_type)?;
     let (source, maybe_source_map) = parsed_module.transpile(&emit_options)?;
