@@ -65,7 +65,10 @@ for (const pathname of tests) {
       );
       const options = JSON.parse(prelude);
 
-      const workdir = await Deno.makeTempDir();
+      const workdir = await Deno.makeTempDir({
+        dir: testdir,
+      });
+
       await copy(
         path.join(testdir, "fixtures"),
         path.join(workdir, "fixtures"),
