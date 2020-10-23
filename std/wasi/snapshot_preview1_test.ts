@@ -47,6 +47,9 @@ const ignore = [
 
 // TODO(caspervonb) investigate why these tests are failing on windows and fix
 // them.
+// The failing tests all involve symlinks in some way, my best guess so far is
+// that there's something going wrong with copying the symlinks over to the
+// temporary working directory, but only in some cases.
 if (Deno.build.os == "windows") {
   ignore.push("testdata/std_fs_metadata.wasm");
   ignore.push("testdata/std_fs_read_dir.wasm");
