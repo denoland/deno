@@ -69,6 +69,10 @@ for (const pathname of tests) {
       );
       const options = JSON.parse(prelude);
 
+      // TODO(caspervonb) investigate more.
+      // On Windows creating a tempdir in the default directory breaks nearly
+      // all the tests, possibly due to symlinks pointing to the original file
+      // which crosses drive boundaries.
       const workdir = await Deno.makeTempDir({
         dir: testdir,
       });
