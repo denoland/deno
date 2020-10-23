@@ -54,18 +54,7 @@ impl Stream for Debounce {
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     if let Ok(Ok(event)) = inner.rx.try_recv() {
-      match inner.last_event.as_ref() {
-        Some(last_event) if *last_event == event => {
-          // if received event is the same as previous one, reset timeout
-          inner.start_time = Some(Instant::now());
-        }
-        None => {
-          // if received event is the first event, reset timeout
-          inner.start_time = Some(Instant::now());
-        }
-        _ => {}
-      }
-
+      inner.start_time = Some(Instant::now());
       inner.last_event = Some(event);
     }
 
