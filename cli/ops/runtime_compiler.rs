@@ -13,7 +13,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -98,7 +97,7 @@ async fn op_transpile(
     "jsxFragmentFactory": "React.Fragment",
     "esModuleInterop": true,
     "module": "esnext",
-    "sourceMap": true,
+    "inlineSourceMap": false,
     "scriptComments": true,
     "target": "esnext",
   }));
@@ -115,8 +114,7 @@ async fn op_transpile(
 
   for (specifier, source) in args.sources {
     let media_type = MediaType::from(&specifier);
-    let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
-    let parsed_module = ast::parse(&module_specifier, &source, &media_type)?;
+    let parsed_module = ast::parse(&specifier, &source, &media_type)?;
     let (source, maybe_source_map) = parsed_module.transpile(&emit_options)?;
 
     emit_map.insert(

@@ -758,7 +758,7 @@ pub fn pre_process_file(
   analyze_dynamic_imports: bool,
 ) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), AnyError> {
   let specifier = ModuleSpecifier::resolve_url_or_path(file_name)?;
-  let module = parse(&specifier, source_code, &media_type)?;
+  let module = parse(specifier.as_str(), source_code, &media_type)?;
 
   let dependency_descriptors = module.analyze_dependencies();
 

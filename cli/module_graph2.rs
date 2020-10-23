@@ -319,7 +319,8 @@ impl Module {
   /// Parse a module, populating the structure with data retrieved from the
   /// source of the module.
   pub fn parse(&mut self) -> Result<(), AnyError> {
-    let parsed_module = parse(&self.specifier, &self.source, &self.media_type)?;
+    let parsed_module =
+      parse(self.specifier.as_str(), &self.source, &self.media_type)?;
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
