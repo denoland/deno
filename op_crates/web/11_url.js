@@ -37,7 +37,15 @@
   }
 
   function decodeSearchParam(p) {
-    return decodeURIComponent(p.replace(/\+/g, " "));
+    const s = p.replace("+", " ");
+
+    return s.replace(/(%[0-9a-f]{2})+/gi, (matched) => {
+      const buf = [];
+      for (let i = 0; i < matched.length; i += 3) {
+        buf.push(parseInt(matched.slice(i + 1, i + 3), 16));
+      }
+      return new TextDecoder().decode(new Uint8Array(buf));
+    });
   }
 
   const urls = new WeakMap();
