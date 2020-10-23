@@ -692,6 +692,12 @@ impl Graph2 {
     self.modules.contains_key(s)
   }
 
+  /// Consume graph and return list of all module specifiers
+  /// contained in the graph.
+  pub fn get_modules(&self) -> Vec<ModuleSpecifier> {
+    self.modules.keys().map(|s| s.to_owned()).collect()
+  }
+
   /// Type check the module graph, corresponding to the options provided.
   pub fn check(
     self,
