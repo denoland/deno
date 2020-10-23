@@ -94,6 +94,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use upgrade::upgrade_command;
+use worker::WebWorker;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -236,6 +237,8 @@ async fn lint_command(
 async fn cache_command(
   flags: Flags,
   files: Vec<String>,
+  worker_specifiers: Option<Vec<String>>,
+  test_patterns: Option<Vec<String>>,
 ) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$cache.ts").unwrap();
@@ -246,6 +249,48 @@ async fn cache_command(
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
     // TODO(bartlomieju): don't use `preload_module` in favor of calling "ProgramState::prepare_module_load()"
     // explicitly? Seems wasteful to create multiple worker just to run TS compiler
+    worker.preload_module(&specifier).await.map(|_| ())?;
+  }
+
+  if let Some(worker_specifiers) = worker_specifiers {
+    let mut web_worker = WebWorker::new(
+      "".to_string(),
+      Permissions::allow_all(),
+      main_module,
+      program_state.clone(),
+      true,
+    );
+    for specifier in worker_specifiers {
+      let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
+      web_worker.preload_module(&specifier).await.map(|_| ())?;
+    }
+  }
+
+  if let Some(test_patterns) = test_patterns {
+    let cwd = std::env::current_dir().expect("No current directory");
+    let mut include = test_patterns;
+    if include.is_empty() {
+      include.push(".".to_string());
+    }
+    let specifier = ModuleSpecifier::resolve_path("$deno$test.ts")?;
+    // Create a dummy source file.
+    let source_file = SourceFile {
+      filename: specifier.as_url().to_file_path().unwrap(),
+      url: specifier.as_url().clone(),
+      types_header: None,
+      media_type: MediaType::TypeScript,
+      source_code: test_runner::render_test_file(
+        test_runner::prepare_test_modules_urls(include, &cwd)?,
+        false,
+        false,
+        None,
+      ),
+    };
+    // Save our fake file into file fetcher cache
+    // to allow module access by TS compiler
+    program_state
+      .file_fetcher
+      .save_source_file_in_cache(&specifier, source_file);
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
 
@@ -632,32 +677,27 @@ async fn test_command(
     }
     return Ok(());
   }
-
-  let test_file_path = cwd.join("$deno$test.ts");
-  let test_file_url =
-    Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file = test_runner::render_test_file(
-    test_modules.clone(),
-    fail_fast,
-    quiet,
-    filter,
-  );
-  let main_module =
-    ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let main_module = ModuleSpecifier::resolve_path("$deno$test.ts")?;
   // Create a dummy source file.
   let source_file = SourceFile {
-    filename: test_file_url.to_file_path().unwrap(),
-    url: test_file_url.clone(),
+    filename: main_module.as_url().to_file_path().unwrap(),
+    url: main_module.as_url().clone(),
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: test_file.clone(),
+    source_code: test_runner::render_test_file(
+      test_modules.clone(),
+      fail_fast,
+      quiet,
+      filter,
+    ),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
   program_state
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
+
+  let mut worker = MainWorker::new(&program_state, main_module.clone());
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
@@ -680,8 +720,11 @@ async fn test_command(
     let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverages =
-      coverage::filter_script_coverages(coverages, test_file_url, test_modules);
+    let filtered_coverages = coverage::filter_script_coverages(
+      coverages,
+      main_module.as_url().clone(),
+      test_modules,
+    );
 
     let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
     for coverage in filtered_coverages {
@@ -771,9 +814,12 @@ pub fn main() {
       code,
       as_typescript,
     } => eval_command(flags, code, as_typescript, print).boxed_local(),
-    DenoSubcommand::Cache { files } => {
-      cache_command(flags, files).boxed_local()
-    }
+    DenoSubcommand::Cache {
+      files,
+      worker_specifiers,
+      test_patterns,
+    } => cache_command(flags, files, worker_specifiers, test_patterns)
+      .boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

@@ -2137,6 +2137,18 @@ fn _066_prompt() {
   util::test_pty(args, output, input);
 }
 
+itest!(_068_cache_test_type_error {
+  args: "cache --test=test_type_error",
+  output: "068_cache_test_type_error.out",
+  exit_code: 1,
+});
+
+itest!(_069_cache_worker {
+  args: "cache --worker subdir/worker_globals.ts",
+  output_str: Some("[WILDCARD]"),
+  exit_code: 0,
+});
+
 itest!(_073_worker_error {
   args: "run -A 073_worker_error.ts",
   output: "073_worker_error.ts.out",
