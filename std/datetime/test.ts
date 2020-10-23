@@ -95,28 +95,28 @@ Deno.test({
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000+0000",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
       ),
       new Date("2020-10-20T11:00:00.000Z"),
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000+0100",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
       ),
       new Date("2020-10-20T10:00:00.000Z"),
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000-0100",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
       ),
       new Date("2020-10-20T12:00:00.000Z"),
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000+0530",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
       ),
       new Date("2020-10-20T05:30:00.000Z"),
     );
@@ -124,59 +124,57 @@ Deno.test({
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000+00:00",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ",
       ),
       new Date("2020-10-20T11:00:00.000Z"),
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000+01:00",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ",
       ),
       new Date("2020-10-20T10:00:00.000Z"),
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000-01:00",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ",
       ),
       new Date("2020-10-20T12:00:00.000Z"),
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000+08:00",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ",
       ),
       new Date("2020-10-20T03:00:00.000Z"),
     );
 
-    assertEquals(
+    assertThrows(() =>
       datetime.parse(
         "2020-10-20T11:00:00.000+000000",
         "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZ",
-      ),
-      new Date("2020-10-20T11:00:00.000Z"),
+      )
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000+0100",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
       ),
       new Date("2020-10-20T10:00:00.000Z"),
     );
     assertEquals(
       datetime.parse(
         "2020-10-20T11:00:00.000-0100",
-        "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZ",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
       ),
       new Date("2020-10-20T12:00:00.000Z"),
     );
-    assertEquals(
+    assertThrows(() =>
       datetime.parse(
         "2020-10-20T11:00:00.000+075258",
         "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZ",
-      ),
-      new Date("2020-10-20T03:07:02.000Z"),
+      )
     );
 
     assertEquals(
@@ -304,26 +302,16 @@ Deno.test({
     assertEquals(
       datetime.format(
         new Date("2020-10-22T00:00:00.000Z"),
-        "yyyy-MM-dd'T'hh:mm:ss.SSSZZ",
+        "yyyy-MM-dd'T'hh:mm:ss.SSSZ",
       ),
       "2020-10-22T00:00:00.000+0200",
     );
     assertEquals(
       datetime.format(
         new Date("2020-10-22T00:00:00.000Z"),
-        "yyyy-MM-dd'T'hh:mm:ss.SSSZZZ",
+        "yyyy-MM-dd'T'hh:mm:ss.SSSZ",
       ),
       "2020-10-22T00:00:00.000+0200",
-    );
-
-    assertThrows(
-      () =>
-        datetime.format(
-          new Date("2020-10-22T00:00:00.000Z"),
-          "yyyy-MM-dd'T'hh:mm:ss.SSSZZZZ",
-        ),
-      Error,
-      `The symbol "ZZZZ" is not supported.`,
     );
 
     assertEquals(
