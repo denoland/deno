@@ -3,7 +3,6 @@
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
-use clap::ArgGroup;
 use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
@@ -38,8 +37,6 @@ pub enum DenoSubcommand {
   },
   Cache {
     files: Vec<String>,
-    worker_specifiers: Option<Vec<String>>,
-    test_patterns: Option<Vec<String>>,
   },
   Fmt {
     check: bool,
@@ -484,20 +481,10 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
   let files = matches
     .values_of("file")
-    .unwrap_or_default()
+    .unwrap()
     .map(String::from)
     .collect();
-  let worker_specifiers = matches
-    .values_of("worker")
-    .map(|v| v.map(String::from).collect());
-  let test_patterns = matches
-    .values_of("test")
-    .map(|v| v.map(String::from).collect());
-  flags.subcommand = DenoSubcommand::Cache {
-    files,
-    worker_specifiers,
-    test_patterns,
-  };
+  flags.subcommand = DenoSubcommand::Cache { files };
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -884,31 +871,11 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 
 fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
   compile_args(SubCommand::with_name("cache"))
-    .arg(Arg::with_name("file").takes_value(true).multiple(true))
     .arg(
-      Arg::with_name("worker")
-        .long("worker")
-        .help("Compile <WORKER_SPECIFIERS> as Deno web workers")
+      Arg::with_name("file")
         .takes_value(true)
-        .value_name("WORKER_SPECIFIERS")
-        .min_values(1)
-        .use_delimiter(true),
-    )
-    .arg(
-      Arg::with_name("test")
-        .long("test")
-        .help("Includes files captured by: deno test <PATTERN_LIST>")
-        .takes_value(true)
-        .value_name("PATTERN_LIST")
-        .min_values(0)
-        .use_delimiter(true)
-        .require_equals(true),
-    )
-    .group(
-      ArgGroup::with_name("target")
-        .args(&["file", "test", "worker"])
-        .multiple(true)
-        .required(true),
+        .required(true)
+        .min_values(1),
     )
     .about("Cache the dependencies")
     .long_about(
@@ -1946,52 +1913,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec!["deno", "cache", "--test"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec![],
-          worker_specifiers: None,
-          test_patterns: Some(svec![]),
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec!["deno", "cache", "--test=a,b"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec![],
-          test_patterns: Some(svec!["a", "b"]),
-          worker_specifiers: None,
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "cache",
-      "--worker",
-      "worker1.ts,worker2.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec![],
-          test_patterns: None,
-          worker_specifiers: Some(svec!["worker1.ts", "worker2.ts"]),
         },
         ..Flags::default()
       }
@@ -2493,8 +2414,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
@@ -2537,8 +2456,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
         },
         ..Flags::default()
       }
@@ -3062,8 +2979,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
