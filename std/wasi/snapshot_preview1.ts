@@ -1209,6 +1209,7 @@ export default class Context {
         );
         const resolvedPath = resolve(entry.path!, textDecoder.decode(pathData));
 
+        console.log("RESOLVED PATH: %s", resolvedPath);
         if (relative(entry.path, resolvedPath).startsWith("..")) {
           return ERRNO_NOTCAPABLE;
         }
@@ -1220,6 +1221,7 @@ export default class Context {
           try {
             path = Deno.realPathSync(resolvedPath);
 
+            console.log("RESOLVED REAL PATH: %s", path);
             if (relative(entry.path, path).startsWith("..")) {
               return ERRNO_NOTCAPABLE;
             }
