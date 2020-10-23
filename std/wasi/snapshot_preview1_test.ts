@@ -50,6 +50,7 @@ const ignore = [
 if (Deno.build.os == "windows") {
   ignore.push("testdata/std_fs_metadata.wasm");
   ignore.push("testdata/std_fs_read_dir.wasm");
+  ignore.push("testdata/wasi_path_open.wasm");
 }
 
 const rootdir = path.dirname(path.fromFileUrl(import.meta.url));
