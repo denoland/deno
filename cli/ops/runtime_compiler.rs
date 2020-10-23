@@ -95,11 +95,7 @@ async fn op_transpile(
     "jsx": "react",
     "jsxFactory": "React.createElement",
     "jsxFragmentFactory": "React.Fragment",
-    "esModuleInterop": true,
-    "module": "esnext",
     "inlineSourceMap": false,
-    "scriptComments": true,
-    "target": "esnext",
   }));
 
   let user_options = if let Some(options) = args.options {
