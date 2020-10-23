@@ -39,9 +39,9 @@ are supported:
 Takes an input `string` and a `formatString` to parse to a `date`.
 
 ```ts
-import { parse } from 'https://deno.land/std@STD_VERSION/datetime/mod.ts'
+import { parse } from "https://deno.land/std@STD_VERSION/datetime/mod.ts";
 
-parse("20-01-2019", "dd-MM-yyyy") // Date(2019, 0, 20)
+parse("20-01-2019", "dd-MM-yyyy"); // Date(2019, 0, 20)
 ```
 
 ### format
