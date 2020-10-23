@@ -1213,7 +1213,7 @@ export default class Context {
           return ERRNO_NOTCAPABLE;
         }
 
-        let path = resolvedPath;
+        let path;
         if (
           (dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) == LOOKUPFLAGS_SYMLINK_FOLLOW
         ) {
@@ -1224,7 +1224,10 @@ export default class Context {
               return ERRNO_NOTCAPABLE;
             }
           } catch (_err) {
+            path = resolvedPath;
           }
+        } else {
+          path = resolvedPath;
         }
 
         if ((oflags & OFLAGS_DIRECTORY) !== 0) {
