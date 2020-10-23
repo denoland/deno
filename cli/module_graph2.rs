@@ -575,7 +575,7 @@ pub struct TranspileOptions {
 /// A dependency graph of modules, were the modules that have been inserted via
 /// the builder will be loaded into the graph.  Also provides an interface to
 /// be able to manipulate and handle the graph.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Graph2 {
   /// A reference to the specifier handler that will retrieve and cache modules
   /// for the graph.

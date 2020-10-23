@@ -27,7 +27,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use log::debug;
-use log::Level;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
@@ -136,14 +135,6 @@ lazy_static! {
     Regex::new(r#"(?i)\slib\s*=\s*["']([^"']*)["']"#).unwrap();
 }
 
-fn warn_ignored_options(
-  maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
-) {
-  if let Some(ignored_options) = maybe_ignored_options {
-    eprintln!("{}", ignored_options);
-  }
-}
-
 #[derive(Clone)]
 pub enum TargetLib {
   Main,
@@ -243,15 +234,6 @@ fn source_code_version_hash(
   crate::checksum::gen(&[source_code, version.as_bytes(), config_hash])
 }
 
-fn maybe_log_stats(maybe_stats: Option<Vec<Stat>>) {
-  if let Some(stats) = maybe_stats {
-    debug!("DEBUG - Compilation Statistics:");
-    for stat in stats {
-      debug!("{}: {}", stat.key, stat.value);
-    }
-  }
-}
-
 pub struct TsCompilerInner {
   pub file_fetcher: SourceFileFetcher,
   pub flags: Flags,
@@ -289,14 +271,6 @@ struct Stat {
 struct EmittedSource {
   filename: String,
   contents: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BundleResponse {
-  diagnostics: Diagnostics,
-  bundle_output: Option<String>,
-  stats: Option<Vec<Stat>>,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -340,121 +314,6 @@ impl TsCompiler {
   fn mark_compiled(&self, url: &Url) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(url.clone());
-  }
-
-  /// For a given module, generate a single file JavaScript output that includes
-  /// all the dependencies for that module.
-  pub async fn bundle(
-    &self,
-    program_state: &Arc<ProgramState>,
-    module_specifier: ModuleSpecifier,
-  ) -> Result<String, AnyError> {
-    debug!(
-      "Invoking the compiler to bundle. module_name: {}",
-      module_specifier.to_string()
-    );
-
-    let permissions = Permissions::allow_all();
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      self.file_fetcher.clone(),
-      program_state.maybe_import_map.clone(),
-      permissions.clone(),
-      false,
-      true,
-    );
-    module_graph_loader
-      .add_to_graph(&module_specifier, None)
-      .await?;
-    let module_graph = module_graph_loader.get_graph();
-    let module_graph_files = module_graph.values().collect::<Vec<_>>();
-    // Check integrity of every file in module graph
-    if let Some(ref lockfile) = program_state.lockfile {
-      let mut g = lockfile.lock().unwrap();
-
-      for graph_file in &module_graph_files {
-        let check_passed =
-          g.check_or_insert(&graph_file.url, &graph_file.source_code);
-
-        if !check_passed {
-          eprintln!(
-            "Subresource integrity check failed --lock={}\n{}",
-            g.filename.display(),
-            graph_file.url
-          );
-          std::process::exit(10);
-        }
-      }
-    }
-    if let Some(ref lockfile) = program_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    }
-    let module_graph_json =
-      serde_json::to_value(module_graph).expect("Failed to serialize data");
-
-    let root_names = vec![module_specifier.to_string()];
-    let target = "main";
-    let performance =
-      matches!(program_state.flags.log_level, Some(Level::Debug));
-    let unstable = self.flags.unstable;
-
-    let mut lib = if target == "main" {
-      vec!["deno.window"]
-    } else {
-      vec!["deno.worker"]
-    };
-
-    if unstable {
-      lib.push("deno.unstable");
-    }
-
-    let mut compiler_options = json!({
-      "allowJs": true,
-      "allowNonTsExtensions": true,
-      "checkJs": false,
-      "esModuleInterop": true,
-      "inlineSourceMap": false,
-      "jsx": "react",
-      "lib": lib,
-      "module": "system",
-      "outFile": "deno:///bundle.js",
-      // disabled until we have effective way to modify source maps
-      "sourceMap": false,
-      "strict": true,
-      "removeComments": true,
-      "target": "esnext",
-    });
-
-    let compiler_config = self.config.clone();
-
-    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
-
-    warn_ignored_options(compiler_config.maybe_ignored_options);
-
-    let j = json!({
-      "type": CompilerRequestType::Bundle,
-      "target": target,
-      "rootNames": root_names,
-      "performance": performance,
-      "compilerOptions": compiler_options,
-      "sourceFileMap": module_graph_json,
-    });
-
-    let req_msg = j.to_string();
-
-    let json_str = execute_in_tsc(program_state.clone(), req_msg)?;
-
-    let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
-
-    maybe_log_stats(bundle_response.stats);
-
-    if !bundle_response.diagnostics.0.is_empty() {
-      return Err(generic_error(bundle_response.diagnostics.to_string()));
-    }
-
-    assert!(bundle_response.bundle_output.is_some());
-    let output = bundle_response.bundle_output.unwrap();
-    Ok(output)
   }
 
   fn cache_emitted_files(
@@ -1033,7 +892,6 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 #[repr(i32)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CompilerRequestType {
-  Bundle = 1,
   RuntimeCompile = 2,
   RuntimeBundle = 3,
   RuntimeTranspile = 4,
@@ -1045,7 +903,6 @@ impl Serialize for CompilerRequestType {
     S: Serializer,
   {
     let value: i32 = match self {
-      CompilerRequestType::Bundle => 1 as i32,
       CompilerRequestType::RuntimeCompile => 2 as i32,
       CompilerRequestType::RuntimeBundle => 3 as i32,
       CompilerRequestType::RuntimeTranspile => 4 as i32,
@@ -1058,7 +915,6 @@ impl Serialize for CompilerRequestType {
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
-  use crate::program_state::ProgramState;
   use tempfile::TempDir;
 
   #[test]
@@ -1116,33 +972,6 @@ mod tests {
       parse_ts_reference(r#"/ <reference unknown="unknown" />"#).is_none()
     );
     assert!(parse_ts_reference(r#"/ <asset path="./styles.css" />"#).is_none());
-  }
-
-  #[tokio::test]
-  async fn test_bundle() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/002_hello.ts");
-    use deno_core::ModuleSpecifier;
-    let module_name =
-      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-
-    let mock_state = ProgramState::mock(
-      vec![
-        String::from("deno"),
-        p.to_string_lossy().into(),
-        String::from("$deno$/bundle.js"),
-      ],
-      None,
-    );
-
-    let result = mock_state
-      .ts_compiler
-      .bundle(&mock_state, module_name)
-      .await;
-
-    assert!(result.is_ok());
   }
 
   #[test]

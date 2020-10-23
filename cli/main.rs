@@ -67,6 +67,7 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::worker::MainWorker;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -311,38 +312,57 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = if flags.no_check {
-    let handler = Rc::new(RefCell::new(FetchHandler::new(
-      &program_state,
-      // when bundling, dynamic imports are only access for their type safety,
-      // therefore we will allow the graph to access any module.
-      Permissions::allow_all(),
-    )?));
-    let mut builder = module_graph2::GraphBuilder2::new(
-      handler,
-      program_state.maybe_import_map.clone(),
-    );
-    builder.add(&module_specifier, false).await?;
-    let graph = builder.get_graph(&program_state.lockfile);
+  let handler = Rc::new(RefCell::new(FetchHandler::new(
+    &program_state,
+    // when bundling, dynamic imports are only access for their type safety,
+    // therefore we will allow the graph to access any module.
+    Permissions::allow_all(),
+  )?));
+  let mut builder = module_graph2::GraphBuilder2::new(
+    handler,
+    program_state.maybe_import_map.clone(),
+  );
+  builder.add(&module_specifier, false).await?;
+  let graph = builder.get_graph(&program_state.lockfile);
 
-    let (s, stats, maybe_ignored_options) =
-      graph.bundle(module_graph2::BundleOptions {
-        debug: flags.log_level == Some(Level::Debug),
-        maybe_config_path: flags.config_path,
+  let debug = flags.log_level == Some(log::Level::Debug);
+  if !flags.no_check {
+    // TODO(@kitsonk) support bundling for workers
+    let lib = if flags.unstable {
+      module_graph2::TypeLib::UnstableDenoWindow
+    } else {
+      module_graph2::TypeLib::DenoWindow
+    };
+    let graph = graph.clone();
+    let (stats, diagnostics, maybe_ignored_options) =
+      graph.check(module_graph2::CheckOptions {
+        debug,
+        emit: false,
+        lib,
+        maybe_config_path: flags.config_path.clone(),
+        reload: flags.reload,
       })?;
 
+    debug!("{}", stats);
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    debug!("{}", stats);
+    if !diagnostics.0.is_empty() {
+      return Err(generic_error(diagnostics.to_string()));
+    }
+  }
 
-    s
-  } else {
-    program_state
-      .ts_compiler
-      .bundle(&program_state, module_specifier)
-      .await?
-  };
+  let (output, stats, maybe_ignored_options) =
+    graph.bundle(module_graph2::BundleOptions {
+      debug,
+      maybe_config_path: flags.config_path,
+    })?;
+
+  if flags.no_check && maybe_ignored_options.is_some() {
+    let ignored_options = maybe_ignored_options.unwrap();
+    eprintln!("{}", ignored_options);
+  }
+  debug!("{}", stats);
 
   debug!(">>>>> bundle END");
 

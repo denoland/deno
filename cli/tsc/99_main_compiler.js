@@ -594,68 +594,9 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function buildSourceFileCache(sourceFileMap) {
-    for (const entry of Object.values(sourceFileMap)) {
-      SourceFile.addToCache({
-        url: entry.url,
-        filename: entry.url,
-        mediaType: entry.mediaType,
-        sourceCode: entry.sourceCode,
-        versionHash: entry.versionHash,
-      });
-
-      for (const importDesc of entry.imports) {
-        let mappedUrl = importDesc.resolvedSpecifier;
-        const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
-        // IMPORTANT: due to HTTP redirects we might end up in situation
-        // where URL points to a file with completely different URL.
-        // In that case we take value of `redirect` field and cache
-        // resolved specifier pointing to the value of the redirect.
-        // It's not very elegant solution and should be rethinked.
-        assert(importedFile);
-        if (importedFile.redirect) {
-          mappedUrl = importedFile.redirect;
-        }
-        const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
-          importedFile.mediaType === MediaType.JSX;
-        // If JS or JSX perform substitution for types if available
-        if (isJsOrJsx) {
-          // @deno-types has highest precedence, followed by
-          // X-TypeScript-Types header
-          if (importDesc.resolvedTypeDirective) {
-            mappedUrl = importDesc.resolvedTypeDirective;
-          } else if (importedFile.typeHeaders.length > 0) {
-            const typeHeaders = importedFile.typeHeaders[0];
-            mappedUrl = typeHeaders.resolvedSpecifier;
-          } else if (importedFile.typesDirectives.length > 0) {
-            const typeDirective = importedFile.typesDirectives[0];
-            mappedUrl = typeDirective.resolvedSpecifier;
-          }
-        }
-
-        SourceFile.cacheResolvedUrl(mappedUrl, importDesc.specifier, entry.url);
-      }
-      for (const fileRef of entry.referencedFiles) {
-        SourceFile.cacheResolvedUrl(
-          fileRef.resolvedSpecifier,
-          fileRef.specifier,
-          entry.url,
-        );
-      }
-      for (const fileRef of entry.libDirectives) {
-        SourceFile.cacheResolvedUrl(
-          fileRef.resolvedSpecifier,
-          fileRef.specifier,
-          entry.url,
-        );
-      }
-    }
-  }
-
   // Warning! The values in this enum are duplicated in `cli/msg.rs`
   // Update carefully!
   const CompilerRequestType = {
-    Bundle: 1,
     RuntimeCompile: 2,
     RuntimeBundle: 3,
     RuntimeTranspile: 4,
@@ -945,103 +886,6 @@ delete Object.prototype.__proto__;
       .map((sym) => sym.getName());
   }
 
-  function bundle({
-    compilerOptions,
-    rootNames,
-    target,
-    sourceFileMap,
-    type,
-    performance,
-  }) {
-    if (performance) {
-      performanceStart();
-    }
-    debug(">>> bundle start", {
-      rootNames,
-      type: CompilerRequestType[type],
-    });
-
-    // When a programme is emitted, TypeScript will call `writeFile` with
-    // each file that needs to be emitted.  The Deno compiler host delegates
-    // this, to make it easier to perform the right actions, which vary
-    // based a lot on the request.
-    const state = {
-      rootNames,
-      bundleOutput: undefined,
-    };
-
-    const { options, diagnostics: diags } = parseCompilerOptions(
-      compilerOptions,
-    );
-
-    diagnostics = diags.filter(
-      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
-    );
-
-    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
-    // however stuff breaks if it's not passed (type_directives_js_main.js)
-    options.allowNonTsExtensions = true;
-
-    legacyHostState.target = target;
-    legacyHostState.writeFile = createBundleWriteFile(state);
-    state.options = options;
-
-    buildSourceFileCache(sourceFileMap);
-    // if there was a configuration and no diagnostics with it, we will continue
-    // to generate the program and possibly emit it.
-    if (diagnostics.length === 0) {
-      const program = ts.createProgram({
-        rootNames,
-        options,
-        host,
-      });
-
-      diagnostics = ts
-        .getPreEmitDiagnostics(program)
-        .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-
-      // We will only proceed with the emit if there are no diagnostics.
-      if (diagnostics.length === 0) {
-        // we only support a single root module when bundling
-        assert(rootNames.length === 1);
-        setRootExports(program, rootNames[0]);
-        const emitResult = program.emit();
-        assert(
-          emitResult.emitSkipped === false,
-          "Unexpected skip of the emit.",
-        );
-        // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
-        // without casting.
-        diagnostics = emitResult.diagnostics;
-      }
-      if (performance) {
-        performanceProgram({ program });
-      }
-    }
-
-    let bundleOutput;
-
-    if (diagnostics.length === 0) {
-      assert(state.bundleOutput);
-      bundleOutput = state.bundleOutput;
-    }
-
-    const stats = performance ? performanceEnd() : undefined;
-
-    const result = {
-      bundleOutput,
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
-      stats,
-    };
-
-    debug("<<< bundle end", {
-      rootNames,
-      type: CompilerRequestType[type],
-    });
-
-    return result;
-  }
-
   function runtimeCompile(request) {
     const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
@@ -1187,11 +1031,6 @@ delete Object.prototype.__proto__;
   function tsCompilerOnMessage(msg) {
     const request = msg.data;
     switch (request.type) {
-      case CompilerRequestType.Bundle: {
-        const result = bundle(request);
-        opCompilerRespond(result);
-        break;
-      }
       case CompilerRequestType.RuntimeCompile: {
         const result = runtimeCompile(request);
         opCompilerRespond(result);
