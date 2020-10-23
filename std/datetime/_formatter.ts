@@ -256,30 +256,6 @@ const defaultRules = [
       format: FormatCase.UpperCase,
     }),
   },
-  // {
-  //   test: createLiteralTestFunction("ZZZZ"),
-  //   fn: (): CallbackResult => ({
-  //     type: "timeZoneName",
-  //     value: 4,
-  //     format: FormatCase.UpperCase,
-  //   }),
-  // },
-  // {
-  //   test: createLiteralTestFunction("ZZZ"),
-  //   fn: (): CallbackResult => ({
-  //     type: "timeZoneName",
-  //     value: 3,
-  //     format: FormatCase.UpperCase,
-  //   }),
-  // },
-  // {
-  //   test: createLiteralTestFunction("ZZ"),
-  //   fn: (): CallbackResult => ({
-  //     type: "timeZoneName",
-  //     value: 2,
-  //     format: FormatCase.UpperCase,
-  //   }),
-  // },
   {
     test: createLiteralTestFunction("Z"),
     fn: (): CallbackResult => ({
@@ -471,9 +447,7 @@ export class DateTimeFormatter {
         case "timeZoneName": {
           const offset = date.getTimezoneOffset();
           switch (token.value) {
-            case 1: // case 2:
-            // case 3:
-            {
+            case 1: {
               const absOffset = Math.abs(offset);
               const hours = Math.floor(absOffset / 60);
               const minutes = Math.floor(hours / 60);
@@ -483,11 +457,6 @@ export class DateTimeFormatter {
               string += `${sign}${hoursString}${minutesString}`;
               break;
             }
-            // case 4: {
-            //   throw Error(
-            //     `The symbol "ZZZZ" is not supported.`,
-            //   );
-            // }
             case 5: {
               if (offset === 0) {
                 string += "Z";
@@ -650,24 +619,16 @@ export class DateTimeFormatter {
           } else {
             switch (part.value) {
               case 1: {
-                value = /^[+-]\d{2}(?:\d{2})?/.exec(string)?.[0] as string;
-                break;
-              }
-              case 2: {
-                value = /^[+-]\d{4}/.exec(string)?.[0] as string;
-                break;
-              }
-              case 3: {
-                value = /^[+-]\d{2}:\d{2}/.exec(string)?.[0] as string;
-                break;
-              }
-              case 4: {
-                value = /^[+-]\d{4}(?:\d{2})?/.exec(string)?.[0] as string;
+                value = /^[+-](?:[0-1][0-9]|2[0-4])(?:[0-4][0-9]|5[0-9])?/.exec(
+                  string,
+                )?.[0] as string;
                 break;
               }
               case 5: {
-                value = /^[+-]\d{2}:\d{2}(?::\d{2})?/.exec(string)
-                  ?.[0] as string;
+                value =
+                  /^[+-](?:[0-1][0-9]|2[0-4])\:(?:[0-4][0-9]|5[0-9])(?:\:(?:[0-4][0-9]|5[0-9]))?/
+                    .exec(string)
+                    ?.[0] as string;
                 break;
               }
             }
