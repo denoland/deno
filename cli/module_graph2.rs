@@ -48,6 +48,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::result;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -1026,7 +1027,7 @@ impl Graph2 {
   /// Verify the subresource integrity of the graph based upon the optional
   /// lockfile, updating the lockfile with any missing resources.  This will
   /// error if any of the resources do not match their lock status.
-  pub fn lock(&self, maybe_lockfile: &Option<Mutex<Lockfile>>) {
+  pub fn lock(&self, maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>) {
     if let Some(lf) = maybe_lockfile {
       let mut lockfile = lf.lock().unwrap();
       for (ms, module) in self.modules.iter() {
@@ -1252,6 +1253,7 @@ pub struct GraphBuilder2 {
   fetched: HashSet<ModuleSpecifier>,
   graph: Graph2,
   maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pending: FuturesUnordered<FetchFuture>,
 }
 
@@ -1259,6 +1261,7 @@ impl GraphBuilder2 {
   pub fn new(
     handler: Rc<RefCell<dyn SpecifierHandler>>,
     maybe_import_map: Option<ImportMap>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     let internal_import_map = if let Some(import_map) = maybe_import_map {
       Some(Rc::new(RefCell::new(import_map)))
@@ -1269,6 +1272,7 @@ impl GraphBuilder2 {
       graph: Graph2::new(handler),
       fetched: HashSet::new(),
       maybe_import_map: internal_import_map,
+      maybe_lockfile,
       pending: FuturesUnordered::new(),
     }
   }
@@ -1393,13 +1397,8 @@ impl GraphBuilder2 {
   /// Move out the graph from the builder to be utilized further.  An optional
   /// lockfile can be provided, where if the sources in the graph do not match
   /// the expected lockfile, an error will be logged and the process will exit.
-  ///
-  /// TODO(@kitsonk) this should really be owned by the graph, but currently
-  /// the lockfile is behind a mutex in program_state, which makes it really
-  /// hard to not pass around as a reference, which if the Graph owned it, it
-  /// would need lifetime parameters and lifetime parameters are 😭
-  pub fn get_graph(self, maybe_lockfile: &Option<Mutex<Lockfile>>) -> Graph2 {
-    self.graph.lock(maybe_lockfile);
+  pub fn get_graph(self) -> Graph2 {
+    self.graph.lock(self.maybe_lockfile.as_ref());
     self.graph
   }
 }
@@ -1537,13 +1536,13 @@ pub mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
       .expect("module not inserted");
 
-    (builder.get_graph(&None), handler)
+    (builder.get_graph(), handler)
   }
 
   #[test]
@@ -1645,12 +1644,12 @@ pub mod tests {
         fixtures: fixtures.clone(),
         ..MockSpecifierHandler::default()
       }));
-      let mut builder = GraphBuilder2::new(handler.clone(), None);
+      let mut builder = GraphBuilder2::new(handler.clone(), None, None);
       builder
         .add(&specifier, false)
         .await
         .expect("module not inserted");
-      let graph = builder.get_graph(&None);
+      let graph = builder.get_graph();
       let (actual, stats, maybe_ignored_options) = graph
         .bundle(BundleOptions::default())
         .expect("could not bundle");
@@ -1739,7 +1738,7 @@ pub mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
@@ -1845,12 +1844,12 @@ pub mod tests {
     let lockfile_path = fixtures.join("lockfile.json");
     let lockfile =
       Lockfile::new(lockfile_path, false).expect("could not load lockfile");
-    let maybe_lockfile = Some(Mutex::new(lockfile));
+    let maybe_lockfile = Some(Arc::new(Mutex::new(lockfile)));
     let handler = Rc::new(RefCell::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None, maybe_lockfile);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
@@ -1858,6 +1857,6 @@ pub mod tests {
       .add(&specifier, false)
       .await
       .expect("module not inserted");
-    builder.get_graph(&maybe_lockfile);
+    builder.get_graph();
   }
 }
