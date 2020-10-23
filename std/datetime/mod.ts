@@ -132,7 +132,7 @@ export function isLeap(year: Date | number): boolean {
   );
 }
 
-export enum Unit {
+export enum DateTimeUnit {
   milliseconds = "milliseconds",
   seconds = "seconds",
   minutes = "minutes",
@@ -144,12 +144,12 @@ export enum Unit {
   years = "years",
 }
 
-export type DifferenceUnit = keyof typeof Unit;
+export type Unit = keyof typeof DateTimeUnit;
 
-export type DifferenceFormat = Partial<Record<DifferenceUnit, number>>;
+export type DifferenceFormat = Partial<Record<Unit, number>>;
 
 export type DifferenceOptions = {
-  units?: DifferenceUnit[];
+  units?: Unit[];
 };
 
 /**
