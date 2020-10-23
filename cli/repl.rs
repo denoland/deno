@@ -228,6 +228,7 @@ impl LineHighlighter {
       (?P<null>\b(?:null)\b) |
       (?P<undefined>\b(?:undefined)\b) |
       (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch|this)\b) |
+      (?P<classes>\b(?:Math|console|Number|RegExp|String|Boolean|BigInt)\b)
       "#,
       )
       .unwrap();
@@ -259,6 +260,8 @@ impl Highlighter for LineHighlighter {
           format!("{}", colors::cyan(cap.as_str()))
         } else if let Some(cap) = caps.name("infinity") {
           format!("{}", colors::yellow(cap.as_str()))
+        } else if let Some(cap) = caps.name("classes") {
+          format!("{}", colors::green_bold(cap.as_str()))
         } else {
           caps[0].to_string()
         }
