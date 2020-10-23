@@ -48,14 +48,19 @@ impl Debounce {
 impl Stream for Debounce {
   type Item = NotifyEvent;
 
+  /// Note that this never returns `Poll::Ready(None)`, which means that file watcher will be alive
+  /// until the Deno process is terminated.
   fn poll_next(
     self: Pin<&mut Self>,
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     if let Ok(Ok(event)) = inner.rx.try_recv() {
-      inner.start_time = Some(Instant::now());
-      inner.last_event = Some(event);
+      if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
+      {
+        inner.start_time = Some(Instant::now());
+        inner.last_event = Some(event);
+      }
     }
 
     match &inner.last_event {
@@ -97,7 +102,7 @@ where
     let func = error_handler(closure());
     let mut is_file_changed = false;
     select! {
-      _ = wait_for_file_change(&mut debounce) => {
+      _ = debounce.next() => {
         is_file_changed = true;
         info!(
           "{} File change detected! Restarting!",
@@ -111,25 +116,13 @@ where
         "{} Process terminated! Restarting on file change...",
         colors::intense_blue("Watcher"),
       );
-      wait_for_file_change(&mut debounce).await?;
+      debounce.next().await;
       info!(
         "{} File change detected! Restarting!",
         colors::intense_blue("Watcher"),
       );
     }
   }
-}
-
-async fn wait_for_file_change(debounce: &mut Debounce) -> Result<(), AnyError> {
-  while let Some(event) = debounce.next().await {
-    match event.kind {
-      EventKind::Create(_) => break,
-      EventKind::Modify(_) => break,
-      EventKind::Remove(_) => break,
-      _ => continue,
-    }
-  }
-  Ok(())
 }
 
 fn new_watcher(
