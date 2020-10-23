@@ -163,8 +163,9 @@ delete Object.prototype.__proto__;
     4: "TSX",
     5: "Json",
     6: "Wasm",
-    7: "BuildInfo",
-    8: "Unknown",
+    7: "TsBuildInfo",
+    8: "SourceMap",
+    9: "Unknown",
     JavaScript: 0,
     JSX: 1,
     TypeScript: 2,
@@ -172,8 +173,9 @@ delete Object.prototype.__proto__;
     TSX: 4,
     Json: 5,
     Wasm: 6,
-    BuildInfo: 7,
-    Unknown: 6,
+    TsBuildInfo: 7,
+    SourceMap: 8,
+    Unknown: 9,
   };
 
   function getExtension(fileName, mediaType) {
@@ -183,7 +185,9 @@ delete Object.prototype.__proto__;
       case MediaType.JSX:
         return ts.Extension.Jsx;
       case MediaType.TypeScript:
-        return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
+        return ts.Extension.Ts;
+      case MediaType.Dts:
+        return ts.Extension.Dts;
       case MediaType.TSX:
         return ts.Extension.Tsx;
       case MediaType.Wasm:
@@ -366,7 +370,7 @@ delete Object.prototype.__proto__;
         }
 
         /** @type {{ data: string; hash: string; }} */
-        const { data, hash } = core.jsonOpSync(
+        const { data, hash, scriptKind } = core.jsonOpSync(
           "op_load",
           { specifier },
         );
@@ -375,6 +379,8 @@ delete Object.prototype.__proto__;
           specifier,
           data,
           languageVersion,
+          false,
+          scriptKind,
         );
         sourceFile.moduleName = specifier;
         sourceFile.version = hash;
@@ -406,7 +412,6 @@ delete Object.prototype.__proto__;
         let maybeSpecifiers;
         if (sourceFiles) {
           maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
-          debug(`  specifiers: ${maybeSpecifiers.join(", ")}`);
         }
         return core.jsonOpSync(
           "op_emit",
@@ -465,11 +470,12 @@ delete Object.prototype.__proto__;
           specifiers,
           base,
         });
-        return resolved.map(([resolvedFileName, extension]) => ({
+        let r = resolved.map(([resolvedFileName, extension]) => ({
           resolvedFileName,
           extension,
           isExternalLibraryImport: false,
         }));
+        return r;
       }
     },
     createHash(data) {
@@ -649,7 +655,6 @@ delete Object.prototype.__proto__;
   // Warning! The values in this enum are duplicated in `cli/msg.rs`
   // Update carefully!
   const CompilerRequestType = {
-    Compile: 0,
     Bundle: 1,
     RuntimeCompile: 2,
     RuntimeBundle: 3,
@@ -668,25 +673,6 @@ delete Object.prototype.__proto__;
         sourceFiles,
         state.options.target ?? ts.ScriptTarget.ESNext,
       );
-    };
-  }
-
-  function createCompileWriteFile(state) {
-    return function writeFile(fileName, data, sourceFiles) {
-      const isBuildInfo = fileName === TS_BUILD_INFO;
-
-      if (isBuildInfo) {
-        assert(isBuildInfo);
-        state.buildInfo = data;
-        return;
-      }
-
-      assert(sourceFiles);
-      assert(sourceFiles.length === 1);
-      state.emitMap[fileName] = {
-        filename: sourceFiles[0].fileName,
-        contents: data,
-      };
     };
   }
 
@@ -959,101 +945,6 @@ delete Object.prototype.__proto__;
       .map((sym) => sym.getName());
   }
 
-  function compile({
-    buildInfo,
-    compilerOptions,
-    rootNames,
-    target,
-    sourceFileMap,
-    type,
-    performance,
-  }) {
-    if (performance) {
-      performanceStart();
-    }
-    debug(">>> compile start", { rootNames, type: CompilerRequestType[type] });
-
-    // When a programme is emitted, TypeScript will call `writeFile` with
-    // each file that needs to be emitted.  The Deno compiler host delegates
-    // this, to make it easier to perform the right actions, which vary
-    // based a lot on the request.
-    const state = {
-      rootNames,
-      emitMap: {},
-    };
-
-    let diagnostics = [];
-
-    const { options, diagnostics: diags } = parseCompilerOptions(
-      compilerOptions,
-    );
-
-    diagnostics = diags.filter(
-      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
-    );
-
-    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
-    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
-    options.allowNonTsExtensions = true;
-
-    legacyHostState.target = target;
-    legacyHostState.writeFile = createCompileWriteFile(state);
-    legacyHostState.buildInfo = buildInfo;
-
-    buildSourceFileCache(sourceFileMap);
-    // if there was a configuration and no diagnostics with it, we will continue
-    // to generate the program and possibly emit it.
-    if (diagnostics.length === 0) {
-      const program = ts.createIncrementalProgram({
-        rootNames,
-        options,
-        host,
-      });
-
-      // TODO(bartlomieju): check if this is ok
-      diagnostics = [
-        ...program.getConfigFileParsingDiagnostics(),
-        ...program.getSyntacticDiagnostics(),
-        ...program.getOptionsDiagnostics(),
-        ...program.getGlobalDiagnostics(),
-        ...program.getSemanticDiagnostics(),
-      ];
-      diagnostics = diagnostics.filter(
-        ({ code }) =>
-          !IGNORED_DIAGNOSTICS.includes(code) &&
-          !IGNORED_COMPILE_DIAGNOSTICS.includes(code),
-      );
-
-      // We will only proceed with the emit if there are no diagnostics.
-      if (diagnostics.length === 0) {
-        const emitResult = program.emit();
-        // If `checkJs` is off we still might be compiling entry point JavaScript file
-        // (if it has `.ts` imports), but it won't be emitted. In that case we skip
-        // assertion.
-        if (options.checkJs) {
-          assert(
-            emitResult.emitSkipped === false,
-            "Unexpected skip of the emit.",
-          );
-        }
-        // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
-        // without casting.
-        diagnostics = emitResult.diagnostics;
-      }
-      performanceProgram({ program });
-    }
-
-    debug("<<< compile end", { rootNames, type: CompilerRequestType[type] });
-    const stats = performance ? performanceEnd() : undefined;
-
-    return {
-      emitMap: state.emitMap,
-      buildInfo: state.buildInfo,
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
-      stats,
-    };
-  }
-
   function bundle({
     compilerOptions,
     rootNames,
@@ -1296,11 +1187,6 @@ delete Object.prototype.__proto__;
   function tsCompilerOnMessage(msg) {
     const request = msg.data;
     switch (request.type) {
-      case CompilerRequestType.Compile: {
-        const result = compile(request);
-        opCompilerRespond(result);
-        break;
-      }
       case CompilerRequestType.Bundle: {
         const result = bundle(request);
         opCompilerRespond(result);

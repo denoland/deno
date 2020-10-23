@@ -72,6 +72,18 @@ impl Into<Location> for swc_common::Loc {
   }
 }
 
+impl Into<ModuleSpecifier> for Location {
+  fn into(self) -> ModuleSpecifier {
+    ModuleSpecifier::resolve_url_or_path(&self.filename).unwrap()
+  }
+}
+
+impl std::fmt::Display for Location {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "{}:{}:{}", self.filename, self.line, self.col)
+  }
+}
+
 /// A buffer for collecting diagnostic messages from the AST parser.
 #[derive(Debug)]
 pub struct DiagnosticBuffer(Vec<String>);

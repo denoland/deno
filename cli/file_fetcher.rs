@@ -579,6 +579,29 @@ fn map_js_like_extension(path: &Path, default: MediaType) -> MediaType {
       None => default,
       Some("jsx") => MediaType::JSX,
       Some("tsx") => MediaType::TSX,
+      // Because DTS files do not have a separate media type, or a unique
+      // extension, we have to "guess" at those things that we consider that
+      // look like TypeScript, and end with `.d.ts` are DTS files.
+      Some("ts") => {
+        if default == MediaType::TypeScript {
+          match path.file_stem() {
+            None => default,
+            Some(os_str) => {
+              if let Some(file_stem) = os_str.to_str() {
+                if file_stem.ends_with(".d") {
+                  MediaType::Dts
+                } else {
+                  default
+                }
+              } else {
+                default
+              }
+            }
+          }
+        } else {
+          default
+        }
+      }
       Some(_) => default,
     },
   }
@@ -1564,7 +1587,7 @@ mod tests {
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.d.ts"), None).0,
-      MediaType::TypeScript
+      MediaType::Dts
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.js"), None).0,
@@ -1740,6 +1763,26 @@ mod tests {
       )
       .0,
       MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.d.ts"),
+        Some("application/x-javascript")
+      )
+      .0,
+      MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.d.ts"), Some("text/plain")).0,
+      MediaType::Dts
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.d.ts"),
+        Some("video/vnd.dlna.mpeg-tts"),
+      )
+      .0,
+      MediaType::Dts
     );
   }
 

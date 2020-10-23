@@ -2,7 +2,6 @@
 
 use crate::ast::parse;
 use crate::ast::Location;
-use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
@@ -14,7 +13,6 @@ use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
-use crate::source_maps::SourceMapGetter;
 use crate::tsc_config;
 use crate::version;
 use deno_core::error::generic_error;
@@ -29,7 +27,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use log::debug;
-use log::info;
 use log::Level;
 use regex::Regex;
 use serde::Deserialize;
@@ -231,12 +228,6 @@ pub struct CompiledFileMetadata {
 }
 
 impl CompiledFileMetadata {
-  pub fn from_json_string(
-    metadata_string: String,
-  ) -> Result<Self, serde_json::Error> {
-    serde_json::from_str::<Self>(&metadata_string)
-  }
-
   pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
     serde_json::to_string(self)
   }
@@ -308,15 +299,6 @@ struct BundleResponse {
   stats: Option<Vec<Stat>>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CompileResponse {
-  diagnostics: Diagnostics,
-  emit_map: HashMap<String, EmittedSource>,
-  build_info: Option<String>,
-  stats: Option<Vec<Stat>>,
-}
-
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -358,197 +340,6 @@ impl TsCompiler {
   fn mark_compiled(&self, url: &Url) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(url.clone());
-  }
-
-  fn has_compiled(&self, url: &Url) -> bool {
-    let c = self.compiled.lock().unwrap();
-    c.contains(url)
-  }
-
-  /// Check if there is compiled source in cache that is valid and can be used
-  /// again.
-  fn has_compiled_source(&self, url: &Url) -> bool {
-    let specifier = ModuleSpecifier::from(url.clone());
-    if let Some(source_file) = self
-      .file_fetcher
-      .fetch_cached_source_file(&specifier, Permissions::allow_all())
-    {
-      if let Some(metadata) = self.get_metadata(&url) {
-        // Compare version hashes
-        let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code.as_bytes(),
-          version::DENO,
-          &self.config.hash.as_bytes(),
-        );
-
-        if metadata.version_hash == version_hash_to_validate {
-          return true;
-        }
-      }
-    }
-
-    false
-  }
-
-  fn has_valid_cache(
-    &self,
-    url: &Url,
-    build_info: &Option<String>,
-  ) -> Result<bool, AnyError> {
-    if let Some(build_info_str) = build_info.as_ref() {
-      let build_inf_json: Value = serde_json::from_str(build_info_str)?;
-      let program_val = build_inf_json["program"].as_object().unwrap();
-      let file_infos = program_val["fileInfos"].as_object().unwrap();
-
-      if !self.has_compiled_source(url) {
-        return Ok(false);
-      }
-
-      for (filename, file_info) in file_infos.iter() {
-        if filename.starts_with("asset://") {
-          continue;
-        }
-
-        let url = Url::parse(&filename).expect("Filename is not a valid url");
-        let specifier = ModuleSpecifier::from(url);
-
-        if let Some(source_file) = self
-          .file_fetcher
-          .fetch_cached_source_file(&specifier, Permissions::allow_all())
-        {
-          let existing_hash = crate::checksum::gen(&[
-            &source_file.source_code.as_bytes(),
-            &version::DENO.as_bytes(),
-          ]);
-          let expected_hash =
-            file_info["version"].as_str().unwrap().to_string();
-          if existing_hash != expected_hash {
-            // hashes don't match, somethings changed
-            return Ok(false);
-          }
-        } else {
-          // no cached source file
-          return Ok(false);
-        }
-      }
-    } else {
-      // no build info
-      return Ok(false);
-    }
-
-    Ok(true)
-  }
-
-  /// Asynchronously compile module and all it's dependencies.
-  ///
-  /// This method compiled every module at most once.
-  ///
-  /// If `--reload` flag was provided then compiler will not on-disk cache and
-  /// force recompilation.
-  ///
-  /// If compilation is required then new V8 worker is spawned with fresh TS
-  /// compiler.
-  pub async fn compile(
-    &self,
-    program_state: &Arc<ProgramState>,
-    source_file: &SourceFile,
-    target: TargetLib,
-    module_graph: &ModuleGraph,
-    allow_js: bool,
-  ) -> Result<(), AnyError> {
-    let module_url = source_file.url.clone();
-    let build_info_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(&module_url, "buildinfo");
-    let build_info = match self.disk_cache.get(&build_info_key) {
-      Ok(bytes) => Some(String::from_utf8(bytes)?),
-      Err(_) => None,
-    };
-
-    // Only use disk cache if `--reload` flag was not used or this file has
-    // already been compiled during current process lifetime.
-    if (self.use_disk_cache || self.has_compiled(&source_file.url))
-      && self.has_valid_cache(&source_file.url, &build_info)?
-    {
-      return Ok(());
-    }
-
-    let module_graph_json =
-      serde_json::to_value(module_graph).expect("Failed to serialize data");
-    let target = match target {
-      TargetLib::Main => "main",
-      TargetLib::Worker => "worker",
-    };
-    let root_names = vec![module_url.to_string()];
-    let unstable = self.flags.unstable;
-    let performance = matches!(self.flags.log_level, Some(Level::Debug));
-    let compiler_config = self.config.clone();
-
-    // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
-    info!("{} {}", colors::green("Check"), module_url.to_string());
-
-    let mut lib = if target == "main" {
-      vec!["deno.window"]
-    } else {
-      vec!["deno.worker"]
-    };
-
-    if unstable {
-      lib.push("deno.unstable");
-    }
-
-    let mut compiler_options = json!({
-      "allowJs": allow_js,
-      "allowNonTsExtensions": true,
-      "checkJs": false,
-      "esModuleInterop": true,
-      "incremental": true,
-      "inlineSourceMap": true,
-      // TODO(lucacasonato): enable this by default in 1.5.0
-      "isolatedModules": unstable,
-      "jsx": "react",
-      "lib": lib,
-      "module": "esnext",
-      "outDir": "deno://",
-      "resolveJsonModule": true,
-      "sourceMap": false,
-      "strict": true,
-      "removeComments": true,
-      "target": "esnext",
-      "tsBuildInfoFile": "cache:///tsbuildinfo.json",
-    });
-
-    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
-
-    warn_ignored_options(compiler_config.maybe_ignored_options);
-
-    let j = json!({
-      "type": CompilerRequestType::Compile,
-      "target": target,
-      "rootNames": root_names,
-      "performance": performance,
-      "compilerOptions": compiler_options,
-      "sourceFileMap": module_graph_json,
-      "buildInfo": if self.use_disk_cache { build_info } else { None },
-    });
-
-    let req_msg = j.to_string();
-
-    let json_str = execute_in_tsc(program_state.clone(), req_msg)?;
-
-    let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
-
-    if !compile_response.diagnostics.0.is_empty() {
-      return Err(generic_error(compile_response.diagnostics.to_string()));
-    }
-
-    maybe_log_stats(compile_response.stats);
-
-    if let Some(build_info) = compile_response.build_info {
-      self.cache_build_info(&module_url, build_info)?;
-    }
-    self.cache_emitted_files(compile_response.emit_map)?;
-    Ok(())
   }
 
   /// For a given module, generate a single file JavaScript output that includes
@@ -666,39 +457,6 @@ impl TsCompiler {
     Ok(output)
   }
 
-  /// Get associated `CompiledFileMetadata` for given module if it exists.
-  fn get_metadata(&self, url: &Url) -> Option<CompiledFileMetadata> {
-    // Try to load cached version:
-    // 1. check if there's 'meta' file
-    let cache_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(url, "meta");
-    if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
-      if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
-        if let Ok(read_metadata) =
-          CompiledFileMetadata::from_json_string(metadata.to_string())
-        {
-          return Some(read_metadata);
-        }
-      }
-    }
-
-    None
-  }
-
-  fn cache_build_info(
-    &self,
-    url: &Url,
-    build_info: String,
-  ) -> std::io::Result<()> {
-    let js_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(url, "buildinfo");
-    self.disk_cache.set(&js_key, build_info.as_bytes())?;
-
-    Ok(())
-  }
-
   fn cache_emitted_files(
     &self,
     emit_map: HashMap<String, EmittedSource>,
@@ -728,45 +486,6 @@ impl TsCompiler {
     }
 
     Ok(())
-  }
-
-  pub fn get_compiled_module(
-    &self,
-    module_url: &Url,
-  ) -> Result<CompiledModule, AnyError> {
-    let compiled_source_file = self.get_compiled_source_file(module_url)?;
-
-    let compiled_module = CompiledModule {
-      code: compiled_source_file.source_code,
-      name: module_url.to_string(),
-    };
-
-    Ok(compiled_module)
-  }
-
-  /// Return compiled JS file for given TS module.
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be
-  // delegated to SourceFileFetcher.
-  pub fn get_compiled_source_file(
-    &self,
-    module_url: &Url,
-  ) -> Result<SourceFile, AnyError> {
-    let cache_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(&module_url, "js");
-    let compiled_code = self.disk_cache.get(&cache_key)?;
-    let compiled_code_filename = self.disk_cache.location.join(cache_key);
-    debug!("compiled filename: {:?}", compiled_code_filename);
-
-    let compiled_module = SourceFile {
-      url: module_url.clone(),
-      filename: compiled_code_filename,
-      media_type: MediaType::JavaScript,
-      source_code: String::from_utf8(compiled_code)?,
-      types_header: None,
-    };
-
-    Ok(compiled_module)
   }
 
   /// Save compiled JS file for given TS module to on-disk cache.
@@ -801,31 +520,6 @@ impl TsCompiler {
     )
   }
 
-  /// Return associated source map file for given TS module.
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
-  // SourceFileFetcher
-  pub fn get_source_map_file(
-    &self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, AnyError> {
-    let cache_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
-    let source_code = self.disk_cache.get(&cache_key)?;
-    let source_map_filename = self.disk_cache.location.join(cache_key);
-    debug!("source map filename: {:?}", source_map_filename);
-
-    let source_map_file = SourceFile {
-      url: module_specifier.as_url().to_owned(),
-      filename: source_map_filename,
-      media_type: MediaType::JavaScript,
-      source_code: String::from_utf8(source_code)?,
-      types_header: None,
-    };
-
-    Ok(source_map_file)
-  }
-
   /// Save source map file for given TS module to on-disk cache.
   fn cache_source_map(
     &self,
@@ -853,91 +547,6 @@ impl TsCompiler {
       .expect("Failed to write source map");
 
     self.disk_cache.set(&source_map_key, &output)
-  }
-}
-
-impl SourceMapGetter for TsCompiler {
-  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    self.try_to_resolve_and_get_source_map(script_name)
-  }
-
-  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    self
-      .try_resolve_and_get_source_file(script_name)
-      .map(|out| {
-        // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using .split_terminator() instead of .split())
-        let lines: Vec<&str> = out.source_code.split('\n').collect();
-        assert!(lines.len() > line);
-        lines[line].to_string()
-      })
-  }
-}
-
-// `SourceMapGetter` related methods
-impl TsCompiler {
-  fn try_to_resolve(&self, script_name: &str) -> Option<ModuleSpecifier> {
-    // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
-    // script (like `gen/cli/bundle/compiler.js`) so we won't be
-    // able to get source for it anyway
-    ModuleSpecifier::resolve_url(script_name).ok()
-  }
-
-  fn try_resolve_and_get_source_file(
-    &self,
-    script_name: &str,
-  ) -> Option<SourceFile> {
-    if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return self
-        .file_fetcher
-        .fetch_cached_source_file(&module_specifier, Permissions::allow_all());
-    }
-
-    None
-  }
-
-  fn try_to_resolve_and_get_source_map(
-    &self,
-    script_name: &str,
-  ) -> Option<Vec<u8>> {
-    if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      if module_specifier.as_url().scheme() == "deno" {
-        return None;
-      }
-      return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out.source_code.into_bytes()),
-        Err(_) => {
-          // Check if map is inlined
-          if let Ok(compiled_source) =
-            self.get_compiled_module(module_specifier.as_url())
-          {
-            let mut content_lines = compiled_source
-              .code
-              .split('\n')
-              .map(|s| s.to_string())
-              .collect::<Vec<String>>();
-
-            if !content_lines.is_empty() {
-              let last_line = content_lines.pop().unwrap();
-              if last_line.starts_with(
-                "//# sourceMappingURL=data:application/json;base64,",
-              ) {
-                let encoded = last_line.trim_start_matches(
-                  "//# sourceMappingURL=data:application/json;base64,",
-                );
-                let decoded_map =
-                  base64::decode(encoded).expect("failed to parse source map");
-                return Some(decoded_map);
-              }
-            }
-          }
-
-          None
-        }
-      };
-    }
-
-    None
   }
 }
 
@@ -1425,7 +1034,6 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 #[repr(i32)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CompilerRequestType {
-  Compile = 0,
   Bundle = 1,
   RuntimeCompile = 2,
   RuntimeBundle = 3,
@@ -1438,7 +1046,6 @@ impl Serialize for CompilerRequestType {
     S: Serializer,
   {
     let value: i32 = match self {
-      CompilerRequestType::Compile => 0 as i32,
       CompilerRequestType::Bundle => 1 as i32,
       CompilerRequestType::RuntimeCompile => 2 as i32,
       CompilerRequestType::RuntimeBundle => 3 as i32,
@@ -1451,12 +1058,8 @@ impl Serialize for CompilerRequestType {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::deno_dir;
   use crate::fs as deno_fs;
-  use crate::http_cache;
   use crate::program_state::ProgramState;
-  use deno_core::ModuleSpecifier;
-  use std::path::PathBuf;
   use tempfile::TempDir;
 
   #[test]
@@ -1514,75 +1117,6 @@ mod tests {
       parse_ts_reference(r#"/ <reference unknown="unknown" />"#).is_none()
     );
     assert!(parse_ts_reference(r#"/ <asset path="./styles.css" />"#).is_none());
-  }
-
-  #[tokio::test]
-  async fn test_compile() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/002_hello.ts");
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let out = SourceFile {
-      url: specifier.as_url().clone(),
-      filename: PathBuf::from(p.to_str().unwrap().to_string()),
-      media_type: MediaType::TypeScript,
-      source_code: include_str!("./tests/002_hello.ts").to_string(),
-      types_header: None,
-    };
-    let dir =
-      deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
-        .unwrap();
-    let http_cache = http_cache::HttpCache::new(&dir.root.join("deps"));
-    let mock_state = ProgramState::mock(
-      vec![String::from("deno"), String::from("hello.ts")],
-      None,
-    );
-    let file_fetcher = SourceFileFetcher::new(
-      http_cache,
-      true,
-      mock_state.flags.cache_blocklist.clone(),
-      false,
-      false,
-      None,
-    )
-    .unwrap();
-
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      file_fetcher.clone(),
-      None,
-      Permissions::allow_all(),
-      false,
-      false,
-    );
-    module_graph_loader
-      .add_to_graph(&specifier, None)
-      .await
-      .expect("Failed to create graph");
-    let module_graph = module_graph_loader.get_graph();
-
-    let ts_compiler = TsCompiler::new(
-      file_fetcher,
-      mock_state.flags.clone(),
-      dir.gen_cache.clone(),
-    )
-    .unwrap();
-
-    let result = ts_compiler
-      .compile(&mock_state, &out, TargetLib::Main, &module_graph, false)
-      .await;
-    assert!(result.is_ok());
-    let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
-    let source_code = compiled_file.code;
-    assert!(source_code
-      .as_bytes()
-      .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
-    let mut lines: Vec<String> =
-      source_code.split('\n').map(|s| s.to_string()).collect();
-    let last_line = lines.pop().unwrap();
-    assert!(last_line
-      .starts_with("//# sourceMappingURL=data:application/json;base64"));
   }
 
   #[tokio::test]

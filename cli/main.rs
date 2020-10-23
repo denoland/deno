@@ -51,7 +51,7 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
-pub mod tsc2;
+mod tsc2;
 mod tsc_config;
 mod upgrade;
 mod version;
@@ -174,14 +174,16 @@ async fn info_command(
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
     let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
       &program_state,
+      // info accesses dynamically imported modules just for their information
+      // so we allow access to all of them.
       Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(
       handler,
       program_state.maybe_import_map.clone(),
     );
-    builder.insert(&specifier).await?;
-    let graph = builder.get_graph(&program_state.lockfile)?;
+    builder.add(&specifier, false).await?;
+    let graph = builder.get_graph(&program_state.lockfile);
     let info = graph.info()?;
 
     if json {
@@ -312,14 +314,16 @@ async fn bundle_command(
   let output = if flags.no_check {
     let handler = Rc::new(RefCell::new(FetchHandler::new(
       &program_state,
+      // when bundling, dynamic imports are only access for their type safety,
+      // therefore we will allow the graph to access any module.
       Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(
       handler,
       program_state.maybe_import_map.clone(),
     );
-    builder.insert(&module_specifier).await?;
-    let graph = builder.get_graph(&program_state.lockfile)?;
+    builder.add(&module_specifier, false).await?;
+    let graph = builder.get_graph(&program_state.lockfile);
 
     let (s, stats, maybe_ignored_options) =
       graph.bundle(module_graph2::BundleOptions {

@@ -214,6 +214,21 @@ impl TsConfig {
     self.0.to_string().as_bytes().to_owned()
   }
 
+  /// Return the value of the `checkJs` compiler option, defaulting to `false`
+  /// if not present.
+  pub fn get_check_js(&self) -> bool {
+    if let Some(check_js) = self.0.get("checkJs") {
+      check_js.as_bool().unwrap_or(false)
+    } else {
+      false
+    }
+  }
+
+  /// Merge a serde_json value into the configuration.
+  pub fn merge(&mut self, value: &Value) {
+    json_merge(&mut self.0, value);
+  }
+
   /// Take an optional string representing a user provided TypeScript config file
   /// which was passed in via the `--config` compiler option and merge it with
   /// the configuration.  Returning the result which optionally contains any

@@ -21,6 +21,7 @@ use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -40,7 +41,7 @@ pub struct Request {
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   #[serde(skip_serializing)]
-  pub graph: Rc<Graph2>,
+  pub graph: Rc<RefCell<Graph2>>,
   #[serde(skip_serializing)]
   pub hash_data: Vec<Vec<u8>>,
   #[serde(skip_serializing)]
@@ -65,14 +66,14 @@ pub struct Response {
 struct State {
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Rc<Graph2>,
+  graph: Rc<RefCell<Graph2>>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
 }
 
 impl State {
   pub fn new(
-    graph: Rc<Graph2>,
+    graph: Rc<RefCell<Graph2>>,
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
   ) -> Self {
@@ -162,10 +163,23 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let specifier = ModuleSpecifier::resolve_url_or_path(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
+  let mut media_type = MediaType::Unknown;
   let data = if &v.specifier == "deno:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.clone()
+  // in certain situations we return a "blank" module to tsc and we need to
+  // handle the request for that module here.
+  } else if &v.specifier == "deno:///none.d.ts" {
+    hash = Some("1".to_string());
+    media_type = MediaType::TypeScript;
+    Some("declare var a: any;\nexport = a;\n".to_string())
   } else {
-    let maybe_source = state.graph.get_source(&specifier);
+    let graph = state.graph.borrow();
+    let maybe_source = graph.get_source(&specifier);
+    media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
+      media_type
+    } else {
+      MediaType::Unknown
+    };
     if let Some(source) = &maybe_source {
       let mut data = vec![source.as_bytes().to_owned()];
       data.extend_from_slice(&state.hash_data);
@@ -174,7 +188,9 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     maybe_source
   };
 
-  Ok(json!({ "data": data, "hash": hash }))
+  Ok(
+    json!({ "data": data, "hash": hash, "scriptKind": media_type.as_ts_script_kind() }),
+  )
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,19 +217,31 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let resolved_specifier = state.graph.resolve(specifier, &referrer)?;
-      let media_type = if let Some(media_type) =
-        state.graph.get_media_type(&resolved_specifier)
-      {
-        media_type
-      } else {
-        bail!(
-          "Unable to resolve media type for specifier: \"{}\"",
-          resolved_specifier
-        )
-      };
-      resolved
-        .push((resolved_specifier.to_string(), media_type.as_ts_extension()));
+      let graph = state.graph.borrow();
+      match graph.resolve(specifier, &referrer, true) {
+        Ok(resolved_specifier) => {
+          let media_type = if let Some(media_type) =
+            graph.get_media_type(&resolved_specifier)
+          {
+            media_type
+          } else {
+            bail!(
+              "Unable to resolve media type for specifier: \"{}\"",
+              resolved_specifier
+            )
+          };
+          resolved.push((
+            resolved_specifier.to_string(),
+            media_type.as_ts_extension(),
+          ));
+        }
+        // in certain situations, like certain dynamic imports, we won't have
+        // the source file in the graph, so we will return a fake module to
+        // make tsc happy.
+        Err(_) => {
+          resolved.push(("deno:///none.d.ts".to_string(), ".d.ts".to_string()));
+        }
+      }
     }
   }
 
@@ -221,7 +249,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
-pub struct RespondArgs {
+struct RespondArgs {
   pub diagnostics: Diagnostics,
   pub stats: Stats,
 }
@@ -269,9 +297,7 @@ pub fn exec(
   runtime
     .execute("[native code]", startup_source)
     .context("Could not properly start the compiler runtime.")?;
-  runtime
-    .execute("[native_code]", &exec_source)
-    .context("Execute request failed.")?;
+  runtime.execute("[native_code]", &exec_source)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -324,10 +350,10 @@ mod tests {
     }));
     let mut builder = GraphBuilder2::new(handler.clone(), None);
     builder
-      .insert(&specifier)
+      .add(&specifier, false)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(builder.get_graph(&None).expect("could not get graph"));
+    let graph = Rc::new(RefCell::new(builder.get_graph(&None)));
     State::new(graph, hash_data, maybe_tsbuildinfo)
   }
 
@@ -410,7 +436,8 @@ mod tests {
       actual,
       json!({
         "data": "console.log(\"hello deno\");\n",
-        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729"
+        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
+        "scriptKind": 3,
       })
     );
   }
@@ -433,7 +460,8 @@ mod tests {
       actual,
       json!({
         "data": "some content",
-        "hash": null
+        "hash": null,
+        "scriptKind": 0,
       })
     );
   }
@@ -451,6 +479,7 @@ mod tests {
       json!({
         "data": null,
         "hash": null,
+        "scriptKind": 0,
       })
     )
   }
@@ -475,7 +504,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_resolve_error() {
+  async fn test_resolve_empty() {
     let mut state = setup(
       Some(
         ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a.ts")
@@ -485,10 +514,11 @@ mod tests {
       None,
     )
     .await;
-    resolve(
+    let actual = resolve(
       &mut state,
       json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./bad.ts" ]}),
-    ).expect_err("should have errored");
+    ).expect("should have not errored");
+    assert_eq!(actual, json!([["deno:///none.d.ts", ".d.ts"]]));
   }
 
   #[tokio::test]
@@ -544,17 +574,16 @@ mod tests {
     }));
     let mut builder = GraphBuilder2::new(handler.clone(), None);
     builder
-      .insert(&specifier)
+      .add(&specifier, false)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(builder.get_graph(&None).expect("could not get graph"));
+    let graph = Rc::new(RefCell::new(builder.get_graph(&None)));
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
       "esModuleInterop": true,
       "emitDecoratorMetadata": false,
       "incremental": true,
-      "isolatedModules": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",

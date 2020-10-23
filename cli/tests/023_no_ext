@@ -1,0 +1,2 @@
+import * as mod4 from "./subdir/mod4.js";
+console.log(mod4.isMod4);
