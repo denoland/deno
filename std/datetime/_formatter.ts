@@ -256,30 +256,30 @@ const defaultRules = [
       format: FormatCase.UpperCase,
     }),
   },
-  {
-    test: createLiteralTestFunction("ZZZZ"),
-    fn: (): CallbackResult => ({
-      type: "timeZoneName",
-      value: 4,
-      format: FormatCase.UpperCase,
-    }),
-  },
-  {
-    test: createLiteralTestFunction("ZZZ"),
-    fn: (): CallbackResult => ({
-      type: "timeZoneName",
-      value: 3,
-      format: FormatCase.UpperCase,
-    }),
-  },
-  {
-    test: createLiteralTestFunction("ZZ"),
-    fn: (): CallbackResult => ({
-      type: "timeZoneName",
-      value: 2,
-      format: FormatCase.UpperCase,
-    }),
-  },
+  // {
+  //   test: createLiteralTestFunction("ZZZZ"),
+  //   fn: (): CallbackResult => ({
+  //     type: "timeZoneName",
+  //     value: 4,
+  //     format: FormatCase.UpperCase,
+  //   }),
+  // },
+  // {
+  //   test: createLiteralTestFunction("ZZZ"),
+  //   fn: (): CallbackResult => ({
+  //     type: "timeZoneName",
+  //     value: 3,
+  //     format: FormatCase.UpperCase,
+  //   }),
+  // },
+  // {
+  //   test: createLiteralTestFunction("ZZ"),
+  //   fn: (): CallbackResult => ({
+  //     type: "timeZoneName",
+  //     value: 2,
+  //     format: FormatCase.UpperCase,
+  //   }),
+  // },
   {
     test: createLiteralTestFunction("Z"),
     fn: (): CallbackResult => ({
@@ -470,9 +470,9 @@ export class DateTimeFormatter {
         case "timeZoneName": {
           const offset = date.getTimezoneOffset();
           switch (token.value) {
-            case 1:
-            case 2:
-            case 3: {
+            case 1: // case 2:
+            // case 3:
+            {
               const absOffset = Math.abs(offset);
               const hours = Math.floor(absOffset / 60);
               const minutes = Math.floor(hours / 60);
@@ -482,11 +482,11 @@ export class DateTimeFormatter {
               string += `${sign}${hoursString}${minutesString}`;
               break;
             }
-            case 4: {
-              throw Error(
-                `The symbol "ZZZZ" is not supported.`,
-              );
-            }
+            // case 4: {
+            //   throw Error(
+            //     `The symbol "ZZZZ" is not supported.`,
+            //   );
+            // }
             case 5: {
               if (offset === 0) {
                 string += "Z";
