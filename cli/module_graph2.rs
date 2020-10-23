@@ -599,6 +599,8 @@ pub struct Graph2 {
   /// calls to a module graph where the emit is already valid do not cause the
   /// graph to re-emit.
   roots_dynamic: bool,
+  // A reference to lock file that will be used to check module integrity.
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl Graph2 {
@@ -607,7 +609,10 @@ impl Graph2 {
   /// The argument `handler` is an instance of a structure that implements the
   /// `SpecifierHandler` trait.
   ///
-  pub fn new(handler: Rc<RefCell<dyn SpecifierHandler>>) -> Self {
+  pub fn new(
+    handler: Rc<RefCell<dyn SpecifierHandler>>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) -> Self {
     Graph2 {
       handler,
       maybe_tsbuildinfo: None,
@@ -615,6 +620,7 @@ impl Graph2 {
       redirects: HashMap::new(),
       roots: Vec::new(),
       roots_dynamic: true,
+      maybe_lockfile,
     }
   }
 
@@ -1027,8 +1033,8 @@ impl Graph2 {
   /// Verify the subresource integrity of the graph based upon the optional
   /// lockfile, updating the lockfile with any missing resources.  This will
   /// error if any of the resources do not match their lock status.
-  pub fn lock(&self, maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>) {
-    if let Some(lf) = maybe_lockfile {
+  pub fn lock(&self) {
+    if let Some(lf) = self.maybe_lockfile.as_ref() {
       let mut lockfile = lf.lock().unwrap();
       for (ms, module) in self.modules.iter() {
         let specifier = module.specifier.to_string();
@@ -1253,7 +1259,6 @@ pub struct GraphBuilder2 {
   fetched: HashSet<ModuleSpecifier>,
   graph: Graph2,
   maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pending: FuturesUnordered<FetchFuture>,
 }
 
@@ -1269,10 +1274,9 @@ impl GraphBuilder2 {
       None
     };
     GraphBuilder2 {
-      graph: Graph2::new(handler),
+      graph: Graph2::new(handler, maybe_lockfile),
       fetched: HashSet::new(),
       maybe_import_map: internal_import_map,
-      maybe_lockfile,
       pending: FuturesUnordered::new(),
     }
   }
@@ -1398,7 +1402,7 @@ impl GraphBuilder2 {
   /// lockfile can be provided, where if the sources in the graph do not match
   /// the expected lockfile, an error will be logged and the process will exit.
   pub fn get_graph(self) -> Graph2 {
-    self.graph.lock(self.maybe_lockfile.as_ref());
+    self.graph.lock();
     self.graph
   }
 }
