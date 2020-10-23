@@ -1209,12 +1209,7 @@ export default class Context {
         );
         const resolvedPath = resolve(entry.path!, textDecoder.decode(pathData));
 
-        console.log("RESOLVED PATH: %s", resolvedPath);
         if (relative(entry.path, resolvedPath).startsWith("..")) {
-          console.log(
-            "RESOLVED NOTCAPABLE: %s",
-            relative(entry.path, resolvedPath),
-          );
           return ERRNO_NOTCAPABLE;
         }
 
@@ -1227,10 +1222,6 @@ export default class Context {
 
             console.log("RESOLVED REAL PATH: %s", path);
             if (relative(entry.path, path).startsWith("..")) {
-              console.log(
-                "RESOLVED REAL NOTCAPABLE: %s",
-                relative(entry.path, path),
-              );
               return ERRNO_NOTCAPABLE;
             }
           } catch (_err) {
@@ -1239,8 +1230,6 @@ export default class Context {
         } else {
           path = resolvedPath;
         }
-
-        console.log("FINAL PATH: %s", path);
 
         if ((oflags & OFLAGS_DIRECTORY) !== 0) {
           // XXX (caspervonb) this isn't ideal as we can't get a rid for the
