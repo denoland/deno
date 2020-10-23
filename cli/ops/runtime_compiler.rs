@@ -1,18 +1,24 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
+use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
-use crate::tsc::runtime_transpile;
+use crate::tsc_config;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
+use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -71,6 +77,12 @@ struct TranspileArgs {
   options: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct RuntimeTranspileEmit {
+  source: String,
+  map: Option<String>,
+}
+
 async fn op_transpile(
   state: Rc<RefCell<OpState>>,
   args: Value,
@@ -78,9 +90,39 @@ async fn op_transpile(
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let cli_state = super::global_state2(&state);
-  let program_state = cli_state.clone();
-  let result =
-    runtime_transpile(program_state, &args.sources, &args.options).await?;
+
+  let mut compiler_options = tsc_config::TsConfig::new(json!({
+    "esModuleInterop": true,
+    "module": "esnext",
+    "sourceMap": true,
+    "scriptComments": true,
+    "target": "esnext",
+  }));
+
+  let user_options = if let Some(options) = args.options {
+    tsc_config::parse_raw_config(&options)?
+  } else {
+    json!({})
+  };
+  compiler_options.merge(&user_options);
+
+  let emit_options: ast::EmitOptions = compiler_options.into();
+  let mut emit_map = HashMap::new();
+
+  for (specifier, source) in args.sources {
+    let media_type = MediaType::from(&PathBuf::from(&specifier));
+    let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
+    let parsed_module = ast::parse(&module_specifier, &source, &media_type)?;
+    let (source, maybe_source_map) = parsed_module.transpile(&emit_options)?;
+
+    emit_map.insert(
+      specifier.to_string(),
+      RuntimeTranspileEmit {
+        source,
+        map: maybe_source_map,
+      },
+    );
+  }
+  let result = serde_json::to_value(emit_map)?;
   Ok(result)
 }
