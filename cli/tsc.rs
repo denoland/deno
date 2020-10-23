@@ -716,8 +716,7 @@ pub async fn runtime_compile(
     "allowNonTsExtensions": true,
     "checkJs": false,
     "esModuleInterop": true,
-    // TODO(lucacasonato): enable this by default in 1.5.0
-    "isolatedModules": unstable,
+    "isolatedModules": true,
     "jsx": "react",
     "module": "esnext",
     "sourceMap": true,

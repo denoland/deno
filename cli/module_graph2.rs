@@ -698,9 +698,6 @@ impl Graph2 {
     options: CheckOptions,
   ) -> Result<(Stats, Diagnostics, Option<IgnoredCompilerOptions>), AnyError>
   {
-    // TODO(@kitsonk) set to `true` in followup PR
-    let unstable = options.lib == TypeLib::UnstableDenoWindow
-      || options.lib == TypeLib::UnstableDenoWorker;
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) is this really needed?
@@ -708,7 +705,7 @@ impl Graph2 {
       // Enabled by default to align to transpile/swc defaults
       "experimentalDecorators": true,
       "incremental": true,
-      "isolatedModules": unstable,
+      "isolatedModules": true,
       "lib": options.lib,
       "module": "esnext",
       "strict": true,
