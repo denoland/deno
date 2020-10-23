@@ -1240,6 +1240,8 @@ export default class Context {
           path = resolvedPath;
         }
 
+        console.log("FINAL PATH: %s", path);
+
         if ((oflags & OFLAGS_DIRECTORY) !== 0) {
           // XXX (caspervonb) this isn't ideal as we can't get a rid for the
           // directory this way so there's no native fstat but Deno.open
