@@ -38,13 +38,14 @@
 
   function decodeSearchParam(p) {
     const s = p.replace("+", " ");
+    const decoder = new TextDecoder();
 
     return s.replace(/(%[0-9a-f]{2})+/gi, (matched) => {
-      const buf = [];
-      for (let i = 0; i < matched.length; i += 3) {
-        buf.push(parseInt(matched.slice(i + 1, i + 3), 16));
+      const buf = new Uint8Array(Math.ceil(matched.length / 3));
+      for (let i = 0, offset = 0; i < matched.length; i += 3, offset += 1) {
+        buf[offset] = parseInt(matched.slice(i + 1, i + 3), 16);
       }
-      return new TextDecoder().decode(new Uint8Array(buf));
+      return decoder.decode(buf);
     });
   }
 
