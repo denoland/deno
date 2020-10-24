@@ -73,6 +73,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
@@ -556,9 +557,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let mut builder = module_graph2::GraphBuilder2::new(
     handler,
     program_state.maybe_import_map.clone(),
+    program_state.lockfile.clone(),
   );
   builder.add(&main_module, false).await?;
-  let module_graph = builder.get_graph(&program_state.lockfile);
+  let module_graph = builder.get_graph();
 
   // Find all local files in graph
   let mut paths_to_watch: Vec<PathBuf> = module_graph
