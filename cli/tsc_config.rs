@@ -17,7 +17,7 @@ use std::str::FromStr;
 /// file, that we want to deserialize out of the final config for a transpile.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TranspileConfigOptions {
+pub struct EmitConfigOptions {
   pub check_js: bool,
   pub emit_decorator_metadata: bool,
   pub jsx: String,
@@ -69,6 +69,7 @@ const IGNORED_COMPILER_OPTIONS: [&str; 61] = [
   "inlineSourceMap",
   "inlineSources",
   "init",
+  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
@@ -202,7 +203,7 @@ pub fn parse_config(
 
 /// A structure for managing the configuration of TypeScript
 #[derive(Debug, Clone)]
-pub struct TsConfig(Value);
+pub struct TsConfig(pub Value);
 
 impl TsConfig {
   /// Create a new `TsConfig` with the base being the `value` supplied.
@@ -212,6 +213,21 @@ impl TsConfig {
 
   pub fn as_bytes(&self) -> Vec<u8> {
     self.0.to_string().as_bytes().to_owned()
+  }
+
+  /// Return the value of the `checkJs` compiler option, defaulting to `false`
+  /// if not present.
+  pub fn get_check_js(&self) -> bool {
+    if let Some(check_js) = self.0.get("checkJs") {
+      check_js.as_bool().unwrap_or(false)
+    } else {
+      false
+    }
+  }
+
+  /// Merge a serde_json value into the configuration.
+  pub fn merge(&mut self, value: &Value) {
+    json_merge(&mut self.0, value);
   }
 
   /// Take an optional string representing a user provided TypeScript config file
@@ -246,15 +262,6 @@ impl TsConfig {
     } else {
       Ok(None)
     }
-  }
-
-  /// Return the current configuration as a `TranspileConfigOptions` structure.
-  pub fn as_transpile_config(
-    &self,
-  ) -> Result<TranspileConfigOptions, AnyError> {
-    let options: TranspileConfigOptions =
-      serde_json::from_value(self.0.clone())?;
-    Ok(options)
   }
 }
 

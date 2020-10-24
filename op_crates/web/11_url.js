@@ -378,7 +378,7 @@
       return null;
     }
     [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
-    parts.path = encodePathname(parts.path.replace(/\\/g, "/"));
+    parts.path = encodePathname(parts.path);
     if (usedNonBase) {
       parts.path = normalizePath(parts.path, parts.protocol == "file");
     } else {
@@ -803,7 +803,7 @@
 
   function encodeChar(c) {
     return [...encoder.encode(c)]
-      .map((n) => `%${n.toString(16)}`)
+      .map((n) => `%${n.toString(16).padStart(2, "0")}`)
       .join("")
       .toUpperCase();
   }
@@ -870,7 +870,9 @@
   }
 
   function encodePathname(s) {
-    return [...s].map((c) => (charInPathSet(c) ? encodeChar(c) : c)).join("");
+    return [...s.replace(/\\/g, "/")].map((
+      c,
+    ) => (charInPathSet(c) ? encodeChar(c) : c)).join("");
   }
 
   function encodeSearch(s, isSpecial) {

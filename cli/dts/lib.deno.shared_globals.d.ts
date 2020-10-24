@@ -606,15 +606,20 @@ declare class URL {
   toJSON(): string;
 }
 
-interface MessageEventInit extends EventInit {
-  data?: any;
+interface MessageEventInit<T = any> extends EventInit {
+  data?: T;
   origin?: string;
   lastEventId?: string;
 }
 
-declare class MessageEvent extends Event {
-  readonly data: any;
-  readonly origin: string;
+declare class MessageEvent<T = any> extends Event {
+  /**
+   * Returns the data of the message.
+   */
+  readonly data: T;
+  /**
+   * Returns the last event ID string, for server-sent events.
+   */
   readonly lastEventId: string;
   constructor(type: string, eventInitDict?: MessageEventInit);
 }

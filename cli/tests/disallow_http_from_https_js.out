@@ -1,2 +1,3 @@
-error: Modules loaded over https:// are not allowed to import modules over http://
-Imported from "https://localhost:5545/cli/tests/disallow_http_from_https.js:2"
+error: Modules imported via https are not allowed to import http modules.
+  Importing: http://localhost:4545/cli/tests/001_hello.js
+    at https://localhost:5545/cli/tests/disallow_http_from_https.js:2:0

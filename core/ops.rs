@@ -221,7 +221,7 @@ fn json_serialize_op_result(
 }
 
 /// Return map of resources with id as key
-/// and string representaion as value.
+/// and string representation as value.
 ///
 /// This op must be wrapped in `json_op_sync`.
 pub fn op_resources(

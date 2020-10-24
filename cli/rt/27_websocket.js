@@ -48,7 +48,7 @@
 
       core.jsonOpAsync("op_ws_create", {
         url: wsURL.href,
-        protocols: protocols.join("; "),
+        protocols: protocols.join(", "),
       }).then((create) => {
         if (create.success) {
           this.#rid = create.rid;
