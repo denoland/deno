@@ -37,7 +37,7 @@
   }
 
   function decodeSearchParam(p) {
-    const s = p.replace("+", " ");
+    const s = p.replaceAll("+", " ");
     const decoder = new TextDecoder();
 
     return s.replace(/(%[0-9a-f]{2})+/gi, (matched) => {
