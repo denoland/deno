@@ -348,12 +348,12 @@ mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(builder.get_graph(&None)));
+    let graph = Rc::new(RefCell::new(builder.get_graph()));
     State::new(graph, hash_data, maybe_tsbuildinfo)
   }
 
@@ -572,12 +572,12 @@ mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None);
+    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(builder.get_graph(&None)));
+    let graph = Rc::new(RefCell::new(builder.get_graph()));
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
