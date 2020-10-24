@@ -49,10 +49,13 @@ unitTest(function urlSearchParamsInitString(): void {
 });
 
 unitTest(function urlSearchParamsInitStringWithPlusCharacter(): void {
-  const init = "q=a+b";
-  const searchParams = new URLSearchParams(init);
-  assertEquals(searchParams.toString(), init);
-  assertEquals(searchParams.get("q"), "a b");
+  let params = new URLSearchParams("q=a+b");
+  assertEquals(params.toString(), "q=a+b");
+  assertEquals(params.get("q"), "a b");
+
+  params = new URLSearchParams("q=a+b+c");
+  assertEquals(params.toString(), "q=a+b+c");
+  assertEquals(params.get("q"), "a b c");
 });
 
 unitTest(function urlSearchParamsInitStringWithMalformedParams(): void {
