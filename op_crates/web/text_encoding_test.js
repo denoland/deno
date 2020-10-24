@@ -1296,6 +1296,7 @@ function main() {
   singleByteEncodings();
   textDecoderHandlesNotFoundInternalDecoder();
   utf16Test();
+  big5Test();
 }
 
 main();
