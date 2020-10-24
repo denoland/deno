@@ -990,7 +990,7 @@
         this.url = new URL(String(input)).href;
       }
 
-      if (init && "method" in init) {
+      if (init && "method" in init && init.method) {
         this.method = normalizeMethod(init.method);
       }
 
