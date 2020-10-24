@@ -694,11 +694,6 @@ impl Graph2 {
     Ok((s, stats, maybe_ignored_options))
   }
 
-  fn contains_module(&self, specifier: &ModuleSpecifier) -> bool {
-    let s = self.resolve_specifier(specifier);
-    self.modules.contains_key(s)
-  }
-
   /// Type check the module graph, corresponding to the options provided.
   pub fn check(
     self,
@@ -831,6 +826,11 @@ impl Graph2 {
     Ok((response.stats, response.diagnostics, maybe_ignored_options))
   }
 
+  fn contains_module(&self, specifier: &ModuleSpecifier) -> bool {
+    let s = self.resolve_specifier(specifier);
+    self.modules.contains_key(s)
+  }
+
   /// Update the handler with any modules that are marked as _dirty_ and update
   /// any build info if present.
   fn flush(&mut self) -> Result<(), AnyError> {
@@ -947,6 +947,12 @@ impl Graph2 {
   fn get_module(&self, specifier: &ModuleSpecifier) -> Option<&Module> {
     let s = self.resolve_specifier(specifier);
     self.modules.get(s)
+  }
+
+  /// Consume graph and return list of all module specifiers
+  /// contained in the graph.
+  pub fn get_modules(&self) -> Vec<ModuleSpecifier> {
+    self.modules.keys().map(|s| s.to_owned()).collect()
   }
 
   /// Get the source for a given module specifier.  If the module is not part

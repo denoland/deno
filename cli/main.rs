@@ -550,22 +550,24 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let program_state = ProgramState::new(flags.clone())?;
 
-  let mut module_graph_loader = module_graph::ModuleGraphLoader::new(
-    program_state.file_fetcher.clone(),
-    program_state.maybe_import_map.clone(),
+  let handler = Rc::new(RefCell::new(FetchHandler::new(
+    &program_state,
     Permissions::allow_all(),
-    false,
-    false,
+  )?));
+  let mut builder = module_graph2::GraphBuilder2::new(
+    handler,
+    program_state.maybe_import_map.clone(),
+    program_state.lockfile.clone(),
   );
-  module_graph_loader.add_to_graph(&main_module, None).await?;
-  let module_graph = module_graph_loader.get_graph();
+  builder.add(&main_module, false).await?;
+  let module_graph = builder.get_graph();
 
   // Find all local files in graph
   let mut paths_to_watch: Vec<PathBuf> = module_graph
-    .values()
-    .map(|f| Url::parse(&f.url).unwrap())
-    .filter(|url| url.scheme() == "file")
-    .map(|url| url.to_file_path().unwrap())
+    .get_modules()
+    .iter()
+    .filter(|specifier| specifier.as_url().scheme() == "file")
+    .map(|specifier| specifier.as_url().to_file_path().unwrap())
     .collect();
 
   if let Some(import_map) = program_state.flags.import_map_path.clone() {
