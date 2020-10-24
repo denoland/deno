@@ -20,7 +20,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tokio::select;
 
-const DEBOUNCE_TIMEOUT_MS: Duration = Duration::from_millis(200);
+const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
 const DEBOUNCE_POLLING_INTERVAL_MS: Duration = Duration::from_millis(10);
 
 // TODO(bartlomieju): rename
@@ -105,7 +105,7 @@ where
   F: Fn() -> WatchFuture,
 {
   let (_watcher, receiver) = new_watcher(paths)?;
-  let mut debounce = Debounce::new(receiver, DEBOUNCE_TIMEOUT_MS);
+  let mut debounce = Debounce::new(receiver, DEBOUNCE_INTERVAL_MS);
   loop {
     let func = error_handler(closure());
     let mut is_file_changed = false;
