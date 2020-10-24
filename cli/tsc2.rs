@@ -610,4 +610,54 @@ mod tests {
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
+
+  #[tokio::test]
+  async fn test_exec_reexport_dts() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///reexports.ts").unwrap();
+    let hash_data = vec![b"something".to_vec()];
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/tsc2");
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..MockSpecifierHandler::default()
+    }));
+    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+    builder
+      .add(&specifier, false)
+      .await
+      .expect("module not inserted");
+    let graph = Rc::new(RefCell::new(builder.get_graph()));
+    let config = TsConfig::new(json!({
+      "allowJs": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "emitDecoratorMetadata": false,
+      "incremental": true,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "lib": ["deno.window"],
+      "module": "esnext",
+      "noEmit": true,
+      "outDir": "deno:///",
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+    }));
+    let request = Request {
+      config,
+      debug: false,
+      graph,
+      hash_data,
+      maybe_tsbuildinfo: None,
+      root_names: vec!["file:///reexports.ts".to_string()],
+    };
+    let actual = exec(js::compiler_isolate_init(), request)
+      .expect("exec should have not errored");
+    assert!(actual.diagnostics.0.is_empty());
+    assert!(actual.emitted_files.is_empty());
+    assert!(actual.maybe_tsbuildinfo.is_some());
+    assert_eq!(actual.stats.0.len(), 12);
+  }
 }
