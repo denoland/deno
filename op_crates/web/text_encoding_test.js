@@ -1192,6 +1192,73 @@ function singleByteEncodings() {
   }
 }
 
+function utf16Test() {
+  const bad = [
+    {
+      encoding: "utf-16le",
+      input: [0x00, 0xd8],
+      expected: "\uFFFD",
+      name: "lone surrogate lead",
+    },
+    {
+      encoding: "utf-16le",
+      input: [0x00, 0xdc],
+      expected: "\uFFFD",
+      name: "lone surrogate trail",
+    },
+    {
+      encoding: "utf-16le",
+      input: [0x00, 0xd8, 0x00, 0x00],
+      expected: "\uFFFD\u0000",
+      name: "unmatched surrogate lead",
+    },
+    {
+      encoding: "utf-16le",
+      input: [0x00, 0xdc, 0x00, 0x00],
+      expected: "\uFFFD\u0000",
+      name: "unmatched surrogate trail",
+    },
+    {
+      encoding: "utf-16le",
+      input: [0x00, 0xdc, 0x00, 0xd8],
+      expected: "\uFFFD\uFFFD",
+      name: "swapped surrogate pair",
+    },
+  ];
+
+  function assert_throws(func) {
+    let erred = false;
+    try {
+      func();
+    } catch (error) {
+      erred = true;
+    }
+    assert(erred === true);
+  }
+
+  function assert_equals(expected, actual, msg = "") {
+    function format(str) {
+      return str.split("").map(c => c.charCodeAt(0)).join(", ")
+    }
+    if (expected !== actual) {
+      throw new Error(`Assertion Error: ${msg}\n  expected: "${format(expected)}"\n  actual: "${format(actual)}" ${actual.length}`);
+    }
+  }
+
+  bad.forEach((t, i) => {
+    assert_equals(
+      t.expected,
+      new TextDecoder(t.encoding).decode(new Uint8Array(t.input)),
+      i
+    );
+    assert_throws(() => {
+      new TextDecoder(t.encoding, { fatal: true }).decode(
+        new Uint8Array(t.input),
+      );
+    });
+  });
+}
+
 function main() {
   btoaSuccess();
   atobSuccess();
@@ -1214,6 +1281,7 @@ function main() {
   toStringShouldBeWebCompatibility();
   singleByteEncodings();
   textDecoderHandlesNotFoundInternalDecoder();
+  utf16Test();
 }
 
 main();
