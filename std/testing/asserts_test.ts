@@ -162,6 +162,12 @@ Deno.test("testingNotEquals", function (): void {
 
 Deno.test("testingAssertExists", function (): void {
   assertExists("Denosaurus");
+  assertExists(false);
+  assertExists(0);
+  assertExists("");
+  assertExists(-0);
+  assertExists(0);
+  assertExists(NaN);
   let didThrow;
   try {
     assertExists(undefined);
