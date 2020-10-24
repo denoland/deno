@@ -41,9 +41,7 @@ const tests = [
   "testdata/wasi_sched_yield.wasm",
 ];
 
-const ignore = [
-  "testdata/wasi_clock_time_get.wasm",
-];
+const ignore = [];
 
 // TODO(caspervonb) investigate why these tests are failing on windows and fix
 // them.
