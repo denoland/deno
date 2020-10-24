@@ -2762,6 +2762,11 @@ itest!(disallow_http_from_https_ts {
   exit_code: 1,
 });
 
+itest!(dynamic_import_conditional {
+  args: "run --quiet --reload dynamic_import_conditional.js",
+  output: "dynamic_import_conditional.js.out",
+});
+
 itest!(tsx_imports {
   args: "run --reload tsx_imports.ts",
   output: "tsx_imports.ts.out",
