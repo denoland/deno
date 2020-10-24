@@ -1238,10 +1238,14 @@ function utf16Test() {
 
   function assert_equals(expected, actual, msg = "") {
     function format(str) {
-      return str.split("").map(c => c.charCodeAt(0)).join(", ")
+      return str.split("").map((c) => c.charCodeAt(0)).join(", ");
     }
     if (expected !== actual) {
-      throw new Error(`Assertion Error: ${msg}\n  expected: "${format(expected)}"\n  actual: "${format(actual)}" ${actual.length}`);
+      throw new Error(
+        `Assertion Error: ${msg}\n  expected: "${
+          format(expected)
+        }"\n  actual: "${format(actual)}" ${actual.length}`,
+      );
     }
   }
 
@@ -1249,7 +1253,7 @@ function utf16Test() {
     assert_equals(
       t.expected,
       new TextDecoder(t.encoding).decode(new Uint8Array(t.input)),
-      i
+      i,
     );
     assert_throws(() => {
       new TextDecoder(t.encoding, { fatal: true }).decode(
@@ -1257,6 +1261,16 @@ function utf16Test() {
       );
     });
   });
+}
+
+function big5Test() {
+  assert(
+    new TextDecoder("big5").decode(
+      Uint8Array.from(
+        [0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f, 0x72, 0x6c, 0x64],
+      ),
+    ) === "hello world",
+  );
 }
 
 function main() {
