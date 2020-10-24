@@ -16,10 +16,12 @@ use std::mem;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{mpsc, mpsc::Receiver};
+use std::thread;
 use std::time::{Duration, Instant};
 use tokio::select;
 
 const DEBOUNCE_TIMEOUT_MS: Duration = Duration::from_millis(200);
+const DEBOUNCE_POLLING_INTERVAL_MS: Duration = Duration::from_millis(10);
 
 // TODO(bartlomieju): rename
 type WatchFuture = Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
@@ -74,7 +76,13 @@ impl Stream for Debounce {
         Poll::Ready(event)
       }
       _ => {
-        cx.waker().wake_by_ref();
+        // To avoid a hot loop, defer signaling the waker for the next polling.
+        let waker = cx.waker().clone();
+        thread::spawn(move || {
+          thread::sleep(DEBOUNCE_POLLING_INTERVAL_MS);
+          waker.wake();
+        });
+
         Poll::Pending
       }
     }
