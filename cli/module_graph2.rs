@@ -758,8 +758,11 @@ impl Graph2 {
       info!("{} {}", colors::green("Check"), specifier);
     }
 
-    let root_names: Vec<String> =
-      self.roots.iter().map(|ms| ms.to_string()).collect();
+    let root_names: Vec<(ModuleSpecifier, MediaType)> = self
+      .roots
+      .iter()
+      .map(|ms| (ms.clone(), self.get_media_type(ms).unwrap()))
+      .collect();
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
