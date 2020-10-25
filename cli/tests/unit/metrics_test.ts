@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
 unitTest(async function metrics(): Promise<void> {
   const m1 = Deno.metrics();

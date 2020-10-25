@@ -4,7 +4,6 @@ use crate::colors;
 use crate::metrics::Metrics;
 use crate::permissions::Permissions;
 use crate::version;
-use crate::DenoSubcommand;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -14,7 +13,12 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::env;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<ModuleSpecifier>(main_module);
+  }
   super::reg_json_sync(rt, "op_start", op_start);
   super::reg_json_sync(rt, "op_main_module", op_main_module);
   super::reg_json_sync(rt, "op_metrics", op_metrics);
@@ -25,7 +29,7 @@ fn op_start(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let gs = &super::global_state(state);
+  let gs = &super::program_state(state);
 
   Ok(json!({
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
@@ -36,7 +40,6 @@ fn op_start(
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "ppid": ppid(),
-    "repl": gs.flags.subcommand == DenoSubcommand::Repl,
     "target": env!("TARGET"),
     "tsVersion": version::TYPESCRIPT,
     "unstableFlag": gs.flags.unstable,

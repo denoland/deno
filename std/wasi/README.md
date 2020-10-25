@@ -1,6 +1,6 @@
 # wasi
 
-This module provides an implementation of the WebAssembly System Interface
+This module provides an implementation of the WebAssembly System Interface.
 
 ## Supported Syscalls
 
@@ -46,7 +46,7 @@ This module provides an implementation of the WebAssembly System Interface
 - [x] poll_oneoff
 - [x] proc_exit
 - [ ] proc_raise
-- [ ] sched_yield
+- [x] sched_yield
 - [x] random_get
 - [ ] sock_recv
 - [ ] sock_send
@@ -55,36 +55,34 @@ This module provides an implementation of the WebAssembly System Interface
 ## Usage
 
 ```typescript
-import Context from "https://deno.land/std/wasi/snapshot_preview1.ts";
+import Context from "https://deno.land/std@$STD_VERSION/wasi/snapshot_preview1.ts";
 
 const context = new Context({
   args: Deno.args,
-  env: Deno.env,
+  env: Deno.env.toObject(),
 });
 
 const binary = await Deno.readFile("path/to/your/module.wasm");
 const module = await WebAssembly.compile(binary);
 const instance = await WebAssembly.instantiate(module, {
-  wasi_snapshot_preview1: context.exports,
+  "wasi_snapshot_preview1": context.exports,
 });
 
-context.memory = context.exports.memory;
+const {
+  _start: start,
+  _initialize: initialize,
+  memory,
+} = instance.exports;
 
-if (module.exports._start) {
-  instance.exports._start();
-} else if (module.exports._initialize) {
-  instance.exports._initialize();
+context.memory = memory as WebAssembly.Memory;
+
+if (start instanceof Function) {
+  start();
+} else if (initialize instanceof Function) {
+  initialize();
 } else {
-  throw new Error("No entry point found");
+  throw new Error(
+    "No '_start' or '_initialize' entry point found in WebAssembly module, make sure to compile with wasm32-wasi as the target.",
+  );
 }
-```
-
-## Testing
-
-The test suite for this module spawns rustc processes to compile various example
-Rust programs. You must have wasm targets enabled:
-
-```
-rustup target add wasm32-wasi
-rustup target add wasm32-unknown-unknown
 ```

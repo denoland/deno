@@ -7,14 +7,14 @@ import {
   acceptable,
   createSecAccept,
   createSecKey,
+  createWebSocket,
   handshake,
   OpCode,
   readFrame,
   unmask,
   writeFrame,
-  createWebSocket,
 } from "./mod.ts";
-import { encode, decode } from "../encoding/utf8.ts";
+import { decode, encode } from "../encoding/utf8.ts";
 import { delay } from "../async/delay.ts";
 
 Deno.test("[ws] read unmasked text frame", async () => {

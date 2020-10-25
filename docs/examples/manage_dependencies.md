@@ -2,7 +2,7 @@
 
 ## Concepts
 
-- Deno uses URLs for dependency management
+- Deno uses URLs for dependency management.
 - One convention places all these dependent URLs into a local `deps.ts` file.
   Functionality is then exported out of `deps.ts` for use by local modules.
 - Continuing this convention, dev only dependencies can be kept in a
@@ -55,10 +55,7 @@ local `deps.ts` module.
  * example.ts
  */
 
-import {
-  add,
-  multiply,
-} from "./deps.ts";
+import { add, multiply } from "./deps.ts";
 
 function totalCost(outbound: number, inbound: number, tax: number): number {
   return multiply(add(outbound, inbound), tax);

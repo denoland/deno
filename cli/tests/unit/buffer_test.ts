@@ -4,8 +4,8 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 import {
-  assertEquals,
   assert,
+  assertEquals,
   assertThrows,
   assertThrowsAsync,
   unitTest,

@@ -1,6 +1,6 @@
 # Tools
 
-Documentation for various tooling in support of Deno development
+Documentation for various tooling in support of Deno development.
 
 ## format.py
 

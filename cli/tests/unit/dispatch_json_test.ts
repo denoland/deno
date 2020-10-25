@@ -1,8 +1,4 @@
-import {
-  assertStrictEquals,
-  unitTest,
-  assertMatch,
-} from "./test_util.ts";
+import { assertMatch, assertStrictEquals, unitTest } from "./test_util.ts";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

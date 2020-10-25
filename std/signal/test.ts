@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import { delay } from "../async/delay.ts";
-import { signal, onSignal } from "./mod.ts";
+import { onSignal, signal } from "./mod.ts";
 
 Deno.test({
   name: "signal() throws when called with empty signals",

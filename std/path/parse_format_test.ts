@@ -3,7 +3,7 @@
 import type { FormatInputPathObject, ParsedPath } from "./mod.ts";
 
 import { assertEquals } from "../testing/asserts.ts";
-import { win32, posix } from "./mod.ts";
+import { posix, win32 } from "./mod.ts";
 
 type FormatTestCase = [FormatInputPathObject, string];
 type ParseTestCase = [string, ParsedPath];

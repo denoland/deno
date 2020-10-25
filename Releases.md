@@ -1,10 +1,87 @@
 # Releases
 
-Binary releases can be downloaded manually at
+Binary releases can be downloaded manually at:
 https://github.com/denoland/deno/releases
 
-We also have one-line install commands at
+We also have one-line install commands at:
 https://github.com/denoland/deno_install
+
+### 1.4.6 / 2020.10.10
+
+- fix: 100% CPU idling problem by reverting #7672 (#7911)
+- fix(op_crate/web): add padding on URLSearchParam (#7905)
+- fix(op_crates/fetch): Stringify and parse Request URLs (#7838)
+- refactor(core): Implement Serialize for ModuleSpecifier (#7900)
+- upgrade: Rust 1.47.0 (#7886)
+
+### 1.4.5 / 2020.10.08
+
+- feat(unstable): Revert "enable importsNotUsedAsValues by default #7413"
+  (#7800)
+- fix: Update worker types to better align to lib.dom.d.ts (#7843)
+- fix(cli/ops/fs): Preserve Windows path separators in Deno.realPath() (#7833)
+- fix(cli/rt/console): Don't require a prototype to detect a class instance
+  (#7869)
+- fix(cli/rt/error_stack): Improve message line formatting (#7860)
+- fix(core): Handle unregistered errors in core better (#7817)
+- fix(core): Module execution with top level await (#7672)
+- perf(cli/console): Don't add redundant ANSI codes (#7823)
+- refactor(cli): Remove TextDocument (#7850)
+- refactor(cli/inspector): Use &str for post_message (#7851)
+- refactor(cli/repl): Tightly integrate event loop (#7834)
+- refactor(core): Cleanup JsRuntime (#7853, #7855, #7825, #7846)
+- upgrade: deno_doc, deno_lint, dprint, swc (#7862)
+- upgrade: rusty_v8 0.11.0, V8 8.7.220.3 (#7859)
+
+Changes in std version 0.74.0:
+
+- chore(std/http): Rename http_bench.ts -> bench.ts (#7509)
+- feat(std/node/fs): Adding readdir, rename, and some others (#7666)
+- fix(std/node/fs): Allow appendFileSync to accept Uint8Array as type for data
+  (#7835)
+
+### 1.4.4 / 2020.10.03
+
+- fix(cli): Update type definitions to align to TS dom (#7791)
+- fix(cli/repl): Fix hot loop in REPL (#7804)
+- fix(cli/repl): Enable colors on inspected values (#7798)
+
+### 1.4.3 / 2020.10.02
+
+- feat(unstable): Add module specifier to deno info --json output (#7725)
+- fix: Bundle loader returns exported value (#7764)
+- fix: Check cached versions during transpile (#7760)
+- fix: Net listen crashes on explicit undefined hostname (#7706)
+- fix: --no-check recognizes require (#7720)
+- fix: Use $deno$test.ts instead of .deno.test.ts (#7717)
+- fix: Use global_state file_fetcher when using SpecifierHandler (#7748)
+- fix(console): Catch and format getter errors (#7766)
+- fix(dts): Use var instead of const and let for globals (#7680)
+- fix(inspector): Shutdown server gracefully on drop (#7716)
+- fix(repl): Enable await and let re-declarations (#7784)
+- fix(repl): Use a default referrer when empty (#7794)
+- fix(test): Do not start inspector server when collecting coverage (#7718)
+- fix(websocket): Add missing close events and remove extra error event (#7606)
+- refactor: Add concept of 'legacy' compiler to enable non-breaking refactoring
+  (#7762)
+- refactor: Combine MainWorker::new and MainWorker::create (#7693)
+- refactor: Extract inspector session (#7756, #7763)
+- refactor: Factor out check_unstable op helper (#7695)
+- refactor: Improve graph and tsc_config (#7747)
+- refactor: Improve op crate interfaces for other consumers (#7745)
+- refactor: Move op state registration to workers (#7696)
+- refactor: Use JsRuntime to implement TSC (#7691)
+- refactor: Add Deno.InspectOptions::colors (#7742)
+- upgrade: swc, deno_doc, deno_lint, dprint (#7711, #7793)
+
+Changes in std version 0.72.0:
+
+- BREAKING(std/encoding/csv): Improve the definition of ParseOptions (#7714)
+- feat(std/path): Align globToRegExp() with bash glob expansion (#7209)
+- fix(std/datetime): Add timezone to date strings in tests (#7675)
+- refactor(std/example): Inconsistencies in the example tests (#7684)
+- refactor(std/testing): Get rid of default export and make std/testing/diff.ts
+  private (#7592)
 
 ### 1.4.2 / 2020.09.25
 

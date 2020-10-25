@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function urlParsing(): void {
   const url = new URL(
@@ -192,6 +192,8 @@ unitTest(function urlModifyPathname(): void {
   // deno-lint-ignore no-self-assign
   url.pathname = url.pathname;
   assertEquals(url.pathname, "/baz%23qat%20qux");
+  url.pathname = "\\a\\b\\c";
+  assertEquals(url.pathname, "/a/b/c");
 });
 
 unitTest(function urlModifyHash(): void {

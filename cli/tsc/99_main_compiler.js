@@ -4,7 +4,7 @@
 // that is created when Deno needs to compile TS/WASM to JS.
 //
 // It provides two functions that should be called by Rust:
-//  - `bootstrapCompilerRuntime`
+//  - `startup`
 // This functions must be called when creating isolate
 // to properly setup runtime.
 //  - `tsCompilerOnMessage`
@@ -22,6 +22,11 @@ delete Object.prototype.__proto__;
   let logDebug = false;
   let logSource = "JS";
 
+  /** Instructs the host to behave in a legacy fashion, with the legacy
+   * pipeline for handling code.  Setting the value to `true` will cause the
+   * host to behave in the modern way. */
+  let legacy = true;
+
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -29,9 +34,9 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function log(...args) {
+  function debug(...args) {
     if (logDebug) {
-      const stringifiedArgs = args.map(JSON.stringify).join(" ");
+      const stringifiedArgs = args.map((arg) => JSON.stringify(arg)).join(" ");
       core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
     }
   }
@@ -49,9 +54,8 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function notImplemented() {
-    throw new Error("not implemented");
-  }
+  /** @type {Map<string, ts.SourceFile>} */
+  const sourceFileCache = new Map();
 
   /**
    * @param {import("../dts/typescript").DiagnosticRelatedInformation} diagnostic
@@ -121,7 +125,7 @@ delete Object.prototype.__proto__;
   // paths must be either relative or absolute. Since
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
-  const ASSETS = "asset://";
+  const ASSETS = "asset:///";
   const OUT_DIR = "deno://";
   const CACHE = "cache:///";
   // This constant is passed to compiler settings when
@@ -159,8 +163,9 @@ delete Object.prototype.__proto__;
     4: "TSX",
     5: "Json",
     6: "Wasm",
-    7: "BuildInfo",
-    8: "Unknown",
+    7: "TsBuildInfo",
+    8: "SourceMap",
+    9: "Unknown",
     JavaScript: 0,
     JSX: 1,
     TypeScript: 2,
@@ -168,8 +173,9 @@ delete Object.prototype.__proto__;
     TSX: 4,
     Json: 5,
     Wasm: 6,
-    BuildInfo: 7,
-    Unknown: 6,
+    TsBuildInfo: 7,
+    SourceMap: 8,
+    Unknown: 9,
   };
 
   function getExtension(fileName, mediaType) {
@@ -179,7 +185,9 @@ delete Object.prototype.__proto__;
       case MediaType.JSX:
         return ts.Extension.Jsx;
       case MediaType.TypeScript:
-        return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
+        return ts.Extension.Ts;
+      case MediaType.Dts:
+        return ts.Extension.Dts;
       case MediaType.TSX:
         return ts.Extension.Tsx;
       case MediaType.Wasm:
@@ -281,180 +289,199 @@ delete Object.prototype.__proto__;
     });
   }
 
-  class Host {
-    #options;
-    #target;
-    #writeFile;
-    /* Deno specific APIs */
+  /** There was some private state in the legacy host, that is moved out to
+   * here which can then be refactored out later. */
+  const legacyHostState = {
+    buildInfo: "",
+    target: CompilerHostTarget.Main,
+    writeFile: (_fileName, _data, _sourceFiles) => {},
+  };
 
-    constructor(
-      options,
-      target,
-      writeFile,
-    ) {
-      this.#target = target;
-      this.#writeFile = writeFile;
-      this.#options = options;
-    }
-
-    get options() {
-      return this.#options;
-    }
-
-    /* TypeScript CompilerHost APIs */
-
+  /** @type {import("../dts/typescript").CompilerHost} */
+  const host = {
     fileExists(fileName) {
-      log(`compiler::host.fileExists("${fileName}")`);
+      debug(`host.fileExists("${fileName}")`);
       return false;
-    }
-
-    getCanonicalFileName(fileName) {
-      return fileName;
-    }
-
-    getCompilationSettings() {
-      log("compiler::host.getCompilationSettings()");
-      return this.#options;
-    }
-
-    getCurrentDirectory() {
-      return CACHE;
-    }
-
-    getDefaultLibFileName(_options) {
-      log("compiler::host.getDefaultLibFileName()");
-      switch (this.#target) {
-        case CompilerHostTarget.Main:
-        case CompilerHostTarget.Runtime:
-          return `${ASSETS}/lib.deno.window.d.ts`;
-        case CompilerHostTarget.Worker:
-          return `${ASSETS}/lib.deno.worker.d.ts`;
+    },
+    readFile(specifier) {
+      debug(`host.readFile("${specifier}")`);
+      if (legacy) {
+        if (specifier == TS_BUILD_INFO) {
+          return legacyHostState.buildInfo;
+        }
+        return unreachable();
+      } else {
+        return core.jsonOpSync("op_load", { specifier }).data;
       }
-    }
-
-    getNewLine() {
-      return "\n";
-    }
-
+    },
     getSourceFile(
-      fileName,
+      specifier,
       languageVersion,
       onError,
       shouldCreateNewSourceFile,
     ) {
-      log("compiler::host.getSourceFile", fileName);
-      try {
-        assert(!shouldCreateNewSourceFile);
-        const sourceFile = fileName.startsWith(ASSETS)
-          ? getAssetInternal(fileName)
-          : SourceFile.getCached(fileName);
-        assert(sourceFile != null);
-        if (!sourceFile.tsSourceFile) {
-          assert(sourceFile.sourceCode != null);
-          const tsSourceFileName = fileName.startsWith(ASSETS)
-            ? sourceFile.filename
-            : fileName;
+      debug(
+        `host.getSourceFile("${specifier}", ${
+          ts.ScriptTarget[languageVersion]
+        })`,
+      );
+      if (legacy) {
+        try {
+          assert(!shouldCreateNewSourceFile);
+          const sourceFile = specifier.startsWith(ASSETS)
+            ? getAssetInternal(specifier)
+            : SourceFile.getCached(specifier);
+          assert(sourceFile != null);
+          if (!sourceFile.tsSourceFile) {
+            assert(sourceFile.sourceCode != null);
+            const tsSourceFileName = specifier.startsWith(ASSETS)
+              ? sourceFile.filename
+              : specifier;
 
-          sourceFile.tsSourceFile = ts.createSourceFile(
-            tsSourceFileName,
-            sourceFile.sourceCode,
-            languageVersion,
-          );
-          sourceFile.tsSourceFile.version = sourceFile.versionHash;
-          delete sourceFile.sourceCode;
-        }
-        return sourceFile.tsSourceFile;
-      } catch (e) {
-        if (onError) {
-          onError(String(e));
-        } else {
-          throw e;
-        }
-        return undefined;
-      }
-    }
+            sourceFile.tsSourceFile = ts.createSourceFile(
+              tsSourceFileName,
+              sourceFile.sourceCode,
+              languageVersion,
+            );
+            sourceFile.tsSourceFile.version = sourceFile.versionHash;
+            delete sourceFile.sourceCode;
 
-    readFile(_fileName) {
-      return notImplemented();
-    }
-
-    resolveModuleNames(moduleNames, containingFile) {
-      log("compiler::host.resolveModuleNames", {
-        moduleNames,
-        containingFile,
-      });
-      const resolved = moduleNames.map((specifier) => {
-        const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
-
-        log("compiler::host.resolveModuleNames maybeUrl", {
-          specifier,
-          maybeUrl,
-        });
-
-        let sourceFile = undefined;
-
-        if (specifier.startsWith(ASSETS)) {
-          sourceFile = getAssetInternal(specifier);
-        } else if (typeof maybeUrl !== "undefined") {
-          sourceFile = SourceFile.getCached(maybeUrl);
-        }
-
-        if (!sourceFile) {
+            // This code is to support transition from the "legacy" compiler
+            // to the new one, by populating the new source file cache.
+            if (
+              !sourceFileCache.has(specifier) && specifier.startsWith(ASSETS)
+            ) {
+              sourceFileCache.set(specifier, sourceFile.tsSourceFile);
+            }
+          }
+          return sourceFile.tsSourceFile;
+        } catch (e) {
+          if (onError) {
+            onError(String(e));
+          } else {
+            throw e;
+          }
           return undefined;
         }
+      } else {
+        let sourceFile = sourceFileCache.get(specifier);
+        if (sourceFile) {
+          return sourceFile;
+        }
 
-        return {
-          resolvedFileName: sourceFile.url,
-          isExternalLibraryImport: specifier.startsWith(ASSETS),
-          extension: sourceFile.extension,
-        };
-      });
-      log(resolved);
-      return resolved;
-    }
-
+        /** @type {{ data: string; hash: string; }} */
+        const { data, hash, scriptKind } = core.jsonOpSync(
+          "op_load",
+          { specifier },
+        );
+        assert(data, `"data" is unexpectedly null for "${specifier}".`);
+        sourceFile = ts.createSourceFile(
+          specifier,
+          data,
+          languageVersion,
+          false,
+          scriptKind,
+        );
+        sourceFile.moduleName = specifier;
+        sourceFile.version = hash;
+        sourceFileCache.set(specifier, sourceFile);
+        return sourceFile;
+      }
+    },
+    getDefaultLibFileName() {
+      if (legacy) {
+        switch (legacyHostState.target) {
+          case CompilerHostTarget.Main:
+          case CompilerHostTarget.Runtime:
+            return `${ASSETS}/lib.deno.window.d.ts`;
+          case CompilerHostTarget.Worker:
+            return `${ASSETS}/lib.deno.worker.d.ts`;
+        }
+      } else {
+        return `${ASSETS}/lib.esnext.d.ts`;
+      }
+    },
+    getDefaultLibLocation() {
+      return ASSETS;
+    },
+    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
+      debug(`host.writeFile("${fileName}")`);
+      if (legacy) {
+        legacyHostState.writeFile(fileName, data, sourceFiles);
+      } else {
+        let maybeSpecifiers;
+        if (sourceFiles) {
+          maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
+        }
+        return core.jsonOpSync(
+          "op_emit",
+          { maybeSpecifiers, fileName, data },
+        );
+      }
+    },
+    getCurrentDirectory() {
+      return CACHE;
+    },
+    getCanonicalFileName(fileName) {
+      return fileName;
+    },
     useCaseSensitiveFileNames() {
       return true;
-    }
+    },
+    getNewLine() {
+      return "\n";
+    },
+    resolveModuleNames(specifiers, base) {
+      debug(`host.resolveModuleNames()`);
+      debug(`  base: ${base}`);
+      debug(`  specifiers: ${specifiers.join(", ")}`);
+      if (legacy) {
+        const resolved = specifiers.map((specifier) => {
+          const maybeUrl = SourceFile.getResolvedUrl(specifier, base);
 
-    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
-      log("compiler::host.writeFile", fileName);
-      this.#writeFile(fileName, data, sourceFiles);
-    }
-  }
+          debug("compiler::host.resolveModuleNames maybeUrl", {
+            specifier,
+            maybeUrl,
+          });
 
-  class IncrementalCompileHost extends Host {
-    #buildInfo = "";
+          let sourceFile = undefined;
 
-    constructor(
-      options,
-      target,
-      writeFile,
-      buildInfo,
-    ) {
-      super(options, target, writeFile);
-      if (buildInfo) {
-        this.#buildInfo = buildInfo;
+          if (specifier.startsWith(ASSETS)) {
+            sourceFile = getAssetInternal(specifier);
+          } else if (typeof maybeUrl !== "undefined") {
+            sourceFile = SourceFile.getCached(maybeUrl);
+          }
+
+          if (!sourceFile) {
+            return undefined;
+          }
+
+          return {
+            resolvedFileName: sourceFile.url,
+            isExternalLibraryImport: specifier.startsWith(ASSETS),
+            extension: sourceFile.extension,
+          };
+        });
+        debug(resolved);
+        return resolved;
+      } else {
+        /** @type {Array<[string, import("../dts/typescript").Extension]>} */
+        const resolved = core.jsonOpSync("op_resolve", {
+          specifiers,
+          base,
+        });
+        let r = resolved.map(([resolvedFileName, extension]) => ({
+          resolvedFileName,
+          extension,
+          isExternalLibraryImport: false,
+        }));
+        return r;
       }
-    }
-
-    readFile(fileName) {
-      if (fileName == TS_BUILD_INFO) {
-        return this.#buildInfo;
-      }
-      throw new Error("unreachable");
-    }
-  }
-
-  // NOTE: target doesn't really matter here,
-  // this is in fact a mock host created just to
-  // load all type definitions and snapshot them.
-  let SNAPSHOT_HOST = new Host(
-    DEFAULT_COMPILE_OPTIONS,
-    CompilerHostTarget.Main,
-    () => {},
-  );
-  const SNAPSHOT_COMPILER_OPTIONS = SNAPSHOT_HOST.getCompilationSettings();
+    },
+    createHash(data) {
+      return core.jsonOpSync("op_create_hash", { data }).hash;
+    },
+  };
 
   // This is a hacky way of adding our libs to the libs available in TypeScript()
   // as these are internal APIs of TypeScript which maintain valid libs
@@ -467,34 +494,38 @@ delete Object.prototype.__proto__;
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
   ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
 
+  // TODO(@kitsonk) remove once added to TypeScript
+  ts.libs.push("esnext.weakref");
+  ts.libMap.set("esnext.weakref", "lib.esnext.weakref.d.ts");
+
   // this pre-populates the cache at snapshot time of our library files, so they
   // are available in the future when needed.
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.ns.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.ns.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.web.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.web.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.fetch.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.fetch.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.window.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.window.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.worker.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.worker.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.shared_globals.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.shared_globals.d.ts`,
     ts.ScriptTarget.ESNext,
   );
-  SNAPSHOT_HOST.getSourceFile(
-    `${ASSETS}/lib.deno.unstable.d.ts`,
+  host.getSourceFile(
+    `${ASSETS}lib.deno.unstable.d.ts`,
     ts.ScriptTarget.ESNext,
   );
 
@@ -502,13 +533,10 @@ delete Object.prototype.__proto__;
   // during snapshotting to hydrate and populate
   // source file cache with lib declaration files.
   const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
-    rootNames: [`${ASSETS}/bootstrap.ts`],
-    options: SNAPSHOT_COMPILER_OPTIONS,
-    host: SNAPSHOT_HOST,
+    rootNames: [`${ASSETS}bootstrap.ts`],
+    options: DEFAULT_COMPILE_OPTIONS,
+    host,
   });
-
-  // Derference the snapshot host so it can be GCed
-  SNAPSHOT_HOST = undefined;
 
   // This function is called only during snapshotting process
   const SYSTEM_LOADER = getAsset("system_loader.js");
@@ -566,69 +594,9 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function buildSourceFileCache(sourceFileMap) {
-    for (const entry of Object.values(sourceFileMap)) {
-      SourceFile.addToCache({
-        url: entry.url,
-        filename: entry.url,
-        mediaType: entry.mediaType,
-        sourceCode: entry.sourceCode,
-        versionHash: entry.versionHash,
-      });
-
-      for (const importDesc of entry.imports) {
-        let mappedUrl = importDesc.resolvedSpecifier;
-        const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
-        // IMPORTANT: due to HTTP redirects we might end up in situation
-        // where URL points to a file with completely different URL.
-        // In that case we take value of `redirect` field and cache
-        // resolved specifier pointing to the value of the redirect.
-        // It's not very elegant solution and should be rethinked.
-        assert(importedFile);
-        if (importedFile.redirect) {
-          mappedUrl = importedFile.redirect;
-        }
-        const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
-          importedFile.mediaType === MediaType.JSX;
-        // If JS or JSX perform substitution for types if available
-        if (isJsOrJsx) {
-          // @deno-types has highest precedence, followed by
-          // X-TypeScript-Types header
-          if (importDesc.resolvedTypeDirective) {
-            mappedUrl = importDesc.resolvedTypeDirective;
-          } else if (importedFile.typeHeaders.length > 0) {
-            const typeHeaders = importedFile.typeHeaders[0];
-            mappedUrl = typeHeaders.resolvedSpecifier;
-          } else if (importedFile.typesDirectives.length > 0) {
-            const typeDirective = importedFile.typesDirectives[0];
-            mappedUrl = typeDirective.resolvedSpecifier;
-          }
-        }
-
-        SourceFile.cacheResolvedUrl(mappedUrl, importDesc.specifier, entry.url);
-      }
-      for (const fileRef of entry.referencedFiles) {
-        SourceFile.cacheResolvedUrl(
-          fileRef.resolvedSpecifier,
-          fileRef.specifier,
-          entry.url,
-        );
-      }
-      for (const fileRef of entry.libDirectives) {
-        SourceFile.cacheResolvedUrl(
-          fileRef.resolvedSpecifier,
-          fileRef.specifier,
-          entry.url,
-        );
-      }
-    }
-  }
-
   // Warning! The values in this enum are duplicated in `cli/msg.rs`
   // Update carefully!
   const CompilerRequestType = {
-    Compile: 0,
-    Bundle: 1,
     RuntimeCompile: 2,
     RuntimeBundle: 3,
     RuntimeTranspile: 4,
@@ -637,34 +605,15 @@ delete Object.prototype.__proto__;
   function createBundleWriteFile(state) {
     return function writeFile(_fileName, data, sourceFiles) {
       assert(sourceFiles != null);
-      assert(state.host);
+      assert(state.options);
       // we only support single root names for bundles
       assert(state.rootNames.length === 1);
       state.bundleOutput = buildBundle(
         state.rootNames[0],
         data,
         sourceFiles,
-        state.host.options.target ?? ts.ScriptTarget.ESNext,
+        state.options.target ?? ts.ScriptTarget.ESNext,
       );
-    };
-  }
-
-  function createCompileWriteFile(state) {
-    return function writeFile(fileName, data, sourceFiles) {
-      const isBuildInfo = fileName === TS_BUILD_INFO;
-
-      if (isBuildInfo) {
-        assert(isBuildInfo);
-        state.buildInfo = data;
-        return;
-      }
-
-      assert(sourceFiles);
-      assert(sourceFiles.length === 1);
-      state.emitMap[fileName] = {
-        filename: sourceFiles[0].fileName,
-        contents: data,
-      };
     };
   }
 
@@ -717,6 +666,7 @@ delete Object.prototype.__proto__;
     1208,
   ];
 
+  /** @type {Array<{ key: string, value: number }>} */
   const stats = [];
   let statsStart = 0;
 
@@ -759,7 +709,6 @@ delete Object.prototype.__proto__;
   }
 
   function performanceEnd() {
-    // TODO(kitsonk) replace with performance.measure() when landed
     const duration = new Date() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
@@ -937,210 +886,10 @@ delete Object.prototype.__proto__;
       .map((sym) => sym.getName());
   }
 
-  function compile({
-    buildInfo,
-    compilerOptions,
-    rootNames,
-    target,
-    sourceFileMap,
-    type,
-    performance,
-  }) {
-    if (performance) {
-      performanceStart();
-    }
-    log(">>> compile start", { rootNames, type: CompilerRequestType[type] });
-
-    // When a programme is emitted, TypeScript will call `writeFile` with
-    // each file that needs to be emitted.  The Deno compiler host delegates
-    // this, to make it easier to perform the right actions, which vary
-    // based a lot on the request.
-    const state = {
-      rootNames,
-      emitMap: {},
-    };
-
-    let diagnostics = [];
-
-    const { options, diagnostics: diags } = parseCompilerOptions(
-      compilerOptions,
-    );
-
-    diagnostics = diags.filter(
-      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
-    );
-
-    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
-    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
-    options.allowNonTsExtensions = true;
-
-    const host = new IncrementalCompileHost(
-      options,
-      target,
-      createCompileWriteFile(state),
-      buildInfo,
-    );
-
-    buildSourceFileCache(sourceFileMap);
-    // if there was a configuration and no diagnostics with it, we will continue
-    // to generate the program and possibly emit it.
-    if (diagnostics.length === 0) {
-      const options = host.getCompilationSettings();
-      const program = ts.createIncrementalProgram({
-        rootNames,
-        options,
-        host,
-      });
-
-      // TODO(bartlomieju): check if this is ok
-      diagnostics = [
-        ...program.getConfigFileParsingDiagnostics(),
-        ...program.getSyntacticDiagnostics(),
-        ...program.getOptionsDiagnostics(),
-        ...program.getGlobalDiagnostics(),
-        ...program.getSemanticDiagnostics(),
-      ];
-      diagnostics = diagnostics.filter(
-        ({ code }) =>
-          !IGNORED_DIAGNOSTICS.includes(code) &&
-          !IGNORED_COMPILE_DIAGNOSTICS.includes(code),
-      );
-
-      // We will only proceed with the emit if there are no diagnostics.
-      if (diagnostics.length === 0) {
-        const emitResult = program.emit();
-        // If `checkJs` is off we still might be compiling entry point JavaScript file
-        // (if it has `.ts` imports), but it won't be emitted. In that case we skip
-        // assertion.
-        if (options.checkJs) {
-          assert(
-            emitResult.emitSkipped === false,
-            "Unexpected skip of the emit.",
-          );
-        }
-        // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
-        // without casting.
-        diagnostics = emitResult.diagnostics;
-      }
-      performanceProgram({ program });
-    }
-
-    log("<<< compile end", { rootNames, type: CompilerRequestType[type] });
-    const stats = performance ? performanceEnd() : undefined;
-
-    return {
-      emitMap: state.emitMap,
-      buildInfo: state.buildInfo,
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
-      stats,
-    };
-  }
-
-  function bundle({
-    compilerOptions,
-    rootNames,
-    target,
-    sourceFileMap,
-    type,
-    performance,
-  }) {
-    if (performance) {
-      performanceStart();
-    }
-    log(">>> bundle start", {
-      rootNames,
-      type: CompilerRequestType[type],
-    });
-
-    // When a programme is emitted, TypeScript will call `writeFile` with
-    // each file that needs to be emitted.  The Deno compiler host delegates
-    // this, to make it easier to perform the right actions, which vary
-    // based a lot on the request.
-    const state = {
-      rootNames,
-      bundleOutput: undefined,
-    };
-
-    const { options, diagnostics: diags } = parseCompilerOptions(
-      compilerOptions,
-    );
-
-    diagnostics = diags.filter(
-      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
-    );
-
-    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
-    // however stuff breaks if it's not passed (type_directives_js_main.js)
-    options.allowNonTsExtensions = true;
-
-    const host = new Host(
-      options,
-      target,
-      createBundleWriteFile(state),
-    );
-    state.host = host;
-
-    buildSourceFileCache(sourceFileMap);
-    // if there was a configuration and no diagnostics with it, we will continue
-    // to generate the program and possibly emit it.
-    if (diagnostics.length === 0) {
-      const options = host.getCompilationSettings();
-      const program = ts.createProgram({
-        rootNames,
-        options,
-        host,
-      });
-
-      diagnostics = ts
-        .getPreEmitDiagnostics(program)
-        .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-
-      // We will only proceed with the emit if there are no diagnostics.
-      if (diagnostics.length === 0) {
-        // we only support a single root module when bundling
-        assert(rootNames.length === 1);
-        setRootExports(program, rootNames[0]);
-        const emitResult = program.emit();
-        assert(
-          emitResult.emitSkipped === false,
-          "Unexpected skip of the emit.",
-        );
-        // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
-        // without casting.
-        diagnostics = emitResult.diagnostics;
-      }
-      if (performance) {
-        performanceProgram({ program });
-      }
-    }
-
-    let bundleOutput;
-
-    if (diagnostics.length === 0) {
-      assert(state.bundleOutput);
-      bundleOutput = state.bundleOutput;
-    }
-
-    const stats = performance ? performanceEnd() : undefined;
-
-    const result = {
-      bundleOutput,
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
-      stats,
-    };
-
-    log("<<< bundle end", {
-      rootNames,
-      type: CompilerRequestType[type],
-    });
-
-    return result;
-  }
-
   function runtimeCompile(request) {
     const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
-    log(">>> runtime compile start", {
+    debug(">>> runtime compile start", {
       rootNames,
     });
 
@@ -1160,14 +909,11 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
-    const host = new Host(
-      options,
-      target,
-      createRuntimeCompileWriteFile(state),
-    );
+    legacyHostState.target = target;
+    legacyHostState.writeFile = createRuntimeCompileWriteFile(state);
     const program = ts.createProgram({
       rootNames,
-      options: host.getCompilationSettings(),
+      options,
       host,
     });
 
@@ -1181,7 +927,7 @@ delete Object.prototype.__proto__;
     const emitResult = program.emit();
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
-    log("<<< runtime compile finish", {
+    debug("<<< runtime compile finish", {
       rootNames,
       emitMap: Object.keys(state.emitMap),
     });
@@ -1199,7 +945,7 @@ delete Object.prototype.__proto__;
   function runtimeBundle(request) {
     const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
-    log(">>> runtime bundle start", {
+    debug(">>> runtime bundle start", {
       rootNames,
     });
 
@@ -1220,16 +966,13 @@ delete Object.prototype.__proto__;
       bundleOutput: undefined,
     };
 
-    const host = new Host(
-      options,
-      target,
-      createBundleWriteFile(state),
-    );
-    state.host = host;
+    legacyHostState.target = target;
+    legacyHostState.writeFile = createBundleWriteFile(state);
+    state.options = options;
 
     const program = ts.createProgram({
       rootNames,
-      options: host.getCompilationSettings(),
+      options,
       host,
     });
 
@@ -1242,7 +985,7 @@ delete Object.prototype.__proto__;
 
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
-    log("<<< runtime bundle finish", {
+    debug("<<< runtime bundle finish", {
       rootNames,
     });
 
@@ -1288,16 +1031,6 @@ delete Object.prototype.__proto__;
   function tsCompilerOnMessage(msg) {
     const request = msg.data;
     switch (request.type) {
-      case CompilerRequestType.Compile: {
-        const result = compile(request);
-        opCompilerRespond(result);
-        break;
-      }
-      case CompilerRequestType.Bundle: {
-        const result = bundle(request);
-        opCompilerRespond(result);
-        break;
-      }
       case CompilerRequestType.RuntimeCompile: {
         const result = runtimeCompile(request);
         opCompilerRespond(result);
@@ -1322,18 +1055,73 @@ delete Object.prototype.__proto__;
     }
   }
 
-  let hasBootstrapped = false;
+  /**
+   * @typedef {object} Request
+   * @property {Record<string, any>} config
+   * @property {boolean} debug
+   * @property {string[]} rootNames
+   */
 
-  function bootstrapCompilerRuntime({ debugFlag }) {
-    if (hasBootstrapped) {
-      throw new Error("Worker runtime already bootstrapped");
-    }
-    hasBootstrapped = true;
-    delete globalThis.__bootstrap;
-    core.ops();
-    setLogDebug(!!debugFlag, "TS");
+  /** The API that is called by Rust when executing a request.
+   * @param {Request} request 
+   */
+  function exec({ config, debug: debugFlag, rootNames }) {
+    setLogDebug(debugFlag, "TS");
+    performanceStart();
+    debug(">>> exec start", { rootNames });
+    debug(config);
+
+    const { options, errors: configFileParsingDiagnostics } = ts
+      .convertCompilerOptionsFromJson(config, "", "tsconfig.json");
+    const program = ts.createIncrementalProgram({
+      rootNames,
+      options,
+      host,
+      configFileParsingDiagnostics,
+    });
+
+    const { diagnostics: emitDiagnostics } = program.emit();
+
+    const diagnostics = [
+      ...program.getConfigFileParsingDiagnostics(),
+      ...program.getSyntacticDiagnostics(),
+      ...program.getOptionsDiagnostics(),
+      ...program.getGlobalDiagnostics(),
+      ...program.getSemanticDiagnostics(),
+      ...emitDiagnostics,
+    ].filter(({ code }) =>
+      !IGNORED_DIAGNOSTICS.includes(code) &&
+      !IGNORED_COMPILE_DIAGNOSTICS.includes(code)
+    );
+    performanceProgram({ program });
+
+    // TODO(@kitsonk) when legacy stats are removed, convert to just tuples
+    let stats = performanceEnd().map(({ key, value }) => [key, value]);
+    core.jsonOpSync("op_respond", {
+      diagnostics: fromTypeScriptDiagnostic(diagnostics),
+      stats,
+    });
+    debug("<<< exec stop");
   }
 
-  globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;
+  let hasStarted = false;
+
+  /** Startup the runtime environment, setting various flags.
+   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg 
+   */
+  function startup({ debugFlag = false, legacyFlag = true }) {
+    if (hasStarted) {
+      throw new Error("The compiler runtime already started.");
+    }
+    hasStarted = true;
+    core.ops();
+    core.registerErrorClass("Error", Error);
+    setLogDebug(!!debugFlag, "TS");
+    legacy = legacyFlag;
+  }
+
+  globalThis.startup = startup;
+  globalThis.exec = exec;
+  // TODO(@kitsonk) remove when converted from legacy tsc
   globalThis.tsCompilerOnMessage = tsCompilerOnMessage;
 })(this);

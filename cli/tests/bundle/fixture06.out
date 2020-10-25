@@ -1,0 +1,2 @@
+console.log(false, "file:///tests/subdir/f.ts");
+console.log(import.meta.main, "file:///tests/fixture06.ts");

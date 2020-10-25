@@ -1,0 +1,4 @@
+Check [WILDCARD]
+running 2 tests
+test unresolved promise ... in promise
+error: Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.

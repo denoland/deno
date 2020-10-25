@@ -73,6 +73,7 @@ fn get_asset(name: &str) -> Option<&'static str> {
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
     "lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
     "lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
+    "lib.esnext.weakref.d.ts" => inc!("lib.esnext.weakref.d.ts"),
     "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
     "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
     "lib.webworker.importscripts.d.ts" => {

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
 unitTest(function globalThisExists(): void {
   assert(globalThis != null);
@@ -34,6 +34,14 @@ unitTest(function globalThisEqualsWindow(): void {
 
 unitTest(function globalThisEqualsSelf(): void {
   assert(globalThis === self);
+});
+
+unitTest(function globalThisInstanceofWindow(): void {
+  assert(globalThis instanceof Window);
+});
+
+unitTest(function globalThisInstanceofEventTarget(): void {
+  assert(globalThis instanceof EventTarget);
 });
 
 unitTest(function DenoNamespaceExists(): void {

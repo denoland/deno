@@ -68,7 +68,7 @@ Once our script is running again, let's send a request and inspect it in
 Devtools:
 
 ```
-$ curl http://0.0.0.0:4500/
+$ curl http://0.0.0.0:4507/
 ```
 
 ![Break in request handling](../images/debugger5.jpg)
@@ -141,5 +141,5 @@ Deno process.
 Devtools support is still immature. There is some functionality that is known to
 be missing or buggy:
 
-- autocomplete in Devtools' console causes the Deno process to exit
-- profiling and memory dumps might not work correctly
+- autocomplete in Devtools' console causes the Deno process to exit.
+- profiling and memory dumps might not work correctly.

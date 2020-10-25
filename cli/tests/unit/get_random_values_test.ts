@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertNotEquals, assertStrictEquals } from "./test_util.ts";
+import { assertNotEquals, assertStrictEquals, unitTest } from "./test_util.ts";
 
 unitTest(function getRandomValuesInt8Array(): void {
   const arr = new Int8Array(32);

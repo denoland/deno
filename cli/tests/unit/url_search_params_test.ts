@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function urlSearchParamsWithMultipleSpaces(): void {
   const init = { str: "this string has spaces in it" };
@@ -177,6 +177,12 @@ unitTest(function urlSearchParamsMissingPair(): void {
   const init = "c=4&&a=54&";
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.toString(), "c=4&a=54");
+});
+
+unitTest(function urlSearchParamsForShortEncodedChar(): void {
+  const init = { linefeed: "\n", tab: "\t" };
+  const searchParams = new URLSearchParams(init);
+  assertEquals(searchParams.toString(), "linefeed=%0A&tab=%09");
 });
 
 // If pair does not contain exactly two items, then throw a TypeError.

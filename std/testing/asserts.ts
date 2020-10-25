@@ -2,8 +2,8 @@
 /** This module is browser compatible. Do not rely on good formatting of values
  * for AssertionError messages in browsers. */
 
-import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
-import diff, { DiffType, DiffResult } from "./diff.ts";
+import { bold, gray, green, red, stripColor, white } from "../fmt/colors.ts";
+import { diff, DiffResult, DiffType } from "./_diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
@@ -21,13 +21,13 @@ export class AssertionError extends Error {
 
 export function _format(v: unknown): string {
   return globalThis.Deno
-    ? stripColor(Deno.inspect(v, {
+    ? Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
       trailingComma: true,
       compact: false,
       iterableLimit: Infinity,
-    }))
+    })
     : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
 }
 
@@ -427,6 +427,48 @@ export function assertNotMatch(
     }
     throw new AssertionError(msg);
   }
+}
+
+/**
+ * Make an assertion that `actual` object is a subset of `expected` object, deeply.
+ * If not, then throw.
+ */
+export function assertObjectMatch(
+  actual: Record<PropertyKey, unknown>,
+  expected: Record<PropertyKey, unknown>,
+): void {
+  type loose = Record<PropertyKey, unknown>;
+  const seen = new WeakMap();
+  return assertEquals(
+    (function filter(a: loose, b: loose): loose {
+      // Prevent infinite loop with circular references with same filter
+      if ((seen.has(a)) && (seen.get(a) === b)) {
+        return a;
+      }
+      seen.set(a, b);
+      // Filter keys and symbols which are present in both actual and expected
+      const filtered = {} as loose;
+      const entries = [
+        ...Object.getOwnPropertyNames(a),
+        ...Object.getOwnPropertySymbols(a),
+      ]
+        .filter((key) => key in b)
+        .map((key) => [key, a[key as string]]) as Array<[string, unknown]>;
+      // Build filtered object and filter recursively on nested objects references
+      for (const [key, value] of entries) {
+        if (typeof value === "object") {
+          const subset = (b as loose)[key];
+          if ((typeof subset === "object") && (subset)) {
+            filtered[key] = filter(value as loose, subset as loose);
+            continue;
+          }
+        }
+        filtered[key] = value;
+      }
+      return filtered;
+    })(actual, expected),
+    expected,
+  );
 }
 
 /**
