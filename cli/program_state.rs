@@ -121,13 +121,19 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     target_lib: TargetLib,
-    dynamic_permissions: Permissions,
+    runtime_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let specifier = specifier.clone();
+    // Workers are subject to the current runtime permissions.  We do the
+    // permission check here early to avoid "wasting" time building a module
+    // graph for a module that cannot be loaded.
+    if target_lib == TargetLib::Worker {
+      runtime_permissions.check_specifier(&specifier)?;
+    }
     let handler =
-      Rc::new(RefCell::new(FetchHandler::new(self, dynamic_permissions)?));
+      Rc::new(RefCell::new(FetchHandler::new(self, runtime_permissions)?));
     let mut builder =
       GraphBuilder2::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;

@@ -135,7 +135,7 @@ lazy_static! {
     Regex::new(r#"(?i)\slib\s*=\s*["']([^"']*)["']"#).unwrap();
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum TargetLib {
   Main,
   Worker,

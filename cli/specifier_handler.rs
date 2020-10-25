@@ -215,8 +215,9 @@ impl CompiledFileMetadata {
 pub struct FetchHandler {
   /// An instance of disk where generated (emitted) files are stored.
   disk_cache: DiskCache,
-  /// A set of permissions to apply to dynamic imports.
-  dynamic_permissions: Permissions,
+  /// The set of current runtime permissions which need to be applied to
+  /// dynamic imports.
+  runtime_permissions: Permissions,
   /// A clone of the `program_state` file fetcher.
   file_fetcher: SourceFileFetcher,
 }
@@ -224,7 +225,7 @@ pub struct FetchHandler {
 impl FetchHandler {
   pub fn new(
     program_state: &Arc<ProgramState>,
-    dynamic_permissions: Permissions,
+    runtime_permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
@@ -233,7 +234,7 @@ impl FetchHandler {
 
     Ok(FetchHandler {
       disk_cache,
-      dynamic_permissions,
+      runtime_permissions,
       file_fetcher,
     })
   }
@@ -250,7 +251,7 @@ impl SpecifierHandler for FetchHandler {
     // permissions need to be applied.  Other static imports have all
     // permissions.
     let permissions = if is_dynamic {
-      self.dynamic_permissions.clone()
+      self.runtime_permissions.clone()
     } else {
       Permissions::allow_all()
     };
@@ -445,7 +446,7 @@ pub mod tests {
 
     let fetch_handler = FetchHandler {
       disk_cache,
-      dynamic_permissions: Permissions::default(),
+      runtime_permissions: Permissions::default(),
       file_fetcher,
     };
 
