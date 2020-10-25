@@ -2722,6 +2722,18 @@ itest!(_053_import_compression {
   http_server: true,
 });
 
+itest!(cache_extensionless {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext",
+  output: "cache_extensionless.out",
+  http_server: true,
+});
+
+itest!(cache_random_extension {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
+  output: "cache_random_extension.out",
+  http_server: true,
+});
+
 itest!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
