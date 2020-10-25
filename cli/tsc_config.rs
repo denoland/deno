@@ -69,6 +69,7 @@ const IGNORED_COMPILER_OPTIONS: [&str; 61] = [
   "inlineSourceMap",
   "inlineSources",
   "init",
+  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
   "listEmittedFiles",
   "listFiles",
   "mapRoot",

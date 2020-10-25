@@ -35,6 +35,7 @@ const tests = [
   "testdata/wasi_fd_write_file.wasm",
   "testdata/wasi_fd_write_stderr.wasm",
   "testdata/wasi_fd_write_stdout.wasm",
+  "testdata/wasi_path_open.wasm",
   "testdata/wasi_proc_exit.wasm",
   "testdata/wasi_random_get.wasm",
   "testdata/wasi_sched_yield.wasm",
@@ -46,9 +47,13 @@ const ignore = [
 
 // TODO(caspervonb) investigate why these tests are failing on windows and fix
 // them.
+// The failing tests all involve symlinks in some way, my best guess so far is
+// that there's something going wrong with copying the symlinks over to the
+// temporary working directory, but only in some cases.
 if (Deno.build.os == "windows") {
   ignore.push("testdata/std_fs_metadata.wasm");
   ignore.push("testdata/std_fs_read_dir.wasm");
+  ignore.push("testdata/wasi_path_open.wasm");
 }
 
 const rootdir = path.dirname(path.fromFileUrl(import.meta.url));
@@ -64,7 +69,14 @@ for (const pathname of tests) {
       );
       const options = JSON.parse(prelude);
 
-      const workdir = await Deno.makeTempDir();
+      // TODO(caspervonb) investigate more.
+      // On Windows creating a tempdir in the default directory breaks nearly
+      // all the tests, possibly due to symlinks pointing to the original file
+      // which crosses drive boundaries.
+      const workdir = await Deno.makeTempDir({
+        dir: testdir,
+      });
+
       await copy(
         path.join(testdir, "fixtures"),
         path.join(workdir, "fixtures"),

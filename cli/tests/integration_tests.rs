@@ -1017,11 +1017,12 @@ fn bundle_js() {
 
 #[test]
 fn bundle_dynamic_import() {
+  let _g = util::http_server();
   let dynamic_import =
-    util::root_path().join("cli/tests/subdir/subdir2/dynamic_import.ts");
+    util::root_path().join("cli/tests/bundle_dynamic_import.ts");
   assert!(dynamic_import.is_file());
   let t = TempDir::new().expect("tempdir fail");
-  let bundle = t.path().join("dynamic_import.bundle.js");
+  let bundle = t.path().join("bundle_dynamic_import.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
@@ -1036,6 +1037,8 @@ fn bundle_dynamic_import() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--allow-net")
+    .arg("--quiet")
     .arg(&bundle)
     .output()
     .expect("failed to spawn script");
@@ -2719,6 +2722,18 @@ itest!(_053_import_compression {
   http_server: true,
 });
 
+itest!(cache_extensionless {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext",
+  output: "cache_extensionless.out",
+  http_server: true,
+});
+
+itest!(cache_random_extension {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
+  output: "cache_random_extension.out",
+  http_server: true,
+});
+
 itest!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
@@ -2757,6 +2772,11 @@ itest!(disallow_http_from_https_ts {
   output: "disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(dynamic_import_conditional {
+  args: "run --quiet --reload dynamic_import_conditional.js",
+  output: "dynamic_import_conditional.js.out",
 });
 
 itest!(tsx_imports {
