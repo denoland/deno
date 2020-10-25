@@ -181,7 +181,7 @@ pub fn prepare_doctests(
   quiet: bool,
   filter: Option<String>,
 ) -> Result<String, AnyError> {
-  let mut test_file =  "import * as assert from \"https://deno.land/std@0.70.0/testing/asserts.ts\";\n".to_string();
+  let mut test_file = "".to_string();
   let mut import_set = HashSet::new();
 
   let cwd = std::env::current_dir()?;
@@ -203,7 +203,7 @@ pub fn prepare_doctests(
       let code_body = extract_code_body(&ex_str);
       let is_async = has_await(&ex_str);
       let res = format!(
-        "\nDeno.test({{\n\tname: \"{} - {} (line {})\",\n\tignore: {},\n\t{} fn() {{\n{}\n}}\n}});\n",
+        "Deno.test({{\n\tname: \"{} - {} (line {})\",\n\tignore: {},\n\t{} fn() {{\n{}\n}}\n}});\n",
         loc.filename.replace(&cwd_url_str, ""),
         caption.unwrap_or(""),
         loc.line,
@@ -218,6 +218,8 @@ pub fn prepare_doctests(
   test_file.push_str(&imports_str);
   test_file.push_str("\n");
   test_file.push_str(&tests);
+  test_file.push_str("\n");
+  test_file.push_str("// @ts-ignore\n");
 
   let options = if let Some(filter) = filter {
     json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "isDoctest": true, "filter": filter })
@@ -225,10 +227,8 @@ pub fn prepare_doctests(
     json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "isDoctest": true })
   };
 
-  let run_tests_cmd = format!(
-    "\n// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
-    options
-  );
+  let run_tests_cmd =
+    format!("await Deno[Deno.internal].runTests({});\n", options);
 
   test_file.push_str(&run_tests_cmd);
   Ok(test_file)
