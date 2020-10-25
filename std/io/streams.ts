@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+/** Creates a Writer from a WritableStreamDefaultWriter */
 export function fromStreamWriter(
   streamWriter: WritableStreamDefaultWriter<Uint8Array>,
 ): Deno.Writer {
@@ -11,7 +12,7 @@ export function fromStreamWriter(
     },
   };
 }
-
+/** Creates a Reader from a ReadableStreamDefaultReader */
 export function fromStreamReader(
   streamReader: ReadableStreamDefaultReader<Uint8Array>,
 ): Deno.Reader {
