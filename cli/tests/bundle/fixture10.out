@@ -1,0 +1,4 @@
+const o = {
+};
+const { a ="a"  } = o;
+console.log(a);

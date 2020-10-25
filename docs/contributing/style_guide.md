@@ -174,6 +174,28 @@ export interface PWrite {
 export function pwrite(options: PWrite) {}
 ```
 
+### Export all interfaces that are used as parameters to an exported member
+
+Whenever you are using interfaces that are included in the arguments of an
+exported member, you should export the interface that is used. Here is an
+example:
+
+```ts
+// my_file.ts
+export interface Person {
+  name: string;
+  age: number;
+}
+
+export function createPerson(name: string, age: number): Person {
+  return { name, age };
+}
+
+// mod.ts
+export { createPerson } from "./my_file.ts";
+export type { Person } from "./my_file.ts";
+```
+
 ### Minimize dependencies; do not make circular imports.
 
 Although `cli/js` and `std` have no external dependencies, we must still be

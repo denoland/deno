@@ -420,6 +420,19 @@ pub async fn run_all_servers() {
         HeaderValue::from_static("application/typescript"),
       );
       res
+    }))
+    .or(warp::path!("cli"/"tests"/"subdir"/"no_js_ext@1.0.0").map(|| {
+      let mut res = Response::new(Body::from(
+        r#"import { printHello } from "./mod2.ts";
+        printHello();
+        "#,
+      ));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      res
     }));
 
   let content_type_handler = warp::any()
@@ -522,7 +535,7 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
     Some("application/x-www-form-urlencoded")
   } else if p.contains("unknown_ext") || p.contains("no_ext") {
     Some("text/typescript")
-  } else if p.contains("mismatch_ext") {
+  } else if p.contains("mismatch_ext") || p.contains("no_js_ext") {
     Some("text/javascript")
   } else if p.ends_with(".ts") || p.ends_with(".tsx") {
     Some("application/typescript")

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { resolve } from "../path/mod.ts";
+import { relative, resolve } from "../path/mod.ts";
 
 const CLOCKID_REALTIME = 0;
 const CLOCKID_MONOTONIC = 1;
@@ -83,7 +83,7 @@ const _ERRNO_STALE = 72;
 const ERRNO_TIMEDOUT = 73;
 const _ERRNO_TXTBSY = 74;
 const _ERRNO_XDEV = 75;
-const _ERRNO_NOTCAPABLE = 76;
+const ERRNO_NOTCAPABLE = 76;
 
 const RIGHTS_FD_DATASYNC = 0x0000000000000001n;
 const RIGHTS_FD_READ = 0x0000000000000002n;
@@ -1201,9 +1201,35 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const textDecoder = new TextDecoder();
+        const pathData = new Uint8Array(
+          this.memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const resolvedPath = resolve(entry.path!, textDecoder.decode(pathData));
+
+        if (relative(entry.path, resolvedPath).startsWith("..")) {
+          return ERRNO_NOTCAPABLE;
+        }
+
+        let path;
+        if (
+          (dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) == LOOKUPFLAGS_SYMLINK_FOLLOW
+        ) {
+          try {
+            path = Deno.realPathSync(resolvedPath);
+
+            console.log("RESOLVED REAL PATH: %s", path);
+            if (relative(entry.path, path).startsWith("..")) {
+              return ERRNO_NOTCAPABLE;
+            }
+          } catch (_err) {
+            path = resolvedPath;
+          }
+        } else {
+          path = resolvedPath;
+        }
 
         if ((oflags & OFLAGS_DIRECTORY) !== 0) {
           // XXX (caspervonb) this isn't ideal as we can't get a rid for the

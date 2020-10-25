@@ -211,11 +211,11 @@ Deno.test({
   name: "Sync: Data is written in Uint8Array to passed in file path",
   fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
-    const test_data = new TextEncoder().encode("hello world");
-    appendFileSync("_fs_appendFile_test_file_sync.txt", test_data);
+    const testData = new TextEncoder().encode("hello world");
+    appendFileSync("_fs_appendFile_test_file_sync.txt", testData);
     assertEquals(Deno.resources(), openResourcesBeforeAppend);
     const data = Deno.readFileSync("_fs_appendFile_test_file_sync.txt");
-    assertEquals(data, test_data);
+    assertEquals(data, testData);
     Deno.removeSync("_fs_appendFile_test_file_sync.txt");
   },
 });
@@ -224,9 +224,9 @@ Deno.test({
   name: "Async: Data is written in Uint8Array to passed in file path",
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
-    const test_data = new TextEncoder().encode("hello world");
+    const testData = new TextEncoder().encode("hello world");
     await new Promise((resolve, reject) => {
-      appendFile("_fs_appendFile_test_file.txt", test_data, (err) => {
+      appendFile("_fs_appendFile_test_file.txt", testData, (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -234,7 +234,7 @@ Deno.test({
       .then(async () => {
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
-        assertEquals(data, test_data);
+        assertEquals(data, testData);
       })
       .catch((err) => {
         fail("No error was expected: " + err);

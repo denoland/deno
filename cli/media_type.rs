@@ -77,7 +77,19 @@ impl MediaType {
         },
       },
       Some(os_str) => match os_str.to_str() {
-        Some("ts") => MediaType::TypeScript,
+        Some("ts") => match path.file_stem() {
+          Some(os_str) => match os_str.to_str() {
+            Some(file_name) => {
+              if file_name.ends_with(".d") {
+                MediaType::Dts
+              } else {
+                MediaType::TypeScript
+              }
+            }
+            None => MediaType::TypeScript,
+          },
+          None => MediaType::TypeScript,
+        },
         Some("tsx") => MediaType::TSX,
         Some("js") => MediaType::JavaScript,
         Some("jsx") => MediaType::JSX,
@@ -120,6 +132,19 @@ impl MediaType {
     };
 
     ext.into()
+  }
+
+  /// Map the media type to a `ts.ScriptKind`
+  pub fn as_ts_script_kind(&self) -> i32 {
+    match self {
+      MediaType::JavaScript => 1,
+      MediaType::JSX => 2,
+      MediaType::TypeScript => 3,
+      MediaType::Dts => 3,
+      MediaType::TSX => 4,
+      MediaType::Json => 5,
+      _ => 0,
+    }
   }
 }
 
@@ -167,10 +192,7 @@ mod tests {
       MediaType::TypeScript
     );
     assert_eq!(MediaType::from(Path::new("foo/bar.tsx")), MediaType::TSX);
-    assert_eq!(
-      MediaType::from(Path::new("foo/bar.d.ts")),
-      MediaType::TypeScript
-    );
+    assert_eq!(MediaType::from(Path::new("foo/bar.d.ts")), MediaType::Dts);
     assert_eq!(
       MediaType::from(Path::new("foo/bar.js")),
       MediaType::JavaScript

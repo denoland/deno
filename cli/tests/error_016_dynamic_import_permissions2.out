@@ -1,3 +1,4 @@
 [WILDCARD]
-error: Uncaught TypeError: read access to "[WILDCARD]passwd", run again with the --allow-read flag
-Imported from "[WILDCARD]evil_remote_import.js:3"
+error: Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.
+  Importing: file:///c:/etc/passwd
+    at http://localhost:4545/cli/tests/subdir/evil_remote_import.js:3:0

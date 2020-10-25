@@ -2,18 +2,15 @@
 
 Deno ships with a built in code linter for JavaScript and TypeScript.
 
-**Note: linter is a new feature and still unstable thus it requires `--unstable`
-flag**
-
 ```shell
 # lint all JS/TS files in the current directory and subdirectories
-deno lint --unstable
+deno lint
 # lint specific files
-deno lint --unstable myfile1.ts myfile2.ts
-# print result as JSON
-deno lint --unstable --json
+deno lint myfile1.ts myfile2.ts
 # read from stdin
-cat file.ts | deno lint --unstable -
+cat file.ts | deno lint -
+# print result as JSON (output is subject to change hence --unstable flag)
+deno lint --unstable --json
 ```
 
 For more detail, run `deno lint --help`.
