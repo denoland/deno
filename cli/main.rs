@@ -96,40 +96,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use upgrade::upgrade_command;
 
-impl DocFileLoader for SourceFileFetcher {
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &str,
-  ) -> Result<String, doc::DocError> {
-    ModuleSpecifier::resolve_import(specifier, referrer)
-      .map(|specifier| specifier.to_string())
-      .map_err(|e| doc::DocError::Resolve(e.to_string()))
-  }
-
-  fn load_source_code(
-    &self,
-    specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
-    let fetcher = self.clone();
-    let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
-      .expect("Expected valid specifier");
-    async move {
-      let source_file = fetcher
-        .fetch_source_file(&specifier, None, Permissions::allow_all())
-        .await
-        .map_err(|e| {
-          doc::DocError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-          ))
-        })?;
-      Ok(source_file.source_code)
-    }
-    .boxed_local()
-  }
-}
-
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
 
@@ -652,13 +618,13 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 }
 
 async fn test_command(
-  docs: bool,
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  docs: bool,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -693,8 +659,11 @@ async fn test_command(
       filter,
     )
   } else {
-    let jsdocs =
-      doctest_runner::parse_jsdocs(&test_modules, flags.clone()).await?;
+    let loader = Box::new(DocLoader {
+      fetcher: program_state.file_fetcher.clone(),
+      maybe_import_map: None,
+    });
+    let jsdocs = doctest_runner::parse_jsdocs(&test_modules, loader).await?;
     doctest_runner::prepare_doctests(jsdocs, fail_fast, quiet, filter)?
   };
 
@@ -863,7 +832,7 @@ pub fn main() {
       allow_none,
       filter,
     } => {
-      test_command(docs, flags, include, fail_fast, quiet, allow_none, filter)
+      test_command(flags, include, fail_fast, quiet, allow_none, filter, docs)
         .boxed_local()
     }
     DenoSubcommand::Completions { buf } => {

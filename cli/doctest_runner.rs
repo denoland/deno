@@ -1,12 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::{self, Location};
-use crate::flags::Flags;
+use crate::ast::parse;
+use crate::ast::Location;
+use crate::ast::ParsedModule;
 use crate::media_type::MediaType;
-use crate::program_state::ProgramState;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::{error::AnyError, ModuleSpecifier};
+use deno_core::ModuleSpecifier;
+use deno_doc::parser::DocFileLoader;
 use deno_doc::DocParser;
 use jsdoc::ast::Tag;
 use jsdoc::Input;
@@ -17,12 +19,12 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use swc_common::{comments::SingleThreadedComments, SourceMap, Span};
+use swc_common::comments::SingleThreadedComments;
+use swc_common::SourceMap;
+use swc_common::Span;
+use swc_ecmascript::ast;
+use swc_ecmascript::visit::Node;
 use swc_ecmascript::visit::Visit;
-use swc_ecmascript::{
-  ast::{Class, Decl, ExportDecl, Expr, Function, VarDecl},
-  visit::Node,
-};
 
 use crate::test_runner::is_supported;
 
@@ -45,11 +47,11 @@ struct DocTestVisitor {
 
 struct DocTester {
   doctest_visitor: DocTestVisitor,
-  parsed_module: ast::ParsedModule,
+  parsed_module: ParsedModule,
 }
 
 impl DocTester {
-  fn new(parsed_module: ast::ParsedModule) -> Self {
+  fn new(parsed_module: ParsedModule) -> Self {
     Self {
       doctest_visitor: DocTestVisitor::new(
         parsed_module.comments.clone(),
@@ -105,13 +107,16 @@ impl DocTestVisitor {
 
   fn check_var_decl(
     &mut self,
-    var_decl: &VarDecl,
-    opt_export_decl: Option<&ExportDecl>,
+    var_decl: &ast::VarDecl,
+    opt_export_decl: Option<&ast::ExportDecl>,
   ) {
     var_decl.decls.iter().for_each(|decl| {
       if let Some(expr) = &decl.init {
         match &**expr {
-          Expr::Object(_) | Expr::Fn(_) | Expr::Class(_) | Expr::Arrow(_) => {
+          ast::Expr::Object(_)
+          | ast::Expr::Fn(_)
+          | ast::Expr::Class(_)
+          | ast::Expr::Arrow(_) => {
             if let Some(export_decl) = opt_export_decl {
               self.parse_span_comments(export_decl.span);
             } else {
@@ -126,25 +131,31 @@ impl DocTestVisitor {
 }
 
 impl Visit for DocTestVisitor {
-  fn visit_class(&mut self, class: &Class, parent: &dyn Node) {
+  fn visit_class(&mut self, class: &ast::Class, parent: &dyn Node) {
     self.parse_span_comments(class.span);
     swc_ecmascript::visit::visit_class(self, class, parent);
   }
 
-  fn visit_function(&mut self, function: &Function, parent: &dyn Node) {
+  fn visit_function(&mut self, function: &ast::Function, parent: &dyn Node) {
     self.parse_span_comments(function.span);
     swc_ecmascript::visit::visit_function(self, function, parent);
   }
 
-  fn visit_var_decl(&mut self, var_decl: &VarDecl, parent: &dyn Node) {
+  fn visit_var_decl(&mut self, var_decl: &ast::VarDecl, parent: &dyn Node) {
     self.check_var_decl(var_decl, None);
     swc_ecmascript::visit::visit_var_decl(self, var_decl, parent);
   }
 
-  fn visit_export_decl(&mut self, export_decl: &ExportDecl, parent: &dyn Node) {
+  fn visit_export_decl(
+    &mut self,
+    export_decl: &ast::ExportDecl,
+    parent: &dyn Node,
+  ) {
     match &export_decl.decl {
-      Decl::Var(var_decl) => self.check_var_decl(var_decl, Some(export_decl)),
-      Decl::Class(_) | Decl::Fn(_) => {
+      ast::Decl::Var(var_decl) => {
+        self.check_var_decl(var_decl, Some(export_decl))
+      }
+      ast::Decl::Class(_) | ast::Decl::Fn(_) => {
         self.parse_span_comments(export_decl.span)
       }
       _ => {}
@@ -155,11 +166,8 @@ impl Visit for DocTestVisitor {
 
 pub async fn parse_jsdocs(
   source_files: &[Url],
-  flags: Flags,
+  loader: Box<dyn DocFileLoader>,
 ) -> Result<Vec<(Location, String)>, AnyError> {
-  let program_state = ProgramState::new(flags.clone())?;
-  let loader = Box::new(program_state.file_fetcher.clone());
-
   let doc_parser = DocParser::new(loader, false);
   let mut results = vec![];
   for url in source_files {
@@ -168,7 +176,7 @@ pub async fn parse_jsdocs(
     let path = PathBuf::from(&url.to_string());
     let media_type = MediaType::from(&path);
     let specifier = ModuleSpecifier::resolve_url(&url.to_string())?;
-    let parsed_module = ast::parse(&specifier, &source_code, &media_type)?;
+    let parsed_module = parse(&specifier, &source_code, &media_type)?;
     let mut doc_tester = DocTester::new(parsed_module);
     results.extend(doc_tester.get_comments());
   }
