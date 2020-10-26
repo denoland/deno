@@ -10,7 +10,7 @@ import {
   assert,
   assertEquals,
   assertMatch,
-  assertStringContains,
+  assertStringIncludes,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
 import {
@@ -498,7 +498,7 @@ Deno.test({
     const nread = await conn.read(res);
     assert(nread !== null);
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
-    assertStringContains(resStr, "/hello");
+    assertStringIncludes(resStr, "/hello");
     server.close();
     await p;
     // Client connection should still be open, verify that

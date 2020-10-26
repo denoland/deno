@@ -12,12 +12,12 @@ const lib = function() {
         };
     }();
     const c = function() {
-        const c1;
+        const c1 = [];
         return {
             c: c1
         };
     }();
-    const mod;
+    const mod = [];
     return {
         mod
     };

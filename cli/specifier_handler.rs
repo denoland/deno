@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast::Location;
 use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFileFetcher;
@@ -25,8 +26,29 @@ pub type DependencyMap = HashMap<String, Dependency>;
 pub type FetchFuture =
   Pin<Box<(dyn Future<Output = Result<CachedModule, AnyError>> + 'static)>>;
 
+/// A group of errors that represent errors that can occur with an
+/// an implementation of `SpecifierHandler`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum HandlerError {
+  /// A fetch error, where we have a location associated with it.
+  FetchErrorWithLocation(String, Location),
+}
+
+impl fmt::Display for HandlerError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      HandlerError::FetchErrorWithLocation(ref err, ref location) => {
+        write!(f, "{}\n    at {}", err, location)
+      }
+    }
+  }
+}
+
+impl std::error::Error for HandlerError {}
+
 #[derive(Debug, Clone)]
 pub struct CachedModule {
+  pub is_remote: bool,
   pub maybe_dependencies: Option<DependencyMap>,
   pub maybe_emit: Option<Emit>,
   pub maybe_emit_path: Option<(PathBuf, Option<PathBuf>)>,
@@ -44,6 +66,7 @@ impl Default for CachedModule {
   fn default() -> Self {
     let specifier = ModuleSpecifier::resolve_url("file:///example.js").unwrap();
     CachedModule {
+      is_remote: false,
       maybe_dependencies: None,
       maybe_emit: None,
       maybe_emit_path: None,
@@ -76,8 +99,12 @@ impl Default for Emit {
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Dependency {
+  /// Flags if the dependency is a dynamic import or not.
+  pub is_dynamic: bool,
+  /// The location in the source code where the dependency statement occurred.
+  pub location: Location,
   /// The module specifier that resolves to the runtime code dependency for the
   /// module.
   pub maybe_code: Option<ModuleSpecifier>,
@@ -86,17 +113,33 @@ pub struct Dependency {
   pub maybe_type: Option<ModuleSpecifier>,
 }
 
+impl Dependency {
+  pub fn new(location: Location) -> Self {
+    Dependency {
+      is_dynamic: false,
+      location,
+      maybe_code: None,
+      maybe_type: None,
+    }
+  }
+}
+
 pub trait SpecifierHandler {
   /// Instructs the handler to fetch a specifier or retrieve its value from the
   /// cache.
-  fn fetch(&mut self, specifier: ModuleSpecifier) -> FetchFuture;
+  fn fetch(
+    &mut self,
+    specifier: ModuleSpecifier,
+    maybe_location: Option<Location>,
+    is_dynamic: bool,
+  ) -> FetchFuture;
 
   /// Get the optional build info from the cache for a given module specifier.
   /// Because build infos are only associated with the "root" modules, they are
   /// not expected to be cached for each module, but are "lazily" checked when
   /// a root module is identified.  The `emit_type` also indicates what form
   /// of the module the build info is valid for.
-  fn get_ts_build_info(
+  fn get_tsbuildinfo(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<String>, AnyError>;
@@ -117,10 +160,10 @@ pub trait SpecifierHandler {
   ) -> Result<(), AnyError>;
 
   /// Set the build info for a module specifier, also providing the cache type.
-  fn set_ts_build_info(
+  fn set_tsbuildinfo(
     &mut self,
     specifier: &ModuleSpecifier,
-    ts_build_info: String,
+    tsbuildinfo: String,
   ) -> Result<(), AnyError>;
 
   /// Set the graph dependencies for a given module specifier.
@@ -170,15 +213,18 @@ impl CompiledFileMetadata {
 /// existing `file_fetcher` interface, which will eventually be refactored to
 /// align it more to the `SpecifierHandler` trait.
 pub struct FetchHandler {
+  /// An instance of disk where generated (emitted) files are stored.
   disk_cache: DiskCache,
+  /// A set of permissions to apply to dynamic imports.
+  dynamic_permissions: Permissions,
+  /// A clone of the `program_state` file fetcher.
   file_fetcher: SourceFileFetcher,
-  permissions: Permissions,
 }
 
 impl FetchHandler {
   pub fn new(
     program_state: &Arc<ProgramState>,
-    permissions: Permissions,
+    dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
@@ -187,23 +233,54 @@ impl FetchHandler {
 
     Ok(FetchHandler {
       disk_cache,
+      dynamic_permissions,
       file_fetcher,
-      permissions,
     })
   }
 }
 
 impl SpecifierHandler for FetchHandler {
-  fn fetch(&mut self, requested_specifier: ModuleSpecifier) -> FetchFuture {
-    let permissions = self.permissions.clone();
+  fn fetch(
+    &mut self,
+    requested_specifier: ModuleSpecifier,
+    maybe_location: Option<Location>,
+    is_dynamic: bool,
+  ) -> FetchFuture {
+    // When the module graph fetches dynamic modules, the set of dynamic
+    // permissions need to be applied.  Other static imports have all
+    // permissions.
+    let permissions = if is_dynamic {
+      self.dynamic_permissions.clone()
+    } else {
+      Permissions::allow_all()
+    };
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
+    let maybe_referrer: Option<ModuleSpecifier> =
+      if let Some(location) = &maybe_location {
+        Some(location.clone().into())
+      } else {
+        None
+      };
 
     async move {
       let source_file = file_fetcher
-        .fetch_source_file(&requested_specifier, None, permissions)
-        .await?;
+        .fetch_source_file(&requested_specifier, maybe_referrer, permissions)
+        .await
+        .map_err(|err| {
+          if let Some(location) = maybe_location {
+            if !is_dynamic {
+              HandlerError::FetchErrorWithLocation(err.to_string(), location)
+                .into()
+            } else {
+              err
+            }
+          } else {
+            err
+          }
+        })?;
       let url = source_file.url.clone();
+      let is_remote = url.scheme() != "file";
       let filename = disk_cache.get_cache_filename_with_extension(&url, "meta");
       let maybe_version = if let Ok(bytes) = disk_cache.get(&filename) {
         if let Ok(compiled_file_metadata) =
@@ -237,6 +314,7 @@ impl SpecifierHandler for FetchHandler {
       let specifier = ModuleSpecifier::from(url);
 
       Ok(CachedModule {
+        is_remote,
         maybe_dependencies: None,
         maybe_emit,
         maybe_emit_path,
@@ -252,31 +330,32 @@ impl SpecifierHandler for FetchHandler {
     .boxed_local()
   }
 
-  fn get_ts_build_info(
+  fn get_tsbuildinfo(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<String>, AnyError> {
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
-    if let Ok(ts_build_info) = self.disk_cache.get(&filename) {
-      return Ok(Some(String::from_utf8(ts_build_info)?));
+    if let Ok(tsbuildinfo) = self.disk_cache.get(&filename) {
+      Ok(Some(String::from_utf8(tsbuildinfo)?))
+    } else {
+      Ok(None)
     }
-
-    Ok(None)
   }
 
-  fn set_ts_build_info(
+  fn set_tsbuildinfo(
     &mut self,
     specifier: &ModuleSpecifier,
-    ts_build_info: String,
+    tsbuildinfo: String,
   ) -> Result<(), AnyError> {
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
+    debug!("set_tsbuildinfo - filename {:?}", filename);
     self
       .disk_cache
-      .set(&filename, ts_build_info.as_bytes())
+      .set(&filename, tsbuildinfo.as_bytes())
       .map_err(|e| e.into())
   }
 
@@ -366,8 +445,8 @@ pub mod tests {
 
     let fetch_handler = FetchHandler {
       disk_cache,
+      dynamic_permissions: Permissions::default(),
       file_fetcher,
-      permissions: Permissions::allow_all(),
     };
 
     (temp_dir, fetch_handler)
@@ -381,8 +460,10 @@ pub mod tests {
       "http://localhost:4545/cli/tests/subdir/mod2.ts",
     )
     .unwrap();
-    let cached_module: CachedModule =
-      file_fetcher.fetch(specifier.clone()).await.unwrap();
+    let cached_module: CachedModule = file_fetcher
+      .fetch(specifier.clone(), None, false)
+      .await
+      .unwrap();
     assert!(cached_module.maybe_emit.is_none());
     assert!(cached_module.maybe_dependencies.is_none());
     assert_eq!(cached_module.media_type, MediaType::TypeScript);
@@ -401,18 +482,43 @@ pub mod tests {
       "http://localhost:4545/cli/tests/subdir/mod2.ts",
     )
     .unwrap();
-    let cached_module: CachedModule =
-      file_fetcher.fetch(specifier.clone()).await.unwrap();
+    let cached_module: CachedModule = file_fetcher
+      .fetch(specifier.clone(), None, false)
+      .await
+      .unwrap();
     assert!(cached_module.maybe_emit.is_none());
     let code = String::from("some code");
     file_fetcher
       .set_cache(&specifier, &Emit::Cli((code, None)))
       .expect("could not set cache");
-    let cached_module: CachedModule =
-      file_fetcher.fetch(specifier.clone()).await.unwrap();
+    let cached_module: CachedModule = file_fetcher
+      .fetch(specifier.clone(), None, false)
+      .await
+      .unwrap();
     assert_eq!(
       cached_module.maybe_emit,
       Some(Emit::Cli(("some code".to_string(), None)))
     );
+  }
+
+  #[tokio::test]
+  async fn test_fetch_handler_is_remote() {
+    let _http_server_guard = test_util::http_server();
+    let (_, mut file_fetcher) = setup();
+    let specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/subdir/mod2.ts",
+    )
+    .unwrap();
+    let cached_module: CachedModule =
+      file_fetcher.fetch(specifier, None, false).await.unwrap();
+    assert_eq!(cached_module.is_remote, true);
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let specifier = ModuleSpecifier::resolve_url_or_path(
+      c.join("tests/subdir/mod1.ts").as_os_str().to_str().unwrap(),
+    )
+    .unwrap();
+    let cached_module: CachedModule =
+      file_fetcher.fetch(specifier, None, false).await.unwrap();
+    assert_eq!(cached_module.is_remote, false);
   }
 }

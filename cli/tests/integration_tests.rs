@@ -441,7 +441,6 @@ fn fmt_test() {
     .current_dir(util::root_path())
     .arg("fmt")
     .arg(format!("--ignore={}", badly_formatted_str))
-    .arg("--unstable")
     .arg("--check")
     .arg(badly_formatted_str)
     .spawn()
@@ -1019,11 +1018,12 @@ fn bundle_js() {
 
 #[test]
 fn bundle_dynamic_import() {
+  let _g = util::http_server();
   let dynamic_import =
-    util::root_path().join("cli/tests/subdir/subdir2/dynamic_import.ts");
+    util::root_path().join("cli/tests/bundle_dynamic_import.ts");
   assert!(dynamic_import.is_file());
   let t = TempDir::new().expect("tempdir fail");
-  let bundle = t.path().join("dynamic_import.bundle.js");
+  let bundle = t.path().join("bundle_dynamic_import.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
@@ -1038,6 +1038,8 @@ fn bundle_dynamic_import() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--allow-net")
+    .arg("--quiet")
     .arg(&bundle)
     .output()
     .expect("failed to spawn script");
@@ -1809,9 +1811,9 @@ itest!(_022_info_flag_script {
   http_server: true,
 });
 
-itest!(_023_no_ext_with_headers {
-  args: "run --reload 023_no_ext_with_headers",
-  output: "023_no_ext_with_headers.out",
+itest!(_023_no_ext {
+  args: "run --reload 023_no_ext",
+  output: "023_no_ext.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -2020,7 +2022,7 @@ itest!(_044_bad_resource {
 });
 
 itest!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
+  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -2237,7 +2239,7 @@ itest!(fmt_check_formatted_files {
 });
 
 itest!(fmt_check_ignore {
-  args: "fmt --check --unstable --ignore=fmt/formatted1.js fmt/",
+  args: "fmt --check --ignore=fmt/formatted1.js fmt/",
   output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
 });
@@ -2721,6 +2723,18 @@ itest!(_053_import_compression {
   http_server: true,
 });
 
+itest!(cache_extensionless {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext",
+  output: "cache_extensionless.out",
+  http_server: true,
+});
+
+itest!(cache_random_extension {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
+  output: "cache_random_extension.out",
+  http_server: true,
+});
+
 itest!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
@@ -2761,9 +2775,19 @@ itest!(disallow_http_from_https_ts {
   exit_code: 1,
 });
 
+itest!(dynamic_import_conditional {
+  args: "run --quiet --reload dynamic_import_conditional.js",
+  output: "dynamic_import_conditional.js.out",
+});
+
 itest!(tsx_imports {
   args: "run --reload tsx_imports.ts",
   output: "tsx_imports.ts.out",
+});
+
+itest!(fix_exotic_specifiers {
+  args: "run --quiet --reload fix_exotic_specifiers.ts",
+  output: "fix_exotic_specifiers.ts.out",
 });
 
 itest!(fix_js_import_js {
@@ -4053,7 +4077,6 @@ fn fmt_ignore_unexplicit_files() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg("--unstable")
     .arg("--check")
     .arg("--ignore=./")
     .stderr(std::process::Stdio::piped())

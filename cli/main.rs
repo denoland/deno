@@ -51,7 +51,7 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
-pub mod tsc2;
+mod tsc2;
 mod tsc_config;
 mod upgrade;
 mod version;
@@ -67,6 +67,7 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::worker::MainWorker;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -174,14 +175,17 @@ async fn info_command(
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
     let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
       &program_state,
+      // info accesses dynamically imported modules just for their information
+      // so we allow access to all of them.
       Permissions::allow_all(),
     )?));
     let mut builder = module_graph2::GraphBuilder2::new(
       handler,
       program_state.maybe_import_map.clone(),
+      program_state.lockfile.clone(),
     );
-    builder.insert(&specifier).await?;
-    let graph = builder.get_graph(&program_state.lockfile)?;
+    builder.add(&specifier, false).await?;
+    let graph = builder.get_graph();
     let info = graph.info()?;
 
     if json {
@@ -313,43 +317,65 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = if flags.no_check {
-    let handler = Rc::new(RefCell::new(FetchHandler::new(
-      &program_state,
-      Permissions::allow_all(),
-    )?));
-    let mut builder = module_graph2::GraphBuilder2::new(
-      handler,
-      program_state.maybe_import_map.clone(),
-    );
-    builder.insert(&module_specifier).await?;
-    let graph = builder.get_graph(&program_state.lockfile)?;
+  let handler = Rc::new(RefCell::new(FetchHandler::new(
+    &program_state,
+    // when bundling, dynamic imports are only access for their type safety,
+    // therefore we will allow the graph to access any module.
+    Permissions::allow_all(),
+  )?));
+  let mut builder = module_graph2::GraphBuilder2::new(
+    handler,
+    program_state.maybe_import_map.clone(),
+    program_state.lockfile.clone(),
+  );
+  builder.add(&module_specifier, false).await?;
+  let graph = builder.get_graph();
 
-    let (s, stats, maybe_ignored_options) =
-      graph.bundle(module_graph2::BundleOptions {
-        debug: flags.log_level == Some(Level::Debug),
-        maybe_config_path: flags.config_path,
+  let debug = flags.log_level == Some(log::Level::Debug);
+  if !flags.no_check {
+    // TODO(@kitsonk) support bundling for workers
+    let lib = if flags.unstable {
+      module_graph2::TypeLib::UnstableDenoWindow
+    } else {
+      module_graph2::TypeLib::DenoWindow
+    };
+    let graph = graph.clone();
+    let (stats, diagnostics, maybe_ignored_options) =
+      graph.check(module_graph2::CheckOptions {
+        debug,
+        emit: false,
+        lib,
+        maybe_config_path: flags.config_path.clone(),
+        reload: flags.reload,
       })?;
 
+    debug!("{}", stats);
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    debug!("{}", stats);
+    if !diagnostics.0.is_empty() {
+      return Err(generic_error(diagnostics.to_string()));
+    }
+  }
 
-    s
-  } else {
-    program_state
-      .ts_compiler
-      .bundle(&program_state, module_specifier)
-      .await?
-  };
+  let (output, stats, maybe_ignored_options) =
+    graph.bundle(module_graph2::BundleOptions {
+      debug,
+      maybe_config_path: flags.config_path,
+    })?;
+
+  if flags.no_check && maybe_ignored_options.is_some() {
+    let ignored_options = maybe_ignored_options.unwrap();
+    eprintln!("{}", ignored_options);
+  }
+  debug!("{}", stats);
 
   debug!(">>>>> bundle END");
 
   if let Some(out_file_) = out_file.as_ref() {
     let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
-    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    deno_fs::write_file(out_file_, output_bytes, 0o644)?;
     info!(
       "{} {:?} ({})",
       colors::green("Emit"),
@@ -528,22 +554,24 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let program_state = ProgramState::new(flags.clone())?;
 
-  let mut module_graph_loader = module_graph::ModuleGraphLoader::new(
-    program_state.file_fetcher.clone(),
-    program_state.maybe_import_map.clone(),
+  let handler = Rc::new(RefCell::new(FetchHandler::new(
+    &program_state,
     Permissions::allow_all(),
-    false,
-    false,
+  )?));
+  let mut builder = module_graph2::GraphBuilder2::new(
+    handler,
+    program_state.maybe_import_map.clone(),
+    program_state.lockfile.clone(),
   );
-  module_graph_loader.add_to_graph(&main_module, None).await?;
-  let module_graph = module_graph_loader.get_graph();
+  builder.add(&main_module, false).await?;
+  let module_graph = builder.get_graph();
 
   // Find all local files in graph
   let mut paths_to_watch: Vec<PathBuf> = module_graph
-    .values()
-    .map(|f| Url::parse(&f.url).unwrap())
-    .filter(|url| url.scheme() == "file")
-    .map(|url| url.to_file_path().unwrap())
+    .get_modules()
+    .iter()
+    .filter(|specifier| specifier.as_url().scheme() == "file")
+    .map(|specifier| specifier.as_url().to_file_path().unwrap())
     .collect();
 
   if let Some(import_map) = program_state.flags.import_map_path.clone() {

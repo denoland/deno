@@ -579,6 +579,18 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.coverage = true;
   }
 
+  if matches.is_present("script_arg") {
+    let script_arg: Vec<String> = matches
+      .values_of("script_arg")
+      .unwrap()
+      .map(String::from)
+      .collect();
+
+    for v in script_arg {
+      flags.argv.push(v);
+    }
+  }
+
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
@@ -694,7 +706,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
-        .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
@@ -1107,7 +1118,10 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("run"), true)
     .arg(watch_arg())
     .setting(AppSettings::TrailingVarArg)
-    .arg(script_arg())
+    .arg(
+        script_arg()
+        .required(true)
+    )
     .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
     .long_about(
 	  "Run a program given a filename or url to the module.
@@ -1132,6 +1146,7 @@ Deno allows specifying the filename '-' to read the file from stdin.
 
 fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("test"), true)
+    .setting(AppSettings::TrailingVarArg)
     .arg(
       Arg::with_name("failfast")
         .long("failfast")
@@ -1166,6 +1181,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .multiple(true),
     )
+    .arg(script_arg().last(true))
     .about("Run tests")
     .long_about(
       "Run tests using Deno's built-in test runner.
@@ -2905,6 +2921,27 @@ mod tests {
         },
         coverage: true,
         unstable: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_double_hyphen() {
+    let r = flags_from_vec_safe(svec![
+      "deno", "test", "test.ts", "--", "arg1", "arg2"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          allow_none: false,
+          quiet: false,
+          filter: None,
+          include: Some(svec!["test.ts"]),
+        },
+        argv: svec!["arg1", "arg2"],
         ..Flags::default()
       }
     );

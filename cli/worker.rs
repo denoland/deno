@@ -121,7 +121,7 @@ impl Worker {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
       js_error_create_fn: Some(Box::new(move |core_js_error| {
-        JsError::create(core_js_error, &global_state_.ts_compiler)
+        JsError::create(core_js_error, global_state_.clone())
       })),
       ..Default::default()
     });

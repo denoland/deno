@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
-//! [`dprint-plugin-typescript`](https://github.com/dsherret/dprint-plugin-typescript).
+//! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
 //!
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide

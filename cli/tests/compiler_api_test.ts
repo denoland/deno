@@ -129,17 +129,16 @@ Deno.test({
   async fn() {
     const actual = await Deno.transpileOnly(
       {
-        "foo.ts": `export enum Foo { Foo, Bar, Baz };\n`,
+        "foo.ts": `/** This is JSDoc */\nexport enum Foo { Foo, Bar, Baz };\n`,
       },
       {
-        sourceMap: false,
-        module: "amd",
+        removeComments: true,
       },
     );
     assert(actual);
     assertEquals(Object.keys(actual), ["foo.ts"]);
-    assert(actual["foo.ts"].source.startsWith("define("));
-    assert(actual["foo.ts"].map == null);
+    assert(!actual["foo.ts"].source.includes("This is JSDoc"));
+    assert(actual["foo.ts"].map);
   },
 });
 

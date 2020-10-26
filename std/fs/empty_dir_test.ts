@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
@@ -231,7 +231,7 @@ for (const s of scenes) {
         assert(p.stdout);
         const output = await p.output();
         p.close();
-        assertStringContains(new TextDecoder().decode(output), s.output);
+        assertStringIncludes(new TextDecoder().decode(output), s.output);
       } catch (err) {
         await Deno.remove(testfolder, { recursive: true });
         throw err;
