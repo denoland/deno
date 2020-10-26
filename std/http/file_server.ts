@@ -322,14 +322,15 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 }
 
 function normalizeURL(url: string): string {
-  let normalizedUrl = posix.normalize(url);
+  let normalizedUrl = url;
   try {
-    normalizedUrl = decodeURIComponent(normalizedUrl);
+    normalizedUrl = decodeURI(normalizedUrl);
   } catch (e) {
     if (!(e instanceof URIError)) {
       throw e;
     }
   }
+  normalizedUrl = posix.normalize(normalizedUrl);
   const startOfParams = normalizedUrl.indexOf("?");
   return startOfParams > -1
     ? normalizedUrl.slice(0, startOfParams)

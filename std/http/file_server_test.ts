@@ -147,6 +147,36 @@ Deno.test("serveFallback", async function (): Promise<void> {
   }
 });
 
+Deno.test("checkPathTraversal", async function (): Promise<void> {
+  await startFileServer({ "dir-listing": false });
+  try {
+    const res = await fetch(
+      "http://localhost:4507/../../../../../../../..",
+    );
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 404);
+    const _ = await res.text();
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("checkURIEncodedPathTraversal", async function (): Promise<void> {
+  await startFileServer({ "dir-listing": false });
+  try {
+    const res = await fetch(
+      "http://localhost:4507/%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..",
+    );
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 404);
+    const _ = await res.text();
+  } finally {
+    await killFileServer();
+  }
+});
+
 Deno.test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   await startFileServer();
   try {
