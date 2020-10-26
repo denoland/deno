@@ -343,6 +343,23 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Buffer copy doesn't throw on offset but copies until offset reached",
+  fn() {
+    const buffer_1 = Buffer.from([1,2,3]);
+    const buffer_2 = Buffer.alloc(8);
+
+    buffer_1.copy(buffer_2, 6);
+
+    const expected = Buffer.from([0,0,0,0,0,0,1,2]);
+
+    assertEquals(
+      buffer_2,
+      expected,
+    );
+  },
+});
+
+Deno.test({
   name: "Buffer from string creates a Buffer",
   fn() {
     const buffer: Buffer = Buffer.from("test");
