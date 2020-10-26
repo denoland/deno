@@ -384,7 +384,7 @@
       inspectObj[prop] = obj[prop];
     }
 
-    return Deno.inspect(inspectObj);
+    return `${obj.constructor.name} ${Deno.inspect(inspectObj)}`;
   }
 
   function defineEnumerableProps(
