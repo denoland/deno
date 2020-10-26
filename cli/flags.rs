@@ -1199,7 +1199,6 @@ Directory arguments are expanded to all contained files matching the glob
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("script_arg")
     .multiple(true)
-    .required(true)
     .default_value_ifs(&[
       ("v8-flags", Some("--help"), "_"),
       ("v8-flags", Some("-help"), "_"),
