@@ -3,7 +3,6 @@
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
-use clap::ArgGroup;
 use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
@@ -38,8 +37,6 @@ pub enum DenoSubcommand {
   },
   Cache {
     files: Vec<String>,
-    worker_specifiers: Option<Vec<String>>,
-    test_patterns: Option<Vec<String>>,
   },
   Fmt {
     check: bool,
@@ -484,20 +481,10 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
   let files = matches
     .values_of("file")
-    .unwrap_or_default()
+    .unwrap()
     .map(String::from)
     .collect();
-  let worker_specifiers = matches
-    .values_of("worker")
-    .map(|v| v.map(String::from).collect());
-  let test_patterns = matches
-    .values_of("test")
-    .map(|v| v.map(String::from).collect());
-  flags.subcommand = DenoSubcommand::Cache {
-    files,
-    worker_specifiers,
-    test_patterns,
-  };
+  flags.subcommand = DenoSubcommand::Cache { files };
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -590,6 +577,18 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   if coverage {
     flags.coverage = true;
+  }
+
+  if matches.is_present("script_arg") {
+    let script_arg: Vec<String> = matches
+      .values_of("script_arg")
+      .unwrap()
+      .map(String::from)
+      .collect();
+
+    for v in script_arg {
+      flags.argv.push(v);
+    }
   }
 
   let include = if matches.is_present("files") {
@@ -884,31 +883,11 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 
 fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
   compile_args(SubCommand::with_name("cache"))
-    .arg(Arg::with_name("file").takes_value(true).multiple(true))
     .arg(
-      Arg::with_name("worker")
-        .long("worker")
-        .help("Compile <WORKER_SPECIFIERS> as Deno web workers")
+      Arg::with_name("file")
         .takes_value(true)
-        .value_name("WORKER_SPECIFIERS")
-        .min_values(1)
-        .use_delimiter(true),
-    )
-    .arg(
-      Arg::with_name("test")
-        .long("test")
-        .help("Includes files captured by: deno test <PATTERN_LIST>")
-        .takes_value(true)
-        .value_name("PATTERN_LIST")
-        .min_values(0)
-        .use_delimiter(true)
-        .require_equals(true),
-    )
-    .group(
-      ArgGroup::with_name("target")
-        .args(&["file", "test", "worker"])
-        .multiple(true)
-        .required(true),
+        .required(true)
+        .min_values(1),
     )
     .about("Cache the dependencies")
     .long_about(
@@ -1139,7 +1118,10 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("run"), true)
     .arg(watch_arg())
     .setting(AppSettings::TrailingVarArg)
-    .arg(script_arg())
+    .arg(
+        script_arg()
+        .required(true)
+    )
     .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
     .long_about(
 	  "Run a program given a filename or url to the module.
@@ -1164,6 +1146,7 @@ Deno allows specifying the filename '-' to read the file from stdin.
 
 fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("test"), true)
+    .setting(AppSettings::TrailingVarArg)
     .arg(
       Arg::with_name("failfast")
         .long("failfast")
@@ -1198,6 +1181,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .multiple(true),
     )
+    .arg(script_arg().last(true))
     .about("Run tests")
     .long_about(
       "Run tests using Deno's built-in test runner.
@@ -1215,7 +1199,6 @@ Directory arguments are expanded to all contained files matching the glob
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("script_arg")
     .multiple(true)
-    .required(true)
     .help("Script arg")
     .value_name("SCRIPT_ARG")
 }
@@ -1946,52 +1929,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec!["deno", "cache", "--test"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec![],
-          worker_specifiers: None,
-          test_patterns: Some(svec![]),
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec!["deno", "cache", "--test=a,b"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec![],
-          test_patterns: Some(svec!["a", "b"]),
-          worker_specifiers: None,
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "cache",
-      "--worker",
-      "worker1.ts,worker2.ts"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec![],
-          test_patterns: None,
-          worker_specifiers: Some(svec!["worker1.ts", "worker2.ts"]),
         },
         ..Flags::default()
       }
@@ -2493,8 +2430,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
@@ -2537,8 +2472,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
         },
         ..Flags::default()
       }
@@ -2985,6 +2918,27 @@ mod tests {
   }
 
   #[test]
+  fn test_double_hyphen() {
+    let r = flags_from_vec_safe(svec![
+      "deno", "test", "test.ts", "--", "arg1", "arg2"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          allow_none: false,
+          quiet: false,
+          filter: None,
+          include: Some(svec!["test.ts"]),
+        },
+        argv: svec!["arg1", "arg2"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn run_with_cafile() {
     let r = flags_from_vec_safe(svec![
       "deno",
@@ -3062,8 +3016,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts", "script_two.ts"],
-          worker_specifiers: None,
-          test_patterns: None,
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()

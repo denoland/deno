@@ -2137,18 +2137,6 @@ fn _066_prompt() {
   util::test_pty(args, output, input);
 }
 
-itest!(_068_cache_test_type_error {
-  args: "cache --test=test_type_error",
-  output: "068_cache_test_type_error.out",
-  exit_code: 1,
-});
-
-itest!(_069_cache_worker {
-  args: "cache --worker subdir/worker_globals.ts",
-  output_str: Some("[WILDCARD]"),
-  exit_code: 0,
-});
-
 itest!(_073_worker_error {
   args: "run -A 073_worker_error.ts",
   output: "073_worker_error.ts.out",
@@ -2734,6 +2722,18 @@ itest!(_053_import_compression {
   http_server: true,
 });
 
+itest!(cache_extensionless {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext",
+  output: "cache_extensionless.out",
+  http_server: true,
+});
+
+itest!(cache_random_extension {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
+  output: "cache_random_extension.out",
+  http_server: true,
+});
+
 itest!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
@@ -2772,6 +2772,11 @@ itest!(disallow_http_from_https_ts {
   output: "disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(dynamic_import_conditional {
+  args: "run --quiet --reload dynamic_import_conditional.js",
+  output: "dynamic_import_conditional.js.out",
 });
 
 itest!(tsx_imports {
