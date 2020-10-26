@@ -1,6 +1,7 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as hex from "../encoding/hex.ts";
 import * as base64 from "../encoding/base64.ts";
-import { notImplemented, normalizeEncoding } from "./_utils.ts";
+import { normalizeEncoding, notImplemented } from "./_utils.ts";
 
 const notImplementedEncodings = [
   "ascii",
@@ -94,7 +95,9 @@ export default class Buffer extends Uint8Array {
     if (typeof fill === "string") {
       encoding = checkEncoding(encoding);
       if (
-        typeof fill === "string" && fill.length === 1 && encoding === "utf8"
+        typeof fill === "string" &&
+        fill.length === 1 &&
+        encoding === "utf8"
       ) {
         buf.fill(fill.charCodeAt(0));
       } else bufFill = Buffer.from(fill, encoding);
@@ -210,7 +213,7 @@ export default class Buffer extends Uint8Array {
     if (typeof value == "string") {
       encoding = checkEncoding(encoding, false);
       if (encoding === "hex") return new Buffer(hex.decodeString(value).buffer);
-      if (encoding === "base64") return new Buffer(base64.decode(value));
+      if (encoding === "base64") return new Buffer(base64.decode(value).buffer);
       return new Buffer(new TextEncoder().encode(value).buffer);
     }
 
@@ -221,7 +224,7 @@ export default class Buffer extends Uint8Array {
   /**
    * Returns true if obj is a Buffer, false otherwise.
    */
-  static isBuffer(obj: object): obj is Buffer {
+  static isBuffer(obj: unknown): obj is Buffer {
     return obj instanceof Buffer;
   }
 
@@ -408,7 +411,7 @@ export default class Buffer extends Uint8Array {
    * Returns a JSON representation of buf. JSON.stringify() implicitly calls
    * this function when stringifying a Buffer instance.
    */
-  toJSON(): object {
+  toJSON(): Record<string, unknown> {
     return { type: "Buffer", data: Array.from(this) };
   }
 

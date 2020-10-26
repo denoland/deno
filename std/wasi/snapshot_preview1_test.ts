@@ -1,91 +1,99 @@
-/* eslint-disable */
-
-import { assert, assertEquals } from "../testing/asserts.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assertEquals } from "../testing/asserts.ts";
+import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
-import WASI from "./snapshot_preview1.ts";
 
-if (import.meta.main) {
-  const options = JSON.parse(Deno.args[0]);
-  const binary = await Deno.readFile(Deno.args[1]);
-  const module = await WebAssembly.compile(binary);
+const tests = [
+  "testdata/std_env_args.wasm",
+  "testdata/std_env_vars.wasm",
+  "testdata/std_fs_create_dir.wasm",
+  "testdata/std_fs_file_create.wasm",
+  "testdata/std_fs_file_metadata.wasm",
+  "testdata/std_fs_file_seek.wasm",
+  "testdata/std_fs_file_set_len.wasm",
+  "testdata/std_fs_file_sync_all.wasm",
+  "testdata/std_fs_file_sync_data.wasm",
+  "testdata/std_fs_hard_link.wasm",
+  "testdata/std_fs_metadata.wasm",
+  "testdata/std_fs_read.wasm",
+  "testdata/std_fs_read_dir.wasm",
+  "testdata/std_fs_remove_dir_all.wasm",
+  "testdata/std_fs_rename.wasm",
+  "testdata/std_fs_symlink_metadata.wasm",
+  "testdata/std_fs_write.wasm",
+  "testdata/std_io_stderr.wasm",
+  "testdata/std_io_stdin.wasm",
+  "testdata/std_io_stdout.wasm",
+  "testdata/std_process_exit.wasm",
+  "testdata/wasi_clock_res_get.wasm",
+  "testdata/wasi_clock_time_get.wasm",
+  "testdata/wasi_fd_fdstat_get.wasm",
+  "testdata/wasi_fd_fdstat_get.wasm",
+  "testdata/wasi_fd_fdstat_get.wasm",
+  "testdata/wasi_fd_renumber.wasm",
+  "testdata/wasi_fd_tell_file.wasm",
+  "testdata/wasi_fd_write_file.wasm",
+  "testdata/wasi_fd_write_stderr.wasm",
+  "testdata/wasi_fd_write_stdout.wasm",
+  "testdata/wasi_path_open.wasm",
+  "testdata/wasi_proc_exit.wasm",
+  "testdata/wasi_random_get.wasm",
+  "testdata/wasi_sched_yield.wasm",
+];
 
-  const wasi = new WASI({
-    env: options.env,
-    args: options.args,
-    preopens: options.preopens,
-  });
+const ignore = [
+  "testdata/wasi_clock_time_get.wasm",
+];
 
-  const instance = new WebAssembly.Instance(module, {
-    wasi_snapshot_preview1: wasi.exports,
-  });
+// TODO(caspervonb) investigate why these tests are failing on windows and fix
+// them.
+// The failing tests all involve symlinks in some way, my best guess so far is
+// that there's something going wrong with copying the symlinks over to the
+// temporary working directory, but only in some cases.
+if (Deno.build.os == "windows") {
+  ignore.push("testdata/std_fs_metadata.wasm");
+  ignore.push("testdata/std_fs_read_dir.wasm");
+  ignore.push("testdata/wasi_path_open.wasm");
+}
 
-  wasi.memory = instance.exports.memory;
+const rootdir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdir = path.join(rootdir, "testdata");
 
-  instance.exports._start();
-} else {
-  const rootdir = path.dirname(path.fromFileUrl(import.meta.url));
-  const testdir = path.join(rootdir, "testdata");
-  const outdir = path.join(testdir, "snapshot_preview1");
-
-  for await (const entry of Deno.readDir(testdir)) {
-    if (!entry.name.endsWith(".rs")) {
-      continue;
-    }
-
-    const process = Deno.run({
-      cmd: [
-        "rustc",
-        "--target",
-        "wasm32-wasi",
-        "--out-dir",
-        outdir,
-        path.join(testdir, entry.name),
-      ],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-
-    const status = await process.status();
-    assert(status.success);
-
-    process.close();
-
-    // TODO(caspervonb) allow the prelude to span multiple lines
-    const source = await Deno.readTextFile(path.join(testdir, entry.name));
-    const prelude = source.match(/^\/\/\s*\{.*/);
-    if (prelude) {
-      const basename = entry.name.replace(/.rs$/, ".json");
-      await Deno.writeTextFile(
-        path.join(outdir, basename),
-        prelude[0].slice(2),
+for (const pathname of tests) {
+  Deno.test({
+    name: path.basename(pathname),
+    ignore: ignore.includes(pathname),
+    fn: async function () {
+      const prelude = await Deno.readTextFile(
+        path.resolve(rootdir, pathname.replace(/\.wasm$/, ".json")),
       );
-    }
-  }
-
-  for await (const entry of Deno.readDir(outdir)) {
-    if (!entry.name.endsWith(".wasm")) {
-      continue;
-    }
-
-    Deno.test(entry.name, async function () {
-      const basename = entry.name.replace(/\.wasm$/, ".json");
-      const prelude = await Deno.readTextFile(path.resolve(outdir, basename));
       const options = JSON.parse(prelude);
 
-      await Deno.mkdir(`${testdir}/scratch`);
+      // TODO(caspervonb) investigate more.
+      // On Windows creating a tempdir in the default directory breaks nearly
+      // all the tests, possibly due to symlinks pointing to the original file
+      // which crosses drive boundaries.
+      const workdir = await Deno.makeTempDir({
+        dir: testdir,
+      });
+
+      await copy(
+        path.join(testdir, "fixtures"),
+        path.join(workdir, "fixtures"),
+      );
 
       try {
         const process = await Deno.run({
-          cwd: testdir,
+          cwd: workdir,
           cmd: [
             `${Deno.execPath()}`,
             "run",
             "--quiet",
             "--unstable",
             "--allow-all",
-            import.meta.url,
+            path.resolve(rootdir, "snapshot_preview1_test_runner.ts"),
             prelude,
-            path.resolve(outdir, entry.name),
+            path.resolve(rootdir, pathname),
           ],
           stdin: "piped",
           stdout: "piped",
@@ -119,12 +127,6 @@ if (import.meta.main) {
 
         process.stderr.close();
 
-        if (options.files) {
-          for (const [key, value] of Object.entries(options.files)) {
-            assertEquals(value, await Deno.readTextFile(`${testdir}/${key}`));
-          }
-        }
-
         const status = await process.status();
         assertEquals(status.code, options.exitCode ? +options.exitCode : 0);
 
@@ -132,8 +134,8 @@ if (import.meta.main) {
       } catch (err) {
         throw err;
       } finally {
-        await Deno.remove(`${testdir}/scratch`, { recursive: true });
+        await Deno.remove(workdir, { recursive: true });
       }
-    });
-  }
+    },
+  });
 }

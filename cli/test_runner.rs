@@ -2,10 +2,11 @@
 
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
-use deno_core::ErrBox;
+use deno_core::error::AnyError;
+use deno_core::serde_json::json;
+use deno_core::url::Url;
 use std::path::Path;
 use std::path::PathBuf;
-use url::Url;
 
 fn is_supported(p: &Path) -> bool {
   use std::path::Component;
@@ -34,7 +35,7 @@ fn is_supported(p: &Path) -> bool {
 pub fn prepare_test_modules_urls(
   include: Vec<String>,
   root_path: &PathBuf,
-) -> Result<Vec<Url>, ErrBox> {
+) -> Result<Vec<Url>, AnyError> {
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
 
@@ -81,11 +82,12 @@ pub fn render_test_file(
     json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
   };
 
-  let run_tests_cmd = format!(
-    "// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
+  test_file.push_str("// @ts-ignore\n");
+
+  test_file.push_str(&format!(
+    "await Deno[Deno.internal].runTests({});\n",
     options
-  );
-  test_file.push_str(&run_tests_cmd);
+  ));
 
   test_file
 }
@@ -160,6 +162,7 @@ mod tests {
       format!("{}/file_server_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
+      format!("{}/test.ts", root_url),
     ]
     .into_iter()
     .map(|f| Url::parse(&f).unwrap())

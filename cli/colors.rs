@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use regex::Regex;
 use std::env;
 use std::fmt;
 use std::io::Write;
-use termcolor::Color::{Ansi256, Black, Blue, Green, Magenta, Red, White};
+use termcolor::Color::{Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow};
 use termcolor::{Ansi, ColorSpec, WriteColor};
 
 #[cfg(windows)]
@@ -21,6 +22,7 @@ lazy_static! {
 }
 
 /// Helper function to strip ansi codes.
+#[cfg(test)]
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
   STRIP_ANSI_RE.replace_all(s, "")
 }
@@ -54,10 +56,7 @@ pub fn red_bold(s: &str) -> impl fmt::Display {
 
 pub fn green_bold(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec
-    .set_fg(Some(Green))
-    .set_bold(true)
-    .set_intense(true);
+  style_spec.set_fg(Some(Green)).set_bold(true);
   style(&s, style_spec)
 }
 
@@ -67,33 +66,27 @@ pub fn italic_bold(s: &str) -> impl fmt::Display {
   style(&s, style_spec)
 }
 
-pub fn black_on_white(s: &str) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_bg(Some(White)).set_fg(Some(Black));
-  style(&s, style_spec)
-}
-
 pub fn white_on_red(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Red)).set_fg(Some(White));
   style(&s, style_spec)
 }
 
-pub fn white_on_green(s: &str) -> impl fmt::Display {
+pub fn black_on_green(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_bg(Some(Ansi256(10))).set_fg(Some(White));
+  style_spec.set_bg(Some(Green)).set_fg(Some(Black));
   style(&s, style_spec)
 }
 
 pub fn yellow(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(11)));
+  style_spec.set_fg(Some(Yellow));
   style(&s, style_spec)
 }
 
 pub fn cyan(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(14)));
+  style_spec.set_fg(Some(Cyan));
   style(&s, style_spec)
 }
 
@@ -105,13 +98,7 @@ pub fn red(s: &str) -> impl fmt::Display {
 
 pub fn green(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Green)).set_intense(true);
-  style(&s, style_spec)
-}
-
-pub fn magenta(s: &str) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Magenta));
+  style_spec.set_fg(Some(Green));
   style(&s, style_spec)
 }
 
@@ -124,12 +111,6 @@ pub fn bold(s: &str) -> impl fmt::Display {
 pub fn gray(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(8)));
-  style(&s, style_spec)
-}
-
-pub fn italic_gray(s: &str) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(8))).set_italic(true);
   style(&s, style_spec)
 }
 

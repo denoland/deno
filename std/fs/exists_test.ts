@@ -3,7 +3,8 @@ import { assertEquals, assertStringContains } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("[fs] existsFile", async function (): Promise<void> {
   assertEquals(
@@ -112,8 +113,7 @@ for (const s of scenes) {
   let title = `test ${s.async ? "exists" : "existsSync"}("testdata/${s.file}")`;
   title += ` ${s.read ? "with" : "without"} --allow-read`;
   Deno.test(`[fs] existsPermission ${title}`, async function (): Promise<void> {
-    // TODO(lucacasonato): remove unstable when stabilized
-    const args = [Deno.execPath(), "run", "--unstable"];
+    const args = [Deno.execPath(), "run"];
 
     if (s.read) {
       args.push("--allow-read");

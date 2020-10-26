@@ -1,8 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
 unitTest(function globalThisExists(): void {
   assert(globalThis != null);
+});
+
+unitTest(function noInternalGlobals(): void {
+  // globalThis.__bootstrap should not be there.
+  for (const key of Object.keys(globalThis)) {
+    assert(!key.startsWith("_"));
+  }
 });
 
 unitTest(function windowExists(): void {
@@ -27,6 +34,14 @@ unitTest(function globalThisEqualsWindow(): void {
 
 unitTest(function globalThisEqualsSelf(): void {
   assert(globalThis === self);
+});
+
+unitTest(function globalThisInstanceofWindow(): void {
+  assert(globalThis instanceof Window);
+});
+
+unitTest(function globalThisInstanceofEventTarget(): void {
+  assert(globalThis instanceof EventTarget);
 });
 
 unitTest(function DenoNamespaceExists(): void {
@@ -72,7 +87,8 @@ unitTest(function DenoNamespaceImmutable(): void {
   }
   assert(denoCopy === Deno);
   try {
-    delete window.Deno;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno;
   } catch {
     // pass
   }
@@ -87,7 +103,8 @@ unitTest(function DenoNamespaceImmutable(): void {
   }
   assert(readFile === Deno.readFile);
   try {
-    delete window.Deno.readFile;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno.readFile;
   } catch {
     // pass
   }

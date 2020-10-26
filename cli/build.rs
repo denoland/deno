@@ -1,43 +1,63 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 mod op_fetch_asset;
 
-use deno_core::js_check;
-use deno_core::CoreIsolate;
-use deno_core::StartupData;
+use deno_core::JsRuntime;
+use deno_core::RuntimeOptions;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
 fn create_snapshot(
-  mut isolate: CoreIsolate,
+  mut js_runtime: JsRuntime,
   snapshot_path: &Path,
-  files: Vec<String>,
+  files: Vec<PathBuf>,
 ) {
+  deno_web::init(&mut js_runtime);
+  deno_fetch::init(&mut js_runtime);
+  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
+  // workspace root.
+  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
   for file in files {
-    println!("cargo:rerun-if-changed={}", file);
-    js_check(isolate.execute(&file, &std::fs::read_to_string(&file).unwrap()));
+    println!("cargo:rerun-if-changed={}", file.display());
+    let display_path = file.strip_prefix(display_root).unwrap();
+    let display_path_str = display_path.display().to_string();
+    js_runtime
+      .execute(
+        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+        &std::fs::read_to_string(&file).unwrap(),
+      )
+      .unwrap();
   }
 
-  let snapshot = isolate.snapshot();
+  let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
   std::fs::write(&snapshot_path, snapshot_slice).unwrap();
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
-fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<String>) {
-  let runtime_isolate = CoreIsolate::new(StartupData::None, true);
-  create_snapshot(runtime_isolate, snapshot_path, files);
+fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
+  let js_runtime = JsRuntime::new(RuntimeOptions {
+    will_snapshot: true,
+    ..Default::default()
+  });
+  create_snapshot(js_runtime, snapshot_path, files);
 }
 
 fn create_compiler_snapshot(
   snapshot_path: &Path,
-  files: Vec<String>,
+  files: Vec<PathBuf>,
   cwd: &Path,
 ) {
-  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
+  custom_libs
+    .insert("lib.deno.web.d.ts".to_string(), deno_web::get_declaration());
+  custom_libs.insert(
+    "lib.deno.fetch.d.ts".to_string(),
+    deno_fetch::get_declaration(),
+  );
   custom_libs.insert(
     "lib.deno.window.d.ts".to_string(),
     cwd.join("dts/lib.deno.window.d.ts"),
@@ -58,16 +78,30 @@ fn create_compiler_snapshot(
     "lib.deno.unstable.d.ts".to_string(),
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
-  runtime_isolate.register_op(
+
+  let mut js_runtime = JsRuntime::new(RuntimeOptions {
+    will_snapshot: true,
+    ..Default::default()
+  });
+  js_runtime.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),
   );
-  create_snapshot(runtime_isolate, snapshot_path, files);
+  create_snapshot(js_runtime, snapshot_path, files);
 }
 
 fn ts_version() -> String {
-  // TODO(ry) This should be automatically extracted from typescript.js
-  "3.9.2".to_string()
+  std::fs::read_to_string("tsc/00_typescript.js")
+    .unwrap()
+    .lines()
+    .find(|l| l.contains("ts.version = "))
+    .expect(
+      "Failed to find the pattern `ts.version = ` in typescript source code",
+    )
+    .chars()
+    .skip_while(|c| !char::is_numeric(*c))
+    .take_while(|c| *c != '"')
+    .collect::<String>()
 }
 
 fn main() {
@@ -80,6 +114,14 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  println!(
+    "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
+    deno_web::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
+    deno_fetch::get_declaration().display()
+  );
 
   println!(
     "cargo:rustc-env=TARGET={}",
@@ -93,7 +135,7 @@ fn main() {
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
-  let js_files = get_js_files("js2");
+  let js_files = get_js_files("rt");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 
   let js_files = get_js_files("tsc");
@@ -111,15 +153,16 @@ fn main() {
   }
 }
 
-fn get_js_files(d: &str) -> Vec<String> {
+fn get_js_files(d: &str) -> Vec<PathBuf> {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let mut js_files = std::fs::read_dir(d)
     .unwrap()
     .map(|dir_entry| {
       let file = dir_entry.unwrap();
-      file.path().to_string_lossy().to_string()
+      manifest_dir.join(file.path())
     })
-    .filter(|filename| filename.ends_with(".js"))
-    .collect::<Vec<String>>();
+    .filter(|path| path.extension().unwrap_or_default() == "js")
+    .collect::<Vec<PathBuf>>();
   js_files.sort();
   js_files
 }

@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
   fail,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
@@ -133,6 +133,7 @@ unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   assert(response.body !== null);
   let total = 0;
   for await (const chunk of response.body) {
+    assert(chunk instanceof Uint8Array);
     total += chunk.length;
   }
 
@@ -145,12 +146,13 @@ unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assert(response.body !== null);
-  const reader = await response.body.getReader();
+  const reader = response.body.getReader();
   let total = 0;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     assert(value);
+    assert(value instanceof Uint8Array);
     total += value.length;
   }
 
@@ -738,6 +740,16 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.type, "default");
 });
 
+unitTest(async function responseWithoutBody(): Promise<void> {
+  const response = new Response();
+  assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
+  assertEquals(await response.blob(), new Blob([]));
+  assertEquals(await response.text(), "");
+  await assertThrowsAsync(async () => {
+    await response.json();
+  });
+});
+
 unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   void
 > {
@@ -938,3 +950,21 @@ unitTest(function fetchResponseEmptyConstructor(): void {
   assertEquals(response.bodyUsed, false);
   assertEquals([...response.headers], []);
 });
+
+unitTest(
+  { perms: { net: true, read: true } },
+  async function fetchCustomHttpClientSuccess(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient(
+      { caFile: "./cli/tests/tls/RootCA.crt" },
+    );
+    const response = await fetch(
+      "https://localhost:5545/cli/tests/fixture.json",
+      { client },
+    );
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    client.close();
+  },
+);

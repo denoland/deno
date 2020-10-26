@@ -1,5 +1,17 @@
-const map = new Map<string, { foo: string }>();
+/* eslint-disable */
+function b() {
+  return function (
+    _target: any,
+    _propertyKey: string,
+    _descriptor: PropertyDescriptor,
+  ) {
+    console.log("b");
+  };
+}
 
-if (map.get("bar").foo) {
-  console.log("here");
+class A {
+  @b()
+  a() {
+    console.log("a");
+  }
 }

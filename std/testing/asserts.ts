@@ -2,8 +2,8 @@
 /** This module is browser compatible. Do not rely on good formatting of values
  * for AssertionError messages in browsers. */
 
-import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
-import diff, { DiffType, DiffResult } from "./diff.ts";
+import { bold, gray, green, red, stripColor, white } from "../fmt/colors.ts";
+import { diff, DiffResult, DiffType } from "./_diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
@@ -20,7 +20,7 @@ export class AssertionError extends Error {
 }
 
 export function _format(v: unknown): string {
-  let string = globalThis.Deno
+  return globalThis.Deno
     ? Deno.inspect(v, {
       depth: Infinity,
       sorted: true,
@@ -28,11 +28,7 @@ export function _format(v: unknown): string {
       compact: false,
       iterableLimit: Infinity,
     })
-    : String(v);
-  if (typeof v == "string") {
-    string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
-  }
-  return string;
+    : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
 }
 
 function createColor(diffType: DiffType): (s: string) => string {
@@ -95,6 +91,13 @@ export function equal(c: unknown, d: unknown): boolean {
       return String(a) === String(b);
     }
     if (a instanceof Date && b instanceof Date) {
+      const aTime = a.getTime();
+      const bTime = b.getTime();
+      // Check for NaN equality manually since NaN is not
+      // equal to itself.
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) {
+        return true;
+      }
       return a.getTime() === b.getTime();
     }
     if (Object.is(a, b)) {
@@ -242,9 +245,19 @@ export function assertNotEquals(
  * assertStrictEquals(1, 2)
  * ```
  */
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void;
 export function assertStrictEquals<T>(
   actual: T,
   expected: T,
+  msg?: string,
+): void;
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string,
 ): void {
   if (actual === expected) {
@@ -283,6 +296,37 @@ export function assertStrictEquals<T>(
   }
 
   throw new AssertionError(message);
+}
+
+/**
+ * Make an assertion that `actual` and `expected` are not strictly equal.
+ * If the values are strictly equal then throw.
+ * ```ts
+ * assertNotStrictEquals(1, 1)
+ * ```
+ */
+export function assertNotStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void;
+export function assertNotStrictEquals<T>(
+  actual: T,
+  expected: T,
+  msg?: string,
+): void;
+export function assertNotStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void {
+  if (actual !== expected) {
+    return;
+  }
+
+  throw new AssertionError(
+    msg ?? `Expected "actual" to be strictly unequal to: ${_format(actual)}\n`,
+  );
 }
 
 /**
@@ -366,6 +410,65 @@ export function assertMatch(
     }
     throw new AssertionError(msg);
   }
+}
+
+/**
+ * Make an assertion that `actual` not match RegExp `expected`. If match
+ * then thrown
+ */
+export function assertNotMatch(
+  actual: string,
+  expected: RegExp,
+  msg?: string,
+): void {
+  if (expected.test(actual)) {
+    if (!msg) {
+      msg = `actual: "${actual}" expected to not match: "${expected}"`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
+ * Make an assertion that `actual` object is a subset of `expected` object, deeply.
+ * If not, then throw.
+ */
+export function assertObjectMatch(
+  actual: Record<PropertyKey, unknown>,
+  expected: Record<PropertyKey, unknown>,
+): void {
+  type loose = Record<PropertyKey, unknown>;
+  const seen = new WeakMap();
+  return assertEquals(
+    (function filter(a: loose, b: loose): loose {
+      // Prevent infinite loop with circular references with same filter
+      if ((seen.has(a)) && (seen.get(a) === b)) {
+        return a;
+      }
+      seen.set(a, b);
+      // Filter keys and symbols which are present in both actual and expected
+      const filtered = {} as loose;
+      const entries = [
+        ...Object.getOwnPropertyNames(a),
+        ...Object.getOwnPropertySymbols(a),
+      ]
+        .filter((key) => key in b)
+        .map((key) => [key, a[key as string]]) as Array<[string, unknown]>;
+      // Build filtered object and filter recursively on nested objects references
+      for (const [key, value] of entries) {
+        if (typeof value === "object") {
+          const subset = (b as loose)[key];
+          if ((typeof subset === "object") && (subset)) {
+            filtered[key] = filter(value as loose, subset as loose);
+            continue;
+          }
+        }
+        filtered[key] = value;
+      }
+      return filtered;
+    })(actual, expected),
+    expected,
+  );
 }
 
 /**

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { fail, assert } from "../../testing/asserts.ts";
+import { assert, fail } from "../../testing/asserts.ts";
 import { chmod, chmodSync } from "./_fs_chmod.ts";
 
 Deno.test({

@@ -4,7 +4,7 @@
 /// <reference lib="esnext" />
 
 /** Deno provides extra properties on `import.meta`.  These are included here
- * to ensure that these are still available when using the Deno namepsace in
+ * to ensure that these are still available when using the Deno namespace in
  * conjunction with other type libs, like `dom`. */
 declare interface ImportMeta {
   /** A string representation of the fully qualified module URL. */
@@ -676,6 +676,52 @@ declare namespace Deno {
     whence: SeekMode,
   ): Promise<number>;
 
+  /**
+   * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 1);
+   * Deno.fsyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
+   * ```
+   */
+  export function fsyncSync(rid: number): void;
+
+  /**
+   * Flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 1);
+   * await Deno.fsync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
+   * ```
+   */
+  export function fsync(rid: number): Promise<void>;
+
+  /*
+   * Synchronously flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.fdatasyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasyncSync(rid: number): void;
+
+  /**
+   * Flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.fdatasync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasync(rid: number): Promise<void>;
+
   /** Close the given resource ID (rid) which has been previously opened, such
    * as via opening or creating a file.  Closing a file when you are finished
    * with it is important to avoid leaking resources.
@@ -710,11 +756,11 @@ declare namespace Deno {
   }
 
   /** A handle for `stdin`. */
-  export const stdin: Reader & ReaderSync & Closer & { rid: number };
+  export const stdin: Reader & ReaderSync & Closer & { readonly rid: number };
   /** A handle for `stdout`. */
-  export const stdout: Writer & WriterSync & Closer & { rid: number };
+  export const stdout: Writer & WriterSync & Closer & { readonly rid: number };
   /** A handle for `stderr`. */
-  export const stderr: Writer & WriterSync & Closer & { rid: number };
+  export const stderr: Writer & WriterSync & Closer & { readonly rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -814,12 +860,12 @@ declare namespace Deno {
      * drained. Resolves to the number of bytes read. If the buffer has no
      * data to return, resolves to EOF (`null`).
      *
-     * NOTE: This methods reads bytes sychronously; it's provided for
+     * NOTE: This methods reads bytes synchronously; it's provided for
      * compatibility with `Reader` interfaces.
      */
     read(p: Uint8Array): Promise<number | null>;
     writeSync(p: Uint8Array): number;
-    /** NOTE: This methods writes bytes sychronously; it's provided for
+    /** NOTE: This methods writes bytes synchronously; it's provided for
      * compatibility with `Writer` interface. */
     write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
@@ -993,9 +1039,9 @@ declare namespace Deno {
   }
 
   /** Synchronously creates a new temporary directory in the default directory
-   * for temporary files (see also `Deno.dir("temp")`), unless `dir` is specified.
-   * Other optional options include prefixing and suffixing the directory name
-   * with `prefix` and `suffix` respectively.
+   * for temporary files, unless `dir` is specified. Other optional options
+   * include prefixing and suffixing the directory name with `prefix` and
+   * `suffix` respectively.
    *
    * The full path to the newly created directory is returned.
    *
@@ -1013,9 +1059,9 @@ declare namespace Deno {
   export function makeTempDirSync(options?: MakeTempOptions): string;
 
   /** Creates a new temporary directory in the default directory for temporary
-   * files (see also `Deno.dir("temp")`), unless `dir` is specified.  Other
-   * optional options include prefixing and suffixing the directory name with
-   * `prefix` and `suffix` respectively.
+   * files, unless `dir` is specified. Other optional options include
+   * prefixing and suffixing the directory name with `prefix` and `suffix`
+   * respectively.
    *
    * This call resolves to the full path to the newly created directory.
    *
@@ -1077,7 +1123,7 @@ declare namespace Deno {
    * Deno.chmodSync("/path/to/file", 0o666);
    * ```
    *
-   * For a full description, see [chmod](#chmod)
+   * For a full description, see [chmod](#Deno.chmod)
    *
    * NOTE: This API currently throws on Windows
    *
@@ -1225,8 +1271,8 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
-  /** Synchronously reads and returns the entire contents of a file as utf8 encoded string
-   *  encoded string. Reading a directory returns an empty string.
+  /** Synchronously reads and returns the entire contents of a file as utf8
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = Deno.readTextFileSync("hello.txt");
@@ -1236,8 +1282,8 @@ declare namespace Deno {
    * Requires `allow-read` permission. */
   export function readTextFileSync(path: string | URL): string;
 
-  /** Asynchronously reads and returns the entire contents of a file as a utf8
-   *  encoded string. Reading a directory returns an empty data array.
+  /** Asynchronously reads and returns the entire contents of a file as utf8
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = await Deno.readTextFile("hello.txt");
@@ -1565,7 +1611,7 @@ declare namespace Deno {
    * else overwriting.
    *
    * ```ts
-   * await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   * Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
    * ```
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
@@ -1896,7 +1942,7 @@ declare namespace Deno {
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    cmd: string[];
+    cmd: string[] | [URL, ...string[]];
     cwd?: string;
     env?: {
       [key: string]: string;
@@ -1941,17 +1987,23 @@ declare namespace Deno {
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
   export interface InspectOptions {
+    /** Stylize output with ANSI colors. Defaults to false. */
+    colors?: boolean;
+    /** Try to fit more than one entry of a collection on the same line.
+     * Defaults to true. */
+    compact?: boolean;
     /** Traversal depth for nested objects. Defaults to 4. */
     depth?: number;
+    /** The maximum number of iterable entries to print. Defaults to 100. */
+    iterableLimit?: number;
+    /** Show a Proxy's target and handler. Defaults to false. */
+    showProxy?: boolean;
     /** Sort Object, Set and Map entries by key. Defaults to false. */
     sorted?: boolean;
     /** Add a trailing comma for multiline collections. Defaults to false. */
     trailingComma?: boolean;
-    /** Try to fit more than one entry of a collection on the same line.
-     * Defaults to true. */
-    compact?: boolean;
-    /** The maximum number of iterable entries to print. Defaults to 100. */
-    iterableLimit?: number;
+    /*** Evaluate the result of calling getters. Defaults to false. */
+    getters?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by
@@ -2025,4 +2077,7 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
   export const customInspect: unique symbol;
+
+  /** The URL of the entrypoint module entered from the command-line. */
+  export const mainModule: string;
 }

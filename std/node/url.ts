@@ -20,10 +20,10 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import {
+  CHAR_BACKWARD_SLASH,
+  CHAR_FORWARD_SLASH,
   CHAR_LOWERCASE_A,
   CHAR_LOWERCASE_Z,
-  CHAR_FORWARD_SLASH,
-  CHAR_BACKWARD_SLASH,
 } from "../path/_constants.ts";
 import * as path from "./path.ts";
 
@@ -35,6 +35,9 @@ const backslashRegEx = /\\/g;
 const newlineRegEx = /\n/g;
 const carriageReturnRegEx = /\r/g;
 const tabRegEx = /\t/g;
+
+const _url = URL;
+export { _url as URL };
 
 export function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);

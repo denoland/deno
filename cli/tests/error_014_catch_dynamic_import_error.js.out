@@ -1,12 +1,10 @@
 Caught direct dynamic import error.
 TypeError: relative import path "does not exist" not prefixed with / or ./ or ../ Imported from "[WILDCARD]/error_014_catch_dynamic_import_error.js"
-
 Caught indirect direct dynamic import error.
 TypeError: relative import path "does not exist either" not prefixed with / or ./ or ../ Imported from "[WILDCARD]/indirect_import_error.js"
-
 Caught error thrown by dynamically imported module.
 Error: An error
-    at file:///[WILDCARD]tests/subdir/throws.js:5:7
+    at file:///[WILDCARD]tests/subdir/throws.js:6:7
 Caught error thrown indirectly by dynamically imported module.
 Error: An error
-    at file:///[WILDCARD]tests/subdir/throws.js:5:7
+    at file:///[WILDCARD]tests/subdir/throws.js:6:7

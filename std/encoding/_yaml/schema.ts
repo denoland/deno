@@ -5,7 +5,7 @@
 
 import { YAMLError } from "./error.ts";
 import type { KindType, Type } from "./type.ts";
-import type { ArrayObject, Any } from "./utils.ts";
+import type { Any, ArrayObject } from "./utils.ts";
 
 function compileList(
   schema: Schema,

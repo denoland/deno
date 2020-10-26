@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function btoaSuccess(): void {
   const text = "hello world";
@@ -104,10 +104,21 @@ unitTest(function textDecoderASCII(): void {
 unitTest(function textDecoderErrorEncoding(): void {
   let didThrow = false;
   try {
-    new TextDecoder("foo");
+    new TextDecoder("Foo");
   } catch (e) {
     didThrow = true;
-    assertEquals(e.message, "The encoding label provided ('foo') is invalid.");
+    assertEquals(e.message, "The encoding label provided ('Foo') is invalid.");
+  }
+  assert(didThrow);
+});
+
+unitTest(function textDecoderHandlesNotFoundInternalDecoder() {
+  let didThrow = false;
+  try {
+    new TextDecoder("gbk");
+  } catch (e) {
+    didThrow = true;
+    assert(e instanceof RangeError);
   }
   assert(didThrow);
 });

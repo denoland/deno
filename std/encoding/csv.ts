@@ -16,18 +16,43 @@ export const ERR_QUOTE = 'extraneous or missing " in quoted-field';
 export const ERR_INVALID_DELIM = "Invalid Delimiter";
 export const ERR_FIELD_COUNT = "wrong number of fields";
 
+/**
+ * A ParseError is returned for parsing errors.
+ * Line numbers are 1-indexed and columns are 0-indexed.
+ */
 export class ParseError extends Error {
-  StartLine: number;
-  Line: number;
-  constructor(start: number, line: number, message: string) {
-    super(message);
-    this.StartLine = start;
-    this.Line = line;
+  /** Line where the record starts*/
+  startLine: number;
+  /** Line where the error occurred */
+  line: number;
+  /** Column (rune index) where the error occurred */
+  column: number | null;
+
+  constructor(
+    start: number,
+    line: number,
+    column: number | null,
+    message: string,
+  ) {
+    super();
+    this.startLine = start;
+    this.column = column;
+    this.line = line;
+
+    if (message === ERR_FIELD_COUNT) {
+      this.message = `record on line ${line}: ${message}`;
+    } else if (start !== line) {
+      this.message =
+        `record on line ${start}; parse error on line ${line}, column ${column}: ${message}`;
+    } else {
+      this.message =
+        `parse error on line ${line}, column ${column}: ${message}`;
+    }
   }
 }
 
 /**
- * @property comma - Character which separates values. Default: ','
+ * @property separator - Character which separates values. Default: ','
  * @property comment - Character to start a comment. Default: '#'
  * @property trimLeadingSpace - Flag to trim the leading space of the value.
  *           Default: 'false'
@@ -37,7 +62,7 @@ export class ParseError extends Error {
  *           If == 0, first row is used as referral for the number of fields.
  */
 export interface ReadOptions {
-  comma?: string;
+  separator?: string;
   comment?: string;
   trimLeadingSpace?: boolean;
   lazyQuotes?: boolean;
@@ -45,29 +70,29 @@ export interface ReadOptions {
 }
 
 function chkOptions(opt: ReadOptions): void {
-  if (!opt.comma) {
-    opt.comma = ",";
+  if (!opt.separator) {
+    opt.separator = ",";
   }
   if (!opt.trimLeadingSpace) {
     opt.trimLeadingSpace = false;
   }
   if (
-    INVALID_RUNE.includes(opt.comma) ||
+    INVALID_RUNE.includes(opt.separator) ||
     (typeof opt.comment === "string" && INVALID_RUNE.includes(opt.comment)) ||
-    opt.comma === opt.comment
+    opt.separator === opt.comment
   ) {
     throw new Error(ERR_INVALID_DELIM);
   }
 }
 
 async function readRecord(
-  Startline: number,
+  startLine: number,
   reader: BufReader,
-  opt: ReadOptions = { comma: ",", trimLeadingSpace: false },
+  opt: ReadOptions = { separator: ",", trimLeadingSpace: false },
 ): Promise<string[] | null> {
   const tp = new TextProtoReader(reader);
-  const lineIndex = Startline;
   let line = await readLine(tp);
+  let lineIndex = startLine + 1;
 
   if (line === null) return null;
   if (line.length === 0) {
@@ -78,12 +103,13 @@ async function readRecord(
     return [];
   }
 
-  assert(opt.comma != null);
+  assert(opt.separator != null);
 
-  let quoteError: string | null = null;
+  let fullLine = line;
+  let quoteError: ParseError | null = null;
   const quote = '"';
   const quoteLen = quote.length;
-  const commaLen = opt.comma.length;
+  const separatorLen = opt.separator.length;
   let recordBuffer = "";
   const fieldIndexes = [] as number[];
   parseField:
@@ -94,7 +120,7 @@ async function readRecord(
 
     if (line.length === 0 || !line.startsWith(quote)) {
       // Non-quoted string field
-      const i = line.indexOf(opt.comma);
+      const i = line.indexOf(opt.separator);
       let field = line;
       if (i >= 0) {
         field = field.substring(0, i);
@@ -103,14 +129,22 @@ async function readRecord(
       if (!opt.lazyQuotes) {
         const j = field.indexOf(quote);
         if (j >= 0) {
-          quoteError = ERR_BARE_QUOTE;
+          const col = runeCount(
+            fullLine.slice(0, fullLine.length - line.slice(j).length),
+          );
+          quoteError = new ParseError(
+            startLine + 1,
+            lineIndex,
+            col,
+            ERR_BARE_QUOTE,
+          );
           break parseField;
         }
       }
       recordBuffer += field;
       fieldIndexes.push(recordBuffer.length);
       if (i >= 0) {
-        line = line.substring(i + commaLen);
+        line = line.substring(i + separatorLen);
         continue parseField;
       }
       break parseField;
@@ -127,9 +161,9 @@ async function readRecord(
             // `""` sequence (append quote).
             recordBuffer += quote;
             line = line.substring(quoteLen);
-          } else if (line.startsWith(opt.comma)) {
+          } else if (line.startsWith(opt.separator)) {
             // `","` sequence (end of field).
-            line = line.substring(commaLen);
+            line = line.substring(separatorLen);
             fieldIndexes.push(recordBuffer.length);
             continue parseField;
           } else if (0 === line.length) {
@@ -141,27 +175,50 @@ async function readRecord(
             recordBuffer += quote;
           } else {
             // `"*` sequence (invalid non-escaped quote).
-            quoteError = ERR_QUOTE;
+            const col = runeCount(
+              fullLine.slice(0, fullLine.length - line.length - quoteLen),
+            );
+            quoteError = new ParseError(
+              startLine + 1,
+              lineIndex,
+              col,
+              ERR_QUOTE,
+            );
             break parseField;
           }
         } else if (line.length > 0 || !(await isEOF(tp))) {
           // Hit end of line (copy all data so far).
           recordBuffer += line;
           const r = await readLine(tp);
+          lineIndex++;
+          line = r ?? ""; // This is a workaround for making this module behave similarly to the encoding/csv/reader.go.
+          fullLine = line;
           if (r === null) {
+            // Abrupt end of file (EOF or error).
             if (!opt.lazyQuotes) {
-              quoteError = ERR_QUOTE;
+              const col = runeCount(fullLine);
+              quoteError = new ParseError(
+                startLine + 1,
+                lineIndex,
+                col,
+                ERR_QUOTE,
+              );
               break parseField;
             }
             fieldIndexes.push(recordBuffer.length);
             break parseField;
           }
           recordBuffer += "\n"; // preserve line feed (This is because TextProtoReader removes it.)
-          line = r;
         } else {
           // Abrupt end of file (EOF on error).
           if (!opt.lazyQuotes) {
-            quoteError = ERR_QUOTE;
+            const col = runeCount(fullLine);
+            quoteError = new ParseError(
+              startLine + 1,
+              lineIndex,
+              col,
+              ERR_QUOTE,
+            );
             break parseField;
           }
           fieldIndexes.push(recordBuffer.length);
@@ -171,7 +228,7 @@ async function readRecord(
     }
   }
   if (quoteError) {
-    throw new ParseError(Startline, lineIndex, quoteError);
+    throw quoteError;
   }
   const result = [] as string[];
   let preIdx = 0;
@@ -184,6 +241,11 @@ async function readRecord(
 
 async function isEOF(tp: TextProtoReader): Promise<boolean> {
   return (await tp.r.peek(0)) === null;
+}
+
+function runeCount(s: string): number {
+  // Array.from considers the surrogate pair.
+  return Array.from(s).length;
 }
 
 async function readLine(tp: TextProtoReader): Promise<string | null> {
@@ -219,7 +281,7 @@ async function readLine(tp: TextProtoReader): Promise<string | null> {
 export async function readMatrix(
   reader: BufReader,
   opt: ReadOptions = {
-    comma: ",",
+    separator: ",",
     trimLeadingSpace: false,
     lazyQuotes: false,
   },
@@ -251,7 +313,7 @@ export async function readMatrix(
 
     if (lineResult.length > 0) {
       if (_nbFields && _nbFields !== lineResult.length) {
-        throw new ParseError(lineIndex, lineIndex, ERR_FIELD_COUNT);
+        throw new ParseError(lineIndex, lineIndex, null, ERR_FIELD_COUNT);
       }
       result.push(lineResult);
     }
@@ -262,13 +324,13 @@ export async function readMatrix(
 /**
  * Parse the CSV string/buffer with the options provided.
  *
- * HeaderOptions provides the column definition
+ * ColumnOptions provides the column definition
  * and the parse function for each entry of the
  * column.
  */
-export interface HeaderOptions {
+export interface ColumnOptions {
   /**
-   * Name of the header to be used as property
+   * Name of the column to be used as property
    */
   name: string;
   /**
@@ -281,14 +343,20 @@ export interface HeaderOptions {
 
 export interface ParseOptions extends ReadOptions {
   /**
-   * If a boolean is provided, the first line will be used as Header definitions.
-   * If `string[]` or `HeaderOptions[]` those names will be used for header definition.
+   * If you provide `skipFirstRow: true` and `columns`, the first line will be skipped.
+   * If you provide `skipFirstRow: true` but not `columns`, the first line will be skipped and used as header definitions.
    */
-  header: boolean | string[] | HeaderOptions[];
+  skipFirstRow?: boolean;
+
+  /**
+   * If you provide `string[]` or `ColumnOptions[]`, those names will be used for header definition.
+   */
+  columns?: string[] | ColumnOptions[];
+
   /** Parse function for rows.
    * Example:
    *     const r = await parseFile('a,b,c\ne,f,g\n', {
-   *      header: ["this", "is", "sparta"],
+   *      columns: ["this", "is", "sparta"],
    *       parse: (e: Record<string, unknown>) => {
    *         return { super: e.this, street: e.is, fighter: e.sparta };
    *       }
@@ -308,14 +376,14 @@ export interface ParseOptions extends ReadOptions {
  * for columns and rows.
  * @param input Input to parse. Can be a string or BufReader.
  * @param opt options of the parser.
- * @returns If you don't provide both `opt.header` and `opt.parse`, it returns `string[][]`.
- *   If you provide `opt.header` but not `opt.parse`, it returns `object[]`.
+ * @returns If you don't provide `opt.skipFirstRow`, `opt.parse`, and `opt.columns`, it returns `string[][]`.
+ *   If you provide `opt.skipFirstRow` or `opt.columns` but not `opt.parse`, it returns `object[]`.
  *   If you provide `opt.parse`, it returns an array where each element is the value returned from `opt.parse`.
  */
 export async function parse(
   input: string | BufReader,
   opt: ParseOptions = {
-    header: false,
+    skipFirstRow: false,
   },
 ): Promise<unknown[]> {
   let r: string[][];
@@ -324,33 +392,36 @@ export async function parse(
   } else {
     r = await readMatrix(new BufReader(new StringReader(input)), opt);
   }
-  if (opt.header) {
-    let headers: HeaderOptions[] = [];
+  if (opt.skipFirstRow || opt.columns) {
+    let headers: ColumnOptions[] = [];
     let i = 0;
-    if (Array.isArray(opt.header)) {
-      if (typeof opt.header[0] !== "string") {
-        headers = opt.header as HeaderOptions[];
-      } else {
-        const h = opt.header as string[];
-        headers = h.map(
-          (e): HeaderOptions => {
-            return {
-              name: e,
-            };
-          },
-        );
-      }
-    } else {
+
+    if (opt.skipFirstRow) {
       const head = r.shift();
       assert(head != null);
       headers = head.map(
-        (e): HeaderOptions => {
+        (e): ColumnOptions => {
           return {
             name: e,
           };
         },
       );
       i++;
+    }
+
+    if (opt.columns) {
+      if (typeof opt.columns[0] !== "string") {
+        headers = opt.columns as ColumnOptions[];
+      } else {
+        const h = opt.columns as string[];
+        headers = h.map(
+          (e): ColumnOptions => {
+            return {
+              name: e,
+            };
+          },
+        );
+      }
     }
     return r.map((e): unknown => {
       if (e.length !== headers.length) {

@@ -4,7 +4,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { StyleVariant, Type } from "../type.ts";
-import { isNegativeZero, Any } from "../utils.ts";
+import { Any, isNegativeZero } from "../utils.ts";
 
 const YAML_FLOAT_PATTERN = new RegExp(
   // 2.5e4, 2.5 and integers
