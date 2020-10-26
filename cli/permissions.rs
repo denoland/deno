@@ -848,13 +848,18 @@ mod tests {
 
   #[test]
   fn check_specifiers() {
+    let read_allowlist = if cfg!(target_os = "windows") {
+      vec![PathBuf::from("C:\\a")]
+    } else {
+      vec![PathBuf::from("/a")]
+    };
     let perms = Permissions::from_flags(&Flags {
-      read_allowlist: vec![PathBuf::from("/a")],
+      read_allowlist,
       net_allowlist: svec!["localhost"],
       ..Default::default()
     });
 
-    let fixtures = vec![
+    let mut fixtures = vec![
       (
         ModuleSpecifier::resolve_url_or_path("http://localhost:4545/mod.ts")
           .unwrap(),
@@ -865,15 +870,27 @@ mod tests {
           .unwrap(),
         false,
       ),
-      (
+    ];
+
+    if cfg!(target_os = "windows") {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/b/mod.ts").unwrap(),
+        false,
+      ));
+    } else {
+      fixtures.push((
         ModuleSpecifier::resolve_url_or_path("file:///a/mod.ts").unwrap(),
         true,
-      ),
-      (
+      ));
+      fixtures.push((
         ModuleSpecifier::resolve_url_or_path("file:///b/mod.ts").unwrap(),
         false,
-      ),
-    ];
+      ));
+    }
 
     for (specifier, expected) in fixtures {
       assert_eq!(perms.check_specifier(&specifier).is_ok(), expected);
