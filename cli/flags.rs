@@ -1000,18 +1000,18 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Lint source files")
     .long_about(
       "Lint JavaScript/TypeScript source code.
-  deno lint
-  deno lint myfile1.ts myfile2.js
+  deno lint --unstable
+  deno lint --unstable myfile1.ts myfile2.js
 
 Print result as JSON:
   deno lint --unstable --json
 
 Read from stdin:
-  cat file.ts | deno lint -
+  cat file.ts | deno lint --unstable -
   cat file.ts | deno lint --unstable --json -
 
 List available rules:
-  deno lint --rules
+  deno lint --unstable --rules
 
 Ignore diagnostics on the next line by preceding it with an ignore comment and
 rule name:
@@ -1036,6 +1036,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
+        .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
@@ -1045,7 +1046,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::with_name("json")
         .long("json")
         .help("Output lint result in JSON format")
-        .requires("unstable")
         .takes_value(false),
     )
     .arg(
@@ -1834,8 +1834,13 @@ mod tests {
 
   #[test]
   fn lint() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "lint", "script_1.ts", "script_2.ts"]);
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "lint",
+      "--unstable",
+      "script_1.ts",
+      "script_2.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1848,6 +1853,7 @@ mod tests {
           json: false,
           ignore: vec![],
         },
+        unstable: true,
         ..Flags::default()
       }
     );
@@ -1855,6 +1861,7 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "lint",
+      "--unstable",
       "--ignore=script_1.ts,script_2.ts"
     ]);
     assert_eq!(
@@ -1869,11 +1876,12 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
         },
+        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "lint", "--rules"]);
+    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable", "--rules"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1883,6 +1891,7 @@ mod tests {
           json: false,
           ignore: vec![],
         },
+        unstable: true,
         ..Flags::default()
       }
     );
