@@ -320,8 +320,6 @@ fn run_strace_benchmarks(
     let mut output = String::new();
     file.as_file_mut().read_to_string(&mut output)?;
 
-    assert!(status.success());
-
     let strace_result = test_util::parse_strace_output(&output);
     thread_count.insert(
       name.to_string(),
