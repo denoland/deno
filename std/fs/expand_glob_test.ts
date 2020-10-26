@@ -3,7 +3,7 @@ import { decode } from "../encoding/utf8.ts";
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
 } from "../testing/asserts.ts";
 import {
   fromFileUrl,
@@ -126,7 +126,7 @@ Deno.test("expandGlobPermError", async function (): Promise<void> {
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
-  assertStringContains(
+  assertStringIncludes(
     decode(await p.stderrOutput()),
     "Uncaught PermissionDenied",
   );

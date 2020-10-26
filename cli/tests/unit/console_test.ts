@@ -11,7 +11,7 @@
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
   unitTest,
 } from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
@@ -1703,5 +1703,5 @@ unitTest(function inspectProxy(): void {
 
 unitTest(function inspectColors(): void {
   assertEquals(Deno.inspect(1), "1");
-  assertStringContains(Deno.inspect(1, { colors: true }), "\x1b[");
+  assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
 });
