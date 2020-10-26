@@ -65,6 +65,7 @@ use crate::fs as deno_fs;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
+use crate::specifier_handler::FetchHandler;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -203,7 +204,10 @@ async fn install_command(
   root: Option<PathBuf>,
   force: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone())?;
+  let mut preload_flags = flags.clone();
+  preload_flags.inspect = None;
+  preload_flags.inspect_brk = None;
+  let program_state = ProgramState::new(preload_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker = MainWorker::new(&program_state, main_module.clone());
   // First, fetch and compile the module; this step ensures that the module exists.
@@ -213,9 +217,9 @@ async fn install_command(
 
 async fn lint_command(
   flags: Flags,
-  files: Vec<String>,
+  files: Vec<PathBuf>,
   list_rules: bool,
-  ignore: Vec<String>,
+  ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
@@ -301,7 +305,7 @@ async fn bundle_command(
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
-  let program_state = ProgramState::new(flags)?;
+  let program_state = ProgramState::new(flags.clone())?;
 
   info!(
     "{} {}",
@@ -309,10 +313,36 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = program_state
-    .ts_compiler
-    .bundle(&program_state, module_specifier)
-    .await?;
+  let output = if flags.no_check {
+    let handler = Rc::new(RefCell::new(FetchHandler::new(
+      &program_state,
+      Permissions::allow_all(),
+    )?));
+    let mut builder = module_graph2::GraphBuilder2::new(
+      handler,
+      program_state.maybe_import_map.clone(),
+    );
+    builder.insert(&module_specifier).await?;
+    let graph = builder.get_graph(&program_state.lockfile)?;
+
+    let (s, stats, maybe_ignored_options) =
+      graph.bundle(module_graph2::BundleOptions {
+        debug: flags.log_level == Some(Level::Debug),
+        maybe_config_path: flags.config_path,
+      })?;
+
+    if let Some(ignored_options) = maybe_ignored_options {
+      eprintln!("{}", ignored_options);
+    }
+    debug!("{}", stats);
+
+    s
+  } else {
+    program_state
+      .ts_compiler
+      .bundle(&program_state, module_specifier)
+      .await?
+  };
 
   debug!(">>>>> bundle END");
 
@@ -517,11 +547,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .collect();
 
   if let Some(import_map) = program_state.flags.import_map_path.clone() {
-    paths_to_watch.push(
-      Url::parse(&format!("file://{}", &import_map))?
-        .to_file_path()
-        .unwrap(),
-    );
+    paths_to_watch
+      .push(fs::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap());
   }
 
   // FIXME(bartlomieju): new file watcher is created on after each restart

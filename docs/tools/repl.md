@@ -43,3 +43,10 @@ up program state in the global context.
 | Meta-T                | Transpose words                                                                                  |
 | Meta-U                | Upper-case the next word                                                                         |
 | Meta-Y                | See Ctrl-Y                                                                                       |
+
+## Special variables
+
+| Identifier | Description                          |
+| ---------- | ------------------------------------ |
+| _          | Yields the last evaluated expression |
+| _error     | Yields the last thrown error         |

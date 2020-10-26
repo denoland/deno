@@ -25,6 +25,8 @@ pretty-printed diff of failing assertion.
   `expected`.
 - `assertArrayContains()` - Make an assertion that `actual` array contains the
   `expected` values.
+- `assertObjectMatch()` - Make an assertion that `actual` object match
+  `expected` subset object
 - `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,
   this function does. Also compares any errors thrown to an optional expected
   `Error` class and checks that the error `.message` includes an optional

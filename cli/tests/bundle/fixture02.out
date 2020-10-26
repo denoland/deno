@@ -1,0 +1,11 @@
+const c = function() {
+    const c1 = "c";
+    class C {
+    }
+    return {
+        c: c1,
+        default: C
+    };
+}();
+console.log("b");
+console.log(c);

@@ -488,6 +488,10 @@ delete Object.prototype.__proto__;
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
   ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
 
+  // TODO(@kitsonk) remove once added to TypeScript
+  ts.libs.push("esnext.weakref");
+  ts.libMap.set("esnext.weakref", "lib.esnext.weakref.d.ts");
+
   // this pre-populates the cache at snapshot time of our library files, so they
   // are available in the future when needed.
   host.getSourceFile(

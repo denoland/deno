@@ -84,7 +84,7 @@ impl ProgramState {
         None => None,
         Some(file_path) => {
           if !flags.unstable {
-            exit_unstable("--importmap")
+            exit_unstable("--import-map")
           }
           Some(ImportMap::load(file_path)?)
         }
@@ -175,7 +175,8 @@ impl ProgramState {
           if !check_passed {
             eprintln!(
               "Subresource integrity check failed --lock={}\n{}",
-              g.filename, graph_file.url
+              g.filename.display(),
+              graph_file.url
             );
             std::process::exit(10);
           }
