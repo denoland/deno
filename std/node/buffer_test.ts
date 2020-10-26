@@ -260,8 +260,8 @@ Deno.test({
 Deno.test({
   name: "Two Buffers are concatenated",
   fn() {
-    const data_1 = [1,2,3];
-    const data_2 = [4,5,6];
+    const data_1 = [1, 2, 3];
+    const data_2 = [4, 5, 6];
 
     const buffer1 = Buffer.from(data_1);
     const buffer2 = Buffer.from(data_2);
@@ -295,20 +295,26 @@ Deno.test({
     const max_length_1 = 10;
     const buffer1 = Buffer.alloc(2);
     const buffer2 = Buffer.alloc(2);
-    assertEquals(Buffer.concat([buffer1, buffer2], max_length_1).length, max_length_1);
+    assertEquals(
+      Buffer.concat([buffer1, buffer2], max_length_1).length,
+      max_length_1,
+    );
 
     const max_length_2 = 3;
     const buffer3 = Buffer.alloc(2);
     const buffer4 = Buffer.alloc(2);
-    assertEquals(Buffer.concat([buffer3, buffer4], max_length_2).length, max_length_2);
+    assertEquals(
+      Buffer.concat([buffer3, buffer4], max_length_2).length,
+      max_length_2,
+    );
   },
 });
 
 Deno.test({
   name: "Buffer copy works as expected",
   fn() {
-    const data_1 = new Uint8Array([1,2,3]);
-    const data_2 = new Uint8Array([4,5,6]);
+    const data_1 = new Uint8Array([1, 2, 3]);
+    const data_2 = new Uint8Array([4, 5, 6]);
 
     const buffer_1 = Buffer.from(data_1);
     const buffer_2 = Buffer.from(data_2);
@@ -328,12 +334,12 @@ Deno.test({
 Deno.test({
   name: "Buffer copy respects the starting point for copy",
   fn() {
-    const buffer_1 = Buffer.from([1,2,3]);
+    const buffer_1 = Buffer.from([1, 2, 3]);
     const buffer_2 = Buffer.alloc(8);
 
     buffer_1.copy(buffer_2, 5);
 
-    const expected = Buffer.from([0,0,0,0,0,1,2,3]);
+    const expected = Buffer.from([0, 0, 0, 0, 0, 1, 2, 3]);
 
     assertEquals(
       buffer_2,
@@ -345,12 +351,12 @@ Deno.test({
 Deno.test({
   name: "Buffer copy doesn't throw on offset but copies until offset reached",
   fn() {
-    const buffer_1 = Buffer.from([1,2,3]);
+    const buffer_1 = Buffer.from([1, 2, 3]);
     const buffer_2 = Buffer.alloc(8);
 
     buffer_1.copy(buffer_2, 6);
 
-    const expected = Buffer.from([0,0,0,0,0,0,1,2]);
+    const expected = Buffer.from([0, 0, 0, 0, 0, 0, 1, 2]);
 
     assertEquals(
       buffer_2,

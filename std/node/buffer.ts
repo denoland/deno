@@ -167,9 +167,9 @@ export default class Buffer extends Uint8Array {
     let pos = 0;
     for (const item of list) {
       let buf: Buffer;
-      if(!(item instanceof Buffer)){
+      if (!(item instanceof Buffer)) {
         buf = Buffer.from(item);
-      }else{
+      } else {
         buf = item;
       }
       buf.copy(buffer, pos);
