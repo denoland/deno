@@ -61,7 +61,7 @@ fn is_word_boundary(c: char) -> bool {
 impl Hinter for Helper {
   fn hint(&self, line: &str, pos: usize, ctx: &Context<'_>) -> Option<String> {
     if let Ok((pos2, candidates)) = self.complete(line, pos, ctx) {
-      if candidates.len() > 0 {
+      if !candidates.is_empty() {
         let word_offset = pos - pos2;
         if word_offset == 0 {
           None
