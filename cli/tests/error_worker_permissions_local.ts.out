@@ -1,0 +1,3 @@
+[WILDCARD]
+error: Uncaught (in worker "") read access to "[WILDCARD]worker_types.ts", run again with the --allow-read flag
+[WILDCARD]

@@ -2467,6 +2467,19 @@ itest!(error_local_static_import_from_remote_js {
   output: "error_local_static_import_from_remote.js.out",
 });
 
+itest!(error_worker_permissions_local {
+  args: "run --reload error_worker_permissions_local.ts",
+  output: "error_worker_permissions_local.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_worker_permissions_remote {
+  args: "run --reload error_worker_permissions_remote.ts",
+  http_server: true,
+  output: "error_worker_permissions_remote.ts.out",
+  exit_code: 1,
+});
+
 itest!(exit_error42 {
   exit_code: 42,
   args: "run --quiet --reload exit_error42.ts",
