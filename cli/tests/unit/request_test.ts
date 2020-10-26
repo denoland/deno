@@ -41,6 +41,10 @@ unitTest(function requestNonString(): void {
   assertEquals(new Request(nonString).url, "http://foo/");
 });
 
+unitTest(function methodNonString(): void {
+  assertEquals(new Request("http://foo/", { method: undefined }).method, "GET");
+});
+
 unitTest(function requestRelativeUrl(): void {
   // TODO(nayeemrmn): Base from `--location` when implemented and set.
   assertThrows(() => new Request("relative-url"), TypeError, "Invalid URL.");

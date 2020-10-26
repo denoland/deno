@@ -480,8 +480,7 @@ declare namespace Deno {
    *                source map.
    * @param options An option object of options to send to the compiler. This is
    *                a subset of ts.CompilerOptions which can be supported by Deno.
-   *                Many of the options related to type checking and emitting
-   *                type declaration files will have no impact on the output.
+   *                If unsupported option is passed then the API will throw an error.
    */
   export function transpileOnly(
     sources: Record<string, string>,

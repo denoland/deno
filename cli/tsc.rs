@@ -725,41 +725,6 @@ pub async fn runtime_bundle(
   Ok(serde_json::from_str::<Value>(&json_str).unwrap())
 }
 
-/// This function is used by `Deno.transpileOnly()` API.
-pub async fn runtime_transpile(
-  program_state: Arc<ProgramState>,
-  sources: &HashMap<String, String>,
-  maybe_options: &Option<String>,
-) -> Result<Value, AnyError> {
-  let user_options = if let Some(options) = maybe_options {
-    tsc_config::parse_raw_config(options)?
-  } else {
-    json!({})
-  };
-
-  let mut compiler_options = json!({
-    "esModuleInterop": true,
-    "module": "esnext",
-    "sourceMap": true,
-    "scriptComments": true,
-    "target": "esnext",
-  });
-  tsc_config::json_merge(&mut compiler_options, &user_options);
-
-  let req_msg = json!({
-    "type": CompilerRequestType::RuntimeTranspile,
-    "sources": sources,
-    "compilerOptions": compiler_options,
-  })
-  .to_string();
-
-  let json_str =
-    execute_in_tsc(program_state, req_msg).map_err(extract_js_error)?;
-  let v = serde_json::from_str::<Value>(&json_str)
-    .expect("Error decoding JSON string.");
-  Ok(v)
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImportDesc {
   pub specifier: String,
@@ -793,7 +758,7 @@ pub fn pre_process_file(
   analyze_dynamic_imports: bool,
 ) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), AnyError> {
   let specifier = ModuleSpecifier::resolve_url_or_path(file_name)?;
-  let module = parse(&specifier, source_code, &media_type)?;
+  let module = parse(specifier.as_str(), source_code, &media_type)?;
 
   let dependency_descriptors = module.analyze_dependencies();
 
@@ -894,7 +859,6 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 pub enum CompilerRequestType {
   RuntimeCompile = 2,
   RuntimeBundle = 3,
-  RuntimeTranspile = 4,
 }
 
 impl Serialize for CompilerRequestType {
@@ -905,7 +869,6 @@ impl Serialize for CompilerRequestType {
     let value: i32 = match self {
       CompilerRequestType::RuntimeCompile => 2 as i32,
       CompilerRequestType::RuntimeBundle => 3 as i32,
-      CompilerRequestType::RuntimeTranspile => 4 as i32,
     };
     Serialize::serialize(&value, serializer)
   }

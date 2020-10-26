@@ -320,7 +320,8 @@ impl Module {
   /// Parse a module, populating the structure with data retrieved from the
   /// source of the module.
   pub fn parse(&mut self) -> Result<(), AnyError> {
-    let parsed_module = parse(&self.specifier, &self.source, &self.media_type)?;
+    let parsed_module =
+      parse(self.specifier.as_str(), &self.source, &self.media_type)?;
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
@@ -639,12 +640,13 @@ impl Graph2 {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
     let maybe_ignored_options =
-      ts_config.merge_user_config(options.maybe_config_path)?;
+      ts_config.merge_tsconfig(options.maybe_config_path)?;
     let emit_options: EmitOptions = ts_config.into();
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
@@ -694,11 +696,6 @@ impl Graph2 {
     Ok((s, stats, maybe_ignored_options))
   }
 
-  fn contains_module(&self, specifier: &ModuleSpecifier) -> bool {
-    let s = self.resolve_specifier(specifier);
-    self.modules.contains_key(s)
-  }
-
   /// Type check the module graph, corresponding to the options provided.
   pub fn check(
     self,
@@ -735,7 +732,7 @@ impl Graph2 {
       }));
     }
     let maybe_ignored_options =
-      config.merge_user_config(options.maybe_config_path)?;
+      config.merge_tsconfig(options.maybe_config_path)?;
 
     // Short circuit if none of the modules require an emit, or all of the
     // modules that require an emit have a valid emit.  There is also an edge
@@ -763,8 +760,11 @@ impl Graph2 {
       info!("{} {}", colors::green("Check"), specifier);
     }
 
-    let root_names: Vec<String> =
-      self.roots.iter().map(|ms| ms.to_string()).collect();
+    let root_names: Vec<(ModuleSpecifier, MediaType)> = self
+      .roots
+      .iter()
+      .map(|ms| (ms.clone(), self.get_media_type(ms).unwrap()))
+      .collect();
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
@@ -829,6 +829,11 @@ impl Graph2 {
     graph.flush()?;
 
     Ok((response.stats, response.diagnostics, maybe_ignored_options))
+  }
+
+  fn contains_module(&self, specifier: &ModuleSpecifier) -> bool {
+    let s = self.resolve_specifier(specifier);
+    self.modules.contains_key(s)
   }
 
   /// Update the handler with any modules that are marked as _dirty_ and update
@@ -947,6 +952,12 @@ impl Graph2 {
   fn get_module(&self, specifier: &ModuleSpecifier) -> Option<&Module> {
     let s = self.resolve_specifier(specifier);
     self.modules.get(s)
+  }
+
+  /// Consume graph and return list of all module specifiers
+  /// contained in the graph.
+  pub fn get_modules(&self) -> Vec<ModuleSpecifier> {
+    self.modules.keys().map(|s| s.to_owned()).collect()
   }
 
   /// Get the source for a given module specifier.  If the module is not part
@@ -1178,13 +1189,14 @@ impl Graph2 {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
 
     let maybe_ignored_options =
-      ts_config.merge_user_config(options.maybe_config_path)?;
+      ts_config.merge_tsconfig(options.maybe_config_path)?;
 
     let emit_options: EmitOptions = ts_config.clone().into();
 
