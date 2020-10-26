@@ -320,7 +320,8 @@ impl Module {
   /// Parse a module, populating the structure with data retrieved from the
   /// source of the module.
   pub fn parse(&mut self) -> Result<(), AnyError> {
-    let parsed_module = parse(&self.specifier, &self.source, &self.media_type)?;
+    let parsed_module =
+      parse(self.specifier.as_str(), &self.source, &self.media_type)?;
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
@@ -639,12 +640,13 @@ impl Graph2 {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
     let maybe_ignored_options =
-      ts_config.merge_user_config(options.maybe_config_path)?;
+      ts_config.merge_tsconfig(options.maybe_config_path)?;
     let emit_options: EmitOptions = ts_config.into();
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
@@ -730,7 +732,7 @@ impl Graph2 {
       }));
     }
     let maybe_ignored_options =
-      config.merge_user_config(options.maybe_config_path)?;
+      config.merge_tsconfig(options.maybe_config_path)?;
 
     // Short circuit if none of the modules require an emit, or all of the
     // modules that require an emit have a valid emit.  There is also an edge
@@ -1187,13 +1189,14 @@ impl Graph2 {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
 
     let maybe_ignored_options =
-      ts_config.merge_user_config(options.maybe_config_path)?;
+      ts_config.merge_tsconfig(options.maybe_config_path)?;
 
     let emit_options: EmitOptions = ts_config.clone().into();
 
