@@ -174,6 +174,28 @@ export interface PWrite {
 export function pwrite(options: PWrite) {}
 ```
 
+### Export all interfaces that are used as parameters to an exported member
+
+Whenever you are using interfaces that are included in the arguments of an
+exported member, you should export the interface that is used. Here is an
+example:
+
+```ts
+// my_file.ts
+export interface Person {
+  name: string;
+  age: number;
+}
+
+export function createPerson(name: string, age: number): Person {
+  return { name, age };
+}
+
+// mod.ts
+export { createPerson } from "./my_file.ts";
+export type { Person } from "./my_file.ts";
+```
+
 ### Minimize dependencies; do not make circular imports.
 
 Although `cli/js` and `std` have no external dependencies, we must still be
@@ -256,6 +278,29 @@ the first column of the comment. For example:
 
 Code examples should not contain additional comments. It is already inside a
 comment. If it needs further comments it is not a good example.
+
+### Resolve linting problems using ESLint directives
+
+Currently, the building process uses ESLint to validate linting problems in the
+code. Don't use `deno_lint` directives while working with internal Deno code and
+the std library.
+
+What would be:
+
+```typescript
+// deno-lint-ignore no-explicit-any
+let x: any;
+```
+
+Should rather be:
+
+```typescript
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let x: any;
+```
+
+This ensures the continuous integration process doesn't fail due to linting
+problems.
 
 ### Each module should come with a test module.
 

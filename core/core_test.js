@@ -28,7 +28,7 @@ function main() {
   const h = q.head();
   assert(h > 0);
 
-  // This record's len is not divisble by
+  // This record's len is not divisible by
   // 4 so after pushing it to the queue,
   // next record offset should be aligned to 4.
   let r = new Uint8Array([1, 2, 3, 4, 5]);

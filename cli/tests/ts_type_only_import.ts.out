@@ -1,4 +1,4 @@
 Check [WILDCARD]ts_type_only_import.ts
-Warning Failed to get compiled source code of "[WILDCARD]ts_type_only_import.d.ts".
-Reason: [WILDCARD] (os error 2)
-If the source file provides only type exports, prefer to use "import type" or "export type" syntax instead.
+warning: Compiled module not found "[WILDCARD]ts_type_only_import.d.ts"
+  From: [WILDCARD]ts_type_only_import.ts
+    If the source module contains only types, use `import type` and `export type` to import it instead.

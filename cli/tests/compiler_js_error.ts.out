@@ -1,4 +1,4 @@
 Check [WILDCARD]compiler_js_error.ts
-error: Uncaught Error: Error in TS compiler:
+error: Uncaught (in promise) Error: Error in TS compiler:
 AssertionError: Unexpected skip of the emit.
 [WILDCARD]

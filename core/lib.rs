@@ -22,6 +22,7 @@ mod zero_copy_buf;
 // Re-exports
 pub use futures;
 pub use rusty_v8 as v8;
+pub use serde;
 pub use serde_json;
 pub use url;
 
@@ -47,7 +48,6 @@ pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
 pub use crate::runtime::GetErrorClassFn;
-pub use crate::runtime::HeapLimits;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;

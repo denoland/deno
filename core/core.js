@@ -196,9 +196,7 @@ SharedQueue Binary Layout
   }
 
   function getErrorClass(errorName) {
-    const className = errorMap[errorName];
-    assert(className);
-    return className;
+    return errorMap[errorName];
   }
 
   // Returns Uint8Array
@@ -215,6 +213,20 @@ SharedQueue Binary Layout
   let nextPromiseId = 1;
   const promiseTable = {};
 
+  function processResponse(res) {
+    if ("ok" in res) {
+      return res.ok;
+    } else {
+      const ErrorClass = getErrorClass(res.err.className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw new ErrorClass(res.err.message);
+    }
+  }
+
   async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
@@ -229,23 +241,13 @@ SharedQueue Binary Layout
     promise.resolve = resolve;
     promise.reject = reject;
     promiseTable[args.promiseId] = promise;
-    const res = await promise;
-    if ("ok" in res) {
-      return res.ok;
-    } else {
-      throw new (getErrorClass(res.err.className))(res.err.message);
-    }
+    return processResponse(await promise);
   }
 
   function jsonOpSync(opName, args = {}, ...zeroCopy) {
     const argsBuf = encodeJson(args);
     const res = dispatch(opName, argsBuf, ...zeroCopy);
-    const r = decodeJson(res);
-    if ("ok" in r) {
-      return r.ok;
-    } else {
-      throw new (getErrorClass(r.err.className))(r.err.message);
-    }
+    return processResponse(decodeJson(res));
   }
 
   function jsonOpAsyncHandler(buf) {

@@ -282,7 +282,6 @@ fn op_fdatasync_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.fdatasync");
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
@@ -297,8 +296,6 @@ async fn op_fdatasync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.fdatasync");
-
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
@@ -319,7 +316,6 @@ fn op_fsync_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.fsync");
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
@@ -334,8 +330,6 @@ async fn op_fsync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.fsync");
-
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
@@ -941,10 +935,9 @@ fn op_realpath_sync(
   // corresponds to the realpath on Unix and
   // CreateFile and GetFinalPathNameByHandle on Windows
   let realpath = std::fs::canonicalize(&path)?;
-  let mut realpath_str =
-    into_string(realpath.into_os_string())?.replace("\\", "/");
+  let mut realpath_str = into_string(realpath.into_os_string())?;
   if cfg!(windows) {
-    realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
   }
   Ok(json!(realpath_str))
 }
@@ -971,10 +964,9 @@ async fn op_realpath_async(
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = std::fs::canonicalize(&path)?;
-    let mut realpath_str =
-      into_string(realpath.into_os_string())?.replace("\\", "/");
+    let mut realpath_str = into_string(realpath.into_os_string())?;
     if cfg!(windows) {
-      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+      realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
     }
     Ok(json!(realpath_str))
   })

@@ -480,8 +480,7 @@ declare namespace Deno {
    *                source map.
    * @param options An option object of options to send to the compiler. This is
    *                a subset of ts.CompilerOptions which can be supported by Deno.
-   *                Many of the options related to type checking and emitting
-   *                type declaration files will have no impact on the output.
+   *                If unsupported option is passed then the API will throw an error.
    */
   export function transpileOnly(
     sources: Record<string, string>,
@@ -1170,52 +1169,6 @@ declare namespace Deno {
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
 
-  /* **UNSTABLE**: New API, yet to be vetted.
-   * Synchronously flushes any pending data operations of the given file stream to disk.
-   *  ```ts
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.fdatasyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
-   * ```
-   */
-  export function fdatasyncSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Flushes any pending data operations of the given file stream to disk.
-   *  ```ts
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.fdatasync(file.rid);
-   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
-   * ```
-   */
-  export function fdatasync(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
-   *  ```ts
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 1);
-   * Deno.fsyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
-   * ```
-   */
-  export function fsyncSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Flushes any pending data and metadata operations of the given file stream to disk.
-   *  ```ts
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 1);
-   * await Deno.fsync(file.rid);
-   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
-   * ```
-   */
-  export function fsync(rid: number): Promise<void>;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
    *
@@ -1312,6 +1265,17 @@ declare namespace Deno {
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
+
+  /** *UNSTABLE**: new API, yet to be vetted.
+   *
+   * SleepSync puts the main thread to sleep synchronously for a given amount of
+   * time in milliseconds.
+   *
+   * ```ts
+   * Deno.sleepSync(10);
+   * ```
+   */
+  export function sleepSync(millis: number): Promise<void>;
 }
 
 declare function fetch(

@@ -7,7 +7,7 @@
 You can create a new Hasher instance by calling `createHash` defined in mod.ts.
 
 ```ts
-import { createHash } from "https://deno.land/std/hash/mod.ts";
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
 
 const hash = createHash("md5");
 // ...
@@ -19,23 +19,23 @@ You can use `update` method to feed data into your hash instance. Call `digest`
 method to retrive final hash value in ArrayBuffer.
 
 ```ts
-import { createHash } from "https://deno.land/std/hash/mod.ts";
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
 
 const hash = createHash("md5");
 hash.update("Your data here");
-const final = hash.digest(); // returns ArrayBuffer
+const final = hash.digest(); // returns ArrayBuffer.
 ```
 
 Please note that `digest` invalidates the hash instance's internal state.
 Calling `digest` more than once will throw an Error.
 
 ```ts
-import { createHash } from "https://deno.land/std/hash/mod.ts";
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
 
 const hash = createHash("md5");
 hash.update("Your data here");
-const final1 = hash.digest(); // returns ArrayBuffer
-const final2 = hash.digest(); // throws Error
+const final1 = hash.digest(); // returns ArrayBuffer.
+const final2 = hash.digest(); // throws Error.
 ```
 
 If you need final hash in string formats, call `toString` method with output
@@ -44,7 +44,7 @@ format.
 Supported formats are `hex` and `base64` and default format is `hex`.
 
 ```ts
-import { createHash } from "https://deno.land/std/hash/mod.ts";
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
 
 const hash = createHash("md5");
 hash.update("Your data here");
@@ -52,7 +52,7 @@ const hashInHex = hash.toString(); // returns 5fe084ee423ff7e0c7709e9437cee89d
 ```
 
 ```ts
-import { createHash } from "https://deno.land/std/hash/mod.ts";
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
 
 const hash = createHash("md5");
 hash.update("Your data here");

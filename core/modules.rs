@@ -65,6 +65,7 @@ pub trait ModuleLoader {
   /// apply import map for child imports.
   fn resolve(
     &self,
+    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     _is_main: bool,
@@ -109,6 +110,7 @@ pub(crate) struct NoopModuleLoader;
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
     &self,
+    _op_state: Rc<RefCell<OpState>>,
     _specifier: &str,
     _referrer: &str,
     _is_main: bool,
@@ -207,14 +209,23 @@ impl RecursiveModuleLoad {
   pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
     let (module_specifier, maybe_referrer) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        let spec = match self.loader.resolve(specifier, ".", true) {
-          Ok(spec) => spec,
-          Err(e) => return (self.id, Err(e)),
-        };
+        let spec =
+          match self
+            .loader
+            .resolve(self.op_state.clone(), specifier, ".", true)
+          {
+            Ok(spec) => spec,
+            Err(e) => return (self.id, Err(e)),
+          };
         (spec, None)
       }
       LoadState::ResolveImport(ref specifier, ref referrer) => {
-        let spec = match self.loader.resolve(specifier, referrer, false) {
+        let spec = match self.loader.resolve(
+          self.op_state.clone(),
+          specifier,
+          referrer,
+          false,
+        ) {
           Ok(spec) => spec,
           Err(e) => return (self.id, Err(e)),
         };
@@ -243,11 +254,13 @@ impl RecursiveModuleLoad {
   fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        self.loader.resolve(specifier, ".", true)?
+        self
+          .loader
+          .resolve(self.op_state.clone(), specifier, ".", true)?
       }
-      LoadState::ResolveImport(ref specifier, ref referrer) => {
-        self.loader.resolve(specifier, referrer, false)?
-      }
+      LoadState::ResolveImport(ref specifier, ref referrer) => self
+        .loader
+        .resolve(self.op_state.clone(), specifier, referrer, false)?,
 
       _ => unreachable!(),
     };
@@ -374,7 +387,7 @@ impl ModuleNameMap {
     }
   }
 
-  /// Insert a name assocated module id.
+  /// Insert a name associated module id.
   pub fn insert(&mut self, name: String, id: ModuleId) {
     self.inner.insert(name, SymbolicModule::Mod(id));
   }
@@ -571,6 +584,7 @@ mod tests {
   impl ModuleLoader for MockLoader {
     fn resolve(
       &self,
+      _op_state: Rc<RefCell<OpState>>,
       specifier: &str,
       referrer: &str,
       _is_root: bool,
@@ -653,7 +667,7 @@ mod tests {
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    runtime.mod_evaluate(a_id).unwrap();
+    futures::executor::block_on(runtime.mod_evaluate(a_id)).unwrap();
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -665,7 +679,7 @@ mod tests {
       ]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
@@ -720,7 +734,7 @@ mod tests {
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      runtime.mod_evaluate(circular1_id).unwrap();
+      runtime.mod_evaluate(circular1_id).await.unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -732,7 +746,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -797,7 +811,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      runtime.mod_evaluate(redirect1_id).unwrap();
+      runtime.mod_evaluate(redirect1_id).await.unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -808,7 +822,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -947,7 +961,7 @@ mod tests {
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    runtime.mod_evaluate(main_id).unwrap();
+    futures::executor::block_on(runtime.mod_evaluate(main_id)).unwrap();
 
     let l = loads.lock().unwrap();
     assert_eq!(
@@ -955,7 +969,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
 

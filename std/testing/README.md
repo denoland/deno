@@ -25,6 +25,8 @@ pretty-printed diff of failing assertion.
   `expected`.
 - `assertArrayContains()` - Make an assertion that `actual` array contains the
   `expected` values.
+- `assertObjectMatch()` - Make an assertion that `actual` object match
+  `expected` subset object
 - `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,
   this function does. Also compares any errors thrown to an optional expected
   `Error` class and checks that the error `.message` includes an optional
@@ -34,13 +36,13 @@ pretty-printed diff of failing assertion.
   function will throw asynchronously. Also compares any errors thrown to an
   optional expected `Error` class and checks that the error `.message` includes
   an optional string.
-- `unimplemented()` - Use this to stub out methods that will throw when invoked
-- `unreachable()` - Used to assert unreachable code
+- `unimplemented()` - Use this to stub out methods that will throw when invoked.
+- `unreachable()` - Used to assert unreachable code.
 
 Basic usage:
 
 ```ts
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test({
   name: "testing example",
@@ -96,7 +98,7 @@ Deno.test("doesThrow", function (): void {
   );
 });
 
-// This test will not pass
+// This test will not pass.
 Deno.test("fails", function (): void {
   assertThrows((): void => {
     console.log("Hello world");
@@ -130,7 +132,7 @@ Deno.test("doesThrow", async function (): Promise<void> {
   );
 });
 
-// This test will not pass
+// This test will not pass.
 Deno.test("fails", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
@@ -156,7 +158,10 @@ After that simply calling `runBenchmarks()` will benchmark all registered
 benchmarks and log the results in the commandline.
 
 ```ts
-import { bench, runBenchmarks } from "https://deno.land/std/testing/bench.ts";
+import {
+  bench,
+  runBenchmarks,
+} from "https://deno.land/std@$STD_VERSION/testing/bench.ts";
 
 bench(function forIncrementX1e9(b): void {
   b.start();
@@ -199,7 +204,7 @@ runBenchmarks()
     console.log(results);
   })
   .catch((error: Error) => {
-    // ... errors if benchmark was badly constructed
+    // ... errors if benchmark was badly constructed.
   });
 ```
 
@@ -213,7 +218,7 @@ commandline.
 
 ```ts
 runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
-  // initial progress data
+  // initial progress data.
   if (p.state === ProgressState.BenchmarkingStart) {
     console.log(
       `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`,

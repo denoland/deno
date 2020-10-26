@@ -244,12 +244,6 @@ pub struct ModuleGraphFile {
   pub source_code: String,
 }
 
-impl ModuleGraphFile {
-  pub fn size(&self) -> usize {
-    self.source_code.as_bytes().len()
-  }
-}
-
 type SourceFileFuture = Pin<
   Box<dyn Future<Output = Result<(ModuleSpecifier, SourceFile), AnyError>>>,
 >;
@@ -471,7 +465,7 @@ impl ModuleGraphLoader {
           filename: source_file.filename.to_str().unwrap().to_string(),
           version_hash: checksum::gen(&[
             &source_file.source_code.as_bytes(),
-            version::DENO.as_bytes(),
+            &version::DENO.as_bytes(),
           ]),
           media_type: source_file.media_type,
           source_code: "".to_string(),
@@ -487,9 +481,9 @@ impl ModuleGraphLoader {
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
     let version_hash = checksum::gen(&[
       &source_file.source_code.as_bytes(),
-      version::DENO.as_bytes(),
+      &version::DENO.as_bytes(),
     ]);
-    let source_code = source_file.source_code.to_string()?;
+    let source_code = source_file.source_code.clone();
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -594,16 +588,16 @@ impl ModuleGraphLoader {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::global_state::GlobalState;
+  use crate::program_state::ProgramState;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleGraph, AnyError> {
-    let global_state = GlobalState::new(Default::default()).unwrap();
+    let program_state = ProgramState::new(Default::default()).unwrap();
     let mut graph_loader = ModuleGraphLoader::new(
-      global_state.file_fetcher.clone(),
+      program_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
       false,

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
-//! [`dprint-plugin-typescript`](https://github.com/dsherret/dprint-plugin-typescript).
+//! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
 //!
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
@@ -32,11 +32,11 @@ const BOM_CHAR: char = '\u{FEFF}';
 /// First argument and ignore supports globs, and if it is `None`
 /// then the current directory is recursively walked.
 pub async fn format(
-  args: Vec<String>,
+  args: Vec<PathBuf>,
   check: bool,
-  exclude: Vec<String>,
+  exclude: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0] == "-" {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return format_stdin(check);
   }
   // collect all files provided.
@@ -232,7 +232,7 @@ fn is_supported(path: &Path) -> bool {
 }
 
 pub fn collect_files(
-  files: Vec<String>,
+  files: Vec<PathBuf>,
 ) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
 
@@ -242,12 +242,12 @@ pub fn collect_files(
       is_supported,
     ));
   } else {
-    for arg in files {
-      let p = PathBuf::from(arg);
-      if p.is_dir() {
-        target_files.extend(files_in_subtree(p.canonicalize()?, is_supported));
+    for file in files {
+      if file.is_dir() {
+        target_files
+          .extend(files_in_subtree(file.canonicalize()?, is_supported));
       } else {
-        target_files.push(p.canonicalize()?);
+        target_files.push(file.canonicalize()?);
       };
     }
   }

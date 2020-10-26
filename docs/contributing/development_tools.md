@@ -8,7 +8,7 @@ Test `deno`:
 # Run the whole suite:
 cargo test
 
-# Only test cli/js/:
+# Only test cli/tests/unit/:
 cargo test js_unit_tests
 ```
 
