@@ -87,7 +87,7 @@ async fn op_transpile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.transpile");
+  super::check_unstable2(&state, "Deno.transpileOnly");
   let args: TranspileArgs = serde_json::from_value(args)?;
 
   let mut compiler_options = tsc_config::TsConfig::new(json!({
