@@ -12,43 +12,35 @@ use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
-use std::mem;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{mpsc, mpsc::Receiver};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::select;
+use tokio::time::{interval, Interval};
 
 const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
-const DEBOUNCE_POLLING_INTERVAL_MS: Duration = Duration::from_millis(10);
 
 // TODO(bartlomieju): rename
 type WatchFuture = Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
 
 struct Debounce {
-  rx: Receiver<Result<NotifyEvent, AnyError>>,
-  debounce_time: Duration,
-  start_time: Option<Instant>,
-  last_event: Option<NotifyEvent>,
+  interval: Interval,
+  event_detected: Arc<AtomicBool>,
 }
 
 impl Debounce {
-  fn new(
-    rx: Receiver<Result<NotifyEvent, AnyError>>,
-    debounce_time: Duration,
-  ) -> Self {
+  fn new() -> Self {
     Self {
-      rx,
-      debounce_time,
-      start_time: None,
-      last_event: None,
+      interval: interval(DEBOUNCE_INTERVAL_MS),
+      event_detected: Arc::new(AtomicBool::new(false)),
     }
   }
 }
 
 impl Stream for Debounce {
-  type Item = NotifyEvent;
+  type Item = ();
 
   /// Note that this never returns `Poll::Ready(None)`, which means that file watcher will be alive
   /// until the Deno process is terminated.
@@ -57,34 +49,12 @@ impl Stream for Debounce {
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
-    if let Ok(Ok(event)) = inner.rx.try_recv() {
-      if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
-      {
-        inner.start_time = Some(Instant::now());
-        inner.last_event = Some(event);
-      }
-    }
-
-    match &inner.last_event {
-      Some(_)
-        if inner.start_time.map_or(false, |start_time| {
-          start_time.elapsed() >= inner.debounce_time
-        }) =>
-      {
-        inner.start_time = None;
-        let event = mem::take(&mut inner.last_event);
-        Poll::Ready(event)
-      }
-      _ => {
-        // To avoid a hot loop, defer signaling the waker for the next polling.
-        let waker = cx.waker().clone();
-        thread::spawn(move || {
-          thread::sleep(DEBOUNCE_POLLING_INTERVAL_MS);
-          waker.wake();
-        });
-
-        Poll::Pending
-      }
+    if inner.event_detected.load(Ordering::Relaxed) {
+      inner.event_detected.store(false, Ordering::Relaxed);
+      Poll::Ready(Some(()))
+    } else {
+      let _ = inner.interval.poll_tick(cx);
+      Poll::Pending
     }
   }
 }
@@ -104,8 +74,10 @@ pub async fn watch_func<F>(
 where
   F: Fn() -> WatchFuture,
 {
-  let (_watcher, receiver) = new_watcher(paths)?;
-  let mut debounce = Debounce::new(receiver, DEBOUNCE_INTERVAL_MS);
+  let mut debounce = Debounce::new();
+  // This binding is required for the watcher to work properly without being dropped.
+  let _watcher = new_watcher(paths, &debounce)?;
+
   loop {
     let func = error_handler(closure());
     let mut is_file_changed = false;
@@ -135,19 +107,20 @@ where
 
 fn new_watcher(
   paths: &[PathBuf],
-) -> Result<
-  (RecommendedWatcher, Receiver<Result<NotifyEvent, AnyError>>),
-  AnyError,
-> {
-  let (sender, receiver) = mpsc::channel::<Result<NotifyEvent, AnyError>>();
+  debounce: &Debounce,
+) -> Result<RecommendedWatcher, AnyError> {
+  let event_watched = Arc::clone(&debounce.event_detected);
 
-  let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map_err(AnyError::from);
-      // Ignore result, if send failed it means that watcher was already closed,
-      // but not all messages have been flushed.
-      let _ = sender.send(res2);
-    })?;
+  let mut watcher: RecommendedWatcher = Watcher::new_immediate(
+    move |res: Result<NotifyEvent, NotifyError>| {
+      if let Ok(event) = res {
+        if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
+        {
+          event_watched.store(true, Ordering::Relaxed);
+        }
+      }
+    },
+  )?;
 
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 
@@ -155,5 +128,5 @@ fn new_watcher(
     watcher.watch(path, RecursiveMode::NonRecursive)?;
   }
 
-  Ok((watcher, receiver))
+  Ok(watcher)
 }
