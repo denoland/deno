@@ -13,12 +13,13 @@ use regex::Regex;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Context;
 use rustyline::Editor;
-use rustyline_derive::{Helper, Hinter};
+use rustyline_derive::Helper;
 use std::borrow::Cow;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
@@ -30,7 +31,7 @@ use std::sync::Mutex;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
-#[derive(Helper, Hinter)]
+#[derive(Helper)]
 struct Helper {
   context_id: u64,
   message_tx: SyncSender<(String, Option<Value>)>,
@@ -54,6 +55,25 @@ fn is_word_boundary(c: char) -> bool {
     false
   } else {
     char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  }
+}
+
+impl Hinter for Helper {
+  fn hint(&self, line: &str, pos: usize, ctx: &Context<'_>) -> Option<String> {
+    if let Ok((pos2, candidates)) = self.complete(line, pos, ctx) {
+      if candidates.len() > 0 {
+        let word_offset = pos - pos2;
+        if word_offset == 0 {
+            None
+        } else {
+            Some(candidates[0][word_offset..].to_string())
+        }
+      } else {
+        None
+      }
+    } else {
+      None
+    }
   }
 }
 
@@ -192,7 +212,7 @@ impl Validator for Helper {
 
 impl Highlighter for Helper {
   fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-    hint.into()
+    format!("{}", colors::gray(hint)).into()
   }
 
   fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
