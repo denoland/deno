@@ -330,6 +330,23 @@ export function assertNotStrictEquals(
 }
 
 /**
+ * Make an assertion that actual is not null or undefined. If not
+ * then thrown.
+ */
+export function assertExists(
+  actual: unknown,
+  msg?: string,
+): void {
+  if (actual === undefined || actual === null) {
+    if (!msg) {
+      msg =
+        `actual: "${actual}" expected to match anything but null or undefined`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
  * Make an assertion that actual includes expected. If not
  * then thrown.
  */

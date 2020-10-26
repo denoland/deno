@@ -4,6 +4,7 @@ import {
   assert,
   assertArrayIncludes,
   assertEquals,
+  assertExists,
   AssertionError,
   assertMatch,
   assertNotEquals,
@@ -152,6 +153,34 @@ Deno.test("testingNotEquals", function (): void {
   let didThrow;
   try {
     assertNotEquals("Raptor", "Raptor");
+    didThrow = false;
+  } catch (e) {
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+});
+
+Deno.test("testingAssertExists", function (): void {
+  assertExists("Denosaurus");
+  assertExists(false);
+  assertExists(0);
+  assertExists("");
+  assertExists(-0);
+  assertExists(0);
+  assertExists(NaN);
+  let didThrow;
+  try {
+    assertExists(undefined);
+    didThrow = false;
+  } catch (e) {
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+  didThrow = false;
+  try {
+    assertExists(null);
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
