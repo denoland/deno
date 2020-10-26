@@ -167,6 +167,29 @@ declare namespace Deno {
     swapFree: number;
   }
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the total number of logical cpus in the system along with
+   * the speed measured in MHz. If either the syscall to get the core
+   * count or speed of the cpu is unsuccessful the value of the it
+   * is undefined.
+   *
+   * ```ts
+   * console.log(Deno.systemCpuInfo());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   */
+  export function systemCpuInfo(): SystemCpuInfo;
+
+  export interface SystemCpuInfo {
+    /** Total number of logical cpus in the system */
+    cores: number | undefined;
+    /** The speed of the cpu measured in MHz */
+    speed: number | undefined;
+  }
+
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initialize a plugin.

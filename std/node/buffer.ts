@@ -163,10 +163,16 @@ export default class Buffer extends Uint8Array {
       }
     }
 
-    const buffer = new Buffer(totalLength);
+    const buffer = Buffer.allocUnsafe(totalLength);
     let pos = 0;
-    for (const buf of list) {
-      buffer.set(buf, pos);
+    for (const item of list) {
+      let buf: Buffer;
+      if (!(item instanceof Buffer)) {
+        buf = Buffer.from(item);
+      } else {
+        buf = item;
+      }
+      buf.copy(buffer, pos);
       pos += buf.length;
     }
 
@@ -247,7 +253,12 @@ export default class Buffer extends Uint8Array {
     sourceStart = 0,
     sourceEnd = this.length,
   ): number {
-    const sourceBuffer = this.subarray(sourceStart, sourceEnd);
+    const sourceBuffer = this
+      .subarray(sourceStart, sourceEnd)
+      .subarray(0, Math.max(0, targetBuffer.length - targetStart));
+
+    if (sourceBuffer.length === 0) return 0;
+
     targetBuffer.set(sourceBuffer, targetStart);
     return sourceBuffer.length;
   }

@@ -2,7 +2,7 @@
 import {
   _format,
   assert,
-  assertArrayContains,
+  assertArrayIncludes,
   assertEquals,
   assertExists,
   AssertionError,
@@ -12,7 +12,7 @@ import {
   assertNotStrictEquals,
   assertObjectMatch,
   assertStrictEquals,
-  assertStringContains,
+  assertStringIncludes,
   assertThrows,
   assertThrowsAsync,
   equal,
@@ -190,12 +190,12 @@ Deno.test("testingAssertExists", function (): void {
 });
 
 Deno.test("testingAssertStringContains", function (): void {
-  assertStringContains("Denosaurus", "saur");
-  assertStringContains("Denosaurus", "Deno");
-  assertStringContains("Denosaurus", "rus");
+  assertStringIncludes("Denosaurus", "saur");
+  assertStringIncludes("Denosaurus", "Deno");
+  assertStringIncludes("Denosaurus", "rus");
   let didThrow;
   try {
-    assertStringContains("Denosaurus", "Raptor");
+    assertStringIncludes("Denosaurus", "Raptor");
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
@@ -207,14 +207,14 @@ Deno.test("testingAssertStringContains", function (): void {
 Deno.test("testingArrayContains", function (): void {
   const fixture = ["deno", "iz", "luv"];
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
-  assertArrayContains(fixture, ["deno"]);
-  assertArrayContains(fixtureObject, [{ deno: "luv" }]);
-  assertArrayContains(
+  assertArrayIncludes(fixture, ["deno"]);
+  assertArrayIncludes(fixtureObject, [{ deno: "luv" }]);
+  assertArrayIncludes(
     Uint8Array.from([1, 2, 3, 4]),
     Uint8Array.from([1, 2, 3]),
   );
   assertThrows(
-    (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
+    (): void => assertArrayIncludes(fixtureObject, [{ deno: "node" }]),
     AssertionError,
     `actual: "[
   {
@@ -223,7 +223,7 @@ Deno.test("testingArrayContains", function (): void {
   {
     deno: "Js",
   },
-]" expected to contain: "[
+]" expected to include: "[
   {
     deno: "node",
   },
@@ -239,7 +239,7 @@ missing: [
 Deno.test("testingAssertStringContainsThrow", function (): void {
   let didThrow = false;
   try {
-    assertStringContains("Denosaurus from Jurassic", "Raptor");
+    assertStringIncludes("Denosaurus from Jurassic", "Raptor");
   } catch (e) {
     assert(
       e.message ===
@@ -744,7 +744,7 @@ Deno.test({
   fn(): void {
     assertEquals<string>("hello", "hello");
     assertNotEquals<number>(1, 2);
-    assertArrayContains<boolean>([true, false], [true]);
+    assertArrayIncludes<boolean>([true, false], [true]);
     const value = { x: 1 };
     assertStrictEquals<typeof value>(value, value);
     // eslint-disable-next-line @typescript-eslint/ban-types
