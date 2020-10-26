@@ -1,23 +1,28 @@
-import { createHash } from "../hash/mod.ts"
-import { MAX_ALLOC } from "./_crypto/constants.ts";
+import {
+  createHash,
+  SupportedAlgorithm,
+  Hasher,
+} from "../hash/mod.ts"
 import Buffer from "./buffer.ts";
-var md5 = require('create-hash/md5')
-var RIPEMD160 = require('ripemd160')
-var sha = require('sha.js')
-
+import { MAX_ALLOC } from "./_crypto/constants.ts";
 import {
   HASH_DATA,
 } from "./_crypto/types.ts";
 
-var defaultEncoding = require('./default-encoding')
-var toBuffer = require('./to-buffer')
+type Algorithms = "md5" | "ripemd160" | "rmd160" | "sha1" | "sha224" | "sha256" | "sha384" | "sha512";
 
-function hash(value){
-  return createHash("md5").update(value).digest().toString("hex");
+function createHasher(alg: Algorithms){
+  let normalized_alg: SupportedAlgorithm;
+  if(alg === "rmd160") {
+    normalized_alg = "ripemd160";
+  }else{
+    normalized_alg = alg;
+  }
+  return (value: Uint8Array) => Buffer.from(createHash(normalized_alg).update(value).digest());
 }
 
-var ZEROS = Buffer.alloc(128)
-var sizes = {
+const getZeroes = (zeros: number) => Buffer.alloc(zeros);
+const sizes = {
   md5: 16,
   sha1: 20,
   sha224: 28,
@@ -25,55 +30,53 @@ var sizes = {
   sha384: 48,
   sha512: 64,
   rmd160: 20,
-  ripemd160: 20
+  ripemd160: 20,
 }
 
-function Hmac (alg, key, saltLen) {
-  var hash = getDigest(alg)
-  var blocksize = (alg === 'sha512' || alg === 'sha384') ? 128 : 64
+class Hmac {
+  hash: (value: Uint8Array) => Buffer;
+  ipad1: Buffer;
+  opad: Buffer;
+  alg: string;
+  blocksize: number;
+  size: number;
+  ipad2: Buffer;
 
-  if (key.length > blocksize) {
-    key = hash(key)
-  } else if (key.length < blocksize) {
-    key = Buffer.concat([key, ZEROS], blocksize)
+  constructor(alg: Algorithms, key: Buffer, saltLen: number){
+    this.hash = createHasher(alg);
+
+    const blocksize = (alg === 'sha512' || alg === 'sha384') ? 128 : 64;
+
+    if (key.length > blocksize) {
+      key = this.hash(key)
+    } else if (key.length < blocksize) {
+      key = Buffer.concat([key, getZeroes(blocksize - key.length)], blocksize);
+    }
+
+    const ipad = Buffer.allocUnsafe(blocksize + sizes[alg]);
+    const opad = Buffer.allocUnsafe(blocksize + sizes[alg]);
+    for (let i = 0; i < blocksize; i++) {
+      ipad[i] = key[i] ^ 0x36
+      opad[i] = key[i] ^ 0x5C
+    }
+
+    const ipad1 = Buffer.allocUnsafe(blocksize + saltLen + 4)
+    ipad.copy(ipad1, 0, 0, blocksize)
+
+    this.ipad1 = ipad1
+    this.ipad2 = ipad
+    this.opad = opad
+    this.alg = alg
+    this.blocksize = blocksize
+    this.size = sizes[alg]
   }
 
-  var ipad = Buffer.allocUnsafe(blocksize + sizes[alg])
-  var opad = Buffer.allocUnsafe(blocksize + sizes[alg])
-  for (var i = 0; i < blocksize; i++) {
-    ipad[i] = key[i] ^ 0x36
-    opad[i] = key[i] ^ 0x5C
+  run(data: Buffer, ipad: Buffer) {
+    data.copy(ipad, this.blocksize)
+    const h = this.hash(ipad)
+    h.copy(this.opad, this.blocksize)
+    return this.hash(this.opad)
   }
-
-  var ipad1 = Buffer.allocUnsafe(blocksize + saltLen + 4)
-  ipad.copy(ipad1, 0, 0, blocksize)
-  this.ipad1 = ipad1
-  this.ipad2 = ipad
-  this.opad = opad
-  this.alg = alg
-  this.blocksize = blocksize
-  this.hash = hash
-  this.size = sizes[alg]
-}
-
-Hmac.prototype.run = function (data, ipad) {
-  data.copy(ipad, this.blocksize)
-  var h = this.hash(ipad)
-  h.copy(this.opad, this.blocksize)
-  return this.hash(this.opad)
-}
-
-function getDigest (alg) {
-  function shaFunc (data) {
-    return sha(alg).update(data).digest()
-  }
-  function rmd160Func (data) {
-    return new RIPEMD160().update(data).digest()
-  }
-
-  if (alg === 'rmd160' || alg === 'ripemd160') return rmd160Func
-  if (alg === 'md5') return md5
-  return shaFunc
 }
 
 /**
@@ -81,12 +84,12 @@ function getDigest (alg) {
  * @param keylen  Needs to be higher or equal than zero but less than max allocation size (2^30)
  * @param digest Algorithm to be used for encryption
  */
-export default function pbkdf2 (
+export function pbkdf2Sync (
   password: HASH_DATA,
   salt: HASH_DATA,
   iterations: number,
   keylen: number,
-  digest = "sha1",
+  digest: Algorithms = "sha1",
 ): Buffer {
   if (typeof iterations !== "number" || iterations < 0) {
     throw new TypeError('Bad iterations');
@@ -95,33 +98,61 @@ export default function pbkdf2 (
     throw new TypeError('Bad key length');
   }
 
-  password = Buffer.from(password);
-  salt = Buffer.from(salt);
+  const buffered_password = Buffer.from(password as Uint8Array);
+  const buffered_salt = Buffer.from(salt as Uint8Array);
 
-  var hmac = new Hmac(digest, password, salt.length)
+  const hmac = new Hmac(digest, buffered_password, buffered_salt.length)
 
-  var DK = Buffer.allocUnsafe(keylen)
-  var block1 = Buffer.allocUnsafe(salt.length + 4)
-  salt.copy(block1, 0, 0, salt.length)
+  const DK = Buffer.allocUnsafe(keylen)
+  const block1 = Buffer.allocUnsafe(buffered_salt.length + 4)
+  buffered_salt.copy(block1, 0, 0, buffered_salt.length)
 
-  var destPos = 0
-  var hLen = sizes[digest]
-  var l = Math.ceil(keylen / hLen)
+  let destPos = 0
+  const hLen = sizes[digest]
+  const l = Math.ceil(keylen / hLen)
 
-  for (var i = 1; i <= l; i++) {
-    block1.writeUInt32BE(i, salt.length)
+  for (let i = 1; i <= l; i++) {
+    block1.writeUInt32BE(i, buffered_salt.length)
 
-    var T = hmac.run(block1, hmac.ipad1)
-    var U = T
+    const T = hmac.run(block1, hmac.ipad1)
+    let U = T
 
-    for (var j = 1; j < iterations; j++) {
+    for (let j = 1; j < iterations; j++) {
       U = hmac.run(U, hmac.ipad2)
-      for (var k = 0; k < hLen; k++) T[k] ^= U[k]
+      for (let k = 0; k < hLen; k++) T[k] ^= U[k]
     }
 
     T.copy(DK, destPos)
     destPos += hLen
   }
 
-  return DK
+  return DK;
+}
+
+/**
+ * @param iterations Needs to be higher or equal than zero
+ * @param keylen  Needs to be higher or equal than zero but less than max allocation size (2^30)
+ * @param digest Algorithm to be used for encryption
+ */
+export function pbkdf2 (
+  password: HASH_DATA,
+  salt: HASH_DATA,
+  iterations: number,
+  keylen: number,
+  digest: Algorithms = "sha1",
+  callback: (err?: Error, derivedKey?: Buffer) => void,
+): void {
+  try{
+    const res = pbkdf2Sync(
+      password,
+      salt,
+      iterations,
+      keylen,
+      digest,
+    );
+
+    callback(undefined, res);
+  }catch(e){
+    callback(e);
+  }
 }
