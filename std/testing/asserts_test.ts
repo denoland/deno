@@ -178,6 +178,15 @@ Deno.test("testingAssertExists", function (): void {
     didThrow = true;
   }
   assertEquals(didThrow, true);
+  didThrow = false;
+  try {
+    assertExists(null);
+    didThrow = false;
+  } catch (e) {
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
 });
 
 Deno.test("testingAssertStringContains", function (): void {
