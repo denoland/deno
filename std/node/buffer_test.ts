@@ -358,7 +358,7 @@ Deno.test({
 
     assertEquals(
       writtenBytes1,
-      2
+      2,
     );
 
     assertEquals(
