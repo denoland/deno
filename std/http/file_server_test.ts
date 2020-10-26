@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
@@ -148,22 +152,23 @@ Deno.test("serveFallback", async function (): Promise<void> {
 });
 
 Deno.test("checkPathTraversal", async function (): Promise<void> {
-  await startFileServer({ "dir-listing": false });
+  await startFileServer();
   try {
     const res = await fetch(
       "http://localhost:4507/../../../../../../../..",
     );
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assertEquals(res.status, 404);
-    const _ = await res.text();
+    assertEquals(res.status, 200);
+    const listing = await res.text();
+    assertStringIncludes(listing, "README.md");
   } finally {
     await killFileServer();
   }
 });
 
 Deno.test("checkURIEncodedPathTraversal", async function (): Promise<void> {
-  await startFileServer({ "dir-listing": false });
+  await startFileServer();
   try {
     const res = await fetch(
       "http://localhost:4507/%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..",
