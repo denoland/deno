@@ -257,6 +257,8 @@ export default class Buffer extends Uint8Array {
       .subarray(sourceStart, sourceEnd)
       .subarray(0, Math.max(0, targetBuffer.length - targetStart));
 
+    if (sourceBuffer.length === 0) return 0;
+
     targetBuffer.set(sourceBuffer, targetStart);
     return sourceBuffer.length;
   }

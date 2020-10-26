@@ -354,13 +354,31 @@ Deno.test({
     const buffer1 = Buffer.from([1, 2, 3]);
     const buffer2 = Buffer.alloc(8);
 
-    buffer1.copy(buffer2, 6);
+    const writtenBytes1 = buffer1.copy(buffer2, 6);
 
-    const expected = Buffer.from([0, 0, 0, 0, 0, 0, 1, 2]);
+    assertEquals(
+      writtenBytes1,
+      2
+    );
 
     assertEquals(
       buffer2,
-      expected,
+      Buffer.from([0, 0, 0, 0, 0, 0, 1, 2]),
+    );
+
+    const buffer3 = Buffer.from([1, 2, 3]);
+    const buffer4 = Buffer.alloc(8);
+
+    const writtenBytes2 = buffer3.copy(buffer4, 8);
+
+    assertEquals(
+      writtenBytes2,
+      0,
+    );
+
+    assertEquals(
+      buffer4,
+      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]),
     );
   },
 });
