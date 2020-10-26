@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::colors;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::tsc::runtime_bundle;
@@ -98,12 +99,18 @@ async fn op_transpile(
     "inlineSourceMap": false,
   }));
 
-  let user_options = if let Some(options) = args.options {
-    tsc_config::parse_config_with_ignored_options(&options)?
+  let user_options: HashMap<String, Value> = if let Some(options) = args.options
+  {
+    serde_json::from_str(&options)?
   } else {
-    json!({})
+    HashMap::new()
   };
-  compiler_options.merge(&user_options);
+  let maybe_ignored_options =
+    compiler_options.merge_user_config(&user_options)?;
+  // TODO(@kitsonk) these really should just be passed back to the caller
+  if let Some(ignored_options) = maybe_ignored_options {
+    info!("{}: {}", colors::yellow("warning"), ignored_options);
+  }
 
   let emit_options: ast::EmitOptions = compiler_options.into();
   let mut emit_map = HashMap::new();

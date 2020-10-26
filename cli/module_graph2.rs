@@ -646,7 +646,7 @@ impl Graph2 {
       "jsxFragmentFactory": "React.Fragment",
     }));
     let maybe_ignored_options =
-      ts_config.merge_user_config(options.maybe_config_path)?;
+      ts_config.merge_tsconfig(options.maybe_config_path)?;
     let emit_options: EmitOptions = ts_config.into();
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
@@ -732,7 +732,7 @@ impl Graph2 {
       }));
     }
     let maybe_ignored_options =
-      config.merge_user_config(options.maybe_config_path)?;
+      config.merge_tsconfig(options.maybe_config_path)?;
 
     // Short circuit if none of the modules require an emit, or all of the
     // modules that require an emit have a valid emit.  There is also an edge
@@ -1196,7 +1196,7 @@ impl Graph2 {
     }));
 
     let maybe_ignored_options =
-      ts_config.merge_user_config(options.maybe_config_path)?;
+      ts_config.merge_tsconfig(options.maybe_config_path)?;
 
     let emit_options: EmitOptions = ts_config.clone().into();
 
