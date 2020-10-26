@@ -304,7 +304,7 @@ fn run_strace_benchmarks(
   for (name, args, _) in EXEC_TIME_BENCHMARKS {
     let mut file = tempfile::NamedTempFile::new()?;
 
-    Command::new("strace")
+    let status = Command::new("strace")
       .args(&[
         "-c",
         "-f",
@@ -320,7 +320,12 @@ fn run_strace_benchmarks(
     let mut output = String::new();
     file.as_file_mut().read_to_string(&mut output)?;
 
+    println!("output {}", output);
+
+    assert!(status.success());
+
     let strace_result = test_util::parse_strace_output(&output);
+    println!("strace_result {:#?}", strace_result);
     thread_count.insert(
       name.to_string(),
       Value::Number(Number::from(

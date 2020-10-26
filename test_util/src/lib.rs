@@ -1041,6 +1041,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   }
 }
 
+#[derive(Debug)]
 pub struct StraceOutput {
   pub percent_time: f64,
   pub seconds: f64,
