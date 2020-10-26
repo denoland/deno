@@ -109,14 +109,14 @@ fn new_watcher(
   paths: &[PathBuf],
   debounce: &Debounce,
 ) -> Result<RecommendedWatcher, AnyError> {
-  let event_watched = Arc::clone(&debounce.event_detected);
+  let event_detected = Arc::clone(&debounce.event_detected);
 
   let mut watcher: RecommendedWatcher = Watcher::new_immediate(
     move |res: Result<NotifyEvent, NotifyError>| {
       if let Ok(event) = res {
         if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
         {
-          event_watched.store(true, Ordering::Relaxed);
+          event_detected.store(true, Ordering::Relaxed);
         }
       }
     },
