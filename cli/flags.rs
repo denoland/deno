@@ -221,9 +221,9 @@ To evaluate code in the shell:
 
 lazy_static! {
   static ref LONG_VERSION: String = format!(
-    "{} ({})\ntarget {}\nv8 {}\ntypescript {}",
+    "{} ({}, {})\nv8 {}\ntypescript {}",
     crate::version::DENO,
-    crate::version::BUILD,
+    crate::version::GIT_COMMIT_HASH,
     env!("TARGET"),
     crate::version::v8(),
     crate::version::TYPESCRIPT
