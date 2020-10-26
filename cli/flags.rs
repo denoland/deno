@@ -221,8 +221,10 @@ To evaluate code in the shell:
 
 lazy_static! {
   static ref LONG_VERSION: String = format!(
-    "{}\nv8 {}\ntypescript {}",
+    "{} ({})\ntarget {}\nv8 {}\ntypescript {}",
     crate::version::DENO,
+    crate::version::BUILD,
+    env!("TARGET"),
     crate::version::v8(),
     crate::version::TYPESCRIPT
   );

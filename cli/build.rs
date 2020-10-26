@@ -104,6 +104,18 @@ fn ts_version() -> String {
     .collect::<String>()
 }
 
+fn git_commit_hash() -> String {
+  let output = std::process::Command::new("git")
+    .arg("rev-list")
+    .arg("-1")
+    .arg("HEAD")
+    .output()
+    .expect("failed to execute process");
+  std::str::from_utf8(&output.stdout[..7])
+    .unwrap()
+    .to_string()
+}
+
 fn main() {
   // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
   if env::var_os("RUSTDOCFLAGS").is_some() {
@@ -114,6 +126,7 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
   println!(
     "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
     deno_web::get_declaration().display()
