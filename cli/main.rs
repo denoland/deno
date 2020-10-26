@@ -375,7 +375,7 @@ async fn bundle_command(
   if let Some(out_file_) = out_file.as_ref() {
     let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
-    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    deno_fs::write_file(out_file_, output_bytes, 0o644)?;
     info!(
       "{} {:?} ({})",
       colors::green("Emit"),
