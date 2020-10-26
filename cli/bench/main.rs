@@ -329,7 +329,7 @@ fn run_strace_benchmarks(
     thread_count.insert(
       name.to_string(),
       Value::Number(Number::from(
-        strace_result.get("clone").unwrap().calls + 1,
+        strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1,
       )),
     );
     syscall_count.insert(
