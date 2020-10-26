@@ -66,6 +66,6 @@ Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
-  assertStringIncludes(decode(await p.stderrOutput()), "Uncaught SyntaxError");
+  assertStringIncludes(decode(await p.stderrOutput()), "SyntaxError");
   p.close();
 });

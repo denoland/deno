@@ -1,12 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
+use crate::colors;
+use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
-use crate::tsc::runtime_transpile;
+use crate::tsc_config;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
@@ -71,16 +76,58 @@ struct TranspileArgs {
   options: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct RuntimeTranspileEmit {
+  source: String,
+  map: Option<String>,
+}
+
 async fn op_transpile(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.transpile");
+  super::check_unstable2(&state, "Deno.transpileOnly");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let cli_state = super::global_state2(&state);
-  let program_state = cli_state.clone();
-  let result =
-    runtime_transpile(program_state, &args.sources, &args.options).await?;
+
+  let mut compiler_options = tsc_config::TsConfig::new(json!({
+    "checkJs": true,
+    "emitDecoratorMetadata": false,
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
+    "inlineSourceMap": false,
+  }));
+
+  let user_options: HashMap<String, Value> = if let Some(options) = args.options
+  {
+    serde_json::from_str(&options)?
+  } else {
+    HashMap::new()
+  };
+  let maybe_ignored_options =
+    compiler_options.merge_user_config(&user_options)?;
+  // TODO(@kitsonk) these really should just be passed back to the caller
+  if let Some(ignored_options) = maybe_ignored_options {
+    info!("{}: {}", colors::yellow("warning"), ignored_options);
+  }
+
+  let emit_options: ast::EmitOptions = compiler_options.into();
+  let mut emit_map = HashMap::new();
+
+  for (specifier, source) in args.sources {
+    let media_type = MediaType::from(&specifier);
+    let parsed_module = ast::parse(&specifier, &source, &media_type)?;
+    let (source, maybe_source_map) = parsed_module.transpile(&emit_options)?;
+
+    emit_map.insert(
+      specifier.to_string(),
+      RuntimeTranspileEmit {
+        source,
+        map: maybe_source_map,
+      },
+    );
+  }
+  let result = serde_json::to_value(emit_map)?;
   Ok(result)
 }

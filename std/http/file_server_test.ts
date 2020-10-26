@@ -206,6 +206,21 @@ Deno.test("file_server running as library", async function (): Promise<void> {
   }
 });
 
+Deno.test("file_server should ignore query params", async () => {
+  await startFileServer();
+  try {
+    const res = await fetch("http://localhost:4507/README.md?key=value");
+    assertEquals(res.status, 200);
+    const downloadedFile = await res.text();
+    const localFile = new TextDecoder().decode(
+      await Deno.readFile(join(moduleDir, "README.md")),
+    );
+    assertEquals(downloadedFile, localFile);
+  } finally {
+    await killFileServer();
+  }
+});
+
 async function startTlsFileServer({
   target = ".",
   port = 4577,
