@@ -304,7 +304,7 @@ fn run_strace_benchmarks(
   for (name, args, _) in EXEC_TIME_BENCHMARKS {
     let mut file = tempfile::NamedTempFile::new()?;
 
-    let status = Command::new("strace")
+    Command::new("strace")
       .args(&[
         "-c",
         "-f",
