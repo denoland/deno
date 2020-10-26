@@ -1,5 +1,5 @@
 const w = new Worker(
-  new URL("http://localhost:4545/cli/tests/subdir/worker_types.ts").toString(),
+  "http://localhost:4545/cli/tests/subdir/worker_types.ts",
   { type: "module" },
 );
 w.terminate();
