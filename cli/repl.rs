@@ -64,9 +64,9 @@ impl Hinter for Helper {
       if candidates.len() > 0 {
         let word_offset = pos - pos2;
         if word_offset == 0 {
-            None
+          None
         } else {
-            Some(candidates[0][word_offset..].to_string())
+          Some(candidates[0][word_offset..].to_string())
         }
       } else {
         None
