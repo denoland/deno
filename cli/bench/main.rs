@@ -313,7 +313,7 @@ fn run_strace_benchmarks(
         deno_exe.to_str().unwrap(),
       ])
       .args(args.iter())
-      .stdout(Stdio::null())
+      .stdout(Stdio::inherit())
       .spawn()?
       .wait()?;
 
