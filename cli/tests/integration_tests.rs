@@ -2275,7 +2275,7 @@ itest!(config {
 
 itest!(emtpy_typescript {
   args: "run --reload subdir/empty.ts",
-  output: "empty_typescriot.out",
+  output: "empty_typescript.out",
 });
 
 itest!(error_001 {
