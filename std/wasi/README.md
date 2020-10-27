@@ -69,3 +69,4 @@ const instance = await WebAssembly.instantiate(module, {
 });
 
 context.start(instance);
+```

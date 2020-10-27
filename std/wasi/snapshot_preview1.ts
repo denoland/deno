@@ -1562,22 +1562,32 @@ export default class Context {
    *
    * If the instance does not contain a _start() export, or if the instance
    * contains an _initialize export an error will be thrown.
+   *
+   * The instance must also have a WebAssembly.Memory export named "memory"
+   * which will be used as the address space, if it does not an error will be
+   * thrown.
    */
   start(instance: WebAssembly.Instance) {
     const { _start, _initialize, memory } = instance.exports;
 
-    if (typeof memory === undefined || !(memory instanceof WebAssembly.Memory)) {
+    if (
+      typeof memory === undefined || !(memory instanceof WebAssembly.Memory)
+    ) {
       throw new TypeError("WebAsembly.instance must provide a memory export");
     }
 
     this.memory = memory;
 
     if (typeof _initialize !== "function" && _initialize !== undefined) {
-      throw new TypeError("WebAsembly.instance export _initialize must not be defined");
+      throw new TypeError(
+        "WebAsembly.instance export _initialize must not be defined",
+      );
     }
 
     if (typeof _start !== "function") {
-      throw new TypeError("WebAssembly.Instance property _start must be a function");
+      throw new TypeError(
+        "WebAssembly.Instance property _start must be a function",
+      );
     }
 
     _start();
