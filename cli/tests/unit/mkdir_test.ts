@@ -4,6 +4,7 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
+  pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
 
@@ -200,12 +201,12 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function mkdirSyncRelative(): void {
+  function mkdirSyncRelativeUrlPath(): void {
     const testDir = Deno.makeTempDirSync();
     const nestedDir = testDir + "/nested";
-    const path = nestedDir + "../dir";
+    // Add trailing slash so base path is treated as a directory. pathToAbsoluteFileUrl removes trailing slashes.
+    const path = new URL("../dir", pathToAbsoluteFileUrl(nestedDir) + "/");
 
-    Deno.mkdirSync(testDir);
     Deno.mkdirSync(nestedDir);
     Deno.mkdirSync(path);
 
@@ -215,12 +216,12 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function mkdirRelative(): Promise<void> {
+  async function mkdirRelativeUrlPath(): Promise<void> {
     const testDir = Deno.makeTempDirSync();
     const nestedDir = testDir + "/nested";
-    const path = nestedDir + "../dir";
+    // Add trailing slash so base path is treated as a directory. pathToAbsoluteFileUrl removes trailing slashes.
+    const path = new URL("../dir", pathToAbsoluteFileUrl(nestedDir) + "/");
 
-    await Deno.mkdir(testDir);
     await Deno.mkdir(nestedDir);
     await Deno.mkdir(path);
 
