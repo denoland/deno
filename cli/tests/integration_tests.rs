@@ -1518,7 +1518,7 @@ fn repl_test_eval_unterminated() {
 
 #[test]
 fn repl_test_unpaired_braces() {
-  for right_brace in vec![")", "]", "}"] {
+  for right_brace in &[")", "]", "}"] {
     let (out, err) = util::run_and_collect_output(
       true,
       "repl",
