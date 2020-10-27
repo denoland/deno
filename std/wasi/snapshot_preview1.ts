@@ -1586,7 +1586,7 @@ export default class Context {
 
     if (typeof _start !== "function") {
       throw new TypeError(
-        "WebAssembly.Instance property _start must be a function",
+        "WebAssembly.Instance export _start must be a function",
       );
     }
 
