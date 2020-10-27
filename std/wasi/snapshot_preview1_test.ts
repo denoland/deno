@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../testing/asserts.ts";
+import Context from "./snapshot_preview1.ts";
+import { assertThrows, assertEquals } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 
@@ -139,3 +140,14 @@ for (const pathname of tests) {
     },
   });
 }
+
+Deno.test("context_start", function () {
+  assertThrows(() => {
+    const context = new Context({});
+    context.start({
+      exports: {
+	_start() {},
+      },
+    });
+  }, TypeError, "must provide a memory export");
+});
