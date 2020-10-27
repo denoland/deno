@@ -197,3 +197,33 @@ unitTest(
     }
   },
 );
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function mkdirSyncRelative(): void {
+    const testDir = Deno.makeTempDirSync();
+    const nestedDir = testDir + "/nested";
+    const path = nestedDir + "../dir";
+
+    Deno.mkdirSync(testDir);
+    Deno.mkdirSync(nestedDir);
+    Deno.mkdirSync(path);
+
+    assertDirectory(testDir + "/dir");
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function mkdirRelative(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const nestedDir = testDir + "/nested";
+    const path = nestedDir + "../dir";
+
+    await Deno.mkdir(testDir);
+    await Deno.mkdir(nestedDir);
+    await Deno.mkdir(path);
+
+    assertDirectory(testDir + "/dir");
+  },
+);
