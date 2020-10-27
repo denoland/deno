@@ -2275,7 +2275,7 @@ itest!(config {
 
 itest!(emtpy_typescript {
   args: "run --reload subdir/empty.ts",
-  output: "empty_typescript.out",
+  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
 });
 
 itest!(error_001 {
