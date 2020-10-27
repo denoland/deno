@@ -23,6 +23,7 @@ pretty-printed diff of failing assertion.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
 - `assertNotMatch()` - Make an assertion that `actual` not match RegExp
   `expected`.
+- `assertExists` - Asserts that the target is either `null` or `undefined`.
 - `assertArrayIncludes()` - Make an assertion that `actual` array includes the
   `expected` values.
 - `assertObjectMatch()` - Make an assertion that `actual` object match
