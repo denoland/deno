@@ -171,11 +171,10 @@ impl Validator for Helper {
               left
             ))))
           }
-          (None, c) => {
-            return Ok(ValidationResult::Invalid(Some(format!(
-              "Mismatched pairs: {:?} is unpaired",
-              c
-            ))))
+          (None, _) => {
+            // While technically invalid when unpaired, it should be V8's task to output error instead.
+            // Thus marked as valid with no info.
+            return Ok(ValidationResult::Valid(None));
           }
         },
         _ => {}

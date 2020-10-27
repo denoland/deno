@@ -1517,6 +1517,21 @@ fn repl_test_eval_unterminated() {
 }
 
 #[test]
+fn repl_test_unpaired_braces() {
+  for right_brace in vec![")", "]", "}"] {
+    let (out, err) = util::run_and_collect_output(
+      true,
+      "repl",
+      Some(vec![right_brace]),
+      None,
+      false,
+    );
+    assert!(out.contains("Unexpected token"));
+    assert!(err.is_empty());
+  }
+}
+
+#[test]
 fn repl_test_reference_error() {
   let (out, err) = util::run_and_collect_output(
     true,
