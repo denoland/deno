@@ -2273,6 +2273,11 @@ itest!(config {
   output: "config.ts.out",
 });
 
+itest!(emtpy_typescript {
+  args: "run --reload subdir/empty.ts",
+  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
+});
+
 itest!(error_001 {
   args: "run --reload error_001.ts",
   exit_code: 1,
