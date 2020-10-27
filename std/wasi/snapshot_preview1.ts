@@ -270,7 +270,6 @@ export interface ContextOptions {
   args?: string[];
   env?: { [key: string]: string | undefined };
   preopens?: { [key: string]: string };
-  memory?: WebAssembly.Memory;
 }
 
 export default class Context {
@@ -285,7 +284,7 @@ export default class Context {
   constructor(options: ContextOptions) {
     this.args = options.args ? options.args : [];
     this.env = options.env ? options.env : {};
-    this.memory = options.memory!;
+    this.memory = null!;
 
     this.fds = [
       {
@@ -1555,5 +1554,32 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
     };
+  }
+
+  /**
+   * Attempt to begin execution of instance as a command by invoking its
+   * _start() export.
+   *
+   * If the instance does not contain a _start() export, or if the instance
+   * contains an _initialize export an error will be thrown.
+   */
+  start(instance: WebAssembly.Instance) {
+    const { _start, _initialize, memory } = instance.exports;
+
+    if (typeof memory === undefined || !(memory instanceof WebAssembly.Memory)) {
+      throw new TypeError("WebAsembly.instance must provide a memory export");
+    }
+
+    this.memory = memory;
+
+    if (typeof _initialize !== "function" && _initialize !== undefined) {
+      throw new TypeError("WebAsembly.instance export _initialize must not be defined");
+    }
+
+    if (typeof _start !== "function") {
+      throw new TypeError("WebAssembly.Instance property _start must be a function");
+    }
+
+    _start();
   }
 }

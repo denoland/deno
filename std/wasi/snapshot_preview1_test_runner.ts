@@ -16,8 +16,4 @@ const instance = new WebAssembly.Instance(module, {
   "wasi_snapshot_preview1": context.exports,
 });
 
-const memory = instance.exports.memory as WebAssembly.Memory;
-context.memory = memory;
-
-const start = instance.exports._start as CallableFunction;
-start();
+context.start(instance);
