@@ -68,7 +68,7 @@ Changes in std version 0.75.0:
 - fix(std/http/file_server): File server should ignore query params (#8116)
 - fix(std/node): Buffer.copy doesn't work as expected (#8125)
 - fix(std/wasi): Disallow path_open outside of pre-opened dirfd (#8078)
-- refactor(std/testing): Rename assert\*Contains to assert\*Includes (#7951)
+- refactor(std/testing): Rename assert_Contains to assert_Includes (#7951)
 
 ### 1.4.6 / 2020.10.10
 
