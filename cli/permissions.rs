@@ -7,6 +7,7 @@ use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::url;
+use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::env::current_dir;
@@ -548,6 +549,21 @@ impl Permissions {
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
+  /// A helper function that determines if the module specifier is a local or
+  /// remote, and performs a read or net check for the specifier.
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let url = specifier.as_url();
+    if url.scheme() == "file" {
+      let path = url.to_file_path().unwrap();
+      self.check_read(&path)
+    } else {
+      self.check_net_url(url)
+    }
+  }
+
   pub fn check_env(&self) -> Result<(), AnyError> {
     self
       .env
@@ -827,6 +843,57 @@ mod tests {
 
     for (host, port, is_ok) in domain_tests.iter() {
       assert_eq!(*is_ok, perms.check_net(host, *port).is_ok());
+    }
+  }
+
+  #[test]
+  fn check_specifiers() {
+    let read_allowlist = if cfg!(target_os = "windows") {
+      vec![PathBuf::from("C:\\a")]
+    } else {
+      vec![PathBuf::from("/a")]
+    };
+    let perms = Permissions::from_flags(&Flags {
+      read_allowlist,
+      net_allowlist: svec!["localhost"],
+      ..Default::default()
+    });
+
+    let mut fixtures = vec![
+      (
+        ModuleSpecifier::resolve_url_or_path("http://localhost:4545/mod.ts")
+          .unwrap(),
+        true,
+      ),
+      (
+        ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
+          .unwrap(),
+        false,
+      ),
+    ];
+
+    if cfg!(target_os = "windows") {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/b/mod.ts").unwrap(),
+        false,
+      ));
+    } else {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///b/mod.ts").unwrap(),
+        false,
+      ));
+    }
+
+    for (specifier, expected) in fixtures {
+      assert_eq!(perms.check_specifier(&specifier).is_ok(), expected);
     }
   }
 

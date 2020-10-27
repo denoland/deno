@@ -23,6 +23,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_loadavg", op_loadavg);
   super::reg_json_sync(rt, "op_os_release", op_os_release);
   super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
+  super::reg_json_sync(rt, "op_system_cpu_info", op_system_cpu_info);
 }
 
 fn op_exec_path(
@@ -171,4 +172,21 @@ fn op_system_memory_info(
     })),
     Err(_) => Ok(json!({})),
   }
+}
+
+fn op_system_cpu_info(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.systemCpuInfo");
+  state.borrow::<Permissions>().check_env()?;
+
+  let cores = sys_info::cpu_num().ok();
+  let speed = sys_info::cpu_speed().ok();
+
+  Ok(json!({
+    "cores": cores,
+    "speed": speed
+  }))
 }

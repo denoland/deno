@@ -220,12 +220,16 @@ async fn install_command(
 }
 
 async fn lint_command(
-  _flags: Flags,
+  flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
+  if !flags.unstable {
+    exit_unstable("lint");
+  }
+
   if list_rules {
     lint::print_rules_list();
     return Ok(());
@@ -371,7 +375,7 @@ async fn bundle_command(
   if let Some(out_file_) = out_file.as_ref() {
     let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
-    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    deno_fs::write_file(out_file_, output_bytes, 0o644)?;
     info!(
       "{} {:?} ({})",
       colors::green("Emit"),

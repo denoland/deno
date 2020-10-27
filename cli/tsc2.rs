@@ -20,8 +20,8 @@ use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use serde::Deserialize;
-use serde::Serialize;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -32,23 +32,19 @@ pub struct EmittedFile {
 }
 
 /// A structure representing a request to be sent to the tsc runtime.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct Request {
   /// The TypeScript compiler options which will be serialized and sent to
   /// tsc.
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  #[serde(skip_serializing)]
   pub graph: Rc<RefCell<Graph2>>,
-  #[serde(skip_serializing)]
   pub hash_data: Vec<Vec<u8>>,
-  #[serde(skip_serializing)]
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
-  pub root_names: Vec<String>,
+  pub root_names: Vec<(ModuleSpecifier, MediaType)>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -69,6 +65,7 @@ struct State {
   graph: Rc<RefCell<Graph2>>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
+  root_map: HashMap<String, ModuleSpecifier>,
 }
 
 impl State {
@@ -76,6 +73,7 @@ impl State {
     graph: Rc<RefCell<Graph2>>,
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
+    root_map: HashMap<String, ModuleSpecifier>,
   ) -> Self {
     State {
       hash_data,
@@ -83,6 +81,7 @@ impl State {
       graph,
       maybe_tsbuildinfo,
       maybe_response: None,
+      root_map,
     }
   }
 }
@@ -138,7 +137,13 @@ fn emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
       maybe_specifiers: if let Some(specifiers) = &v.maybe_specifiers {
         let specifiers = specifiers
           .iter()
-          .map(|s| ModuleSpecifier::resolve_url_or_path(s).unwrap())
+          .map(|s| {
+            if let Some(remapped_specifier) = state.root_map.get(s) {
+              remapped_specifier.clone()
+            } else {
+              ModuleSpecifier::resolve_url_or_path(s).unwrap()
+            }
+          })
           .collect();
         Some(specifiers)
       } else {
@@ -174,6 +179,12 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     Some("declare var a: any;\nexport = a;\n".to_string())
   } else {
     let graph = state.graph.borrow();
+    let specifier =
+      if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
+        remapped_specifier.clone()
+      } else {
+        specifier
+      };
     let maybe_source = graph.get_source(&specifier);
     media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
       media_type
@@ -207,9 +218,13 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_resolve\".")?;
   let mut resolved: Vec<(String, String)> = Vec::new();
-  let referrer = ModuleSpecifier::resolve_url_or_path(&v.base).context(
-    "Error converting a string module specifier for \"op_resolve\".",
-  )?;
+  let referrer = if let Some(remapped_base) = state.root_map.get(&v.base) {
+    remapped_base.clone()
+  } else {
+    ModuleSpecifier::resolve_url_or_path(&v.base).context(
+      "Error converting a string module specifier for \"op_resolve\".",
+    )?
+  };
   for specifier in &v.specifiers {
     if specifier.starts_with("asset:///") {
       resolved.push((
@@ -272,6 +287,25 @@ pub fn exec(
     startup_snapshot: Some(snapshot),
     ..Default::default()
   });
+  // tsc cannot handle root specifiers that don't have one of the "acceptable"
+  // extensions.  Therefore, we have to check the root modules against their
+  // extensions and remap any that are unacceptable to tsc and add them to the
+  // op state so when requested, we can remap to the original specifier.
+  let mut root_map = HashMap::new();
+  let root_names: Vec<String> = request
+    .root_names
+    .iter()
+    .map(|(s, mt)| {
+      let ext_media_type = MediaType::from(&s.as_str().to_owned());
+      if mt != &ext_media_type {
+        let new_specifier = format!("{}{}", s, mt.as_ts_extension());
+        root_map.insert(new_specifier.clone(), s.clone());
+        new_specifier
+      } else {
+        s.as_str().to_owned()
+      }
+    })
+    .collect();
 
   {
     let op_state = runtime.op_state();
@@ -280,6 +314,7 @@ pub fn exec(
       request.graph.clone(),
       request.hash_data.clone(),
       request.maybe_tsbuildinfo.clone(),
+      root_map,
     ));
   }
 
@@ -290,8 +325,12 @@ pub fn exec(
   runtime.register_op("op_respond", op(respond));
 
   let startup_source = "globalThis.startup({ legacyFlag: false })";
-  let request_str =
-    serde_json::to_string(&request).context("Could not serialize request.")?;
+  let request_value = json!({
+    "config": request.config,
+    "debug": request.debug,
+    "rootNames": root_names,
+  });
+  let request_str = request_value.to_string();
   let exec_source = format!("globalThis.exec({})", request_str);
 
   runtime
@@ -354,7 +393,7 @@ mod tests {
       .await
       .expect("module not inserted");
     let graph = Rc::new(RefCell::new(builder.get_graph()));
-    State::new(graph, hash_data, maybe_tsbuildinfo)
+    State::new(graph, hash_data, maybe_tsbuildinfo, HashMap::new())
   }
 
   #[tokio::test]
@@ -601,7 +640,7 @@ mod tests {
       graph,
       hash_data,
       maybe_tsbuildinfo: None,
-      root_names: vec!["https://deno.land/x/a.ts".to_string()],
+      root_names: vec![(specifier, MediaType::TypeScript)],
     };
     let actual = exec(js::compiler_isolate_init(), request)
       .expect("exec should have not errored");
@@ -651,7 +690,7 @@ mod tests {
       graph,
       hash_data,
       maybe_tsbuildinfo: None,
-      root_names: vec!["file:///reexports.ts".to_string()],
+      root_names: vec![(specifier, MediaType::TypeScript)],
     };
     let actual = exec(js::compiler_isolate_init(), request)
       .expect("exec should have not errored");

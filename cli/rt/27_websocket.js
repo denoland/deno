@@ -61,7 +61,7 @@
             }).then(() => {
               this.#readyState = CLOSED;
 
-              const errEvent = new Event("error");
+              const errEvent = new ErrorEvent("error");
               errEvent.target = this;
               this.onerror?.(errEvent);
               this.dispatchEvent(errEvent);
@@ -84,7 +84,7 @@
         } else {
           this.#readyState = CLOSED;
 
-          const errEvent = new Event("error");
+          const errEvent = new ErrorEvent("error");
           errEvent.target = this;
           this.onerror?.(errEvent);
           this.dispatchEvent(errEvent);
@@ -289,7 +289,7 @@
         } else if (message.type === "error") {
           this.#readyState = CLOSED;
 
-          const errorEv = new Event("error");
+          const errorEv = new ErrorEvent("error");
           errorEv.target = this;
           this.onerror?.(errorEv);
           this.dispatchEvent(errorEv);

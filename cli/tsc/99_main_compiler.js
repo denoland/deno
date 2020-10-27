@@ -374,7 +374,10 @@ delete Object.prototype.__proto__;
           "op_load",
           { specifier },
         );
-        assert(data, `"data" is unexpectedly null for "${specifier}".`);
+        assert(
+          data != null,
+          `"data" is unexpectedly null for "${specifier}".`,
+        );
         sourceFile = ts.createSourceFile(
           specifier,
           data,
@@ -599,7 +602,6 @@ delete Object.prototype.__proto__;
   const CompilerRequestType = {
     RuntimeCompile: 2,
     RuntimeBundle: 3,
-    RuntimeTranspile: 4,
   };
 
   function createBundleWriteFile(state) {
@@ -999,31 +1001,6 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function runtimeTranspile(request) {
-    const result = {};
-    const { sources, compilerOptions } = request;
-
-    const parseResult = parseCompilerOptions(
-      compilerOptions,
-    );
-    const options = parseResult.options;
-    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
-    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
-    options.allowNonTsExtensions = true;
-
-    for (const [fileName, inputText] of Object.entries(sources)) {
-      const { outputText: source, sourceMapText: map } = ts.transpileModule(
-        inputText,
-        {
-          fileName,
-          compilerOptions: options,
-        },
-      );
-      result[fileName] = { source, map };
-    }
-    return result;
-  }
-
   function opCompilerRespond(msg) {
     core.jsonOpSync("op_compiler_respond", msg);
   }
@@ -1038,11 +1015,6 @@ delete Object.prototype.__proto__;
       }
       case CompilerRequestType.RuntimeBundle: {
         const result = runtimeBundle(request);
-        opCompilerRespond(result);
-        break;
-      }
-      case CompilerRequestType.RuntimeTranspile: {
-        const result = runtimeTranspile(request);
         opCompilerRespond(result);
         break;
       }

@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
   unitTest,
 } from "./test_util.ts";
 const {
@@ -285,7 +285,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringContains(
+    assertStringIncludes(
       errMsg,
       `${method} requires at least 1 argument, but only 0 present`,
     );
@@ -309,7 +309,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringContains(
+    assertStringIncludes(
       errMsg,
       `${method} requires at least 2 arguments, but only 0 present`,
     );
@@ -329,7 +329,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringContains(
+    assertStringIncludes(
       errMsg,
       `${method} requires at least 2 arguments, but only 1 present`,
     );
