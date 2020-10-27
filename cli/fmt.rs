@@ -9,6 +9,7 @@
 
 use crate::colors;
 use crate::diff::diff;
+use crate::fs::canonicalize_path;
 use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
@@ -80,13 +81,17 @@ async fn check_source_files(
             match diff(&file_text, &formatted_text) {
               Ok(diff) => {
                 info!("");
-                info!("{} {}:", colors::bold("from"), display_path(&file_path));
+                info!(
+                  "{} {}:",
+                  colors::bold("from"),
+                  file_path.display().to_string()
+                );
                 info!("{}", diff);
               }
               Err(e) => {
                 eprintln!(
                   "Error generating diff: {}",
-                  display_path(&file_path)
+                  file_path.to_string_lossy()
                 );
                 eprintln!("   {}", e);
               }
@@ -95,7 +100,7 @@ async fn check_source_files(
         }
         Err(e) => {
           let _g = output_lock.lock().unwrap();
-          eprintln!("Error checking: {}", display_path(&file_path));
+          eprintln!("Error checking: {}", file_path.to_string_lossy());
           eprintln!("   {}", e);
         }
       }
@@ -148,12 +153,12 @@ async fn format_source_files(
             )?;
             formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
-            info!("{}", display_path(&file_path));
+            info!("{}", file_path.to_string_lossy());
           }
         }
         Err(e) => {
           let _g = output_lock.lock().unwrap();
-          eprintln!("Error formatting: {}", display_path(&file_path));
+          eprintln!("Error formatting: {}", file_path.to_string_lossy());
           eprintln!("   {}", e);
         }
       }
@@ -207,14 +212,6 @@ fn format_stdin(check: bool) -> Result<(), AnyError> {
   Ok(())
 }
 
-fn display_path(path: &PathBuf) -> String {
-  let mut path_string = path.display().to_string();
-  if cfg!(windows) {
-    path_string = path_string.trim_start_matches("\\\\?\\").to_string();
-  }
-  path_string
-}
-
 fn files_str(len: usize) -> &'static str {
   if len <= 1 {
     "file"
@@ -242,16 +239,16 @@ pub fn collect_files(
 
   if files.is_empty() {
     target_files.extend(files_in_subtree(
-      std::env::current_dir()?.canonicalize()?,
+      canonicalize_path(&std::env::current_dir()?)?,
       is_supported,
     ));
   } else {
     for file in files {
       if file.is_dir() {
         target_files
-          .extend(files_in_subtree(file.canonicalize()?, is_supported));
+          .extend(files_in_subtree(canonicalize_path(&file)?, is_supported));
       } else {
-        target_files.push(file.canonicalize()?);
+        target_files.push(canonicalize_path(&file)?);
       };
     }
   }
