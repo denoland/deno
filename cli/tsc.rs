@@ -613,7 +613,7 @@ pub async fn runtime_compile(
     execute_in_tsc(program_state.clone(), req_msg).map_err(extract_js_error)?;
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
-  if response.diagnostics.0.is_empty() && sources.is_none() {
+  if response.diagnostics.is_empty() && sources.is_none() {
     compiler.cache_emitted_files(response.emit_map)?;
   }
 

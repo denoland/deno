@@ -747,7 +747,7 @@ impl Graph2 {
       debug!("graph does not need to be checked or emitted.");
       return Ok((
         Stats(Vec::new()),
-        Diagnostics(Vec::new()),
+        Diagnostics::default(),
         maybe_ignored_options,
       ));
     }
@@ -786,7 +786,7 @@ impl Graph2 {
     graph.maybe_tsbuildinfo = response.maybe_tsbuildinfo;
     // Only process changes to the graph if there are no diagnostics and there
     // were files emitted.
-    if response.diagnostics.0.is_empty() && !response.emitted_files.is_empty() {
+    if response.diagnostics.is_empty() && !response.emitted_files.is_empty() {
       let mut codes = HashMap::new();
       let mut maps = HashMap::new();
       let check_js = config.get_check_js();
@@ -1694,7 +1694,7 @@ pub mod tests {
       .expect("should have checked");
     assert!(maybe_ignored_options.is_none());
     assert_eq!(stats.0.len(), 12);
-    assert!(diagnostics.0.is_empty());
+    assert!(diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
@@ -1717,7 +1717,7 @@ pub mod tests {
       .expect("should have checked");
     assert!(maybe_ignored_options.is_none());
     assert_eq!(stats.0.len(), 12);
-    assert!(diagnostics.0.is_empty());
+    assert!(diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 0);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);

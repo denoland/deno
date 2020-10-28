@@ -353,7 +353,7 @@ async fn bundle_command(
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    if !diagnostics.0.is_empty() {
+    if !diagnostics.is_empty() {
       return Err(generic_error(diagnostics.to_string()));
     }
   }
