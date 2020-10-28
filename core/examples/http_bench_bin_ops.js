@@ -41,7 +41,7 @@ function send(promiseId, opId, rid, ...zeroCopy) {
   scratch32[0] = promiseId;
   scratch32[1] = rid;
   scratch32[2] = -1;
-  return Deno.core.dispatch(opId, scratchBytes, ...zeroCopy);
+  return Deno.core.dispatch(opId, promiseId, scratchBytes, ...zeroCopy);
 }
 
 /** Returns Promise<number> */

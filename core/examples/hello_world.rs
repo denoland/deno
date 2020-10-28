@@ -29,7 +29,7 @@ fn main() {
     // The op_fn callback takes a state object OpState
     // and a vector of ZeroCopyBuf's, which are mutable references
     // to ArrayBuffer's in JavaScript.
-    |_state, zero_copy| {
+    |_promise_id, _state, zero_copy| {
       let mut out = std::io::stdout();
 
       // Write the contents of every buffer to stdout
@@ -92,7 +92,7 @@ Deno.core.ops();
 // our op_print op to display the stringified argument.
 const _newline = new Uint8Array([10]);
 function print(value) {
-  Deno.core.dispatchByName('op_print', Deno.core.encode(value.toString()), _newline);
+  Deno.core.dispatchByName('op_print', 0, Deno.core.encode(value.toString()), _newline);
 }
 
 // Finally we register the error class used by op_sum

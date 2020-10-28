@@ -36,6 +36,7 @@ const textDecoder = new TextDecoder();
 function runTestSync() {
   const response = Deno.core.dispatch(
     testSync,
+    0,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([49, 50, 51]),
     new Uint8Array([99, 98, 97]),
@@ -51,6 +52,7 @@ Deno.core.setAsyncHandler(testAsync, (response) => {
 function runTestAsync() {
   const response = Deno.core.dispatch(
     testAsync,
+    1,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([49, 50, 51]),
   );
@@ -63,7 +65,7 @@ function runTestAsync() {
 function runTestOpCount() {
   const start = Deno.metrics();
 
-  Deno.core.dispatch(testSync);
+  Deno.core.dispatch(testSync, 0);
 
   const end = Deno.metrics();
 

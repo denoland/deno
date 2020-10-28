@@ -1520,7 +1520,7 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(op_state: Rc<RefCell<OpState>>, bufs: BufVec) -> Op {
+  fn dispatch(_promise_id: usize, op_state: Rc<RefCell<OpState>>, bufs: BufVec) -> Op {
     let op_state_ = op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
@@ -1822,7 +1822,7 @@ pub mod tests {
         Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(1, control);
+        let response = Deno.core.dispatch(1, 0, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 1);
         assert(response[0] == 43);
@@ -1846,7 +1846,7 @@ pub mod tests {
         Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(1, control);
+        let response = Deno.core.dispatch(1, 0, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);
@@ -1873,7 +1873,7 @@ pub mod tests {
          });
          // Large message that will overflow the shared space.
          let control = new Uint8Array(100 * 1024 * 1024);
-         let response = Deno.core.dispatch(1, control);
+         let response = Deno.core.dispatch(1, 0, control);
          // Async messages always have null response.
          assert(response == null);
          assert(asyncRecv == 0);
@@ -1906,7 +1906,7 @@ pub mod tests {
          });
          // Large message that will overflow the shared space.
          let control = new Uint8Array([42]);
-         let response = Deno.core.dispatch(1, control);
+         let response = Deno.core.dispatch(1, 0, control);
          assert(response == null);
          assert(asyncRecv == 0);
          "#,
@@ -1938,12 +1938,12 @@ pub mod tests {
          });
          // Large message that will overflow the shared space.
          let control = new Uint8Array([42]);
-         let response = Deno.core.dispatch(1, control);
+         let response = Deno.core.dispatch(1, 0, control);
          assert(response == null);
          assert(asyncRecv == 0);
          // Dispatch another message to verify that pending ops
          // are done even if shared space overflows
-         Deno.core.dispatch(1, control);
+         Deno.core.dispatch(1, 0, control);
          "#,
         )
         .unwrap();
@@ -1965,7 +1965,7 @@ pub mod tests {
           r#"
           let thrown;
           try {
-            Deno.core.dispatch(100);
+            Deno.core.dispatch(100, 0);
           } catch (e) {
             thrown = e;
           }
@@ -2185,7 +2185,7 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+    let dispatcher = move |_promise_id: usize, _state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(bufs.len(), 1);
       assert_eq!(bufs[0].len(), 1);
