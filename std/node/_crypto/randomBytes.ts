@@ -4,7 +4,7 @@ export const MAX_RANDOM_VALUES = 65536;
 export const MAX_SIZE = 4294967295;
 
 function generateRandomBytes (size: number) {
-  if (size > MAX_SIZE) throw new RangeError(`The value of "size" is out of range. It must be >= 0 && <= ${MAX_SIZE}. Received 1_000_000_000_000`);
+  if (size > MAX_SIZE) throw new RangeError(`The value of "size" is out of range. It must be >= 0 && <= ${MAX_SIZE}. Received ${size}`);
 
   const bytes = Buffer.allocUnsafe(size);
 
