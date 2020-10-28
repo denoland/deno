@@ -1736,16 +1736,21 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_user_config() {
-    let specifier = ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts").expect("could not resolve module");
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
+        .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
-    let (_, diagnostics, maybe_ignored_options) = graph.check(CheckOptions {
-      debug: false,
-      emit: true,
-      lib: TypeLib::DenoWindow,
-      maybe_config_path: Some("tests/module_graph/tsconfig_01.json".to_string()),
-      reload: true
-    })
-    .expect("should have checked");
+    let (_, diagnostics, maybe_ignored_options) = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: Some(
+          "tests/module_graph/tsconfig_01.json".to_string(),
+        ),
+        reload: true,
+      })
+      .expect("should have checked");
     assert!(maybe_ignored_options.is_none());
     assert!(diagnostics.is_empty());
     let h = handler.borrow();
@@ -1755,14 +1760,17 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
-    let (_, diagnostics, maybe_ignored_options) = graph.check(CheckOptions {
-      debug: false,
-      emit: true,
-      lib: TypeLib::DenoWindow,
-      maybe_config_path: Some("tests/module_graph/tsconfig_01.json".to_string()),
-      reload: true
-    })
-    .expect("should have checked");
+    let (_, diagnostics, maybe_ignored_options) = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: Some(
+          "tests/module_graph/tsconfig_01.json".to_string(),
+        ),
+        reload: true,
+      })
+      .expect("should have checked");
     assert!(maybe_ignored_options.is_none());
     assert!(diagnostics.is_empty());
     let h = handler.borrow();
