@@ -765,7 +765,7 @@ impl Graph2 {
       .iter()
       .map(|ms| {
         (
-          // root modules can be directs, so before we pass it to tsc we need
+          // root modules can be redirects, so before we pass it to tsc we need
           // to resolve the redirect
           self.resolve_specifier(ms).clone(),
           self.get_media_type(ms).unwrap(),
