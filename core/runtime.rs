@@ -1520,7 +1520,11 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(_promise_id: usize, op_state: Rc<RefCell<OpState>>, bufs: BufVec) -> Op {
+  fn dispatch(
+    _promise_id: usize,
+    op_state: Rc<RefCell<OpState>>,
+    bufs: BufVec,
+  ) -> Op {
     let op_state_ = op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
@@ -2185,7 +2189,10 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_promise_id: usize, _state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+    let dispatcher = move |_promise_id: usize,
+                           _state: Rc<RefCell<OpState>>,
+                           bufs: BufVec|
+          -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(bufs.len(), 1);
       assert_eq!(bufs[0].len(), 1);

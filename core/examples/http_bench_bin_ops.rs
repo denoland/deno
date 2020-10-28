@@ -178,7 +178,10 @@ fn register_op_bin_sync<F>(
 ) where
   F: Fn(&mut OpState, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error> + 'static,
 {
-  let base_op_fn = move |_promise_id: usize, state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
+  let base_op_fn = move |_promise_id: usize,
+                         state: Rc<RefCell<OpState>>,
+                         mut bufs: BufVec|
+        -> Op {
     let record = Record::from(bufs[0].as_ref());
     let is_sync = record.promise_id == 0;
     assert!(is_sync);
@@ -206,7 +209,10 @@ fn register_op_bin_async<F, R>(
   R::Ok: TryInto<i32>,
   <R::Ok as TryInto<i32>>::Error: Debug,
 {
-  let base_op_fn = move |_promise_id: usize, state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+  let base_op_fn = move |_promise_id: usize,
+                         state: Rc<RefCell<OpState>>,
+                         bufs: BufVec|
+        -> Op {
     let mut bufs_iter = bufs.into_iter();
     let record_buf = bufs_iter.next().unwrap();
     let zero_copy_bufs = bufs_iter.collect::<BufVec>();
