@@ -1570,23 +1570,21 @@ export default class Context {
   start(instance: WebAssembly.Instance) {
     const { _start, _initialize, memory } = instance.exports;
 
-    if (
-      typeof memory === undefined || !(memory instanceof WebAssembly.Memory)
-    ) {
+    if (!(memory instanceof WebAssembly.Memory)) {
       throw new TypeError("WebAsembly.instance must provide a memory export");
     }
 
     this.memory = memory;
 
-    if (typeof _initialize !== "function" && _initialize !== undefined) {
+    if (typeof _initialize == "function") {
       throw new TypeError(
-        "WebAsembly.instance export _initialize must not be defined",
+	"WebAsembly.instance export _initialize must not be a function",
       );
     }
 
-    if (typeof _start !== "function") {
+    if (typeof _start != "function") {
       throw new TypeError(
-        "WebAssembly.Instance export _start must be a function",
+	"WebAssembly.Instance export _start must be a function",
       );
     }
 
