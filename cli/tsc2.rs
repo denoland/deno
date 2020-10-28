@@ -4,6 +4,8 @@ use crate::diagnostics::Diagnostics;
 use crate::media_type::MediaType;
 use crate::module_graph2::Graph2;
 use crate::module_graph2::Stats;
+// TODO(@kitsonk) this needs to be refactored when we drop MG1
+use crate::op_fetch_asset::get_asset;
 use crate::tsc_config::TsConfig;
 
 use deno_core::error::anyhow;
@@ -23,6 +25,19 @@ use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+fn get_maybe_hash(
+  maybe_source: &Option<String>,
+  hash_data: &[Vec<u8>],
+) -> Option<String> {
+  if let Some(source) = maybe_source {
+    let mut data = vec![source.as_bytes().to_owned()];
+    data.extend_from_slice(hash_data);
+    Some(crate::checksum::gen(&data))
+  } else {
+    None
+  }
+}
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct EmittedFile {
@@ -177,6 +192,12 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     hash = Some("1".to_string());
     media_type = MediaType::TypeScript;
     Some("declare var a: any;\nexport = a;\n".to_string())
+  } else if v.specifier.starts_with("asset:///") {
+    let name = v.specifier.replace("asset:///", "");
+    let maybe_source = get_asset(&name).map(|s| s.to_string());
+    hash = get_maybe_hash(&maybe_source, &state.hash_data);
+    media_type = MediaType::from(&v.specifier);
+    maybe_source
   } else {
     let graph = state.graph.borrow();
     let specifier =
@@ -191,11 +212,7 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     } else {
       MediaType::Unknown
     };
-    if let Some(source) = &maybe_source {
-      let mut data = vec![source.as_bytes().to_owned()];
-      data.extend_from_slice(&state.hash_data);
-      hash = Some(crate::checksum::gen(&data));
-    }
+    hash = get_maybe_hash(&maybe_source, &state.hash_data);
     maybe_source
   };
 
@@ -396,6 +413,47 @@ mod tests {
     State::new(graph, hash_data, maybe_tsbuildinfo, HashMap::new())
   }
 
+  async fn test_exec(
+    specifier: &ModuleSpecifier,
+  ) -> Result<Response, AnyError> {
+    let hash_data = vec![b"something".to_vec()];
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/tsc2");
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..Default::default()
+    }));
+    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+    builder.add(&specifier, false).await?;
+    let graph = Rc::new(RefCell::new(builder.get_graph()));
+    let config = TsConfig::new(json!({
+      "allowJs": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "emitDecoratorMetadata": false,
+      "incremental": true,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "lib": ["deno.window"],
+      "module": "esnext",
+      "noEmit": true,
+      "outDir": "deno:///",
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+    }));
+    let request = Request {
+      config,
+      debug: false,
+      graph,
+      hash_data,
+      maybe_tsbuildinfo: None,
+      root_names: vec![(specifier.clone(), MediaType::TypeScript)],
+    };
+    exec(js::compiler_isolate_init(), request)
+  }
+
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
@@ -479,6 +537,36 @@ mod tests {
         "scriptKind": 3,
       })
     );
+  }
+
+  #[derive(Debug, Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct LoadResponse {
+    data: String,
+    hash: Option<String>,
+    script_kind: i64,
+  }
+
+  #[tokio::test]
+  async fn test_load_asset() {
+    let mut state = setup(
+      Some(
+        ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
+          .unwrap(),
+      ),
+      None,
+      Some("some content".to_string()),
+    )
+    .await;
+    let value =
+      load(&mut state, json!({ "specifier": "asset:///lib.dom.d.ts" }))
+        .expect("should have invoked op");
+    let actual: LoadResponse =
+      serde_json::from_value(value).expect("failed to deserialize");
+    let expected = get_asset("lib.dom.d.ts").unwrap();
+    assert_eq!(actual.data, expected);
+    assert!(actual.hash.is_some());
+    assert_eq!(actual.script_kind, 3);
   }
 
   #[tokio::test]
@@ -581,7 +669,7 @@ mod tests {
     assert_eq!(
       state.maybe_response,
       Some(RespondArgs {
-        diagnostics: Diagnostics(vec![Diagnostic {
+        diagnostics: Diagnostics::new(vec![Diagnostic {
           category: DiagnosticCategory::Error,
           code: 5023,
           start: None,
@@ -601,50 +689,13 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_exec() {
+  async fn test_exec_basic() {
     let specifier =
       ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
-    let hash_data = vec![b"something".to_vec()];
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/tsc2");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
-    builder
-      .add(&specifier, false)
+    let actual = test_exec(&specifier)
       .await
-      .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(builder.get_graph()));
-    let config = TsConfig::new(json!({
-      "allowJs": true,
-      "checkJs": false,
-      "esModuleInterop": true,
-      "emitDecoratorMetadata": false,
-      "incremental": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "lib": ["deno.window"],
-      "module": "esnext",
-      "noEmit": true,
-      "outDir": "deno:///",
-      "strict": true,
-      "target": "esnext",
-      "tsBuildInfoFile": "deno:///.tsbuildinfo",
-    }));
-    let request = Request {
-      config,
-      debug: false,
-      graph,
-      hash_data,
-      maybe_tsbuildinfo: None,
-      root_names: vec![(specifier, MediaType::TypeScript)],
-    };
-    let actual = exec(js::compiler_isolate_init(), request)
-      .expect("exec should have not errored");
-    assert!(actual.diagnostics.0.is_empty());
+      .expect("exec should not have errored");
+    assert!(actual.diagnostics.is_empty());
     assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
@@ -654,49 +705,22 @@ mod tests {
   async fn test_exec_reexport_dts() {
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///reexports.ts").unwrap();
-    let hash_data = vec![b"something".to_vec()];
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/tsc2");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
-    builder
-      .add(&specifier, false)
+    let actual = test_exec(&specifier)
       .await
-      .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(builder.get_graph()));
-    let config = TsConfig::new(json!({
-      "allowJs": true,
-      "checkJs": false,
-      "esModuleInterop": true,
-      "emitDecoratorMetadata": false,
-      "incremental": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "lib": ["deno.window"],
-      "module": "esnext",
-      "noEmit": true,
-      "outDir": "deno:///",
-      "strict": true,
-      "target": "esnext",
-      "tsBuildInfoFile": "deno:///.tsbuildinfo",
-    }));
-    let request = Request {
-      config,
-      debug: false,
-      graph,
-      hash_data,
-      maybe_tsbuildinfo: None,
-      root_names: vec![(specifier, MediaType::TypeScript)],
-    };
-    let actual = exec(js::compiler_isolate_init(), request)
-      .expect("exec should have not errored");
-    assert!(actual.diagnostics.0.is_empty());
+      .expect("exec should not have errored");
+    assert!(actual.diagnostics.is_empty());
     assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
+  }
+
+  #[tokio::test]
+  async fn fix_lib_ref() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///libref.ts").unwrap();
+    let actual = test_exec(&specifier)
+      .await
+      .expect("exec should not have errored");
+    assert!(actual.diagnostics.is_empty());
   }
 }

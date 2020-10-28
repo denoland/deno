@@ -369,7 +369,7 @@ delete Object.prototype.__proto__;
           return sourceFile;
         }
 
-        /** @type {{ data: string; hash: string; }} */
+        /** @type {{ data: string; hash?: string; scriptKind: ts.ScriptKind }} */
         const { data, hash, scriptKind } = core.jsonOpSync(
           "op_load",
           { specifier },
