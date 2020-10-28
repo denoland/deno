@@ -148,37 +148,37 @@
       const byte = bytes[i];
       if (lead !== 0x00) {
         let pointer = null;
-        let offset = byte <= 0x7f ? 0x40 : 0x62;
+        let offset = byte < 0x7f ? 0x40 : 0x62;
         let lead_copy = lead;
-        lead = null;
+        lead = 0x00;
         if (inRange(byte, 0x40, 0x7e) || inRange(byte, 0xa1, 0xfe)) {
           pointer = (lead_copy - 0x81) * 157 + (byte - offset);
         }
         if (pointer === 1133) {
-          res.push(0x00CA, 0x0304);
+          res.push(202);
           continue;
         }
         if (pointer === 1135) {
-          res.push(0x00CA, 0x030C);
+          res.push(202);
           continue;
         }
         if (pointer === 1164) {
-          res.push(0x00EA, 0x0304);
+          res.push(234);
           continue;
         }
         if (pointer === 1166) {
-          res.push(0x00EA, 0x030C);
+          res.push(234);
           continue;
         }
         let code = pointer === null ? null : big5[pointer];
-        if (code !== null) {
-          res.push(code);
+        if (code === null && isASCIIByte(byte)) {
+          i--;
+        }
+        if (code === null) {
+          res.push(decoderError(fatal));
           continue;
         }
-        if (isASCIIByte(byte)) {
-          res.push(byte);
-        }
-        res.push(decoderError(fatal));
+        res.push(code);
         continue;
       }
       if (isASCIIByte(byte)) {
@@ -187,7 +187,6 @@
       }
       if (inRange(byte, 0x81, 0xFE)) {
         lead = byte;
-        res.push(decoderError(fatal));
         continue;
       }
       res.push(decoderError(fatal));
@@ -1069,7 +1068,7 @@
   ]);
 
   // deno-fmt-ignore
-  decoders.set("big5", [
+  encodingIndexes.set("big5", [
     null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   
     null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   
     null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   
@@ -2063,17 +2062,10 @@
   ]);
 
   for (const [key, index] of encodingIndexes) {
-    if (key === "big5") {
-      decoders.set(key, index);
-    } else {
-      decoders.set(key, (options) => {
-        return new SingleByteDecoder(index, options);
-      });
-    }
+    decoders.set(key, (options) => {
+      return new SingleByteDecoder(index, options);
+    });
   }
-
-  decoders.set("utf-16le", null);
-  decoders.set("utf-16be", null);
 
   function codePointsToString(codePoints) {
     let s = "";
@@ -2170,7 +2162,10 @@
           `The encoding label provided ('${label}') is invalid.`,
         );
       }
-      if (!decoders.has(encoding) && encoding !== "utf-8") {
+      if (
+        !decoders.has(encoding) &&
+        !["utf-16le", "utf-16be", "utf-8", "big5"].includes(encoding)
+      ) {
         throw new RangeError(`Internal decoder ('${encoding}') not found.`);
       }
       this.#encoding = encoding;
@@ -2219,23 +2214,23 @@
       }
 
       if (this.#encoding === "utf-16le" || this.#encoding === "utf-16be") {
-        let res = Utf16ByteDecoder(
+        const result = Utf16ByteDecoder(
           bytes,
           this.#encoding.endsWith("be"),
           this.fatal,
           this.ignoreBOM,
         );
-        return String.fromCharCode.apply(null, res);
+        return String.fromCharCode.apply(null, result);
       }
 
       if (this.#encoding === "big5") {
-        let res = Big5Decoder(
-          decoders.get("big5"),
+        const result = Big5Decoder(
+          encodingIndexes.get("big5"),
           bytes,
           this.fatal,
           this.ignoreBOM,
         );
-        return String.fromCharCode.apply(null, res);
+        return String.fromCharCode.apply(null, result);
       }
 
       const decoder = decoders.get(this.#encoding)({
