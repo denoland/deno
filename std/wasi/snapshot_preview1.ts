@@ -1578,13 +1578,13 @@ export default class Context {
 
     if (typeof _initialize == "function") {
       throw new TypeError(
-	"WebAsembly.instance export _initialize must not be a function",
+        "WebAsembly.instance export _initialize must not be a function",
       );
     }
 
     if (typeof _start != "function") {
       throw new TypeError(
-	"WebAssembly.Instance export _start must be a function",
+        "WebAssembly.Instance export _start must be a function",
       );
     }
 
