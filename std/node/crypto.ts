@@ -1,7 +1,5 @@
 import {
   createHash,
-  SupportedAlgorithm,
-  Hasher,
 } from "../hash/mod.ts"
 import Buffer from "./buffer.ts";
 import { MAX_ALLOC } from "./_crypto/constants.ts";
@@ -9,19 +7,23 @@ import {
   HASH_DATA,
 } from "./_crypto/types.ts";
 
+export type NormalizedAlgorithms = "md5" | "ripemd160" | "sha1" | "sha224" | "sha256" | "sha384" | "sha512";
+
 type Algorithms = "md5" | "ripemd160" | "rmd160" | "sha1" | "sha224" | "sha256" | "sha384" | "sha512";
 
 function createHasher(alg: Algorithms){
-  let normalized_alg: SupportedAlgorithm;
+  let normalizedAlg: NormalizedAlgorithms;
   if(alg === "rmd160") {
-    normalized_alg = "ripemd160";
+    normalizedAlg = "ripemd160";
   }else{
-    normalized_alg = alg;
+    normalizedAlg = alg;
   }
-  return (value: Uint8Array) => Buffer.from(createHash(normalized_alg).update(value).digest());
+  return (value: Uint8Array) => Buffer.from(createHash(normalizedAlg).update(value).digest());
 }
 
-const getZeroes = (zeros: number) => Buffer.alloc(zeros);
+function getZeroes(zeros: number){
+  return Buffer.alloc(zeros);
+}
 const sizes = {
   md5: 16,
   sha1: 20,
@@ -31,6 +33,14 @@ const sizes = {
   sha512: 64,
   rmd160: 20,
   ripemd160: 20,
+}
+
+function toBuffer(bufferable: HASH_DATA){
+  if(bufferable instanceof Uint8Array || typeof bufferable === 'string'){
+    return Buffer.from(bufferable as Uint8Array);
+  }else{
+    return Buffer.from(bufferable.buffer)
+  }
 }
 
 class Hmac {
@@ -98,21 +108,21 @@ export function pbkdf2Sync (
     throw new TypeError('Bad key length');
   }
 
-  const buffered_password = Buffer.from(password as Uint8Array);
-  const buffered_salt = Buffer.from(salt as Uint8Array);
+  const bufferedPassword = toBuffer(password);
+  const bufferedSalt = toBuffer(salt);
 
-  const hmac = new Hmac(digest, buffered_password, buffered_salt.length)
+  const hmac = new Hmac(digest, bufferedPassword, bufferedSalt.length)
 
   const DK = Buffer.allocUnsafe(keylen)
-  const block1 = Buffer.allocUnsafe(buffered_salt.length + 4)
-  buffered_salt.copy(block1, 0, 0, buffered_salt.length)
+  const block1 = Buffer.allocUnsafe(bufferedSalt.length + 4)
+  bufferedSalt.copy(block1, 0, 0, bufferedSalt.length)
 
   let destPos = 0
   const hLen = sizes[digest]
   const l = Math.ceil(keylen / hLen)
 
   for (let i = 1; i <= l; i++) {
-    block1.writeUInt32BE(i, buffered_salt.length)
+    block1.writeUInt32BE(i, bufferedSalt.length)
 
     const T = hmac.run(block1, hmac.ipad1)
     let U = T
@@ -140,7 +150,7 @@ export function pbkdf2 (
   iterations: number,
   keylen: number,
   digest: Algorithms = "sha1",
-  callback: (err?: Error, derivedKey?: Buffer) => void,
+  callback: ((err?: Error, derivedKey?: Buffer) => void),
 ): void {
   try{
     const res = pbkdf2Sync(
