@@ -8,6 +8,7 @@ use jsonc_parser::JsonValue;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -230,7 +231,10 @@ impl TsConfig {
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
-    self.0.to_string().as_bytes().to_owned()
+    let map = self.0.as_object().unwrap();
+    let ordered: BTreeMap<_, _> = map.iter().collect();
+    let value = json!(ordered);
+    value.to_string().as_bytes().to_owned()
   }
 
   /// Return the value of the `checkJs` compiler option, defaulting to `false`
@@ -399,5 +403,26 @@ mod tests {
     assert!(errbox
       .to_string()
       .starts_with("Unterminated object on line 1"));
+  }
+
+  #[test]
+  fn test_tsconfig_as_bytes() {
+    let mut tsconfig1 = TsConfig::new(json!({
+      "strict": true,
+      "target": "esnext",
+    }));
+    tsconfig1.merge(&json!({
+      "target": "es5",
+      "module": "amd",
+    }));
+    let mut tsconfig2 = TsConfig::new(json!({
+      "target": "esnext",
+      "strict": true,
+    }));
+    tsconfig2.merge(&json!({
+      "module": "amd",
+      "target": "es5",
+    }));
+    assert_eq!(tsconfig1.as_bytes(), tsconfig2.as_bytes());
   }
 }
