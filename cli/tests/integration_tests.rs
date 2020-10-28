@@ -1210,6 +1210,9 @@ fn run_watch() {
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
 
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
