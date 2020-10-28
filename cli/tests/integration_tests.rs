@@ -1268,6 +1268,40 @@ fn repl_test_pty_multiline() {
   }
 }
 
+#[cfg(unix)]
+#[test]
+fn repl_test_pty_unpaired_braces() {
+  use std::io::Read;
+  use util::pty::fork::*;
+
+  let tests_path = util::tests_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b")\n").unwrap();
+    master.write_all(b"]\n").unwrap();
+    master.write_all(b"}\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unexpected token ')'"));
+    assert!(output.contains("Unexpected token ']'"));
+    assert!(output.contains("Unexpected token '}'"));
+
+    fork.wait().unwrap();
+  } else {
+    util::deno_cmd()
+      .current_dir(tests_path)
+      .env("NO_COLOR", "1")
+      .arg("repl")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+  }
+}
+
 #[test]
 fn run_watch_with_importmap_and_relative_paths() {
   fn create_relative_tmp_file(
@@ -1514,6 +1548,21 @@ fn repl_test_eval_unterminated() {
   );
   assert!(out.contains("Unexpected end of input"));
   assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_unpaired_braces() {
+  for right_brace in &[")", "]", "}"] {
+    let (out, err) = util::run_and_collect_output(
+      true,
+      "repl",
+      Some(vec![right_brace]),
+      None,
+      false,
+    );
+    assert!(out.contains("Unexpected token"));
+    assert!(err.is_empty());
+  }
 }
 
 #[test]
