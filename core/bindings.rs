@@ -400,7 +400,21 @@ fn send<'s>(
     }
   };
 
-  let buf_iter = (1..args.length()).map(|idx| {
+  let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(1))
+    .map_err(AnyError::from)
+    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
+  {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      let msg = format!("invalid promise id: {}", err);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
+      return;
+    }
+  };
+
+  let buf_iter = (2..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
       .map(|view| ZeroCopyBuf::new(scope, view))
       .map_err(|err| {
@@ -418,7 +432,7 @@ fn send<'s>(
     }
   };
 
-  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
+  let op = OpTable::route_op(op_id, promise_id, state.op_state.clone(), bufs);
   assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(buf) if !buf.is_empty() => {

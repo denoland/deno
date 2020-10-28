@@ -136,70 +136,72 @@ pub fn minimal_op<F>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, bool, i32, BufVec) -> MinimalOp + 'static,
 {
-  Box::new(move |state: Rc<RefCell<OpState>>, bufs: BufVec| {
-    let mut bufs_iter = bufs.into_iter();
-    let record_buf = bufs_iter.next().expect("Expected record at position 0");
-    let zero_copy = bufs_iter.collect::<BufVec>();
+  Box::new(
+    move |promise_id: usize, state: Rc<RefCell<OpState>>, bufs: BufVec| {
+      let mut bufs_iter = bufs.into_iter();
+      let record_buf = bufs_iter.next().expect("Expected record at position 0");
+      let zero_copy = bufs_iter.collect::<BufVec>();
 
-    let mut record = match parse_min_record(&record_buf) {
-      Some(r) => r,
-      None => {
-        let error_class = b"TypeError";
-        let error_message = b"Unparsable control buffer";
-        let error_record = ErrorRecord {
-          promise_id: 0,
-          arg: -1,
-          error_len: error_class.len() as i32,
-          error_class,
-          error_message: error_message[..].to_owned(),
-        };
-        return Op::Sync(error_record.into());
-      }
-    };
-    let is_sync = record.promise_id == 0;
-    let rid = record.arg;
-    let min_op = op_fn(state.clone(), is_sync, rid, zero_copy);
-
-    match min_op {
-      MinimalOp::Sync(sync_result) => Op::Sync(match sync_result {
-        Ok(r) => {
-          record.result = r;
-          record.into()
-        }
-        Err(err) => {
-          let error_class = (state.borrow().get_error_class_fn)(&err);
+      let mut record = match parse_min_record(&record_buf) {
+        Some(r) => r,
+        None => {
+          let error_class = b"TypeError";
+          let error_message = b"Unparsable control buffer";
           let error_record = ErrorRecord {
-            promise_id: record.promise_id,
+            promise_id: 0,
             arg: -1,
             error_len: error_class.len() as i32,
-            error_class: error_class.as_bytes(),
-            error_message: err.to_string().as_bytes().to_owned(),
+            error_class,
+            error_message: error_message[..].to_owned(),
           };
-          error_record.into()
+          return Op::Sync(error_record.into());
         }
-      }),
-      MinimalOp::Async(min_fut) => {
-        let fut = async move {
-          match min_fut.await {
-            Ok(r) => {
-              record.result = r;
-              record.into()
-            }
-            Err(err) => {
-              let error_class = (state.borrow().get_error_class_fn)(&err);
-              let error_record = ErrorRecord {
-                promise_id: record.promise_id,
-                arg: -1,
-                error_len: error_class.len() as i32,
-                error_class: error_class.as_bytes(),
-                error_message: err.to_string().as_bytes().to_owned(),
-              };
-              error_record.into()
-            }
+      };
+      let is_sync = promise_id == 0;
+      let rid = record.arg;
+      let min_op = op_fn(state.clone(), is_sync, rid, zero_copy);
+
+      match min_op {
+        MinimalOp::Sync(sync_result) => Op::Sync(match sync_result {
+          Ok(r) => {
+            record.result = r;
+            record.into()
           }
-        };
-        Op::Async(fut.boxed_local())
+          Err(err) => {
+            let error_class = (state.borrow().get_error_class_fn)(&err);
+            let error_record = ErrorRecord {
+              promise_id: promise_id as i32,
+              arg: -1,
+              error_len: error_class.len() as i32,
+              error_class: error_class.as_bytes(),
+              error_message: err.to_string().as_bytes().to_owned(),
+            };
+            error_record.into()
+          }
+        }),
+        MinimalOp::Async(min_fut) => {
+          let fut = async move {
+            match min_fut.await {
+              Ok(r) => {
+                record.result = r;
+                record.into()
+              }
+              Err(err) => {
+                let error_class = (state.borrow().get_error_class_fn)(&err);
+                let error_record = ErrorRecord {
+                  promise_id: promise_id as i32,
+                  arg: -1,
+                  error_len: error_class.len() as i32,
+                  error_class: error_class.as_bytes(),
+                  error_message: err.to_string().as_bytes().to_owned(),
+                };
+                error_record.into()
+              }
+            }
+          };
+          Op::Async(fut.boxed_local())
+        }
       }
-    }
-  })
+    },
+  )
 }

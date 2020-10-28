@@ -61,7 +61,7 @@ SharedQueue Binary Layout
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = send(0);
+    const opsMapBytes = send(0, 0);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     opsCache = JSON.parse(opsMapJson);
     return { ...opsCache };
@@ -184,8 +184,8 @@ SharedQueue Binary Layout
     }
   }
 
-  function dispatch(opName, control, ...zeroCopy) {
-    return send(opsCache[opName], control, ...zeroCopy);
+  function dispatch(opName, promiseId, control, ...zeroCopy) {
+    return send(opsCache[opName], promiseId, control, ...zeroCopy);
   }
 
   function registerErrorClass(errorName, className) {
@@ -230,9 +230,9 @@ SharedQueue Binary Layout
   async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
-    args.promiseId = nextPromiseId++;
+    const promiseId = nextPromiseId++;
     const argsBuf = encodeJson(args);
-    dispatch(opName, argsBuf, ...zeroCopy);
+    dispatch(opName, promiseId, argsBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
@@ -240,13 +240,13 @@ SharedQueue Binary Layout
     });
     promise.resolve = resolve;
     promise.reject = reject;
-    promiseTable[args.promiseId] = promise;
+    promiseTable[promiseId] = promise;
     return processResponse(await promise);
   }
 
   function jsonOpSync(opName, args = {}, ...zeroCopy) {
     const argsBuf = encodeJson(args);
-    const res = dispatch(opName, argsBuf, ...zeroCopy);
+    const res = dispatch(opName, 0, argsBuf, ...zeroCopy);
     return processResponse(decodeJson(res));
   }
 

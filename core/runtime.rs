@@ -393,7 +393,7 @@ impl JsRuntime {
 
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
+    F: Fn(usize, Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
     Self::state(self.v8_isolate())
       .borrow_mut()

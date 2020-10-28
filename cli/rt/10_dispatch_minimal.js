@@ -84,7 +84,7 @@
     scratch32[1] = arg;
     scratch32[2] = 0; // result
     const promise = util.createResolvable();
-    const buf = core.dispatchByName(opName, scratchBytes, zeroCopy);
+    const buf = core.dispatchByName(opName, promiseId, scratchBytes, zeroCopy);
     if (buf != null) {
       const record = recordFromBufMinimal(buf);
       // Sync result.
@@ -101,7 +101,7 @@
   function sendSync(opName, arg, zeroCopy) {
     scratch32[0] = 0; // promiseId 0 indicates sync
     scratch32[1] = arg;
-    const res = core.dispatchByName(opName, scratchBytes, zeroCopy);
+    const res = core.dispatchByName(opName, 0, scratchBytes, zeroCopy);
     const resRecord = recordFromBufMinimal(res);
     return unwrapResponse(resRecord);
   }

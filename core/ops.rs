@@ -19,7 +19,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
-pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static;
+pub type OpFn = dyn Fn(usize, Rc<RefCell<OpState>>, BufVec) -> Op + 'static;
 pub type OpId = usize;
 
 pub enum Op {
@@ -73,7 +73,7 @@ pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 impl OpTable {
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
+    F: Fn(usize, Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
     let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(prev.is_none());
@@ -82,6 +82,7 @@ impl OpTable {
 
   pub fn route_op(
     op_id: OpId,
+    promise_id: usize,
     state: Rc<RefCell<OpState>>,
     bufs: BufVec,
   ) -> Op {
@@ -98,7 +99,7 @@ impl OpTable {
         .get_index(op_id)
         .map(|(_, op_fn)| op_fn.clone());
       match op_fn {
-        Some(f) => (f)(state, bufs),
+        Some(f) => (f)(promise_id, state, bufs),
         None => Op::NotFound,
       }
     }
@@ -107,7 +108,11 @@ impl OpTable {
 
 impl Default for OpTable {
   fn default() -> Self {
-    fn dummy(_state: Rc<RefCell<OpState>>, _bufs: BufVec) -> Op {
+    fn dummy(
+      _promise_id: usize,
+      _state: Rc<RefCell<OpState>>,
+      _bufs: BufVec,
+    ) -> Op {
       unreachable!()
     }
     Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
@@ -122,9 +127,11 @@ fn op_table() {
   let bar_id;
   {
     let op_table = &mut state.borrow_mut().op_table;
-    foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
+    foo_id =
+      op_table.register_op("foo", |_, _, _| Op::Sync(b"oof!"[..].into()));
     assert_eq!(foo_id, 1);
-    bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
+    bar_id =
+      op_table.register_op("bar", |_, _, _| Op::Sync(b"rab!"[..].into()));
     assert_eq!(bar_id, 2);
   }
 
@@ -156,14 +163,22 @@ where
   F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
     + 'static,
 {
-  Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
-    let result = serde_json::from_slice(&bufs[0])
-      .map_err(AnyError::from)
-      .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
-    let buf =
-      json_serialize_op_result(None, result, state.borrow().get_error_class_fn);
-    Op::Sync(buf)
-  })
+  Box::new(
+    move |_promise_id: usize,
+          state: Rc<RefCell<OpState>>,
+          mut bufs: BufVec|
+          -> Op {
+      let result = serde_json::from_slice(&bufs[0])
+        .map_err(AnyError::from)
+        .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
+      let buf = json_serialize_op_result(
+        None,
+        result,
+        state.borrow().get_error_class_fn,
+      );
+      Op::Sync(buf)
+    },
+  )
 }
 
 pub fn json_op_async<F, R>(op_fn: F) -> Box<OpFn>
@@ -171,35 +186,35 @@ where
   F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
   R: Future<Output = Result<Value, AnyError>> + 'static,
 {
-  let try_dispatch_op =
-    move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
-      let args: Value = serde_json::from_slice(&bufs[0])?;
-      let promise_id = args
-        .get("promiseId")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| type_error("missing or invalid `promiseId`"))?;
-      let bufs = bufs[1..].into();
-      use crate::futures::FutureExt;
-      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
-        json_serialize_op_result(
-          Some(promise_id),
-          result,
-          state.borrow().get_error_class_fn,
-        )
-      });
-      Ok(Op::Async(Box::pin(fut)))
-    };
-
-  Box::new(move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
-    match try_dispatch_op(state.clone(), bufs) {
-      Ok(op) => op,
-      Err(err) => Op::Sync(json_serialize_op_result(
-        None,
-        Err(err),
+  let try_dispatch_op = move |promise_id: usize,
+                              state: Rc<RefCell<OpState>>,
+                              bufs: BufVec|
+        -> Result<Op, AnyError> {
+    let args: Value = serde_json::from_slice(&bufs[0])?;
+    let bufs = bufs[1..].into();
+    use crate::futures::FutureExt;
+    let fut = op_fn(state.clone(), args, bufs).map(move |result| {
+      json_serialize_op_result(
+        Some(promise_id as u64),
+        result,
         state.borrow().get_error_class_fn,
-      )),
-    }
-  })
+      )
+    });
+    Ok(Op::Async(Box::pin(fut)))
+  };
+
+  Box::new(
+    move |promise_id: usize, state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+      match try_dispatch_op(promise_id, state.clone(), bufs) {
+        Ok(op) => op,
+        Err(err) => Op::Sync(json_serialize_op_result(
+          None,
+          Err(err),
+          state.borrow().get_error_class_fn,
+        )),
+      }
+    },
+  )
 }
 
 fn json_serialize_op_result(

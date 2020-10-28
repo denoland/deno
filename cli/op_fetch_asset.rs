@@ -87,11 +87,11 @@ fn get_asset(name: &str) -> Option<&'static str> {
 /// JsRuntime.
 pub fn op_fetch_asset(
   custom_assets: HashMap<String, PathBuf>,
-) -> impl Fn(Rc<RefCell<OpState>>, BufVec) -> Op {
+) -> impl Fn(usize, Rc<RefCell<OpState>>, BufVec) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+  move |_promise_id: usize, _state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
     assert_eq!(bufs.len(), 1, "Invalid number of arguments");
     let name = std::str::from_utf8(&bufs[0]).unwrap();
 

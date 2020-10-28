@@ -106,7 +106,8 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    let plugin_op_fn = move |state_rc: Rc<RefCell<OpState>>,
+    let plugin_op_fn = move |_promise_id: usize,
+                             state_rc: Rc<RefCell<OpState>>,
                              mut zero_copy: BufVec| {
       let mut state = state_rc.borrow_mut();
       let mut interface = PluginInterface::new(&mut state, &plugin_lib);

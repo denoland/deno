@@ -114,7 +114,7 @@ delete Object.prototype.__proto__;
   // this op exchanges strings with Rust as raw byte arrays.
   function getAsset(name) {
     const opId = core.ops()["op_fetch_asset"];
-    const sourceCodeBytes = core.dispatch(opId, core.encode(name));
+    const sourceCodeBytes = core.dispatch(opId, 0, core.encode(name));
     return core.decode(sourceCodeBytes);
   }
 
