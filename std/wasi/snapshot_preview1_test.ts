@@ -160,8 +160,8 @@ Deno.test("context_start", function () {
       const context = new Context({});
       context.start({
         exports: {
-		_initialize() {},
-		memory: new WebAssembly.Memory({ initial: 1 }),
+          _initialize() {},
+          memory: new WebAssembly.Memory({ initial: 1 }),
         },
       });
     },
@@ -174,7 +174,7 @@ Deno.test("context_start", function () {
       const context = new Context({});
       context.start({
         exports: {
-		memory: new WebAssembly.Memory({ initial: 1 }),
+          memory: new WebAssembly.Memory({ initial: 1 }),
         },
       });
     },
