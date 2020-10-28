@@ -6,6 +6,7 @@ import { MAX_ALLOC } from "./_crypto/constants.ts";
 import {
   HASH_DATA,
 } from "./_crypto/types.ts";
+import randomBytes from "./_crypto/randomBytes.ts";
 
 export type NormalizedAlgorithms = "md5" | "ripemd160" | "sha1" | "sha224" | "sha256" | "sha384" | "sha512";
 
@@ -166,3 +167,7 @@ export function pbkdf2 (
     callback(e);
   }
 }
+
+export {
+  randomBytes,
+};
