@@ -230,7 +230,7 @@ Deno.test("testZero", function (): void {
 });
 
 // relevant test cases from fmt_test.go
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const tests: Array<[string, any, string]> = [
   ["%d", 12345, "12345"],
   ["%v", 12345, "12345"],

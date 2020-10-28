@@ -7,7 +7,7 @@ import { parse } from "../../yaml.ts";
   const yml = Deno.readFileSync(`${Deno.cwd()}/example/sample_document.yml`);
 
   const document = new TextDecoder().decode(yml);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const obj = parse(document) as Record<string, any>;
   console.log(obj);
 

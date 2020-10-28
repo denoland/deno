@@ -11,7 +11,7 @@ import { assert, assertEquals } from "../../std/testing/asserts.ts";
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   reject: (reason?: any) => void;
 }
 
@@ -93,7 +93,7 @@ Deno.test({
       { type: "module" },
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     throwingWorker.onerror = (e: any): void => {
       e.preventDefault();
       assert(/Uncaught Error: Thrown error/.test(e.message));
@@ -133,7 +133,7 @@ Deno.test({
       { type: "module" },
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     fetchingWorker.onerror = (e: any): void => {
       e.preventDefault();
       promise.reject(e.message);

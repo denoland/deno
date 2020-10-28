@@ -11,6 +11,8 @@
 
   const customInspect = Symbol.for("Deno.customInspect");
 
+  const objectCloneMemo = new WeakMap();
+  
   /** Clone a value in a similar way to structured cloning.  It is similar to a
  * StructureDeserialize(StructuredSerialize(...)). */
   function cloneValue(value) {

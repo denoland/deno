@@ -73,7 +73,7 @@ unitTest(function urlSearchParamsInitRecord(): void {
 unitTest(function urlSearchParamsInit(): void {
   const params1 = new URLSearchParams("a=b");
   assertEquals(params1.toString(), "a=b");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const params2 = new URLSearchParams(params1 as any);
   assertEquals(params2.toString(), "a=b");
 });
@@ -228,7 +228,7 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
       const searchParams = new URLSearchParams();
       let hasThrown = 0;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
         (searchParams as any)[method]();
         hasThrown = 1;
       } catch (err) {
@@ -245,7 +245,7 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
     const searchParams = new URLSearchParams();
     let hasThrown = 0;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (searchParams as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
@@ -286,7 +286,7 @@ unitTest(function urlSearchParamsCustomSymbolIterator(): void {
 unitTest(
   function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
     const params = {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (params as any)[Symbol.iterator] = function* (): IterableIterator<
       [number, number]
     > {

@@ -196,7 +196,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     m2() {}
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const nestedObj: any = {
     num: 1,
     bool: true,
@@ -363,7 +363,7 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
 });
 
 unitTest(function consoleTestStringifyWithDepth(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
     stripColor(inspectArgs([nestedObj], { depth: 3 })),
@@ -1144,7 +1144,7 @@ class StringBuffer {
 }
 
 type ConsoleExamineFunc = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   csl: any,
   out: StringBuffer,
   err?: StringBuffer,

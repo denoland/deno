@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-undef
+
 // This module is the entry point for "compiler" isolate, ie. the one
 // that is created when Deno needs to compile TS/WASM to JS.
 //
@@ -194,6 +196,7 @@ delete Object.prototype.__proto__;
         // Custom marker for Wasm type.
         return ts.Extension.Js;
       case MediaType.Unknown:
+        // fallthrough
       default:
         throw TypeError(
           `Cannot resolve extension for "${fileName}" with mediaType "${

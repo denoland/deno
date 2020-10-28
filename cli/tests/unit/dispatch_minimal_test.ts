@@ -28,7 +28,7 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Deno {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     var core: any; // eslint-disable-line no-var
   }
 }

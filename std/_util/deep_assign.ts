@@ -14,9 +14,9 @@ export function deepAssign<T, U, V, W>(
   source3: W,
 ): T & U & V & W;
 export function deepAssign(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   target: Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   ...sources: any[]
 ): // eslint-disable-next-line @typescript-eslint/ban-types
 object | undefined {

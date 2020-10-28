@@ -7,7 +7,7 @@ Object.defineProperty(globalThis, Symbol.toStringTag, {
   configurable: true,
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 (globalThis as any)["global"] = globalThis;
 
 export {};

@@ -125,7 +125,7 @@ unitTest(function errorStackMessageLine(): void {
 // FIXME(bartlomieju): no longer works after migrating
 // to JavaScript runtime code
 unitTest({ ignore: true }, function prepareStackTrace(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const MockError = {} as any;
   setPrepareStackTrace(MockError);
   assert(typeof MockError.prepareStackTrace === "function");

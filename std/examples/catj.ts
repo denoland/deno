@@ -12,7 +12,7 @@ import * as colors from "../fmt/colors.ts";
 
 const decoder = new TextDecoder();
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function isObject(arg: any): arg is Record<string, unknown> {
   return !!arg && arg.constructor === Object;
 }
@@ -72,7 +72,7 @@ function printArray(array: unknown[], path: string): void {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function print(data: any[] | Record<string, unknown>): void {
   if (Array.isArray(data)) {
     printArray(data, "");

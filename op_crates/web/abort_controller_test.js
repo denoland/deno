@@ -23,7 +23,7 @@ function assertThrows(fn) {
 }
 
 function basicAbortController() {
-  controller = new AbortController();
+  const controller = new AbortController();
   assert(controller);
   const { signal } = controller;
   assert(signal);

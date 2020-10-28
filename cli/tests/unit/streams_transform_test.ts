@@ -506,7 +506,7 @@ unitTest(async function transformStreamStartCalledOnce() {
 
 unitTest(function transformStreamReadableTypeThrows() {
   assertThrows(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     () => new TransformStream({ readableType: "bytes" as any }),
     RangeError,
     undefined,
@@ -516,7 +516,7 @@ unitTest(function transformStreamReadableTypeThrows() {
 
 unitTest(function transformStreamWirtableTypeThrows() {
   assertThrows(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     () => new TransformStream({ writableType: "bytes" as any }),
     RangeError,
     undefined,

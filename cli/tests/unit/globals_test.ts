@@ -73,21 +73,21 @@ declare global {
 unitTest(function DenoNamespaceImmutable(): void {
   const denoCopy = window.Deno;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (Deno as any) = 1;
   } catch {
     // pass
   }
   assert(denoCopy === Deno);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (window as any).Deno = 1;
   } catch {
     // pass
   }
   assert(denoCopy === Deno);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     delete (window as any).Deno;
   } catch {
     // pass
@@ -96,14 +96,14 @@ unitTest(function DenoNamespaceImmutable(): void {
 
   const { readFile } = Deno;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (Deno as any).readFile = 1;
   } catch {
     // pass
   }
   assert(readFile === Deno.readFile);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     delete (window as any).Deno.readFile;
   } catch {
     // pass
