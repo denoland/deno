@@ -10,7 +10,7 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::fs::canonicalize_path;
-use crate::fs::files_in_subtree;
+// use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -25,6 +25,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use walkdir::WalkDir;
 
 const BOM_CHAR: char = '\u{FEFF}';
 
@@ -41,13 +42,13 @@ pub async fn format(
     return format_stdin(check);
   }
   // collect all files provided.
-  let mut target_files = collect_files(args)?;
-  if !exclude.is_empty() {
+  let target_files = collect_files(args, exclude)?;
+  // if !exclude.is_empty() {
     // collect all files to be ignored
     // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
-  }
+    // let ignore_files = collect_files(exclude, exclude)?;
+    // target_files.retain(|f| !ignore_files.contains(&f));
+  // }
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -233,25 +234,34 @@ fn is_supported(path: &Path) -> bool {
 }
 
 pub fn collect_files(
-  files: Vec<PathBuf>,
+  _files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>
 ) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
 
-  if files.is_empty() {
-    target_files.extend(files_in_subtree(
-      canonicalize_path(&std::env::current_dir()?)?,
-      is_supported,
-    ));
-  } else {
-    for file in files {
-      if file.is_dir() {
-        target_files
-          .extend(files_in_subtree(canonicalize_path(&file)?, is_supported));
-      } else {
-        target_files.push(canonicalize_path(&file)?);
-      };
+  for entry in WalkDir::new(std::env::current_dir()?.canonicalize()?).into_iter().filter_entry(|e| !ignore.contains(&e.clone().into_path())) {
+    if is_supported(entry?.path()) {
+      target_files.push(entry?.into_path())
     }
   }
+
+  dbg!(&target_files);
+
+  // if files.is_empty() {
+  //   target_files.extend(files_in_subtree(
+  //     std::env::current_dir()?.canonicalize()?,
+  //     is_supported,
+  //   ));
+  // } else {
+  //   for file in files {
+  //     if file.is_dir() {
+  //       target_files
+  //         .extend(files_in_subtree(file.canonicalize()?, is_supported));
+  //     } else {
+  //       target_files.push(file.canonicalize()?);
+  //     };
+  //   }
+  // }
 
   Ok(target_files)
 }
