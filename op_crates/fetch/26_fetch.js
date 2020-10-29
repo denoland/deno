@@ -166,6 +166,7 @@
     if (typeof str !== "string") {
       return false;
     }
+    // deno-lint-ignore no-control-regex
     return /^[\x00-\x7F]*$/.test(str);
   }
 
