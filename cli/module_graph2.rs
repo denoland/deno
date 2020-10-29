@@ -1775,8 +1775,8 @@ pub mod tests {
     assert!(diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.version_calls.len(), 2);
-    assert_eq!(h.version_calls[0].1, ver0);
-    assert_eq!(h.version_calls[1].1, ver1);
+    assert!(h.version_calls[0].1 == ver0 || h.version_calls[0].1 == ver1);
+    assert!(h.version_calls[1].1 == ver0 || h.version_calls[1].1 == ver1);
   }
 
   #[tokio::test]
