@@ -1735,6 +1735,51 @@ pub mod tests {
   }
 
   #[tokio::test]
+  async fn test_graph_check_user_config() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
+        .expect("could not resolve module");
+    let (graph, handler) = setup(specifier.clone()).await;
+    let (_, diagnostics, maybe_ignored_options) = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: Some(
+          "tests/module_graph/tsconfig_01.json".to_string(),
+        ),
+        reload: true,
+      })
+      .expect("should have checked");
+    assert!(maybe_ignored_options.is_none());
+    assert!(diagnostics.is_empty());
+    let h = handler.borrow();
+    assert_eq!(h.version_calls.len(), 2);
+    let ver0 = h.version_calls[0].1.clone();
+    let ver1 = h.version_calls[1].1.clone();
+
+    // let's do it all over again to ensure that the versions are determinstic
+    let (graph, handler) = setup(specifier).await;
+    let (_, diagnostics, maybe_ignored_options) = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: Some(
+          "tests/module_graph/tsconfig_01.json".to_string(),
+        ),
+        reload: true,
+      })
+      .expect("should have checked");
+    assert!(maybe_ignored_options.is_none());
+    assert!(diagnostics.is_empty());
+    let h = handler.borrow();
+    assert_eq!(h.version_calls.len(), 2);
+    assert!(h.version_calls[0].1 == ver0 || h.version_calls[0].1 == ver1);
+    assert!(h.version_calls[1].1 == ver0 || h.version_calls[1].1 == ver1);
+  }
+
+  #[tokio::test]
   async fn test_graph_info() {
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
