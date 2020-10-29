@@ -1,3 +1,5 @@
+/* eslint-disable */
+
 function Decorator() {
   return function (
     target: Record<string, any>,
