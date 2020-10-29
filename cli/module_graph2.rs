@@ -747,7 +747,7 @@ impl Graph2 {
       debug!("graph does not need to be checked or emitted.");
       return Ok((
         Stats(Vec::new()),
-        Diagnostics(Vec::new()),
+        Diagnostics::default(),
         maybe_ignored_options,
       ));
     }
@@ -763,7 +763,14 @@ impl Graph2 {
     let root_names: Vec<(ModuleSpecifier, MediaType)> = self
       .roots
       .iter()
-      .map(|ms| (ms.clone(), self.get_media_type(ms).unwrap()))
+      .map(|ms| {
+        (
+          // root modules can be redirects, so before we pass it to tsc we need
+          // to resolve the redirect
+          self.resolve_specifier(ms).clone(),
+          self.get_media_type(ms).unwrap(),
+        )
+      })
       .collect();
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
@@ -786,14 +793,16 @@ impl Graph2 {
     graph.maybe_tsbuildinfo = response.maybe_tsbuildinfo;
     // Only process changes to the graph if there are no diagnostics and there
     // were files emitted.
-    if response.diagnostics.0.is_empty() && !response.emitted_files.is_empty() {
+    if response.diagnostics.is_empty() && !response.emitted_files.is_empty() {
       let mut codes = HashMap::new();
       let mut maps = HashMap::new();
       let check_js = config.get_check_js();
       for emit in &response.emitted_files {
         if let Some(specifiers) = &emit.maybe_specifiers {
           assert!(specifiers.len() == 1, "Unexpected specifier length");
-          let specifier = specifiers[0].clone();
+          // The specifier emitted might not be the redirected specifier, and
+          // therefore we need to ensure it is the correct one.
+          let specifier = graph.resolve_specifier(&specifiers[0]);
           // Sometimes if tsc sees a CommonJS file it will _helpfully_ output it
           // to ESM, which we don't really want unless someone has enabled the
           // check_js option.
@@ -805,10 +814,10 @@ impl Graph2 {
           }
           match emit.media_type {
             MediaType::JavaScript => {
-              codes.insert(specifier, emit.data.clone());
+              codes.insert(specifier.clone(), emit.data.clone());
             }
             MediaType::SourceMap => {
-              maps.insert(specifier, emit.data.clone());
+              maps.insert(specifier.clone(), emit.data.clone());
             }
             _ => unreachable!(),
           }
@@ -1139,9 +1148,11 @@ impl Graph2 {
     // instead.
     let result = if prefer_types && dep_module.maybe_types.is_some() {
       let (_, types) = dep_module.maybe_types.clone().unwrap();
-      types
+      // It is possible that `types` points to a redirected specifier, so we
+      // need to ensure it resolves to the final specifier in the graph.
+      self.resolve_specifier(&types).clone()
     } else {
-      resolved_specifier
+      dep_module.specifier.clone()
     };
 
     Ok(result)
@@ -1694,7 +1705,7 @@ pub mod tests {
       .expect("should have checked");
     assert!(maybe_ignored_options.is_none());
     assert_eq!(stats.0.len(), 12);
-    assert!(diagnostics.0.is_empty());
+    assert!(diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
@@ -1717,10 +1728,55 @@ pub mod tests {
       .expect("should have checked");
     assert!(maybe_ignored_options.is_none());
     assert_eq!(stats.0.len(), 12);
-    assert!(diagnostics.0.is_empty());
+    assert!(diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 0);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn test_graph_check_user_config() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
+        .expect("could not resolve module");
+    let (graph, handler) = setup(specifier.clone()).await;
+    let (_, diagnostics, maybe_ignored_options) = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: Some(
+          "tests/module_graph/tsconfig_01.json".to_string(),
+        ),
+        reload: true,
+      })
+      .expect("should have checked");
+    assert!(maybe_ignored_options.is_none());
+    assert!(diagnostics.is_empty());
+    let h = handler.borrow();
+    assert_eq!(h.version_calls.len(), 2);
+    let ver0 = h.version_calls[0].1.clone();
+    let ver1 = h.version_calls[1].1.clone();
+
+    // let's do it all over again to ensure that the versions are determinstic
+    let (graph, handler) = setup(specifier).await;
+    let (_, diagnostics, maybe_ignored_options) = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: Some(
+          "tests/module_graph/tsconfig_01.json".to_string(),
+        ),
+        reload: true,
+      })
+      .expect("should have checked");
+    assert!(maybe_ignored_options.is_none());
+    assert!(diagnostics.is_empty());
+    let h = handler.borrow();
+    assert_eq!(h.version_calls.len(), 2);
+    assert!(h.version_calls[0].1 == ver0 || h.version_calls[0].1 == ver1);
+    assert!(h.version_calls[1].1 == ver0 || h.version_calls[1].1 == ver1);
   }
 
   #[tokio::test]

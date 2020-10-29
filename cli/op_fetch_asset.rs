@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-fn get_asset(name: &str) -> Option<&'static str> {
+pub fn get_asset(name: &str) -> Option<&'static str> {
   macro_rules! inc {
     ($e:expr) => {
       Some(include_str!(concat!("dts/", $e)))
