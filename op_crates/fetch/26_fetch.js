@@ -869,6 +869,15 @@
       if (this._bodySource instanceof ReadableStream) {
         return bufferFromStream(this._bodySource.getReader(), this.#size);
       }
+      if (this._bodySource instanceof FormData) {
+        const params = getHeaderValueParams(this.#contentType);
+        const boundary = params.get("boundary");
+        const multipartBuilder = new MultipartBuilder(
+          this._bodySource,
+          boundary,
+        );
+        return Promise.resolve(bodyToArrayBuffer(multipartBuilder.getBody()));
+      }
       return Promise.resolve(bodyToArrayBuffer(this._bodySource));
     }
   }
