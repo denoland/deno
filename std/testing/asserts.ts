@@ -133,7 +133,12 @@ export function equal(c: unknown, d: unknown): boolean {
         return unmatchedEntries === 0;
       }
       const merged = { ...a, ...b };
-      for (const key in merged) {
+      for (
+        const key of [
+          ...Object.getOwnPropertyNames(merged),
+          ...Object.getOwnPropertySymbols(merged),
+        ]
+      ) {
         type Key = keyof typeof merged;
         if (!compare(a && a[key as Key], b && b[key as Key])) {
           return false;
