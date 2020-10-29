@@ -242,16 +242,19 @@ async fn cache_command(
   flags: Flags,
   files: Vec<String>,
 ) -> Result<(), AnyError> {
-  let main_module =
-    ModuleSpecifier::resolve_url_or_path("./$deno$cache.ts").unwrap();
   let program_state = ProgramState::new(flags)?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
-    // TODO(bartlomieju): don't use `preload_module` in favor of calling "ProgramState::prepare_module_load()"
-    // explicitly? Seems wasteful to create multiple worker just to run TS compiler
-    worker.preload_module(&specifier).await.map(|_| ())?;
+    program_state
+      .prepare_module_load(
+        specifier,
+        tsc::TargetLib::Main,
+        Permissions::allow_all(),
+        false,
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
   }
 
   Ok(())
