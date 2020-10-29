@@ -7,7 +7,7 @@ const { setPrepareStackTrace } = Deno[Deno.internal];
 interface CallSite {
   getThis(): unknown;
   getTypeName(): string | null;
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // deno-lint-ignore ban-types
   getFunction(): Function | null;
   getFunctionName(): string | null;
   getMethodName(): string | null;
@@ -36,7 +36,7 @@ function getMockCallSite(
     getTypeName(): string {
       return "";
     },
-    // eslint-disable-next-line @typescript-eslint/ban-types
+    // deno-lint-ignore ban-types
     getFunction(): Function {
       return (): void => {};
     },

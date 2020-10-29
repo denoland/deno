@@ -18,7 +18,7 @@ export function deepAssign(
   target: Record<string, any>,
   // deno-lint-ignore no-explicit-any
   ...sources: any[]
-): // eslint-disable-next-line @typescript-eslint/ban-types
+): // deno-lint-ignore ban-types
 object | undefined {
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];

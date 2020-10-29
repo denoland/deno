@@ -84,7 +84,7 @@
     listenTls: __bootstrap.tls.listenTls,
     sleepSync: __bootstrap.timers.sleepSync,
   };
-  
+
   __bootstrap.denoNsUnstable = {
     signal: __bootstrap.signals.signal,
     signals: __bootstrap.signals.signals,
@@ -134,5 +134,4 @@
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
   };
-  
 })(this);

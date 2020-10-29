@@ -11,7 +11,7 @@ import { loaded as loadedJsx3 } from "http://localhost:4545/cli/tests/subdir/mt_
 import { loaded as loadedJsx4 } from "http://localhost:4545/cli/tests/subdir/mt_application_x_javascript_jsx.j4.jsx";
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
+  // deno-lint-ignore no-namespace
   namespace JSX {
     interface IntrinsicElements {
       // deno-lint-ignore no-explicit-any

@@ -1,3 +1,5 @@
+// deno-lint-ignore-file
+
 // console.log intentionally misspelled to trigger a type error
 consol.log("hello world!");
 

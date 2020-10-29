@@ -194,7 +194,9 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch { 
+        // pass
+      }
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
@@ -519,11 +521,12 @@
   ) {
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
-      case "string":
+      case "string": {
         const trunc = value.length > STR_ABBREVIATE_SIZE
           ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
+      }
       default:
         return inspectValue(value, ctx, level, inspectOptions);
     }
@@ -784,7 +787,7 @@
           : red(`[Thrown ${error.name}: ${error.message}]`);
         entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
       } else {
-        let descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
           entries.push(`${maybeQuoteString(key)}: [Getter/Setter]`);
         } else if (descriptor.get !== undefined) {
@@ -818,7 +821,7 @@
           : red(`Thrown ${error.name}: ${error.message}`);
         entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
       } else {
-        let descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
           entries.push(`[${maybeQuoteSymbol(key)}]: [Getter/Setter]`);
         } else if (descriptor.get !== undefined) {
@@ -867,7 +870,9 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch { 
+        // pass
+      }
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in op_crates/web we don't want to depend on unique "Deno.customInspect"
@@ -880,7 +885,9 @@
     ) {
       try {
         return String(value[nonUniqueCustomInspect]());
-      } catch {}
+      } catch { 
+        // pass
+      }
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1158,7 +1165,7 @@
     let inValue = false;
     let currentKey = null;
     let parenthesesDepth = 0;
-    currentPart = "";
+    let currentPart = "";
     for (let i = 0; i < cssString.length; i++) {
       const c = cssString[i];
       if (c == "(") {

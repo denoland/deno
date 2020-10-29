@@ -1349,7 +1349,7 @@
             });
             return new Response(null, responseInit);
           case "follow":
-          default:
+          default: {
             let redirectUrl = response.headers.get("Location");
             if (redirectUrl == null) {
               return response; // Unspecified
@@ -1363,6 +1363,7 @@
             url = redirectUrl;
             redirected = true;
             remRedirectCount--;
+          }
         }
       } else {
         return response;

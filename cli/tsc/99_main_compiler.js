@@ -476,7 +476,7 @@ delete Object.prototype.__proto__;
           specifiers,
           base,
         });
-        let r = resolved.map(([resolvedFileName, extension]) => ({
+        const r = resolved.map(([resolvedFileName, extension]) => ({
           resolvedFileName,
           extension,
           isExternalLibraryImport: false,
@@ -1071,7 +1071,7 @@ delete Object.prototype.__proto__;
     performanceProgram({ program });
 
     // TODO(@kitsonk) when legacy stats are removed, convert to just tuples
-    let stats = performanceEnd().map(({ key, value }) => [key, value]);
+    const stats = performanceEnd().map(({ key, value }) => [key, value]);
     core.jsonOpSync("op_respond", {
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats,
