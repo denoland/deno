@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: ${{ matrix.kind }} ${{ matrix.os }}
+    name: ${{ matrix.kind }} ${{ matrix.target }}
     if: |
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
@@ -110,7 +110,7 @@ jobs:
             ForEach-Object { Move-Item "$_" "$_.disabled" }
 
       - name: Install cross compilation toolchain
-        if: matrix.config.target == 'aarch64-unknown-linux-gnu'
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           rustup target add aarch64-unknown-linux-gnu
           sudo apt update
@@ -143,23 +143,23 @@ jobs:
         if: |
           matrix.kind == 'test_release' ||
           matrix.kind == 'bench'
-        run: cargo build --release --locked --all-targets -vv --target ${{ matrix.config.target }}
+        run: cargo build --release --locked --all-targets -vv --target ${{ matrix.target }}
 
       - name: Build debug
         if: matrix.kind == 'test_debug'
-        run: cargo build --locked --all-targets --target ${{ matrix.config.target }}
+        run: cargo build --locked --all-targets --target ${{ matrix.target }}
 
       - name: Test release
         if: matrix.kind == 'test_release'
-        run: cargo test --release --locked --all-targets --target ${{ matrix.config.target }}
+        run: cargo test --release --locked --all-targets --target ${{ matrix.target }}
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: cargo test --locked --all-targets --target ${{ matrix.config.target }}
+        run: cargo test --locked --all-targets --target ${{ matrix.target }}
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
-        run: cargo bench --target ${{ matrix.config.target }}
+        run: cargo bench --target ${{ matrix.target }}
 
       - name: Post Benchmarks
         if: |
@@ -189,8 +189,8 @@ jobs:
           !startsWith(matrix.os, 'windows') &&
           matrix.kind == 'test_release'
         run: |
-          cd target/${{ matrix.config.target }}/release
-          zip -r ${{ matrix.config.target }}.zip deno
+          cd target/${{ matrix.target }}/release
+          zip -r ${{ matrix.target }}.zip deno
           ./deno types > lib.deno.d.ts
 
       - name: Pre-release (windows)
@@ -198,7 +198,7 @@ jobs:
           startsWith(matrix.os, 'windows') &&
           matrix.kind == 'test_release'
         run: |
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/${{ matrix.config.target }}/release/deno.exe -DestinationPath target/${{ matrix.config.target }}/release/${{ matrix.config.target }}.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/${{ matrix.target }}/release/deno.exe -DestinationPath target/${{ matrix.target }}/release/${{ matrix.target }}.zip
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -211,7 +211,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: |
-            target/${{ matrix.config.target }}/release/${{ matrix.config.target }}.zip
+            target/${{ matrix.target }}/release/${{ matrix.target }}.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
