@@ -14,16 +14,25 @@ jobs:
       matrix:
         include:
           - os: macos-10.15
+            target: x86_64-apple-darwin
             kind: test_release
           - os: windows-2019
+            target: x86_64-pc-windows-msvc
             kind: test_release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+            target: aarch64-unknown-linux-gnu
             kind: test_release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+            target: x86_64-unknown-linux-gnu
+            kind: test_release
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+            target: x86_64-unknown-linux-gnu
             kind: test_debug
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+            target: x86_64-unknown-linux-gnu
             kind: bench
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+            target: x86_64-unknown-linux-gnu
             kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
@@ -53,7 +62,7 @@ jobs:
 
       - name: Create source tarballs (release, linux)
         if: |
-          startsWith(matrix.os, 'ubuntu') &&
+          matrix.target == 'x86_64-unknown-linux-gnu' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/') &&
@@ -100,6 +109,20 @@ jobs:
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
 
+      - name: Install cross compilation toolchain
+        if: matrix.config.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          rustup target add aarch64-unknown-linux-gnu
+          sudo apt update
+          sudo apt install -yq --no-install-suggests --no-install-recommends \
+            binfmt-support g++-5-aarch64-linux-gnu g++-5-multilib \
+            gcc-5-aarch64-linux-gnu libc6-arm64-cross qemu qemu-user \
+            qemu-user-binfmt
+          sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 \
+                     /lib/ld-linux-aarch64.so.1
+          echo "::set-env name=CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER::/usr/bin/aarch64-linux-gnu-gcc-5"
+          echo "::set-env name=QEMU_LD_PREFIX::/usr/aarch64-linux-gnu"
+
       - name: Log versions
         run: |
           node -v
@@ -120,23 +143,23 @@ jobs:
         if: |
           matrix.kind == 'test_release' ||
           matrix.kind == 'bench'
-        run: cargo build --release --locked --all-targets -vv
+        run: cargo build --release --locked --all-targets -vv --target ${{ matrix.config.target }}
 
       - name: Build debug
         if: matrix.kind == 'test_debug'
-        run: cargo build --locked --all-targets
+        run: cargo build --locked --all-targets --target ${{ matrix.config.target }}
 
       - name: Test release
         if: matrix.kind == 'test_release'
-        run: cargo test --release --locked --all-targets
+        run: cargo test --release --locked --all-targets --target ${{ matrix.config.target }}
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: cargo test --locked --all-targets
+        run: cargo test --locked --all-targets --target ${{ matrix.config.target }}
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
-        run: cargo bench
+        run: cargo bench --target ${{ matrix.config.target }}
 
       - name: Post Benchmarks
         if: |
@@ -161,29 +184,21 @@ jobs:
           cat /proc/cpuinfo
           cat /proc/meminfo
 
-      - name: Pre-release (linux)
+      - name: Pre-release (unix)
         if: |
-          startsWith(matrix.os, 'ubuntu') &&
+          !startsWith(matrix.os, 'windows') &&
           matrix.kind == 'test_release'
         run: |
-          cd target/release
-          zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          cd target/${{ matrix.config.target }}/release
+          zip -r ${{ matrix.config.target }}.zip deno
           ./deno types > lib.deno.d.ts
-
-      - name: Pre-release (mac)
-        if: |
-          startsWith(matrix.os, 'macOS') &&
-          matrix.kind == 'test_release'
-        run: |
-          cd target/release
-          zip -r deno-x86_64-apple-darwin.zip deno
 
       - name: Pre-release (windows)
         if: |
           startsWith(matrix.os, 'windows') &&
           matrix.kind == 'test_release'
         run: |
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/${{ matrix.config.target }}/release/deno.exe -DestinationPath target/${{ matrix.config.target }}/release/${{ matrix.config.target }}.zip
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -196,16 +211,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: |
-            target/release/deno-x86_64-pc-windows-msvc.zip
-            target/release/deno-x86_64-unknown-linux-gnu.zip
-            target/release/deno-x86_64-apple-darwin.zip
+            target/${{ matrix.config.target }}/release/${{ matrix.config.target }}.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
 
       - name: Publish
         if: |
-          startsWith(matrix.os, 'ubuntu') &&
+          matrix.target == 'x86_64-unknown-linux-gnu' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/') &&
