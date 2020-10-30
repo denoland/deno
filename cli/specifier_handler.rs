@@ -443,6 +443,10 @@ impl SpecifierHandler for MemoryHandler {
     let mut specifier_text = specifier.to_string();
     if !self.sources.contains_key(&specifier_text) {
       specifier_text = specifier_text.replace("file:///", "/");
+      if !self.sources.contains_key(&specifier_text) {
+        // Convert `C:/a/path/file.ts` to `/a/path/file.ts`
+        specifier_text = specifier_text[3..].to_string()
+      }
     }
     let result = if let Some(source) = self.sources.get(&specifier_text) {
       let media_type = MediaType::from(&specifier);
@@ -709,5 +713,28 @@ pub mod tests {
       .fetch(specifier.clone(), None, false)
       .await
       .expect_err("should have errored");
+
+    let specifier = ModuleSpecifier::resolve_url_or_path("/a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///C:/a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
   }
 }
