@@ -14,15 +14,11 @@ Deno.test({
     });
     assert(diagnostics == null);
     assert(actual);
-    assertEquals(
-      Object.keys(actual).sort(),
-      [
-        "file:///bar.ts.js",
-        "file:///bar.ts.js.map",
-        "file:///foo.ts.js",
-        "file:///foo.ts.js.map",
-      ],
-    );
+    let keys = Object.keys(actual).sort();
+    assert(keys[0].endsWith("/bar.ts.js"));
+    assert(keys[1].endsWith("/bar.ts.js.map"));
+    assert(keys[2].endsWith("/foo.ts.js"));
+    assert(keys[3].endsWith("/foo.ts.js.map"));
   },
 });
 
@@ -54,8 +50,11 @@ Deno.test({
     );
     assert(diagnostics == null);
     assert(actual);
-    assertEquals(Object.keys(actual), ["file:///foo.ts.js"]);
-    assert(actual["file:///foo.ts.js"].startsWith("define("));
+    let keys = Object.keys(actual);
+    assertEquals(keys.length, 1);
+    let key = keys[0];
+    assert(key.endsWith("/foo.ts.js"));
+    assert(actual[key].startsWith("define("));
   },
 });
 
@@ -63,9 +62,9 @@ Deno.test({
   name: "Deno.compile() - pass lib in compiler options",
   async fn() {
     const [diagnostics, actual] = await Deno.compile(
-      "/foo.ts",
+      "file:///foo.ts",
       {
-        "/foo.ts": `console.log(document.getElementById("foo"));
+        "file:///foo.ts": `console.log(document.getElementById("foo"));
         console.log(Deno.args);`,
       },
       {

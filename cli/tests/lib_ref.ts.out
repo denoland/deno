@@ -1,2 +1,2 @@
 undefined
-[ "file:///main.ts.js", "file:///main.ts.js.map" ]
+[ "file:///[WILDCARD]main.ts.js", "file:///[WILDCARD]main.ts.js.map" ]
