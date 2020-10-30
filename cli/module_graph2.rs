@@ -71,6 +71,16 @@ lazy_static! {
     Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
 }
 
+type EmitResult = Result<
+  (
+    HashMap<String, String>,
+    Stats,
+    Diagnostics,
+    Option<IgnoredCompilerOptions>,
+  ),
+  AnyError,
+>;
+
 /// A group of errors that represent errors that can occur when interacting with
 /// a module graph.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -826,18 +836,7 @@ impl Graph2 {
     self.modules.contains_key(s)
   }
 
-  pub fn emit(
-    self,
-    options: EmitOptions,
-  ) -> Result<
-    (
-      HashMap<String, String>,
-      Stats,
-      Diagnostics,
-      Option<IgnoredCompilerOptions>,
-    ),
-    AnyError,
-  > {
+  pub fn emit(self, options: EmitOptions) -> EmitResult {
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) consider enabling this by default

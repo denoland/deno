@@ -215,18 +215,6 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
-  function parseCompilerOptions(compilerOptions) {
-    const { options, errors } = ts.convertCompilerOptionsFromJson(
-      compilerOptions,
-      "",
-      "tsconfig.json",
-    );
-    return {
-      options,
-      diagnostics: errors.length ? errors : undefined,
-    };
-  }
-
   class SourceFile {
     constructor(json) {
       this.processed = false;
