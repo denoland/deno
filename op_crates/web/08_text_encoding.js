@@ -1066,7 +1066,7 @@
     1088, 1089, 1090, 1091, 1092, 1093, 1094, 1095,
     1096, 1097, 1098, 1099, 1100, 1101, 1102, 8364,
   ]);
-  
+
   // deno-fmt-ignore
   encodingIndexes.set("big5", [
     null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   null,   
