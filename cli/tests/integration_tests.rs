@@ -3001,12 +3001,6 @@ itest!(deno_doc_import_map {
   output: "doc/use_import_map.out",
 });
 
-itest!(compiler_js_error {
-  args: "run --unstable compiler_js_error.ts",
-  output: "compiler_js_error.ts.out",
-  exit_code: 1,
-});
-
 itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",

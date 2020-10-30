@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::ModuleSpecifier;
 use serde::Serialize;
 use serde::Serializer;
 use std::fmt;
@@ -57,6 +58,12 @@ impl<'a> From<&'a PathBuf> for MediaType {
 impl<'a> From<&'a String> for MediaType {
   fn from(specifier: &'a String) -> Self {
     MediaType::from_path(&PathBuf::from(specifier))
+  }
+}
+
+impl<'a> From<&'a ModuleSpecifier> for MediaType {
+  fn from(specifier: &'a ModuleSpecifier) -> Self {
+    MediaType::from_path(&specifier.to_path())
   }
 }
 

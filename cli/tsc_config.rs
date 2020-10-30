@@ -52,37 +52,42 @@ impl fmt::Display for IgnoredCompilerOptions {
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: [&str; 10] = [
+const IGNORED_COMPILER_OPTIONS: [&str; 20] = [
   "allowSyntheticDefaultImports",
+  "declaration",
+  "declarationMap",
+  "downlevelIteration",
   "esModuleInterop",
+  "emitDeclarationOnly",
+  "importHelpers",
   "inlineSourceMap",
   "inlineSources",
   // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
   "module",
+  "noEmitHelpers",
   "noLib",
   "preserveConstEnums",
   "reactNamespace",
+  "skipDefaultLibCheck",
+  "skipLibCheck",
   "sourceMap",
   "target",
+  "types",
+  "useDefineForClassFields",
 ];
 
-const IGNORED_RUNTIME_COMPILER_OPTIONS: [&str; 50] = [
+const IGNORED_RUNTIME_COMPILER_OPTIONS: [&str; 40] = [
   "allowUmdGlobalAccess",
   "assumeChangesOnlyAffectDirectDependencies",
   "baseUrl",
   "build",
   "composite",
-  "declaration",
-  "declarationMap",
   "diagnostics",
-  "downlevelIteration",
   "emitBOM",
-  "emitDeclarationOnly",
   "extendedDiagnostics",
   "forceConsistentCasingInFileNames",
   "generateCpuProfile",
   "help",
-  "importHelpers",
   "incremental",
   "init",
   "listEmittedFiles",
@@ -92,7 +97,6 @@ const IGNORED_RUNTIME_COMPILER_OPTIONS: [&str; 50] = [
   "moduleResolution",
   "newLine",
   "noEmit",
-  "noEmitHelpers",
   "noEmitOnError",
   "noResolve",
   "out",
@@ -106,15 +110,11 @@ const IGNORED_RUNTIME_COMPILER_OPTIONS: [&str; 50] = [
   "rootDir",
   "rootDirs",
   "showConfig",
-  "skipDefaultLibCheck",
-  "skipLibCheck",
   "sourceRoot",
   "stripInternal",
   "traceResolution",
   "tsBuildInfoFile",
-  "types",
   "typeRoots",
-  "useDefineForClassFields",
   "version",
   "watch",
 ];
@@ -168,12 +168,6 @@ struct TSConfigJson {
   include: Option<Vec<String>>,
   references: Option<Value>,
   type_acquisition: Option<Value>,
-}
-
-pub fn parse_raw_config(config_text: &str) -> Result<Value, AnyError> {
-  assert!(!config_text.is_empty());
-  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
-  Ok(jsonc_to_serde(jsonc))
 }
 
 fn parse_compiler_options(
@@ -392,18 +386,6 @@ mod tests {
         maybe_path: None
       })
     );
-  }
-
-  #[test]
-  fn test_parse_raw_config() {
-    let invalid_config_text = r#"{
-      "compilerOptions": {
-        // comments are allowed
-    }"#;
-    let errbox = parse_raw_config(invalid_config_text).unwrap_err();
-    assert!(errbox
-      .to_string()
-      .starts_with("Unterminated object on line 1"));
   }
 
   #[test]
