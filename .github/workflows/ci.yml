@@ -13,27 +13,27 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-10.15
-            target: x86_64-apple-darwin
-            kind: test_release
-          - os: windows-2019
-            target: x86_64-pc-windows-msvc
-            kind: test_release
+          #   - os: macos-10.15
+          #     target: x86_64-apple-darwin
+          #     kind: test_release
+          #   - os: windows-2019
+          #     target: x86_64-pc-windows-msvc
+          #     kind: test_release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
             target: aarch64-unknown-linux-gnu
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
-            target: x86_64-unknown-linux-gnu
-            kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
-            target: x86_64-unknown-linux-gnu
-            kind: test_debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
-            target: x86_64-unknown-linux-gnu
-            kind: bench
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
-            target: x86_64-unknown-linux-gnu
-            kind: lint
+          # - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          #   target: x86_64-unknown-linux-gnu
+          #   kind: test_release
+          # - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          #   target: x86_64-unknown-linux-gnu
+          #   kind: test_debug
+          # - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          #   target: x86_64-unknown-linux-gnu
+          #   kind: bench
+          # - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          #   target: x86_64-unknown-linux-gnu
+          #   kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
