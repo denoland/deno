@@ -2637,6 +2637,11 @@ itest!(ts_decorators {
   output: "ts_decorators.ts.out",
 });
 
+itest!(ts_decorators_bundle {
+  args: "bundle ts_decorators_bundle.ts",
+  output: "ts_decorators_bundle.out",
+});
+
 itest!(ts_type_only_import {
   args: "run --reload ts_type_only_import.ts",
   output: "ts_type_only_import.ts.out",

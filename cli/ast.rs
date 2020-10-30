@@ -467,7 +467,11 @@ pub fn transpile_module(
     typescript::strip(),
     fixer(Some(&comments)),
   );
-  let module = module.fold_with(&mut passes);
+  let module = swc_common::GLOBALS.set(&Globals::new(), || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      module.fold_with(&mut passes)
+    })
+  });
 
   Ok((source_file, module))
 }
