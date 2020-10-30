@@ -10,3 +10,5 @@ while (false) {}
               ^^
     at [WILDCARD]file1.js:2:14
 
+    hint: [WILDCARD]
+
