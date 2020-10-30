@@ -3154,11 +3154,6 @@ itest!(unstable_disabled_ts2551 {
   output: "unstable_disabled_ts2551.out",
 });
 
-itest!(unstable_worker {
-  args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
-  output: "unstable_worker.ts.out",
-});
-
 itest!(_053_import_compression {
   args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",

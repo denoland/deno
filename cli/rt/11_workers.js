@@ -10,7 +10,6 @@
     specifier,
     hasSourceCode,
     sourceCode,
-    useDenoNamespace,
     name,
   ) {
     return core.jsonOpSync("op_create_worker", {
@@ -18,7 +17,6 @@
       hasSourceCode,
       sourceCode,
       name,
-      useDenoNamespace,
     });
   }
 
@@ -66,13 +64,10 @@
       const hasSourceCode = false;
       const sourceCode = decoder.decode(new Uint8Array());
 
-      const useDenoNamespace = options ? !!options.deno : false;
-
       const { id } = createWorker(
         specifier,
         hasSourceCode,
         sourceCode,
-        useDenoNamespace,
         options?.name,
       );
       this.#id = id;

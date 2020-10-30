@@ -124,7 +124,6 @@ pub struct WebWorker {
   event_loop_idle: bool,
   terminate_rx: mpsc::Receiver<()>,
   handle: WebWorkerHandle,
-  pub has_deno_namespace: bool,
 }
 
 impl WebWorker {
@@ -133,7 +132,6 @@ impl WebWorker {
     permissions: Permissions,
     main_module: ModuleSpecifier,
     program_state: Arc<ProgramState>,
-    has_deno_namespace: bool,
   ) -> Self {
     let module_loader = CliModuleLoader::new_for_worker();
     let global_state_ = program_state.clone();
@@ -178,7 +176,6 @@ impl WebWorker {
       event_loop_idle: false,
       terminate_rx,
       handle,
-      has_deno_namespace,
     };
 
     {
@@ -194,11 +191,12 @@ impl WebWorker {
         op_state.put::<Permissions>(permissions);
       }
 
-      ops::web_worker::init(js_runtime, sender.clone(), handle);
+      ops::web_worker::init(js_runtime, sender, handle);
       ops::runtime::init(js_runtime, main_module, true);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime, Some(sender));
+      ops::worker_host::init(js_runtime, None);
+      ops::crypto::init(js_runtime, program_state.flags.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -207,23 +205,19 @@ impl WebWorker {
         deno_web::op_domain_to_ascii,
       );
       ops::errors::init(js_runtime);
+      ops::fs_events::init(js_runtime);
+      ops::fs::init(js_runtime);
       ops::io::init(js_runtime);
+      ops::net::init(js_runtime);
+      ops::os::init(js_runtime);
+      ops::permissions::init(js_runtime);
+      ops::plugin::init(js_runtime);
+      ops::process::init(js_runtime);
+      ops::runtime_compiler::init(js_runtime);
+      ops::signal::init(js_runtime);
+      ops::tls::init(js_runtime);
+      ops::tty::init(js_runtime);
       ops::websocket::init(js_runtime);
-
-      if has_deno_namespace {
-        ops::fs_events::init(js_runtime);
-        ops::fs::init(js_runtime);
-        ops::net::init(js_runtime);
-        ops::os::init(js_runtime);
-        ops::permissions::init(js_runtime);
-        ops::plugin::init(js_runtime);
-        ops::process::init(js_runtime);
-        ops::crypto::init(js_runtime, program_state.flags.seed);
-        ops::runtime_compiler::init(js_runtime);
-        ops::signal::init(js_runtime);
-        ops::tls::init(js_runtime);
-        ops::tty::init(js_runtime);
-      }
     }
 
     worker
@@ -359,7 +353,6 @@ mod tests {
       Permissions::allow_all(),
       main_module,
       program_state,
-      false,
     );
     worker
       .execute("bootstrap.workerRuntime(\"TEST\", false)")

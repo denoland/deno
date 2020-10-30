@@ -365,7 +365,7 @@ delete Object.prototype.__proto__;
     util.log("args", args);
   }
 
-  function bootstrapWorkerRuntime(name, useDenoNamespace, internalName) {
+  function bootstrapWorkerRuntime(name, internalName) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
@@ -393,26 +393,21 @@ delete Object.prototype.__proto__;
       close: core.close,
       ...denoNs,
     };
-    if (useDenoNamespace) {
-      if (unstableFlag) {
-        Object.assign(finalDenoNs, denoNsUnstable);
-      }
-      Object.defineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
-        args: util.readOnly(Object.freeze(args)),
-      });
-      // Setup `Deno` global - we're actually overriding already
-      // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      util.immutableDefine(globalThis, "Deno", finalDenoNs);
-      Object.freeze(globalThis.Deno);
-      Object.freeze(globalThis.Deno.core);
-      Object.freeze(globalThis.Deno.core.sharedQueue);
-      signals.setSignals();
-    } else {
-      delete globalThis.Deno;
-      util.assert(globalThis.Deno === undefined);
+    if (unstableFlag) {
+      Object.assign(finalDenoNs, denoNsUnstable);
     }
+    Object.defineProperties(finalDenoNs, {
+      pid: util.readOnly(pid),
+      noColor: util.readOnly(noColor),
+      args: util.readOnly(Object.freeze(args)),
+    });
+    // Setup `Deno` global - we're actually overriding already
+    // existing global `Deno` with `Deno` namespace from "./deno.ts".
+    util.immutableDefine(globalThis, "Deno", finalDenoNs);
+    Object.freeze(globalThis.Deno);
+    Object.freeze(globalThis.Deno.core);
+    Object.freeze(globalThis.Deno.core.sharedQueue);
+    signals.setSignals();
   }
 
   Object.defineProperties(globalThis, {
