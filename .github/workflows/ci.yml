@@ -117,7 +117,7 @@ jobs:
           sudo apt install -yq --no-install-suggests --no-install-recommends \
             binfmt-support g++-5-aarch64-linux-gnu g++-5-multilib \
             gcc-5-aarch64-linux-gnu libc6-arm64-cross qemu qemu-user \
-            qemu-user-binfmt
+            qemu-user-binfmt aarch64-linux-gnu-gcc
           sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 \
                      /lib/ld-linux-aarch64.so.1
           echo "::set-env name=CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER::/usr/bin/aarch64-linux-gnu-gcc-5"
