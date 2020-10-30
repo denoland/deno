@@ -7,6 +7,7 @@ use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
+use crate::fs::canonicalize_path;
 use crate::js;
 use crate::media_type::MediaType;
 use crate::module_graph::ModuleGraph;
@@ -174,7 +175,7 @@ impl CompilerConfig {
 
     // Convert the PathBuf to a canonicalized string.  This is needed by the
     // compiler to properly deal with the configuration.
-    let config_path = config_file.canonicalize().map_err(|_| {
+    let config_path = canonicalize_path(&config_file).map_err(|_| {
       io::Error::new(
         io::ErrorKind::InvalidInput,
         format!(

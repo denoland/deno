@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::fs::canonicalize_path;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -266,7 +267,7 @@ impl TsConfig {
     if let Some(path) = maybe_path {
       let cwd = std::env::current_dir()?;
       let config_file = cwd.join(path);
-      let config_path = config_file.canonicalize().map_err(|_| {
+      let config_path = canonicalize_path(&config_file).map_err(|_| {
         std::io::Error::new(
           std::io::ErrorKind::InvalidInput,
           format!(
