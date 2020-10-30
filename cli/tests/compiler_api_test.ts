@@ -14,7 +14,7 @@ Deno.test({
     });
     assert(diagnostics == null);
     assert(actual);
-    let keys = Object.keys(actual).sort();
+    const keys = Object.keys(actual).sort();
     assert(keys[0].endsWith("/bar.ts.js"));
     assert(keys[1].endsWith("/bar.ts.js.map"));
     assert(keys[2].endsWith("/foo.ts.js"));
@@ -50,9 +50,9 @@ Deno.test({
     );
     assert(diagnostics == null);
     assert(actual);
-    let keys = Object.keys(actual);
+    const keys = Object.keys(actual);
     assertEquals(keys.length, 1);
-    let key = keys[0];
+    const key = keys[0];
     assert(key.endsWith("/foo.ts.js"));
     assert(actual[key].startsWith("define("));
   },
