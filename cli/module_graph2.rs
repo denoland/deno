@@ -575,7 +575,6 @@ pub struct CheckOptions {
 pub enum BundleType {
   /// Return the emitted contents of the program as a single "flattened" ES
   /// module.
-  #[allow(unused)]
   Esm,
   // TODO(@kitsonk) once available in swc
   // Iife,

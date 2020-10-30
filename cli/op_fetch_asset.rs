@@ -83,6 +83,10 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
 /// JsRuntime.
+///
+/// TODO(@kitsonk) this is only used when building the snapshot, and needs to
+/// be refactored somewhere else.  It is no longer used by `main.rs` and
+/// therefore requires the allow unused.
 #[allow(unused)]
 pub fn op_fetch_asset(
   custom_assets: HashMap<String, PathBuf>,

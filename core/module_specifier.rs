@@ -67,7 +67,11 @@ impl ModuleSpecifier {
 
   pub fn to_path(&self) -> PathBuf {
     if self.0.scheme() == "file" {
-      self.0.to_file_path().unwrap()
+      if let Ok(path) = self.0.to_file_path() {
+        path
+      } else {
+        PathBuf::from(self.0.path())
+      }
     } else {
       PathBuf::from(self.0.path())
     }
