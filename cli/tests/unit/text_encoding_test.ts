@@ -212,12 +212,14 @@ unitTest(function toStringShouldBeWebCompatibility(): void {
 });
 unitTest(function textEncoderShouldCoerceToString(): void {
   const encoder = new TextEncoder();
-  const fixutreText = "text"; 
+  const fixutreText = "text";
   const fixture = {
-    toString() { return fixutreText; }
-  }
-  
-  let bytes = encoder.encode(fixture as unknown as string);
+    toString() {
+      return fixutreText;
+    },
+  };
+
+  const bytes = encoder.encode(fixture as unknown as string);
   const decoder = new TextDecoder();
   const decoded = decoder.decode(bytes);
   assertEquals(decoded, fixutreText);
