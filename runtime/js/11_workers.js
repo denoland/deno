@@ -11,13 +11,15 @@
     hasSourceCode,
     sourceCode,
     useDenoNamespace,
+    permissions,
     name,
   ) {
     return core.jsonOpSync("op_create_worker", {
-      specifier,
       hasSourceCode,
-      sourceCode,
       name,
+      permissions,
+      sourceCode,
+      specifier,
       useDenoNamespace,
     });
   }
@@ -47,14 +49,87 @@
     return JSON.parse(dataJson);
   }
 
+  /**
+   * @param {string} permission
+   * @return {boolean}
+   */
+  function parseBooleanPermission(
+    value,
+    permission,
+  ) {
+    if (value !== "inherit" && typeof value !== "boolean") {
+      throw new Error(
+        `Expected 'boolean' for ${permission} permission, ${typeof value} received`,
+      );
+    }
+    return value === "inherit" ? undefined : value;
+  }
+
+  /**
+   * @param {string} permission
+   * @return {(boolean | string[])}
+   * */
+  function parseArrayPermission(
+    value,
+    permission,
+  ) {
+    if (typeof value === "string") {
+      if (value !== "inherit") {
+        throw new Error(
+          `Expected 'array' or 'boolean' for ${permission} permission, "${value}" received`,
+        );
+      }
+    } else if (!Array.isArray(value) && typeof value !== "boolean") {
+      throw new Error(
+        `Expected 'array' or 'boolean' for ${permission} permission, ${typeof value} received`,
+      );
+    }
+
+    return value === "inherit" ? undefined : value;
+  }
+
+  /**
+   * Normalizes data, runs checks on parameters and deletes inherited permissions
+   */
+  function parsePermissions({
+    env = "inherit",
+    hrtime = "inherit",
+    net = "inherit",
+    plugin = "inherit",
+    read = "inherit",
+    run = "inherit",
+    write = "inherit",
+  }) {
+    return {
+      env: parseBooleanPermission(env, "env"),
+      hrtime: parseBooleanPermission(hrtime, "hrtime"),
+      net: parseArrayPermission(net, "net"),
+      plugin: parseBooleanPermission(plugin, "plugin"),
+      read: parseArrayPermission(read, "read"),
+      run: parseBooleanPermission(run, "run"),
+      write: parseArrayPermission(write, "write"),
+    };
+  }
+
   class Worker extends EventTarget {
     #id = 0;
     #name = "";
     #terminated = false;
 
-    constructor(specifier, options) {
+    constructor(specifier, options = {}) {
       super();
-      const { type = "classic", name = "unknown" } = options ?? {};
+      const {
+        deno = {},
+        name = "unknown",
+        type = "classic",
+      } = options;
+
+      const workerDenoAttributes = {
+        namespace: !!(deno?.namespace ?? true),
+        permissions: (deno?.permissions ?? "inherit") === "inherit"
+          ? {}
+          : deno?.permissions,
+      };
 
       if (type !== "module") {
         throw new Error(
@@ -66,13 +141,12 @@
       const hasSourceCode = false;
       const sourceCode = decoder.decode(new Uint8Array());
 
-      const useDenoNamespace = options ? !!options.deno : false;
-
       const { id } = createWorker(
         specifier,
         hasSourceCode,
         sourceCode,
-        useDenoNamespace,
+        workerDenoAttributes.namespace,
+        parsePermissions(workerDenoAttributes.permissions),
         options?.name,
       );
       this.#id = id;
