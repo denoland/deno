@@ -105,6 +105,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
+  pub(crate) js_promise_hook_cb: Vec<v8::Global<v8::Function>>,
   pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
   pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
@@ -263,6 +264,7 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       shared_ab: None,
       js_recv_cb: None,
+      js_promise_hook_cb: [].to_vec(),
       js_macrotask_cb: None,
       js_error_create_fn,
       shared: SharedQueue::new(RECOMMENDED_SIZE),

@@ -52,6 +52,9 @@ lazy_static! {
       v8::ExternalReference {
         function: get_proxy_details.map_fn_to()
       },
+      v8::ExternalReference {
+        function: set_promise_hook.map_fn_to()
+      },
     ]);
 }
 
@@ -188,6 +191,29 @@ pub fn initialize_context<'s>(
     get_proxy_details_key.into(),
     get_proxy_details_val.into(),
   );
+
+  // Promise hooks
+  let set_promise_hook_key = v8::String::new(scope, "setPromiseHook").unwrap();
+  let set_promise_hook_tmpl =
+    v8::FunctionTemplate::new(scope, set_promise_hook);
+  let set_promise_hook_val = set_promise_hook_tmpl.get_function(scope).unwrap();
+  core_val.set(
+    scope,
+    set_promise_hook_key.into(),
+    set_promise_hook_val.into(),
+  );
+
+  for (i, hook_name) in
+    ["INIT", "RESOLVE", "BEFORE", "AFTER"].iter().enumerate()
+  {
+    let promise_hook_key = v8::String::new(scope, hook_name).unwrap();
+    let promise_hook_value = v8::Integer::new(scope, i as i32);
+    set_promise_hook_val.set(
+      scope,
+      promise_hook_key.into(),
+      promise_hook_value.into(),
+    );
+  }
 
   let shared_key = v8::String::new(scope, "shared").unwrap();
   core_val.set_accessor(scope, shared_key.into(), shared_getter);
@@ -755,6 +781,52 @@ pub fn module_resolve_callback<'s>(
   }
 
   None
+}
+
+// Sets the V8 promise hook, allowing tracking of context across
+// Promise chains and async functions
+fn set_promise_hook(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let hook = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(val) => val,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exception);
+      return;
+    }
+  };
+
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  state.js_promise_hook_cb.push(v8::Global::new(scope, hook));
+  scope.set_promise_hook(wrapped_hook);
+}
+extern "C" fn wrapped_hook(
+  type_: v8::PromiseHookType,
+  promise: v8::Local<v8::Promise>,
+  parent: v8::Local<v8::Value>,
+) {
+  let scope = &mut unsafe { v8::CallbackScope::new(promise) };
+  let context = promise.creation_context(scope);
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let global = context.global(scope);
+
+  let state_rc = JsRuntime::state(scope);
+
+  let hook_type: v8::Local<v8::Value> =
+    v8::Integer::new(scope, type_ as i32).into();
+
+  for js_promise_hook_cb_handle in state_rc.borrow().js_promise_hook_cb.iter() {
+    js_promise_hook_cb_handle
+      .get(scope)
+      .call(scope, global.into(), &[hook_type, promise.into(), parent])
+      .unwrap();
+  }
 }
 
 // Returns promise details or throw TypeError, if argument passed isn't a Promise.
