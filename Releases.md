@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.5.1 / 2020.10.31
+
+- fix: Accept Windows line breaks in prompt/confirm/alert (#8149)
+- fix: Deno.fdata(), Deno.fdatasync() added to stable (#8193)
+- fix: Strip "\\?\" prefix when displaying Windows paths (#8135)
+- fix: Make hashes of tsconfig deterministic (#8167)
+- fix: Module graph handles redirects properly (#8159)
+- fix: Restore tripleslash lib refs support (#8157)
+- fix: Panic in bundler (#8168)
+- fix(repl): Don't hang on unpaired braces (#8151)
+- refactor: Don't spin up V8 for `deno cache` (#8186)
+- refactor: Create a single watcher for whole process (#8083)
+- upgrade: deno_doc, deno_lint, dprint, swc (#8197)
+
+Changes in std version 0.76.0:
+
+- feat(std/node/crypto): Add randomBytes and pbkdf2 (#8191)
+- fix(std/wasi): Remove stray console.log call (#8156)
+
 ### 1.5.0 / 2020.10.27
 
 - BREAKING: Enable isolatedModules by default (#8050)
