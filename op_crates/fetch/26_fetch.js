@@ -1350,6 +1350,7 @@
             });
             return new Response(null, responseInit);
           case "follow":
+            // fallthrough
           default: {
             let redirectUrl = response.headers.get("Location");
             if (redirectUrl == null) {

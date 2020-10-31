@@ -103,6 +103,7 @@
       }
       case "symbol":
       case "function":
+        // fallthrough
       default:
         throw new DOMException("Uncloneable value in stream", "DataCloneError");
     }
