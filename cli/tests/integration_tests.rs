@@ -1210,6 +1210,9 @@ fn run_watch() {
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
 
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
@@ -1254,6 +1257,40 @@ fn repl_test_pty_multiline() {
     assert!(output.contains("/(/"));
     assert!(output.contains("/{/"));
     assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
+
+    fork.wait().unwrap();
+  } else {
+    util::deno_cmd()
+      .current_dir(tests_path)
+      .env("NO_COLOR", "1")
+      .arg("repl")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+  }
+}
+
+#[cfg(unix)]
+#[test]
+fn repl_test_pty_unpaired_braces() {
+  use std::io::Read;
+  use util::pty::fork::*;
+
+  let tests_path = util::tests_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b")\n").unwrap();
+    master.write_all(b"]\n").unwrap();
+    master.write_all(b"}\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unexpected token ')'"));
+    assert!(output.contains("Unexpected token ']'"));
+    assert!(output.contains("Unexpected token '}'"));
 
     fork.wait().unwrap();
   } else {
@@ -1514,6 +1551,21 @@ fn repl_test_eval_unterminated() {
   );
   assert!(out.contains("Unexpected end of input"));
   assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_unpaired_braces() {
+  for right_brace in &[")", "]", "}"] {
+    let (out, err) = util::run_and_collect_output(
+      true,
+      "repl",
+      Some(vec![right_brace]),
+      None,
+      false,
+    );
+    assert!(out.contains("Unexpected token"));
+    assert!(err.is_empty());
+  }
 }
 
 #[test]
@@ -2133,7 +2185,7 @@ fn _066_prompt() {
   let args = "run --unstable 066_prompt.ts";
   let output = "066_prompt.ts.out";
   // These are answers to prompt, confirm, and alert calls.
-  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\n\n\n";
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
 
   util::test_pty(args, output, input);
 }
@@ -2585,6 +2637,11 @@ itest!(ts_decorators {
   output: "ts_decorators.ts.out",
 });
 
+itest!(ts_decorators_bundle {
+  args: "bundle ts_decorators_bundle.ts",
+  output: "ts_decorators_bundle.out",
+});
+
 itest!(ts_type_only_import {
   args: "run --reload ts_type_only_import.ts",
   output: "ts_type_only_import.ts.out",
@@ -2857,6 +2914,12 @@ itest!(performance_stats {
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
+});
+
+itest!(redirect_cache {
+  http_server: true,
+  args: "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
+  output: "redirect_cache.out",
 });
 
 itest!(deno_test_coverage {

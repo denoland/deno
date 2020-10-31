@@ -34,7 +34,7 @@
       "filename": "[WILDCARD]file1.js",
       "message": "Empty block statement",
       "code": "no-empty",
-      "hint": null
+      "hint": [WILDCARD]
     },
     {
       "range": {
@@ -52,7 +52,7 @@
       "filename": "[WILDCARD]file2.ts",
       "message": "Empty block statement",
       "code": "no-empty",
-      "hint": null
+      "hint": [WILDCARD]
     }
   ],
   "errors": [

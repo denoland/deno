@@ -343,8 +343,19 @@ impl fmt::Display for Diagnostic {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Diagnostics(pub Vec<Diagnostic>);
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Diagnostics(Vec<Diagnostic>);
+
+impl Diagnostics {
+  #[cfg(test)]
+  pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
+    Diagnostics(diagnostics)
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+}
 
 impl<'de> Deserialize<'de> for Diagnostics {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

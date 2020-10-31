@@ -3,6 +3,7 @@
   const { stdin, stdout } = window.__bootstrap.files;
   const { isatty } = window.__bootstrap.tty;
   const LF = "\n".charCodeAt(0);
+  const CR = "\r".charCodeAt(0);
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
@@ -50,7 +51,20 @@
 
     while (true) {
       const n = stdin.readSync(c);
-      if (n === 0 || c[0] === LF) {
+      if (n === null || n === 0) {
+        break;
+      }
+      if (c[0] === CR) {
+        const n = stdin.readSync(c);
+        if (c[0] === LF) {
+          break;
+        }
+        buf.push(CR);
+        if (n === null || n === 0) {
+          break;
+        }
+      }
+      if (c[0] === LF) {
         break;
       }
       buf.push(c[0]);

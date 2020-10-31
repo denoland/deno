@@ -1,0 +1,3 @@
+[WILDCARD]
+new SomeClass().test();
+[WILDCARD]
