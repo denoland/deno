@@ -1,4 +1,4 @@
-/* eslint-disable */
+// deno-lint-ignore-file
 
 function Decorator() {
   return function (
