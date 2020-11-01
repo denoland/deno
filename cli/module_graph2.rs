@@ -22,8 +22,7 @@ use crate::specifier_handler::DependencyMap;
 use crate::specifier_handler::Emit;
 use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
-use crate::tsc2::exec;
-use crate::tsc2::Request;
+use crate::tsc2;
 use crate::tsc_config::IgnoredCompilerOptions;
 use crate::tsc_config::TsConfig;
 use crate::version;
@@ -70,16 +69,6 @@ lazy_static! {
   static ref TYPES_REFERENCE_RE: Regex =
     Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
 }
-
-type EmitResult = Result<
-  (
-    HashMap<String, String>,
-    Stats,
-    Diagnostics,
-    Option<IgnoredCompilerOptions>,
-  ),
-  AnyError,
->;
 
 /// A group of errors that represent errors that can occur when interacting with
 /// a module graph.
@@ -491,7 +480,7 @@ impl Module {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Stats(pub Vec<(String, u128)>);
 
 impl<'de> Deserialize<'de> for Stats {
@@ -515,6 +504,23 @@ impl fmt::Display for Stats {
   }
 }
 
+/// A structure that provides information about a module graph result.
+#[derive(Debug, Default)]
+pub struct ResultInfo {
+  /// A structure which provides diagnostic information (usually from `tsc`)
+  /// about the code in the module graph.
+  pub diagnostics: Diagnostics,
+  /// Optionally ignored compiler options that represent any options that were
+  /// ignored if there was a user provided configuration.
+  pub maybe_ignored_options: Option<IgnoredCompilerOptions>,
+  /// A structure providing key metrics around the operation performed, in
+  /// milliseconds.
+  pub stats: Stats,
+}
+
+/// Represents the "default" type library that should be used when type
+/// checking the code in the module graph.  Note that a user provided config
+/// of `"lib"` would override this value.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TypeLib {
   DenoWindow,
@@ -550,7 +556,11 @@ impl Serialize for TypeLib {
 
 #[derive(Debug, Default)]
 pub struct BundleOptions {
+  /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
+  /// An optional string that points to a user supplied TypeScript configuration
+  /// file that augments the the default configuration passed to the TypeScript
+  /// compiler.
   pub maybe_config_path: Option<String>,
 }
 
@@ -698,11 +708,7 @@ impl Graph2 {
   }
 
   /// Type check the module graph, corresponding to the options provided.
-  pub fn check(
-    self,
-    options: CheckOptions,
-  ) -> Result<(Stats, Diagnostics, Option<IgnoredCompilerOptions>), AnyError>
-  {
+  pub fn check(self, options: CheckOptions) -> Result<ResultInfo, AnyError> {
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) is this really needed?
@@ -746,11 +752,10 @@ impl Graph2 {
         && (!options.reload || self.roots_dynamic))
     {
       debug!("graph does not need to be checked or emitted.");
-      return Ok((
-        Stats(Vec::new()),
-        Diagnostics::default(),
+      return Ok(ResultInfo {
         maybe_ignored_options,
-      ));
+        ..Default::default()
+      });
     }
 
     // TODO(@kitsonk) not totally happy with this here, but this is the first
@@ -767,9 +772,9 @@ impl Graph2 {
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
 
-    let response = exec(
+    let response = tsc2::exec(
       js::compiler_isolate_init(),
-      Request {
+      tsc2::Request {
         config: config.clone(),
         debug: options.debug,
         graph: graph.clone(),
@@ -827,7 +832,11 @@ impl Graph2 {
     }
     graph.flush()?;
 
-    Ok((response.stats, response.diagnostics, maybe_ignored_options))
+    Ok(ResultInfo {
+      diagnostics: response.diagnostics,
+      maybe_ignored_options,
+      stats: response.stats,
+    })
   }
 
   fn contains_module(&self, specifier: &ModuleSpecifier) -> bool {
@@ -835,7 +844,14 @@ impl Graph2 {
     self.modules.contains_key(s)
   }
 
-  pub fn emit(self, options: EmitOptions) -> EmitResult {
+  /// Emit the module graph in a specific format.  This is specifically designed
+  /// to be an "all-in-one" API for access by the runtime, allowing both
+  /// emitting single modules as well as bundles, using Deno module resolution
+  /// or supplied sources.
+  pub fn emit(
+    self,
+    options: EmitOptions,
+  ) -> Result<(HashMap<String, String>, ResultInfo), AnyError> {
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) consider enabling this by default
@@ -877,9 +893,9 @@ impl Graph2 {
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
 
-    let response = exec(
+    let response = tsc2::exec(
       js::compiler_isolate_init(),
-      Request {
+      tsc2::Request {
         config: config.clone(),
         debug: options.debug,
         graph: graph.clone(),
@@ -932,12 +948,15 @@ impl Graph2 {
 
     Ok((
       emitted_files,
-      response.stats,
-      response.diagnostics,
-      maybe_ignored_options,
+      ResultInfo {
+        diagnostics: response.diagnostics,
+        maybe_ignored_options,
+        stats: response.stats,
+      },
     ))
   }
 
+  /// Shared between `bundle()` and `emit()`.
   fn emit_bundle(
     &self,
     specifier: &ModuleSpecifier,
@@ -1116,8 +1135,8 @@ impl Graph2 {
     self.modules.get_mut(s)
   }
 
-  /// Consume graph and return list of all module specifiers
-  /// contained in the graph.
+  /// Consume graph and return list of all module specifiers contained in the
+  /// graph.
   pub fn get_modules(&self) -> Vec<ModuleSpecifier> {
     self.modules.keys().map(|s| s.to_owned()).collect()
   }
@@ -1870,7 +1889,7 @@ pub mod tests {
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
-    let (stats, diagnostics, maybe_ignored_options) = graph
+    let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
@@ -1879,9 +1898,9 @@ pub mod tests {
         reload: false,
       })
       .expect("should have checked");
-    assert!(maybe_ignored_options.is_none());
-    assert_eq!(stats.0.len(), 12);
-    assert!(diagnostics.is_empty());
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert_eq!(result_info.stats.0.len(), 12);
+    assert!(result_info.diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
@@ -1893,7 +1912,7 @@ pub mod tests {
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
-    let (stats, diagnostics, maybe_ignored_options) = graph
+    let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: false,
@@ -1902,9 +1921,9 @@ pub mod tests {
         reload: false,
       })
       .expect("should have checked");
-    assert!(maybe_ignored_options.is_none());
-    assert_eq!(stats.0.len(), 12);
-    assert!(diagnostics.is_empty());
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert_eq!(result_info.stats.0.len(), 12);
+    assert!(result_info.diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 0);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
@@ -1916,7 +1935,7 @@ pub mod tests {
       ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
         .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
-    let (_, diagnostics, maybe_ignored_options) = graph
+    let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
@@ -1927,8 +1946,8 @@ pub mod tests {
         reload: true,
       })
       .expect("should have checked");
-    assert!(maybe_ignored_options.is_none());
-    assert!(diagnostics.is_empty());
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert!(result_info.diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.version_calls.len(), 2);
     let ver0 = h.version_calls[0].1.clone();
@@ -1936,7 +1955,7 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
-    let (_, diagnostics, maybe_ignored_options) = graph
+    let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
@@ -1947,8 +1966,8 @@ pub mod tests {
         reload: true,
       })
       .expect("should have checked");
-    assert!(maybe_ignored_options.is_none());
-    assert!(diagnostics.is_empty());
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert!(result_info.diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.version_calls.len(), 2);
     assert!(h.version_calls[0].1 == ver0 || h.version_calls[0].1 == ver1);
@@ -1973,15 +1992,15 @@ pub mod tests {
       ),
     )
     .await;
-    let (emitted_files, _, diagnostics, maybe_ignored_options) = graph
+    let (emitted_files, result_info) = graph
       .emit(EmitOptions {
         bundle_type: BundleType::None,
         debug: false,
         maybe_user_config: None,
       })
       .expect("should have emitted");
-    assert!(diagnostics.is_empty());
-    assert!(maybe_ignored_options.is_none());
+    assert!(result_info.diagnostics.is_empty());
+    assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(emitted_files.len(), 4);
     let out_a = emitted_files.get("file:///a.ts.js");
     assert!(out_a.is_some());
@@ -2013,15 +2032,15 @@ pub mod tests {
       ),
     )
     .await;
-    let (emitted_files, _, diagnostics, maybe_ignored_options) = graph
+    let (emitted_files, result_info) = graph
       .emit(EmitOptions {
         bundle_type: BundleType::Esm,
         debug: false,
         maybe_user_config: None,
       })
       .expect("should have emitted");
-    assert!(diagnostics.is_empty());
-    assert!(maybe_ignored_options.is_none());
+    assert!(result_info.diagnostics.is_empty());
+    assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(emitted_files.len(), 1);
     let actual = emitted_files.get("deno:///bundle.js");
     assert!(actual.is_some());

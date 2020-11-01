@@ -65,18 +65,6 @@ impl ModuleSpecifier {
     self.0.as_str()
   }
 
-  pub fn to_path(&self) -> PathBuf {
-    if self.0.scheme() == "file" {
-      if let Ok(path) = self.0.to_file_path() {
-        path
-      } else {
-        PathBuf::from(self.0.path())
-      }
-    } else {
-      PathBuf::from(self.0.path())
-    }
-  }
-
   /// Resolves module using this algorithm:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
   pub fn resolve_import(

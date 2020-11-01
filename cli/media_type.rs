@@ -63,7 +63,17 @@ impl<'a> From<&'a String> for MediaType {
 
 impl<'a> From<&'a ModuleSpecifier> for MediaType {
   fn from(specifier: &'a ModuleSpecifier) -> Self {
-    MediaType::from_path(&specifier.to_path())
+    let url = specifier.as_url();
+    let path = if url.scheme() == "file" {
+      if let Ok(path) = url.to_file_path() {
+        path
+      } else {
+        PathBuf::from(url.path())
+      }
+    } else {
+      PathBuf::from(url.path())
+    };
+    MediaType::from_path(&path)
   }
 }
 

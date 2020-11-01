@@ -82,7 +82,7 @@ async fn op_compile(
     } else {
       None
     };
-  let (emitted_files, _, diagnostics, _) = graph.emit(EmitOptions {
+  let (emitted_files, result_info) = graph.emit(EmitOptions {
     bundle_type,
     debug,
     maybe_user_config,
@@ -90,7 +90,7 @@ async fn op_compile(
 
   Ok(json!({
     "emittedFiles": emitted_files,
-    "diagnostics": diagnostics,
+    "diagnostics": result_info.diagnostics,
   }))
 }
 

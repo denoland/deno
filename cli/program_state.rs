@@ -148,21 +148,20 @@ impl ProgramState {
         eprintln!("{}", ignored_options);
       }
     } else {
-      let (stats, diagnostics, maybe_ignored_options) =
-        graph.check(CheckOptions {
-          debug,
-          emit: true,
-          lib,
-          maybe_config_path,
-          reload: self.flags.reload,
-        })?;
+      let result_info = graph.check(CheckOptions {
+        debug,
+        emit: true,
+        lib,
+        maybe_config_path,
+        reload: self.flags.reload,
+      })?;
 
-      debug!("{}", stats);
-      if let Some(ignored_options) = maybe_ignored_options {
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
         eprintln!("{}", ignored_options);
       }
-      if !diagnostics.is_empty() {
-        return Err(generic_error(diagnostics.to_string()));
+      if !result_info.diagnostics.is_empty() {
+        return Err(generic_error(result_info.diagnostics.to_string()));
       }
     };
 
