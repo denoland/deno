@@ -46,8 +46,6 @@ pub struct CompiledModule {
 pub struct ProgramState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
-  /// Permissions parsed from `flags`.
-  pub permissions: Permissions,
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: SourceFileFetcher,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -98,7 +96,6 @@ impl ProgramState {
 
     let program_state = ProgramState {
       dir,
-      permissions: Permissions::from_flags(&flags),
       flags,
       file_fetcher,
       lockfile,
