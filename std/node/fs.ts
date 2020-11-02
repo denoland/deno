@@ -12,6 +12,7 @@ import { mkdir, mkdirSync } from "./_fs/_fs_mkdir.ts";
 import { copyFile, copyFileSync } from "./_fs/_fs_copy.ts";
 import { writeFile, writeFileSync } from "./_fs/_fs_writeFile.ts";
 import { readdir, readdirSync } from "./_fs/_fs_readdir.ts";
+import { realpath, realpathSync } from "./_fs/_fs_realpath.ts";
 import { rename, renameSync } from "./_fs/_fs_rename.ts";
 import { rmdir, rmdirSync } from "./_fs/_fs_rmdir.ts";
 import { unlink, unlinkSync } from "./_fs/_fs_unlink.ts";
@@ -51,6 +52,8 @@ export {
   readFileSync,
   readlink,
   readlinkSync,
+  realpath,
+  realpathSync,
   rename,
   renameSync,
   rmdir,
