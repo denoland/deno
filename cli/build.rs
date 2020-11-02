@@ -104,6 +104,28 @@ fn ts_version() -> String {
     .collect::<String>()
 }
 
+fn git_commit_hash() -> String {
+  if let Ok(output) = std::process::Command::new("git")
+    .arg("rev-list")
+    .arg("-1")
+    .arg("HEAD")
+    .output()
+  {
+    if output.status.success() {
+      std::str::from_utf8(&output.stdout[..7])
+        .unwrap()
+        .to_string()
+    } else {
+      // When not in git repository
+      // (e.g. when the user install by `cargo install deno`)
+      "UNKNOWN".to_string()
+    }
+  } else {
+    // When there is no git command for some reason
+    "UNKNOWN".to_string()
+  }
+}
+
 fn main() {
   // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
   if env::var_os("RUSTDOCFLAGS").is_some() {
@@ -114,6 +136,7 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
   println!(
     "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
     deno_web::get_declaration().display()
@@ -123,10 +146,8 @@ fn main() {
     deno_fetch::get_declaration().display()
   );
 
-  println!(
-    "cargo:rustc-env=TARGET={}",
-    std::env::var("TARGET").unwrap()
-  );
+  println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
+  println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
