@@ -49,10 +49,39 @@ unitTest(function urlSearchParamsInitString(): void {
 });
 
 unitTest(function urlSearchParamsInitStringWithPlusCharacter(): void {
-  const init = "q=a+b";
-  const searchParams = new URLSearchParams(init);
-  assertEquals(searchParams.toString(), init);
-  assertEquals(searchParams.get("q"), "a b");
+  let params = new URLSearchParams("q=a+b");
+  assertEquals(params.toString(), "q=a+b");
+  assertEquals(params.get("q"), "a b");
+
+  params = new URLSearchParams("q=a+b+c");
+  assertEquals(params.toString(), "q=a+b+c");
+  assertEquals(params.get("q"), "a b c");
+});
+
+unitTest(function urlSearchParamsInitStringWithMalformedParams(): void {
+  // These test cases are copied from Web Platform Tests
+  // https://github.com/web-platform-tests/wpt/blob/54c6d64/url/urlsearchparams-constructor.any.js#L60-L80
+  let params = new URLSearchParams("id=0&value=%");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("id"), 'Search params object has name "id"');
+  assert(params.has("value"), 'Search params object has name "value"');
+  assertEquals(params.get("id"), "0");
+  assertEquals(params.get("value"), "%");
+
+  params = new URLSearchParams("b=%2sf%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%2sf*");
+
+  params = new URLSearchParams("b=%2%2af%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%2*f*");
+
+  params = new URLSearchParams("b=%%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%*");
 });
 
 unitTest(function urlSearchParamsInitIterable(): void {
