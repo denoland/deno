@@ -208,9 +208,11 @@ async fn install_command(
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
+  let permissions = Permissions::from_flags(&preload_flags);
   let program_state = ProgramState::new(preload_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
@@ -271,8 +273,10 @@ async fn eval_command(
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
+  let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -516,8 +520,10 @@ async fn doc_command(
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
+  let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
 
   repl::run(&program_state, worker).await
@@ -525,9 +531,11 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
+  let permissions = Permissions::from_flags(&flags);
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
-  let mut worker = MainWorker::new(&program_state.clone(), main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state.clone(), main_module.clone(), permissions);
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -588,9 +596,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
     // will use cached source files
     let gs = ProgramState::new(flags.clone()).unwrap();
+    let permissions = Permissions::from_flags(&flags);
     let main_module = main_module.clone();
     async move {
-      let mut worker = MainWorker::new(&gs, main_module.clone());
+      let mut worker = MainWorker::new(&gs, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -615,7 +624,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let program_state = ProgramState::new(flags.clone())?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let permissions = Permissions::from_flags(&flags);
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -633,6 +644,7 @@ async fn test_command(
   filter: Option<String>,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
+  let permissions = Permissions::from_flags(&flags);
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
@@ -656,7 +668,8 @@ async fn test_command(
   );
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
