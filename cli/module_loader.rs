@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
-use crate::module_graph2::TypeLib;
+use crate::module_graph::TypeLib;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;

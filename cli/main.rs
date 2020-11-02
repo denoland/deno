@@ -35,9 +35,8 @@ mod lint;
 mod lockfile;
 mod media_type;
 mod metrics;
-mod module_graph2;
+mod module_graph;
 mod module_loader;
-mod op_fetch_asset;
 mod ops;
 mod permissions;
 mod program_state;
@@ -49,7 +48,7 @@ mod specifier_handler;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
-mod tsc2;
+mod tsc;
 mod tsc_config;
 mod upgrade;
 mod version;
@@ -177,7 +176,7 @@ async fn info_command(
       // so we allow access to all of them.
       Permissions::allow_all(),
     )?));
-    let mut builder = module_graph2::GraphBuilder2::new(
+    let mut builder = module_graph::GraphBuilder::new(
       handler,
       program_state.maybe_import_map.clone(),
       program_state.lockfile.clone(),
@@ -241,9 +240,9 @@ async fn cache_command(
   files: Vec<String>,
 ) -> Result<(), AnyError> {
   let lib = if flags.unstable {
-    module_graph2::TypeLib::UnstableDenoWindow
+    module_graph::TypeLib::UnstableDenoWindow
   } else {
-    module_graph2::TypeLib::DenoWindow
+    module_graph::TypeLib::DenoWindow
   };
   let program_state = ProgramState::new(flags)?;
 
@@ -329,7 +328,7 @@ async fn bundle_command(
     // therefore we will allow the graph to access any module.
     Permissions::allow_all(),
   )?));
-  let mut builder = module_graph2::GraphBuilder2::new(
+  let mut builder = module_graph::GraphBuilder::new(
     handler,
     program_state.maybe_import_map.clone(),
     program_state.lockfile.clone(),
@@ -341,12 +340,12 @@ async fn bundle_command(
   if !flags.no_check {
     // TODO(@kitsonk) support bundling for workers
     let lib = if flags.unstable {
-      module_graph2::TypeLib::UnstableDenoWindow
+      module_graph::TypeLib::UnstableDenoWindow
     } else {
-      module_graph2::TypeLib::DenoWindow
+      module_graph::TypeLib::DenoWindow
     };
     let graph = graph.clone();
-    let result_info = graph.check(module_graph2::CheckOptions {
+    let result_info = graph.check(module_graph::CheckOptions {
       debug,
       emit: false,
       lib,
@@ -364,7 +363,7 @@ async fn bundle_command(
   }
 
   let (output, stats, maybe_ignored_options) =
-    graph.bundle(module_graph2::BundleOptions {
+    graph.bundle(module_graph::BundleOptions {
       debug,
       maybe_config_path: flags.config_path,
     })?;
@@ -563,7 +562,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     &program_state,
     Permissions::allow_all(),
   )?));
-  let mut builder = module_graph2::GraphBuilder2::new(
+  let mut builder = module_graph::GraphBuilder::new(
     handler,
     program_state.maybe_import_map.clone(),
     program_state.lockfile.clone(),

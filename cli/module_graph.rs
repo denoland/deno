@@ -22,7 +22,7 @@ use crate::specifier_handler::DependencyMap;
 use crate::specifier_handler::Emit;
 use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
-use crate::tsc2;
+use crate::tsc;
 use crate::tsc_config::IgnoredCompilerOptions;
 use crate::tsc_config::TsConfig;
 use crate::version;
@@ -122,12 +122,12 @@ struct BundleLoader<'a> {
   cm: Rc<swc_common::SourceMap>,
   emit_options: &'a ast::EmitOptions,
   globals: &'a swc_common::Globals,
-  graph: &'a Graph2,
+  graph: &'a Graph,
 }
 
 impl<'a> BundleLoader<'a> {
   pub fn new(
-    graph: &'a Graph2,
+    graph: &'a Graph,
     emit_options: &'a ast::EmitOptions,
     globals: &'a swc_common::Globals,
     cm: Rc<swc_common::SourceMap>,
@@ -632,7 +632,7 @@ pub struct TranspileOptions {
 /// the builder will be loaded into the graph.  Also provides an interface to
 /// be able to manipulate and handle the graph.
 #[derive(Debug, Clone)]
-pub struct Graph2 {
+pub struct Graph {
   /// A reference to the specifier handler that will retrieve and cache modules
   /// for the graph.
   handler: Rc<RefCell<dyn SpecifierHandler>>,
@@ -658,7 +658,7 @@ pub struct Graph2 {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
-impl Graph2 {
+impl Graph {
   /// Create a new instance of a graph, ready to have modules loaded it.
   ///
   /// The argument `handler` is an instance of a structure that implements the
@@ -668,7 +668,7 @@ impl Graph2 {
     handler: Rc<RefCell<dyn SpecifierHandler>>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    Graph2 {
+    Graph {
       handler,
       maybe_tsbuildinfo: None,
       modules: HashMap::new(),
@@ -776,9 +776,9 @@ impl Graph2 {
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
 
-    let response = tsc2::exec(
+    let response = tsc::exec(
       js::compiler_isolate_init(),
-      tsc2::Request {
+      tsc::Request {
         config: config.clone(),
         debug: options.debug,
         graph: graph.clone(),
@@ -897,9 +897,9 @@ impl Graph2 {
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
 
-    let response = tsc2::exec(
+    let response = tsc::exec(
       js::compiler_isolate_init(),
-      tsc2::Request {
+      tsc::Request {
         config: config.clone(),
         debug: options.debug,
         graph: graph.clone(),
@@ -987,7 +987,7 @@ impl Graph2 {
     );
     let output = bundler
       .bundle(entries)
-      .context("Unable to output bundle during Graph2::bundle().")?;
+      .context("Unable to output bundle during Graph::bundle().")?;
     let mut buf = Vec::new();
     {
       let mut emitter = swc_ecmascript::codegen::Emitter {
@@ -1001,7 +1001,7 @@ impl Graph2 {
 
       emitter
         .emit_module(&output[0].module)
-        .context("Unable to emit bundle during Graph2::bundle().")?;
+        .context("Unable to emit bundle during Graph::bundle().")?;
     }
 
     String::from_utf8(buf).context("Emitted bundle is an invalid utf-8 string.")
@@ -1437,7 +1437,7 @@ impl Graph2 {
   }
 }
 
-impl swc_bundler::Resolve for Graph2 {
+impl swc_bundler::Resolve for Graph {
   fn resolve(
     &self,
     referrer: &swc_common::FileName,
@@ -1459,14 +1459,14 @@ impl swc_bundler::Resolve for Graph2 {
 }
 
 /// A structure for building a dependency graph of modules.
-pub struct GraphBuilder2 {
+pub struct GraphBuilder {
   fetched: HashSet<ModuleSpecifier>,
-  graph: Graph2,
+  graph: Graph,
   maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
   pending: FuturesUnordered<FetchFuture>,
 }
 
-impl GraphBuilder2 {
+impl GraphBuilder {
   pub fn new(
     handler: Rc<RefCell<dyn SpecifierHandler>>,
     maybe_import_map: Option<ImportMap>,
@@ -1477,8 +1477,8 @@ impl GraphBuilder2 {
     } else {
       None
     };
-    GraphBuilder2 {
-      graph: Graph2::new(handler, maybe_lockfile),
+    GraphBuilder {
+      graph: Graph::new(handler, maybe_lockfile),
       fetched: HashSet::new(),
       maybe_import_map: internal_import_map,
       pending: FuturesUnordered::new(),
@@ -1605,7 +1605,7 @@ impl GraphBuilder2 {
   /// Move out the graph from the builder to be utilized further.  An optional
   /// lockfile can be provided, where if the sources in the graph do not match
   /// the expected lockfile, an error will be logged and the process will exit.
-  pub fn get_graph(self) -> Graph2 {
+  pub fn get_graph(self) -> Graph {
     self.graph.lock();
     self.graph
   }
@@ -1737,14 +1737,14 @@ pub mod tests {
 
   async fn setup(
     specifier: ModuleSpecifier,
-  ) -> (Graph2, Rc<RefCell<MockSpecifierHandler>>) {
+  ) -> (Graph, Rc<RefCell<MockSpecifierHandler>>) {
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/module_graph");
     let handler = Rc::new(RefCell::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+    let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
@@ -1756,13 +1756,13 @@ pub mod tests {
   async fn setup_memory(
     specifier: ModuleSpecifier,
     sources: HashMap<&str, &str>,
-  ) -> Graph2 {
+  ) -> Graph {
     let sources: HashMap<String, String> = sources
       .iter()
       .map(|(k, v)| (k.to_string(), v.to_string()))
       .collect();
     let handler = Rc::new(RefCell::new(MemoryHandler::new(sources)));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+    let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
@@ -1870,7 +1870,7 @@ pub mod tests {
         fixtures: fixtures.clone(),
         ..MockSpecifierHandler::default()
       }));
-      let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+      let mut builder = GraphBuilder::new(handler.clone(), None, None);
       builder
         .add(&specifier, false)
         .await
@@ -1904,6 +1904,7 @@ pub mod tests {
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(result_info.stats.0.len(), 12);
+    println!("{}", result_info.diagnostics);
     assert!(result_info.diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
@@ -2084,7 +2085,7 @@ pub mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+    let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
@@ -2195,7 +2196,7 @@ pub mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, maybe_lockfile);
+    let mut builder = GraphBuilder::new(handler.clone(), None, maybe_lockfile);
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
         .expect("could not resolve module");

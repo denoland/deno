@@ -3,9 +3,9 @@
 use crate::ast;
 use crate::colors;
 use crate::media_type::MediaType;
-use crate::module_graph2::BundleType;
-use crate::module_graph2::EmitOptions;
-use crate::module_graph2::GraphBuilder2;
+use crate::module_graph::BundleType;
+use crate::module_graph::EmitOptions;
+use crate::module_graph::GraphBuilder;
 use crate::permissions::Permissions;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
@@ -65,7 +65,7 @@ async fn op_compile(
         runtime_permissions,
       )?))
     };
-  let mut builder = GraphBuilder2::new(handler, None, None);
+  let mut builder = GraphBuilder::new(handler, None, None);
   let specifier = ModuleSpecifier::resolve_url_or_path(&args.root_name)
     .context("The root specifier is invalid.")?;
   builder.add(&specifier, false).await?;
