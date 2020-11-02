@@ -33,6 +33,7 @@ fn std_tests() {
 fn std_lint() {
   let status = util::deno_cmd()
     .arg("lint")
+    .arg("--unstable")
     .arg(format!(
       "--ignore={}",
       util::root_path().join("std/node/tests").to_string_lossy()
@@ -1209,6 +1210,9 @@ fn run_watch() {
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
 
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
@@ -1253,6 +1257,40 @@ fn repl_test_pty_multiline() {
     assert!(output.contains("/(/"));
     assert!(output.contains("/{/"));
     assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
+
+    fork.wait().unwrap();
+  } else {
+    util::deno_cmd()
+      .current_dir(tests_path)
+      .env("NO_COLOR", "1")
+      .arg("repl")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+  }
+}
+
+#[cfg(unix)]
+#[test]
+fn repl_test_pty_unpaired_braces() {
+  use std::io::Read;
+  use util::pty::fork::*;
+
+  let tests_path = util::tests_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b")\n").unwrap();
+    master.write_all(b"]\n").unwrap();
+    master.write_all(b"}\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unexpected token ')'"));
+    assert!(output.contains("Unexpected token ']'"));
+    assert!(output.contains("Unexpected token '}'"));
 
     fork.wait().unwrap();
   } else {
@@ -1513,6 +1551,21 @@ fn repl_test_eval_unterminated() {
   );
   assert!(out.contains("Unexpected end of input"));
   assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_unpaired_braces() {
+  for right_brace in &[")", "]", "}"] {
+    let (out, err) = util::run_and_collect_output(
+      true,
+      "repl",
+      Some(vec![right_brace]),
+      None,
+      false,
+    );
+    assert!(out.contains("Unexpected token"));
+    assert!(err.is_empty());
+  }
 }
 
 #[test]
@@ -2132,7 +2185,7 @@ fn _066_prompt() {
   let args = "run --unstable 066_prompt.ts";
   let output = "066_prompt.ts.out";
   // These are answers to prompt, confirm, and alert calls.
-  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\n\n\n";
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
 
   util::test_pty(args, output, input);
 }
@@ -2270,6 +2323,11 @@ itest!(config {
   args: "run --reload --config config.tsconfig.json config.ts",
   exit_code: 1,
   output: "config.ts.out",
+});
+
+itest!(emtpy_typescript {
+  args: "run --reload subdir/empty.ts",
+  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
 });
 
 itest!(error_001 {
@@ -2466,6 +2524,19 @@ itest!(error_local_static_import_from_remote_js {
   output: "error_local_static_import_from_remote.js.out",
 });
 
+itest!(error_worker_permissions_local {
+  args: "run --reload error_worker_permissions_local.ts",
+  output: "error_worker_permissions_local.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_worker_permissions_remote {
+  args: "run --reload error_worker_permissions_remote.ts",
+  http_server: true,
+  output: "error_worker_permissions_remote.ts.out",
+  exit_code: 1,
+});
+
 itest!(exit_error42 {
   exit_code: 42,
   args: "run --quiet --reload exit_error42.ts",
@@ -2497,6 +2568,11 @@ itest!(no_check {
   args: "run --quiet --reload --no-check 006_url_imports.ts",
   output: "006_url_imports.ts.out",
   http_server: true,
+});
+
+itest!(no_check_decorators {
+  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  output: "no_check_decorators.ts.out",
 });
 
 itest!(lib_ref {
@@ -2564,6 +2640,11 @@ itest!(ts_type_imports {
 itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
+});
+
+itest!(ts_decorators_bundle {
+  args: "bundle ts_decorators_bundle.ts",
+  output: "ts_decorators_bundle.out",
 });
 
 itest!(ts_type_only_import {
@@ -2722,6 +2803,18 @@ itest!(_053_import_compression {
   http_server: true,
 });
 
+itest!(cache_extensionless {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext",
+  output: "cache_extensionless.out",
+  http_server: true,
+});
+
+itest!(cache_random_extension {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
+  output: "cache_random_extension.out",
+  http_server: true,
+});
+
 itest!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
@@ -2760,6 +2853,11 @@ itest!(disallow_http_from_https_ts {
   output: "disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(dynamic_import_conditional {
+  args: "run --quiet --reload dynamic_import_conditional.js",
+  output: "dynamic_import_conditional.js.out",
 });
 
 itest!(tsx_imports {
@@ -2823,6 +2921,12 @@ itest!(proto_exploit {
   output: "proto_exploit.js.out",
 });
 
+itest!(redirect_cache {
+  http_server: true,
+  args: "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
+  output: "redirect_cache.out",
+});
+
 itest!(deno_test_coverage {
   args: "test --coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
@@ -2830,13 +2934,13 @@ itest!(deno_test_coverage {
 });
 
 itest!(deno_lint {
-  args: "lint lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_quiet {
-  args: "lint --quiet lint/file1.js",
+  args: "lint --unstable --quiet lint/file1.js",
   output: "lint/expected_quiet.out",
   exit_code: 1,
 });
@@ -2849,19 +2953,19 @@ itest!(deno_lint_json {
 });
 
 itest!(deno_lint_ignore {
-  args: "lint --ignore=lint/file1.js,lint/malformed.js lint/",
+  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_glob {
-  args: "lint --ignore=lint/malformed.js lint/",
+  args: "lint --unstable --ignore=lint/malformed.js lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_from_stdin {
-  args: "lint -",
+  args: "lint --unstable -",
   input: Some("let a: any;"),
   output: "lint/expected_from_stdin.out",
   exit_code: 1,
@@ -2875,14 +2979,14 @@ itest!(deno_lint_from_stdin_json {
 });
 
 itest!(deno_lint_rules {
-  args: "lint --rules",
+  args: "lint --unstable --rules",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
 
 // Make sure that the rules are printed if quiet option is enabled.
 itest!(deno_lint_rules_quiet {
-  args: "lint --rules -q",
+  args: "lint --unstable --rules -q",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
@@ -2900,12 +3004,6 @@ itest!(deno_doc {
 itest!(deno_doc_import_map {
   args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
-});
-
-itest!(compiler_js_error {
-  args: "run --unstable compiler_js_error.ts",
-  output: "compiler_js_error.ts.out",
-  exit_code: 1,
 });
 
 itest!(import_file_with_colon {
@@ -4043,6 +4141,7 @@ fn lint_ignore_unexplicit_files() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("lint")
+    .arg("--unstable")
     .arg("--ignore=./")
     .stderr(std::process::Stdio::piped())
     .spawn()

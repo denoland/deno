@@ -352,7 +352,7 @@ impl JsRuntime {
       Some(script) => script,
       None => {
         let exception = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, exception);
+        return exception_to_err_result(tc_scope, exception, false);
       }
     };
 
@@ -361,7 +361,7 @@ impl JsRuntime {
       None => {
         assert!(tc_scope.has_caught());
         let exception = tc_scope.exception().unwrap();
-        exception_to_err_result(tc_scope, exception)
+        exception_to_err_result(tc_scope, exception, false)
       }
     }
   }
@@ -587,6 +587,7 @@ impl JsRuntimeState {
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
+  in_promise: bool,
 ) -> Result<T, AnyError> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
@@ -608,7 +609,13 @@ pub(crate) fn exception_to_err_result<'s, T>(
     }
   }
 
-  let js_error = JsError::from_v8_exception(scope, exception);
+  let mut js_error = JsError::from_v8_exception(scope, exception);
+  if in_promise {
+    js_error.message = format!(
+      "Uncaught (in promise) {}",
+      js_error.message.trim_start_matches("Uncaught ")
+    );
+  }
 
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
@@ -652,7 +659,7 @@ impl JsRuntime {
     if tc_scope.has_caught() {
       assert!(maybe_module.is_none());
       let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e);
+      return exception_to_err_result(tc_scope, e, false);
     }
 
     let module = maybe_module.unwrap();
@@ -704,7 +711,7 @@ impl JsRuntime {
     drop(state);
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      exception_to_err_result(tc_scope, module.get_exception())?
+      exception_to_err_result(tc_scope, module.get_exception(), false)?
     }
 
     let result =
@@ -713,7 +720,7 @@ impl JsRuntime {
       Some(_) => Ok(()),
       None => {
         let exception = tc_scope.exception().unwrap();
-        exception_to_err_result(tc_scope, exception)
+        exception_to_err_result(tc_scope, exception, false)
       }
     }
   }
@@ -1107,7 +1114,7 @@ impl JsRuntime {
             state.pending_mod_evaluate.take();
             drop(state);
             scope.perform_microtask_checkpoint();
-            let err1 = exception_to_err_result::<()>(scope, exception)
+            let err1 = exception_to_err_result::<()>(scope, exception, false)
               .map_err(|err| attach_handle_to_error(scope, err, exception))
               .unwrap_err();
             sender.try_send(Err(err1)).unwrap();
@@ -1155,7 +1162,7 @@ impl JsRuntime {
             v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
             v8::PromiseState::Rejected => {
               let exception = promise.result(scope);
-              let err1 = exception_to_err_result::<()>(scope, exception)
+              let err1 = exception_to_err_result::<()>(scope, exception, false)
                 .map_err(|err| attach_handle_to_error(scope, err, exception))
                 .unwrap_err();
               Some(Err((dyn_import_id, err1)))
@@ -1371,7 +1378,7 @@ impl JsRuntime {
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let exception = v8::Local::new(scope, handle);
-    exception_to_err_result(scope, exception)
+    exception_to_err_result(scope, exception, true)
   }
 
   // Respond using shared queue and optionally overflown response
@@ -1422,7 +1429,7 @@ impl JsRuntime {
 
     match tc_scope.exception() {
       None => Ok(()),
-      Some(exception) => exception_to_err_result(tc_scope, exception),
+      Some(exception) => exception_to_err_result(tc_scope, exception, false),
     }
   }
 
@@ -1448,7 +1455,7 @@ impl JsRuntime {
       let is_done = js_macrotask_cb.call(tc_scope, global, &[]);
 
       if let Some(exception) = tc_scope.exception() {
-        return exception_to_err_result(tc_scope, exception);
+        return exception_to_err_result(tc_scope, exception, false);
       }
 
       let is_done = is_done.unwrap();
@@ -1768,7 +1775,7 @@ pub mod tests {
     match isolate.execute("infinite_loop.js", "for(;;) {}") {
       Ok(_) => panic!("execution should be terminated"),
       Err(e) => {
-        assert_eq!(e.to_string(), "Uncaught Error: execution terminated\n")
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
       }
     };
 
@@ -2511,8 +2518,7 @@ main();
 "#,
     );
     let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
-    at error_without_stack.js:3:14
-"#;
+    at error_without_stack.js:3:14"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -2538,8 +2544,7 @@ main();
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
     at main (error_stack.js:9:3)
-    at error_stack.js:12:1
-"#;
+    at error_stack.js:12:1"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -2570,8 +2575,7 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5
-"#;
+    at async error_async_stack.js:10:5"#;
 
       match runtime.poll_event_loop(cx) {
         Poll::Ready(Err(e)) => {

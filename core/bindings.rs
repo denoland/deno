@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
-use crate::error::JsError;
 use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
 use crate::Op;
@@ -33,9 +32,6 @@ lazy_static! {
       },
       v8::ExternalReference {
         function: eval_context.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: format_error.map_fn_to()
       },
       v8::ExternalReference {
         getter: shared_getter.map_fn_to()
@@ -157,11 +153,6 @@ pub fn initialize_context<'s>(
   let eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
   let eval_context_val = eval_context_tmpl.get_function(scope).unwrap();
   core_val.set(scope, eval_context_key.into(), eval_context_val.into());
-
-  let format_error_key = v8::String::new(scope, "formatError").unwrap();
-  let format_error_tmpl = v8::FunctionTemplate::new(scope, format_error);
-  let format_error_val = format_error_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, format_error_key.into(), format_error_val.into());
 
   let encode_key = v8::String::new(scope, "encode").unwrap();
   let encode_tmpl = v8::FunctionTemplate::new(scope, encode);
@@ -600,20 +591,6 @@ fn eval_context(
   output.set(tc_scope, js_zero.into(), result.unwrap());
   output.set(tc_scope, js_one.into(), js_null.into());
   rv.set(output.into());
-}
-
-fn format_error(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let e = JsError::from_v8_exception(scope, args.get(0));
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
-  let e = (state.js_error_create_fn)(e);
-  let e = e.to_string();
-  let e = v8::String::new(scope, &e).unwrap();
-  rv.set(e.into())
 }
 
 fn encode(

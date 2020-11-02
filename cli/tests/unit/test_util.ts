@@ -10,7 +10,7 @@ export {
   assertMatch,
   assertNotEquals,
   assertStrictEquals,
-  assertStringContains,
+  assertStringIncludes,
   assertThrows,
   assertThrowsAsync,
   fail,

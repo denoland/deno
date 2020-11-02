@@ -18,12 +18,12 @@ pretty-printed diff of failing assertion.
   and `expected` are equal.
 - `assertStrictEquals()` - Compares `actual` and `expected` strictly, therefore
   for non-primitives the values must reference the same instance.
-- `assertStringContains()` - Make an assertion that `actual` contains
+- `assertStringIncludes()` - Make an assertion that `actual` includes
   `expected`.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
 - `assertNotMatch()` - Make an assertion that `actual` not match RegExp
   `expected`.
-- `assertArrayContains()` - Make an assertion that `actual` array contains the
+- `assertArrayIncludes()` - Make an assertion that `actual` array includes the
   `expected` values.
 - `assertObjectMatch()` - Make an assertion that `actual` object match
   `expected` subset object

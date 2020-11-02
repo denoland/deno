@@ -133,6 +133,10 @@
       });
     }
 
+    [Symbol.for("Deno.customInspect")]() {
+      return buildCustomInspectOutput(this, EVENT_PROPS);
+    }
+
     get bubbles() {
       return this.#attributes.bubbles;
     }
@@ -373,6 +377,16 @@
     }
   }
 
+  function buildCustomInspectOutput(obj, props) {
+    const inspectObj = {};
+
+    for (const prop of props) {
+      inspectObj[prop] = obj[prop];
+    }
+
+    return `${obj.constructor.name} ${Deno.inspect(inspectObj)}`;
+  }
+
   function defineEnumerableProps(
     Ctor,
     props,
@@ -382,7 +396,7 @@
     }
   }
 
-  defineEnumerableProps(Event, [
+  const EVENT_PROPS = [
     "bubbles",
     "cancelable",
     "composed",
@@ -392,7 +406,9 @@
     "target",
     "timeStamp",
     "type",
-  ]);
+  ];
+
+  defineEnumerableProps(Event, EVENT_PROPS);
 
   // This is currently the only node type we are using, so instead of implementing
   // the whole of the Node interface at the moment, this just gives us the one
@@ -1001,6 +1017,17 @@
     get [Symbol.toStringTag]() {
       return "ErrorEvent";
     }
+
+    [Symbol.for("Deno.customInspect")]() {
+      return buildCustomInspectOutput(this, [
+        ...EVENT_PROPS,
+        "message",
+        "filename",
+        "lineno",
+        "colno",
+        "error",
+      ]);
+    }
   }
 
   defineEnumerableProps(ErrorEvent, [
@@ -1044,6 +1071,15 @@
       this.#code = code;
       this.#reason = reason;
     }
+
+    [Symbol.for("Deno.customInspect")]() {
+      return buildCustomInspectOutput(this, [
+        ...EVENT_PROPS,
+        "wasClean",
+        "code",
+        "reason",
+      ]);
+    }
   }
 
   class MessageEvent extends Event {
@@ -1057,6 +1093,15 @@
       this.data = eventInitDict?.data ?? null;
       this.origin = eventInitDict?.origin ?? "";
       this.lastEventId = eventInitDict?.lastEventId ?? "";
+    }
+
+    [Symbol.for("Deno.customInspect")]() {
+      return buildCustomInspectOutput(this, [
+        ...EVENT_PROPS,
+        "data",
+        "origin",
+        "lastEventId",
+      ]);
     }
   }
 
@@ -1077,6 +1122,13 @@
     get [Symbol.toStringTag]() {
       return "CustomEvent";
     }
+
+    [Symbol.for("Deno.customInspect")]() {
+      return buildCustomInspectOutput(this, [
+        ...EVENT_PROPS,
+        "detail",
+      ]);
+    }
   }
 
   Reflect.defineProperty(CustomEvent.prototype, "detail", {
@@ -1092,6 +1144,15 @@
       this.lengthComputable = eventInitDict?.lengthComputable ?? false;
       this.loaded = eventInitDict?.loaded ?? 0;
       this.total = eventInitDict?.total ?? 0;
+    }
+
+    [Symbol.for("Deno.customInspect")]() {
+      return buildCustomInspectOutput(this, [
+        ...EVENT_PROPS,
+        "lengthComputable",
+        "loaded",
+        "total",
+      ]);
     }
   }
 

@@ -15,9 +15,6 @@ use crate::module_graph2::TypeLib;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
-use crate::tsc::CompiledModule;
-use crate::tsc::TargetLib;
-use crate::tsc::TsCompiler;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -37,6 +34,12 @@ pub fn exit_unstable(api_name: &str) {
   std::process::exit(70);
 }
 
+// TODO(@kitsonk) probably can refactor this better with the graph.
+pub struct CompiledModule {
+  pub code: String,
+  pub name: String,
+}
+
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
@@ -47,8 +50,7 @@ pub struct ProgramState {
   pub permissions: Permissions,
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: SourceFileFetcher,
-  pub ts_compiler: TsCompiler,
-  pub lockfile: Option<Mutex<Lockfile>>,
+  pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
@@ -70,15 +72,9 @@ impl ProgramState {
       ca_file.as_deref(),
     )?;
 
-    let ts_compiler = TsCompiler::new(
-      file_fetcher.clone(),
-      flags.clone(),
-      dir.gen_cache.clone(),
-    )?;
-
     let lockfile = if let Some(filename) = &flags.lock {
       let lockfile = Lockfile::new(filename.clone(), flags.lock_write)?;
-      Some(Mutex::new(lockfile))
+      Some(Arc::new(Mutex::new(lockfile)))
     } else {
       None
     };
@@ -105,7 +101,6 @@ impl ProgramState {
       permissions: Permissions::from_flags(&flags),
       flags,
       file_fetcher,
-      ts_compiler,
       lockfile,
       maybe_import_map,
       maybe_inspector_server,
@@ -120,17 +115,24 @@ impl ProgramState {
   pub async fn prepare_module_load(
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
-    target_lib: TargetLib,
-    dynamic_permissions: Permissions,
+    lib: TypeLib,
+    runtime_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let specifier = specifier.clone();
+    // Workers are subject to the current runtime permissions.  We do the
+    // permission check here early to avoid "wasting" time building a module
+    // graph for a module that cannot be loaded.
+    if lib == TypeLib::DenoWorker || lib == TypeLib::UnstableDenoWorker {
+      runtime_permissions.check_specifier(&specifier)?;
+    }
     let handler =
-      Rc::new(RefCell::new(FetchHandler::new(self, dynamic_permissions)?));
-    let mut builder = GraphBuilder2::new(handler, maybe_import_map);
+      Rc::new(RefCell::new(FetchHandler::new(self, runtime_permissions)?));
+    let mut builder =
+      GraphBuilder2::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;
-    let mut graph = builder.get_graph(&self.lockfile);
+    let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_path = self.flags.config_path.clone();
 
@@ -146,37 +148,20 @@ impl ProgramState {
         eprintln!("{}", ignored_options);
       }
     } else {
-      let lib = match target_lib {
-        TargetLib::Main => {
-          if self.flags.unstable {
-            TypeLib::UnstableDenoWindow
-          } else {
-            TypeLib::DenoWindow
-          }
-        }
-        TargetLib::Worker => {
-          if self.flags.unstable {
-            TypeLib::UnstableDenoWorker
-          } else {
-            TypeLib::DenoWorker
-          }
-        }
-      };
-      let (stats, diagnostics, maybe_ignored_options) =
-        graph.check(CheckOptions {
-          debug,
-          emit: true,
-          lib,
-          maybe_config_path,
-          reload: self.flags.reload,
-        })?;
+      let result_info = graph.check(CheckOptions {
+        debug,
+        emit: true,
+        lib,
+        maybe_config_path,
+        reload: self.flags.reload,
+      })?;
 
-      debug!("{}", stats);
-      if let Some(ignored_options) = maybe_ignored_options {
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
         eprintln!("{}", ignored_options);
       }
-      if !diagnostics.0.is_empty() {
-        return Err(generic_error(diagnostics.to_string()));
+      if !result_info.diagnostics.is_empty() {
+        return Err(generic_error(result_info.diagnostics.to_string()));
       }
     };
 

@@ -2,9 +2,11 @@
 
 use crate::colors;
 
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
 use regex::Regex;
-use serde::Deserialize;
-use serde::Deserializer;
 use std::error::Error;
 use std::fmt;
 
@@ -74,6 +76,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "symlink",
   "symlinkSync",
   "systemMemoryInfo",
+  "systemCpuInfo",
   "transpileOnly",
   "umask",
   "utime",
@@ -156,6 +159,21 @@ impl<'de> Deserialize<'de> for DiagnosticCategory {
   }
 }
 
+impl Serialize for DiagnosticCategory {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value = match self {
+      DiagnosticCategory::Warning => 0 as i32,
+      DiagnosticCategory::Error => 1 as i32,
+      DiagnosticCategory::Suggestion => 2 as i32,
+      DiagnosticCategory::Message => 3 as i32,
+    };
+    Serialize::serialize(&value, serializer)
+  }
+}
+
 impl From<i64> for DiagnosticCategory {
   fn from(value: i64) -> Self {
     match value {
@@ -168,7 +186,7 @@ impl From<i64> for DiagnosticCategory {
   }
 }
 
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
   message_text: String,
@@ -195,14 +213,14 @@ impl DiagnosticMessageChain {
   }
 }
 
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
   pub line: u64,
   pub character: u64,
 }
 
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
   pub category: DiagnosticCategory,
@@ -342,8 +360,19 @@ impl fmt::Display for Diagnostic {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Diagnostics(pub Vec<Diagnostic>);
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Diagnostics(Vec<Diagnostic>);
+
+impl Diagnostics {
+  #[cfg(test)]
+  pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
+    Diagnostics(diagnostics)
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+}
 
 impl<'de> Deserialize<'de> for Diagnostics {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -352,6 +381,15 @@ impl<'de> Deserialize<'de> for Diagnostics {
   {
     let items: Vec<Diagnostic> = Deserialize::deserialize(deserializer)?;
     Ok(Diagnostics(items))
+  }
+}
+
+impl Serialize for Diagnostics {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.0, serializer)
   }
 }
 

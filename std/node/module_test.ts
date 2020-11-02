@@ -3,7 +3,7 @@
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
 } from "../testing/asserts.ts";
 
 import * as path from "../path/mod.ts";
@@ -67,6 +67,6 @@ Deno.test("requireStack", function () {
   try {
     hello();
   } catch (e) {
-    assertStringContains(e.stack, "/tests/cjs/cjs_throw.js");
+    assertStringIncludes(e.stack, "/tests/cjs/cjs_throw.js");
   }
 });

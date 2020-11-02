@@ -15,6 +15,7 @@ use crate::media_type::MediaType;
 use deno_core::error::{generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::linter::FileType;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
@@ -139,7 +140,8 @@ fn lint_file(
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics = linter.lint(file_name, source_code.clone())?;
+  let file_diagnostics =
+    linter.lint(file_name, source_code.clone(), FileType::Module)?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -165,7 +167,11 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
   match linter
-    .lint(pseudo_file_name.to_string(), source.clone())
+    .lint(
+      pseudo_file_name.to_string(),
+      source.clone(),
+      FileType::Module,
+    )
     .map_err(|e| e.into())
   {
     Ok(diagnostics) => {
