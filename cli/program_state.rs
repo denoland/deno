@@ -8,10 +8,10 @@ use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
-use crate::module_graph2::CheckOptions;
-use crate::module_graph2::GraphBuilder2;
-use crate::module_graph2::TranspileOptions;
-use crate::module_graph2::TypeLib;
+use crate::module_graph::CheckOptions;
+use crate::module_graph::GraphBuilder;
+use crate::module_graph::TranspileOptions;
+use crate::module_graph::TypeLib;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
@@ -130,7 +130,7 @@ impl ProgramState {
     let handler =
       Rc::new(RefCell::new(FetchHandler::new(self, runtime_permissions)?));
     let mut builder =
-      GraphBuilder2::new(handler, maybe_import_map, self.lockfile.clone());
+      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);

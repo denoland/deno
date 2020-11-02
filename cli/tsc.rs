@@ -2,10 +2,8 @@
 
 use crate::diagnostics::Diagnostics;
 use crate::media_type::MediaType;
-use crate::module_graph2::Graph2;
-use crate::module_graph2::Stats;
-// TODO(@kitsonk) this needs to be refactored when we drop MG1
-use crate::op_fetch_asset::get_asset;
+use crate::module_graph::Graph;
+use crate::module_graph::Stats;
 use crate::tsc_config::TsConfig;
 
 use deno_core::error::anyhow;
@@ -25,6 +23,32 @@ use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+/// Provide static assets that are not preloaded in the compiler snapshot.
+fn get_asset(asset: &str) -> Option<&'static str> {
+  macro_rules! inc {
+    ($e:expr) => {
+      Some(include_str!(concat!("dts/", $e)))
+    };
+  }
+  match asset {
+    "lib.dom.d.ts" => inc!("lib.dom.d.ts"),
+    "lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
+    "lib.es6.d.ts" => inc!("lib.es6.d.ts"),
+    "lib.es2016.full.d.ts" => inc!("lib.es2016.full.d.ts"),
+    "lib.es2017.full.d.ts" => inc!("lib.es2017.full.d.ts"),
+    "lib.es2018.full.d.ts" => inc!("lib.es2018.full.d.ts"),
+    "lib.es2019.full.d.ts" => inc!("lib.es2019.full.d.ts"),
+    "lib.es2020.full.d.ts" => inc!("lib.es2020.full.d.ts"),
+    "lib.esnext.full.d.ts" => inc!("lib.esnext.full.d.ts"),
+    "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
+    "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
+    "lib.webworker.importscripts.d.ts" => {
+      inc!("lib.webworker.importscripts.d.ts")
+    }
+    _ => None,
+  }
+}
 
 fn get_maybe_hash(
   maybe_source: &Option<String>,
@@ -54,7 +78,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph: Rc<RefCell<Graph2>>,
+  pub graph: Rc<RefCell<Graph>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
@@ -77,7 +101,7 @@ pub struct Response {
 struct State {
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Rc<RefCell<Graph2>>,
+  graph: Rc<RefCell<Graph>>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   root_map: HashMap<String, ModuleSpecifier>,
@@ -85,7 +109,7 @@ struct State {
 
 impl State {
   pub fn new(
-    graph: Rc<RefCell<Graph2>>,
+    graph: Rc<RefCell<Graph>>,
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
@@ -382,8 +406,8 @@ mod tests {
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::js;
-  use crate::module_graph2::tests::MockSpecifierHandler;
-  use crate::module_graph2::GraphBuilder2;
+  use crate::module_graph::tests::MockSpecifierHandler;
+  use crate::module_graph::GraphBuilder;
   use crate::tsc_config::TsConfig;
   use std::cell::RefCell;
   use std::env;
@@ -404,7 +428,7 @@ mod tests {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+    let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder
       .add(&specifier, false)
       .await
@@ -423,7 +447,7 @@ mod tests {
       fixtures,
       ..Default::default()
     }));
-    let mut builder = GraphBuilder2::new(handler.clone(), None, None);
+    let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder.add(&specifier, false).await?;
     let graph = Rc::new(RefCell::new(builder.get_graph()));
     let config = TsConfig::new(json!({
