@@ -127,7 +127,7 @@ fn create_compiler_snapshot(
   // to the JavaScript compiler to build into the snapshot
   let mut build_libs = libs.clone();
   for (op_lib, _) in op_crate_libs.iter() {
-    build_libs.push(&(*op_lib).clone());
+    build_libs.push(op_lib.to_owned());
   }
 
   let re_asset = Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
