@@ -298,6 +298,7 @@ impl ParsedModule {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
+      helpers::inject_helpers(),
       typescript::strip(),
       fixer(Some(&self.comments)),
     );
@@ -413,6 +414,7 @@ pub fn transpile_module(
   src: &str,
   media_type: &MediaType,
   emit_options: &EmitOptions,
+  globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
   // TODO(@kitsonk) DRY-up with ::parse()
@@ -464,10 +466,11 @@ pub fn transpile_module(
       legacy: true,
       emit_metadata: emit_options.emit_metadata
     }),
+    helpers::inject_helpers(),
     typescript::strip(),
     fixer(Some(&comments)),
   );
-  let module = swc_common::GLOBALS.set(&Globals::new(), || {
+  let module = swc_common::GLOBALS.set(globals, || {
     helpers::HELPERS.set(&helpers::Helpers::new(false), || {
       module.fold_with(&mut passes)
     })

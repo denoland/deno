@@ -120,20 +120,23 @@ impl Error for GraphError {}
 /// avoid a circular dependency with `ast`.
 struct BundleLoader<'a> {
   cm: Rc<swc_common::SourceMap>,
-  graph: &'a Graph2,
   emit_options: &'a ast::EmitOptions,
+  globals: &'a swc_common::Globals,
+  graph: &'a Graph2,
 }
 
 impl<'a> BundleLoader<'a> {
   pub fn new(
     graph: &'a Graph2,
     emit_options: &'a ast::EmitOptions,
+    globals: &'a swc_common::Globals,
     cm: Rc<swc_common::SourceMap>,
   ) -> Self {
     BundleLoader {
       cm,
-      graph,
       emit_options,
+      globals,
+      graph,
     }
   }
 }
@@ -158,6 +161,7 @@ impl swc_bundler::Load for BundleLoader<'_> {
             &src,
             &media_type,
             self.emit_options,
+            self.globals,
             self.cm.clone(),
           )
         } else {
@@ -965,9 +969,9 @@ impl Graph2 {
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
     ));
-    let loader = BundleLoader::new(self, emit_options, cm.clone());
-    let hook = Box::new(BundleHook);
     let globals = swc_common::Globals::new();
+    let loader = BundleLoader::new(self, emit_options, &globals, cm.clone());
+    let hook = Box::new(BundleHook);
     let bundler = swc_bundler::Bundler::new(
       &globals,
       cm.clone(),
