@@ -147,20 +147,29 @@ fn create_compiler_snapshot(
       }))
     }),
   );
+  // using the same op that is used in `tsc.rs` for loading modules and reading
+  // files, but a slightly different implementation at build time.
   js_runtime.register_op(
     "op_load",
     json_op_sync(move |_state, args, _bufs| {
       let v: LoadArgs = serde_json::from_value(args)?;
+      // we need a basic file to send to tsc to warm it up.
       if v.specifier == build_specifier {
         Ok(json!({
           "data": r#"console.log("hello deno!");"#,
           "hash": "1",
+          // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
         }))
+      // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
+      // parse out just the name so we can lookup the asset.
       } else if let Some(caps) = re_asset.captures(&v.specifier) {
         if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
+          // if it comes from an op crate, we were supplied with the path to the
+          // file.
           let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
             op_crate_lib.clone()
+          // otherwise we are will generate the path ourself
           } else {
             path_dts.join(format!("lib.{}.d.ts", lib))
           };
@@ -168,6 +177,7 @@ fn create_compiler_snapshot(
           Ok(json!({
             "data": data,
             "hash": "1",
+            // this corresponds to `ts.ScriptKind.TypeScript`
             "scriptKind": 3
           }))
         } else {
