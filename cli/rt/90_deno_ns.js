@@ -81,6 +81,10 @@ __bootstrap.denoNs = {
   connectTls: __bootstrap.tls.connectTls,
   listenTls: __bootstrap.tls.listenTls,
   sleepSync: __bootstrap.timers.sleepSync,
+  fsyncSync: __bootstrap.fs.fsyncSync,
+  fsync: __bootstrap.fs.fsync,
+  fdatasyncSync: __bootstrap.fs.fdatasyncSync,
+  fdatasync: __bootstrap.fs.fdatasync,
 };
 
 __bootstrap.denoNsUnstable = {
@@ -125,10 +129,6 @@ __bootstrap.denoNsUnstable = {
   utimeSync: __bootstrap.fs.utimeSync,
   symlink: __bootstrap.fs.symlink,
   symlinkSync: __bootstrap.fs.symlinkSync,
-  fdatasyncSync: __bootstrap.fs.fdatasyncSync,
-  fdatasync: __bootstrap.fs.fdatasync,
-  fsyncSync: __bootstrap.fs.fsyncSync,
-  fsync: __bootstrap.fs.fsync,
   HttpClient: __bootstrap.fetch.HttpClient,
   createHttpClient: __bootstrap.fetch.createHttpClient,
 };

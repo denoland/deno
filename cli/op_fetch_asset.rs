@@ -17,8 +17,6 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     };
   }
   match name {
-    "system_loader.js" => Some(include_str!("system_loader.js")),
-    "system_loader_es5.js" => Some(include_str!("system_loader_es5.js")),
     "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.dom.d.ts" => inc!("lib.dom.d.ts"),
@@ -85,6 +83,11 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
 /// JsRuntime.
+///
+/// TODO(@kitsonk) this is only used when building the snapshot, and needs to
+/// be refactored somewhere else.  It is no longer used by `main.rs` and
+/// therefore requires the allow unused.
+#[allow(unused)]
 pub fn op_fetch_asset(
   custom_assets: HashMap<String, PathBuf>,
 ) -> impl Fn(Rc<RefCell<OpState>>, BufVec) -> Op {

@@ -2185,7 +2185,7 @@ fn _066_prompt() {
   let args = "run --unstable 066_prompt.ts";
   let output = "066_prompt.ts.out";
   // These are answers to prompt, confirm, and alert calls.
-  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\n\n\n";
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
 
   util::test_pty(args, output, input);
 }
@@ -2570,6 +2570,11 @@ itest!(no_check {
   http_server: true,
 });
 
+itest!(no_check_decorators {
+  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  output: "no_check_decorators.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
@@ -2635,6 +2640,11 @@ itest!(ts_type_imports {
 itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
+});
+
+itest!(ts_decorators_bundle {
+  args: "bundle ts_decorators_bundle.ts",
+  output: "ts_decorators_bundle.out",
 });
 
 itest!(ts_type_only_import {
@@ -2994,12 +3004,6 @@ itest!(deno_doc {
 itest!(deno_doc_import_map {
   args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
-});
-
-itest!(compiler_js_error {
-  args: "run --unstable compiler_js_error.ts",
-  output: "compiler_js_error.ts.out",
-  exit_code: 1,
 });
 
 itest!(import_file_with_colon {
