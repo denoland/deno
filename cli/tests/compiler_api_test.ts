@@ -14,12 +14,11 @@ Deno.test({
     });
     assert(diagnostics == null);
     assert(actual);
-    assertEquals(Object.keys(actual), [
-      "/bar.js.map",
-      "/bar.js",
-      "/foo.js.map",
-      "/foo.js",
-    ]);
+    const keys = Object.keys(actual).sort();
+    assert(keys[0].endsWith("/bar.ts.js"));
+    assert(keys[1].endsWith("/bar.ts.js.map"));
+    assert(keys[2].endsWith("/foo.ts.js"));
+    assert(keys[3].endsWith("/foo.ts.js.map"));
   },
 });
 
@@ -29,10 +28,10 @@ Deno.test({
     const [diagnostics, actual] = await Deno.compile("./subdir/mod1.ts");
     assert(diagnostics == null);
     assert(actual);
-    const keys = Object.keys(actual);
+    const keys = Object.keys(actual).sort();
     assertEquals(keys.length, 6);
-    assert(keys[0].endsWith("print_hello.js.map"));
-    assert(keys[1].endsWith("print_hello.js"));
+    assert(keys[0].endsWith("cli/tests/subdir/mod1.ts.js"));
+    assert(keys[1].endsWith("cli/tests/subdir/mod1.ts.js.map"));
   },
 });
 
@@ -51,8 +50,11 @@ Deno.test({
     );
     assert(diagnostics == null);
     assert(actual);
-    assertEquals(Object.keys(actual), ["/foo.js"]);
-    assert(actual["/foo.js"].startsWith("define("));
+    const keys = Object.keys(actual);
+    assertEquals(keys.length, 1);
+    const key = keys[0];
+    assert(key.endsWith("/foo.ts.js"));
+    assert(actual[key].startsWith("define("));
   },
 });
 
@@ -60,9 +62,9 @@ Deno.test({
   name: "Deno.compile() - pass lib in compiler options",
   async fn() {
     const [diagnostics, actual] = await Deno.compile(
-      "/foo.ts",
+      "file:///foo.ts",
       {
-        "/foo.ts": `console.log(document.getElementById("foo"));
+        "file:///foo.ts": `console.log(document.getElementById("foo"));
         console.log(Deno.args);`,
       },
       {
@@ -71,45 +73,37 @@ Deno.test({
     );
     assert(diagnostics == null);
     assert(actual);
-    assertEquals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
+    assertEquals(
+      Object.keys(actual).sort(),
+      ["file:///foo.ts.js", "file:///foo.ts.js.map"],
+    );
   },
 });
 
-Deno.test({
-  name: "Deno.compile() - pass outDir in compiler options",
-  async fn() {
-    const [diagnostics, actual] = await Deno.compile(
-      "src/foo.ts",
-      {
-        "src/foo.ts": "console.log('Hello world')",
-      },
-      {
-        outDir: "./lib",
-      },
-    );
-    assert(diagnostics == null);
-    assert(actual);
-    assertEquals(Object.keys(actual), ["lib/foo.js.map", "lib/foo.js"]);
-  },
-});
-
-Deno.test({
-  name: "Deno.compile() - properly handles .d.ts files",
-  async fn() {
-    const [diagnostics, actual] = await Deno.compile(
-      "/foo.ts",
-      {
-        "/foo.ts": `console.log(Foo.bar);`,
-      },
-      {
-        types: ["./subdir/foo_types.d.ts"],
-      },
-    );
-    assert(diagnostics == null);
-    assert(actual);
-    assertEquals(Object.keys(actual), ["/foo.js.map", "/foo.js"]);
-  },
-});
+// TODO(@kitsonk) figure the "right way" to restore support for types
+// Deno.test({
+//   name: "Deno.compile() - properly handles .d.ts files",
+//   async fn() {
+//     const [diagnostics, actual] = await Deno.compile(
+//       "/foo.ts",
+//       {
+//         "/foo.ts": `console.log(Foo.bar);`,
+//         "/foo_types.d.ts": `declare namespace Foo {
+//           const bar: string;
+//         }`,
+//       },
+//       {
+//         types: ["/foo_types.d.ts"],
+//       },
+//     );
+//     assert(diagnostics == null);
+//     assert(actual);
+//     assertEquals(
+//       Object.keys(actual).sort(),
+//       ["file:///foo.ts.js", "file:///file.ts.js.map"],
+//     );
+//   },
+// });
 
 Deno.test({
   name: "Deno.transpileOnly()",
@@ -150,8 +144,7 @@ Deno.test({
       "/bar.ts": `export const bar = "bar";\n`,
     });
     assert(diagnostics == null);
-    assert(actual.includes(`__instantiate("foo", false)`));
-    assert(actual.includes(`__exp["bar"]`));
+    assert(actual.includes(`const bar = "bar"`));
   },
 });
 
@@ -160,26 +153,7 @@ Deno.test({
   async fn() {
     const [diagnostics, actual] = await Deno.bundle("./subdir/mod1.ts");
     assert(diagnostics == null);
-    assert(actual.includes(`__instantiate("mod1", false)`));
-    assert(actual.includes(`__exp["printHello3"]`));
-  },
-});
-
-Deno.test({
-  name: "Deno.bundle() - compiler config effects emit",
-  async fn() {
-    const [diagnostics, actual] = await Deno.bundle(
-      "/foo.ts",
-      {
-        "/foo.ts": `// random comment\nexport * from "./bar.ts";\n`,
-        "/bar.ts": `export const bar = "bar";\n`,
-      },
-      {
-        removeComments: true,
-      },
-    );
-    assert(diagnostics == null);
-    assert(!actual.includes(`random`));
+    assert(actual.length);
   },
 });
 
@@ -191,22 +165,7 @@ Deno.test({
       "/bar.js": `export const bar = "bar";\n`,
     });
     assert(diagnostics == null);
-    assert(actual.includes(`System.register("bar",`));
-  },
-});
-
-Deno.test({
-  name: "Deno.bundle - pre ES2017 uses ES5 loader",
-  async fn() {
-    const [diagnostics, actual] = await Deno.bundle(
-      "/foo.ts",
-      {
-        "/foo.ts": `console.log("hello world!")\n`,
-      },
-      { target: "es2015" },
-    );
-    assert(diagnostics == null);
-    assert(actual.includes(`var __awaiter = `));
+    assert(actual.includes(`const bar = "bar"`));
   },
 });
 
@@ -226,8 +185,8 @@ Deno.test({
   name: "Deno.compile() - SWC diagnostics",
   async fn() {
     await assertThrowsAsync(async () => {
-      await Deno.compile("main.js", {
-        "main.js": `
+      await Deno.compile("/main.js", {
+        "/main.js": `
       export class Foo {
         constructor() {
           console.log("foo");

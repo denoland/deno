@@ -8,7 +8,9 @@ use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
@@ -61,7 +63,6 @@ pub struct CachedModule {
   pub specifier: ModuleSpecifier,
 }
 
-#[cfg(test)]
 impl Default for CachedModule {
   fn default() -> Self {
     let specifier = ModuleSpecifier::resolve_url("file:///example.js").unwrap();
@@ -422,11 +423,118 @@ impl SpecifierHandler for FetchHandler {
   }
 }
 
+pub struct MemoryHandler {
+  sources: HashMap<String, String>,
+}
+
+impl MemoryHandler {
+  pub fn new(sources: HashMap<String, String>) -> Self {
+    Self { sources }
+  }
+}
+
+impl SpecifierHandler for MemoryHandler {
+  fn fetch(
+    &mut self,
+    specifier: ModuleSpecifier,
+    _maybe_referrer: Option<Location>,
+    _is_dynamic: bool,
+  ) -> FetchFuture {
+    let mut specifier_text = specifier.to_string();
+    if !self.sources.contains_key(&specifier_text) {
+      specifier_text = specifier_text.replace("file:///", "/");
+      if !self.sources.contains_key(&specifier_text) {
+        // Convert `C:/a/path/file.ts` to `/a/path/file.ts`
+        specifier_text = specifier_text[3..].to_string()
+      }
+    }
+    let result = if let Some(source) = self.sources.get(&specifier_text) {
+      let media_type = MediaType::from(&specifier);
+      let is_remote = specifier.as_url().scheme() != "file";
+
+      Ok(CachedModule {
+        source: source.to_string(),
+        requested_specifier: specifier.clone(),
+        specifier,
+        media_type,
+        is_remote,
+        ..Default::default()
+      })
+    } else {
+      Err(custom_error(
+        "NotFound",
+        format!("Unable to find specifier in sources: {}", specifier),
+      ))
+    };
+
+    Box::pin(future::ready(result))
+  }
+
+  fn get_tsbuildinfo(
+    &self,
+    _specifier: &ModuleSpecifier,
+  ) -> Result<Option<String>, AnyError> {
+    Ok(None)
+  }
+
+  fn set_cache(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _emit: &Emit,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_types(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _types: String,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_tsbuildinfo(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _tsbuildinfo: String,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_deps(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _dependencies: DependencyMap,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_version(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _version: String,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+}
+
 #[cfg(test)]
 pub mod tests {
   use super::*;
   use crate::http_cache::HttpCache;
   use tempfile::TempDir;
+
+  macro_rules! map (
+    { $($key:expr => $value:expr),+ } => {
+      {
+        let mut m = ::std::collections::HashMap::new();
+        $(
+          m.insert($key, $value);
+        )+
+        m
+      }
+    };
+  );
 
   fn setup() -> (TempDir, FetchHandler) {
     let temp_dir = TempDir::new().expect("could not setup");
@@ -521,5 +629,112 @@ pub mod tests {
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
     assert_eq!(cached_module.is_remote, false);
+  }
+
+  #[tokio::test]
+  async fn test_memory_handler_fetch() {
+    let a_src = r#"
+      import * as b from "./b.ts";
+      console.log(b);
+    "#;
+    let b_src = r#"
+      export const b = "b";
+    "#;
+    let c_src = r#"
+      export const c = "c";
+    "#;
+    let d_src = r#"
+      export const d: string;
+    "#;
+    let sources = map!(
+      "/a.ts" => a_src,
+      "/b.ts" => b_src,
+      "https://deno.land/x/c.js" => c_src,
+      "https://deno.land/x/d.d.ts" => d_src
+    );
+    let sources: HashMap<String, String> = sources
+      .iter()
+      .map(|(k, v)| (k.to_string(), v.to_string()))
+      .collect();
+    let mut handler = MemoryHandler::new(sources);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///b.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, b_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/c.js").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, c_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::JavaScript);
+    assert_eq!(actual.is_remote, true);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/d.d.ts")
+        .unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, d_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::Dts);
+    assert_eq!(actual.is_remote, true);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/missing.ts")
+        .unwrap();
+    handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect_err("should have errored");
+
+    let specifier = ModuleSpecifier::resolve_url_or_path("/a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///C:/a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
   }
 }

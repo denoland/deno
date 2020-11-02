@@ -35,7 +35,6 @@ mod lint;
 mod lockfile;
 mod media_type;
 mod metrics;
-mod module_graph;
 mod module_graph2;
 mod module_loader;
 mod op_fetch_asset;
@@ -50,7 +49,6 @@ mod specifier_handler;
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
-mod tsc;
 mod tsc2;
 mod tsc_config;
 mod upgrade;
@@ -242,6 +240,11 @@ async fn cache_command(
   flags: Flags,
   files: Vec<String>,
 ) -> Result<(), AnyError> {
+  let lib = if flags.unstable {
+    module_graph2::TypeLib::UnstableDenoWindow
+  } else {
+    module_graph2::TypeLib::DenoWindow
+  };
   let program_state = ProgramState::new(flags)?;
 
   for file in files {
@@ -249,7 +252,7 @@ async fn cache_command(
     program_state
       .prepare_module_load(
         specifier,
-        tsc::TargetLib::Main,
+        lib.clone(),
         Permissions::allow_all(),
         false,
         program_state.maybe_import_map.clone(),
@@ -343,21 +346,20 @@ async fn bundle_command(
       module_graph2::TypeLib::DenoWindow
     };
     let graph = graph.clone();
-    let (stats, diagnostics, maybe_ignored_options) =
-      graph.check(module_graph2::CheckOptions {
-        debug,
-        emit: false,
-        lib,
-        maybe_config_path: flags.config_path.clone(),
-        reload: flags.reload,
-      })?;
+    let result_info = graph.check(module_graph2::CheckOptions {
+      debug,
+      emit: false,
+      lib,
+      maybe_config_path: flags.config_path.clone(),
+      reload: flags.reload,
+    })?;
 
-    debug!("{}", stats);
-    if let Some(ignored_options) = maybe_ignored_options {
+    debug!("{}", result_info.stats);
+    if let Some(ignored_options) = result_info.maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    if !diagnostics.is_empty() {
-      return Err(generic_error(diagnostics.to_string()));
+    if !result_info.diagnostics.is_empty() {
+      return Err(generic_error(result_info.diagnostics.to_string()));
     }
   }
 
