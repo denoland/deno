@@ -36,12 +36,23 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
-      this.onabort = null;
-      this.addEventListener("abort", (evt) => {
-        const { onabort } = this;
-        if (typeof onabort === "function") {
-          onabort.call(this, evt);
-        }
+      // HTML specification section 8.1.5.1
+      let eventHandler = null;
+      Object.defineProperty(this, "onabort", {
+        get() {
+          return eventHandler;
+        },
+        set(value) {
+          if (eventHandler) {
+            this.removeEventListener("abort", eventHandler);
+          }
+          eventHandler = value;
+          if (typeof eventHandler === "function") {
+            this.addEventListener("abort", value);
+          }
+        },
+        configurable: true,
+        enumerable: true,
       });
     }
 
