@@ -1,5 +1,7 @@
 /* eslint-disable */
 
+import { B } from "./subdir/more_decorators.ts";
+
 function Decorator() {
   return function (
     target: Record<string, any>,
@@ -20,3 +22,4 @@ class SomeClass {
 }
 
 new SomeClass().test();
+new B().method();

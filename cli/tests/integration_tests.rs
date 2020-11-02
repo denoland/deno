@@ -2570,6 +2570,11 @@ itest!(no_check {
   http_server: true,
 });
 
+itest!(no_check_decorators {
+  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  output: "no_check_decorators.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
