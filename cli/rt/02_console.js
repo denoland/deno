@@ -194,7 +194,7 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch { 
+      } catch {
         // pass
       }
     }
@@ -871,7 +871,7 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch { 
+      } catch {
         // pass
       }
     }
@@ -886,7 +886,7 @@
     ) {
       try {
         return String(value[nonUniqueCustomInspect]());
-      } catch { 
+      } catch {
         // pass
       }
     }

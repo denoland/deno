@@ -1,6 +1,6 @@
 try {
   Deno.removeSync("./lock_write_fetch.json");
-} catch { 
+} catch {
   // pass
 }
 

@@ -81,7 +81,7 @@
     });
     /** @type {{ emittedFiles: Record<string, string>, diagnostics: any[] }} */
     const result = await opCompile(payload);
-    let output = result.emittedFiles["deno:///bundle.js"];
+    const output = result.emittedFiles["deno:///bundle.js"];
     util.assert(output);
     const maybeDiagnostics = result.diagnostics.length === 0
       ? undefined

@@ -236,7 +236,7 @@ delete Object.prototype.__proto__;
         specifiers,
         base,
       });
-      let r = resolved.map(([resolvedFileName, extension]) => ({
+      const r = resolved.map(([resolvedFileName, extension]) => ({
         resolvedFileName,
         extension,
         isExternalLibraryImport: false,
@@ -359,7 +359,7 @@ delete Object.prototype.__proto__;
   /** @type {{ buildSpecifier: string; libs: string[] }} */
   const { buildSpecifier, libs } = core.jsonOpSync("op_build_info", {});
   for (const lib of libs) {
-    let specifier = `lib.${lib}.d.ts`;
+    const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
     // tsc, so things like `"lib": [ "deno.ns" ]` are supported.
     if (!ts.libs.includes(lib)) {
@@ -368,6 +368,11 @@ delete Object.prototype.__proto__;
     }
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
+    assert(
+      host.getSourceFile(`${ASSETS}${specifier}`, ts.ScriptTarget.ESNext),
+    );
+  }
+  // this helps ensure as much as possible is in memory that is re-usable
   // before the snapshotting is done, which helps unsure fast "startup" for
   // subsequent uses of tsc in Deno.
   const TS_SNAPSHOT_PROGRAM = ts.createProgram({
