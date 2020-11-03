@@ -277,7 +277,7 @@ export function parse(
         }
 
         if (/[A-Za-z]/.test(letters[j]) && /=/.test(next)) {
-          setArg(letters[j], next.split("=")[1], arg);
+          setArg(letters[j], next.split(/=(.+)/)[1], arg);
           broken = true;
           break;
         }

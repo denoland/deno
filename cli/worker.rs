@@ -253,6 +253,7 @@ impl MainWorker {
   pub fn new(
     program_state: &Arc<ProgramState>,
     main_module: ModuleSpecifier,
+    permissions: Permissions,
   ) -> Self {
     let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
     let mut worker = Worker::new(
@@ -270,7 +271,7 @@ impl MainWorker {
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
         op_state.put::<Arc<ProgramState>>(program_state.clone());
-        op_state.put::<Permissions>(program_state.permissions.clone());
+        op_state.put::<Permissions>(permissions);
       }
 
       ops::runtime::init(js_runtime, main_module);
@@ -600,9 +601,10 @@ mod tests {
       },
       ..Default::default()
     };
+    let permissions = Permissions::from_flags(&flags);
     let program_state =
       ProgramState::mock(vec!["deno".to_string()], Some(flags));
-    MainWorker::new(&program_state, main_module)
+    MainWorker::new(&program_state, main_module, permissions)
   }
 
   #[tokio::test]

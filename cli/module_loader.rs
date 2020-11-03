@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
+use crate::module_graph::TypeLib;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
-use crate::tsc::TargetLib;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -21,7 +21,7 @@ pub struct CliModuleLoader {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
-  pub target_lib: TargetLib,
+  pub lib: TypeLib,
   pub is_main: bool,
 }
 
@@ -29,7 +29,7 @@ impl CliModuleLoader {
   pub fn new(maybe_import_map: Option<ImportMap>) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       import_map: maybe_import_map,
-      target_lib: TargetLib::Main,
+      lib: TypeLib::DenoWindow,
       is_main: true,
     })
   }
@@ -37,7 +37,7 @@ impl CliModuleLoader {
   pub fn new_for_worker() -> Rc<Self> {
     Rc::new(CliModuleLoader {
       import_map: None,
-      target_lib: TargetLib::Worker,
+      lib: TypeLib::DenoWorker,
       is_main: false,
     })
   }
@@ -117,13 +117,21 @@ impl ModuleLoader for CliModuleLoader {
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     let specifier = specifier.clone();
-    let target_lib = self.target_lib.clone();
     let maybe_import_map = self.import_map.clone();
     let state = op_state.borrow();
 
     // The permissions that should be applied to any dynamically imported module
     let dynamic_permissions = state.borrow::<Permissions>().clone();
     let program_state = state.borrow::<Arc<ProgramState>>().clone();
+    let lib = if program_state.flags.unstable {
+      if self.lib == TypeLib::DenoWindow {
+        TypeLib::UnstableDenoWindow
+      } else {
+        TypeLib::UnstableDenoWorker
+      }
+    } else {
+      self.lib.clone()
+    };
     drop(state);
 
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
@@ -131,7 +139,7 @@ impl ModuleLoader for CliModuleLoader {
       program_state
         .prepare_module_load(
           specifier,
-          target_lib,
+          lib,
           dynamic_permissions,
           is_dynamic,
           maybe_import_map,

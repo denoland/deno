@@ -36,9 +36,7 @@ mod lockfile;
 mod media_type;
 mod metrics;
 mod module_graph;
-mod module_graph2;
 mod module_loader;
-mod op_fetch_asset;
 mod ops;
 mod permissions;
 mod program_state;
@@ -51,7 +49,6 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
-mod tsc2;
 mod tsc_config;
 mod upgrade;
 mod version;
@@ -179,7 +176,7 @@ async fn info_command(
       // so we allow access to all of them.
       Permissions::allow_all(),
     )?));
-    let mut builder = module_graph2::GraphBuilder2::new(
+    let mut builder = module_graph::GraphBuilder::new(
       handler,
       program_state.maybe_import_map.clone(),
       program_state.lockfile.clone(),
@@ -211,9 +208,11 @@ async fn install_command(
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
+  let permissions = Permissions::from_flags(&preload_flags);
   let program_state = ProgramState::new(preload_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
@@ -242,6 +241,11 @@ async fn cache_command(
   flags: Flags,
   files: Vec<String>,
 ) -> Result<(), AnyError> {
+  let lib = if flags.unstable {
+    module_graph::TypeLib::UnstableDenoWindow
+  } else {
+    module_graph::TypeLib::DenoWindow
+  };
   let program_state = ProgramState::new(flags)?;
 
   for file in files {
@@ -249,7 +253,7 @@ async fn cache_command(
     program_state
       .prepare_module_load(
         specifier,
-        tsc::TargetLib::Main,
+        lib.clone(),
         Permissions::allow_all(),
         false,
         program_state.maybe_import_map.clone(),
@@ -269,8 +273,10 @@ async fn eval_command(
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
+  let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -326,7 +332,7 @@ async fn bundle_command(
     // therefore we will allow the graph to access any module.
     Permissions::allow_all(),
   )?));
-  let mut builder = module_graph2::GraphBuilder2::new(
+  let mut builder = module_graph::GraphBuilder::new(
     handler,
     program_state.maybe_import_map.clone(),
     program_state.lockfile.clone(),
@@ -338,31 +344,30 @@ async fn bundle_command(
   if !flags.no_check {
     // TODO(@kitsonk) support bundling for workers
     let lib = if flags.unstable {
-      module_graph2::TypeLib::UnstableDenoWindow
+      module_graph::TypeLib::UnstableDenoWindow
     } else {
-      module_graph2::TypeLib::DenoWindow
+      module_graph::TypeLib::DenoWindow
     };
     let graph = graph.clone();
-    let (stats, diagnostics, maybe_ignored_options) =
-      graph.check(module_graph2::CheckOptions {
-        debug,
-        emit: false,
-        lib,
-        maybe_config_path: flags.config_path.clone(),
-        reload: flags.reload,
-      })?;
+    let result_info = graph.check(module_graph::CheckOptions {
+      debug,
+      emit: false,
+      lib,
+      maybe_config_path: flags.config_path.clone(),
+      reload: flags.reload,
+    })?;
 
-    debug!("{}", stats);
-    if let Some(ignored_options) = maybe_ignored_options {
+    debug!("{}", result_info.stats);
+    if let Some(ignored_options) = result_info.maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    if !diagnostics.is_empty() {
-      return Err(generic_error(diagnostics.to_string()));
+    if !result_info.diagnostics.is_empty() {
+      return Err(generic_error(result_info.diagnostics.to_string()));
     }
   }
 
   let (output, stats, maybe_ignored_options) =
-    graph.bundle(module_graph2::BundleOptions {
+    graph.bundle(module_graph::BundleOptions {
       debug,
       maybe_config_path: flags.config_path,
     })?;
@@ -515,8 +520,10 @@ async fn doc_command(
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
+  let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
 
   repl::run(&program_state, worker).await
@@ -524,9 +531,11 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
+  let permissions = Permissions::from_flags(&flags);
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
-  let mut worker = MainWorker::new(&program_state.clone(), main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state.clone(), main_module.clone(), permissions);
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -561,7 +570,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     &program_state,
     Permissions::allow_all(),
   )?));
-  let mut builder = module_graph2::GraphBuilder2::new(
+  let mut builder = module_graph::GraphBuilder::new(
     handler,
     program_state.maybe_import_map.clone(),
     program_state.lockfile.clone(),
@@ -587,9 +596,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
     // will use cached source files
     let gs = ProgramState::new(flags.clone()).unwrap();
+    let permissions = Permissions::from_flags(&flags);
     let main_module = main_module.clone();
     async move {
-      let mut worker = MainWorker::new(&gs, main_module.clone());
+      let mut worker = MainWorker::new(&gs, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -614,7 +624,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let program_state = ProgramState::new(flags.clone())?;
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let permissions = Permissions::from_flags(&flags);
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -632,6 +644,7 @@ async fn test_command(
   filter: Option<String>,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
+  let permissions = Permissions::from_flags(&flags);
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
@@ -655,7 +668,8 @@ async fn test_command(
   );
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker = MainWorker::new(&program_state, main_module.clone());
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),

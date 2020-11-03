@@ -303,9 +303,6 @@ declare namespace Deno {
     /** Provide full support for iterables in `for..of`, spread and
      * destructuring when targeting ES5 or ES3. Defaults to `false`. */
     downlevelIteration?: boolean;
-    /** Emit a UTF-8 Byte Order Mark (BOM) in the beginning of output files.
-     * Defaults to `false`. */
-    emitBOM?: boolean;
     /** Only emit `.d.ts` declaration files. Defaults to `false`. */
     emitDeclarationOnly?: boolean;
     /** Emit design-type metadata for decorated declarations in source. See issue
@@ -316,8 +313,11 @@ declare namespace Deno {
      * ecosystem compatibility and enable `allowSyntheticDefaultImports` for type
      * system compatibility. Defaults to `true`. */
     esModuleInterop?: boolean;
-    /** Enables experimental support for ES decorators. Defaults to `false`. */
+    /** Enables experimental support for ES decorators. Defaults to `true`. */
     experimentalDecorators?: boolean;
+    /** Import emit helpers (e.g. `__extends`, `__rest`, etc..) from
+     * [tslib](https://www.npmjs.com/package/tslib). */
+    importHelpers?: boolean;
     /** Emit a single file with source maps instead of having a separate file.
      * Defaults to `false`. */
     inlineSourceMap?: boolean;
@@ -325,7 +325,7 @@ declare namespace Deno {
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
     /** Perform additional checks to ensure that transpile only would be safe.
-     * Defaults to `false`. */
+     * Defaults to `true`. */
     isolatedModules?: boolean;
     /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
      * Defaults to `"react"`. */
@@ -333,12 +333,12 @@ declare namespace Deno {
     /** Specify the JSX factory function to use when targeting react JSX emit,
      * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
     jsxFactory?: string;
+    /** Specify the JSX fragment factory function to use when targeting react
+     * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
+    jsxFragmentFactory?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
-    /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
-     */
-    useDefineForClassFields?: boolean;
     /** List of library files to be included in the compilation. If omitted,
      * then the Deno main runtime libs are used. */
     lib?: string[];
@@ -389,10 +389,6 @@ declare namespace Deno {
     noUnusedLocals?: boolean;
     /** Report errors on unused parameters. Defaults to `false`. */
     noUnusedParameters?: boolean;
-    /** Redirect output structure to the directory. This only impacts
-     * `Deno.compile` and only changes the emitted file names. Defaults to
-     * `undefined`. */
-    outDir?: string;
     /** List of path mapping entries for module names to locations relative to the
      * `baseUrl`. Defaults to `undefined`. */
     paths?: Record<string, string[]>;
@@ -402,8 +398,6 @@ declare namespace Deno {
     /** Remove all comments except copy-right header comments beginning with
      * `/*!`. Defaults to `true`. */
     removeComments?: boolean;
-    /** Include modules imported with `.json` extension. Defaults to `true`. */
-    resolveJsonModule?: boolean;
     /** Specifies the root directory of input files. Only use to control the
      * output directory structure with `outDir`. Defaults to `undefined`. */
     rootDir?: string;
@@ -418,6 +412,8 @@ declare namespace Deno {
      * specified will be embedded in the sourceMap to direct the debugger where
      * the source files will be located. Defaults to `undefined`. */
     sourceRoot?: string;
+    /** Skip type checking of all declaration files (`*.d.ts`). */
+    skipLibCheck?: boolean;
     /** Enable all strict type checking options. Enabling `strict` enables
      * `noImplicitAny`, `noImplicitThis`, `alwaysStrict`, `strictBindCallApply`,
      * `strictNullChecks`, `strictFunctionTypes` and
@@ -472,6 +468,9 @@ declare namespace Deno {
      * ```
      */
     types?: string[];
+    /** Emit class fields with ECMAScript-standard semantics. Defaults to
+     * `false`. */
+    useDefineForClassFields?: boolean;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.

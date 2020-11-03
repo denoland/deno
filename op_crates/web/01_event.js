@@ -936,6 +936,7 @@
 
       const listeners = eventTargetData.get(self).listeners;
       if (!(event.type in listeners)) {
+        setTarget(event, this);
         return true;
       }
 

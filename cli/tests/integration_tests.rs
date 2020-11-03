@@ -2570,6 +2570,11 @@ itest!(no_check {
   http_server: true,
 });
 
+itest!(no_check_decorators {
+  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  output: "no_check_decorators.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
@@ -2999,12 +3004,6 @@ itest!(deno_doc {
 itest!(deno_doc_import_map {
   args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
-});
-
-itest!(compiler_js_error {
-  args: "run --unstable compiler_js_error.ts",
-  output: "compiler_js_error.ts.out",
-  exit_code: 1,
 });
 
 itest!(import_file_with_colon {
