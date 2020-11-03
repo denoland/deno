@@ -60,7 +60,6 @@ unitTest(function webAssemblyExists(): void {
   assert(typeof WebAssembly.compile === "function");
 });
 
-/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
 declare global {
   // deno-lint-ignore no-namespace
   namespace Deno {
@@ -68,7 +67,6 @@ declare global {
     var core: any;
   }
 }
-/* eslint-enable */
 
 unitTest(function DenoNamespaceImmutable(): void {
   const denoCopy = window.Deno;

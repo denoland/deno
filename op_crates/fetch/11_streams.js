@@ -7,8 +7,6 @@
 // comments which point to steps of the specification that are not implemented.
 
 ((window) => {
-  /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
-
   const customInspect = Symbol.for("Deno.customInspect");
 
   function cloneArrayBuffer(
@@ -3381,7 +3379,6 @@
     }
     stream[sym.backpressure] = backpressure;
   }
-  /* eslint-enable */
 
   class CountQueuingStrategy {
     constructor({ highWaterMark }) {

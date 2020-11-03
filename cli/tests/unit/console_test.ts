@@ -184,7 +184,6 @@ unitTest(function consoleTestStringifyLongStrings(): void {
   assertEquals(actual, veryLongString);
 });
 
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
 unitTest(function consoleTestStringifyCircular(): void {
   class Base {
     a = 1;
@@ -345,7 +344,6 @@ unitTest(function consoleTestStringifyCircular(): void {
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
-/* eslint-enable @typescript-eslint/explicit-function-return-type */
 
 unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   const f = function f() {};

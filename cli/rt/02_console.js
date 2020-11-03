@@ -173,8 +173,6 @@
     static kClearScreenDown = "\x1b[0J";
   }
 
-  /* eslint-disable @typescript-eslint/no-use-before-define */
-
   function getClassInstanceName(instance) {
     if (typeof instance != "object") {
       return "";
@@ -360,7 +358,6 @@
       let order = "padStart";
       if (value !== undefined) {
         for (let i = 0; i < entries.length; i++) {
-          /* eslint-disable @typescript-eslint/no-explicit-any */
           if (
             typeof value[i] !== "number" &&
             typeof value[i] !== "bigint"
@@ -368,7 +365,6 @@
             order = "padEnd";
             break;
           }
-          /* eslint-enable */
         }
       }
       // Each iteration creates a single line of grouped entries.

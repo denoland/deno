@@ -6,7 +6,6 @@
 // Install using `deno install`
 // $ deno install --allow-read https://deno.land/std/examples/catj.ts
 
-/* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";
 import * as colors from "../fmt/colors.ts";
 
