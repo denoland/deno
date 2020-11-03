@@ -64,6 +64,8 @@ def dlint():
         "*.js",
         "*.ts",
         ":!:cli/tests/swc_syntax_error.ts",
+        ":!:cli/tests/038_checkjs.js",
+        ":!:cli/tests/error_008_checkjs.js",
         ":!:std/**/testdata/*",
         ":!:std/**/node_modules/*",
         ":!:cli/bench/node*.js",
