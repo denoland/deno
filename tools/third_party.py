@@ -44,17 +44,6 @@ def python_env(env=None, merge_env=None):
     return env
 
 
-# Run Yarn to install JavaScript dependencies.
-def run_yarn():
-    node_modules_path = os.path.join(third_party_path, "node_modules")
-    # Note to keep the root directory clean, we keep package.json is in tools/.
-    run([
-        "yarn", "install", "--no-lockfile",
-        "--modules-folder=" + node_modules_path
-    ],
-        cwd=os.path.join(root_path, "tools"))
-
-
 # Install python packages with pip.
 def run_pip():
     # Install an recent version of pip into a temporary directory. The version
