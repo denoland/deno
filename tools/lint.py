@@ -7,7 +7,7 @@ import sys
 import argparse
 from util import enable_ansi_colors, git_ls_files, git_staged, root_path, run
 from util import third_party_path, build_mode, print_command
-from third_party import python_env
+from third_party import python_env, get_prebuilt_tool_path
 
 cmd_args = None
 
@@ -19,7 +19,7 @@ def get_cmd_args():
         return cmd_args
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--js", help="run eslint", action="store_true")
+    parser.add_argument("--js", help="run dlint", action="store_true")
     parser.add_argument("--py", help="run pylint", action="store_true")
     parser.add_argument("--rs", help="run clippy", action="store_true")
     parser.add_argument(
@@ -41,7 +41,7 @@ def main():
 
     did_fmt = False
     if args.js:
-        eslint()
+        dlint()
         did_fmt = True
     if args.py:
         pylint()
@@ -51,19 +51,21 @@ def main():
         did_fmt = True
 
     if not did_fmt:
-        eslint()
+        dlint()
         pylint()
         clippy()
 
 
-def eslint():
-    script = os.path.join(third_party_path, "node_modules", "eslint", "bin",
-                          "eslint")
+def dlint():
+    executable_path = get_prebuilt_tool_path("dlint")
+
     # Find all *directories* in the main repo that contain .ts/.js files.
     source_files = get_sources(root_path, [
         "*.js",
         "*.ts",
         ":!:cli/tests/swc_syntax_error.ts",
+        ":!:cli/tests/038_checkjs.js",
+        ":!:cli/tests/error_008_checkjs.js",
         ":!:std/**/testdata/*",
         ":!:std/**/node_modules/*",
         ":!:cli/bench/node*.js",
@@ -77,7 +79,7 @@ def eslint():
     ])
     if source_files:
         max_command_len = 30000
-        pre_command = ["node", script, "--max-warnings=0", "--"]
+        pre_command = [executable_path, "run"]
         chunks = [[]]
         cmd_len = len(" ".join(pre_command))
         for f in source_files:
@@ -88,12 +90,8 @@ def eslint():
                 chunks[-1].append(f)
                 cmd_len = cmd_len + len(f) + 1
         for c in chunks:
-            print_command("eslint", c)
-            # Set NODE_PATH so we don't have to maintain a symlink in root_path.
-            env = os.environ.copy()
-            env["NODE_PATH"] = os.path.join(root_path, "third_party",
-                                            "node_modules")
-            run(pre_command + c, shell=False, env=env, quiet=True)
+            print_command("dlint", c)
+            run(pre_command + c, shell=False, quiet=True)
 
 
 def pylint():

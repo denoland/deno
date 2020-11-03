@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-undef
+
 // This module is the entry point for "compiler" isolate, ie. the one
 // that is created when Deno needs to type check TypeScript, and in some
 // instances convert TypeScript to JavaScript.
@@ -234,7 +236,7 @@ delete Object.prototype.__proto__;
         specifiers,
         base,
       });
-      let r = resolved.map(([resolvedFileName, extension]) => ({
+      const r = resolved.map(([resolvedFileName, extension]) => ({
         resolvedFileName,
         extension,
         isExternalLibraryImport: false,
@@ -357,7 +359,7 @@ delete Object.prototype.__proto__;
   /** @type {{ buildSpecifier: string; libs: string[] }} */
   const { buildSpecifier, libs } = core.jsonOpSync("op_build_info", {});
   for (const lib of libs) {
-    let specifier = `lib.${lib}.d.ts`;
+    const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
     // tsc, so things like `"lib": [ "deno.ns" ]` are supported.
     if (!ts.libs.includes(lib)) {

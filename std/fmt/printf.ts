@@ -278,7 +278,7 @@ class Printf {
   }
 
   handleLessThan(): string {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const arg = this.args[this.argNum] as any;
     if ((arg || {}).constructor.name !== "Array") {
       throw new Error(`arg ${arg} is not an array. Todo better error handling`);
@@ -315,7 +315,7 @@ class Printf {
     this.state = State.PASSTHROUGH;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   _handleVerb(arg: any): string {
     switch (this.verb) {
       case "t":

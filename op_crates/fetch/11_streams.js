@@ -7,9 +7,22 @@
 // comments which point to steps of the specification that are not implemented.
 
 ((window) => {
-  /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
-
   const customInspect = Symbol.for("Deno.customInspect");
+
+  function cloneArrayBuffer(
+    srcBuffer,
+    srcByteOffset,
+    srcLength,
+    _cloneConstructor,
+  ) {
+    // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
+    return srcBuffer.slice(
+      srcByteOffset,
+      srcByteOffset + srcLength,
+    );
+  }
+
+  const objectCloneMemo = new WeakMap();
 
   /** Clone a value in a similar way to structured cloning.  It is similar to a
  * StructureDeserialize(StructuredSerialize(...)). */
@@ -88,6 +101,7 @@
       }
       case "symbol":
       case "function":
+        // fallthrough
       default:
         throw new DOMException("Uncloneable value in stream", "DataCloneError");
     }
@@ -2151,10 +2165,10 @@
     let canceled2 = false;
     let reason1 = undefined;
     let reason2 = undefined;
-    /* eslint-disable prefer-const */
+    // deno-lint-ignore prefer-const
     let branch1;
+    // deno-lint-ignore prefer-const
     let branch2;
-    /* eslint-enable prefer-const */
     const cancelPromise = getDeferred();
     const pullAlgorithm = () => {
       if (reading) {
@@ -3365,7 +3379,6 @@
     }
     stream[sym.backpressure] = backpressure;
   }
-  /* eslint-enable */
 
   class CountQueuingStrategy {
     constructor({ highWaterMark }) {

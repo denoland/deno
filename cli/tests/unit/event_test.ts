@@ -68,7 +68,7 @@ unitTest(function eventPreventDefaultSuccess(): void {
 });
 
 unitTest(function eventInitializedWithNonStringType(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const type: any = undefined;
   const event = new Event(type);
 
@@ -94,7 +94,7 @@ unitTest(function eventIsTrusted(): void {
 });
 
 unitTest(function eventInspectOutput(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const cases: Array<[any, (event: any) => string]> = [
     [
       new Event("test"),

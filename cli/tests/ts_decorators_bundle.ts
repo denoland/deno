@@ -1,4 +1,4 @@
-/* eslint-disable */
+// deno-lint-ignore-file
 
 import { B } from "./subdir/more_decorators.ts";
 

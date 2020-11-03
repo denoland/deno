@@ -6,7 +6,7 @@ export interface Args {
   /** Contains all the arguments that didn't have an option associated with
    * them. */
   _: Array<string | number>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   [key: string]: any;
 }
 

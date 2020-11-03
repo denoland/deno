@@ -64,11 +64,11 @@ Deno.test({
   name: "[std/datetime] invalidParseDateTimeFormatThrows",
   fn: () => {
     assertThrows((): void => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (datetime as any).parse("2019-01-01 00:00", "x-y-z");
     }, Error);
     assertThrows((): void => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (datetime as any).parse("2019-01-01", "x-y-z");
     }, Error);
   },

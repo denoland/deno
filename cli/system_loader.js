@@ -1,11 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file
+
 // This is a specialised implementation of a System module loader.
 
 "use strict";
 
 // @ts-nocheck
-/* eslint-disable */
 let System, __instantiate;
 (() => {
   const r = new Map();

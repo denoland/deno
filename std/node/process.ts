@@ -49,12 +49,12 @@ export const process = {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
-      // eslint-disable-next-line @typescript-eslint/ban-types
+      // deno-lint-ignore ban-types
       write(_chunk: string | Uint8Array, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
-      // eslint-disable-next-line @typescript-eslint/ban-types
+      // deno-lint-ignore ban-types
       on(_event: string, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
@@ -71,7 +71,7 @@ export const process = {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
-      // eslint-disable-next-line @typescript-eslint/ban-types
+      // deno-lint-ignore ban-types
       on(_event: string, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
@@ -88,12 +88,12 @@ export const process = {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
-      // eslint-disable-next-line @typescript-eslint/ban-types
+      // deno-lint-ignore ban-types
       write(_chunk: string | Uint8Array, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
-      // eslint-disable-next-line @typescript-eslint/ban-types
+      // deno-lint-ignore ban-types
       on(_event: string, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
@@ -104,7 +104,7 @@ export const process = {
   /** https://nodejs.org/api/process.html#process_process_events */
   // on is not exported by node, it is only available within process:
   // node --input-type=module -e "import { on } from 'process'; console.log(on)"
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // deno-lint-ignore ban-types
   on(_event: string, _callback: Function): void {
     // TODO(rsp): to be implemented
     notImplemented();

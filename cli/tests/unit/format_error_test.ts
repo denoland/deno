@@ -27,7 +27,7 @@ unitTest(function formatDiagnosticBasic() {
 
 unitTest(function formatDiagnosticError() {
   let thrown = false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const bad = ([{ hello: 123 }] as any) as Deno.Diagnostic[];
   try {
     Deno.formatDiagnostics(bad);

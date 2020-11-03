@@ -154,7 +154,7 @@ it's required to specify the ignored rule name:
 // eslint-disable-next-line no-empty
 while (true) {}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function bar(a: any) {
   // ...
 }

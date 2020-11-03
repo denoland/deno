@@ -204,7 +204,7 @@ export default class Buffer extends Uint8Array {
    */
   static from(string: string, encoding?: string): Buffer;
   static from(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     value: any,
     offsetOrEncoding?: number | string,
     length?: number,
@@ -234,7 +234,7 @@ export default class Buffer extends Uint8Array {
     return obj instanceof Buffer;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   static isEncoding(encoding: any): boolean {
     return (
       typeof encoding === "string" &&

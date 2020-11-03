@@ -593,7 +593,9 @@
       try {
         const isSpecial = specialSchemes.includes(parts.get(this).protocol);
         parts.get(this).hostname = encodeHostname(value, isSpecial);
-      } catch {}
+      } catch {
+        // pass
+      }
     }
 
     get href() {

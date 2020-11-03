@@ -46,7 +46,7 @@ unitTest(function blobShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const options1: any = {
       ending: "utf8",
       hasOwnProperty: "hasOwnProperty",

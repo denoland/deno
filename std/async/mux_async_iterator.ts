@@ -14,7 +14,7 @@ interface TaggedYieldedValue<T> {
 export class MuxAsyncIterator<T> implements AsyncIterable<T> {
   private iteratorCount = 0;
   private yields: Array<TaggedYieldedValue<T>> = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   private throws: any[] = [];
   private signal: Deferred<void> = deferred();
 

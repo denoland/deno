@@ -30,7 +30,7 @@ inspect.custom = Deno.customInspect;
 
 // TODO(schwarzkopfb): make it in-line with Node's implementation
 // Ref: https://nodejs.org/dist/latest-v14.x/docs/api/util.html#util_util_inspect_object_options
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 export function inspect(object: unknown, ...opts: any): string {
   opts = { ...DEFAULT_INSPECT_OPTIONS, ...opts };
   return Deno.inspect(object, {

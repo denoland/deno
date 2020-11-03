@@ -107,7 +107,7 @@ export function encodeStr(
 }
 
 export function stringify(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   obj: Record<string, any>,
   sep = "&",
   eq = "=",

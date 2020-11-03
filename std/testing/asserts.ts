@@ -8,7 +8,7 @@ import { diff, DiffResult, DiffType } from "./_diff.ts";
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
 interface Constructor {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   new (...args: any[]): any;
 }
 

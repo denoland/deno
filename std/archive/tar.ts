@@ -297,7 +297,7 @@ export interface TarMeta extends TarInfo {
   fileSize?: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
+// deno-lint-ignore no-empty-interface
 interface TarEntry extends TarMeta {}
 
 /**

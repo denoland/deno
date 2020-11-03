@@ -6,7 +6,7 @@
 // At the time of writing, the github issue is closed but the problem remains.
 export interface Deferred<T> extends Promise<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   reject: (reason?: any) => void;
 }
 

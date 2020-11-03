@@ -48,7 +48,7 @@ export const CHAR_0 = 48; /* 0 */
 export const CHAR_9 = 57; /* 9 */
 
 let NATIVE_OS: typeof Deno.build.os = "linux";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const navigator = (globalThis as any).navigator;
 if (globalThis.Deno != null) {
   NATIVE_OS = Deno.build.os;
