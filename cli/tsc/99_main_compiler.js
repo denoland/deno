@@ -196,7 +196,6 @@ delete Object.prototype.__proto__;
         // Custom marker for Wasm type.
         return ts.Extension.Js;
       case MediaType.Unknown:
-        // fallthrough
       default:
         throw TypeError(
           `Cannot resolve extension for "${fileName}" with mediaType "${
