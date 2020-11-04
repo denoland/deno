@@ -73,6 +73,10 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
 
+      - name: Install Deno
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.0
+
       - name: Install Python
         uses: actions/setup-python@v1
         with:
@@ -93,14 +97,15 @@ jobs:
           python --version
           rustc --version
           cargo --version
+          deno --version
 
       - name: lint.py
         if: matrix.kind == 'lint'
         run: python ./tools/lint.py
 
-      - name: test_format.py
+      - name: test_format.js
         if: matrix.kind == 'lint'
-        run: python ./tools/test_format.py
+        run: deno run --allow-run ./tools/test_format.js
 
       - name: Build release
         if: |

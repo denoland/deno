@@ -64,43 +64,6 @@ def run(args, quiet=False, cwd=None, env=None, merge_env=None, shell=None):
         sys.exit(rc)
 
 
-CmdResult = collections.namedtuple('CmdResult', ['out', 'err', 'code'])
-
-
-def run_output(args,
-               quiet=False,
-               cwd=None,
-               env=None,
-               merge_env=None,
-               exit_on_fail=False):
-    if merge_env is None:
-        merge_env = {}
-    args[0] = os.path.normpath(args[0])
-    if not quiet:
-        print(" ".join(args))
-    env = make_env(env=env, merge_env=merge_env)
-    shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
-    p = subprocess.Popen(
-        args,
-        cwd=cwd,
-        env=env,
-        shell=shell,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-    try:
-        out, err = p.communicate()
-    except subprocess.CalledProcessError as e:
-        p.kill()
-        p.wait()
-        raise e
-    retcode = p.poll()
-    if retcode and exit_on_fail:
-        sys.exit(retcode)
-    # Ignore Windows CRLF (\r\n).
-    return CmdResult(
-        out.replace('\r\n', '\n'), err.replace('\r\n', '\n'), retcode)
-
-
 def shell_quote_win(arg):
     if re.search(r'[\x00-\x20"^%~!@&?*<>|()=]', arg):
         # Double all " quote characters.
