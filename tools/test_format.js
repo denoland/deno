@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// This program fails if ./tools/format.py changes any files.
+// This program fails if ./tools/format.js changes any files.
 
 const p = Deno.run({
-  cmd: ["python", "tools/format.py"],
+  cmd: [Deno.execPath(), "run", "--unstable", "-A", "tools/format.js"],
 });
 await p.status();
 p.close();
