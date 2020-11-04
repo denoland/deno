@@ -119,7 +119,7 @@ export function encodeStr(
 
 /**
  * Produces a URL query string from a given obj by iterating through the object's "own properties".
- * @param obj  The object to serialize into a URL query string.
+ * @param obj The object to serialize into a URL query string.
  * @param sep The substring used to delimit key and value pairs in the query string. Default: '&'.
  * @param eq The substring used to delimit keys and values in the query string. Default: '='.
  * @param options The stringify options
