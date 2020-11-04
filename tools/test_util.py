@@ -8,8 +8,7 @@ import os
 import sys
 import unittest
 
-from util import (enable_ansi_colors, build_path, RESET, FG_RED, FG_GREEN,
-                  executable_suffix, rmtree, tests_path)
+from util import (build_path, RESET, FG_RED, FG_GREEN, executable_suffix)
 
 
 class DenoTestCase(unittest.TestCase):

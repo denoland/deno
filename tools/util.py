@@ -20,7 +20,6 @@ else:
 executable_suffix = ".exe" if os.name == "nt" else ""
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-tests_path = os.path.join(root_path, "cli/tests")
 third_party_path = os.path.join(root_path, "third_party")
 
 
@@ -121,51 +120,6 @@ def shell_quote(arg):
         return quote(arg)
 
 
-def symlink(target, name, target_is_dir=False):
-    if os.name == "nt":
-        from ctypes import WinDLL, WinError, GetLastError
-        from ctypes.wintypes import BOOLEAN, DWORD, LPCWSTR
-
-        kernel32 = WinDLL('kernel32', use_last_error=False)
-        CreateSymbolicLinkW = kernel32.CreateSymbolicLinkW
-        CreateSymbolicLinkW.restype = BOOLEAN
-        CreateSymbolicLinkW.argtypes = (LPCWSTR, LPCWSTR, DWORD)
-
-        # File-type symlinks can only use backslashes as separators.
-        target = os.path.normpath(target)
-
-        # If the symlink points at a directory, it needs to have the appropriate
-        # flag set, otherwise the link will be created but it won't work.
-        if target_is_dir:
-            type_flag = 0x01  # SYMBOLIC_LINK_FLAG_DIRECTORY
-        else:
-            type_flag = 0
-
-        # Before Windows 10, creating symlinks requires admin privileges.
-        # As of Win 10, there is a flag that allows anyone to create them.
-        # Initially, try to use this flag.
-        unpriv_flag = 0x02  # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-        r = CreateSymbolicLinkW(name, target, type_flag | unpriv_flag)
-
-        # If it failed with ERROR_INVALID_PARAMETER, try again without the
-        # 'allow unprivileged create' flag.
-        if not r and GetLastError() == 87:  # ERROR_INVALID_PARAMETER
-            r = CreateSymbolicLinkW(name, target, type_flag)
-
-        # Throw if unsuccessful even after the second attempt.
-        if not r:
-            raise WinError()
-    else:
-        os.symlink(target, name)
-
-
-def touch(fname):
-    if os.path.exists(fname):
-        os.utime(fname, None)
-    else:
-        open(fname, 'a').close()
-
-
 # Recursively list all files in (a subdirectory of) a git worktree.
 #   * Optionally, glob patterns may be specified to e.g. only list files with a
 #     certain extension.
@@ -209,17 +163,6 @@ def git_staged(base_dir, patterns=None):
     return files
 
 
-# The Python equivalent of `rm -rf`.
-def rmtree(directory):
-    # On Windows, shutil.rmtree() won't delete files that have a readonly bit.
-    # Git creates some files that do. The 'onerror' callback deals with those.
-    def rm_readonly(func, path, _):
-        os.chmod(path, stat.S_IWRITE)
-        func(path)
-
-    shutil.rmtree(directory, onerror=rm_readonly)
-
-
 def build_mode():
     if "--release" in sys.argv:
         return "release"
@@ -230,16 +173,6 @@ def build_mode():
 # E.G. "target/debug"
 def build_path():
     return os.path.join(root_path, "target", build_mode())
-
-
-def parse_exit_code(s):
-    codes = [int(d or 1) for d in re.findall(r'error(\d*)', s)]
-    if len(codes) > 1:
-        assert False, "doesn't support multiple error codes."
-    elif len(codes) == 1:
-        return codes[0]
-    else:
-        return 0
 
 
 # Attempts to enable ANSI escape code support.
@@ -338,76 +271,6 @@ def enable_ansi_colors_win10():
         CloseHandle(conout)
 
     return True
-
-
-def extract_number(pattern, string):
-    matches = re.findall(pattern, string)
-    if len(matches) != 1:
-        return None
-    return int(matches[0])
-
-
-def extract_max_latency_in_milliseconds(pattern, string):
-    matches = re.findall(pattern, string)
-    if len(matches) != 1:
-        return None
-    num = float(matches[0][0])
-    unit = matches[0][1]
-    if (unit == 'ms'):
-        return num
-    elif (unit == 'us'):
-        return num / 1000
-    elif (unit == 's'):
-        return num * 1000
-
-
-def platform():
-    return {"linux2": "linux", "darwin": "mac", "win32": "win"}[sys.platform]
-
-
-def mkdtemp():
-    # On Windows, set the base directory that mkdtemp() uses explicitly. If not,
-    # it'll use the short (8.3) path to the temp dir, which triggers the error
-    # 'TS5009: Cannot find the common subdirectory path for the input files.'
-    temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
-    return tempfile.mkdtemp(dir=temp_dir)
-
-
-# This function is copied from:
-# https://gist.github.com/hayd/4f46a68fc697ba8888a7b517a414583e
-# https://stackoverflow.com/q/52954248/1240268
-def tty_capture(cmd, bytes_input, timeout=5):
-    """Capture the output of cmd with bytes_input to stdin,
-    with stdin, stdout and stderr as TTYs."""
-    # pty is not available on windows, so we import it within this function.
-    import pty
-    mo, so = pty.openpty()  # provide tty to enable line-buffering
-    me, se = pty.openpty()
-    mi, si = pty.openpty()
-    fdmap = {mo: 'stdout', me: 'stderr', mi: 'stdin'}
-
-    timeout_exact = time.time() + timeout
-    p = subprocess.Popen(
-        cmd, bufsize=1, stdin=si, stdout=so, stderr=se, close_fds=True)
-    os.write(mi, bytes_input)
-
-    select_timeout = .04  #seconds
-    res = {'stdout': b'', 'stderr': b''}
-    while True:
-        ready, _, _ = select.select([mo, me], [], [], select_timeout)
-        if ready:
-            for fd in ready:
-                data = os.read(fd, 512)
-                if not data:
-                    break
-                res[fdmap[fd]] += data
-        elif p.poll() is not None or time.time(
-        ) > timeout_exact:  # select timed-out
-            break  # p exited
-    for fd in [si, so, se, mi, mo, me]:
-        os.close(fd)  # can't do it sooner: it leads to errno.EIO error
-    p.wait()
-    return p.returncode, res['stdout'], res['stderr']
 
 
 def print_command(cmd, files):

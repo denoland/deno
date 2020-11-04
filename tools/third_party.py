@@ -6,11 +6,8 @@ import os
 import re
 import site
 import sys
-from tempfile import mkdtemp
-from util import add_env_path, executable_suffix, make_env, rmtree
-from util import root_path, run, third_party_path
+from util import add_env_path, executable_suffix, make_env, third_party_path
 
-depot_tools_path = os.path.join(third_party_path, "depot_tools")
 prebuilt_path = os.path.join(third_party_path, "prebuilt")
 python_packages_path = os.path.join(third_party_path, "python_packages")
 
@@ -42,44 +39,6 @@ def python_env(env=None, merge_env=None):
     add_env_path(python_site_env["PYTHONPATH"], env=env, key="PYTHONPATH")
 
     return env
-
-
-# Install python packages with pip.
-def run_pip():
-    # Install an recent version of pip into a temporary directory. The version
-    # that is bundled with python is too old to support the next step.
-    temp_python_home = mkdtemp()
-    pip_env = {"PYTHONUSERBASE": temp_python_home}
-    run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "pip"],
-        cwd=third_party_path,
-        merge_env=pip_env)
-
-    # Install pywin32.
-    run([
-        sys.executable, "-m", "pip", "install", "--upgrade", "--target",
-        python_packages_path, "--platform=win_amd64", "--only-binary=:all:",
-        "pypiwin32"
-    ],
-        cwd=third_party_path,
-        merge_env=pip_env)
-
-    # Get yapf.
-    run([
-        sys.executable, "-m", "pip", "install", "--upgrade", "--target",
-        python_packages_path, "yapf"
-    ],
-        cwd=third_party_path,
-        merge_env=pip_env)
-
-    run([
-        sys.executable, "-m", "pip", "install", "--upgrade", "--target",
-        python_packages_path, "pylint==1.5.6"
-    ],
-        cwd=third_party_path,
-        merge_env=pip_env)
-
-    # Remove the temporary pip installation.
-    rmtree(temp_python_home)
 
 
 def get_platform_dir_name():
