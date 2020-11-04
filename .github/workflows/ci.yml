@@ -102,11 +102,11 @@ jobs:
 
       - name: lint.js
         if: matrix.kind == 'lint'
-        run: deno run --unstable -A ./tools/lint.js
+        run: deno run -A --unstable ./tools/lint.js
 
       - name: test_format.js
         if: matrix.kind == 'lint'
-        run: deno run -A ./tools/format.js --check
+        run: deno run -A --unstable ./tools/format.js --check
 
       - name: Build release
         if: |
