@@ -8,32 +8,8 @@ export { dirname, join };
 export { existsSync } from "https://deno.land/std@0.76.0/fs/mod.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
-const THIRD_PARTY_PATH = join(ROOT_PATH, "third_party");
 
-/**
- *  Recursively list all files in (a subdirectory of) a git worktree.
- *    * Optionally, glob patterns may be specified to e.g. only list files with a
- *      certain extension.
- *    * Untracked files are included, unless they're listed in .gitignore.
- *    * Directory names themselves are not listed (but the files inside are).
- *    * Submodules and their contents are ignored entirely.
- *    * This function fails if the query matches no files.
- */
-async function gitLsFiles(baseDir, patterns) {
-  baseDir = Deno.realPathSync(baseDir);
-  const cmd = [
-    "git",
-    "-C",
-    baseDir,
-    "ls-files",
-    "-z",
-    "--exclude-standard",
-    "--cached",
-    "--modified",
-    "--others",
-    "--",
-    ...patterns,
-  ];
+async function getFilesFromGit(baseDir, cmd) {
   const p = Deno.run({
     cmd,
     stdout: "piped",
@@ -53,6 +29,24 @@ async function gitLsFiles(baseDir, patterns) {
   );
 
   return files;
+}
+
+async function gitLsFiles(baseDir, patterns) {
+  baseDir = Deno.realPathSync(baseDir);
+  const cmd = [
+    "git",
+    "-C",
+    baseDir,
+    "ls-files",
+    "-z",
+    "--exclude-standard",
+    "--cached",
+    "--modified",
+    "--others",
+    "--",
+    ...patterns,
+  ];
+  return getFilesFromGit(baseDir, cmd);
 }
 
 /** List all files staged for commit */
@@ -70,30 +64,17 @@ async function gitStaged(baseDir, patterns) {
     "--",
     ...patterns,
   ];
-
-  const p = Deno.run({
-    cmd,
-    stdout: "piped",
-  });
-  const { success } = await p.status();
-
-  if (!success) {
-    throw new Error("gitLsFiles failed");
-  }
-
-  const output = new TextDecoder().decode(await p.output());
-  p.close();
-
-  const files = output.split("\0").filter((line) => line.length > 0).map(
-    (filePath) => {
-      return Deno.realPathSync(join(baseDir, filePath));
-    },
-  );
-
-  return files;
+  return getFilesFromGit(baseDir, cmd);
 }
 
-/** Get sources using git given provided `patterns`.
+/** 
+ *  Recursively list all files in (a subdirectory of) a git worktree.
+ *    * Optionally, glob patterns may be specified to e.g. only list files with a
+ *      certain extension.
+ *    * Untracked files are included, unless they're listed in .gitignore.
+ *    * Directory names themselves are not listed (but the files inside are).
+ *    * Submodules and their contents are ignored entirely.
+ *    * This function fails if the query matches no files.
  * 
  * If --staged argument was provided when program is run
  * only staged sources will be returned.
