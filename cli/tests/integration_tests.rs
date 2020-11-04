@@ -1728,11 +1728,6 @@ fn deno_test_no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
-#[test]
-fn util_test() {
-  util::run_python_script("tools/util_test.py")
-}
-
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[test]
