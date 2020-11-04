@@ -1,21 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
-  getPrebuiltToolPath,
-  gitLsFiles,
-  gitStaged,
-  join,
-  ROOT_PATH,
-} from "./util.js";
-
-async function getSources(baseDir, patterns) {
-  const stagedOnly = Deno.args.includes("--staged");
-
-  if (stagedOnly) {
-    return await gitStaged(baseDir, patterns);
-  } else {
-    return await gitLsFiles(baseDir, patterns);
-  }
-}
+import { getPrebuiltToolPath, getSources, join, ROOT_PATH } from "./util.js";
 
 async function dprint() {
   const execPath = getPrebuiltToolPath("dprint");

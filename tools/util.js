@@ -19,7 +19,7 @@ const THIRD_PARTY_PATH = join(ROOT_PATH, "third_party");
  *    * Submodules and their contents are ignored entirely.
  *    * This function fails if the query matches no files.
  */
-export async function gitLsFiles(baseDir, patterns) {
+async function gitLsFiles(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "git",
@@ -56,7 +56,7 @@ export async function gitLsFiles(baseDir, patterns) {
 }
 
 /** List all files staged for commit */
-export async function gitStaged(baseDir, patterns) {
+async function gitStaged(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "git",
@@ -91,6 +91,21 @@ export async function gitStaged(baseDir, patterns) {
   );
 
   return files;
+}
+
+/** Get sources using git given provided `patterns`.
+ * 
+ * If --staged argument was provided when program is run
+ * only staged sources will be returned.
+ */
+export async function getSources(baseDir, patterns) {
+  const stagedOnly = Deno.args.includes("--staged");
+
+  if (stagedOnly) {
+    return await gitStaged(baseDir, patterns);
+  } else {
+    return await gitLsFiles(baseDir, patterns);
+  }
 }
 
 export function buildMode() {

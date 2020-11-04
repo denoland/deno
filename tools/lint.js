@@ -2,21 +2,9 @@
 import {
   buildMode,
   getPrebuiltToolPath,
-  gitLsFiles,
-  gitStaged,
-  join,
+  getSources,
   ROOT_PATH,
 } from "./util.js";
-
-async function getSources(baseDir, patterns) {
-  const stagedOnly = Deno.args.includes("--staged");
-
-  if (stagedOnly) {
-    return await gitStaged(baseDir, patterns);
-  } else {
-    return await gitLsFiles(baseDir, patterns);
-  }
-}
 
 async function dlint() {
   const execPath = getPrebuiltToolPath("dlint");
