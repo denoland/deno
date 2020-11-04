@@ -2,15 +2,10 @@
 import os
 
 from test_util import DenoTestCase, run_tests
-from util import (parse_exit_code, shell_quote_win, root_path)
+from util import (shell_quote_win, root_path)
 
 
 class TestUtil(DenoTestCase):
-    def test_parse_exit_code(self):
-        assert parse_exit_code('hello_error54_world') == 54
-        assert parse_exit_code('hello_error_world') == 1
-        assert parse_exit_code('hello_world') == 0
-
     def test_shell_quote_win(self):
         assert shell_quote_win('simple') == 'simple'
         assert shell_quote_win(
