@@ -487,9 +487,9 @@ mod tests {
     cache_usage: Cache,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>) {
-    let temp_dir = maybe_temp_dir.unwrap_or(Rc::new(
-      TempDir::new().expect("failed to create temp directory"),
-    ));
+    let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
+      Rc::new(TempDir::new().expect("failed to create temp directory"))
+    });
     let location = temp_dir.path().join("deps");
     let file_fetcher =
       FileFetcher::new(HttpCache::new(&location), cache_usage, true, None)
