@@ -18,10 +18,12 @@ export interface BenchmarkTimer {
 export interface BenchmarkFunction {
   (b: BenchmarkTimer): void | Promise<void>;
   name: string;
+  only?: boolean;
 }
 
 /** Defines a benchmark definition with configurable runs. */
 export interface BenchmarkDefinition {
+  only?: boolean;
   func: BenchmarkFunction;
   name: string;
   /** Defines how many times the provided `func` should be benchmarked in succession */
@@ -154,15 +156,16 @@ export function bench(
   if (!benchmark.name) {
     throw new Error("The benchmark function must not be anonymous");
   }
-  if (typeof benchmark === "function") {
-    candidates.push({ name: benchmark.name, runs: 1, func: benchmark });
-  } else {
-    candidates.push({
-      name: benchmark.name,
-      runs: verifyOr1Run(benchmark.runs),
-      func: benchmark.func,
-    });
-  }
+
+  const runs = typeof benchmark === "function" ? 1 : verifyOr1Run(benchmark.runs);
+  const func = typeof benchmark === "function" ? benchmark : benchmark.func;
+
+  candidates.push({
+    name: benchmark.name,
+    only: benchmark.only,
+    runs,
+    func,
+  });
 }
 
 /** Clears benchmark candidates which name matches `only` and doesn't match `skip`.
@@ -188,10 +191,19 @@ export async function runBenchmarks(
   { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},
   progressCb?: (progress: BenchmarkRunProgress) => void | Promise<void>,
 ): Promise<BenchmarkRunResult> {
+
+  // If there is an item that only is true, proceed to benchmark only those items
+  const withOnly: BenchmarkDefinition[] = candidates.filter(
+    ({ only }): boolean => only === true,
+  );
+
+  const targetCands = withOnly.length > 0 ? withOnly : candidates;
+
   // Filtering candidates by the "only" and "skip" constraint
-  const benchmarks: BenchmarkDefinition[] = candidates.filter(
+  const benchmarks: BenchmarkDefinition[] = targetCands.filter(
     ({ name }): boolean => only.test(name) && !skip.test(name),
   );
+
   // Init main counters and error flag
   const filtered = candidates.length - benchmarks.length;
   let failError: Error | undefined = undefined;
