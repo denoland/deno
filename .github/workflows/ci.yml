@@ -74,8 +74,9 @@ jobs:
           rustup component add rustfmt
 
       - name: Install Deno
-        run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | DENO_INSTALL=$HOME sh -s v1.5.0
+        uses: denolib/setup-deno@v2
+        with: 
+          deno-version: v1.5.1
 
       - name: Install Python
         uses: actions/setup-python@v1
