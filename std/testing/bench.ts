@@ -157,8 +157,15 @@ export function bench(
     throw new Error("The benchmark function must not be anonymous");
   }
 
-  const runs = typeof benchmark === "function" ? 1 : verifyOr1Run(benchmark.runs);
-  const func = typeof benchmark === "function" ? benchmark : benchmark.func;
+  let runs: number, func: BenchmarkFunction;
+
+  if (typeof benchmark === "function") {
+    runs = 1;
+    func = benchmark;
+  } else {
+    runs = verifyOr1Run(benchmark.runs);
+    func = benchmark.func;
+  }
 
   candidates.push({
     name: benchmark.name,
@@ -191,7 +198,6 @@ export async function runBenchmarks(
   { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},
   progressCb?: (progress: BenchmarkRunProgress) => void | Promise<void>,
 ): Promise<BenchmarkRunResult> {
-
   // If there is an item that only is true, proceed to benchmark only those items
   const withOnly: BenchmarkDefinition[] = candidates.filter(
     ({ only }): boolean => only === true,
