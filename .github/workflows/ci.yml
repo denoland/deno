@@ -76,7 +76,7 @@ jobs:
       - name: Install Deno
         run: |-
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
-          echo "$HOME/.bin" >> $GITHUB_PATH
+          echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Install Python
         uses: actions/setup-python@v1
