@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   buildMode,
@@ -50,7 +51,6 @@ async function dlint() {
       cmd: [execPath, "run", ...chunk],
     });
     const { success } = await p.status();
-    console.log("done");
     if (!success) {
       throw new Error("dlint failed");
     }

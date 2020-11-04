@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { getPrebuiltToolPath, getSources, join, ROOT_PATH } from "./util.js";
 
