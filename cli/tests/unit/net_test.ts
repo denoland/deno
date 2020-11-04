@@ -327,7 +327,7 @@ unitTest(
     const listener = Deno.listen(addr);
     iterate(listener);
 
-    await new Promise((resolve: () => void, _) => {
+    await new Promise<void>((resolve) => {
       setTimeout(resolve, 100);
     });
     const conn1 = await Deno.connect(addr);

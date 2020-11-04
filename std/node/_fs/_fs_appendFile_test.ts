@@ -225,7 +225,7 @@ Deno.test({
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
     const testData = new TextEncoder().encode("hello world");
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       appendFile("_fs_appendFile_test_file.txt", testData, (err) => {
         if (err) reject(err);
         else resolve();

@@ -41,7 +41,7 @@ async function main(): Promise<void> {
       new URL("subdir/bench_worker.ts", import.meta.url).href,
       { type: "module" },
     );
-    const promise = createResolvable<void>();
+    const promise = createResolvable();
     worker.onmessage = (e): void => {
       if (e.data.cmdId === 0) promise.resolve();
     };
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     }
   }
   for (const [, worker] of workers) {
-    const promise = createResolvable<void>();
+    const promise = createResolvable();
     worker.onmessage = (e): void => {
       if (e.data.cmdId === 3) promise.resolve();
     };

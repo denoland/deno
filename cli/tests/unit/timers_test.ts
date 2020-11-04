@@ -8,7 +8,7 @@ import {
 } from "./test_util.ts";
 
 function waitForMs(ms: number): Promise<number> {
-  return new Promise((resolve: () => void): number => setTimeout(resolve, ms));
+  return new Promise((resolve): number => setTimeout(resolve, ms));
 }
 
 unitTest(async function timeoutSuccess(): Promise<void> {
