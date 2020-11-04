@@ -106,7 +106,7 @@ jobs:
 
       - name: test_format.js
         if: matrix.kind == 'lint'
-        run: deno run -A ./tools/test_format.js
+        run: deno run -A ./tools/format.js --check
 
       - name: Build release
         if: |

@@ -49,6 +49,30 @@ async function rustfmt() {
   p.close();
 }
 
-await Deno.chdir(ROOT_PATH);
-await dprint();
-await rustfmt();
+async function main() {
+  await Deno.chdir(ROOT_PATH);
+  await dprint();
+  await rustfmt();
+
+  if (Deno.args.includes("--check")) {
+    const git = Deno.run({
+      cmd: ["git", "status", "-uno", "--porcelain", "--ignore-submodules"],
+      stdout: "piped",
+    });
+
+    const { success } = await git.status();
+    if (!success) {
+      throw new Error("git status failed");
+    }
+    const out = new TextDecoder().decode(await git.output());
+    git.close();
+
+    if (out) {
+      console.log("run tools/format.js");
+      console.log(out);
+      Deno.exit(1);
+    }
+  }
+}
+
+await main();
