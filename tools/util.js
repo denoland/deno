@@ -98,7 +98,7 @@ export function buildMode() {
 }
 
 export function buildPath() {
-  join(ROOT_PATH, "target", buildMode());
+  return join(ROOT_PATH, "target", buildMode());
 }
 
 export function getPrebuiltToolPath(toolName) {

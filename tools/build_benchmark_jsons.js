@@ -22,8 +22,8 @@ if (!existsSync(allDataFile)) {
 }
 
 const newData = readJson(currentDataFile);
-let allData = readJson(allDataFile);
-allData += newData;
+const allData = readJson(allDataFile);
+allData.push(newData);
 const allDataLen = allData.length;
 const recentData = allData.slice(allDataLen - 20);
 
