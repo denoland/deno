@@ -139,7 +139,7 @@ jobs:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          python ./tools/build_benchmark_jsons.py --release
+          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
