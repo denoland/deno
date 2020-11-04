@@ -148,7 +148,7 @@ export function stringify(
   return final.join(sep);
 }
 
-/** Alias of querystring.parse()  */
+/** Alias of querystring.parse() */
 export const decode = parse;
 /** Alias of querystring.stringify() */
 export const encode = stringify;
