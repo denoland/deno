@@ -100,9 +100,9 @@ jobs:
           cargo --version
           deno --version
 
-      - name: lint.py
+      - name: lint.js
         if: matrix.kind == 'lint'
-        run: python ./tools/lint.py
+        run: deno run --unstable -A ./tools/lint.js
 
       - name: test_format.js
         if: matrix.kind == 'lint'

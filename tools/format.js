@@ -23,7 +23,10 @@ async function dprint() {
   const p = Deno.run({
     cmd: [execPath, "fmt"],
   });
-  await p.status();
+  const { success } = await p.status();
+  if (!success) {
+    throw new Error("dprint failed");
+  }
   p.close();
 }
 
@@ -39,7 +42,10 @@ async function rustfmt() {
   const p = Deno.run({
     cmd: ["rustfmt", "--config-path=" + configFile, "--", ...sourceFiles],
   });
-  await p.status();
+  const { success } = await p.status();
+  if (!success) {
+    throw new Error("rustfmt failed");
+  }
   p.close();
 }
 

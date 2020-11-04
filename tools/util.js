@@ -39,7 +39,6 @@ export async function gitLsFiles(baseDir, patterns) {
     stdout: "piped",
   });
   const { success } = await p.status();
-
   if (!success) {
     throw new Error("gitLsFiles failed");
   }
@@ -94,8 +93,8 @@ export async function gitStaged(baseDir, patterns) {
   return files;
 }
 
-function buildMode() {
-  if (Deno.args.contains("--release")) {
+export function buildMode() {
+  if (Deno.args.includes("--release")) {
     return "release";
   }
 
