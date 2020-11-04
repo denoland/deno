@@ -237,6 +237,23 @@ mod tests {
   }
 
   #[test]
+  fn test_from_specifier() {
+    let fixtures = vec![
+      ("file:///a/b/c.ts", MediaType::TypeScript),
+      ("file:///a/b/c.js", MediaType::JavaScript),
+      ("file:///a/b/c.txt", MediaType::Unknown),
+      ("https://deno.land/x/mod.ts", MediaType::TypeScript),
+      ("https://deno.land/x/mod.js", MediaType::JavaScript),
+      ("https://deno.land/x/mod.txt", MediaType::Unknown),
+    ];
+
+    for (specifier, expected) in fixtures {
+      let actual = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      assert_eq!(MediaType::from(&actual), expected);
+    }
+  }
+
+  #[test]
   fn test_serialization() {
     assert_eq!(json!(MediaType::JavaScript), json!(0));
     assert_eq!(json!(MediaType::JSX), json!(1));
