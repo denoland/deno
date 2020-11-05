@@ -9,7 +9,6 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 
 use deno_core::error::custom_error;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::Future;
@@ -275,7 +274,7 @@ impl SpecifierHandler for FetchHandler {
               } else {
                 format!("Cannot resolve module \"{}\".", requested_specifier)
               };
-              generic_error(message)
+              custom_error("NotFound", message)
             } else {
               err
             }
@@ -283,6 +282,10 @@ impl SpecifierHandler for FetchHandler {
             err
           };
           if let Some(location) = maybe_location {
+            // Injected modules (like test and eval) come with locations, but
+            // they are confusing to the user to print out the location because
+            // they cannot actually get to the source code that is quoted, as
+            // it only exists in the runtime memory of Deno.
             if !location.filename.contains("$deno$") {
               HandlerError::FetchErrorWithLocation(err.to_string(), location)
                 .into()

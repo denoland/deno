@@ -121,7 +121,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   })?;
   let bytes = fs::read(local.clone())?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
-  let source = get_source_from_bytes(bytes, Some(charset))?;
+  let source = strip_shebang(get_source_from_bytes(bytes, Some(charset))?);
   let media_type = MediaType::from(specifier);
 
   Ok(File {
@@ -131,19 +131,6 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     source,
     specifier: specifier.clone(),
   })
-}
-
-/// Return a validated scheme for a given module specifier.
-fn get_scheme(specifier: &ModuleSpecifier) -> Result<String, AnyError> {
-  let scheme = specifier.as_url().scheme();
-  if !SUPPORTED_SCHEMES.contains(&scheme) {
-    Err(generic_error(format!(
-      "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
-      scheme, specifier, SUPPORTED_SCHEMES
-    )))
-  } else {
-    Ok(scheme.to_string())
-  }
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
@@ -157,16 +144,22 @@ fn get_source_from_bytes(
   } else {
     String::from_utf8(bytes)?
   };
-  if source.starts_with("#!") {
-    let source = if let Some(mid) = source.find('\n') {
-      let (_, rest) = source.split_at(mid);
-      rest.to_string()
-    } else {
-      "".to_string()
-    };
-    Ok(source)
+
+  Ok(source)
+}
+
+/// Return a validated scheme for a given module specifier.
+fn get_validated_scheme(
+  specifier: &ModuleSpecifier,
+) -> Result<String, AnyError> {
+  let scheme = specifier.as_url().scheme();
+  if !SUPPORTED_SCHEMES.contains(&scheme) {
+    Err(generic_error(format!(
+      "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
+      scheme, specifier, SUPPORTED_SCHEMES
+    )))
   } else {
-    Ok(source)
+    Ok(scheme.to_string())
   }
 }
 
@@ -265,6 +258,21 @@ fn map_js_like_extension(
   }
 }
 
+/// Remove shebangs from the start of source code strings
+fn strip_shebang(value: String) -> String {
+  if value.starts_with("#!") {
+    let value = if let Some(mid) = value.find('\n') {
+      let (_, rest) = value.split_at(mid);
+      rest.to_string()
+    } else {
+      "".to_string()
+    };
+    value
+  } else {
+    value
+  }
+}
+
 /// A structure for resolving, fetching and caching source files.
 #[derive(Clone)]
 pub struct FileFetcher {
@@ -291,6 +299,32 @@ impl FileFetcher {
     })
   }
 
+  /// Creates a `File` structure for a remote file.
+  fn build_remote_file(
+    &self,
+    specifier: &ModuleSpecifier,
+    bytes: Vec<u8>,
+    headers: &HashMap<String, String>,
+  ) -> Result<File, AnyError> {
+    let local = self.http_cache.get_cache_filename(specifier.as_url());
+    let maybe_content_type = headers.get("content-type").cloned();
+    let (media_type, maybe_charset) =
+      map_content_type(specifier, maybe_content_type);
+    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+    let maybe_types = headers.get("x-typescript-types").cloned();
+
+    Ok(File {
+      local,
+      maybe_types,
+      media_type,
+      source,
+      specifier: specifier.clone(),
+    })
+  }
+
+  /// Fetch cached remote file.
+  ///
+  /// This is a recursive operation if source file has redirections.
   fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
@@ -320,11 +354,16 @@ impl FileFetcher {
     }
     let mut bytes = Vec::new();
     source_file.read_to_end(&mut bytes)?;
-    let file = self.get_file(specifier, bytes, &headers)?;
+    let file = self.build_remote_file(specifier, bytes, &headers)?;
 
     Ok(Some(file))
   }
 
+  /// Asynchronously fetch remote source file specified by the URL following
+  /// redirects.
+  ///
+  /// **Note** this is a recursive method so it can't be "async", but needs to
+  /// return a `Pin<Box<..>>`.
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
@@ -396,7 +435,8 @@ impl FileFetcher {
             headers.clone(),
             &bytes,
           )?;
-          let file = file_fetcher.get_file(&specifier, bytes, &headers)?;
+          let file =
+            file_fetcher.build_remote_file(&specifier, bytes, &headers)?;
           Ok(file)
         }
       }
@@ -411,10 +451,9 @@ impl FileFetcher {
     permissions: &Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
-    let scheme = get_scheme(specifier)?;
+    let scheme = get_validated_scheme(specifier)?;
     permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
-      debug!("  found in in-memory cache");
       Ok(file)
     } else {
       let is_local = scheme == "file";
@@ -439,30 +478,8 @@ impl FileFetcher {
   }
 
   /// Get a previously in memory cached file.
-  pub fn get_cache(&self, specifier: &ModuleSpecifier) -> Option<File> {
+  pub fn get_cached(&self, specifier: &ModuleSpecifier) -> Option<File> {
     self.cache.get(specifier)
-  }
-
-  fn get_file(
-    &self,
-    specifier: &ModuleSpecifier,
-    bytes: Vec<u8>,
-    headers: &HashMap<String, String>,
-  ) -> Result<File, AnyError> {
-    let local = self.http_cache.get_cache_filename(specifier.as_url());
-    let maybe_content_type = headers.get("content-type").cloned();
-    let (media_type, maybe_charset) =
-      map_content_type(specifier, maybe_content_type);
-    let source = get_source_from_bytes(bytes, maybe_charset)?;
-    let maybe_types = headers.get("x-typescript-types").cloned();
-
-    Ok(File {
-      local,
-      maybe_types,
-      media_type,
-      source,
-      specifier: specifier.clone(),
-    })
   }
 
   /// Get the location of the current HTTP cache associated with the fetcher.
@@ -471,7 +488,7 @@ impl FileFetcher {
   }
 
   /// Insert a temporary module into the in memory cache for the file fetcher.
-  pub fn insert_cache(&self, file: File) -> Option<File> {
+  pub fn insert_cached(&self, file: File) -> Option<File> {
     self.cache.insert(file.specifier.clone(), file)
   }
 }
@@ -556,7 +573,7 @@ mod tests {
   }
 
   #[test]
-  fn test_get_scheme() {
+  fn test_get_validated_scheme() {
     let fixtures = vec![
       ("https://deno.land/x/mod.ts", true, "https"),
       ("http://deno.land/x/mod.ts", true, "http"),
@@ -568,12 +585,19 @@ mod tests {
 
     for (specifier, is_ok, expected) in fixtures {
       let specifier = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
-      let actual = get_scheme(&specifier);
+      let actual = get_validated_scheme(&specifier);
       assert_eq!(actual.is_ok(), is_ok);
       if is_ok {
         assert_eq!(actual.unwrap(), expected);
       }
     }
+  }
+
+  #[test]
+  fn test_strip_shebang() {
+    let value =
+      "#!/usr/bin/env deno\n\nconsole.log(\"hello deno!\");\n".to_string();
+    assert_eq!(strip_shebang(value), "\n\nconsole.log(\"hello deno!\");\n");
   }
 
   #[test]
@@ -736,7 +760,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_insert_cache() {
+  async fn test_insert_cached() {
     let (file_fetcher, temp_dir) = setup(Cache::Use, None);
     let local = temp_dir.path().join("a.ts");
     let specifier =
@@ -749,7 +773,7 @@ mod tests {
       source: "some source code".to_string(),
       specifier: specifier.clone(),
     };
-    file_fetcher.insert_cache(file.clone());
+    file_fetcher.insert_cached(file.clone());
 
     let result = file_fetcher
       .fetch(&specifier, &Permissions::allow_all())
@@ -760,7 +784,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_get_cache() {
+  async fn test_get_cached() {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(Cache::Use, None);
     let specifier = ModuleSpecifier::resolve_url(
@@ -773,7 +797,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
 
-    let maybe_file = file_fetcher.get_cache(&specifier);
+    let maybe_file = file_fetcher.get_cached(&specifier);
     assert!(maybe_file.is_some());
     let file = maybe_file.unwrap();
     assert_eq!(file.source, "export const redirect = 1;\n");

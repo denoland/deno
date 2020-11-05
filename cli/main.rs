@@ -300,7 +300,7 @@ async fn eval_command(
 
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
-  program_state.file_fetcher.insert_cache(file);
+  program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -549,7 +549,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
-  program_state.file_fetcher.insert_cache(source_file);
+  program_state.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
@@ -677,7 +677,7 @@ async fn test_command(
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
-  program_state.file_fetcher.insert_cache(source_file);
+  program_state.file_fetcher.insert_cached(source_file);
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
