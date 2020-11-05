@@ -13,7 +13,7 @@ To run formatting:
 deno run --allow-read --allow-write --allow-run --unstable ./tools/format.js
 ```
 
-## lint.py
+## lint.js
 
 This script will lint the code base (currently using dlint, clippy). It is a
 prerequisite to run this before code check in.
