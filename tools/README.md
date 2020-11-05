@@ -10,10 +10,10 @@ prerequisite to run this before code check in.
 To run formatting:
 
 ```sh
-deno run -A --unstable ./tools/format.js
+deno run --allow-read --allow-write --allow-run --unstable ./tools/format.js
 ```
 
-## lint.py
+## lint.js
 
 This script will lint the code base (currently using dlint, clippy). It is a
 prerequisite to run this before code check in.
@@ -21,5 +21,5 @@ prerequisite to run this before code check in.
 To run linting:
 
 ```sh
-deno run -A --unstable ./tools/lint.js
+deno run --allow-read --allow-write --allow-run --unstable ./tools/lint.js
 ```
