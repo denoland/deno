@@ -535,7 +535,7 @@ impl SpecifierHandler for MemoryHandler {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use crate::file_fetcher::Cache;
+  use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use tempfile::TempDir;
 
@@ -558,7 +558,7 @@ pub mod tests {
 
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&temp_dir.path().to_path_buf().join("deps")),
-      Cache::Use,
+      CacheSetting::Use,
       true,
       None,
     )

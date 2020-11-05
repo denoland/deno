@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir;
-use crate::file_fetcher::Cache;
+use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
@@ -63,13 +63,13 @@ impl ProgramState {
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
 
     let cache_usage = if flags.cached_only {
-      Cache::Only
+      CacheSetting::Only
     } else if !flags.cache_blocklist.is_empty() {
-      Cache::ReloadSome(flags.cache_blocklist.clone())
+      CacheSetting::ReloadSome(flags.cache_blocklist.clone())
     } else if flags.reload {
-      Cache::ReloadAll
+      CacheSetting::ReloadAll
     } else {
-      Cache::Use
+      CacheSetting::Use
     };
 
     let file_fetcher = FileFetcher::new(

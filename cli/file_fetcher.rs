@@ -70,7 +70,7 @@ impl FileCache {
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Cache {
+pub enum CacheSetting {
   /// Only the cached files should be used.  Any files not in the cache will
   /// error.  This is the equivalent of `--cached-only` in the CLI.
   Only,
@@ -86,13 +86,13 @@ pub enum Cache {
   Use,
 }
 
-impl Cache {
+impl CacheSetting {
   /// Returns if the cache should be used for a given specifier.
   pub fn should_use(&self, specifier: &ModuleSpecifier) -> bool {
     match self {
-      Cache::ReloadAll => false,
-      Cache::Use | Cache::Only => true,
-      Cache::ReloadSome(list) => {
+      CacheSetting::ReloadAll => false,
+      CacheSetting::Use | CacheSetting::Only => true,
+      CacheSetting::ReloadSome(list) => {
         let mut url = specifier.as_url().clone();
         url.set_fragment(None);
         if list.contains(&url.as_str().to_string()) {
@@ -278,7 +278,7 @@ fn strip_shebang(value: String) -> String {
 pub struct FileFetcher {
   allow_remote: bool,
   cache: FileCache,
-  cache_usage: Cache,
+  cache_setting: CacheSetting,
   http_cache: HttpCache,
   http_client: reqwest::Client,
 }
@@ -286,14 +286,14 @@ pub struct FileFetcher {
 impl FileFetcher {
   pub fn new(
     http_cache: HttpCache,
-    cache_usage: Cache,
+    cache_setting: CacheSetting,
     allow_remote: bool,
     maybe_ca_file: Option<&str>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       allow_remote,
       cache: FileCache::default(),
-      cache_usage,
+      cache_setting,
       http_cache,
       http_client: create_http_client(maybe_ca_file)?,
     })
@@ -380,7 +380,7 @@ impl FileFetcher {
       return futures::future::err(err).boxed_local();
     }
 
-    if self.cache_usage.should_use(specifier) {
+    if self.cache_setting.should_use(specifier) {
       match self.fetch_cached(specifier, redirect_limit) {
         Ok(Some(file)) => {
           return futures::future::ok(file).boxed_local();
@@ -392,7 +392,7 @@ impl FileFetcher {
       }
     }
 
-    if self.cache_usage == Cache::Only {
+    if self.cache_setting == CacheSetting::Only {
       return futures::future::err(custom_error(
         "NotFound",
         format!(
@@ -501,7 +501,7 @@ mod tests {
   use tempfile::TempDir;
 
   fn setup(
-    cache_usage: Cache,
+    cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>) {
     let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
@@ -509,7 +509,7 @@ mod tests {
     });
     let location = temp_dir.path().join("deps");
     let file_fetcher =
-      FileFetcher::new(HttpCache::new(&location), cache_usage, true, None)
+      FileFetcher::new(HttpCache::new(&location), cache_setting, true, None)
         .expect("setup failed");
     (file_fetcher, temp_dir)
   }
@@ -525,7 +525,7 @@ mod tests {
   }
 
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
-    let (file_fetcher, _) = setup(Cache::ReloadAll, None);
+    let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
       .fetch(specifier, &Permissions::allow_all())
       .await;
@@ -537,7 +537,7 @@ mod tests {
     specifier: &ModuleSpecifier,
   ) -> (File, HashMap<String, String>) {
     let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(Cache::ReloadAll, None);
+    let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
       .fetch_remote(specifier, &Permissions::allow_all(), 1)
       .await;
@@ -761,7 +761,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_insert_cached() {
-    let (file_fetcher, temp_dir) = setup(Cache::Use, None);
+    let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let local = temp_dir.path().join("a.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(local.as_os_str().to_str().unwrap())
@@ -786,7 +786,7 @@ mod tests {
   #[tokio::test]
   async fn test_get_cached() {
     let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(Cache::Use, None);
+    let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
     )
@@ -812,7 +812,7 @@ mod tests {
 
   #[test]
   fn test_get_http_cache_location() {
-    let (file_fetcher, temp_dir) = setup(Cache::Use, None);
+    let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let expected = temp_dir.path().join("deps");
     let actual = file_fetcher.get_http_cache_location();
     assert_eq!(actual, expected);
@@ -821,9 +821,9 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_complex() {
     let _http_server_guard = test_util::http_server();
-    let (file_fetcher, temp_dir) = setup(Cache::Use, None);
-    let (file_fetcher_01, _) = setup(Cache::Use, Some(temp_dir.clone()));
-    let (file_fetcher_02, _) = setup(Cache::Use, Some(temp_dir.clone()));
+    let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
+    let (file_fetcher_01, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
+    let (file_fetcher_02, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/subdir/mod2.ts",
     )
@@ -887,9 +887,13 @@ mod tests {
     // This creates a totally new instance, simulating another Deno process
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("deps");
-    let file_fetcher =
-      FileFetcher::new(HttpCache::new(&location), Cache::ReloadAll, true, None)
-        .expect("setup failed");
+    let file_fetcher = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::ReloadAll,
+      true,
+      None,
+    )
+    .expect("setup failed");
     let result = file_fetcher
       .fetch(&specifier, &Permissions::allow_all())
       .await;
@@ -909,9 +913,13 @@ mod tests {
       .expect("could not create temp dir")
       .into_path();
     let location = temp_dir.join("deps");
-    let file_fetcher_01 =
-      FileFetcher::new(HttpCache::new(&location), Cache::Use, true, None)
-        .expect("could not create file fetcher");
+    let file_fetcher_01 = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::Use,
+      true,
+      None,
+    )
+    .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4545/cli/tests/subdir/mismatch_ext.ts",
     )
@@ -932,9 +940,13 @@ mod tests {
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
-    let file_fetcher_02 =
-      FileFetcher::new(HttpCache::new(&location), Cache::Use, true, None)
-        .expect("could not create file fetcher");
+    let file_fetcher_02 = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::Use,
+      true,
+      None,
+    )
+    .expect("could not create file fetcher");
     let result = file_fetcher_02
       .fetch(&specifier, &Permissions::allow_all())
       .await;
@@ -956,7 +968,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_redirected() {
     let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(Cache::Use, None);
+    let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
     )
@@ -1007,7 +1019,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_multiple_redirects() {
     let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(Cache::Use, None);
+    let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
     )
@@ -1083,9 +1095,13 @@ mod tests {
       .expect("could not create temp dir")
       .into_path();
     let location = temp_dir.join("deps");
-    let file_fetcher_01 =
-      FileFetcher::new(HttpCache::new(&location), Cache::Use, true, None)
-        .expect("could not create file fetcher");
+    let file_fetcher_01 = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::Use,
+      true,
+      None,
+    )
+    .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4548/cli/tests/subdir/mismatch_ext.ts",
     )
@@ -1110,9 +1126,13 @@ mod tests {
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
-    let file_fetcher_02 =
-      FileFetcher::new(HttpCache::new(&location), Cache::Use, true, None)
-        .expect("could not create file fetcher");
+    let file_fetcher_02 = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::Use,
+      true,
+      None,
+    )
+    .expect("could not create file fetcher");
     let result = file_fetcher_02
       .fetch(&redirected_specifier, &Permissions::allow_all())
       .await;
@@ -1134,7 +1154,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetcher_limits_redirects() {
     let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(Cache::Use, None);
+    let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
     )
@@ -1160,7 +1180,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_same_host_redirect() {
     let _http_server_guard = test_util::http_server();
-    let (file_fetcher, _) = setup(Cache::Use, None);
+    let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4550/REDIRECT/cli/tests/subdir/redirects/redirect1.js",
     )
@@ -1213,9 +1233,13 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    let file_fetcher =
-      FileFetcher::new(HttpCache::new(&location), Cache::Use, false, None)
-        .expect("could not create file fetcher");
+    let file_fetcher = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::Use,
+      false,
+      None,
+    )
+    .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4545/cli/tests/002_hello.ts",
     )
@@ -1237,12 +1261,20 @@ mod tests {
       .expect("could not create temp dir")
       .into_path();
     let location = temp_dir.join("deps");
-    let file_fetcher_01 =
-      FileFetcher::new(HttpCache::new(&location), Cache::Only, true, None)
-        .expect("could not create file fetcher");
-    let file_fetcher_02 =
-      FileFetcher::new(HttpCache::new(&location), Cache::Use, true, None)
-        .expect("could not create file fetcher");
+    let file_fetcher_01 = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::Only,
+      true,
+      None,
+    )
+    .expect("could not create file fetcher");
+    let file_fetcher_02 = FileFetcher::new(
+      HttpCache::new(&location),
+      CacheSetting::Use,
+      true,
+      None,
+    )
+    .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4545/cli/tests/002_hello.ts",
     )
