@@ -73,6 +73,19 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
 
+      - name: Install Deno
+        if: |
+          !startsWith(matrix.os, 'windows')
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          echo "$HOME/.deno/bin" >> $GITHUB_PATH
+
+      - name: Install Deno (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
+
       - name: Install Python
         uses: actions/setup-python@v1
         with:
@@ -93,14 +106,15 @@ jobs:
           python --version
           rustc --version
           cargo --version
+          deno --version
 
-      - name: lint.py
+      - name: lint.js
         if: matrix.kind == 'lint'
-        run: python ./tools/lint.py
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
-      - name: test_format.py
+      - name: test_format.js
         if: matrix.kind == 'lint'
-        run: python ./tools/test_format.py
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
 
       - name: Build release
         if: |
@@ -133,7 +147,7 @@ jobs:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          python ./tools/build_benchmark_jsons.py --release
+          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
