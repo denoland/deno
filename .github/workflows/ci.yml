@@ -74,14 +74,10 @@ jobs:
           rustup component add rustfmt
 
       - name: Install Deno
+        shell: bash
         run: |-
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
-
-      - name: Install Deno (Windows)
-        if: startsWith(matrix.os, 'windows')
-        run: |-
-          echo ";$HOME\.deno\bin" >> $env:PATH
 
       - name: Install Python
         uses: actions/setup-python@v1
