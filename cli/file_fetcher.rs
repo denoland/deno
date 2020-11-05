@@ -926,7 +926,7 @@ mod tests {
     assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
     // because we converted to a "fixed" directory, we need to cleanup after
     // ourselves.
-    fs::remove_dir_all(temp_dir).expect("could not cleanup");
+    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
@@ -1104,7 +1104,7 @@ mod tests {
     assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
     // because we converted to a "fixed" directory, we need to cleanup after
     // ourselves.
-    fs::remove_dir_all(temp_dir).expect("could not cleanup");
+    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
@@ -1244,7 +1244,7 @@ mod tests {
 
     // because we converted to a "fixed" directory, we need to cleanup after
     // ourselves.
-    fs::remove_dir_all(temp_dir).expect("could not cleanup");
+    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
