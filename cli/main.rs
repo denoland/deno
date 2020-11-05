@@ -563,36 +563,43 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 }
 
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let program_state = ProgramState::new(flags.clone())?;
+  let module_resolver = || {
+    let script = script.clone();
+    let flags = flags.clone();
+    async move {
+      let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
+      let program_state = ProgramState::new(flags)?;
+      let handler = Rc::new(RefCell::new(FetchHandler::new(
+        &program_state,
+        Permissions::allow_all(),
+      )?));
+      let mut builder = module_graph::GraphBuilder::new(
+        handler,
+        program_state.maybe_import_map.clone(),
+        program_state.lockfile.clone(),
+      );
+      builder.add(&main_module, false).await?;
+      let module_graph = builder.get_graph();
 
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
-    &program_state,
-    Permissions::allow_all(),
-  )?));
-  let mut builder = module_graph::GraphBuilder::new(
-    handler,
-    program_state.maybe_import_map.clone(),
-    program_state.lockfile.clone(),
-  );
-  builder.add(&main_module, false).await?;
-  let module_graph = builder.get_graph();
+      // Find all local files in graph
+      let mut paths_to_watch: Vec<PathBuf> = module_graph
+        .get_modules()
+        .iter()
+        .filter_map(|specifier| specifier.as_url().to_file_path().ok())
+        .collect();
 
-  // Find all local files in graph
-  let mut paths_to_watch: Vec<PathBuf> = module_graph
-    .get_modules()
-    .iter()
-    .filter(|specifier| specifier.as_url().scheme() == "file")
-    .map(|specifier| specifier.as_url().to_file_path().unwrap())
-    .collect();
+      if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
+        paths_to_watch.push(
+          fs::resolve_from_cwd(std::path::Path::new(import_map)).unwrap(),
+        );
+      }
 
-  if let Some(import_map) = program_state.flags.import_map_path.clone() {
-    paths_to_watch
-      .push(fs::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap());
-  }
+      Ok((paths_to_watch, main_module))
+    }
+    .boxed_local()
+  };
 
-  // FIXME(bartlomieju): new file watcher is created on after each restart
-  file_watcher::watch_func(&paths_to_watch, move || {
+  let closure = |main_module: ModuleSpecifier| {
     // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
     // will use cached source files
     let gs = ProgramState::new(flags.clone()).unwrap();
@@ -608,8 +615,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       Ok(())
     }
     .boxed_local()
-  })
-  .await
+  };
+
+  // FIXME(bartlomieju): new file watcher is created on after each restart
+  file_watcher::watch_func_for_run(closure, module_resolver).await
 }
 
 async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {

@@ -5,6 +5,7 @@ use core::task::{Context, Poll};
 use deno_core::error::AnyError;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
+use deno_core::ModuleSpecifier;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
@@ -20,10 +21,10 @@ use std::time::Duration;
 use tokio::select;
 use tokio::time::{interval, Interval};
 
-const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
+const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(100);
 
 // TODO(bartlomieju): rename
-type WatchFuture = Pin<Box<dyn Future<Output = Result<(), AnyError>>>>;
+type WatchFuture<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
 
 struct Debounce {
   interval: Interval,
@@ -49,17 +50,21 @@ impl Stream for Debounce {
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
+    dbg!("poll_nextはいったよ");
     if inner.event_detected.load(Ordering::Relaxed) {
+      dbg!("ready!!!!!!!1");
       inner.event_detected.store(false, Ordering::Relaxed);
+      dbg!("event_detected 書き換えたよ from poll_next");
       Poll::Ready(Some(()))
     } else {
+      dbg!("pending!!!!!");
       let _ = inner.interval.poll_tick(cx);
       Poll::Pending
     }
   }
 }
 
-async fn error_handler(watch_future: WatchFuture) {
+async fn error_handler(watch_future: WatchFuture<()>) {
   let result = watch_future.await;
   if let Err(err) = result {
     let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
@@ -67,12 +72,62 @@ async fn error_handler(watch_future: WatchFuture) {
   }
 }
 
+pub async fn watch_func_for_run<F, G>(
+  closure: F,
+  module_resolver: G,
+) -> Result<(), AnyError>
+where
+  F: Fn(ModuleSpecifier) -> WatchFuture<()>,
+  G: Fn() -> WatchFuture<(Vec<PathBuf>, ModuleSpecifier)>,
+{
+  let mut debounce = Debounce::new();
+
+  loop {
+    eprintln!("======================== loop 開始 ==========================");
+    let (paths, module_specifier) = module_resolver().await?;
+    eprintln!(
+      "======================== module resolve 完了 =========================="
+    );
+    let _watcher = new_watcher(&paths, &debounce)?;
+    eprintln!(
+      "======================== watcher create 完了 =========================="
+    );
+    let func = error_handler(closure(module_specifier));
+    eprintln!(
+      "======================== closure call 完了 =========================="
+    );
+    let mut is_file_changed = false;
+    select! {
+      _ = debounce.next() => {
+        is_file_changed = true;
+        info!(
+          "{} File change detected! Restarting!",
+          colors::intense_blue("Watcher"),
+        );
+      },
+      _ = func => {},
+    }
+    if !is_file_changed {
+      info!(
+        "{} Process terminated! Restarting on file change...",
+        colors::intense_blue("Watcher"),
+      );
+      debounce.next().await;
+      info!(
+        "{} File change detected! Restarting!",
+        colors::intense_blue("Watcher"),
+      );
+    }
+  }
+}
+
+#[allow(unused)]
 pub async fn watch_func<F>(
   paths: &[PathBuf],
   closure: F,
 ) -> Result<(), AnyError>
 where
-  F: Fn() -> WatchFuture,
+  F: Fn() -> WatchFuture<()>,
 {
   let mut debounce = Debounce::new();
   // This binding is required for the watcher to work properly without being dropped.
@@ -116,6 +171,7 @@ fn new_watcher(
       if let Ok(event) = res {
         if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
         {
+          dbg!("書き換えます from watcher");
           event_detected.store(true, Ordering::Relaxed);
         }
       }
