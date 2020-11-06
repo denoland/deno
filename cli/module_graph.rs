@@ -1158,8 +1158,8 @@ impl Graph {
         // to tsc instead of the original specifier
         let specifier = self.resolve_specifier(ms);
         let module = self.get_module(specifier).unwrap();
-        println!("module: {:?}", module);
-        let specifier = if let Some((_, types_specifier)) = &module.maybe_types {
+        let specifier = if let Some((_, types_specifier)) = &module.maybe_types
+        {
           self.resolve_specifier(types_specifier)
         } else {
           specifier
@@ -1946,16 +1946,18 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_check_types_root() {
-    let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js").expect("could not resolve module");
+    let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js")
+      .expect("could not resolve module");
     let (graph, _) = setup(specifier).await;
-    let result_info = graph.check(CheckOptions {
-      debug: false,
-      emit: false,
-      lib: TypeLib::DenoWindow,
-      maybe_config_path: None,
-      reload: false
-    })
-    .expect("should have checked");
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: false,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
     assert!(result_info.diagnostics.is_empty());
   }
 
