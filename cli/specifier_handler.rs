@@ -3,7 +3,7 @@
 use crate::ast::Location;
 use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
-use crate::file_fetcher::SourceFileFetcher;
+use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -220,7 +220,7 @@ pub struct FetchHandler {
   /// dynamic imports.
   runtime_permissions: Permissions,
   /// A clone of the `program_state` file fetcher.
-  file_fetcher: SourceFileFetcher,
+  file_fetcher: FileFetcher,
 }
 
 impl FetchHandler {
@@ -258,20 +258,35 @@ impl SpecifierHandler for FetchHandler {
     };
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
-    let maybe_referrer: Option<ModuleSpecifier> =
-      if let Some(location) = &maybe_location {
-        Some(location.clone().into())
-      } else {
-        None
-      };
 
     async move {
       let source_file = file_fetcher
-        .fetch_source_file(&requested_specifier, maybe_referrer, permissions)
+        .fetch(&requested_specifier, &permissions)
         .await
         .map_err(|err| {
+          let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {
+            if e.kind() == std::io::ErrorKind::NotFound {
+              let message = if let Some(location) = &maybe_location {
+                format!(
+                  "Cannot resolve module \"{}\" from \"{}\".",
+                  requested_specifier, location.filename
+                )
+              } else {
+                format!("Cannot resolve module \"{}\".", requested_specifier)
+              };
+              custom_error("NotFound", message)
+            } else {
+              err
+            }
+          } else {
+            err
+          };
           if let Some(location) = maybe_location {
-            if !is_dynamic {
+            // Injected modules (like test and eval) come with locations, but
+            // they are confusing to the user to print out the location because
+            // they cannot actually get to the source code that is quoted, as
+            // it only exists in the runtime memory of Deno.
+            if !location.filename.contains("$deno$") {
               HandlerError::FetchErrorWithLocation(err.to_string(), location)
                 .into()
             } else {
@@ -281,9 +296,9 @@ impl SpecifierHandler for FetchHandler {
             err
           }
         })?;
-      let url = source_file.url.clone();
+      let url = source_file.specifier.as_url();
       let is_remote = url.scheme() != "file";
-      let filename = disk_cache.get_cache_filename_with_extension(&url, "meta");
+      let filename = disk_cache.get_cache_filename_with_extension(url, "meta");
       let maybe_version = if let Ok(bytes) = disk_cache.get(&filename) {
         if let Ok(compiled_file_metadata) =
           CompiledFileMetadata::from_bytes(&bytes)
@@ -313,20 +328,19 @@ impl SpecifierHandler for FetchHandler {
         maybe_emit_path =
           Some((disk_cache.location.join(emit_path), maybe_map_path));
       };
-      let specifier = ModuleSpecifier::from(url);
 
       Ok(CachedModule {
         is_remote,
         maybe_dependencies: None,
         maybe_emit,
         maybe_emit_path,
-        maybe_types: source_file.types_header,
+        maybe_types: source_file.maybe_types,
         maybe_version,
         media_type: source_file.media_type,
         requested_specifier,
-        source: source_file.source_code,
-        source_path: source_file.filename,
-        specifier,
+        source: source_file.source,
+        source_path: source_file.local,
+        specifier: source_file.specifier,
       })
     }
     .boxed_local()
@@ -521,6 +535,7 @@ impl SpecifierHandler for MemoryHandler {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use tempfile::TempDir;
 
@@ -541,12 +556,10 @@ pub mod tests {
     let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf()))
       .expect("could not setup");
 
-    let file_fetcher = SourceFileFetcher::new(
+    let file_fetcher = FileFetcher::new(
       HttpCache::new(&temp_dir.path().to_path_buf().join("deps")),
+      CacheSetting::Use,
       true,
-      Vec::new(),
-      false,
-      false,
       None,
     )
     .expect("could not setup");

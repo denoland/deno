@@ -56,8 +56,8 @@ mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
-use crate::file_fetcher::SourceFile;
-use crate::file_fetcher::SourceFileFetcher;
+use crate::file_fetcher::File;
+use crate::file_fetcher::FileFetcher;
 use crate::fs as deno_fs;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
@@ -117,7 +117,7 @@ fn print_cache_info(
   json: bool,
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
-  let modules_cache = &state.file_fetcher.http_cache.location;
+  let modules_cache = &state.file_fetcher.get_http_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
   if json {
     let output = json!({
@@ -286,22 +286,21 @@ async fn eval_command(
   }
   .into_bytes();
 
-  let source_file = SourceFile {
-    filename: main_module_url.to_file_path().unwrap(),
-    url: main_module_url,
-    types_header: None,
+  let file = File {
+    local: main_module_url.to_file_path().unwrap(),
+    maybe_types: None,
     media_type: if as_typescript {
       MediaType::TypeScript
     } else {
       MediaType::JavaScript
     },
-    source_code: String::from_utf8(source_code)?,
+    source: String::from_utf8(source_code)?,
+    specifier: ModuleSpecifier::from(main_module_url),
   };
+
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
-  program_state
-    .file_fetcher
-    .save_source_file_in_cache(&main_module, source_file);
+  program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -397,7 +396,7 @@ async fn bundle_command(
 }
 
 struct DocLoader {
-  fetcher: SourceFileFetcher,
+  fetcher: FileFetcher,
   maybe_import_map: Option<ImportMap>,
 }
 
@@ -435,7 +434,7 @@ impl DocFileLoader for DocLoader {
       .expect("Expected valid specifier");
     async move {
       let source_file = fetcher
-        .fetch_source_file(&specifier, None, Permissions::allow_all())
+        .fetch(&specifier, &Permissions::allow_all())
         .await
         .map_err(|e| {
           doc::DocError::Io(std::io::Error::new(
@@ -443,7 +442,7 @@ impl DocFileLoader for DocLoader {
             e.to_string(),
           ))
         })?;
-      Ok(source_file.source_code)
+      Ok(source_file.source)
     }
     .boxed_local()
   }
@@ -541,18 +540,16 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   std::io::stdin().read_to_end(&mut source)?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
-  let source_file = SourceFile {
-    filename: main_module_url.to_file_path().unwrap(),
-    url: main_module_url,
-    types_header: None,
+  let source_file = File {
+    local: main_module_url.to_file_path().unwrap(),
+    maybe_types: None,
     media_type: MediaType::TypeScript,
-    source_code: String::from_utf8(source)?,
+    source: String::from_utf8(source)?,
+    specifier: main_module.clone(),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
-  program_state
-    .file_fetcher
-    .save_source_file_in_cache(&main_module, source_file);
+  program_state.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
@@ -671,18 +668,16 @@ async fn test_command(
   let mut worker =
     MainWorker::new(&program_state, main_module.clone(), permissions);
   // Create a dummy source file.
-  let source_file = SourceFile {
-    filename: test_file_url.to_file_path().unwrap(),
-    url: test_file_url.clone(),
-    types_header: None,
+  let source_file = File {
+    local: test_file_url.to_file_path().unwrap(),
+    maybe_types: None,
     media_type: MediaType::TypeScript,
-    source_code: test_file.clone(),
+    source: test_file.clone(),
+    specifier: ModuleSpecifier::from(test_file_url.clone()),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
-  program_state
-    .file_fetcher
-    .save_source_file_in_cache(&main_module, source_file);
+  program_state.file_fetcher.insert_cached(source_file);
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();

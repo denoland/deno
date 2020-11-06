@@ -551,7 +551,7 @@ impl Serialize for TypeLib {
         vec!["deno.window".to_string(), "deno.unstable".to_string()]
       }
       TypeLib::UnstableDenoWorker => {
-        vec!["deno.worker".to_string(), "deno.worker".to_string()]
+        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
       }
     };
     Serialize::serialize(&value, serializer)

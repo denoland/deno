@@ -42,60 +42,77 @@ export function inspect(object: unknown, ...opts: any): string {
   });
 }
 
+/** @deprecated - use `Array.isArray()` instead. */
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
 }
 
+/** @deprecated - use `typeof value === "boolean" || value instanceof Boolean` instead. */
 export function isBoolean(value: unknown): boolean {
   return typeof value === "boolean" || value instanceof Boolean;
 }
 
+/** @deprecated - use `value === null` instead. */
 export function isNull(value: unknown): boolean {
   return value === null;
 }
 
+/** @deprecated - use `value === null || value === undefined` instead. */
 export function isNullOrUndefined(value: unknown): boolean {
   return value === null || value === undefined;
 }
 
+/** @deprecated - use `typeof value === "number" || value instanceof Number` instead. */
 export function isNumber(value: unknown): boolean {
   return typeof value === "number" || value instanceof Number;
 }
 
+/** @deprecated - use `typeof value === "string" || value instanceof String` instead. */
 export function isString(value: unknown): boolean {
   return typeof value === "string" || value instanceof String;
 }
 
+/** @deprecated - use `typeof value === "symbol"` instead. */
 export function isSymbol(value: unknown): boolean {
   return typeof value === "symbol";
 }
 
+/** @deprecated - use `value === undefined` instead. */
 export function isUndefined(value: unknown): boolean {
   return value === undefined;
 }
 
+/** @deprecated - use `value !== null && typeof value === "object"` instead. */
 export function isObject(value: unknown): boolean {
   return value !== null && typeof value === "object";
 }
 
+/** @deprecated - use `e instanceof Error` instead. */
 export function isError(e: unknown): boolean {
   return e instanceof Error;
 }
 
+/** @deprecated - use `typeof value === "function"` instead. */
 export function isFunction(value: unknown): boolean {
   return typeof value === "function";
 }
 
+/** @deprecated - use `value instanceof RegExp` instead. */
 export function isRegExp(value: unknown): boolean {
   return value instanceof RegExp;
 }
 
+/** @deprecated - use `value === null || (typeof value !== "object" && typeof value !== "function")` instead. */
 export function isPrimitive(value: unknown): boolean {
   return (
     value === null || (typeof value !== "object" && typeof value !== "function")
   );
 }
 
+/** 
+ * Returns a system error name from an error code number.
+ * @param code error code number
+ */
 export function getSystemErrorName(code: number): string | undefined {
   if (typeof code !== "number") {
     throw new ERR_INVALID_ARG_TYPE("err", "number", code);
