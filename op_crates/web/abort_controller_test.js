@@ -101,7 +101,9 @@ function abortSignalEventOrderComplex() {
   const controller = new AbortController();
   const { signal } = controller;
   signal.addEventListener("abort", () => arr.push(1));
-  signal.onabort = () => { throw new Error() };
+  signal.onabort = () => {
+    throw new Error();
+  };
   signal.addEventListener("abort", () => arr.push(3));
   signal.onabort = () => arr.push(2);
   controller.abort();

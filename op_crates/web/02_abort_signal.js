@@ -67,12 +67,12 @@
 
   function makeWrappedHandler(handler) {
     function wrappedHandler(...args) {
-      if (typeof wrappedHandler.handler !== 'function') {
+      if (typeof wrappedHandler.handler !== "function") {
         return;
       }
       return wrappedHandler.handler.call(this, ...args);
     }
-    wrappedHandler.handler = handler
+    wrappedHandler.handler = handler;
     return wrappedHandler;
   }
   function defineEventHandler(emitter, name) {
