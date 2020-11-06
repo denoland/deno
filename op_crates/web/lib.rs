@@ -166,6 +166,12 @@ mod tests {
       let mut isolate = setup();
       isolate
         .execute(
+          "big5_tests_array.js",
+          include_str!("big5_tests_array.js")
+        )
+        .unwrap();
+      isolate
+        .execute(
           "text_encoding_test.js",
           include_str!("text_encoding_test.js"),
         )
