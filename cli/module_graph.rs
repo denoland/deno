@@ -1154,11 +1154,21 @@ impl Graph {
       .roots
       .iter()
       .map(|ms| {
+        // if the root module has a types specifier, we should be sending that
+        // to tsc instead of the original specifier
+        let specifier = self.resolve_specifier(ms);
+        let module = self.get_module(specifier).unwrap();
+        let specifier = if let Some((_, types_specifier)) = &module.maybe_types
+        {
+          self.resolve_specifier(types_specifier)
+        } else {
+          specifier
+        };
         (
           // root modules can be redirects, so before we pass it to tsc we need
           // to resolve the redirect
-          self.resolve_specifier(ms).clone(),
-          self.get_media_type(ms).unwrap(),
+          specifier.clone(),
+          self.get_media_type(specifier).unwrap(),
         )
       })
       .collect()
@@ -1932,6 +1942,23 @@ pub mod tests {
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 0);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn fix_graph_check_types_root() {
+    let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js")
+      .expect("could not resolve module");
+    let (graph, _) = setup(specifier).await;
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: false,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
+    assert!(result_info.diagnostics.is_empty());
   }
 
   #[tokio::test]
