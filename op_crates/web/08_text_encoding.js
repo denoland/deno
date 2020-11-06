@@ -1115,6 +1115,109 @@
     }
   }
 
+  class TextDecoderStream {
+    #encoding = "";
+    get encoding() {
+      return this.#encoding;
+    }
+    constructor(label = "utf-8", options = { fatal: false }) {
+      if (options.ignoreBOM) {
+        this.ignoreBOM = true;
+      }
+      if (options.fatal) {
+        this.fatal = true;
+      }
+      const _label = String(label).trim().toLowerCase();
+      const encoding = encodings.get(_label);
+      if (!encoding) {
+        throw new RangeError(
+          `The encoding label provided ('${label}') is invalid.`,
+        );
+      }
+      if (!decoders.has(encoding) && encoding !== "utf-8") {
+        throw new RangeError(`Internal decoder ('${encoding}') not found.`);
+      }
+      this.#encoding = encoding;
+
+      const { writable, readable } = new TransformStream({
+        transform: (chunk, controller) => {
+          const bufferSource = chunk;
+        },
+        flush: (controller) => {
+        },
+      });
+
+      this.writable = writable;
+      this.readable = readable;
+    }
+  }
+
+  class TextEncoderStream {
+    #encoder = new UTF8Encoder();
+    #pendingHighSurrogate = null;
+    get encoding() {
+      return "utf-8";
+    }
+    constructor() {
+      const { writable, readable } = new TransformStream({
+        transform: (chunk, controller) => {
+          const inputStream = new Stream(stringToCodePoints(String(chunk)));
+          const output = new Stream([]);
+          while (true) {
+            const item = inputStream.read();
+            if (item === END_OF_STREAM) {
+              const bytes = output;
+              if (bytes.length !== 0) {
+                controller.enqueue(new Uint8Array(bytes));
+              }
+              break;
+            }
+
+            let result;
+
+            if (this.#pendingHighSurrogate !== null) {
+              const highSurrogate = this.#pendingHighSurrogate;
+              this.#pendingHighSurrogate = null;
+              if (inRange(item, 0xDC00, 0xDFFF)) {
+                result = 0x10000 + ((highSurrogate - 0xD800) << 10) + (item - 0xDC00);
+              } else {
+                inputStream.prepend(item);
+                result = 0xFFFD;
+              }
+            } else {
+              if (inRange(item, 0xD800, 0xDBFF)) {
+                this.#pendingHighSurrogate = item;
+                result = CONTINUE;
+              } else if (inRange(item, 0xDC00, 0xDFFF)) {
+                result = 0xFFFD;
+              } else {
+                result = item;
+              }
+            }
+
+            if (result !== CONTINUE) {
+              const processResult = this.#encoder.handler(result);
+              if (processResult === "finished") {
+                output.push(END_OF_STREAM);
+              } else if (processResult !== "fatal") {
+                output.push(processResult);
+              }
+            }
+          }
+        },
+        flush: (controller) => {
+          if (this.#pendingHighSurrogate !== null) {
+            controller.enqueue(new Uint8Array([0xEF, 0xBF, 0xBD]));
+          }
+        }
+      });
+
+      this.writable = writable;
+      this.readable = readable;
+    }
+  }
+
+
   // This function is based on Bjoern Hoehrmann's DFA UTF-8 decoder.
   // See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
   //
