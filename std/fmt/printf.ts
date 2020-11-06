@@ -661,11 +661,19 @@ class Printf {
   }
 }
 
+/**
+ * Converts and format a variable number of `args` as is specified by `format`.
+ * `sprintf` returns the formatted string.
+ */
 export function sprintf(format: string, ...args: unknown[]): string {
   const printf = new Printf(format, ...args);
   return printf.doPrintf();
 }
 
+/**
+ * Converts and format a variable number of `args` as is specified by `format`.
+ * `printf` writes the formatted string to standard output.
+ */
 export function printf(format: string, ...args: unknown[]): void {
   const s = sprintf(format, ...args);
   Deno.stdout.writeSync(new TextEncoder().encode(s));
