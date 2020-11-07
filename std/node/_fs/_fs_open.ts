@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { existsSync } from "../../fs/mod.ts";
 import { fromFileUrl } from "../path.ts";
 import { getOpenOptions } from "./_fs_common.ts";

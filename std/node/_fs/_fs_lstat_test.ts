@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { lstat, lstatSync } from "./_fs_lstat.ts";
 import { fail } from "../../testing/asserts.ts";
 import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";

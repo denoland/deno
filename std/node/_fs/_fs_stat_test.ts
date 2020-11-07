@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BigIntStats, stat, Stats, statSync } from "./_fs_stat.ts";
 import { assertEquals, fail } from "../../testing/asserts.ts";
 

@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { asyncIterableToCallback } from "./_fs_watch.ts";
 import Dirent from "./_fs_dirent.ts";
 import { fromFileUrl } from "../path.ts";

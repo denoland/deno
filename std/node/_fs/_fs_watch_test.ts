@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { watch } from "./_fs_watch.ts";
 import { assertEquals, fail } from "../../testing/asserts.ts";
 

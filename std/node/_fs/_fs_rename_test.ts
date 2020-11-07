@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, fail } from "../../testing/asserts.ts";
 import { rename, renameSync } from "./_fs_rename.ts";
 import { existsSync } from "../../fs/mod.ts";

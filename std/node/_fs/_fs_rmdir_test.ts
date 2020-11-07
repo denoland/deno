@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, fail } from "../../testing/asserts.ts";
 import { rmdir, rmdirSync } from "./_fs_rmdir.ts";
 import { closeSync } from "./_fs_close.ts";

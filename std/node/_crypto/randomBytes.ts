@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import Buffer from "../buffer.ts";
 
 export const MAX_RANDOM_VALUES = 65536;

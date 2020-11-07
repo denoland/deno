@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertNotEquals, fail } from "../../testing/asserts.ts";
 import { readdir, readdirSync } from "./_fs_readdir.ts";
 import { join } from "../../path/mod.ts";
