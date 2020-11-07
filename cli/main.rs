@@ -589,9 +589,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         .collect();
 
       if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
-        paths_to_watch.push(
-          fs::resolve_from_cwd(std::path::Path::new(import_map)).unwrap(),
-        );
+        paths_to_watch
+          .push(fs::resolve_from_cwd(std::path::Path::new(import_map))?);
       }
 
       Ok((paths_to_watch, main_module))
@@ -600,12 +599,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   };
 
   let closure = |main_module: ModuleSpecifier| {
-    // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
-    // will use cached source files
-    let gs = ProgramState::new(flags.clone()).unwrap();
-    let permissions = Permissions::from_flags(&flags);
-    let main_module = main_module.clone();
+    let flags = flags.clone();
     async move {
+      let permissions = Permissions::from_flags(&flags);
+      // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
+      // will use cached source files
+      let gs = ProgramState::new(flags)?;
+      let main_module = main_module.clone();
       let mut worker = MainWorker::new(&gs, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
@@ -617,7 +617,6 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .boxed_local()
   };
 
-  // FIXME(bartlomieju): new file watcher is created on after each restart
   file_watcher::watch_func_for_run(closure, module_resolver).await
 }
 

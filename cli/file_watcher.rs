@@ -82,11 +82,11 @@ where
   G: Fn() -> WatchFuture<(Vec<PathBuf>, ModuleSpecifier)>,
 {
   let mut debounce = Debounce::new();
-  let (paths, module_specifier) = module_resolver().await?;
-  let _watcher = new_watcher(&paths, &debounce)?;
 
   loop {
-    let func = error_handler(closure(module_specifier.clone()));
+    let (paths, module_specifier) = module_resolver().await?;
+    let _watcher = new_watcher(&paths, &debounce)?;
+    let func = error_handler(closure(module_specifier));
     let mut is_file_changed = false;
     select! {
       _ = debounce.next() => {
