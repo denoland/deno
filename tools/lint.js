@@ -78,28 +78,6 @@ async function clippy() {
   p.close();
 }
 
-async function license() {
-  console.log("license_check");
-
-  const p = Deno.run(
-    {
-      cmd: [
-        "deno",
-        "run",
-        "--unstable",
-        "--allow-read",
-        "https://deno.land/x/license_checker@v3.0.4/main.ts",
-        "-q",
-      ],
-    },
-  );
-  const { success } = await p.status();
-  if (!success) {
-    throw new Error("license check failed");
-  }
-  p.close();
-}
-
 async function main() {
   await Deno.chdir(ROOT_PATH);
 
@@ -115,15 +93,9 @@ async function main() {
     didLint = true;
   }
 
-  if (Deno.args.includes("--license")) {
-    await license();
-    didLint = true;
-  }
-
   if (!didLint) {
     await dlint();
     await clippy();
-    await license();
   }
 }
 
