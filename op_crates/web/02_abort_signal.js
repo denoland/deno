@@ -36,24 +36,6 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
-      // HTML specification section 8.1.5.1
-      let eventHandler = null;
-      Object.defineProperty(this, "onabort", {
-        get() {
-          return eventHandler;
-        },
-        set(value) {
-          if (eventHandler) {
-            this.removeEventListener("abort", eventHandler);
-          }
-          eventHandler = value;
-          if (typeof eventHandler === "function") {
-            this.addEventListener("abort", value);
-          }
-        },
-        configurable: true,
-        enumerable: true,
-      });
     }
 
     get aborted() {
@@ -64,7 +46,7 @@
       return "AbortSignal";
     }
   }
-
+  defineEventHandler(AbortSignal.prototype, "abort");
   class AbortController {
     #signal = new AbortSignal(illegalConstructorKey);
 
@@ -79,6 +61,29 @@
     get [Symbol.toStringTag]() {
       return "AbortController";
     }
+  }
+
+  const handlerSymbol = Symbol("eventHandlers");
+  function defineEventHandler(emitter, name) {
+    // HTML specification section 8.1.5.1
+    Object.defineProperty(emitter, `on${name}`, {
+      get() {
+        return this[handlerSymbol]?.get(name);
+      },
+      set(value) {
+        const oldListener = this[handlerSymbol]?.get(name);
+        if (oldListener) {
+          this.removeEventListener(name, oldListener);
+        }
+        if (!this[handlerSymbol]) {
+          this[handlerSymbol] = new Map();
+        }
+        this.addEventListener(name, value);
+        this[handlerSymbol].set(value);
+      },
+      configurable: true,
+      enumerable: true,
+    });
   }
 
   window.AbortSignal = AbortSignal;

@@ -95,6 +95,12 @@ function abortSignalEventOrder() {
   assertEquals(arr[1], 2);
   assertEquals(arr[2], 3);
 }
+function abortSignalHandlerLocation() {
+  const controller = new AbortController();
+  const { signal } = controller;
+  const abortHandler = Object.getOwnPropertyDescriptor(signal, "onabort");
+  assertEquals(abortHandler, undefined);
+}
 function main() {
   basicAbortController();
   signalCallsOnabort();
@@ -103,6 +109,7 @@ function main() {
   controllerHasProperToString();
   abortSignalIllegalConstructor();
   abortSignalEventOrder();
+  abortSignalHandlerLocation();
 }
 
 main();

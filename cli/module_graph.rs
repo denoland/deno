@@ -441,7 +441,9 @@ impl Module {
     } else {
       None
     };
+    let mut remapped_import = false;
     let specifier = if let Some(module_specifier) = maybe_resolve {
+      remapped_import = true;
       module_specifier
     } else {
       ModuleSpecifier::resolve_import(specifier, self.specifier.as_str())?
@@ -462,9 +464,11 @@ impl Module {
       );
     }
 
-    // Disallow a remote URL from trying to import a local URL
+    // Disallow a remote URL from trying to import a local URL, unless it is a
+    // remapped import via the import map
     if (referrer_scheme == "https" || referrer_scheme == "http")
       && !(specifier_scheme == "https" || specifier_scheme == "http")
+      && !remapped_import
     {
       return Err(
         GraphError::InvalidLocalImport(specifier.clone(), location).into(),
@@ -551,7 +555,7 @@ impl Serialize for TypeLib {
         vec!["deno.window".to_string(), "deno.unstable".to_string()]
       }
       TypeLib::UnstableDenoWorker => {
-        vec!["deno.worker".to_string(), "deno.worker".to_string()]
+        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
       }
     };
     Serialize::serialize(&value, serializer)
@@ -1154,11 +1158,21 @@ impl Graph {
       .roots
       .iter()
       .map(|ms| {
+        // if the root module has a types specifier, we should be sending that
+        // to tsc instead of the original specifier
+        let specifier = self.resolve_specifier(ms);
+        let module = self.get_module(specifier).unwrap();
+        let specifier = if let Some((_, types_specifier)) = &module.maybe_types
+        {
+          self.resolve_specifier(types_specifier)
+        } else {
+          specifier
+        };
         (
           // root modules can be redirects, so before we pass it to tsc we need
           // to resolve the redirect
-          self.resolve_specifier(ms).clone(),
-          self.get_media_type(ms).unwrap(),
+          specifier.clone(),
+          self.get_media_type(specifier).unwrap(),
         )
       })
       .collect()
@@ -1935,6 +1949,23 @@ pub mod tests {
   }
 
   #[tokio::test]
+  async fn fix_graph_check_types_root() {
+    let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js")
+      .expect("could not resolve module");
+    let (graph, _) = setup(specifier).await;
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: false,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
+    assert!(result_info.diagnostics.is_empty());
+  }
+
+  #[tokio::test]
   async fn test_graph_check_user_config() {
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
@@ -2182,6 +2213,34 @@ pub mod tests {
         );
       }
     }
+  }
+
+  #[tokio::test]
+  async fn test_graph_import_map_remote_to_local() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let maybe_import_map = Some(
+      ImportMap::from_json(
+        "file:///tests/importmap.json",
+        r#"{
+      "imports": {
+        "https://deno.land/x/b/mod.js": "./b/mod.js"
+      }
+    }
+    "#,
+      )
+      .expect("could not parse import map"),
+    );
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..Default::default()
+    }));
+    let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/importremap.ts")
+        .expect("could not resolve module");
+    builder.add(&specifier, false).await.expect("could not add");
+    builder.get_graph();
   }
 
   #[tokio::test]

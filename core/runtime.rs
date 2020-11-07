@@ -191,6 +191,7 @@ pub struct RuntimeOptions {
 }
 
 impl JsRuntime {
+  /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
@@ -320,6 +321,8 @@ impl JsRuntime {
     }
   }
 
+  /// Returns the runtime's op state, which can be used to maintain ops
+  /// and access resources between op calls.
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
     let state_rc = Self::state(self.v8_isolate());
     let state = state_rc.borrow();
@@ -327,6 +330,9 @@ impl JsRuntime {
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
+  ///
+  /// The execution takes place on the current global context, so it is possible
+  /// to maintain local JS state and invoke this method multiple times.
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
@@ -391,6 +397,15 @@ impl JsRuntime {
     snapshot
   }
 
+  /// Registers an op that can be called from JavaScript.
+  ///
+  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
+  /// which can be called using the provided `name`.
+  ///
+  /// This function provides byte-level bindings. To pass data via JSON, the
+  /// following functions can be passed as an argument for `op_fn`:
+  /// * [json_op_sync()](fn.json_op_sync.html)
+  /// * [json_op_async()](fn.json_op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,

@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir;
-use crate::file_fetcher::SourceFileFetcher;
+use crate::file_fetcher::CacheSetting;
+use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
@@ -47,7 +48,7 @@ pub struct ProgramState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   pub dir: deno_dir::DenoDir,
-  pub file_fetcher: SourceFileFetcher,
+  pub file_fetcher: FileFetcher,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -61,12 +62,20 @@ impl ProgramState {
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
 
-    let file_fetcher = SourceFileFetcher::new(
+    let cache_usage = if flags.cached_only {
+      CacheSetting::Only
+    } else if !flags.cache_blocklist.is_empty() {
+      CacheSetting::ReloadSome(flags.cache_blocklist.clone())
+    } else if flags.reload {
+      CacheSetting::ReloadAll
+    } else {
+      CacheSetting::Use
+    };
+
+    let file_fetcher = FileFetcher::new(
       http_cache,
-      !flags.reload,
-      flags.cache_blocklist.clone(),
-      flags.no_remote,
-      flags.cached_only,
+      cache_usage,
+      !flags.no_remote,
       ca_file.as_deref(),
     )?;
 
@@ -175,16 +184,20 @@ impl ProgramState {
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, AnyError> {
+    // TODO(@kitsonk) this really needs to be avoided and refactored out, as we
+    // really should just be getting this from the module graph.
     let out = self
       .file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
+      .get_cached(&module_specifier)
       .expect("Cached source file doesn't exist");
 
-    let url = out.url.clone();
-    let compiled_module = if let Some((code, _)) = self.get_emit(&url) {
+    let specifier = out.specifier.clone();
+    let compiled_module = if let Some((code, _)) =
+      self.get_emit(&specifier.as_url())
+    {
       CompiledModule {
         code: String::from_utf8(code).unwrap(),
-        name: out.url.to_string(),
+        name: specifier.as_url().to_string(),
       }
     // We expect a compiled source for any non-JavaScript files, except for
     // local files that have an unknown media type and no referrer (root modules
@@ -192,7 +205,7 @@ impl ProgramState {
     } else if out.media_type != MediaType::JavaScript
       && !(out.media_type == MediaType::Unknown
         && maybe_referrer.is_none()
-        && url.scheme() == "file")
+        && specifier.as_url().scheme() == "file")
     {
       let message = if let Some(referrer) = maybe_referrer {
         format!("Compiled module not found \"{}\"\n  From: {}\n    If the source module contains only types, use `import type` and `export type` to import it instead.", module_specifier, referrer)
@@ -202,12 +215,12 @@ impl ProgramState {
       info!("{}: {}", crate::colors::yellow("warning"), message);
       CompiledModule {
         code: "".to_string(),
-        name: out.url.to_string(),
+        name: specifier.as_url().to_string(),
       }
     } else {
       CompiledModule {
-        code: out.source_code,
-        name: out.url.to_string(),
+        code: out.source,
+        name: specifier.as_url().to_string(),
       }
     };
 
@@ -310,16 +323,13 @@ impl SourceMapGetter for ProgramState {
     line_number: usize,
   ) -> Option<String> {
     if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
-      self
-        .file_fetcher
-        .fetch_cached_source_file(&specifier, Permissions::allow_all())
-        .map(|out| {
-          // Do NOT use .lines(): it skips the terminating empty line.
-          // (due to internally using .split_terminator() instead of .split())
-          let lines: Vec<&str> = out.source_code.split('\n').collect();
-          assert!(lines.len() > line_number);
-          lines[line_number].to_string()
-        })
+      self.file_fetcher.get_cached(&specifier).map(|out| {
+        // Do NOT use .lines(): it skips the terminating empty line.
+        // (due to internally using .split_terminator() instead of .split())
+        let lines: Vec<&str> = out.source.split('\n').collect();
+        assert!(lines.len() > line_number);
+        lines[line_number].to_string()
+      })
     } else {
       None
     }
