@@ -110,13 +110,15 @@ jobs:
 
       - name: lint.js
         if: matrix.kind == 'lint'
-        run: |
-          deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
-          deno run --unstable --allow-read --allow-run ./tools/check_license.js
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
       - name: test_format.js
         if: matrix.kind == 'lint'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
+
+      - name: check_license.js
+        if: matrix.kind == 'lint'
+        run: deno run --unstable --allow-read --allow-run ./tools/check_license.js
 
       - name: Build release
         if: |
