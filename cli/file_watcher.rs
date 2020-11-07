@@ -113,45 +113,6 @@ where
   }
 }
 
-#[allow(unused)]
-pub async fn watch_func<F>(
-  paths: &[PathBuf],
-  closure: F,
-) -> Result<(), AnyError>
-where
-  F: Fn() -> WatchFuture<()>,
-{
-  let mut debounce = Debounce::new();
-  // This binding is required for the watcher to work properly without being dropped.
-  let _watcher = new_watcher(paths, &debounce)?;
-
-  loop {
-    let func = error_handler(closure());
-    let mut is_file_changed = false;
-    select! {
-      _ = debounce.next() => {
-        is_file_changed = true;
-        info!(
-          "{} File change detected! Restarting!",
-          colors::intense_blue("Watcher"),
-        );
-      },
-      _ = func => {},
-    }
-    if !is_file_changed {
-      info!(
-        "{} Process terminated! Restarting on file change...",
-        colors::intense_blue("Watcher"),
-      );
-      debounce.next().await;
-      info!(
-        "{} File change detected! Restarting!",
-        colors::intense_blue("Watcher"),
-      );
-    }
-  }
-}
-
 fn new_watcher(
   paths: &[PathBuf],
   debounce: &Debounce,
