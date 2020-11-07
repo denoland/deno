@@ -1211,10 +1211,34 @@ fn run_watch() {
     .expect("error writing file");
 
   // Events from the file watcher is "debounced", so we need to wait for the next execution to start
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(std::time::Duration::from_millis(500));
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+
+  // Add dependency
+  let another_file = t.path().join("another_file.js");
+  std::fs::write(&another_file, "export const foo = 0;")
+    .expect("error writing file");
+  std::fs::write(
+    &file_to_watch,
+    "import { foo } from './another_file.js'; console.log(foo);",
+  )
+  .expect("error writing file");
+
+  std::thread::sleep(std::time::Duration::from_millis(500));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("0"));
+  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+
+  // Confirm that restarting occurs when a new file is updated
+  std::fs::write(&another_file, "export const foo = 42;")
+    .expect("error writing file");
+
+  std::thread::sleep(std::time::Duration::from_millis(500));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
 
   child.kill().unwrap();
