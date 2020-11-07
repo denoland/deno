@@ -441,7 +441,9 @@ impl Module {
     } else {
       None
     };
+    let mut remapped_import = false;
     let specifier = if let Some(module_specifier) = maybe_resolve {
+      remapped_import = true;
       module_specifier
     } else {
       ModuleSpecifier::resolve_import(specifier, self.specifier.as_str())?
@@ -462,9 +464,11 @@ impl Module {
       );
     }
 
-    // Disallow a remote URL from trying to import a local URL
+    // Disallow a remote URL from trying to import a local URL, unless it is a
+    // remapped import via the import map
     if (referrer_scheme == "https" || referrer_scheme == "http")
       && !(specifier_scheme == "https" || specifier_scheme == "http")
+      && !remapped_import
     {
       return Err(
         GraphError::InvalidLocalImport(specifier.clone(), location).into(),
@@ -2209,6 +2213,34 @@ pub mod tests {
         );
       }
     }
+  }
+
+  #[tokio::test]
+  async fn test_graph_import_map_remote_to_local() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let maybe_import_map = Some(
+      ImportMap::from_json(
+        "file:///tests/importmap.json",
+        r#"{
+      "imports": {
+        "https://deno.land/x/b/mod.js": "./b/mod.js"
+      }
+    }
+    "#,
+      )
+      .expect("could not parse import map"),
+    );
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..Default::default()
+    }));
+    let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/importremap.ts")
+        .expect("could not resolve module");
+    builder.add(&specifier, false).await.expect("could not add");
+    builder.get_graph();
   }
 
   #[tokio::test]
