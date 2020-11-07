@@ -19,22 +19,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
-use tokio::time::{interval, Interval};
+use tokio::time::{delay_for, Delay};
 
-const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(100);
+const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(500);
 
 // TODO(bartlomieju): rename
 type WatchFuture<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
 
 struct Debounce {
-  interval: Interval,
+  delay: Delay,
   event_detected: Arc<AtomicBool>,
 }
 
 impl Debounce {
   fn new() -> Self {
     Self {
-      interval: interval(DEBOUNCE_INTERVAL_MS),
+      delay: delay_for(DEBOUNCE_INTERVAL_MS),
       event_detected: Arc::new(AtomicBool::new(false)),
     }
   }
@@ -50,16 +50,17 @@ impl Stream for Debounce {
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
-    dbg!("poll_nextはいったよ");
     if inner.event_detected.load(Ordering::Relaxed) {
-      dbg!("ready!!!!!!!1");
       inner.event_detected.store(false, Ordering::Relaxed);
-      dbg!("event_detected 書き換えたよ from poll_next");
       Poll::Ready(Some(()))
     } else {
-      dbg!("pending!!!!!");
-      let _ = inner.interval.poll_tick(cx);
-      Poll::Pending
+      match Pin::new(&mut inner.delay).poll(cx) {
+        Poll::Ready(_) => {
+          inner.delay = delay_for(DEBOUNCE_INTERVAL_MS);
+          Poll::Pending
+        }
+        Poll::Pending => Poll::Pending,
+      }
     }
   }
 }
@@ -81,21 +82,11 @@ where
   G: Fn() -> WatchFuture<(Vec<PathBuf>, ModuleSpecifier)>,
 {
   let mut debounce = Debounce::new();
+  let (paths, module_specifier) = module_resolver().await?;
+  let _watcher = new_watcher(&paths, &debounce)?;
 
   loop {
-    eprintln!("======================== loop 開始 ==========================");
-    let (paths, module_specifier) = module_resolver().await?;
-    eprintln!(
-      "======================== module resolve 完了 =========================="
-    );
-    let _watcher = new_watcher(&paths, &debounce)?;
-    eprintln!(
-      "======================== watcher create 完了 =========================="
-    );
-    let func = error_handler(closure(module_specifier));
-    eprintln!(
-      "======================== closure call 完了 =========================="
-    );
+    let func = error_handler(closure(module_specifier.clone()));
     let mut is_file_changed = false;
     select! {
       _ = debounce.next() => {
@@ -106,7 +97,8 @@ where
         );
       },
       _ = func => {},
-    }
+    };
+
     if !is_file_changed {
       info!(
         "{} Process terminated! Restarting on file change...",
@@ -171,7 +163,6 @@ fn new_watcher(
       if let Ok(event) = res {
         if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
         {
-          dbg!("書き換えます from watcher");
           event_detected.store(true, Ordering::Relaxed);
         }
       }
