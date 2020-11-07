@@ -441,7 +441,9 @@ impl Module {
     } else {
       None
     };
+    let mut remapped_import = false;
     let specifier = if let Some(module_specifier) = maybe_resolve {
+      remapped_import = true;
       module_specifier
     } else {
       ModuleSpecifier::resolve_import(specifier, self.specifier.as_str())?
@@ -462,9 +464,11 @@ impl Module {
       );
     }
 
-    // Disallow a remote URL from trying to import a local URL
+    // Disallow a remote URL from trying to import a local URL, unless it is a
+    // remapped import via the import map
     if (referrer_scheme == "https" || referrer_scheme == "http")
       && !(specifier_scheme == "https" || specifier_scheme == "http")
+      && !remapped_import
     {
       return Err(
         GraphError::InvalidLocalImport(specifier.clone(), location).into(),
@@ -771,7 +775,7 @@ impl Graph {
       info!("{} {}", colors::green("Check"), specifier);
     }
 
-    let root_names = self.get_root_names();
+    let root_names = self.get_root_names(!config.get_check_js());
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
       vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
@@ -893,7 +897,7 @@ impl Graph {
         None
       };
 
-    let root_names = self.get_root_names();
+    let root_names = self.get_root_names(!config.get_check_js());
     let hash_data =
       vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
@@ -1149,17 +1153,54 @@ impl Graph {
   /// Transform `self.roots` into something that works for `tsc`, because `tsc`
   /// doesn't like root names without extensions that match its expectations,
   /// nor does it have any concept of redirection, so we have to resolve all
-  /// that upfront before feeding it to `tsc`.
-  fn get_root_names(&self) -> Vec<(ModuleSpecifier, MediaType)> {
-    self
-      .roots
+  /// that upfront before feeding it to `tsc`. In addition, if checkJs is not
+  /// true, we should pass all emittable files in as the roots, so that `tsc`
+  /// type checks them and potentially emits them.
+  fn get_root_names(
+    &self,
+    include_emittable: bool,
+  ) -> Vec<(ModuleSpecifier, MediaType)> {
+    let root_names: Vec<ModuleSpecifier> = if include_emittable {
+      // in situations where there is `allowJs` with tsc, but not `checkJs`,
+      // then tsc will not parse the whole module graph, meaning that any
+      // JavaScript importing TypeScript will get ignored, meaning that those
+      // files will not get emitted.  To counter act that behavior, we will
+      // include all modules that are emittable.
+      let mut specifiers = HashSet::<&ModuleSpecifier>::new();
+      for (_, module) in self.modules.iter() {
+        if module.media_type == MediaType::JSX
+          || module.media_type == MediaType::TypeScript
+          || module.media_type == MediaType::TSX
+        {
+          specifiers.insert(&module.specifier);
+        }
+      }
+      // We should include all the original roots as well.
+      for specifier in self.roots.iter() {
+        specifiers.insert(specifier);
+      }
+      specifiers.into_iter().cloned().collect()
+    } else {
+      self.roots.clone()
+    };
+    root_names
       .iter()
       .map(|ms| {
+        // if the root module has a types specifier, we should be sending that
+        // to tsc instead of the original specifier
+        let specifier = self.resolve_specifier(ms);
+        let module = self.get_module(specifier).unwrap();
+        let specifier = if let Some((_, types_specifier)) = &module.maybe_types
+        {
+          self.resolve_specifier(types_specifier)
+        } else {
+          specifier
+        };
         (
           // root modules can be redirects, so before we pass it to tsc we need
           // to resolve the redirect
-          self.resolve_specifier(ms).clone(),
-          self.get_media_type(ms).unwrap(),
+          specifier.clone(),
+          self.get_media_type(specifier).unwrap(),
         )
       })
       .collect()
@@ -1404,9 +1445,10 @@ impl Graph {
       if module.media_type == MediaType::Dts {
         continue;
       }
-      // if we don't have check_js enabled, we won't touch non TypeScript
+      // if we don't have check_js enabled, we won't touch non TypeScript or JSX
       // modules
       if !(emit_options.check_js
+        || module.media_type == MediaType::JSX
         || module.media_type == MediaType::TSX
         || module.media_type == MediaType::TypeScript)
       {
@@ -1936,6 +1978,23 @@ pub mod tests {
   }
 
   #[tokio::test]
+  async fn fix_graph_check_types_root() {
+    let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js")
+      .expect("could not resolve module");
+    let (graph, _) = setup(specifier).await;
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: false,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
+    assert!(result_info.diagnostics.is_empty());
+  }
+
+  #[tokio::test]
   async fn test_graph_check_user_config() {
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
@@ -2183,6 +2242,34 @@ pub mod tests {
         );
       }
     }
+  }
+
+  #[tokio::test]
+  async fn test_graph_import_map_remote_to_local() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let maybe_import_map = Some(
+      ImportMap::from_json(
+        "file:///tests/importmap.json",
+        r#"{
+      "imports": {
+        "https://deno.land/x/b/mod.js": "./b/mod.js"
+      }
+    }
+    "#,
+      )
+      .expect("could not parse import map"),
+    );
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..Default::default()
+    }));
+    let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/importremap.ts")
+        .expect("could not resolve module");
+    builder.add(&specifier, false).await.expect("could not add");
+    builder.get_graph();
   }
 
   #[tokio::test]

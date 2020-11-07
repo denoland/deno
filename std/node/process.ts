@@ -142,23 +142,9 @@ export const env = new Proxy(process.env, {});
 // import process from './std/node/process.ts'
 export default process;
 
-// Define the type for the global declration
-type Process = typeof process;
-
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
   writable: true,
   configurable: false,
   value: "process",
 });
-
-Object.defineProperty(globalThis, "process", {
-  value: process,
-  enumerable: false,
-  writable: true,
-  configurable: true,
-});
-
-declare global {
-  const process: Process;
-}

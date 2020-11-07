@@ -599,10 +599,3 @@ export default class Buffer extends Uint8Array {
 }
 
 export { Buffer };
-
-Object.defineProperty(globalThis, "Buffer", {
-  value: Buffer,
-  enumerable: false,
-  writable: true,
-  configurable: true,
-});

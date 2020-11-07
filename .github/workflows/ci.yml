@@ -37,6 +37,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
+      CARGO_TERM_COLOR: always
 
     steps:
       - name: Configure git
