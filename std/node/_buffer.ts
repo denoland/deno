@@ -73,7 +73,7 @@ function base64ByteLength(str: string, bytes: number): number {
 /**
  * See also https://nodejs.org/api/buffer.html
  */
-export default class Buffer extends Uint8Array {
+export class Buffer extends Uint8Array {
   /**
    * Allocates a new Buffer of size bytes.
    */
@@ -597,5 +597,3 @@ export default class Buffer extends Uint8Array {
     return offset + 4;
   }
 }
-
-export { Buffer };

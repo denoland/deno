@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
-import Buffer from "./buffer.ts";
+import { Buffer } from "./buffer.ts";
 
 Deno.test({
   name: "Buffer global scope",
