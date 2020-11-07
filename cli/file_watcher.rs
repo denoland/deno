@@ -21,7 +21,7 @@ use std::time::Duration;
 use tokio::select;
 use tokio::time::{delay_for, Delay};
 
-const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(500);
+const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
 
 // TODO(bartlomieju): rename
 type WatchFuture<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
