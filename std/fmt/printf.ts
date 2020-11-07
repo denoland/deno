@@ -253,6 +253,7 @@ class Printf {
     }
   }
 
+  /** Handle positional */
   handlePositional(): void {
     if (this.format[this.i] !== "[") {
       // sanity only
@@ -285,6 +286,7 @@ class Printf {
     return;
   }
 
+  /** Handle less than */
   handleLessThan(): string {
     // deno-lint-ignore no-explicit-any
     const arg = this.args[this.argNum] as any;
@@ -299,6 +301,7 @@ class Printf {
     return str + " ]";
   }
 
+  /** Handle verb */
   handleVerb(): void {
     const verb = this.format[this.i];
     this.verb = verb;
@@ -366,7 +369,7 @@ class Printf {
 
   /**
    * Pad a string
-   * @param s
+   * @param s text to pad
    */
   pad(s: string): string {
     const padding = this.flags.zero ? "0" : " ";
