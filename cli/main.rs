@@ -845,12 +845,12 @@ pub fn main() {
     DenoSubcommand::Upgrade {
       force,
       dry_run,
+      nightly,
       version,
       output,
       ca_file,
-    } => {
-      upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
-    }
+    } => upgrade_command(dry_run, force, nightly, version, output, ca_file)
+      .boxed_local(),
   };
 
   let result = tokio_util::run_basic(fut);

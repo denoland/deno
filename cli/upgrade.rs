@@ -9,15 +9,12 @@
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
 use crate::AnyError;
-use deno_core::error::custom_error;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_fetch::reqwest;
 use deno_fetch::reqwest::redirect::Policy;
 use deno_fetch::reqwest::Client;
-use regex::Regex;
 use semver_parser::version::parse as semver_parse;
-use semver_parser::version::Version;
 use std::fs;
 use std::future::Future;
 use std::io::prelude::*;
@@ -37,18 +34,23 @@ const ARCHIVE_NAME: &str = "deno-x86_64-apple-darwin.zip";
 #[cfg(target_os = "linux")]
 const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
 
-async fn get_latest_version(client: &Client) -> Result<Version, AnyError> {
+async fn get_latest_version(
+  client: &Client,
+  release_url: &str,
+) -> Result<String, AnyError> {
   println!("Checking for latest version");
-  let body = client
-    .get(Url::parse(
-      "https://github.com/denoland/deno/releases/latest",
-    )?)
+  let res = client
+    .get(Url::parse(&*format!("{}/latest", release_url))?)
     .send()
-    .await?
-    .text()
     .await?;
-  let v = find_version(&body)?;
-  Ok(semver_parse(&v).unwrap())
+  let version = res
+    .url()
+    .path_segments()
+    .unwrap()
+    .last()
+    .unwrap();
+
+  Ok(version.replace("v", ""))
 }
 
 /// Asynchronously updates deno executable to greatest version
@@ -56,6 +58,7 @@ async fn get_latest_version(client: &Client) -> Result<Version, AnyError> {
 pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
+  nightly: bool,
   version: Option<String>,
   output: Option<PathBuf>,
   ca_file: Option<String>,
@@ -71,32 +74,44 @@ pub async fn upgrade_command(
 
   let client = client_builder.build()?;
 
-  let current_version = semver_parse(crate::version::DENO).unwrap();
+  let current_version = crate::version::deno();
+
+  let release_url = if nightly {
+    "https://github.com/denoland/deno/releases"
+  } else {
+    "https://github.com/denoland/deno_nightly/releases"
+  };
 
   let install_version = match version {
-    Some(passed_version) => match semver_parse(&passed_version) {
-      Ok(ver) => {
-        if !force && current_version == ver {
-          println!("Version {} is already installed", &ver);
-          return Ok(());
-        } else {
-          ver
-        }
+    Some(passed_version) => {
+      if !force && current_version == passed_version {
+        println!("Version {} is already installed", &passed_version);
+        return Ok(());
+      } else {
+        passed_version
       }
-      Err(_) => {
-        eprintln!("Invalid semver passed");
-        std::process::exit(1)
-      }
-    },
+    }
     None => {
-      let latest_version = get_latest_version(&client).await?;
+      let latest_version = get_latest_version(&client, release_url).await?;
 
-      if !force && current_version >= latest_version {
+      let current_is_most_recent = if nightly && crate::version::is_nightly() {
+        let current = current_version.replace(".", "").parse::<u32>().unwrap();
+        let latest = latest_version.replace(".", "").parse::<u32>().unwrap();
+        current >= latest
+      } else if !nightly && !crate::version::is_nightly() {
+        let current = semver_parse(current_version).unwrap();
+        let latest = semver_parse(&*latest_version).unwrap();
+        current >= latest
+      } else {
+        false
+      };
+
+      if !force && current_is_most_recent {
         println!(
           "Local deno version {} is the most recent release",
-          &crate::version::DENO
+          &current_version
         );
-        return Ok(());
+        return Ok(())
       } else {
         latest_version
       }
@@ -104,7 +119,7 @@ pub async fn upgrade_command(
   };
 
   let archive_data = download_package(
-    &compose_url_to_exec(&install_version)?,
+    &compose_url_to_exec(release_url, &install_version)?,
     client,
     &install_version,
   )
@@ -133,7 +148,7 @@ pub async fn upgrade_command(
 fn download_package(
   url: &Url,
   client: Client,
-  version: &Version,
+  version: &str,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, AnyError>>>> {
   println!("downloading {}", url);
   let url = url.clone();
@@ -148,8 +163,8 @@ fn download_package(
         match result {
           FetchOnceResult::Code(source, _) => Ok(source),
           FetchOnceResult::NotModified => unreachable!(),
-          FetchOnceResult::Redirect(_url, _) => {
-            download_package(&_url, client, &version).await
+          FetchOnceResult::Redirect(url, _) => {
+            download_package(&url, client, version).await
           }
         }
       }
@@ -162,21 +177,12 @@ fn download_package(
   fut.boxed_local()
 }
 
-fn compose_url_to_exec(version: &Version) -> Result<Url, AnyError> {
-  let s = format!(
-    "https://github.com/denoland/deno/releases/download/v{}/{}",
-    version, ARCHIVE_NAME
-  );
+fn compose_url_to_exec(
+  release_url: &str,
+  version: &str,
+) -> Result<Url, AnyError> {
+  let s = format!("{}/download/v{}/{}", release_url, version, ARCHIVE_NAME);
   Url::parse(&s).map_err(AnyError::from)
-}
-
-fn find_version(text: &str) -> Result<String, AnyError> {
-  let re = Regex::new(r#"v([^\?]+)?""#)?;
-  if let Some(_mat) = re.find(text) {
-    let mat = _mat.as_str();
-    return Ok(mat[1..mat.len() - 1].to_string());
-  }
-  Err(custom_error("NotFound", "Cannot read latest tag version"))
 }
 
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
@@ -261,7 +267,7 @@ fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
 
 fn check_exe(
   exe_path: &Path,
-  expected_version: &Version,
+  expected_version: &str,
 ) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
@@ -274,15 +280,11 @@ fn check_exe(
 }
 
 #[test]
-fn test_find_version() {
-  let url = "<html><body>You are being <a href=\"https://github.com/denoland/deno/releases/tag/v0.36.0\">redirected</a>.</body></html>";
-  assert_eq!(find_version(url).unwrap(), "0.36.0".to_string());
-}
-
-#[test]
 fn test_compose_url_to_exec() {
-  let v = semver_parse("0.0.1").unwrap();
-  let url = compose_url_to_exec(&v).unwrap();
+  let v = String::from("0.0.1");
+  let url =
+    compose_url_to_exec("https://github.com/denoland/deno/releases/", &v)
+      .unwrap();
   #[cfg(windows)]
   assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-pc-windows-msvc.zip");
   #[cfg(target_os = "macos")]
