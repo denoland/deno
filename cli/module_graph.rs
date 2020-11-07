@@ -774,7 +774,7 @@ impl Graph {
       info!("{} {}", colors::green("Check"), specifier);
     }
 
-    let root_names = self.get_root_names();
+    let root_names = self.get_root_names(!config.get_check_js());
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
@@ -896,7 +896,7 @@ impl Graph {
         None
       };
 
-    let root_names = self.get_root_names();
+    let root_names = self.get_root_names(!config.get_check_js());
     let hash_data =
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
@@ -1152,10 +1152,37 @@ impl Graph {
   /// Transform `self.roots` into something that works for `tsc`, because `tsc`
   /// doesn't like root names without extensions that match its expectations,
   /// nor does it have any concept of redirection, so we have to resolve all
-  /// that upfront before feeding it to `tsc`.
-  fn get_root_names(&self) -> Vec<(ModuleSpecifier, MediaType)> {
-    self
-      .roots
+  /// that upfront before feeding it to `tsc`. In addition, if checkJs is not
+  /// true, we should pass all emittable files in as the roots, so that `tsc`
+  /// type checks them and potentially emits them.
+  fn get_root_names(
+    &self,
+    include_emittable: bool,
+  ) -> Vec<(ModuleSpecifier, MediaType)> {
+    let root_names: Vec<ModuleSpecifier> = if include_emittable {
+      // in situations where there is `allowJs` with tsc, but not `checkJs`,
+      // then tsc will not parse the whole module graph, meaning that any
+      // JavaScript importing TypeScript will get ignored, meaning that those
+      // files will not get emitted.  To counter act that behavior, we will
+      // include all modules that are emittable.
+      let mut specifiers = HashSet::<&ModuleSpecifier>::new();
+      for (_, module) in self.modules.iter() {
+        if module.media_type == MediaType::JSX
+          || module.media_type == MediaType::TypeScript
+          || module.media_type == MediaType::TSX
+        {
+          specifiers.insert(&module.specifier);
+        }
+      }
+      // We should include all the original roots as well.
+      for specifier in self.roots.iter() {
+        specifiers.insert(specifier);
+      }
+      specifiers.into_iter().cloned().collect()
+    } else {
+      self.roots.clone()
+    };
+    root_names
       .iter()
       .map(|ms| {
         // if the root module has a types specifier, we should be sending that
@@ -1417,9 +1444,10 @@ impl Graph {
       if module.media_type == MediaType::Dts {
         continue;
       }
-      // if we don't have check_js enabled, we won't touch non TypeScript
+      // if we don't have check_js enabled, we won't touch non TypeScript or JSX
       // modules
       if !(emit_options.check_js
+        || module.media_type == MediaType::JSX
         || module.media_type == MediaType::TSX
         || module.media_type == MediaType::TypeScript)
       {

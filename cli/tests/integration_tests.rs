@@ -2865,6 +2865,11 @@ itest!(tsx_imports {
   output: "tsx_imports.ts.out",
 });
 
+itest!(fix_emittable_skipped {
+  args: "run --reload fix_emittable_skipped.js",
+  output: "fix_emittable_skipped.ts.out",
+});
+
 itest!(fix_exotic_specifiers {
   args: "run --quiet --reload fix_exotic_specifiers.ts",
   output: "fix_exotic_specifiers.ts.out",
