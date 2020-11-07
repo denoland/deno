@@ -1229,7 +1229,7 @@ fn run_watch() {
 
   std::thread::sleep(std::time::Duration::from_millis(500));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains("0"));
+  assert!(stdout_lines.next().unwrap().contains('0'));
   assert!(stderr_lines.next().unwrap().contains("Process terminated"));
 
   // Confirm that restarting occurs when a new file is updated
