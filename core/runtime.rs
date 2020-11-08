@@ -191,6 +191,7 @@ pub struct RuntimeOptions {
 }
 
 impl JsRuntime {
+  /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
@@ -320,6 +321,8 @@ impl JsRuntime {
     }
   }
 
+  /// Returns the runtime's op state, which can be used to maintain ops
+  /// and access resources between op calls.
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
     let state_rc = Self::state(self.v8_isolate());
     let state = state_rc.borrow();
@@ -327,6 +330,9 @@ impl JsRuntime {
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
+  ///
+  /// The execution takes place on the current global context, so it is possible
+  /// to maintain local JS state and invoke this method multiple times.
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
@@ -391,6 +397,15 @@ impl JsRuntime {
     snapshot
   }
 
+  /// Registers an op that can be called from JavaScript.
+  ///
+  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
+  /// which can be called using the provided `name`.
+  ///
+  /// This function provides byte-level bindings. To pass data via JSON, the
+  /// following functions can be passed as an argument for `op_fn`:
+  /// * [json_op_sync()](fn.json_op_sync.html)
+  /// * [json_op_async()](fn.json_op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
@@ -1775,7 +1790,7 @@ pub mod tests {
     match isolate.execute("infinite_loop.js", "for(;;) {}") {
       Ok(_) => panic!("execution should be terminated"),
       Err(e) => {
-        assert_eq!(e.to_string(), "Uncaught Error: execution terminated\n")
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
       }
     };
 
@@ -2518,8 +2533,7 @@ main();
 "#,
     );
     let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
-    at error_without_stack.js:3:14
-"#;
+    at error_without_stack.js:3:14"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -2545,8 +2559,7 @@ main();
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
     at main (error_stack.js:9:3)
-    at error_stack.js:12:1
-"#;
+    at error_stack.js:12:1"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -2577,8 +2590,7 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5
-"#;
+    at async error_async_stack.js:10:5"#;
 
       match runtime.poll_event_loop(cx) {
         Poll::Ready(Err(e)) => {

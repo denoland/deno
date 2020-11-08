@@ -16,8 +16,6 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 
-/* eslint-disable @typescript-eslint/no-use-before-define */
-
 ((window) => {
   const MAX_RECORDS = 100;
   const INDEX_NUM_RECORDS = 0;

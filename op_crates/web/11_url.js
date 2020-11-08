@@ -37,7 +37,16 @@
   }
 
   function decodeSearchParam(p) {
-    return decodeURIComponent(p.replace(/\+/g, " "));
+    const s = p.replaceAll("+", " ");
+    const decoder = new TextDecoder();
+
+    return s.replace(/(%[0-9a-f]{2})+/gi, (matched) => {
+      const buf = new Uint8Array(Math.ceil(matched.length / 3));
+      for (let i = 0, offset = 0; i < matched.length; i += 3, offset += 1) {
+        buf[offset] = parseInt(matched.slice(i + 1, i + 3), 16);
+      }
+      return decoder.decode(buf);
+    });
   }
 
   const urls = new WeakMap();
@@ -584,7 +593,9 @@
       try {
         const isSpecial = specialSchemes.includes(parts.get(this).protocol);
         parts.get(this).hostname = encodeHostname(value, isSpecial);
-      } catch {}
+      } catch {
+        // pass
+      }
     }
 
     get href() {

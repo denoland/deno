@@ -9,6 +9,7 @@
 
 use crate::colors;
 use crate::diff::diff;
+use crate::fs::canonicalize_path;
 use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
@@ -238,16 +239,16 @@ pub fn collect_files(
 
   if files.is_empty() {
     target_files.extend(files_in_subtree(
-      std::env::current_dir()?.canonicalize()?,
+      canonicalize_path(&std::env::current_dir()?)?,
       is_supported,
     ));
   } else {
     for file in files {
       if file.is_dir() {
         target_files
-          .extend(files_in_subtree(file.canonicalize()?, is_supported));
+          .extend(files_in_subtree(canonicalize_path(&file)?, is_supported));
       } else {
-        target_files.push(file.canonicalize()?);
+        target_files.push(canonicalize_path(&file)?);
       };
     }
   }

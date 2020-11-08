@@ -776,26 +776,6 @@ pub fn deno_cmd() -> Command {
   c
 }
 
-pub fn run_python_script(script: &str) {
-  let deno_dir = new_deno_dir();
-  let output = Command::new("python")
-    .env("DENO_DIR", deno_dir.path())
-    .current_dir(root_path())
-    .arg(script)
-    .arg(format!("--build-dir={}", target_dir().display()))
-    .arg(format!("--executable={}", deno_exe_path().display()))
-    .output()
-    .expect("failed to spawn script");
-  if !output.status.success() {
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    panic!(
-      "{} executed with failing error code\n{}{}",
-      script, stdout, stderr
-    );
-  }
-}
-
 pub fn run_powershell_script_file(
   script_file_path: &str,
   args: Vec<&str>,
@@ -1041,6 +1021,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   }
 }
 
+#[derive(Debug)]
 pub struct StraceOutput {
   pub percent_time: f64,
   pub seconds: f64,

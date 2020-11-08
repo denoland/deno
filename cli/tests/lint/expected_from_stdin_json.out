@@ -16,7 +16,7 @@
       "filename": "_stdin.ts",
       "message": "`any` type is not allowed",
       "code": "no-explicit-any",
-      "hint": null
+      "hint": [WILDCARD]
     }
   ],
   "errors": []

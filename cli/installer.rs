@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::flags::Flags;
+use crate::fs::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -84,7 +85,7 @@ deno {} "$@"
 fn get_installer_root() -> Result<PathBuf, io::Error> {
   if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
-      return PathBuf::from(env_dir).canonicalize();
+      return canonicalize_path(&PathBuf::from(env_dir));
     }
   }
   // Note: on Windows, the $HOME environment variable may be set by users or by
@@ -127,7 +128,7 @@ pub fn install(
   force: bool,
 ) -> Result<(), AnyError> {
   let root = if let Some(root) = root {
-    root.canonicalize()?
+    canonicalize_path(&root)?
   } else {
     get_installer_root()?
   };

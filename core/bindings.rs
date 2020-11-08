@@ -11,6 +11,7 @@ use futures::future::FutureExt;
 use rusty_v8 as v8;
 use std::cell::Cell;
 use std::convert::TryFrom;
+use std::io::{stdout, Write};
 use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
@@ -352,8 +353,10 @@ fn print(
   };
   if is_err {
     eprint!("{}", str_.to_rust_string_lossy(tc_scope));
+    stdout().flush().unwrap();
   } else {
     print!("{}", str_.to_rust_string_lossy(tc_scope));
+    stdout().flush().unwrap();
   }
 }
 

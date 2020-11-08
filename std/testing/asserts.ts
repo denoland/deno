@@ -8,7 +8,7 @@ import { diff, DiffResult, DiffType } from "./_diff.ts";
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
 interface Constructor {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   new (...args: any[]): any;
 }
 
@@ -330,10 +330,27 @@ export function assertNotStrictEquals(
 }
 
 /**
- * Make an assertion that actual contains expected. If not
+ * Make an assertion that actual is not null or undefined. If not
  * then thrown.
  */
-export function assertStringContains(
+export function assertExists(
+  actual: unknown,
+  msg?: string,
+): void {
+  if (actual === undefined || actual === null) {
+    if (!msg) {
+      msg =
+        `actual: "${actual}" expected to match anything but null or undefined`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
+ * Make an assertion that actual includes expected. If not
+ * then thrown.
+ */
+export function assertStringIncludes(
   actual: string,
   expected: string,
   msg?: string,
@@ -347,26 +364,26 @@ export function assertStringContains(
 }
 
 /**
- * Make an assertion that `actual` contains the `expected` values.
+ * Make an assertion that `actual` includes the `expected` values.
  * If not then an error will be thrown.
  *
  * Type parameter can be specified to ensure values under comparison have the same type.
  * For example:
  *```ts
- *assertArrayContains<number>([1, 2], [2])
+ *assertArrayIncludes<number>([1, 2], [2])
  *```
  */
-export function assertArrayContains(
+export function assertArrayIncludes(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
   msg?: string,
 ): void;
-export function assertArrayContains<T>(
+export function assertArrayIncludes<T>(
   actual: ArrayLike<T>,
   expected: ArrayLike<T>,
   msg?: string,
 ): void;
-export function assertArrayContains(
+export function assertArrayIncludes(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
   msg?: string,
@@ -388,7 +405,7 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${_format(actual)}" expected to contain: "${
+    msg = `actual: "${_format(actual)}" expected to include: "${
       _format(expected)
     }"\nmissing: ${_format(missing)}`;
   }

@@ -5,7 +5,7 @@ import { decode, encode } from "../encoding/utf8.ts";
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
 } from "../testing/asserts.ts";
 import { dirname, fromFileUrl } from "../path/mod.ts";
 
@@ -66,6 +66,6 @@ Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
-  assertStringContains(decode(await p.stderrOutput()), "SyntaxError");
+  assertStringIncludes(decode(await p.stderrOutput()), "SyntaxError");
   p.close();
 });

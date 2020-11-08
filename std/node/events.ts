@@ -24,7 +24,7 @@
 import { validateIntegerRange } from "./_utils.ts";
 import { assert } from "../_util/assert.ts";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 export type GenericFunction = (...args: any[]) => any;
 
 export interface WrappedFunction extends Function {
@@ -93,7 +93,7 @@ export default class EventEmitter {
    * arguments to each.
    * @return true if the event had listeners, false otherwise
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   public emit(eventName: string | symbol, ...args: any[]): boolean {
     if (this._events.has(eventName)) {
       if (
@@ -170,7 +170,7 @@ export default class EventEmitter {
   private unwrapListeners(arr: GenericFunction[]): GenericFunction[] {
     const unwrappedListeners = new Array(arr.length) as GenericFunction[];
     for (let i = 0; i < arr.length; i++) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       unwrappedListeners[i] = (arr[i] as any)["listener"] || arr[i];
     }
     return unwrappedListeners;
@@ -232,7 +232,7 @@ export default class EventEmitter {
         rawListener: GenericFunction | WrappedFunction;
         context: EventEmitter;
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       ...args: any[]
     ): void {
       this.context.removeListener(
@@ -379,7 +379,7 @@ export { EventEmitter };
 export function once(
   emitter: EventEmitter | EventTarget,
   name: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
 ): Promise<any[]> {
   return new Promise((resolve, reject) => {
     if (emitter instanceof EventTarget) {
@@ -394,7 +394,7 @@ export function once(
       );
       return;
     } else if (emitter instanceof EventEmitter) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       const eventListener = (...args: any[]): void => {
         if (errorListener !== undefined) {
           emitter.removeListener("error", errorListener);
@@ -410,7 +410,7 @@ export function once(
       // memory or file descriptor leaks, which is something
       // we should avoid.
       if (name !== "error") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
         errorListener = (err: any): void => {
           emitter.removeListener(name, eventListener);
           reject(err);
@@ -425,18 +425,18 @@ export function once(
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function createIterResult(value: any, done: boolean): IteratorResult<any> {
   return { value, done };
 }
 
 interface AsyncInterable {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   next(): Promise<IteratorResult<any, any>>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   return(): Promise<IteratorResult<any, any>>;
   throw(err: Error): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   [Symbol.asyncIterator](): any;
 }
 
@@ -450,18 +450,18 @@ export function on(
   emitter: EventEmitter,
   event: string | symbol,
 ): AsyncInterable {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const unconsumedEventValues: any[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const unconsumedPromises: any[] = [];
   let error: Error | null = null;
   let finished = false;
 
   const iterator = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     next(): Promise<IteratorResult<any>> {
       // First, we consume all unread events
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       const value: any = unconsumedEventValues.shift();
       if (value) {
         return Promise.resolve(createIterResult(value, false));
@@ -488,7 +488,7 @@ export function on(
       });
     },
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     return(): Promise<IteratorResult<any>> {
       emitter.removeListener(event, eventHandler);
       emitter.removeListener("error", errorHandler);
@@ -507,7 +507,7 @@ export function on(
       emitter.removeListener("error", errorHandler);
     },
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     [Symbol.asyncIterator](): any {
       return this;
     },
@@ -518,7 +518,7 @@ export function on(
 
   return iterator;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   function eventHandler(...args: any[]): void {
     const promise = unconsumedPromises.shift();
     if (promise) {
@@ -528,7 +528,7 @@ export function on(
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   function errorHandler(err: any): void {
     finished = true;
 

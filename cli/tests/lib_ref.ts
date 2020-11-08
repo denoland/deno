@@ -1,7 +1,7 @@
 const [errors, program] = await Deno.compile(
-  "main.ts",
+  "/main.ts",
   {
-    "main.ts":
+    "/main.ts":
       `/// <reference lib="dom" />\n\ndocument.getElementById("foo");\nDeno.args;`,
   },
   {
@@ -11,4 +11,4 @@ const [errors, program] = await Deno.compile(
 );
 
 console.log(errors);
-console.log(Object.keys(program));
+console.log(Object.keys(program).sort());

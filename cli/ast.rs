@@ -225,7 +225,7 @@ impl From<tsc_config::TsConfig> for EmitOptions {
     EmitOptions {
       check_js: options.check_js,
       emit_metadata: options.emit_decorator_metadata,
-      inline_source_map: true,
+      inline_source_map: options.inline_source_map,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
@@ -298,6 +298,7 @@ impl ParsedModule {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
+      helpers::inject_helpers(),
       typescript::strip(),
       fixer(Some(&self.comments)),
     );
@@ -356,8 +357,11 @@ impl ParsedModule {
 /// - `source` - The source code for the module.
 /// - `media_type` - The media type for the module.
 ///
+// NOTE(bartlomieju): `specifier` has `&str` type instead of
+// `&ModuleSpecifier` because runtime compiler APIs don't
+// require valid module specifiers
 pub fn parse(
-  specifier: &ModuleSpecifier,
+  specifier: &str,
   source: &str,
   media_type: &MediaType,
 ) -> Result<ParsedModule, AnyError> {
@@ -410,6 +414,7 @@ pub fn transpile_module(
   src: &str,
   media_type: &MediaType,
   emit_options: &EmitOptions,
+  globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
   // TODO(@kitsonk) DRY-up with ::parse()
@@ -461,10 +466,15 @@ pub fn transpile_module(
       legacy: true,
       emit_metadata: emit_options.emit_metadata
     }),
+    helpers::inject_helpers(),
     typescript::strip(),
     fixer(Some(&comments)),
   );
-  let module = module.fold_with(&mut passes);
+  let module = swc_common::GLOBALS.set(globals, || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      module.fold_with(&mut passes)
+    })
+  });
 
   Ok((source_file, module))
 }
@@ -505,8 +515,9 @@ mod tests {
     let source = r#"import * as bar from "./test.ts";
     const foo = await import("./foo.ts");
     "#;
-    let parsed_module = parse(&specifier, source, &MediaType::JavaScript)
-      .expect("could not parse module");
+    let parsed_module =
+      parse(specifier.as_str(), source, &MediaType::JavaScript)
+        .expect("could not parse module");
     let actual = parsed_module.analyze_dependencies();
     assert_eq!(
       actual,
@@ -553,7 +564,7 @@ mod tests {
       }
     }
     "#;
-    let module = parse(&specifier, source, &MediaType::TypeScript)
+    let module = parse(specifier.as_str(), source, &MediaType::TypeScript)
       .expect("could not parse module");
     let (code, maybe_map) = module
       .transpile(&EmitOptions::default())
@@ -577,7 +588,7 @@ mod tests {
       }
     }
     "#;
-    let module = parse(&specifier, source, &MediaType::TSX)
+    let module = parse(specifier.as_str(), source, &MediaType::TSX)
       .expect("could not parse module");
     let (code, _) = module
       .transpile(&EmitOptions::default())
@@ -608,7 +619,7 @@ mod tests {
       }
     }
     "#;
-    let module = parse(&specifier, source, &MediaType::TypeScript)
+    let module = parse(specifier.as_str(), source, &MediaType::TypeScript)
       .expect("could not parse module");
     let (code, _) = module
       .transpile(&EmitOptions::default())

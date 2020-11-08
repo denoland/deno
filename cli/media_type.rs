@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::ModuleSpecifier;
 use serde::Serialize;
 use serde::Serializer;
 use std::fmt;
@@ -57,6 +58,22 @@ impl<'a> From<&'a PathBuf> for MediaType {
 impl<'a> From<&'a String> for MediaType {
   fn from(specifier: &'a String) -> Self {
     MediaType::from_path(&PathBuf::from(specifier))
+  }
+}
+
+impl<'a> From<&'a ModuleSpecifier> for MediaType {
+  fn from(specifier: &'a ModuleSpecifier) -> Self {
+    let url = specifier.as_url();
+    let path = if url.scheme() == "file" {
+      if let Ok(path) = url.to_file_path() {
+        path
+      } else {
+        PathBuf::from(url.path())
+      }
+    } else {
+      PathBuf::from(url.path())
+    };
+    MediaType::from_path(&path)
   }
 }
 
@@ -217,6 +234,23 @@ mod tests {
       MediaType::Unknown
     );
     assert_eq!(MediaType::from(Path::new("foo/bar")), MediaType::Unknown);
+  }
+
+  #[test]
+  fn test_from_specifier() {
+    let fixtures = vec![
+      ("file:///a/b/c.ts", MediaType::TypeScript),
+      ("file:///a/b/c.js", MediaType::JavaScript),
+      ("file:///a/b/c.txt", MediaType::Unknown),
+      ("https://deno.land/x/mod.ts", MediaType::TypeScript),
+      ("https://deno.land/x/mod.js", MediaType::JavaScript),
+      ("https://deno.land/x/mod.txt", MediaType::Unknown),
+    ];
+
+    for (specifier, expected) in fixtures {
+      let actual = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      assert_eq!(MediaType::from(&actual), expected);
+    }
   }
 
   #[test]
