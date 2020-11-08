@@ -17,12 +17,10 @@ use deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;
 use std::fs;
 use std::future::Future;
-use std::io::prelude::*;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Command;
-use std::process::Stdio;
 use std::string::String;
 use tempfile::TempDir;
 
@@ -43,12 +41,7 @@ async fn get_latest_version(
     .get(Url::parse(&*format!("{}/latest", release_url))?)
     .send()
     .await?;
-  let version = res
-    .url()
-    .path_segments()
-    .unwrap()
-    .last()
-    .unwrap();
+  let version = res.url().path_segments().unwrap().last().unwrap();
 
   Ok(version.replace("v", ""))
 }
@@ -67,24 +60,22 @@ pub async fn upgrade_command(
 
   // If we have been provided a CA Certificate, add it into the HTTP client
   if let Some(ca_file) = ca_file {
-    let buf = std::fs::read(ca_file);
-    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
+    let buf = std::fs::read(ca_file)?;
+    let cert = reqwest::Certificate::from_pem(&buf)?;
     client_builder = client_builder.add_root_certificate(cert);
   }
 
   let client = client_builder.build()?;
 
-  let current_version = crate::version::deno();
-
   let release_url = if nightly {
-    "https://github.com/denoland/deno/releases"
-  } else {
     "https://github.com/denoland/deno_nightly/releases"
+  } else {
+    "https://github.com/denoland/deno/releases"
   };
 
   let install_version = match version {
     Some(passed_version) => {
-      if !force && current_version == passed_version {
+      if !force && crate::version::deno() == passed_version {
         println!("Version {} is already installed", &passed_version);
         return Ok(());
       } else {
@@ -95,11 +86,11 @@ pub async fn upgrade_command(
       let latest_version = get_latest_version(&client, release_url).await?;
 
       let current_is_most_recent = if nightly && crate::version::is_nightly() {
-        let current = current_version.replace(".", "").parse::<u32>().unwrap();
-        let latest = latest_version.replace(".", "").parse::<u32>().unwrap();
+        let current = crate::version::deno().replace(".", "").parse::<u32>()?;
+        let latest = latest_version.replace(".", "").parse::<u32>()?;
         current >= latest
       } else if !nightly && !crate::version::is_nightly() {
-        let current = semver_parse(current_version).unwrap();
+        let current = semver_parse(crate::version::deno()).unwrap();
         let latest = semver_parse(&*latest_version).unwrap();
         current >= latest
       } else {
@@ -109,21 +100,22 @@ pub async fn upgrade_command(
       if !force && current_is_most_recent {
         println!(
           "Local deno version {} is the most recent release",
-          &current_version
+          crate::version::deno()
         );
-        return Ok(())
+        return Ok(());
       } else {
         latest_version
       }
     }
   };
 
-  let archive_data = download_package(
-    &compose_url_to_exec(release_url, &install_version)?,
-    client,
-    &install_version,
-  )
-  .await?;
+  let download_url = format!(
+    "{}/download/v{}/{}",
+    release_url, &install_version, ARCHIVE_NAME
+  );
+  let download_url = Url::parse(&download_url)?;
+  let archive_data =
+    download_package(&download_url, client, install_version.clone()).await?;
   let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
@@ -148,11 +140,10 @@ pub async fn upgrade_command(
 fn download_package(
   url: &Url,
   client: Client,
-  version: &str,
+  version: String,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, AnyError>>>> {
   println!("downloading {}", url);
   let url = url.clone();
-  let version = version.clone();
   let fut = async move {
     match fetch_once(client.clone(), &url, None).await {
       Ok(result) => {
@@ -177,14 +168,6 @@ fn download_package(
   fut.boxed_local()
 }
 
-fn compose_url_to_exec(
-  release_url: &str,
-  version: &str,
-) -> Result<Url, AnyError> {
-  let s = format!("{}/download/v{}/{}", release_url, version, ARCHIVE_NAME);
-  Url::parse(&s).map_err(AnyError::from)
-}
-
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
@@ -199,16 +182,6 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
     .and_then(|ext| ext.to_str())
     .unwrap();
   let unpack_status = match archive_ext {
-    "gz" => {
-      let exe_file = fs::File::create(&exe_path)?;
-      let mut cmd = Command::new("gunzip")
-        .arg("-c")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::from(exe_file))
-        .spawn()?;
-      cmd.stdin.as_mut().unwrap().write_all(&archive_data)?;
-      cmd.wait()?
-    }
     "zip" if cfg!(windows) => {
       let archive_path = temp_dir.join("deno.zip");
       fs::write(&archive_path, &archive_data)?;
@@ -265,10 +238,7 @@ fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
   Ok(())
 }
 
-fn check_exe(
-  exe_path: &Path,
-  expected_version: &str,
-) -> Result<(), AnyError> {
+fn check_exe(exe_path: &Path, expected_version: &str) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
@@ -277,21 +247,4 @@ fn check_exe(
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())
-}
-
-#[test]
-fn test_compose_url_to_exec() {
-  let v = String::from("0.0.1");
-  let url =
-    compose_url_to_exec("https://github.com/denoland/deno/releases/", &v)
-      .unwrap();
-  #[cfg(windows)]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-pc-windows-msvc.zip");
-  #[cfg(target_os = "macos")]
-  assert_eq!(
-    url.as_str(),
-    "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-apple-darwin.zip"
-  );
-  #[cfg(target_os = "linux")]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-unknown-linux-gnu.zip");
 }

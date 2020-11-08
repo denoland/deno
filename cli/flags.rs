@@ -953,7 +953,8 @@ update to a different location, use the --output flag
     .arg(
       Arg::with_name("nightly")
         .long("nightly")
-        .help("Upgade to a nightly build of deno"),
+        .requires("unstable")
+        .help("Upgrade to a nightly build of deno"),
     )
     .arg(ca_file_arg())
 }
