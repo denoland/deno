@@ -32,7 +32,7 @@ export interface Cookie {
 
 export type SameSite = "Strict" | "Lax" | "None";
 
-const FIELD_CONTENT_REGEXP = /^[\u0009\u0020-\u007e\u0080-\u00ff]+$/;
+const FIELD_CONTENT_REGEXP = /^[^()@<>,;:\\"\[\]?={}\s]+$/;
 
 function toString(cookie: Cookie): string {
   if (!cookie.name) {
