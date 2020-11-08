@@ -9,25 +9,26 @@ import {
 
 unitTest(function runPermissions(): void {
   assertThrows(() => {
-    Deno.run({ cmd: ["python", "-c", "print('hello world')"] });
+    Deno.run({ cmd: ["printf", "hello world"] });
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
-  const p = Deno.run({
-    cmd: ["python", "-c", "print('hello world')"],
+  const process = Deno.run({
+    cmd: ["printf", "hello world"],
     stdout: "piped",
     stderr: "null",
   });
-  const status = await p.status();
+  const status = await process.status();
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
-  p.stdout.close();
-  p.close();
+  Deno.stdout.close();
+  process.close();
 });
 
 unitTest({ perms: { run: true } }, async function runUrl(): Promise<void> {
+  // FIXME help needed here
   const q = Deno.run({
     cmd: ["python", "-c", "import sys; print sys.executable"],
     stdout: "piped",
@@ -36,6 +37,7 @@ unitTest({ perms: { run: true } }, async function runUrl(): Promise<void> {
   const pythonPath = new TextDecoder().decode(await q.output()).trim();
   q.close();
 
+  // FIXME help needed here
   const p = Deno.run({
     cmd: [new URL(`file:///${pythonPath}`), "-c", "print('hello world')"],
     stdout: "piped",
@@ -52,38 +54,38 @@ unitTest({ perms: { run: true } }, async function runUrl(): Promise<void> {
 unitTest({ perms: { run: true } }, async function runStdinRid0(): Promise<
   void
 > {
-  const p = Deno.run({
-    cmd: ["python", "-c", "print('hello world')"],
+  const process = Deno.run({
+    cmd: ["printf", "hello world"],
     stdin: 0,
     stdout: "piped",
     stderr: "null",
   });
-  const status = await p.status();
+  const status = await process.status();
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
-  p.stdout.close();
-  p.close();
+  Deno.stdout.close();
+  process.close();
 });
 
 unitTest({ perms: { run: true } }, function runInvalidStdio(): void {
   assertThrows(() =>
     Deno.run({
-      cmd: ["python", "-c", "print('hello world')"],
+      cmd: ["printf", "hello world"],
       // @ts-expect-error because Deno.run should throw on invalid stdin.
       stdin: "a",
     })
   );
   assertThrows(() =>
     Deno.run({
-      cmd: ["python", "-c", "print('hello world')"],
+      cmd: ["printf", "hello world"],
       // @ts-expect-error because Deno.run should throw on invalid stdout.
       stdout: "b",
     })
   );
   assertThrows(() =>
     Deno.run({
-      cmd: ["python", "-c", "print('hello world')"],
+      cmd: ["printf", "hello world"],
       // @ts-expect-error because Deno.run should throw on invalid stderr.
       stderr: "c",
     })
@@ -93,6 +95,7 @@ unitTest({ perms: { run: true } }, function runInvalidStdio(): void {
 unitTest(
   { perms: { run: true } },
   async function runCommandFailedWithCode(): Promise<void> {
+    // FIXME help needed here
     const p = Deno.run({
       cmd: ["python", "-c", "import sys;sys.exit(41 + 1)"],
     });
@@ -111,6 +114,7 @@ unitTest(
     perms: { run: true },
   },
   async function runCommandFailedWithSignal(): Promise<void> {
+    // FIXME help needed here
     const p = Deno.run({
       cmd: ["python", "-c", "import os;os.kill(os.getpid(), 9)"],
     });
@@ -158,6 +162,7 @@ while True:
 `;
 
     Deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
+    // FIXME need help here, should I be ignoring windows?
     const p = Deno.run({
       cwd,
       cmd: ["python", `${pyProgramFile}.py`],
@@ -179,6 +184,7 @@ while True:
 unitTest({ perms: { run: true } }, async function runStdinPiped(): Promise<
   void
 > {
+  // FIXME help needed here
   const p = Deno.run({
     cmd: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
     stdin: "piped",
@@ -203,83 +209,85 @@ unitTest({ perms: { run: true } }, async function runStdinPiped(): Promise<
 unitTest({ perms: { run: true } }, async function runStdoutPiped(): Promise<
   void
 > {
-  const p = Deno.run({
-    cmd: ["python", "-c", "import sys; sys.stdout.write('hello')"],
+  const process = Deno.run({
+    cmd: ["printf", "hello"],
     stdout: "piped",
   });
-  assert(!p.stdin);
-  assert(!p.stderr);
+  assert(!process.stdin);
+  assert(!process.stderr);
 
   const data = new Uint8Array(10);
-  let r = await p.stdout.read(data);
+  let r = await process.stdout.read(data);
   if (r === null) {
     throw new Error("p.stdout.read(...) should not be null");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
-  r = await p.stdout.read(data);
+  r = await process.stdout.read(data);
   assertEquals(r, null);
-  p.stdout.close();
+  process.stdout.close();
 
-  const status = await p.status();
+  const status = await process.status();
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
-  p.close();
+  process.close();
 });
 
 unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
   void
 > {
-  const p = Deno.run({
+  // FIXME correct me.
+  const process = Deno.run({
     cmd: ["python", "-c", "import sys; sys.stderr.write('hello')"],
     stderr: "piped",
   });
-  assert(!p.stdin);
-  assert(!p.stdout);
+  assert(!process.stdin);
+  assert(!process.stdout);
 
   const data = new Uint8Array(10);
-  let r = await p.stderr.read(data);
+  let r = await process.stderr.read(data);
   if (r === null) {
     throw new Error("p.stderr.read should not return null here");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
-  r = await p.stderr.read(data);
+  r = await process.stderr.read(data);
   assertEquals(r, null);
-  p.stderr!.close();
+  process.stderr!.close();
 
-  const status = await p.status();
+  const status = await process.status();
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
-  p.close();
+  process.close();
 });
 
 unitTest({ perms: { run: true } }, async function runOutput(): Promise<void> {
-  const p = Deno.run({
-    cmd: ["python", "-c", "import sys; sys.stdout.write('hello')"],
+  const process = Deno.run({
+    cmd: ["printf", "hello"],
     stdout: "piped",
   });
-  const output = await p.output();
+  const output = await process.output();
   const s = new TextDecoder().decode(output);
   assertEquals(s, "hello");
-  p.close();
+  process.close();
 });
 
 unitTest({ perms: { run: true } }, async function runStderrOutput(): Promise<
   void
 > {
-  const p = Deno.run({
+  // FIXME need help here, should I be ignoring windows?
+  const process = Deno.run({
     cmd: ["python", "-c", "import sys; sys.stderr.write('error')"],
     stderr: "piped",
   });
-  const error = await p.stderrOutput();
+  const error = await process.stderrOutput();
   const s = new TextDecoder().decode(error);
   assertEquals(s, "error");
-  p.close();
+  process.close();
 });
 
 unitTest(
@@ -292,18 +300,17 @@ unitTest(
       write: true,
     });
 
-    const p = Deno.run({
+    const process = Deno.run({
       cmd: [
-        "python",
-        "-c",
-        "import sys; sys.stderr.write('error\\n'); sys.stdout.write('output\\n');",
+        "printf",
+        "error\\n output\\n",
       ],
       stdout: file.rid,
       stderr: file.rid,
     });
 
-    await p.status();
-    p.close();
+    await process.status();
+    process.close();
     file.close();
 
     const fileContents = await Deno.readFile(fileName);
@@ -324,19 +331,30 @@ unitTest(
     await Deno.writeFile(fileName, encoder.encode("hello"));
     const file = await Deno.open(fileName);
 
-    const p = Deno.run({
-      cmd: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
+    const process = Deno.run({
+      cmd: ["printf", "hello"],
       stdin: file.rid,
+      stdout: "piped",
     });
 
-    const status = await p.status();
+    const status = await process.status();
     assertEquals(status.code, 0);
-    p.close();
+    process.close();
     file.close();
+
+    const fileContents = await Deno.readFile(fileName);
+    const decoder = new TextDecoder();
+    const textFromFile = decoder.decode(fileContents);
+
+    const output = await process.output();
+    const decodedOutput = new TextDecoder().decode(output);
+
+    assertEquals(textFromFile, decodedOutput);
   },
 );
 
 unitTest({ perms: { run: true } }, async function runEnv(): Promise<void> {
+  // FIXME need help here, should I be ignoring windows?
   const p = Deno.run({
     cmd: [
       "python",
@@ -356,7 +374,8 @@ unitTest({ perms: { run: true } }, async function runEnv(): Promise<void> {
 });
 
 unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
-  const p = Deno.run({
+  // FIXME need help here, should I be ignoring windows?
+  const process = Deno.run({
     cmd: [
       "python",
       "-c",
@@ -364,24 +383,24 @@ unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
     ],
     stderr: "piped",
   });
-  assert(!p.stdin);
-  assert(!p.stdout);
+  assert(!process.stdin);
+  assert(!process.stdout);
 
-  p.close();
+  process.close();
 
   const data = new Uint8Array(10);
-  const r = await p.stderr.read(data);
+  const r = await process.stderr.read(data);
   assertEquals(r, null);
-  p.stderr.close();
+  process.stderr.close();
 });
 
 unitTest(
   { perms: { run: true } },
   async function runKillAfterStatus(): Promise<void> {
-    const p = Deno.run({
-      cmd: ["python", "-c", 'print("hello")'],
+    const process = Deno.run({
+      cmd: ["printf", "hello"],
     });
-    await p.status();
+    await process.status();
 
     // On Windows the underlying Rust API returns `ERROR_ACCESS_DENIED`,
     // which serves kind of as a catch all error code. More specific
@@ -391,11 +410,11 @@ unitTest(
       ? Deno.errors.PermissionDenied
       : Deno.errors.NotFound;
     assertThrows(
-      () => p.kill(Deno.Signal.SIGTERM),
+      () => process.kill(Deno.Signal.SIGTERM),
       expectedErrorType,
     );
 
-    p.close();
+    process.close();
   },
 );
 
@@ -419,7 +438,7 @@ unitTest(function killPermissions(): void {
 
 unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
   const p = Deno.run({
-    cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
+    cmd: ["sleep", "10000)"],
   });
 
   assertEquals(Deno.Signal.SIGINT, 2);
@@ -440,15 +459,15 @@ unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
 });
 
 unitTest({ perms: { run: true } }, function killFailed(): void {
-  const p = Deno.run({
-    cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
+  const process = Deno.run({
+    cmd: ["sleep", "10000"],
   });
-  assert(!p.stdin);
-  assert(!p.stdout);
+  assert(!process.stdin);
+  assert(!process.stdout);
 
   assertThrows(() => {
-    Deno.kill(p.pid, 12345);
+    Deno.kill(process.pid, 12345);
   }, TypeError);
 
-  p.close();
+  process.close();
 });
