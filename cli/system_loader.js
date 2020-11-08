@@ -44,14 +44,15 @@ let System, __instantiate;
 
   function gE(exp) {
     return (id, v) => {
-      v = typeof id === "string" ? { [id]: v } : id;
-      for (const [id, value] of Object.entries(v)) {
+      const e = typeof id === "string" ? { [id]: v } : id;
+      for (const [id, value] of Object.entries(e)) {
         Object.defineProperty(exp, id, {
           value,
           writable: true,
           enumerable: true,
         });
       }
+      return v;
     };
   }
 

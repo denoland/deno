@@ -9,7 +9,8 @@ import {
 import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("emptyDirIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_1");
@@ -203,8 +204,7 @@ for (const s of scenes) {
       );
 
       try {
-        // TODO(lucacasonato): remove unstable when stabilized
-        const args = [Deno.execPath(), "run", "--unstable"];
+        const args = [Deno.execPath(), "run"];
 
         if (s.read) {
           args.push("--allow-read");

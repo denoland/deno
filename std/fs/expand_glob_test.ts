@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { decode } from "../encoding/utf8.ts";
 import {
   assert,
@@ -5,15 +6,15 @@ import {
   assertStringContains,
 } from "../testing/asserts.ts";
 import {
+  fromFileUrl,
   join,
   joinGlobs,
   normalize,
   relative,
-  fromFileUrl,
 } from "../path/mod.ts";
 import {
-  ExpandGlobOptions,
   expandGlob,
+  ExpandGlobOptions,
   expandGlobSync,
 } from "./expand_glob.ts";
 

@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
   pathToAbsoluteFileUrl,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {

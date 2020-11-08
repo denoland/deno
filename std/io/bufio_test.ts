@@ -1,22 +1,22 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Based on https://github.com/golang/go/blob/891682/src/bufio/bufio_test.go
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 import { assert, assertEquals, fail } from "../testing/asserts.ts";
 import {
+  BufferFullError,
   BufReader,
   BufWriter,
   BufWriterSync,
-  BufferFullError,
   PartialReadError,
   ReadLineResult,
-  readStringDelim,
   readLines,
+  readStringDelim,
 } from "./bufio.ts";
 import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
-import { charCode } from "./util.ts";
 import { copyBytes } from "../bytes/mod.ts";
 
 const encoder = new TextEncoder();
@@ -139,7 +139,7 @@ Deno.test("bufioBufferFull", async function (): Promise<void> {
   const decoder = new TextDecoder();
 
   try {
-    await buf.readSlice(charCode("!"));
+    await buf.readSlice("!".charCodeAt(0));
     fail("readSlice should throw");
   } catch (err) {
     assert(err instanceof BufferFullError);
@@ -147,7 +147,7 @@ Deno.test("bufioBufferFull", async function (): Promise<void> {
     assertEquals(decoder.decode(err.partial), "And now, hello, ");
   }
 
-  const line = await buf.readSlice(charCode("!"));
+  const line = await buf.readSlice("!".charCodeAt(0));
   assert(line !== null);
   const actual = decoder.decode(line);
   assertEquals(actual, "world!");
@@ -331,7 +331,7 @@ Deno.test("bufioWriter", async function (): Promise<void> {
 
   for (let i = 0; i < data.byteLength; i++) {
     // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
-    data[i] = charCode(" ") + (i % (charCode("~") - charCode(" ")));
+    data[i] = " ".charCodeAt(0) + (i % ("~".charCodeAt(0) - " ".charCodeAt(0)));
   }
 
   const w = new Deno.Buffer();
@@ -365,7 +365,7 @@ Deno.test("bufioWriterSync", function (): void {
 
   for (let i = 0; i < data.byteLength; i++) {
     // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
-    data[i] = charCode(" ") + (i % (charCode("~") - charCode(" ")));
+    data[i] = " ".charCodeAt(0) + (i % ("~".charCodeAt(0) - " ".charCodeAt(0)));
   }
 
   const w = new Deno.Buffer();

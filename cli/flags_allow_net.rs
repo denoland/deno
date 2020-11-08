@@ -1,6 +1,8 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use deno_core::url::Url;
 use std::net::IpAddr;
 use std::str::FromStr;
-use url::Url;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsePortError(String);

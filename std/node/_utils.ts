@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 export function notImplemented(msg?: string): never {
   const message = msg ? `Not implemented: ${msg}` : "Not implemented";
   throw new Error(message);
@@ -109,5 +111,23 @@ function slowCases(enc: string): string | undefined {
       break;
     default:
       if (enc === "") return "utf8";
+  }
+}
+
+export function validateIntegerRange(
+  value: number,
+  name: string,
+  min = -2147483648,
+  max = 2147483647,
+): void {
+  // The defaults for min and max correspond to the limits of 32-bit integers.
+  if (!Number.isInteger(value)) {
+    throw new Error(`${name} must be 'an integer' but was ${value}`);
+  }
+
+  if (value < min || value > max) {
+    throw new Error(
+      `${name} must be >= ${min} && <= ${max}. Value was ${value}`,
+    );
   }
 }

@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
   pathToAbsoluteFileUrl,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function fstatSyncSuccess(): void {
@@ -17,7 +17,8 @@ unitTest({ perms: { read: true } }, function fstatSyncSuccess(): void {
   assert(fileInfo.size);
   assert(fileInfo.atime);
   assert(fileInfo.mtime);
-  assert(fileInfo.birthtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
 
   Deno.close(file.rid);
 });
@@ -33,7 +34,8 @@ unitTest({ perms: { read: true } }, async function fstatSuccess(): Promise<
   assert(fileInfo.size);
   assert(fileInfo.atime);
   assert(fileInfo.mtime);
-  assert(fileInfo.birthtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
 
   Deno.close(file.rid);
 });

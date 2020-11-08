@@ -4,8 +4,8 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 import {
-  assertEquals,
   assert,
+  assertEquals,
   assertThrows,
   assertThrowsAsync,
   unitTest,
@@ -329,9 +329,9 @@ unitTest(async function bufferReadFromSync(): Promise<void> {
 
 unitTest(async function bufferTestGrow(): Promise<void> {
   const tmp = new Uint8Array(72);
-  for (const startLen of [0, 100, 1000, 10000, 100000]) {
+  for (const startLen of [0, 100, 1000, 10000]) {
     const xBytes = repeat("x", startLen);
-    for (const growLen of [0, 100, 1000, 10000, 100000]) {
+    for (const growLen of [0, 100, 1000, 10000]) {
       const buf = new Deno.Buffer(xBytes.buffer as ArrayBuffer);
       // If we read, this affects buf.off, which is good to test.
       const nread = (await buf.read(tmp)) ?? 0;

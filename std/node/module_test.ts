@@ -1,10 +1,16 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-var-requires */
 import {
-  assertEquals,
   assert,
+  assertEquals,
   assertStringContains,
 } from "../testing/asserts.ts";
+
+import * as path from "../path/mod.ts";
 import { createRequire } from "./module.ts";
+
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, path.join("_fs", "testdata"));
 
 const require = createRequire(import.meta.url);
 
@@ -32,8 +38,13 @@ Deno.test("requireBuiltin", function () {
   const fs = require("fs");
   assert("readFileSync" in fs);
   const { readFileSync, isNull, extname } = require("./tests/cjs/cjs_builtin");
+
+  const testData = path.relative(
+    Deno.cwd(),
+    path.join(testdataDir, "hello.txt"),
+  );
   assertEquals(
-    readFileSync("./node/_fs/testdata/hello.txt", { encoding: "utf8" }),
+    readFileSync(testData, { encoding: "utf8" }),
     "hello world",
   );
   assert(isNull(null));

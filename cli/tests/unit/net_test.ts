@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
+  assertNotEquals,
   assertThrows,
   assertThrowsAsync,
   createResolvable,
-  assertNotEquals,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
@@ -531,5 +531,16 @@ unitTest(
     acceptedConn!.close();
     listener.close();
     await resolvable;
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  function netExplicitUndefinedHostname() {
+    const listener = Deno.listen({ hostname: undefined, port: 8080 });
+    assertEquals((listener.addr as Deno.NetAddr).hostname, "0.0.0.0");
+    listener.close();
   },
 );

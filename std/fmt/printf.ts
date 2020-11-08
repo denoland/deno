@@ -207,7 +207,7 @@ class Printf {
               this.handleWidthOrPrecisionRef(WorP.WIDTH);
               // force . or flag at this point
               break;
-            default:
+            default: {
               const val = parseInt(c);
               // most likely parseInt does something stupid that makes
               // it unusable for this scenario ...
@@ -220,6 +220,7 @@ class Printf {
               flags.width = flags.width == -1 ? 0 : flags.width;
               flags.width *= 10;
               flags.width += val;
+            }
           } // switch c
           break;
         case State.PRECISION: {
@@ -319,53 +320,37 @@ class Printf {
     switch (this.verb) {
       case "t":
         return this.pad(arg.toString());
-        break;
       case "b":
         return this.fmtNumber(arg as number, 2);
-        break;
       case "c":
         return this.fmtNumberCodePoint(arg as number);
-        break;
       case "d":
         return this.fmtNumber(arg as number, 10);
-        break;
       case "o":
         return this.fmtNumber(arg as number, 8);
-        break;
       case "x":
         return this.fmtHex(arg);
-        break;
       case "X":
         return this.fmtHex(arg, true);
-        break;
       case "e":
         return this.fmtFloatE(arg as number);
-        break;
       case "E":
         return this.fmtFloatE(arg as number, true);
-        break;
       case "f":
       case "F":
         return this.fmtFloatF(arg as number);
-        break;
       case "g":
         return this.fmtFloatG(arg as number);
-        break;
       case "G":
         return this.fmtFloatG(arg as number, true);
-        break;
       case "s":
         return this.fmtString(arg as string);
-        break;
       case "T":
         return this.fmtString(typeof arg);
-        break;
       case "v":
         return this.fmtV(arg);
-        break;
       case "j":
         return this.fmtJ(arg);
-        break;
       default:
         return `%!(BAD VERB '${this.verb}')`;
     }
@@ -659,7 +644,7 @@ class Printf {
     }
   }
 
-  fmtV(val: object): string {
+  fmtV(val: Record<string, unknown>): string {
     if (this.flags.sharp) {
       const options = this.flags.precision !== -1
         ? { depth: this.flags.precision }

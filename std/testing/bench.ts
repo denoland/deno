@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assert } from "../_util/assert.ts";
 import { deepAssign } from "../_util/deep_assign.ts";
 
 interface BenchmarkClock {
@@ -70,11 +71,11 @@ export interface BenchmarkRunResult {
 /** Defines the current progress during the run of `runBenchmarks` */
 export interface BenchmarkRunProgress extends BenchmarkRunResult {
   /** List of the queued benchmarks to run with their name and their run count */
-  queued: Array<{ name: string; runsCount: number }>;
+  queued?: Array<{ name: string; runsCount: number }>;
   /** The currently running benchmark with its name, run count and the already finished measurements in milliseconds */
   running?: { name: string; runsCount: number; measuredRunsMs: number[] };
   /** Indicates in which state benchmarking currently is */
-  state: ProgressState;
+  state?: ProgressState;
 }
 
 /** Defines the states `BenchmarkRunProgress` can be in */
@@ -232,6 +233,7 @@ export async function runBenchmarks(
     clock.for = name;
 
     // Remove benchmark from queued
+    assert(progress.queued);
     const queueIndex = progress.queued.findIndex(
       (queued) => queued.name === name && queued.runsCount === runs,
     );

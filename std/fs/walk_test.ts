@@ -1,4 +1,5 @@
-import { walk, walkSync, WalkOptions, WalkEntry } from "./walk.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { walk, WalkEntry, WalkOptions, walkSync } from "./walk.ts";
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
 export function testWalk(

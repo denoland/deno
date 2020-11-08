@@ -1,12 +1,13 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
-  fail,
   assertThrows,
+  fail,
 } from "../testing/asserts.ts";
-import EventEmitter, { WrappedFunction, once, on } from "./events.ts";
+import EventEmitter, { on, once, WrappedFunction } from "./events.ts";
 
-const shouldNeverBeEmitted: Function = () => {
+const shouldNeverBeEmitted = () => {
   fail("Should never be called");
 };
 
@@ -61,6 +62,31 @@ Deno.test({
     EventEmitter.defaultMaxListeners = 20;
     assertEquals(EventEmitter.defaultMaxListeners, 20);
     EventEmitter.defaultMaxListeners = 10; //reset back to original value
+
+    assertThrows(() => {
+      new EventEmitter().setMaxListeners(-1);
+    });
+
+    const ee = new EventEmitter();
+    const noop = (): void => {};
+    const origWarn = console.warn;
+
+    for (let i = 10; i--;) {
+      ee.on("test", noop);
+    }
+
+    // there are only sync actions until it gets restored,
+    // so it's safe to overwrite this
+    console.warn = (): void => fail("Infinity listeners should be allowed");
+
+    ee.setMaxListeners(Infinity);
+    ee.on("test", noop);
+
+    // 0 means that unlimited listeners are allowed
+    ee.setMaxListeners(0);
+    ee.on("test", noop);
+
+    console.warn = origWarn;
   },
 });
 

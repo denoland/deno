@@ -1,22 +1,23 @@
 [WILDCARD]
-let System, __instantiate;
-(() => {
-[WILDCARD]
-})();
-
-System.register("print_hello", [], function (exports_1, context_1) {
-[WILDCARD]
-});
-System.register("subdir2/mod2", ["print_hello"], function (exports_2, context_2) {
-[WILDCARD]
-});
-System.register("mod1", ["subdir2/mod2"], function (exports_3, context_3) {
-[WILDCARD]
-});
-
-const __exp = __instantiate("mod1", false);
-export const returnsHi = __exp["returnsHi"];
-export const returnsFoo2 = __exp["returnsFoo2"];
-export const printHello3 = __exp["printHello3"];
-export const throwsError = __exp["throwsError"];
+function printHello() {
+    console.log("Hello");
+}
+function returnsFoo() {
+    return "Foo";
+}
+function printHello2() {
+    printHello();
+}
+export function returnsHi() {
+    return "Hi";
+}
+export function returnsFoo2() {
+    return returnsFoo();
+}
+export function printHello3() {
+    printHello2();
+}
+export function throwsError() {
+    throw Error("exception from mod1");
+}
 [WILDCARD]

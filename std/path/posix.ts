@@ -6,10 +6,10 @@ import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";
 
 import {
-  assertPath,
-  normalizeString,
-  isPosixPathSeparator,
   _format,
+  assertPath,
+  isPosixPathSeparator,
+  normalizeString,
 } from "./_util.ts";
 
 export const sep = "/";
@@ -430,10 +430,26 @@ export function parse(path: string): ParsedPath {
 /** Converts a file URL to a path string.
  *
  *      fromFileUrl("file:///home/foo"); // "/home/foo"
- *
- * Note that non-file URLs are treated as file URLs and irrelevant components
- * are ignored.
  */
 export function fromFileUrl(url: string | URL): string {
-  return new URL(String(url)).pathname;
+  url = url instanceof URL ? url : new URL(url);
+  if (url.protocol != "file:") {
+    throw new TypeError("Must be a file URL.");
+  }
+  return decodeURIComponent(
+    url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+  );
+}
+
+/** Converts a path string to a file URL.
+ *
+ *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
+ */
+export function toFileUrl(path: string): URL {
+  if (!isAbsolute(path)) {
+    throw new TypeError("Must be an absolute path.");
+  }
+  const url = new URL("file:///");
+  url.pathname = path.replace(/%/g, "%25").replace(/\\/g, "%5C");
+  return url;
 }

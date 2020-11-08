@@ -87,6 +87,13 @@ However:
 There exist logical groups of flags that are shared between related subcommands.
 We discuss these below.
 
+### Watch mode
+
+You can supply the `--watch` flag to `deno run` to enable the built in file
+watcher. When Deno starts up with this flag it watches the entrypoint, and all
+local files the entrypoint statically imports. Whenever one of these files is
+changed on disk, the program will automatically be restarted.
+
 ### Integrity flags
 
 Affect commands which can download resources to the cache: `deno cache`,
@@ -108,7 +115,7 @@ resolution, compilation configuration etc.
 
 ```
 --config <FILE>               Load tsconfig.json configuration file
---importmap <FILE>            UNSTABLE: Load import map file
+--import-map <FILE>           UNSTABLE: Load import map file
 --no-remote                   Do not resolve remote modules
 --reload=<CACHE_BLOCKLIST>    Reload source code cache (recompile TypeScript)
 --unstable                    Enable unstable APIs

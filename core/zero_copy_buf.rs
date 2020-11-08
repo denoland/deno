@@ -1,7 +1,12 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::bindings;
 use rusty_v8 as v8;
+use smallvec::SmallVec;
 use std::ops::Deref;
 use std::ops::DerefMut;
+
+pub type BufVec = SmallVec<[ZeroCopyBuf; 2]>;
 
 /// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,

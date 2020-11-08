@@ -5,3 +5,4 @@ std/**/testdata/
 std/**/node_modules/
 cli/tsc/*typescript.js
 cli/dts/*
+cli/bench/node*.js

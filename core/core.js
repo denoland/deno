@@ -38,6 +38,7 @@ SharedQueue Binary Layout
 
   let initialized = false;
   let opsCache = {};
+  const errorMap = {};
 
   function maybeInit() {
     if (!initialized) {
@@ -60,7 +61,7 @@ SharedQueue Binary Layout
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = send(0, new Uint8Array([]));
+    const opsMapBytes = send(0);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     opsCache = JSON.parse(opsMapJson);
     return { ...opsCache };
@@ -169,7 +170,7 @@ SharedQueue Binary Layout
 
   function handleAsyncMsgFromRust(opId, buf) {
     if (buf) {
-      // This is the overflow_response case of deno::Isolate::poll().
+      // This is the overflow_response case of deno::JsRuntime::poll().
       asyncHandlers[opId](buf);
     } else {
       while (true) {
@@ -187,11 +188,95 @@ SharedQueue Binary Layout
     return send(opsCache[opName], control, ...zeroCopy);
   }
 
+  function registerErrorClass(errorName, className) {
+    if (typeof errorMap[errorName] !== "undefined") {
+      throw new TypeError(`Error class for "${errorName}" already registered`);
+    }
+    errorMap[errorName] = className;
+  }
+
+  function getErrorClass(errorName) {
+    return errorMap[errorName];
+  }
+
+  // Returns Uint8Array
+  function encodeJson(args) {
+    const s = JSON.stringify(args);
+    return core.encode(s);
+  }
+
+  function decodeJson(ui8) {
+    const s = core.decode(ui8);
+    return JSON.parse(s);
+  }
+
+  let nextPromiseId = 1;
+  const promiseTable = {};
+
+  function processResponse(res) {
+    if ("ok" in res) {
+      return res.ok;
+    } else {
+      const ErrorClass = getErrorClass(res.err.className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw new ErrorClass(res.err.message);
+    }
+  }
+
+  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
+    setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
+
+    args.promiseId = nextPromiseId++;
+    const argsBuf = encodeJson(args);
+    dispatch(opName, argsBuf, ...zeroCopy);
+    let resolve, reject;
+    const promise = new Promise((resolve_, reject_) => {
+      resolve = resolve_;
+      reject = reject_;
+    });
+    promise.resolve = resolve;
+    promise.reject = reject;
+    promiseTable[args.promiseId] = promise;
+    return processResponse(await promise);
+  }
+
+  function jsonOpSync(opName, args = {}, ...zeroCopy) {
+    const argsBuf = encodeJson(args);
+    const res = dispatch(opName, argsBuf, ...zeroCopy);
+    return processResponse(decodeJson(res));
+  }
+
+  function jsonOpAsyncHandler(buf) {
+    // Json Op.
+    const res = decodeJson(buf);
+    const promise = promiseTable[res.promiseId];
+    delete promiseTable[res.promiseId];
+    promise.resolve(res);
+  }
+
+  function resources() {
+    return jsonOpSync("op_resources");
+  }
+
+  function close(rid) {
+    jsonOpSync("op_close", { rid });
+  }
+
   Object.assign(window.Deno.core, {
+    jsonOpAsync,
+    jsonOpSync,
     setAsyncHandler,
     dispatch: send,
     dispatchByName: dispatch,
     ops,
+    close,
+    resources,
+    registerErrorClass,
+    getErrorClass,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
       MAX_RECORDS,

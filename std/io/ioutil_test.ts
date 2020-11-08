@@ -9,8 +9,6 @@ import {
 } from "./ioutil.ts";
 import { StringReader } from "./readers.ts";
 import { BufReader } from "./bufio.ts";
-import { tempFile } from "./util.ts";
-import * as path from "../path/mod.ts";
 
 class BinaryReader implements Deno.Reader {
   index = 0;
@@ -87,7 +85,10 @@ Deno.test("testCopyN2", async function (): Promise<void> {
 });
 
 Deno.test("copyNWriteAllData", async function (): Promise<void> {
-  const { filepath, file } = await tempFile(path.resolve("io"));
+  const tmpDir = await Deno.makeTempDir();
+  const filepath = `${tmpDir}/data`;
+  const file = await Deno.open(filepath, { create: true, write: true });
+
   const size = 16 * 1024 + 1;
   const data = "a".repeat(32 * 1024);
   const r = new StringReader(data);

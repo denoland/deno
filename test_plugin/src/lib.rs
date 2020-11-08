@@ -1,4 +1,5 @@
-use deno_core::plugin_api::Buf;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::plugin_api::Interface;
 use deno_core::plugin_api::Op;
 use deno_core::plugin_api::ZeroCopyBuf;
@@ -23,7 +24,7 @@ fn op_test_sync(
     println!("zero_copy[{}]: {}", idx, buf_str);
   }
   let result = b"test";
-  let result_box: Buf = Box::new(*result);
+  let result_box: Box<[u8]> = Box::new(*result);
   Op::Sync(result_box)
 }
 
@@ -47,7 +48,7 @@ fn op_test_async(
     });
     assert!(rx.await.is_ok());
     let result = b"test";
-    let result_box: Buf = Box::new(*result);
+    let result_box: Box<[u8]> = Box::new(*result);
     result_box
   };
 
