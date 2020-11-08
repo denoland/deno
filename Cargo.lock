@@ -484,7 +484,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.1.14"
+version = "0.1.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3a0eed03221f7502d8d5febebf1fa45a30e5596602a16edfc3c91048876e1dd"
 dependencies = [
  "futures",
  "lazy_static",
@@ -508,7 +510,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.2.8"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db3365f8888bbffc7b9b65268bebf4ba6fdaaf808d5a7a06fffe51786b37869a"
 dependencies = [
  "derive_more",
  "log",
@@ -600,7 +604,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.32.7"
+version = "0.32.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9971ede7622499e842d0e0f6c24992da34815c1438f26d832b603d1fe9589b46"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2277,9 +2283,9 @@ dependencies = [
 
 [[package]]
 name = "swc_bundler"
-version = "0.14.1"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4637a8e92ffe50c39f7aac648f97181bba83206537b998a32b13fac553a6be60"
+checksum = "b2033b99b209c5978f2bc04931073fe18f676c5b95b12bb6a9ec3b618569d806"
 dependencies = [
  "anyhow",
  "crc",

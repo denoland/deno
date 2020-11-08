@@ -116,9 +116,7 @@ pub fn print_rules_list() {
 fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
-    .ignore_diagnostic_directive(
-      "deno-lint-ignore"
-    )
+    .ignore_diagnostic_directive("deno-lint-ignore")
     .lint_unused_ignore_directives(true)
     // TODO(bartlomieju): switch to true
     .lint_unknown_rules(false)
@@ -138,8 +136,7 @@ fn lint_file(
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let (_, file_diagnostics) =
-    linter.lint(file_name, source_code.clone())?;
+  let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -165,10 +162,7 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
   match linter
-    .lint(
-      pseudo_file_name.to_string(),
-      source.clone(),
-    )
+    .lint(pseudo_file_name.to_string(), source.clone())
     .map_err(|e| e.into())
   {
     Ok((_, diagnostics)) => {
