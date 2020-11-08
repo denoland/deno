@@ -65,7 +65,8 @@ pub async fn upgrade_command(
 
   let install_version = match version {
     Some(passed_version) => {
-      if !force && output.is_none() && crate::version::deno() == passed_version {
+      if !force && output.is_none() && crate::version::deno() == passed_version
+      {
         println!("Version {} is already installed", passed_version);
         return Ok(());
       } else {
