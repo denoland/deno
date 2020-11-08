@@ -110,7 +110,7 @@ pub async fn upgrade_command(
     release_url,
     if nightly { "" } else { "v" },
     &install_version,
-    ARCHIVE_NAME
+    *ARCHIVE_NAME
   );
   let download_url = Url::parse(&download_url)?;
   let archive_data =
