@@ -145,8 +145,7 @@ impl swc_bundler::Load for BundleLoader<'_> {
   fn load(
     &self,
     file: &swc_common::FileName,
-  ) -> Result<(Rc<swc_common::SourceFile>, swc_ecmascript::ast::Module), AnyError>
-  {
+  ) -> Result<swc_bundler::ModuleData, AnyError> {
     match file {
       swc_common::FileName::Custom(filename) => {
         let specifier = ModuleSpecifier::resolve_url_or_path(filename)
@@ -156,14 +155,19 @@ impl swc_bundler::Load for BundleLoader<'_> {
             .graph
             .get_media_type(&specifier)
             .context("Looking up media type during bundling.")?;
-          transpile_module(
+          let (source_file, module) = transpile_module(
             filename,
             &src,
             &media_type,
             self.emit_options,
             self.globals,
             self.cm.clone(),
-          )
+          )?;
+          Ok(swc_bundler::ModuleData {
+            fm: source_file,
+            module,
+            helpers: Default::default(),
+          })
         } else {
           Err(
             GraphError::MissingDependency(specifier, "<bundle>".to_string())
