@@ -184,3 +184,9 @@ For documentation on allowed values and use cases please visit the
 
 **Note**: Any options not listed above are either not supported by Deno or are
 listed as deprecated/experimental in the TypeScript documentation.
+
+### Talks
+
+Luca Casonato. (November 5, 2020).
+[TypeScript on the Server side in Deno](https://www.youtube.com/watch?v=3MapKMsioTo&t=740s).
+ING Tech MeetUps.
