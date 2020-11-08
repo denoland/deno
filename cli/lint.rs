@@ -15,7 +15,6 @@ use crate::media_type::MediaType;
 use deno_core::error::{generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::linter::FileType;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
@@ -116,11 +115,10 @@ pub fn print_rules_list() {
 
 fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
-    .ignore_file_directives(vec!["deno-lint-ignore-file"])
-    .ignore_diagnostic_directives(vec![
-      "deno-lint-ignore",
-      "eslint-disable-next-line",
-    ])
+    .ignore_file_directive("deno-lint-ignore-file")
+    .ignore_diagnostic_directive(
+      "deno-lint-ignore"
+    )
     .lint_unused_ignore_directives(true)
     // TODO(bartlomieju): switch to true
     .lint_unknown_rules(false)
@@ -140,8 +138,8 @@ fn lint_file(
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics =
-    linter.lint(file_name, source_code.clone(), FileType::Module)?;
+  let (_, file_diagnostics) =
+    linter.lint(file_name, source_code.clone())?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -170,11 +168,10 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
     .lint(
       pseudo_file_name.to_string(),
       source.clone(),
-      FileType::Module,
     )
     .map_err(|e| e.into())
   {
-    Ok(diagnostics) => {
+    Ok((_, diagnostics)) => {
       for d in diagnostics {
         has_error = true;
         reporter.visit_diagnostic(&d, source.split('\n').collect());
