@@ -6,20 +6,14 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-use crate::http_util::fetch_once;
-use crate::http_util::FetchOnceResult;
 use crate::AnyError;
-use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_fetch::reqwest;
-use deno_fetch::reqwest::redirect::Policy;
 use deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;
 use std::fs;
-use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::process::Command;
 use std::string::String;
 use tempfile::TempDir;
@@ -52,7 +46,7 @@ pub async fn upgrade_command(
   output: Option<PathBuf>,
   ca_file: Option<String>,
 ) -> Result<(), AnyError> {
-  let mut client_builder = Client::builder().redirect(Policy::none());
+  let mut client_builder = Client::builder();
 
   // If we have been provided a CA Certificate, add it into the HTTP client
   if let Some(ca_file) = ca_file {
@@ -71,7 +65,7 @@ pub async fn upgrade_command(
 
   let install_version = match version {
     Some(passed_version) => {
-      if !force && crate::version::deno() == passed_version {
+      if !force && output.is_none() && crate::version::deno() == passed_version {
         println!("Version {} is already installed", passed_version);
         return Ok(());
       } else {
@@ -93,7 +87,7 @@ pub async fn upgrade_command(
         false
       };
 
-      if !force && current_is_most_recent {
+      if !force && output.is_none() && current_is_most_recent {
         println!(
           "Local deno version {} is the most recent release",
           crate::version::deno()
@@ -112,9 +106,8 @@ pub async fn upgrade_command(
     &install_version,
     *ARCHIVE_NAME
   );
-  let download_url = Url::parse(&download_url)?;
   let archive_data =
-    download_package(&download_url, client, install_version.clone()).await?;
+    download_package(&*download_url, client, install_version.clone()).await?;
   let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
@@ -131,40 +124,30 @@ pub async fn upgrade_command(
     }
   }
 
-  println!("Upgrade done successfully");
+  println!("Upgraded successfully");
 
   Ok(())
 }
 
-fn download_package(
-  url: &Url,
+async fn download_package(
+  url: &str,
   client: Client,
   version: String,
-) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, AnyError>>>> {
+) -> Result<Vec<u8>, AnyError> {
   println!("downloading {}", url);
-  let url = url.clone();
-  let fut = async move {
-    match fetch_once(client.clone(), &url, None).await {
-      Ok(result) => {
-        println!(
-          "Version has been found\nDeno is upgrading to version {}",
-          &version
-        );
-        match result {
-          FetchOnceResult::Code(source, _) => Ok(source),
-          FetchOnceResult::NotModified => unreachable!(),
-          FetchOnceResult::Redirect(url, _) => {
-            download_package(&url, client, version).await
-          }
-        }
-      }
-      Err(_) => {
-        println!("Version has not been found, aborting");
-        std::process::exit(1)
-      }
-    }
-  };
-  fut.boxed_local()
+
+  let res = client.get(url).send().await?;
+
+  if res.status().is_success() {
+    println!(
+      "Download has been found\nDeno is upgrading to version {}",
+      version
+    );
+    Ok(res.bytes().await?.to_vec())
+  } else {
+    println!("Download could not be found, aborting");
+    std::process::exit(1)
+  }
 }
 
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
