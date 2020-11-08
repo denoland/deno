@@ -12,7 +12,7 @@ async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
   // get the user ID and group ID of the current process
   const uidProc = Deno.run({
     stdout: "piped",
-    cmd: ["python", "-c", "import os; print(os.getuid())"],
+    cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
   });
   const gidProc = Deno.run({
     stdout: "piped",
