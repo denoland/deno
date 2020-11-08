@@ -39,13 +39,15 @@ Deno.test({
     assertThrows(
       (): void => {
         setCookie(res, {
-          name: "Name",
-          value: "名称",
+          name: "Space@",
+          value: "Cat",
           httpOnly: true,
           secure: true,
-          maxAge: 0,
+          maxAge: 3,
         });
       },
+      Error,
+      "The Name of the cookie (Space@) is invalid."
     );
   },
 });
