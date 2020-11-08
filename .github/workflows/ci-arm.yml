@@ -1,0 +1,61 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: ${{ matrix.kind }} ${{ matrix.target }}
+    if: |
+      github.event_name == 'push' ||
+      !startsWith(github.event.pull_request.head.label, 'denoland:')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        include:
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+            target: aarch64-unknown-linux-gnu
+
+      # Always run master branch builds to completion. This allows the cache to
+      # stay mostly up-to-date in situations where a single job fails due to
+      # e.g. a flaky test.
+      # Don't fast-fail on tag build because publishing binaries shouldn't be
+      # prevented if 'cargo publish' fails (which can be a false negative).
+      fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
+        'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
+
+    env:
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: full
+
+    steps:
+      - name: Configure git
+        run: git config --global core.symlinks true
+
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          # Use depth > 1, because sometimes we need to rebuild master and if
+          # other commits have landed it will become impossible to rebuild if
+          # the checkout is too shallow.
+          fetch-depth: 5
+          submodules: true
+
+      - name: Start QEMU
+        run: |
+          docker run --rm --privileged multiarch/qemu-user-static:register --reset
+
+      - name: Run build & test
+        uses: docker://multiarch/ubuntu-core:arm64-bionic
+        with:
+          args: >
+            bash -c
+            "apt-get update &&
+            apt-get install -y python node &&
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh &&
+            node -v &&
+            python --version &&
+            rustc --version &&
+            cargo --version &&
+            cargo build --release --locked --all-targets -vv --target ${{ matrix.target }} &&
+            cargo test --release --locked --all-targets --target ${{ matrix.target }}"
