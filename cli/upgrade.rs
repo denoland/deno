@@ -24,13 +24,9 @@ use std::process::Command;
 use std::string::String;
 use tempfile::TempDir;
 
-// TODO(ry) Auto detect target triples for the uploaded files.
-#[cfg(windows)]
-const ARCHIVE_NAME: &str = "deno-x86_64-pc-windows-msvc.zip";
-#[cfg(target_os = "macos")]
-const ARCHIVE_NAME: &str = "deno-x86_64-apple-darwin.zip";
-#[cfg(target_os = "linux")]
-const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
+lazy_static! {
+  static ref ARCHIVE_NAME: String = format!("deno-{}.zip", env!("TARGET"));
+}
 
 async fn get_latest_version(
   client: &Client,
@@ -180,7 +176,7 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
   let exe_path = temp_dir.join("deno").with_extension(exe_ext);
   assert!(!exe_path.exists());
 
-  let archive_ext = Path::new(ARCHIVE_NAME)
+  let archive_ext = Path::new(&*ARCHIVE_NAME)
     .extension()
     .and_then(|ext| ext.to_str())
     .unwrap();
