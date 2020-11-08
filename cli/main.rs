@@ -23,7 +23,6 @@ mod flags_allow_net;
 mod fmt;
 mod fmt_errors;
 mod fs;
-mod global_timer;
 mod http_cache;
 mod http_util;
 mod import_map;
