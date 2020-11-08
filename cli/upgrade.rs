@@ -107,8 +107,10 @@ pub async fn upgrade_command(
     &install_version,
     *ARCHIVE_NAME
   );
-  let archive_data =
-    download_package(&*download_url, client, install_version.clone()).await?;
+  let archive_data = download_package(&*download_url, client).await?;
+
+  println!("Deno is upgrading to version {}", &install_version);
+
   let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
@@ -133,17 +135,13 @@ pub async fn upgrade_command(
 async fn download_package(
   url: &str,
   client: Client,
-  version: String,
 ) -> Result<Vec<u8>, AnyError> {
-  println!("downloading {}", url);
+  println!("Checking {}", url);
 
   let res = client.get(url).send().await?;
 
   if res.status().is_success() {
-    println!(
-      "Download has been found\nDeno is upgrading to version {}",
-      version
-    );
+    println!("Download has been found");
     Ok(res.bytes().await?.to_vec())
   } else {
     println!("Download could not be found, aborting");
