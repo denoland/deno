@@ -1117,6 +1117,9 @@
 
   class TextDecoderStream {
     #encoding = "";
+    #queue;
+    #decoder;
+
     get encoding() {
       return this.#encoding;
     }
@@ -1139,9 +1142,35 @@
       }
       this.#encoding = encoding;
 
+      this.#decoder = decoders.get(this.#encoding)({
+        fatal: this.fatal,
+        ignoreBOM: this.ignoreBOM,
+      });
+
+      this.#queue = new Stream([]);
+
       const { writable, readable } = new TransformStream({
         transform: (chunk, controller) => {
-          const bufferSource = chunk;
+          const bufferSource = chunk; // TODO
+          this.#queue.push(bufferSource);
+          const output = new Stream([]); // TODO
+
+          while (true) {
+            const item = this.#queue.read();
+            if (item === END_OF_STREAM) {
+              let outputChunk = ""; // TODO
+
+              if (outputChunk) {
+                controller.enqueue(outputChunk);
+              }
+
+              break;
+            }
+
+            let result;
+
+
+          }
         },
         flush: (controller) => {
         },
@@ -1162,11 +1191,11 @@
       const { writable, readable } = new TransformStream({
         transform: (chunk, controller) => {
           const inputStream = new Stream(stringToCodePoints(String(chunk)));
-          const output = new Stream([]);
+          const output = new Stream([]); // TODO
           while (true) {
             const item = inputStream.read();
             if (item === END_OF_STREAM) {
-              const bytes = output;
+              const bytes = output; // TODO
               if (bytes.length !== 0) {
                 controller.enqueue(new Uint8Array(bytes));
               }
