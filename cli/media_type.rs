@@ -194,7 +194,7 @@ pub fn serialize_media_type<S>(mt: &MediaType, s: S) -> Result<S::Ok, S::Error>
 where
   S: Serializer,
 {
-  s.serialize_str(&format!("{}", mt))
+  s.serialize_str(&mt.to_string())
 }
 
 #[cfg(test)]
@@ -269,15 +269,15 @@ mod tests {
 
   #[test]
   fn test_display() {
-    assert_eq!(format!("{}", MediaType::JavaScript), "JavaScript");
-    assert_eq!(format!("{}", MediaType::JSX), "JSX");
-    assert_eq!(format!("{}", MediaType::TypeScript), "TypeScript");
-    assert_eq!(format!("{}", MediaType::Dts), "Dts");
-    assert_eq!(format!("{}", MediaType::TSX), "TSX");
-    assert_eq!(format!("{}", MediaType::Json), "Json");
-    assert_eq!(format!("{}", MediaType::Wasm), "Wasm");
-    assert_eq!(format!("{}", MediaType::TsBuildInfo), "TsBuildInfo");
-    assert_eq!(format!("{}", MediaType::SourceMap), "SourceMap");
-    assert_eq!(format!("{}", MediaType::Unknown), "Unknown");
+    assert_eq!(MediaType::JavaScript.to_string(), "JavaScript");
+    assert_eq!(MediaType::JSX.to_string(), "JSX");
+    assert_eq!(MediaType::TypeScript.to_string(), "TypeScript");
+    assert_eq!(MediaType::Dts.to_string(), "Dts");
+    assert_eq!(MediaType::TSX.to_string(), "TSX");
+    assert_eq!(MediaType::Json.to_string(), "Json");
+    assert_eq!(MediaType::Wasm.to_string(), "Wasm");
+    assert_eq!(MediaType::TsBuildInfo.to_string(), "TsBuildInfo");
+    assert_eq!(MediaType::SourceMap.to_string(), "SourceMap");
+    assert_eq!(MediaType::Unknown.to_string(), "Unknown");
   }
 }
