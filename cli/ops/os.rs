@@ -195,13 +195,11 @@ fn op_system_cpu_info(
 fn op_total_mems(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf]
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.totalMems");
   state.borrow::<Permissions>().check_env()?;
-  
+
   let total_mems = sys_info::mem_info().unwrap().total;
-  Ok(json!({
-    "totalMems": total_mems
-  }))
+  Ok(json!({ "totalMems": total_mems }))
 }
