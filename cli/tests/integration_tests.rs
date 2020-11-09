@@ -3814,7 +3814,7 @@ async fn inspector_does_not_hang() {
   for i in 0..128u32 {
     let request_id = i + 10;
     // Expect the number {i} on stdout.
-    let s = format!("{}", i);
+    let s = i.to_string();
     assert_eq!(stdout_lines.next().unwrap(), s);
     // Expect hitting the `debugger` statement.
     let s = r#"{"method":"Debugger.paused","#;
