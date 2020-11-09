@@ -29,7 +29,7 @@ export async function move(
       throw new Error("dest already exists.");
     }
   }
-  
+
   await Deno.rename(src, dest);
 
   return;
