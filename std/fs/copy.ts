@@ -98,7 +98,11 @@ async function copyFile(
   }
 }
 /* copy file to dest synchronously */
-function copyFileSync(src: string, dest: string, options: InternalCopyOptions): void {
+function copyFileSync(
+  src: string,
+  dest: string,
+  options: InternalCopyOptions,
+): void {
   ensureValidCopySync(src, dest, options);
   Deno.copyFileSync(src, dest);
   if (options.preserveTimestamps) {
