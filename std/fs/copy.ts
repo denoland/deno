@@ -161,9 +161,10 @@ async function copyDir(
   dest: string,
   options: CopyOptions,
 ): Promise<void> {
-  options.isFolder = true;
-
-  const destStat = await ensureValidCopy(src, dest, options);
+  const destStat = await ensureValidCopy(src, dest, {
+    ...options,
+    isFolder: true,
+  });
 
   if (!destStat) {
     await ensureDir(dest);
@@ -191,9 +192,10 @@ async function copyDir(
 
 /* copy folder from src to dest synchronously */
 function copyDirSync(src: string, dest: string, options: CopyOptions): void {
-  options.isFolder = true;
-
-  const destStat = ensureValidCopySync(src, dest, options);
+  const destStat = ensureValidCopySync(src, dest, {
+    ...options,
+    isFolder: true,
+  });
 
   if (!destStat) {
     ensureDirSync(dest);
