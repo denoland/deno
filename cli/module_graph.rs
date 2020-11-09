@@ -800,49 +800,51 @@ impl Graph {
     graph.maybe_tsbuildinfo = response.maybe_tsbuildinfo;
     // Only process changes to the graph if there are no diagnostics and there
     // were files emitted.
-    if response.diagnostics.is_empty() && !response.emitted_files.is_empty() {
-      let mut codes = HashMap::new();
-      let mut maps = HashMap::new();
-      let check_js = config.get_check_js();
-      for emit in &response.emitted_files {
-        if let Some(specifiers) = &emit.maybe_specifiers {
-          assert!(specifiers.len() == 1, "Unexpected specifier length");
-          // The specifier emitted might not be the redirected specifier, and
-          // therefore we need to ensure it is the correct one.
-          let specifier = graph.resolve_specifier(&specifiers[0]);
-          // Sometimes if tsc sees a CommonJS file it will _helpfully_ output it
-          // to ESM, which we don't really want unless someone has enabled the
-          // check_js option.
-          if !check_js
-            && graph.get_media_type(&specifier) == Some(MediaType::JavaScript)
-          {
-            debug!("skipping emit for {}", specifier);
-            continue;
+    if response.diagnostics.is_empty() {
+      if !response.emitted_files.is_empty() {
+        let mut codes = HashMap::new();
+        let mut maps = HashMap::new();
+        let check_js = config.get_check_js();
+        for emit in &response.emitted_files {
+          if let Some(specifiers) = &emit.maybe_specifiers {
+            assert!(specifiers.len() == 1, "Unexpected specifier length");
+            // The specifier emitted might not be the redirected specifier, and
+            // therefore we need to ensure it is the correct one.
+            let specifier = graph.resolve_specifier(&specifiers[0]);
+            // Sometimes if tsc sees a CommonJS file it will _helpfully_ output it
+            // to ESM, which we don't really want unless someone has enabled the
+            // check_js option.
+            if !check_js
+              && graph.get_media_type(&specifier) == Some(MediaType::JavaScript)
+            {
+              debug!("skipping emit for {}", specifier);
+              continue;
+            }
+            match emit.media_type {
+              MediaType::JavaScript => {
+                codes.insert(specifier.clone(), emit.data.clone());
+              }
+              MediaType::SourceMap => {
+                maps.insert(specifier.clone(), emit.data.clone());
+              }
+              _ => unreachable!(),
+            }
           }
-          match emit.media_type {
-            MediaType::JavaScript => {
-              codes.insert(specifier.clone(), emit.data.clone());
-            }
-            MediaType::SourceMap => {
-              maps.insert(specifier.clone(), emit.data.clone());
-            }
-            _ => unreachable!(),
+        }
+        let config = config.as_bytes();
+        for (specifier, code) in codes.iter() {
+          if let Some(module) = graph.get_module_mut(specifier) {
+            module.maybe_emit =
+              Some(Emit::Cli((code.clone(), maps.get(specifier).cloned())));
+            module.set_version(&config);
+            module.is_dirty = true;
+          } else {
+            return Err(GraphError::MissingSpecifier(specifier.clone()).into());
           }
         }
       }
-      let config = config.as_bytes();
-      for (specifier, code) in codes.iter() {
-        if let Some(module) = graph.get_module_mut(specifier) {
-          module.maybe_emit =
-            Some(Emit::Cli((code.clone(), maps.get(specifier).cloned())));
-          module.set_version(&config);
-          module.is_dirty = true;
-        } else {
-          return Err(GraphError::MissingSpecifier(specifier.clone()).into());
-        }
-      }
+      graph.flush()?;
     }
-    graph.flush()?;
 
     Ok(ResultInfo {
       diagnostics: response.diagnostics,
@@ -1950,11 +1952,35 @@ pub mod tests {
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(result_info.stats.0.len(), 12);
-    println!("{}", result_info.diagnostics);
     assert!(result_info.diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn fix_graph_check_emit_diagnostics() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/diag.ts")
+        .expect("could not resolve module");
+    let (graph, handler) = setup(specifier).await;
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert_eq!(result_info.stats.0.len(), 12);
+    assert!(!result_info.diagnostics.is_empty());
+    let h = handler.borrow();
+    // we shouldn't cache any files or write out tsbuildinfo if there are
+    // diagnostic errors
+    assert_eq!(h.cache_calls.len(), 0);
+    assert_eq!(h.tsbuildinfo_calls.len(), 0);
   }
 
   #[tokio::test]
