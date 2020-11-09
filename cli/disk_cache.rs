@@ -134,6 +134,11 @@ impl DiskCache {
     }
   }
 
+  pub fn is_file(&self, filename: &Path) -> bool {
+    let path = self.location.join(filename);
+    path.is_file()
+  }
+
   pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
     let path = self.location.join(filename);
     fs::read(&path)

@@ -353,8 +353,19 @@ impl SpecifierHandler for FetchHandler {
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
-    if let Ok(tsbuildinfo) = self.disk_cache.get(&filename) {
-      Ok(Some(String::from_utf8(tsbuildinfo)?))
+    let emit_filename = self
+      .disk_cache
+      .get_cache_filename_with_extension(specifier.as_url(), "js");
+    // in certain situations we might have a tsbuildinfo file in the disk cache
+    // but the emit hasn't actually occurred, and this causes problems with
+    // certain files not being emitted by `tsc`.  Therefore if we don't have
+    // a valid emit, we cannot possibly have a valid tsbuildinfo.
+    if self.disk_cache.is_file(&emit_filename) {
+      if let Ok(tsbuildinfo) = self.disk_cache.get(&filename) {
+        Ok(Some(String::from_utf8(tsbuildinfo)?))
+      } else {
+        Ok(None)
+      }
     } else {
       Ok(None)
     }
