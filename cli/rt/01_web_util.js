@@ -73,12 +73,9 @@
           // DataView or TypedArray.  They use the same constructor signature,
           // only DataView has a length in bytes and TypedArrays use a length in
           // terms of elements, so we adjust for that.
-          let length;
-          if (value instanceof DataView) {
-            length = value.byteLength;
-          } else {
-            length = value.length;
-          }
+          // update: all TypedArrays have a .byteLength property
+          const length = value.byteLength;
+
           return new value.constructor(
             clonedBuffer,
             value.byteOffset,
@@ -98,12 +95,14 @@
           return clonedSet;
         }
 
+        // default for objects
         const clonedObj = {};
         objectCloneMemo.set(value, clonedObj);
         const sourceKeys = Object.getOwnPropertyNames(value);
         for (const key of sourceKeys) {
           clonedObj[key] = cloneValue(value[key]);
         }
+        Reflect.setPrototypeOf(clonedObj, Reflect.getPrototypeOf(value));
         return clonedObj;
       }
       case "symbol":
