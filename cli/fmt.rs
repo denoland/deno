@@ -9,8 +9,6 @@
 
 use crate::colors;
 use crate::diff::diff;
-use crate::fs::canonicalize_path;
-// use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -41,14 +39,8 @@ pub async fn format(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return format_stdin(check);
   }
-  // collect all files provided.
+  // collect the files that are to be formatted
   let target_files = collect_files(args, exclude)?;
-  // if !exclude.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be formatted.
-    // let ignore_files = collect_files(exclude, exclude)?;
-    // target_files.retain(|f| !ignore_files.contains(&f));
-  // }
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -234,34 +226,45 @@ fn is_supported(path: &Path) -> bool {
 }
 
 pub fn collect_files(
-  _files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
 ) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
+  // FIXME the unwrap here panicks when we add a ignore file/folder which doesn't exist
+  let ignore: Vec<PathBuf> = ignore
+    .into_iter()
+    .map(|file| file.canonicalize().unwrap())
+    .collect();
 
-  for entry in WalkDir::new(std::env::current_dir()?.canonicalize()?).into_iter().filter_entry(|e| !ignore.contains(&e.clone().into_path())) {
-    if is_supported(entry?.path()) {
-      target_files.push(entry?.into_path())
+  if files.is_empty() {
+    for entry in WalkDir::new(std::env::current_dir()?.canonicalize()?)
+      .into_iter()
+      .filter_entry(|e| {
+        !ignore.contains(&e.clone().path().canonicalize().unwrap())
+      })
+    {
+      let entry_clone = entry?.clone();
+      if is_supported(entry_clone.path()) {
+        target_files.push(entry_clone.path().canonicalize()?)
+      }
+    }
+  } else {
+    for file in files {
+      if file.is_dir() {
+        for entry in WalkDir::new(file.canonicalize()?)
+          .into_iter()
+          .filter_entry(|e| !ignore.contains(&e.clone().into_path()))
+        {
+          let entry_clone = entry?.clone();
+          if is_supported(entry_clone.path()) {
+            target_files.push(entry_clone.into_path().canonicalize()?)
+          }
+        }
+      } else {
+        target_files.push(file.canonicalize()?);
+      };
     }
   }
-
-  dbg!(&target_files);
-
-  // if files.is_empty() {
-  //   target_files.extend(files_in_subtree(
-  //     std::env::current_dir()?.canonicalize()?,
-  //     is_supported,
-  //   ));
-  // } else {
-  //   for file in files {
-  //     if file.is_dir() {
-  //       target_files
-  //         .extend(files_in_subtree(file.canonicalize()?, is_supported));
-  //     } else {
-  //       target_files.push(file.canonicalize()?);
-  //     };
-  //   }
-  // }
 
   Ok(target_files)
 }

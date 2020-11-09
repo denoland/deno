@@ -49,12 +49,6 @@ pub async fn lint_files(
     return lint_stdin(json);
   }
   let target_files = collect_files(args, ignore)?;
-  // if !ignore.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be linted.
-    // let ignore_files = collect_files(ignore)?;
-    // target_files.retain(|f| !ignore_files.contains(&f));
-  // }
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 
