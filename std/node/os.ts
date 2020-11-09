@@ -185,9 +185,9 @@ export function tmpdir(): string | null {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Not yet implemented */
+/** Returns total physical memory. **/
 export function totalmem(): number {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.totalMems();
 }
 
 /** Not yet implemented */

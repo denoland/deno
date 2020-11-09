@@ -19,6 +19,10 @@
     return core.jsonOpSync("op_system_memory_info");
   }
 
+  function totalMems() {
+    return core.jsonOpSync("op_total_mems");
+  }
+
   function systemCpuInfo() {
     return core.jsonOpSync("op_system_cpu_info");
   }
@@ -61,6 +65,7 @@
     systemMemoryInfo,
     systemCpuInfo,
     hostname,
+    totalMems,
     loadavg,
   };
 })(this);

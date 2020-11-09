@@ -77,6 +77,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "symlinkSync",
   "systemMemoryInfo",
   "systemCpuInfo",
+  "totalMems",
   "transpileOnly",
   "umask",
   "utime",

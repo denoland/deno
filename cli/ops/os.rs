@@ -24,6 +24,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_os_release", op_os_release);
   super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
   super::reg_json_sync(rt, "op_system_cpu_info", op_system_cpu_info);
+  super::reg_json_sync(rt, "op_total_mems", op_total_mems);
 }
 
 fn op_exec_path(
@@ -188,5 +189,19 @@ fn op_system_cpu_info(
   Ok(json!({
     "cores": cores,
     "speed": speed
+  }))
+}
+
+fn op_total_mems(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf]
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.totalMems");
+  state.borrow::<Permissions>().check_env()?;
+  
+  let total_mems = sys_info::mem_info().unwrap().total;
+  Ok(json!({
+    "totalMems": total_mems
   }))
 }

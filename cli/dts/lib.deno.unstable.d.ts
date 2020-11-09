@@ -192,6 +192,18 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
+   * Returns the total physical memory amount
+   *
+   * ```ts
+   * console.log(Deno.totalMems());
+   * ```
+   *
+   * Requires `allow-env` permission.
+  */
+  export function totalMems(): number;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
    * Open and initialize a plugin.
    *
    * ```ts

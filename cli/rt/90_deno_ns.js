@@ -103,6 +103,7 @@
     openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
+    totalMems: __bootstrap.os.totalMems,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
     loadavg: __bootstrap.os.loadavg,
