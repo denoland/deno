@@ -952,6 +952,7 @@ impl Graph {
           let extension = match emitted_file.media_type {
             MediaType::JavaScript => ".js",
             MediaType::SourceMap => ".js.map",
+            MediaType::Dts => ".d.ts",
             _ => unreachable!(),
           };
           let key = format!("{}{}", specifier, extension);
@@ -2141,6 +2142,50 @@ pub mod tests {
     let actual = actual.unwrap();
     assert!(actual.contains("const b = \"b\";"));
     assert!(actual.contains("console.log(b);"));
+  }
+
+  #[tokio::test]
+  async fn fix_graph_emit_declaration() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let graph = setup_memory(
+      specifier,
+      map!(
+        "/a.ts" => r#"
+        import * as b from "./b.ts";
+
+        console.log(b);
+      "#,
+        "/b.ts" => r#"
+        export const b = "b";
+      "#
+      ),
+    )
+    .await;
+    let mut user_config = HashMap::<String, Value>::new();
+    user_config.insert("declaration".to_string(), json!(true));
+    let (emitted_files, result_info) = graph
+      .emit(EmitOptions {
+        bundle_type: BundleType::None,
+        debug: false,
+        maybe_user_config: Some(user_config),
+      })
+      .expect("should have emitted");
+    assert!(result_info.diagnostics.is_empty());
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert_eq!(emitted_files.len(), 6);
+    let out_a = emitted_files.get("file:///a.ts.js");
+    assert!(out_a.is_some());
+    let out_a = out_a.unwrap();
+    assert!(out_a.starts_with("import * as b from"));
+    assert!(emitted_files.contains_key("file:///a.ts.js.map"));
+    assert!(emitted_files.contains_key("file:///a.ts.d.ts"));
+    let out_b = emitted_files.get("file:///b.ts.js");
+    assert!(out_b.is_some());
+    let out_b = out_b.unwrap();
+    assert!(out_b.starts_with("export const b = \"b\";"));
+    assert!(emitted_files.contains_key("file:///b.ts.js.map"));
+    assert!(emitted_files.contains_key("file:///b.ts.d.ts"));
   }
 
   #[tokio::test]
