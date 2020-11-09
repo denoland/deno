@@ -148,11 +148,11 @@
       const byte = bytes[i];
       if (lead !== 0x00) {
         let pointer = null;
-        let offset = byte < 0x7f ? 0x40 : 0x62;
-        let lead_copy = lead;
+        const offset = byte < 0x7f ? 0x40 : 0x62;
+        const leadCopy = lead;
         lead = 0x00;
         if (inRange(byte, 0x40, 0x7e) || inRange(byte, 0xa1, 0xfe)) {
-          pointer = (lead_copy - 0x81) * 157 + (byte - offset);
+          pointer = (leadCopy - 0x81) * 157 + (byte - offset);
         }
         if (pointer === 1133) {
           res.push(202);
@@ -170,7 +170,7 @@
           res.push(234);
           continue;
         }
-        let code = pointer === null ? null : big5[pointer];
+        const code = pointer === null ? null : big5[pointer];
         if (code === null && isASCIIByte(byte)) {
           i--;
         }
@@ -208,8 +208,8 @@
     if (ignoreBOM) {
       throw new TypeError("Ignoring the BOM is available only with utf-8.");
     }
-    let lead_byte = null;
-    let lead_surrogate = null;
+    let leadByte = null;
+    let leadSurrogate = null;
     const udc00 = 0xdc00;
     const udfff = 0xdfff;
     const ud800 = 0xd800;
@@ -218,31 +218,30 @@
 
     for (let i = 0; i < bytes.length; i++) {
       const byte = bytes[i];
-      let code;
-      if (lead_byte === null) {
-        lead_byte = byte;
+      if (leadByte === null) {
+        leadByte = byte;
         continue;
       }
-      code = be ? (lead_byte << 8) + byte : (byte << 8) + lead_byte;
-      lead_byte = null;
-      if (lead_surrogate !== null) {
+      const code = be ? (leadByte << 8) + byte : (byte << 8) + leadByte;
+      leadByte = null;
+      if (leadSurrogate !== null) {
         if (inRange(code, udc00, udfff)) {
-          res.push(0x10000 + ((lead_surrogate - 0xd800) << 10) + code - 0xdc00);
+          res.push(0x10000 + ((leadSurrogate - 0xd800) << 10) + code - 0xdc00);
           continue;
         }
-        let byte1 = code << 8;
-        let byte2 = code & 0x00ff;
+        const byte1 = code << 8;
+        const byte2 = code & 0x00ff;
         if (be) {
           res.push(byte1 & byte2);
         } else {
           res.push(decoderError(fatal));
           res.push(byte1 & byte2);
         }
-        lead_surrogate = null;
+        leadSurrogate = null;
         continue;
       }
       if (inRange(code, ud800, udbff)) {
-        lead_surrogate = code;
+        leadSurrogate = code;
         continue;
       }
       if (inRange(code, udc00, udfff)) {
@@ -251,7 +250,7 @@
       }
       res.push(code);
     }
-    if (!(lead_byte === null && lead_surrogate === null)) {
+    if (!(leadByte === null && leadSurrogate === null)) {
       res.push(decoderError(fatal));
     }
     return res;
@@ -482,13 +481,6 @@
       "unicodefeff",
       "utf-16",
       "utf-16le",
-    ],
-    "big5": [
-      "big5",
-      "big5-hkscs",
-      "cn-big5",
-      "csbig5",
-      "x-x-big5",
     ],
   };
   // We convert these into a Map where every label resolves to its canonical

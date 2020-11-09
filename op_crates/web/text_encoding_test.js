@@ -1226,7 +1226,22 @@ function utf16Test() {
     },
   ];
 
-  function assert_throws(func) {
+  const good = [
+    {
+      encoding: "utf-16le",
+      input: [0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F, 0x00],
+      expected: "Hello",
+      name: "\"Hello\" in utf-16le"
+    },
+    {
+      encoding: "utf-16be",
+      input: [0x00, 0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F],
+      expected: "Hello",
+      name: "\"Hello\" in utf-16be"
+    },
+  ];
+
+  function assertThrows(func) {
     let erred = false;
     try {
       func();
@@ -1236,7 +1251,7 @@ function utf16Test() {
     assert(erred === true);
   }
 
-  function assert_equals(expected, actual, msg = "") {
+  function assertEquals(expected, actual, msg = "") {
     function format(str) {
       return str.split("").map((c) => c.charCodeAt(0)).join(", ");
     }
@@ -1250,23 +1265,31 @@ function utf16Test() {
   }
 
   bad.forEach((t, i) => {
-    assert_equals(
+    assertEquals(
       t.expected,
       new TextDecoder(t.encoding).decode(new Uint8Array(t.input)),
       i,
-    );
-    assert_throws(() => {
+    )
+    assertThrows(() => {
       new TextDecoder(t.encoding, { fatal: true }).decode(
         new Uint8Array(t.input),
       );
     });
+  });
+
+  good.forEach((t, i) => {
+    assertEquals(
+      t.expected,
+      new TextDecoder(t.encoding).decode(new Uint8Array(t.input)),
+      i
+    )
   });
 }
 
 function big5Test(tests) {
   const assertions = [];
 
-  function assert_equals(expected, actual, msg = "") {
+  function assertEquals(expected, actual, msg = "") {
     if (expected !== actual) {
       assertions.push([expected, actual, msg]);
     }
@@ -1288,7 +1311,7 @@ function big5Test(tests) {
 
   for (let i = 0; i < tests.length; i++) {
     const [cp, bytes] = tests[i];
-    assert_equals(
+    assertEquals(
       String.fromCharCode(cp),
       decoder.decode(Uint8Array.from(bytes)),
       `${i} ${bytes}`,
@@ -1321,6 +1344,7 @@ function main() {
   textDecoderHandlesNotFoundInternalDecoder();
   utf16Test();
   // __big5_tests_array__ is defined in big5_tests_array.js
+  // deno-lint-ignore no-undef
   big5Test(__big5_tests_array__);
 }
 
