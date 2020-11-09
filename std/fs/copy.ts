@@ -18,13 +18,16 @@ export interface CopyOptions {
    * Default is `false`.
    */
   preserveTimestamps?: boolean;
+  /**
+   * default is `false`
+   */
+  isFolder?: boolean
 }
 
 async function ensureValidCopy(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder = false,
 ): Promise<Deno.FileInfo | undefined> {
   let destStat: Deno.FileInfo;
 
@@ -37,7 +40,7 @@ async function ensureValidCopy(
     throw err;
   }
 
-  if (isCopyFolder && !destStat.isDirectory) {
+  if (options.isFolder && !destStat.isDirectory) {
     throw new Error(
       `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
@@ -53,7 +56,6 @@ function ensureValidCopySync(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder = false,
 ): Deno.FileInfo | undefined {
   let destStat: Deno.FileInfo;
   try {
@@ -65,7 +67,7 @@ function ensureValidCopySync(
     throw err;
   }
 
-  if (isCopyFolder && !destStat.isDirectory) {
+  if (options.isFolder && !destStat.isDirectory) {
     throw new Error(
       `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
@@ -159,7 +161,9 @@ async function copyDir(
   dest: string,
   options: CopyOptions,
 ): Promise<void> {
-  const destStat = await ensureValidCopy(src, dest, options, true);
+  options.isFolder = true;
+
+  const destStat = await ensureValidCopy(src, dest, options);
 
   if (!destStat) {
     await ensureDir(dest);
@@ -187,7 +191,9 @@ async function copyDir(
 
 /* copy folder from src to dest synchronously */
 function copyDirSync(src: string, dest: string, options: CopyOptions): void {
-  const destStat = ensureValidCopySync(src, dest, options, true);
+  options.isFolder = true;
+
+  const destStat = ensureValidCopySync(src, dest, options);
 
   if (!destStat) {
     ensureDirSync(dest);
