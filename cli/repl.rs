@@ -245,31 +245,31 @@ impl Highlighter for LineHighlighter {
       .regex
       .replace_all(&line.to_string(), |caps: &Captures<'_>| {
         if let Some(cap) = caps.name("comment") {
-          format!("{}", colors::gray(cap.as_str()))
+          colors::gray(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("string") {
-          format!("{}", colors::green(cap.as_str()))
+          colors::green(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("regexp") {
-          format!("{}", colors::red(cap.as_str()))
+          colors::red(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("number") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("boolean") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("null") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("undefined") {
-          format!("{}", colors::gray(cap.as_str()))
+          colors::gray(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("keyword") {
-          format!("{}", colors::cyan(cap.as_str()))
+          colors::cyan(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("infinity") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("classes") {
-          format!("{}", colors::green_bold(cap.as_str()))
+          colors::green_bold(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("hexnumber") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("octalnumber") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("binarynumber") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else {
           caps[0].to_string()
         }
