@@ -1960,6 +1960,24 @@ pub mod tests {
   }
 
   #[tokio::test]
+  async fn test_graph_check_ignores_dynamic_import_errors() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/dynamicimport.ts")
+        .expect("could not resolve module");
+    let (graph, _) = setup(specifier).await;
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: false,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
+    assert!(result_info.diagnostics.is_empty());
+  }
+
+  #[tokio::test]
   async fn fix_graph_check_emit_diagnostics() {
     let specifier =
       ModuleSpecifier::resolve_url_or_path("file:///tests/diag.ts")
