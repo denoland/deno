@@ -1231,26 +1231,28 @@ function utf16Test() {
       encoding: "utf-16le",
       input: [0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F, 0x00],
       expected: "Hello",
-      name: "\"Hello\" in utf-16le"
+      name: '"Hello" in utf-16le',
     },
     {
       encoding: "utf-16be",
       input: [0x00, 0x48, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F],
       expected: "Hello",
-      name: "\"Hello\" in utf-16be"
+      name: '"Hello" in utf-16be',
     },
     {
       encoding: "utf-16be",
+      // deno-fmt-ignore
       input: [0, 114, 0, 101, 0, 103, 0, 117, 0, 108, 0, 97, 0, 114, 0, 32, 0, 116, 0, 101, 0, 120, 0, 116, 0, 32, 0, 45, 0, 32, 36, 190, 36, 199, 36, 199, 36, 186, 36, 188, 36, 202, 36, 193, 36, 182, 36, 199, 36, 35, 36, 201, 36, 186, 36, 205, 36, 201],
       expected: "regular text - ⒾⓇⓇⒺⒼⓊⓁⒶⓇ␣ⓉⒺⓍⓉ",
-      name: ""
+      name: "",
     },
     {
       encoding: "utf-16le",
+      // deno-fmt-ignore
       input: [114, 0, 101, 0, 103, 0, 117, 0, 108, 0, 97, 0, 114, 0, 32, 0, 116, 0, 101, 0, 120, 0, 116, 0, 32, 0, 45, 0, 32, 0, 190, 36, 199, 36, 199, 36, 186, 36, 188, 36, 202, 36, 193, 36, 182, 36, 199, 36, 35, 36, 201, 36, 186, 36, 205, 36, 201, 36],
-     expected: "regular text - ⒾⓇⓇⒺⒼⓊⓁⒶⓇ␣ⓉⒺⓍⓉ",
-     name: ""
-    }
+      expected: "regular text - ⒾⓇⓇⒺⒼⓊⓁⒶⓇ␣ⓉⒺⓍⓉ",
+      name: "",
+    },
   ];
 
   function assertThrows(func) {
@@ -1281,7 +1283,7 @@ function utf16Test() {
       t.expected,
       new TextDecoder(t.encoding).decode(new Uint8Array(t.input)),
       i,
-    )
+    );
     assertThrows(() => {
       new TextDecoder(t.encoding, { fatal: true }).decode(
         new Uint8Array(t.input),
@@ -1293,8 +1295,8 @@ function utf16Test() {
     assertEquals(
       t.expected,
       new TextDecoder(t.encoding).decode(new Uint8Array(t.input)),
-      i
-    )
+      i,
+    );
   });
 }
 

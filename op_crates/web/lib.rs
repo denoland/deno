@@ -165,10 +165,7 @@ mod tests {
     run_in_task(|mut cx| {
       let mut isolate = setup();
       isolate
-        .execute(
-          "big5_tests_array.js",
-          include_str!("big5_tests_array.js")
-        )
+        .execute("big5_tests_array.js", include_str!("big5_tests_array.js"))
         .unwrap();
       isolate
         .execute(
