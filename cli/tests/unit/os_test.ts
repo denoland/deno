@@ -194,3 +194,8 @@ unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
   assert(cores === undefined || cores > 0);
   assert(speed === undefined || speed > 0);
 });
+
+unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
+  const totalMems = Deno.totalMems();
+  assert(totalMems > 0);
+});
