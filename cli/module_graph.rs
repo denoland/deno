@@ -145,8 +145,7 @@ impl swc_bundler::Load for BundleLoader<'_> {
   fn load(
     &self,
     file: &swc_common::FileName,
-  ) -> Result<(Rc<swc_common::SourceFile>, swc_ecmascript::ast::Module), AnyError>
-  {
+  ) -> Result<swc_bundler::ModuleData, AnyError> {
     match file {
       swc_common::FileName::Custom(filename) => {
         let specifier = ModuleSpecifier::resolve_url_or_path(filename)
@@ -156,14 +155,19 @@ impl swc_bundler::Load for BundleLoader<'_> {
             .graph
             .get_media_type(&specifier)
             .context("Looking up media type during bundling.")?;
-          transpile_module(
+          let (source_file, module) = transpile_module(
             filename,
             &src,
             &media_type,
             self.emit_options,
             self.globals,
             self.cm.clone(),
-          )
+          )?;
+          Ok(swc_bundler::ModuleData {
+            fm: source_file,
+            module,
+            helpers: Default::default(),
+          })
         } else {
           Err(
             GraphError::MissingDependency(specifier, "<bundle>".to_string())
@@ -441,7 +445,9 @@ impl Module {
     } else {
       None
     };
+    let mut remapped_import = false;
     let specifier = if let Some(module_specifier) = maybe_resolve {
+      remapped_import = true;
       module_specifier
     } else {
       ModuleSpecifier::resolve_import(specifier, self.specifier.as_str())?
@@ -462,9 +468,11 @@ impl Module {
       );
     }
 
-    // Disallow a remote URL from trying to import a local URL
+    // Disallow a remote URL from trying to import a local URL, unless it is a
+    // remapped import via the import map
     if (referrer_scheme == "https" || referrer_scheme == "http")
       && !(specifier_scheme == "https" || specifier_scheme == "http")
+      && !remapped_import
     {
       return Err(
         GraphError::InvalidLocalImport(specifier.clone(), location).into(),
@@ -770,7 +778,7 @@ impl Graph {
       info!("{} {}", colors::green("Check"), specifier);
     }
 
-    let root_names = self.get_root_names();
+    let root_names = self.get_root_names(!config.get_check_js());
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
@@ -792,49 +800,51 @@ impl Graph {
     graph.maybe_tsbuildinfo = response.maybe_tsbuildinfo;
     // Only process changes to the graph if there are no diagnostics and there
     // were files emitted.
-    if response.diagnostics.is_empty() && !response.emitted_files.is_empty() {
-      let mut codes = HashMap::new();
-      let mut maps = HashMap::new();
-      let check_js = config.get_check_js();
-      for emit in &response.emitted_files {
-        if let Some(specifiers) = &emit.maybe_specifiers {
-          assert!(specifiers.len() == 1, "Unexpected specifier length");
-          // The specifier emitted might not be the redirected specifier, and
-          // therefore we need to ensure it is the correct one.
-          let specifier = graph.resolve_specifier(&specifiers[0]);
-          // Sometimes if tsc sees a CommonJS file it will _helpfully_ output it
-          // to ESM, which we don't really want unless someone has enabled the
-          // check_js option.
-          if !check_js
-            && graph.get_media_type(&specifier) == Some(MediaType::JavaScript)
-          {
-            debug!("skipping emit for {}", specifier);
-            continue;
+    if response.diagnostics.is_empty() {
+      if !response.emitted_files.is_empty() {
+        let mut codes = HashMap::new();
+        let mut maps = HashMap::new();
+        let check_js = config.get_check_js();
+        for emit in &response.emitted_files {
+          if let Some(specifiers) = &emit.maybe_specifiers {
+            assert!(specifiers.len() == 1, "Unexpected specifier length");
+            // The specifier emitted might not be the redirected specifier, and
+            // therefore we need to ensure it is the correct one.
+            let specifier = graph.resolve_specifier(&specifiers[0]);
+            // Sometimes if tsc sees a CommonJS file it will _helpfully_ output it
+            // to ESM, which we don't really want unless someone has enabled the
+            // check_js option.
+            if !check_js
+              && graph.get_media_type(&specifier) == Some(MediaType::JavaScript)
+            {
+              debug!("skipping emit for {}", specifier);
+              continue;
+            }
+            match emit.media_type {
+              MediaType::JavaScript => {
+                codes.insert(specifier.clone(), emit.data.clone());
+              }
+              MediaType::SourceMap => {
+                maps.insert(specifier.clone(), emit.data.clone());
+              }
+              _ => unreachable!(),
+            }
           }
-          match emit.media_type {
-            MediaType::JavaScript => {
-              codes.insert(specifier.clone(), emit.data.clone());
-            }
-            MediaType::SourceMap => {
-              maps.insert(specifier.clone(), emit.data.clone());
-            }
-            _ => unreachable!(),
+        }
+        let config = config.as_bytes();
+        for (specifier, code) in codes.iter() {
+          if let Some(module) = graph.get_module_mut(specifier) {
+            module.maybe_emit =
+              Some(Emit::Cli((code.clone(), maps.get(specifier).cloned())));
+            module.set_version(&config);
+            module.is_dirty = true;
+          } else {
+            return Err(GraphError::MissingSpecifier(specifier.clone()).into());
           }
         }
       }
-      let config = config.as_bytes();
-      for (specifier, code) in codes.iter() {
-        if let Some(module) = graph.get_module_mut(specifier) {
-          module.maybe_emit =
-            Some(Emit::Cli((code.clone(), maps.get(specifier).cloned())));
-          module.set_version(&config);
-          module.is_dirty = true;
-        } else {
-          return Err(GraphError::MissingSpecifier(specifier.clone()).into());
-        }
-      }
+      graph.flush()?;
     }
-    graph.flush()?;
 
     Ok(ResultInfo {
       diagnostics: response.diagnostics,
@@ -892,7 +902,7 @@ impl Graph {
         None
       };
 
-    let root_names = self.get_root_names();
+    let root_names = self.get_root_names(!config.get_check_js());
     let hash_data =
       vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
@@ -1148,10 +1158,37 @@ impl Graph {
   /// Transform `self.roots` into something that works for `tsc`, because `tsc`
   /// doesn't like root names without extensions that match its expectations,
   /// nor does it have any concept of redirection, so we have to resolve all
-  /// that upfront before feeding it to `tsc`.
-  fn get_root_names(&self) -> Vec<(ModuleSpecifier, MediaType)> {
-    self
-      .roots
+  /// that upfront before feeding it to `tsc`. In addition, if checkJs is not
+  /// true, we should pass all emittable files in as the roots, so that `tsc`
+  /// type checks them and potentially emits them.
+  fn get_root_names(
+    &self,
+    include_emittable: bool,
+  ) -> Vec<(ModuleSpecifier, MediaType)> {
+    let root_names: Vec<ModuleSpecifier> = if include_emittable {
+      // in situations where there is `allowJs` with tsc, but not `checkJs`,
+      // then tsc will not parse the whole module graph, meaning that any
+      // JavaScript importing TypeScript will get ignored, meaning that those
+      // files will not get emitted.  To counter act that behavior, we will
+      // include all modules that are emittable.
+      let mut specifiers = HashSet::<&ModuleSpecifier>::new();
+      for (_, module) in self.modules.iter() {
+        if module.media_type == MediaType::JSX
+          || module.media_type == MediaType::TypeScript
+          || module.media_type == MediaType::TSX
+        {
+          specifiers.insert(&module.specifier);
+        }
+      }
+      // We should include all the original roots as well.
+      for specifier in self.roots.iter() {
+        specifiers.insert(specifier);
+      }
+      specifiers.into_iter().cloned().collect()
+    } else {
+      self.roots.clone()
+    };
+    root_names
       .iter()
       .map(|ms| {
         // if the root module has a types specifier, we should be sending that
@@ -1413,9 +1450,10 @@ impl Graph {
       if module.media_type == MediaType::Dts {
         continue;
       }
-      // if we don't have check_js enabled, we won't touch non TypeScript
+      // if we don't have check_js enabled, we won't touch non TypeScript or JSX
       // modules
       if !(emit_options.check_js
+        || module.media_type == MediaType::JSX
         || module.media_type == MediaType::TSX
         || module.media_type == MediaType::TypeScript)
       {
@@ -1914,11 +1952,35 @@ pub mod tests {
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(result_info.stats.0.len(), 12);
-    println!("{}", result_info.diagnostics);
     assert!(result_info.diagnostics.is_empty());
     let h = handler.borrow();
     assert_eq!(h.cache_calls.len(), 2);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn fix_graph_check_emit_diagnostics() {
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/diag.ts")
+        .expect("could not resolve module");
+    let (graph, handler) = setup(specifier).await;
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert_eq!(result_info.stats.0.len(), 12);
+    assert!(!result_info.diagnostics.is_empty());
+    let h = handler.borrow();
+    // we shouldn't cache any files or write out tsbuildinfo if there are
+    // diagnostic errors
+    assert_eq!(h.cache_calls.len(), 0);
+    assert_eq!(h.tsbuildinfo_calls.len(), 0);
   }
 
   #[tokio::test]
@@ -2209,6 +2271,34 @@ pub mod tests {
         );
       }
     }
+  }
+
+  #[tokio::test]
+  async fn test_graph_import_map_remote_to_local() {
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let fixtures = c.join("tests/module_graph");
+    let maybe_import_map = Some(
+      ImportMap::from_json(
+        "file:///tests/importmap.json",
+        r#"{
+      "imports": {
+        "https://deno.land/x/b/mod.js": "./b/mod.js"
+      }
+    }
+    "#,
+      )
+      .expect("could not parse import map"),
+    );
+    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+      fixtures,
+      ..Default::default()
+    }));
+    let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///tests/importremap.ts")
+        .expect("could not resolve module");
+    builder.add(&specifier, false).await.expect("could not add");
+    builder.get_graph();
   }
 
   #[tokio::test]

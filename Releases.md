@@ -6,6 +6,43 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.5.2 / 2020.11.09
+
+- fix(core/error): Remove extra newline from JsError::fmt() (#8145)
+- fix(op_crates/web): make TextEncoder work with forced non-strings (#8206)
+- fix(op_crates/web): fix URLSearchParams, malformed url handling (#8092)
+- fix(op_crates/web): define abort event handler on prototype (#8230)
+- fix(cli/repl): Fixing syntax highlighting (#8202)
+- fix: inject helpers when transpiling via swc (#8221)
+- fix: add commit hash and target to long_version output (#8133)
+- fix: correct libs sent to tsc for unstable worker (#8260)
+- fix: properly handle type checking root modules with type definitions (#8263)
+- fix: allow remapping to locals for import map (#8262)
+- fix: ensure that transitory dependencies are emitted (#8275)
+- fix: make onabort event handler web compatible (#8225)
+- fix: display of non-ASCII characters on Windows (#8199)
+- refactor: Cleanup Flags to Permissions conversion (#8213)
+- refactor: migrate runtime compile/bundle to new infrastructure (#8192)
+- refactor: cleanup compiler snapshot and tsc/module_graph (#8220)
+- refactor: remove ProgramState::permissions (#8228)
+- refactor: refactor file_fetcher (#8245)
+- refactor: rewrite permission_test to not depend on Python (#8291)
+- refactor: auto detect target triples for upgrade (#8286)
+- build: migrate to dlint (#8176)
+- build: remove eslint (#8232)
+- build: rewrite tools/ scripts to deno (#8247)
+- build: full color ci logs (#8280)
+- upgrade: TypeScript to 4.0.5 (#8138)
+- upgrade: deno_doc, deno_lint, dprint, swc (#8292)
+
+Changes in std version 0.77.0:
+
+- feat(std/node/fs): add realpath and realpathSync (#8169)
+- feat(std/wasi): add start method to Context (#8141)
+- fix(std/flags): Fix parse incorrectly parsing alias flags with equals (#8216)
+- fix(std/node): only define Node.js globals when loading std/node/global
+  (#8281)
+
 ### 1.5.1 / 2020.10.31
 
 - fix: Accept Windows line breaks in prompt/confirm/alert (#8149)
