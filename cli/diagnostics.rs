@@ -2,9 +2,11 @@
 
 use crate::colors;
 
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
 use regex::Regex;
-use serde::Deserialize;
-use serde::Deserializer;
 use std::error::Error;
 use std::fmt;
 
@@ -47,15 +49,11 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "connect",
   "consoleSize",
   "createHttpClient",
-  "fdatasync",
-  "fdatasyncSync",
   "formatDiagnostics",
   "futime",
   "futimeSync",
   "fstat",
   "fstatSync",
-  "fsync",
-  "fsyncSync",
   "ftruncate",
   "ftruncateSync",
   "hostname",
@@ -78,6 +76,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "symlink",
   "symlinkSync",
   "systemMemoryInfo",
+  "systemCpuInfo",
   "transpileOnly",
   "umask",
   "utime",
@@ -160,6 +159,21 @@ impl<'de> Deserialize<'de> for DiagnosticCategory {
   }
 }
 
+impl Serialize for DiagnosticCategory {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value = match self {
+      DiagnosticCategory::Warning => 0 as i32,
+      DiagnosticCategory::Error => 1 as i32,
+      DiagnosticCategory::Suggestion => 2 as i32,
+      DiagnosticCategory::Message => 3 as i32,
+    };
+    Serialize::serialize(&value, serializer)
+  }
+}
+
 impl From<i64> for DiagnosticCategory {
   fn from(value: i64) -> Self {
     match value {
@@ -172,7 +186,7 @@ impl From<i64> for DiagnosticCategory {
   }
 }
 
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
   message_text: String,
@@ -199,14 +213,14 @@ impl DiagnosticMessageChain {
   }
 }
 
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
   pub line: u64,
   pub character: u64,
 }
 
-#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
   pub category: DiagnosticCategory,
@@ -346,8 +360,19 @@ impl fmt::Display for Diagnostic {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Diagnostics(pub Vec<Diagnostic>);
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Diagnostics(Vec<Diagnostic>);
+
+impl Diagnostics {
+  #[cfg(test)]
+  pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
+    Diagnostics(diagnostics)
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+}
 
 impl<'de> Deserialize<'de> for Diagnostics {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -356,6 +381,15 @@ impl<'de> Deserialize<'de> for Diagnostics {
   {
     let items: Vec<Diagnostic> = Deserialize::deserialize(deserializer)?;
     Ok(Diagnostics(items))
+  }
+}
+
+impl Serialize for Diagnostics {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.0, serializer)
   }
 }
 
@@ -512,7 +546,7 @@ mod tests {
       }
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(
       strip_ansi_codes(&actual),
       "TS5023 [ERROR]: Unknown compiler option \'invalid\'."
@@ -539,7 +573,7 @@ mod tests {
       }
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1");
   }
 
@@ -580,7 +614,7 @@ mod tests {
       }
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10");
   }
 
@@ -621,7 +655,7 @@ mod tests {
       }
     ];
     let diagnostics: Diagnostic = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2551 [ERROR]: Property \'ppid\' does not exist on type \'typeof Deno\'. \'Deno.ppid\' is an unstable API. Did you forget to run with the \'--unstable\' flag, or did you mean \'pid\'?\nconsole.log(Deno.ppid);\n                 ~~~~\n    at file:///cli/tests/unstable_ts2551.ts:1:18\n\n    \'pid\' is declared here.\n      export const pid: number;\n                   ~~~\n        at asset:///lib.deno.ns.d.ts:90:16");
   }
 }

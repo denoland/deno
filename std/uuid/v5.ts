@@ -26,7 +26,7 @@ interface V5Options {
 
 /**
  * Generates a RFC4122 v5 UUID (SHA-1 namespace-based)
- * @param options Can use a namespace and value to creat SHA-1 hash
+ * @param options Can use a namespace and value to create SHA-1 hash
  * @param buf Can allow the UUID to be written in byte-form starting at the offset
  * @param offset Index to start writing on the UUID bytes in buffer
  */

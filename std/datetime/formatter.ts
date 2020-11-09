@@ -310,9 +310,10 @@ export class DateTimeFormatter {
           string += digits(value, Number(token.value));
           break;
         }
+        // FIXME(bartlomieju)
         case "timeZoneName": {
           // string += utc ? "Z" : token.value
-          // break
+          break;
         }
         case "dayPeriod": {
           string += token.value ? (date.getHours() >= 12 ? "PM" : "AM") : "";

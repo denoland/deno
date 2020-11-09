@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 ((window) => {
   const core = window.Deno.core;
+  const { Window } = window.__bootstrap.globalInterfaces;
   const { log } = window.__bootstrap.util;
 
   function createWorker(
@@ -142,7 +142,14 @@
         if (type === "terminalError") {
           this.#terminated = true;
           if (!this.#handleError(event.error)) {
-            throw Error(event.error.message);
+            if (globalThis instanceof Window) {
+              throw new Error("Unhandled error event reached main worker.");
+            } else {
+              core.jsonOpSync(
+                "op_host_unhandled_error",
+                { message: event.error.message },
+              );
+            }
           }
           continue;
         }
@@ -154,7 +161,14 @@
 
         if (type === "error") {
           if (!this.#handleError(event.error)) {
-            throw Error(event.error.message);
+            if (globalThis instanceof Window) {
+              throw new Error("Unhandled error event reached main worker.");
+            } else {
+              core.jsonOpSync(
+                "op_host_unhandled_error",
+                { message: event.error.message },
+              );
+            }
           }
           continue;
         }

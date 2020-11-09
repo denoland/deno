@@ -1,5 +1,18 @@
-const map = new Map<string, { foo: string }>();
+// deno-lint-ignore-file
 
-if (map.get("bar").foo) {
-  console.log("here");
+function b() {
+  return function (
+    _target: any,
+    _propertyKey: string,
+    _descriptor: PropertyDescriptor,
+  ) {
+    console.log("b");
+  };
+}
+
+class A {
+  @b()
+  a() {
+    console.log("a");
+  }
 }

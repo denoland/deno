@@ -68,11 +68,13 @@ pub async fn op_ws_create(
     cli_state.flags.ca_file.clone()
   };
   let uri: Uri = args.url.parse()?;
-  let request = Request::builder()
-    .method(Method::GET)
-    .uri(&uri)
-    .header("Sec-WebSocket-Protocol", args.protocols)
-    .body(())?;
+  let mut request = Request::builder().method(Method::GET).uri(&uri);
+
+  if !args.protocols.is_empty() {
+    request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  }
+
+  let request = request.body(())?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,

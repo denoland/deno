@@ -4,7 +4,7 @@ use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use std::env::current_dir;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Error, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -45,6 +45,20 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   }
 
   file.write_all(data.as_ref())
+}
+
+/// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
+pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
+  let mut canonicalized_path = path.canonicalize()?;
+  if cfg!(windows) {
+    canonicalized_path = PathBuf::from(
+      canonicalized_path
+        .display()
+        .to_string()
+        .trim_start_matches("\\\\?\\"),
+    );
+  }
+  Ok(canonicalized_path)
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {

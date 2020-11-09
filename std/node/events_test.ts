@@ -408,7 +408,7 @@ Deno.test({
     setTimeout(() => {
       ee.emit("event", 42, "foo");
     }, 0);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const valueArr: any[] = await once(ee, "event");
     assertEquals(valueArr, [42, "foo"]);
   },
@@ -422,7 +422,7 @@ Deno.test({
       const event: Event = new Event("event", { composed: true });
       et.dispatchEvent(event);
     }, 0);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const eventObj: any[] = await once(et, "event");
     assert(!eventObj[0].isTrusted);
   },

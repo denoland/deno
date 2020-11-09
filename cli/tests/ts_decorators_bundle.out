@@ -1,0 +1,5 @@
+[WILDCARD]
+function _applyDecoratedDescriptor(target, property, decorators, descriptor, context) {
+[WILDCARD]
+new SomeClass().test();
+[WILDCARD]

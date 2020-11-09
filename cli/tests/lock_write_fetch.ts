@@ -1,6 +1,8 @@
 try {
   Deno.removeSync("./lock_write_fetch.json");
-} catch {}
+} catch {
+  // pass
+}
 
 const fetchProc = Deno.run({
   stdout: "null",

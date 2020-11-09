@@ -65,7 +65,7 @@ deno run https://deno.land/std/examples/welcome.ts
 Or a more complex one:
 
 ```ts
-import { serve } from "https://deno.land/std@$STD_VERSION/http/server.ts";
+import { serve } from "https://deno.land/std/http/server.ts";
 const s = serve({ port: 8000 });
 console.log("http://localhost:8000/");
 for await (const req of s) {

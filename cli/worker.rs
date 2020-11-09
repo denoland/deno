@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::fmt_errors::JsError;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorSession;
@@ -120,7 +121,7 @@ impl Worker {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
       js_error_create_fn: Some(Box::new(move |core_js_error| {
-        JsError::create(core_js_error, &global_state_.ts_compiler)
+        JsError::create(core_js_error, global_state_.clone())
       })),
       ..Default::default()
     });
@@ -252,6 +253,7 @@ impl MainWorker {
   pub fn new(
     program_state: &Arc<ProgramState>,
     main_module: ModuleSpecifier,
+    permissions: Permissions,
   ) -> Self {
     let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
     let mut worker = Worker::new(
@@ -269,13 +271,13 @@ impl MainWorker {
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
         op_state.put::<Arc<ProgramState>>(program_state.clone());
-        op_state.put::<Permissions>(program_state.permissions.clone());
+        op_state.put::<Permissions>(permissions);
       }
 
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime);
+      ops::worker_host::init(js_runtime, None);
       ops::random::init(js_runtime, program_state.flags.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
@@ -443,11 +445,11 @@ impl WebWorker {
         op_state.put::<Permissions>(permissions);
       }
 
-      ops::web_worker::init(js_runtime, sender, handle);
+      ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime);
+      ops::worker_host::init(js_runtime, Some(sender));
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -510,6 +512,12 @@ impl WebWorker {
           }
 
           if let Err(e) = r {
+            eprintln!(
+              "{}: Uncaught (in worker \"{}\") {}",
+              colors::red_bold("error"),
+              worker.name.to_string(),
+              e.to_string().trim_start_matches("Uncaught "),
+            );
             let mut sender = worker.internal_channels.sender.clone();
             sender
               .try_send(WorkerEvent::Error(e))
@@ -593,9 +601,10 @@ mod tests {
       },
       ..Default::default()
     };
+    let permissions = Permissions::from_flags(&flags);
     let program_state =
       ProgramState::mock(vec!["deno".to_string()], Some(flags));
-    MainWorker::new(&program_state, main_module)
+    MainWorker::new(&program_state, main_module, permissions)
   }
 
   #[tokio::test]
