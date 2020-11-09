@@ -94,19 +94,16 @@ impl MediaType {
         },
       },
       Some(os_str) => match os_str.to_str() {
-        Some("ts") => match path.file_stem() {
-          Some(os_str) => match os_str.to_str() {
-            Some(file_name) => {
+        Some("ts") => {
+          if let Some(os_str) = path.file_stem() {
+            if let Some(file_name) = os_str.to_str() {
               if file_name.ends_with(".d") {
-                MediaType::Dts
-              } else {
-                MediaType::TypeScript
+                return MediaType::Dts;
               }
             }
-            None => MediaType::TypeScript,
-          },
-          None => MediaType::TypeScript,
-        },
+          }
+          MediaType::TypeScript
+        }
         Some("tsx") => MediaType::TSX,
         Some("js") => MediaType::JavaScript,
         Some("jsx") => MediaType::JSX,

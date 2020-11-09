@@ -2008,6 +2008,27 @@ pub mod tests {
   }
 
   #[tokio::test]
+  async fn fix_graph_check_mjs_root() {
+    let specifier = ModuleSpecifier::resolve_url_or_path("file:///tests/a.mjs")
+      .expect("could not resolve module");
+    let (graph, handler) = setup(specifier).await;
+    let result_info = graph
+      .check(CheckOptions {
+        debug: false,
+        emit: true,
+        lib: TypeLib::DenoWindow,
+        maybe_config_path: None,
+        reload: false,
+      })
+      .expect("should have checked");
+    assert!(result_info.maybe_ignored_options.is_none());
+    assert!(result_info.diagnostics.is_empty());
+    let h = handler.borrow();
+    assert_eq!(h.cache_calls.len(), 1);
+    assert_eq!(h.tsbuildinfo_calls.len(), 1);
+  }
+
+  #[tokio::test]
   async fn fix_graph_check_types_root() {
     let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js")
       .expect("could not resolve module");
