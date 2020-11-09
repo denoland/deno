@@ -21,7 +21,7 @@ export interface CopyOptions {
   /**
    * default is `false`
    */
-  isFolder?: boolean
+  isFolder?: boolean;
 }
 
 async function ensureValidCopy(
