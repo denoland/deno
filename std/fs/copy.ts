@@ -18,6 +18,9 @@ export interface CopyOptions {
    * Default is `false`.
    */
   preserveTimestamps?: boolean;
+}
+
+interface InternalCopyOptions extends CopyOptions {
   /**
    * default is `false`
    */
@@ -27,7 +30,7 @@ export interface CopyOptions {
 async function ensureValidCopy(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): Promise<Deno.FileInfo | undefined> {
   let destStat: Deno.FileInfo;
 
@@ -55,7 +58,7 @@ async function ensureValidCopy(
 function ensureValidCopySync(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): Deno.FileInfo | undefined {
   let destStat: Deno.FileInfo;
   try {
@@ -83,7 +86,7 @@ function ensureValidCopySync(
 async function copyFile(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   await Deno.copyFile(src, dest);
@@ -95,7 +98,7 @@ async function copyFile(
   }
 }
 /* copy file to dest synchronously */
-function copyFileSync(src: string, dest: string, options: CopyOptions): void {
+function copyFileSync(src: string, dest: string, options: InternalCopyOptions): void {
   ensureValidCopySync(src, dest, options);
   Deno.copyFileSync(src, dest);
   if (options.preserveTimestamps) {
@@ -110,7 +113,7 @@ function copyFileSync(src: string, dest: string, options: CopyOptions): void {
 async function copySymLink(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
@@ -134,7 +137,7 @@ async function copySymLink(
 function copySymlinkSync(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): void {
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
