@@ -1,11 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-//! This module provides feature to upgrade deno executable
-//!
-//! At the moment it is only consumed using CLI but in
-//! the future it can be easily extended to provide
-//! the same functions as ops available in JS runtime.
-
 use crate::AnyError;
 use deno_core::url::Url;
 use deno_fetch::reqwest;
@@ -26,7 +20,8 @@ async fn get_latest_version(
   client: &Client,
   release_url: &str,
 ) -> Result<String, AnyError> {
-  println!("Checking for latest version");
+  println!("Looking up latest version");
+
   let res = client
     .get(Url::parse(&*format!("{}/latest", release_url))?)
     .send()
@@ -36,8 +31,6 @@ async fn get_latest_version(
   Ok(version.replace("v", ""))
 }
 
-/// Asynchronously updates deno executable to greatest version
-/// if greatest version is available.
 pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
@@ -95,6 +88,8 @@ pub async fn upgrade_command(
         );
         return Ok(());
       } else {
+        println!("Found latest version {}", &latest_version);
+
         latest_version
       }
     }
