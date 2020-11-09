@@ -61,6 +61,7 @@ ring = "0.16.15"
 rustyline = { version = "6.3.0", default-features = false }
 rustyline-derive = "0.3.1"
 serde = { version = "1.0.116", features = ["derive"] }
+shell-escape = "0.1.5"
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
 swc_bundler = "=0.16.1"
