@@ -359,6 +359,7 @@ fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -720,6 +721,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {

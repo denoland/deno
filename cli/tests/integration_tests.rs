@@ -475,6 +475,55 @@ fn fmt_test() {
 }
 
 #[test]
+fn fmt_watch_test() {
+  let t = TempDir::new().expect("tempdir fail");
+  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::root_path().join("cli/tests/badly_formatted.mjs");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  let badly_formatted_str = badly_formatted.to_str().unwrap();
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(badly_formatted_str)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("Failed to spawn script");
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert!(stderr_lines.next().unwrap().contains("badly_formatted.js"));
+
+  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  assert_eq!(expected, actual);
+
+  // Change content of the file again to be badly formatted
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Check if file has been automatically formatted
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  assert_eq!(expected, actual);
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+#[test]
 fn fmt_stdin_error() {
   use std::io::Write;
   let mut deno = util::deno_cmd()

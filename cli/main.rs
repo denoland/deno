@@ -515,6 +515,30 @@ async fn doc_command(
   }
 }
 
+async fn format_command(
+  flags: Flags,
+  args: Vec<String>,
+  ignore: Vec<String>,
+  check: bool,
+) -> Result<(), AnyError> {
+  if args.len() == 1 && args[0] == "-" {
+    return fmt::format_stdin(check);
+  }
+
+  let files = fmt::create_file_list(args, ignore)?;
+
+  if flags.watch {
+    file_watcher::watch_func(&files.clone(), move || {
+      let _files = files.clone();
+      async move { fmt::format(_files, check).await }.boxed_local()
+    })
+    .await?;
+  } else {
+    fmt::format(files, check).await?;
+  }
+  Ok(())
+}
+
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
@@ -805,7 +829,7 @@ pub fn main() {
       check,
       files,
       ignore,
-    } => fmt::format(files, check, ignore).boxed_local(),
+    } => format_command(flags, files, ignore, check).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }

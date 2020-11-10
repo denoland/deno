@@ -30,8 +30,6 @@ const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
 ///
-/// First argument and ignore supports globs, and if it is `None`
-/// then the current directory is recursively walked.
 pub async fn format(
   args: Vec<PathBuf>,
   check: bool,
@@ -40,6 +38,14 @@ pub async fn format(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return format_stdin(check);
   }
+  Ok(())
+}
+
+/// Current directory is recursively walked.
+pub fn create_file_list(
+  args: Vec<String>,
+  exclude: Vec<String>,
+) -> Result<Vec<PathBuf>, std::io::Error> {
   // collect all files provided.
   let mut target_files = collect_files(args)?;
   if !exclude.is_empty() {
@@ -48,12 +54,7 @@ pub async fn format(
     let ignore_files = collect_files(exclude)?;
     target_files.retain(|f| !ignore_files.contains(&f));
   }
-  let config = get_config();
-  if check {
-    check_source_files(config, target_files).await
-  } else {
-    format_source_files(config, target_files).await
-  }
+  Ok(target_files)
 }
 
 async fn check_source_files(
@@ -187,7 +188,7 @@ async fn format_source_files(
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--check` flag.
-fn format_stdin(check: bool) -> Result<(), AnyError> {
+pub fn format_stdin(check: bool) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
