@@ -116,19 +116,19 @@ where
 }
 
 pub async fn watch_func_for_run<F, G>(
-  closure: F,
-  module_resolver: G,
+  module_resolver: F,
+  operation: G,
 ) -> Result<(), AnyError>
 where
-  F: Fn(ModuleSpecifier) -> WatchFuture<()>,
-  G: Fn() -> WatchFuture<(Vec<PathBuf>, ModuleSpecifier)>,
+  F: Fn() -> WatchFuture<(Vec<PathBuf>, ModuleSpecifier)>,
+  G: Fn(ModuleSpecifier) -> WatchFuture<()>,
 {
   let mut debounce = Debounce::new();
 
   loop {
     let (paths, module_specifier) = module_resolver().await?;
     let _watcher = new_watcher(&paths, &debounce)?;
-    let func = error_handler(closure(module_specifier));
+    let func = error_handler(operation(module_specifier));
     let mut is_file_changed = false;
     select! {
       _ = debounce.next() => {

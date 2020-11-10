@@ -608,7 +608,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .boxed_local()
   };
 
-  let closure = |main_module: ModuleSpecifier| {
+  let operation = |main_module: ModuleSpecifier| {
     let flags = flags.clone();
     async move {
       let permissions = Permissions::from_flags(&flags);
@@ -627,7 +627,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .boxed_local()
   };
 
-  file_watcher::watch_func_for_run(closure, module_resolver).await
+  file_watcher::watch_func_for_run(module_resolver, operation).await
 }
 
 async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
