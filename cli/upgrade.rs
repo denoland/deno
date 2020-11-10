@@ -14,18 +14,6 @@ lazy_static! {
   static ref ARCHIVE_NAME: String = format!("deno-{}.zip", env!("TARGET"));
 }
 
-async fn get_latest_version(
-  client: &Client,
-  latest_url: &str,
-) -> Result<String, AnyError> {
-  println!("Looking up latest version");
-
-  let res = client.get(latest_url).send().await?;
-  let version = res.url().path_segments().unwrap().last().unwrap();
-
-  Ok(version.replace("v", ""))
-}
-
 pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
@@ -120,6 +108,18 @@ pub async fn upgrade_command(
   println!("Upgraded successfully");
 
   Ok(())
+}
+
+async fn get_latest_version(
+  client: &Client,
+  latest_url: &str,
+) -> Result<String, AnyError> {
+  println!("Looking up latest version");
+
+  let res = client.get(latest_url).send().await?;
+  let version = res.url().path_segments().unwrap().last().unwrap();
+
+  Ok(version.replace("v", ""))
 }
 
 async fn download_package(
