@@ -9,12 +9,14 @@
 
 use crate::colors;
 use crate::diff::diff;
+use crate::file_watcher;
 use crate::fs::canonicalize_path;
 use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::futures::FutureExt;
 use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
@@ -29,32 +31,43 @@ use std::sync::{Arc, Mutex};
 const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
-///
 pub async fn format(
   args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   check: bool,
-  exclude: Vec<PathBuf>,
+  watch: bool,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return format_stdin(check);
-  }
-  Ok(())
-}
+  let target_file_resolver = || {
+    let mut target_files = collect_files(&args)?;
+    if !ignore.is_empty() {
+      // collect all files to be ignored
+      // and retain only files that should be formatted.
+      let ignore_files = collect_files(&ignore)?;
+      target_files.retain(|f| !ignore_files.contains(&f));
+    }
+    Ok(target_files)
+  };
 
-/// Current directory is recursively walked.
-pub fn create_file_list(
-  args: Vec<String>,
-  exclude: Vec<String>,
-) -> Result<Vec<PathBuf>, std::io::Error> {
-  // collect all files provided.
-  let mut target_files = collect_files(args)?;
-  if !exclude.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
+  let operation = |paths: Vec<PathBuf>| {
+    let config = get_config();
+    async move {
+      if check {
+        check_source_files(config, paths).await?;
+      } else {
+        format_source_files(config, paths).await?;
+      }
+      Ok(())
+    }
+    .boxed_local()
+  };
+
+  if watch {
+    file_watcher::watch_func(target_file_resolver, operation, "fmt").await?;
+  } else {
+    operation(target_file_resolver()?).await?;
   }
-  Ok(target_files)
+
+  Ok(())
 }
 
 async fn check_source_files(
@@ -233,9 +246,7 @@ fn is_supported(path: &Path) -> bool {
   }
 }
 
-pub fn collect_files(
-  files: Vec<PathBuf>,
-) -> Result<Vec<PathBuf>, std::io::Error> {
+pub fn collect_files(files: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
   let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
@@ -247,9 +258,9 @@ pub fn collect_files(
     for file in files {
       if file.is_dir() {
         target_files
-          .extend(files_in_subtree(canonicalize_path(&file)?, is_supported));
+          .extend(files_in_subtree(canonicalize_path(file)?, is_supported));
       } else {
-        target_files.push(canonicalize_path(&file)?);
+        target_files.push(canonicalize_path(file)?);
       };
     }
   }

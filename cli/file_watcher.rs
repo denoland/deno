@@ -73,6 +73,48 @@ async fn error_handler(watch_future: WatchFuture<()>) {
   }
 }
 
+pub async fn watch_func<F, G>(
+  target_resolver: F,
+  operation: G,
+  job_name: &str,
+) -> Result<(), AnyError>
+where
+  F: Fn() -> Result<Vec<PathBuf>, AnyError>,
+  G: Fn(Vec<PathBuf>) -> WatchFuture<()>,
+{
+  let mut debounce = Debounce::new();
+
+  loop {
+    let paths = target_resolver()?;
+    let _watcher = new_watcher(&paths, &debounce)?;
+    let func = error_handler(operation(paths));
+    let mut is_file_changed = false;
+    select! {
+      _ = debounce.next() => {
+        is_file_changed = true;
+        info!(
+          "{} File change detected! Restarting!",
+          colors::intense_blue("Watcher"),
+        );
+      },
+      _ = func => {},
+    };
+
+    if !is_file_changed {
+      info!(
+        "{} {} finished! Restarting on file change...",
+        colors::intense_blue("Watcher"),
+        job_name,
+      );
+      debounce.next().await;
+      info!(
+        "{} File change detected! Restarting!",
+        colors::intense_blue("Watcher"),
+      );
+    }
+  }
+}
+
 pub async fn watch_func_for_run<F, G>(
   closure: F,
   module_resolver: G,

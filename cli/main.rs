@@ -517,25 +517,15 @@ async fn doc_command(
 
 async fn format_command(
   flags: Flags,
-  args: Vec<String>,
-  ignore: Vec<String>,
+  args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   check: bool,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0] == "-" {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return fmt::format_stdin(check);
   }
 
-  let files = fmt::create_file_list(args, ignore)?;
-
-  if flags.watch {
-    file_watcher::watch_func(&files.clone(), move || {
-      let _files = files.clone();
-      async move { fmt::format(_files, check).await }.boxed_local()
-    })
-    .await?;
-  } else {
-    fmt::format(files, check).await?;
-  }
+  fmt::format(args, ignore, check, flags.watch).await?;
   Ok(())
 }
 
