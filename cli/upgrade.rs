@@ -274,18 +274,3 @@ fn test_find_version() {
   let url = "<html><body>You are being <a href=\"https://github.com/denoland/deno/releases/tag/v0.36.0\">redirected</a>.</body></html>";
   assert_eq!(find_version(url).unwrap(), "0.36.0".to_string());
 }
-
-#[test]
-fn test_compose_url_to_exec() {
-  let v = semver_parse("0.0.1").unwrap();
-  let url = compose_url_to_exec(&v).unwrap();
-  #[cfg(windows)]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-pc-windows-msvc.zip");
-  #[cfg(target_os = "macos")]
-  assert_eq!(
-    url.as_str(),
-    "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-apple-darwin.zip"
-  );
-  #[cfg(target_os = "linux")]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-unknown-linux-gnu.zip");
-}
