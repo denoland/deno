@@ -76,7 +76,7 @@
           // update: all TypedArrays have a .byteLength property
           const length = value.byteLength;
 
-          return new value.constructor(
+          return new (value.constructor)(
             clonedBuffer,
             value.byteOffset,
             length,
@@ -85,7 +85,9 @@
         if (value instanceof Map) {
           const clonedMap = new Map();
           objectCloneMemo.set(value, clonedMap);
-          value.forEach((v, k) => { clonedMap.set(cloneValue(k), cloneValue(v)) });
+          value.forEach((v, k) => {
+            clonedMap.set(cloneValue(k), cloneValue(v));
+          });
           return clonedMap;
         }
         if (value instanceof Set) {
