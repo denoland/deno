@@ -1578,8 +1578,7 @@ pub mod tests {
         assert_eq!(bufs.len(), 1);
         assert_eq!(bufs[0].len(), 1);
         assert_eq!(bufs[0][0], 42);
-        let mut vec = Vec::<u8>::new();
-        vec.resize(100 * 1024 * 1024, 0);
+        let mut vec = vec![0u8; 100 * 1024 * 1024];
         vec[0] = 99;
         let buf = vec.into_boxed_slice();
         Op::Sync(buf)
@@ -1594,8 +1593,7 @@ pub mod tests {
         assert_eq!(bufs.len(), 1);
         assert_eq!(bufs[0].len(), 1);
         assert_eq!(bufs[0][0], 42);
-        let mut vec = Vec::<u8>::new();
-        vec.resize(100 * 1024 * 1024, 0);
+        let mut vec = vec![0u8; 100 * 1024 * 1024];
         vec[0] = 4;
         let buf = vec.into_boxed_slice();
         Op::Async(futures::future::ready(buf).boxed())
