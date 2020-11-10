@@ -101,8 +101,8 @@
   const isTrusted = Object.getOwnPropertyDescriptor({
     get isTrusted() {
       return eventData.get(this).isTrusted;
-    }
-  }, 'isTrusted').get;
+    },
+  }, "isTrusted").get;
 
   class Event {
     #canceledFlag = false;
