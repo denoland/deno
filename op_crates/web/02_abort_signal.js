@@ -75,6 +75,7 @@
     wrappedHandler.handler = handler;
     return wrappedHandler;
   }
+  // TODO(benjamingr) reuse this here and websocket where possible
   function defineEventHandler(emitter, name) {
     // HTML specification section 8.1.5.1
     Object.defineProperty(emitter, `on${name}`, {
