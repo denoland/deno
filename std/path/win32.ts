@@ -747,7 +747,6 @@ export function extname(path: string): string {
 }
 
 export function format(pathObject: FormatInputPathObject): string {
-  /* eslint-disable max-len */
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
       `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`,
@@ -917,11 +916,8 @@ export function fromFileUrl(url: string | URL): string {
     throw new TypeError("Must be a file URL.");
   }
   let path = decodeURIComponent(
-    url.pathname
-      .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
-      .replace(/\//g, "\\")
-      .replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
-  );
+    url.pathname.replace(/\//g, "\\").replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+  ).replace(/^\\*([A-Za-z]:)(\\|$)/, "$1\\");
   if (url.hostname != "") {
     // Note: The `URL` implementation guarantees that the drive letter and
     // hostname are mutually exclusive. Otherwise it would not have been valid
@@ -929,4 +925,28 @@ export function fromFileUrl(url: string | URL): string {
     path = `\\\\${url.hostname}${path}`;
   }
   return path;
+}
+
+/** Converts a path string to a file URL.
+ *
+ *      toFileUrl("\\home\\foo"); // new URL("file:///home/foo")
+ *      toFileUrl("C:\\Users\\foo"); // new URL("file:///C:/Users/foo")
+ *      toFileUrl("\\\\localhost\\home\\foo"); // new URL("file://localhost/home/foo")
+ */
+export function toFileUrl(path: string): URL {
+  if (!isAbsolute(path)) {
+    throw new TypeError("Must be an absolute path.");
+  }
+  const [, hostname, pathname] = path.match(
+    /^(?:[/\\]{2}([^/\\]+)(?=[/\\][^/\\]))?(.*)/,
+  )!;
+  const url = new URL("file:///");
+  url.pathname = pathname.replace(/%/g, "%25");
+  if (hostname != null) {
+    url.hostname = hostname;
+    if (!url.hostname) {
+      throw new TypeError("Invalid hostname.");
+    }
+  }
+  return url;
 }

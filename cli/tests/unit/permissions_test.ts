@@ -3,7 +3,7 @@ import { assertThrows, assertThrowsAsync, unitTest } from "./test_util.ts";
 
 unitTest(async function permissionInvalidName(): Promise<void> {
   await assertThrowsAsync(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     await Deno.permissions.query({ name: "foo" as any });
   }, Error);
 });

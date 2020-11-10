@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
+use crate::module_graph::TypeLib;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
-use crate::tsc::TargetLib;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -21,7 +21,7 @@ pub struct CliModuleLoader {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
-  pub target_lib: TargetLib,
+  pub lib: TypeLib,
   pub is_main: bool,
 }
 
@@ -29,7 +29,7 @@ impl CliModuleLoader {
   pub fn new(maybe_import_map: Option<ImportMap>) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       import_map: maybe_import_map,
-      target_lib: TargetLib::Main,
+      lib: TypeLib::DenoWindow,
       is_main: true,
     })
   }
@@ -37,7 +37,7 @@ impl CliModuleLoader {
   pub fn new_for_worker() -> Rc<Self> {
     Rc::new(CliModuleLoader {
       import_map: None,
-      target_lib: TargetLib::Worker,
+      lib: TypeLib::DenoWorker,
       is_main: false,
     })
   }
@@ -83,7 +83,7 @@ impl ModuleLoader for CliModuleLoader {
     op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-    _is_dyn_import: bool,
+    _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.to_owned();
     let module_url_specified = module_specifier.to_string();
@@ -92,11 +92,10 @@ impl ModuleLoader for CliModuleLoader {
       state.borrow::<Arc<ProgramState>>().clone()
     };
 
-    // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
+    // TODO(@kitsonk) this shouldn't be async
     let fut = async move {
       let compiled_module = program_state
-        .fetch_compiled_module(module_specifier, maybe_referrer)
-        .await?;
+        .fetch_compiled_module(module_specifier, maybe_referrer)?;
       Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
         // due to redirections.
@@ -113,44 +112,36 @@ impl ModuleLoader for CliModuleLoader {
     &self,
     op_state: Rc<RefCell<OpState>>,
     _load_id: ModuleLoadId,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<String>,
-    is_dyn_import: bool,
+    specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<String>,
+    is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    let module_specifier = module_specifier.clone();
-    let target_lib = self.target_lib.clone();
+    let specifier = specifier.clone();
     let maybe_import_map = self.import_map.clone();
     let state = op_state.borrow();
 
-    // Only "main" module is loaded without permission check,
-    // ie. module that is associated with "is_main" state
-    // and is not a dynamic import.
-    let permissions = if self.is_main && !is_dyn_import {
-      Permissions::allow_all()
-    } else {
-      state.borrow::<Permissions>().clone()
-    };
+    // The permissions that should be applied to any dynamically imported module
+    let dynamic_permissions = state.borrow::<Permissions>().clone();
     let program_state = state.borrow::<Arc<ProgramState>>().clone();
-    drop(state);
-
-    // TODO(bartlomieju): I'm not sure if it's correct to ignore
-    // bad referrer - this is the case for `Deno.core.evalContext()` where
-    // `ref_str` is `<unknown>`.
-    let maybe_referrer = if let Some(ref_str) = maybe_referrer {
-      ModuleSpecifier::resolve_url(&ref_str).ok()
+    let lib = if program_state.flags.unstable {
+      if self.lib == TypeLib::DenoWindow {
+        TypeLib::UnstableDenoWindow
+      } else {
+        TypeLib::UnstableDenoWorker
+      }
     } else {
-      None
+      self.lib.clone()
     };
+    drop(state);
 
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
       program_state
         .prepare_module_load(
-          module_specifier,
-          maybe_referrer,
-          target_lib,
-          permissions,
-          is_dyn_import,
+          specifier,
+          lib,
+          dynamic_permissions,
+          is_dynamic,
           maybe_import_map,
         )
         .await

@@ -105,10 +105,10 @@ Deno.test(
         });
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       const thenableFn = (): PromiseLike<any> => {
         return {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // deno-lint-ignore no-explicit-any
           then(onfulfilled): PromiseLike<any> {
             assert(onfulfilled);
             onfulfilled(value);
@@ -150,11 +150,11 @@ Deno.test(
             if ("reason" in err) {
               assert(!value);
               assertStrictEquals(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // deno-lint-ignore no-explicit-any
                 (err as any).code,
                 "ERR_FALSY_VALUE_REJECTION",
               );
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              // deno-lint-ignore no-explicit-any
               assertStrictEquals((err as any).reason, value);
             } else {
               assertStrictEquals(String(value).endsWith(err.message), true);
@@ -186,11 +186,11 @@ Deno.test(
             if ("reason" in err) {
               assert(!value);
               assertStrictEquals(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // deno-lint-ignore no-explicit-any
                 (err as any).code,
                 "ERR_FALSY_VALUE_REJECTION",
               );
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              // deno-lint-ignore no-explicit-any
               assertStrictEquals((err as any).reason, value);
             } else {
               assertStrictEquals(String(value).endsWith(err.message), true);
@@ -220,11 +220,11 @@ Deno.test(
             if ("reason" in err) {
               assert(!value);
               assertStrictEquals(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // deno-lint-ignore no-explicit-any
                 (err as any).code,
                 "ERR_FALSY_VALUE_REJECTION",
               );
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              // deno-lint-ignore no-explicit-any
               assertStrictEquals((err as any).reason, value);
             } else {
               assertStrictEquals(String(value).endsWith(err.message), true);
@@ -341,12 +341,12 @@ Deno.test("callbackify preserves the `this` binding", async () => {
 Deno.test("callbackify throws with non-function inputs", () => {
   ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       callbackify(value as any);
       throw Error("We should never reach this error");
     } catch (err) {
       assert(err instanceof TypeError);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
       assertStrictEquals(err.name, "TypeError");
       assertStrictEquals(
@@ -365,7 +365,7 @@ Deno.test(
       return 42;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const cb = callbackify(asyncFn) as any;
     const args: unknown[] = [];
 
@@ -377,7 +377,7 @@ Deno.test(
         throw Error("We should never reach this error");
       } catch (err) {
         assert(err instanceof TypeError);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
         assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
         assertStrictEquals(err.name, "TypeError");
         assertStrictEquals(

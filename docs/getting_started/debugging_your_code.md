@@ -68,7 +68,7 @@ Once our script is running again, let's send a request and inspect it in
 Devtools:
 
 ```
-$ curl http://0.0.0.0:4500/
+$ curl http://0.0.0.0:4507/
 ```
 
 ![Break in request handling](../images/debugger5.jpg)

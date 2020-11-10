@@ -12,6 +12,10 @@ const answer2 = confirm("Question 2"); // Answer with yes (returns false)
 console.log(`Your answer is ${answer2}`);
 const answer3 = confirm(); // Answer with default
 console.log(`Your answer is ${answer3}`);
+const windows = prompt("What is Windows EOL?");
+console.log(`Your answer is ${JSON.stringify(windows)}`);
 alert("Hi");
 alert();
 console.log("The end of test");
+const eof = prompt("What is EOF?");
+console.log(`Your answer is ${JSON.stringify(eof)}`);

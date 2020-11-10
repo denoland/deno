@@ -40,11 +40,11 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint_files(
-  args: Vec<String>,
-  ignore: Vec<String>,
+  args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0] == "-" {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return lint_stdin(json);
   }
   let mut target_files = collect_files(args)?;
@@ -115,11 +115,8 @@ pub fn print_rules_list() {
 
 fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
-    .ignore_file_directives(vec!["deno-lint-ignore-file"])
-    .ignore_diagnostic_directives(vec![
-      "deno-lint-ignore",
-      "eslint-disable-next-line",
-    ])
+    .ignore_file_directive("deno-lint-ignore-file")
+    .ignore_diagnostic_directive("deno-lint-ignore")
     .lint_unused_ignore_directives(true)
     // TODO(bartlomieju): switch to true
     .lint_unknown_rules(false)
@@ -139,7 +136,7 @@ fn lint_file(
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics = linter.lint(file_name, source_code.clone())?;
+  let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -168,7 +165,7 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
     .lint(pseudo_file_name.to_string(), source.clone())
     .map_err(|e| e.into())
   {
-    Ok(diagnostics) => {
+    Ok((_, diagnostics)) => {
       for d in diagnostics {
         has_error = true;
         reporter.visit_diagnostic(&d, source.split('\n').collect());
@@ -222,6 +219,7 @@ impl LintReporter for PrettyLintReporter {
       &pretty_message,
       &source_lines,
       d.range.clone(),
+      d.hint.as_ref(),
       &fmt_errors::format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
         Some(d.range.start.line as i64),
@@ -256,6 +254,7 @@ pub fn format_diagnostic(
   message_line: &str,
   source_lines: &[&str],
   range: deno_lint::diagnostic::Range,
+  maybe_hint: Option<&String>,
   formatted_location: &str,
 ) -> String {
   let mut lines = vec![];
@@ -277,19 +276,30 @@ pub fn format_diagnostic(
           colors::red(&"^".repeat(line_len - range.start.col))
         ));
       } else if range.end.line == i {
-        lines.push(format!("{}", colors::red(&"^".repeat(range.end.col))));
+        lines.push(colors::red(&"^".repeat(range.end.col)).to_string());
       } else if line_len != 0 {
-        lines.push(format!("{}", colors::red(&"^".repeat(line_len))));
+        lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
     }
   }
 
-  format!(
-    "{}\n{}\n    at {}",
-    message_line,
-    lines.join("\n"),
-    formatted_location
-  )
+  if let Some(hint) = maybe_hint {
+    format!(
+      "{}\n{}\n    at {}\n\n    {} {}",
+      message_line,
+      lines.join("\n"),
+      formatted_location,
+      colors::gray("hint:"),
+      hint,
+    )
+  } else {
+    format!(
+      "{}\n{}\n    at {}",
+      message_line,
+      lines.join("\n"),
+      formatted_location
+    )
+  }
 }
 
 #[derive(Serialize)]

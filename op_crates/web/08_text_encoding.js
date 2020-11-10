@@ -973,15 +973,15 @@
       if (options.fatal) {
         this.fatal = true;
       }
-      label = String(label).trim().toLowerCase();
-      const encoding = encodings.get(label);
+      const _label = String(label).trim().toLowerCase();
+      const encoding = encodings.get(_label);
       if (!encoding) {
         throw new RangeError(
           `The encoding label provided ('${label}') is invalid.`,
         );
       }
       if (!decoders.has(encoding) && encoding !== "utf-8") {
-        throw new TypeError(`Internal decoder ('${encoding}') not found.`);
+        throw new RangeError(`Internal decoder ('${encoding}') not found.`);
       }
       this.#encoding = encoding;
     }
@@ -1061,6 +1061,7 @@
   class TextEncoder {
     encoding = "utf-8";
     encode(input = "") {
+      input = String(input);
       // Deno.core.encode() provides very efficient utf-8 encoding
       if (this.encoding === "utf-8") {
         return core.encode(input);

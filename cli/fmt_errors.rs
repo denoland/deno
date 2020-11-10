@@ -7,6 +7,7 @@ use deno_core::error::{AnyError, JsError as CoreJsError, JsStackFrame};
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
+use std::sync::Arc;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
 
@@ -237,7 +238,7 @@ pub struct JsError(CoreJsError);
 impl JsError {
   pub fn create(
     core_js_error: CoreJsError,
-    source_map_getter: &impl SourceMapGetter,
+    source_map_getter: Arc<impl SourceMapGetter>,
   ) -> AnyError {
     let core_js_error = apply_source_map(&core_js_error, source_map_getter);
     let js_error = Self(core_js_error);

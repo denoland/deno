@@ -109,7 +109,10 @@
 
   class Stdin {
     constructor() {
-      this.rid = 0;
+    }
+
+    get rid() {
+      return 0;
     }
 
     read(p) {
@@ -127,7 +130,10 @@
 
   class Stdout {
     constructor() {
-      this.rid = 1;
+    }
+
+    get rid() {
+      return 1;
     }
 
     write(p) {
@@ -145,7 +151,10 @@
 
   class Stderr {
     constructor() {
-      this.rid = 2;
+    }
+
+    get rid() {
+      return 2;
     }
 
     write(p) {

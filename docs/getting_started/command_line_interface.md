@@ -115,7 +115,7 @@ resolution, compilation configuration etc.
 
 ```
 --config <FILE>               Load tsconfig.json configuration file
---importmap <FILE>            UNSTABLE: Load import map file
+--import-map <FILE>           UNSTABLE: Load import map file
 --no-remote                   Do not resolve remote modules
 --reload=<CACHE_BLOCKLIST>    Reload source code cache (recompile TypeScript)
 --unstable                    Enable unstable APIs

@@ -77,7 +77,7 @@
   }
 
   function mkdirArgs(path, options) {
-    const args = { path, recursive: false };
+    const args = { path: pathFromURL(path), recursive: false };
     if (options != null) {
       if (typeof options.recursive == "boolean") {
         args.recursive = options.recursive;

@@ -249,7 +249,10 @@
       startOrMeasureOptions = {},
       endMark,
     ) {
-      if (startOrMeasureOptions && typeof startOrMeasureOptions === "object") {
+      if (
+        startOrMeasureOptions && typeof startOrMeasureOptions === "object" &&
+        Object.keys(startOrMeasureOptions).length > 0
+      ) {
         if (endMark) {
           throw new TypeError("Options cannot be passed with endMark.");
         }

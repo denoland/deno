@@ -1,0 +1,3 @@
+[WILDCARD]
+error: Uncaught (in worker "") network access to "http://localhost:4545/cli/tests/subdir/worker_types.ts", run again with the --allow-net flag
+[WILDCARD]

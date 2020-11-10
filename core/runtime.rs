@@ -162,22 +162,6 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-/// Minimum and maximum bytes of heap used in an isolate
-pub struct HeapLimits {
-  /// By default V8 starts with a small heap and dynamically grows it to match
-  /// the set of live objects. This may lead to ineffective garbage collections
-  /// at startup if the live set is large. Setting the initial heap size avoids
-  /// such garbage collections. Note that this does not affect young generation
-  /// garbage collections.
-  pub initial: usize,
-  /// When the heap size approaches `max`, V8 will perform series of
-  /// garbage collections and invoke the
-  /// [NearHeapLimitCallback](TODO).
-  /// If the garbage collections do not help and the callback does not
-  /// increase the limit, then V8 will crash with V8::FatalProcessOutOfMemory.
-  pub max: usize,
-}
-
 #[derive(Default)]
 pub struct RuntimeOptions {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
@@ -202,17 +186,13 @@ pub struct RuntimeOptions {
   /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
 
-  /// This is useful for controlling memory usage of scripts.
-  ///
-  /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
-  ///
-  /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
-  /// to prevent v8 from crashing when reaching the upper limit.
-  pub heap_limits: Option<HeapLimits>,
+  /// Isolate creation parameters.
+  pub create_params: Option<v8::CreateParams>,
 }
 
 impl JsRuntime {
-  pub fn new(options: RuntimeOptions) -> Self {
+  /// Only constructor, configuration is done through `options`.
+  pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
@@ -234,7 +214,10 @@ impl JsRuntime {
       }
       (isolate, Some(creator))
     } else {
-      let mut params = v8::Isolate::create_params()
+      let mut params = options
+        .create_params
+        .take()
+        .unwrap_or_else(v8::Isolate::create_params)
         .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
@@ -246,10 +229,6 @@ impl JsRuntime {
       } else {
         false
       };
-
-      if let Some(heap_limits) = options.heap_limits {
-        params = params.heap_limits(heap_limits.initial, heap_limits.max)
-      }
 
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
@@ -342,6 +321,8 @@ impl JsRuntime {
     }
   }
 
+  /// Returns the runtime's op state, which can be used to maintain ops
+  /// and access resources between op calls.
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
     let state_rc = Self::state(self.v8_isolate());
     let state = state_rc.borrow();
@@ -349,6 +330,9 @@ impl JsRuntime {
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules)
+  ///
+  /// The execution takes place on the current global context, so it is possible
+  /// to maintain local JS state and invoke this method multiple times.
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
@@ -374,7 +358,7 @@ impl JsRuntime {
       Some(script) => script,
       None => {
         let exception = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, exception);
+        return exception_to_err_result(tc_scope, exception, false);
       }
     };
 
@@ -383,7 +367,7 @@ impl JsRuntime {
       None => {
         assert!(tc_scope.has_caught());
         let exception = tc_scope.exception().unwrap();
-        exception_to_err_result(tc_scope, exception)
+        exception_to_err_result(tc_scope, exception, false)
       }
     }
   }
@@ -413,6 +397,15 @@ impl JsRuntime {
     snapshot
   }
 
+  /// Registers an op that can be called from JavaScript.
+  ///
+  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
+  /// which can be called using the provided `name`.
+  ///
+  /// This function provides byte-level bindings. To pass data via JSON, the
+  /// following functions can be passed as an argument for `op_fn`:
+  /// * [json_op_sync()](fn.json_op_sync.html)
+  /// * [json_op_async()](fn.json_op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
@@ -609,6 +602,7 @@ impl JsRuntimeState {
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
+  in_promise: bool,
 ) -> Result<T, AnyError> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
@@ -630,7 +624,13 @@ pub(crate) fn exception_to_err_result<'s, T>(
     }
   }
 
-  let js_error = JsError::from_v8_exception(scope, exception);
+  let mut js_error = JsError::from_v8_exception(scope, exception);
+  if in_promise {
+    js_error.message = format!(
+      "Uncaught (in promise) {}",
+      js_error.message.trim_start_matches("Uncaught ")
+    );
+  }
 
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
@@ -674,7 +674,7 @@ impl JsRuntime {
     if tc_scope.has_caught() {
       assert!(maybe_module.is_none());
       let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e);
+      return exception_to_err_result(tc_scope, e, false);
     }
 
     let module = maybe_module.unwrap();
@@ -726,7 +726,7 @@ impl JsRuntime {
     drop(state);
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      exception_to_err_result(tc_scope, module.get_exception())?
+      exception_to_err_result(tc_scope, module.get_exception(), false)?
     }
 
     let result =
@@ -735,7 +735,7 @@ impl JsRuntime {
       Some(_) => Ok(()),
       None => {
         let exception = tc_scope.exception().unwrap();
-        exception_to_err_result(tc_scope, exception)
+        exception_to_err_result(tc_scope, exception, false)
       }
     }
   }
@@ -1129,7 +1129,7 @@ impl JsRuntime {
             state.pending_mod_evaluate.take();
             drop(state);
             scope.perform_microtask_checkpoint();
-            let err1 = exception_to_err_result::<()>(scope, exception)
+            let err1 = exception_to_err_result::<()>(scope, exception, false)
               .map_err(|err| attach_handle_to_error(scope, err, exception))
               .unwrap_err();
             sender.try_send(Err(err1)).unwrap();
@@ -1177,7 +1177,7 @@ impl JsRuntime {
             v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
             v8::PromiseState::Rejected => {
               let exception = promise.result(scope);
-              let err1 = exception_to_err_result::<()>(scope, exception)
+              let err1 = exception_to_err_result::<()>(scope, exception, false)
                 .map_err(|err| attach_handle_to_error(scope, err, exception))
                 .unwrap_err();
               Some(Err((dyn_import_id, err1)))
@@ -1393,7 +1393,7 @@ impl JsRuntime {
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let exception = v8::Local::new(scope, handle);
-    exception_to_err_result(scope, exception)
+    exception_to_err_result(scope, exception, true)
   }
 
   // Respond using shared queue and optionally overflown response
@@ -1444,7 +1444,7 @@ impl JsRuntime {
 
     match tc_scope.exception() {
       None => Ok(()),
-      Some(exception) => exception_to_err_result(tc_scope, exception),
+      Some(exception) => exception_to_err_result(tc_scope, exception, false),
     }
   }
 
@@ -1470,7 +1470,7 @@ impl JsRuntime {
       let is_done = js_macrotask_cb.call(tc_scope, global, &[]);
 
       if let Some(exception) = tc_scope.exception() {
-        return exception_to_err_result(tc_scope, exception);
+        return exception_to_err_result(tc_scope, exception, false);
       }
 
       let is_done = is_done.unwrap();
@@ -1790,7 +1790,7 @@ pub mod tests {
     match isolate.execute("infinite_loop.js", "for(;;) {}") {
       Ok(_) => panic!("execution should be terminated"),
       Err(e) => {
-        assert_eq!(e.to_string(), "Uncaught Error: execution terminated\n")
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
       }
     };
 
@@ -2078,12 +2078,9 @@ pub mod tests {
 
   #[test]
   fn test_heap_limits() {
-    let heap_limits = HeapLimits {
-      initial: 0,
-      max: 20 * 1024, // 20 kB
-    };
+    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      heap_limits: Some(heap_limits),
+      create_params: Some(create_params),
       ..Default::default()
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();
@@ -2124,12 +2121,9 @@ pub mod tests {
 
   #[test]
   fn test_heap_limit_cb_multiple() {
-    let heap_limits = HeapLimits {
-      initial: 0,
-      max: 20 * 1024, // 20 kB
-    };
+    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      heap_limits: Some(heap_limits),
+      create_params: Some(create_params),
       ..Default::default()
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();
@@ -2539,8 +2533,7 @@ main();
 "#,
     );
     let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
-    at error_without_stack.js:3:14
-"#;
+    at error_without_stack.js:3:14"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -2566,8 +2559,7 @@ main();
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
     at main (error_stack.js:9:3)
-    at error_stack.js:12:1
-"#;
+    at error_stack.js:12:1"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -2598,8 +2590,7 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5
-"#;
+    at async error_async_stack.js:10:5"#;
 
       match runtime.poll_event_loop(cx) {
         Poll::Ready(Err(e)) => {
