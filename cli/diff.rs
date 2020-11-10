@@ -6,27 +6,27 @@ use std::fmt;
 use std::fmt::Write;
 
 fn fmt_add() -> String {
-  format!("{}", colors::green_bold("+"))
+  colors::green_bold("+").to_string()
 }
 
 fn fmt_add_text(x: &str) -> String {
-  format!("{}", colors::green(x))
+  colors::green(x).to_string()
 }
 
 fn fmt_add_text_highlight(x: &str) -> String {
-  format!("{}", colors::black_on_green(x))
+  colors::black_on_green(x).to_string()
 }
 
 fn fmt_rem() -> String {
-  format!("{}", colors::red_bold("-"))
+  colors::red_bold("-").to_string()
 }
 
 fn fmt_rem_text(x: &str) -> String {
-  format!("{}", colors::red(x))
+  colors::red(x).to_string()
 }
 
 fn fmt_rem_text_highlight(x: &str) -> String {
-  format!("{}", colors::white_on_red(x))
+  colors::white_on_red(x).to_string()
 }
 
 fn write_line_diff(

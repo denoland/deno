@@ -23,3 +23,10 @@ To run linting:
 ```sh
 deno run --allow-read --allow-write --allow-run --unstable ./tools/lint.js
 ```
+
+Tip: You can also use cargo to run the current or pending build of the deno
+executable
+
+```sh
+cargo run -- run --allow-read --allow-write --allow-run --unstable ./tools/<script>
+```

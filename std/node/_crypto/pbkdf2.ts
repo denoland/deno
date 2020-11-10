@@ -1,5 +1,5 @@
 import { createHash } from "../../hash/mod.ts";
-import Buffer from "../buffer.ts";
+import { Buffer } from "../buffer.ts";
 import { MAX_ALLOC } from "./constants.ts";
 import { HASH_DATA } from "./types.ts";
 

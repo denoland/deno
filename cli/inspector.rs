@@ -934,7 +934,7 @@ impl InspectorSession {
 
     let response = response_rx.await.unwrap();
     if let Some(error) = response.get("error") {
-      return Err(generic_error(format!("{}", error)));
+      return Err(generic_error(error.to_string()));
     }
 
     let result = response.get("result").unwrap().clone();
