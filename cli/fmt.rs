@@ -253,19 +253,15 @@ pub fn collect_files(
     }
   } else {
     for file in files {
-      if file.is_dir() {
-        for entry in WalkDir::new(file)
-          .into_iter()
-          .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
-        {
-          let entry_clone = entry?.clone();
-          if is_supported(entry_clone.path()) {
-            target_files.push(entry_clone.into_path().canonicalize()?)
-          }
+      for entry in WalkDir::new(file)
+        .into_iter()
+        .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
+      {
+        let entry_clone = entry?.clone();
+        if is_supported(entry_clone.path()) {
+          target_files.push(entry_clone.into_path().canonicalize()?)
         }
-      } else {
-        target_files.push(file.canonicalize()?);
-      };
+      }
     }
   }
 
