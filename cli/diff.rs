@@ -151,9 +151,10 @@ fn test_diff() {
   let simple_console_log_unfmt = "console.log('Hello World')";
   let simple_console_log_fmt = "console.log(\"Hello World\");";
   assert_eq!(
-    colors::strip_ansi_codes(
-      &diff(simple_console_log_unfmt, simple_console_log_fmt)
-    ),
+    colors::strip_ansi_codes(&diff(
+      simple_console_log_unfmt,
+      simple_console_log_fmt
+    )),
     "1 | -console.log('Hello World')\n1 | +console.log(\"Hello World\");\n"
   );
 

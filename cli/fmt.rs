@@ -80,11 +80,7 @@ async fn check_source_files(
             let _g = output_lock.lock().unwrap();
             let diff = diff(&file_text, &formatted_text);
             info!("");
-            info!(
-              "{} {}:",
-              colors::bold("from"),
-              file_path.display()
-            );
+            info!("{} {}:", colors::bold("from"), file_path.display());
             info!("{}", diff);
           }
         }
