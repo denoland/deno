@@ -514,7 +514,7 @@ fn fmt_watch_test() {
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
 
   child.kill().unwrap();
