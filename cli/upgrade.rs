@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::AnyError;
-use deno_core::url::Url;
 use deno_fetch::reqwest;
 use deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;
@@ -9,7 +8,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use std::string::String;
 use tempfile::TempDir;
 
 lazy_static! {
@@ -22,7 +20,7 @@ async fn get_latest_version(
 ) -> Result<String, AnyError> {
   println!("Looking up latest version");
 
-  let res = client.get(Url::parse(latest_url)?).send().await?;
+  let res = client.get(latest_url).send().await?;
   let version = res.url().path_segments().unwrap().last().unwrap();
 
   Ok(version.replace("v", ""))
