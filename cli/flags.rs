@@ -1515,7 +1515,7 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   use deno_core::url::Url;
   let mut out: Vec<String> = vec![];
   for urlstr in urls.iter() {
-    if let Ok(url) = Url::from_str(urlstr) {
+    if let Ok(mut url) = Url::from_str(urlstr) {
       url.set_fragment(None);
       let mut full_url = String::from(url.as_str());
       if full_url.len() > 1 && full_url.ends_with('/') {
