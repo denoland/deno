@@ -187,9 +187,9 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
       Ok(file) => file,
       Err(_) => continue,
     };
-    let filename = file.file_name().to_str().unwrap();
+    let filename = file.file_name().to_str().unwrap().to_string();
 
-    if !BINARY_TARGET_FILES.contains(&filename) {
+    if !BINARY_TARGET_FILES.contains(&filename.as_str()) {
       continue;
     }
 
@@ -203,11 +203,8 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
       }
     }
 
-    mtimes.insert(filename, file_mtime);
-    sizes.insert(
-      filename.to_string(),
-      Value::Number(Number::from(meta.len())),
-    );
+    mtimes.insert(filename.clone(), file_mtime);
+    sizes.insert(filename, Value::Number(Number::from(meta.len())));
   }
 
   Ok(Value::Object(sizes))
