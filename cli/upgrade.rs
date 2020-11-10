@@ -18,12 +18,12 @@ lazy_static! {
 
 async fn get_latest_version(
   client: &Client,
-  release_url: &str,
+  latest_url: &str,
 ) -> Result<String, AnyError> {
   println!("Looking up latest version");
 
   let res = client
-    .get(Url::parse(&*format!("{}/latest", release_url))?)
+    .get(Url::parse(latest_url)?)
     .send()
     .await?;
   let version = res.url().path_segments().unwrap().last().unwrap();
@@ -67,7 +67,8 @@ pub async fn upgrade_command(
       }
     }
     None => {
-      let latest_version = get_latest_version(&client, release_url).await?;
+      let latest_url = format!("{}/latest", release_url);
+      let latest_version = get_latest_version(&client, &*latest_url).await?;
 
       let current_is_most_recent = if nightly && crate::version::is_nightly() {
         let current = crate::version::deno().replace(".", "").parse::<u32>()?;
