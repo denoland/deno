@@ -232,7 +232,7 @@ impl Permissions {
       ));
     }
     Ok(self.query_net(
-      &format!("{}", parsed.host().unwrap()),
+      &parsed.host().unwrap().to_string(),
       parsed.port_or_known_default(),
     ))
   }

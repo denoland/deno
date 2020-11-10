@@ -276,9 +276,9 @@ pub fn format_diagnostic(
           colors::red(&"^".repeat(line_len - range.start.col))
         ));
       } else if range.end.line == i {
-        lines.push(format!("{}", colors::red(&"^".repeat(range.end.col))));
+        lines.push(colors::red(&"^".repeat(range.end.col)).to_string());
       } else if line_len != 0 {
-        lines.push(format!("{}", colors::red(&"^".repeat(line_len))));
+        lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
     }
   }

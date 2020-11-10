@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
-import Buffer from "./buffer.ts";
+import { Buffer } from "./buffer.ts";
 import { StringDecoder } from "./string_decoder.ts";
 
 Deno.test({

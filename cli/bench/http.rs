@@ -299,5 +299,5 @@ fn node_tcp() -> Result<HttpBenchmarkResult> {
 fn hyper_http(exe: &str) -> Result<HttpBenchmarkResult> {
   let port = get_port();
   println!("http_benchmark testing RUST hyper");
-  run(&[exe, &format!("{}", port)], port, None, None)
+  run(&[exe, &port.to_string()], port, None, None)
 }

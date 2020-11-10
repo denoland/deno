@@ -3,10 +3,11 @@
 import { getPrebuiltToolPath, getSources, join, ROOT_PATH } from "./util.js";
 
 async function dprint() {
+  const configFile = join(ROOT_PATH, ".dprintrc.json");
   const execPath = getPrebuiltToolPath("dprint");
   console.log("dprint");
   const p = Deno.run({
-    cmd: [execPath, "fmt"],
+    cmd: [execPath, "fmt", "--config=" + configFile],
   });
   const { success } = await p.status();
   if (!success) {
