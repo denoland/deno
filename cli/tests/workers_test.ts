@@ -334,3 +334,27 @@ Deno.test({
     w.terminate();
   },
 });
+
+Deno.test({
+  name: "Worker event handler order",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const w = new Worker(
+      new URL("subdir/test_worker.ts", import.meta.url).href,
+      { type: "module", name: "tsWorker" },
+    );
+    const arr: number[] = [];
+    w.addEventListener("message", () => arr.push(1));
+    w.onmessage = (e): void => {
+      arr.push(2);
+    };
+    w.addEventListener("message", () => arr.push(3));
+    w.addEventListener("message", () => {
+      assertEquals(arr, [1, 2, 3]);
+      promise.resolve();
+    });
+    w.postMessage("Hello World");
+    await promise;
+    w.terminate();
+  },
+});

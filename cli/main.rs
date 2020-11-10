@@ -23,7 +23,6 @@ mod flags_allow_net;
 mod fmt;
 mod fmt_errors;
 mod fs;
-mod global_timer;
 mod http_cache;
 mod http_util;
 mod import_map;
@@ -188,7 +187,7 @@ async fn info_command(
     if json {
       write_json_to_stdout(&json!(info))?;
     } else {
-      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())?;
+      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())?;
     }
     Ok(())
   } else {
