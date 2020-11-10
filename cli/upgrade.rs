@@ -22,10 +22,7 @@ async fn get_latest_version(
 ) -> Result<String, AnyError> {
   println!("Looking up latest version");
 
-  let res = client
-    .get(Url::parse(latest_url)?)
-    .send()
-    .await?;
+  let res = client.get(Url::parse(latest_url)?).send().await?;
   let version = res.url().path_segments().unwrap().last().unwrap();
 
   Ok(version.replace("v", ""))
@@ -90,7 +87,6 @@ pub async fn upgrade_command(
         return Ok(());
       } else {
         println!("Found latest version {}", &latest_version);
-
         latest_version
       }
     }
