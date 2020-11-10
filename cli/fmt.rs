@@ -227,14 +227,16 @@ fn is_supported(path: &Path) -> bool {
 
 pub fn collect_files(
   files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  mut ignore: Vec<PathBuf>,
 ) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
+
+  // retain only the paths which exist and ignore the rest
+  ignore.retain(|i| i.exists());
 
   if files.is_empty() {
     for entry in WalkDir::new(std::env::current_dir()?)
       .into_iter()
-      // FIXME the unwrap here panicks when we add a ignore file/folder which doesn't exist
       .filter_entry(|e| {
         !ignore.iter().any(|i| {
           e.path()
