@@ -481,14 +481,13 @@ fn fmt_watch_test() {
   let badly_formatted_original =
     util::root_path().join("cli/tests/badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
-  let badly_formatted_str = badly_formatted.to_str().unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
 
   let mut child = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg(badly_formatted_str)
+    .arg(&badly_formatted)
     .arg("--watch")
     .arg("--unstable")
     .stdout(std::process::Stdio::piped())
@@ -511,10 +510,9 @@ fn fmt_watch_test() {
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  // Check if file has been automatically formatted
+  // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
   assert_eq!(expected, actual);
