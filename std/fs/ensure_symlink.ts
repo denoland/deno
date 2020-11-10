@@ -4,6 +4,8 @@ import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
 import { getFileInfoType } from "./_util.ts";
 
+const isWindows = Deno.build.os == "windows";
+
 /**
  * Ensures that the link exists.
  * If the directory structure does not exist, it is created.
@@ -28,13 +30,13 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
 
   await ensureDir(path.dirname(dest));
 
-  if (Deno.build.os === "windows") {
-    await Deno.symlink(src, dest, {
+  const options: Deno.SymlinkOptions | undefined = isWindows
+    ? {
       type: srcFilePathType === "dir" ? "dir" : "file",
-    });
-  } else {
-    await Deno.symlink(src, dest);
-  }
+    }
+    : undefined;
+
+  await Deno.symlink(src, dest, options);
 }
 
 /**
@@ -60,11 +62,12 @@ export function ensureSymlinkSync(src: string, dest: string): void {
   }
 
   ensureDirSync(path.dirname(dest));
-  if (Deno.build.os === "windows") {
-    Deno.symlinkSync(src, dest, {
+
+  const options: Deno.SymlinkOptions | undefined = isWindows
+    ? {
       type: srcFilePathType === "dir" ? "dir" : "file",
-    });
-  } else {
-    Deno.symlinkSync(src, dest);
-  }
+    }
+    : undefined;
+
+  Deno.symlinkSync(src, dest, options);
 }
