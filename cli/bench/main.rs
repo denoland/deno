@@ -183,13 +183,13 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
   for file in walkdir::WalkDir::new(target_dir) {
-    if file.is_err() {
-      continue;
-    }
-    let file = file.unwrap();
-    let filename = file.file_name().to_str().unwrap().to_string();
+    let file = match file {
+      Ok(file) => file,
+      Err(_) => continue,
+    };
+    let filename = file.file_name().to_str().unwrap();
 
-    if !BINARY_TARGET_FILES.contains(&filename.as_str()) {
+    if !BINARY_TARGET_FILES.contains(filename) {
       continue;
     }
 
@@ -197,14 +197,17 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
     let file_mtime = meta.modified()?;
 
     // If multiple copies of a file are found, use the most recent one.
-    if let Some(stored_mtime) = mtimes.get(&filename) {
+    if let Some(stored_mtime) = mtimes.get(filename) {
       if *stored_mtime > file_mtime {
         continue;
       }
     }
 
-    mtimes.insert(filename.clone(), file_mtime);
-    sizes.insert(filename, Value::Number(Number::from(meta.len())));
+    mtimes.insert(filename, file_mtime);
+    sizes.insert(
+      filename.to_string(),
+      Value::Number(Number::from(meta.len())),
+    );
   }
 
   Ok(Value::Object(sizes))
