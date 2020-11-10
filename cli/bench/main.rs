@@ -197,7 +197,7 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
     let file_mtime = meta.modified()?;
 
     // If multiple copies of a file are found, use the most recent one.
-    if let Some(stored_mtime) = mtimes.get(filename) {
+    if let Some(stored_mtime) = mtimes.get(&filename) {
       if *stored_mtime > file_mtime {
         continue;
       }
