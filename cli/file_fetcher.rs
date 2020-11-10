@@ -478,11 +478,6 @@ impl FileFetcher {
     }
   }
 
-  /// Get a previously in memory cached file.
-  // pub fn get_cached(&self, specifier: &ModuleSpecifier) -> Option<File> {
-  //   self.cache.get(specifier)
-  // }
-
   /// Get the location of the current HTTP cache associated with the fetcher.
   pub fn get_http_cache_location(&self) -> PathBuf {
     self.http_cache.location.clone()
