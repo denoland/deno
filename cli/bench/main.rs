@@ -189,7 +189,7 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
     };
     let filename = file.file_name().to_str().unwrap();
 
-    if !BINARY_TARGET_FILES.contains(filename) {
+    if !BINARY_TARGET_FILES.contains(&filename) {
       continue;
     }
 
