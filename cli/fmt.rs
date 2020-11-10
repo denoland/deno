@@ -230,17 +230,18 @@ pub fn collect_files(
   ignore: Vec<PathBuf>,
 ) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
-  // FIXME the unwrap here panicks when we add a ignore file/folder which doesn't exist
-  let ignore: Vec<PathBuf> = ignore
-    .into_iter()
-    .map(|file| file.canonicalize().unwrap())
-    .collect();
 
   if files.is_empty() {
-    for entry in WalkDir::new(std::env::current_dir()?.canonicalize()?)
+    for entry in WalkDir::new(std::env::current_dir()?)
       .into_iter()
+      // FIXME the unwrap here panicks when we add a ignore file/folder which doesn't exist
       .filter_entry(|e| {
-        !ignore.contains(&e.clone().path().canonicalize().unwrap())
+        !ignore.iter().any(|i| {
+          e.path()
+            .canonicalize()
+            .unwrap()
+            .starts_with(i.canonicalize().unwrap())
+        })
       })
     {
       let entry_clone = entry?.clone();
@@ -251,9 +252,9 @@ pub fn collect_files(
   } else {
     for file in files {
       if file.is_dir() {
-        for entry in WalkDir::new(file.canonicalize()?)
+        for entry in WalkDir::new(file)
           .into_iter()
-          .filter_entry(|e| !ignore.contains(&e.clone().into_path()))
+          .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
         {
           let entry_clone = entry?.clone();
           if is_supported(entry_clone.path()) {
