@@ -736,31 +736,21 @@ pub fn module_resolve_callback<'s>(
     .get_info_by_global(&referrer_global)
     .expect("ModuleInfo not found")
     .id;
-  let len_ = referrer.get_module_requests_length();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  for i in 0..len_ {
-    let req = referrer.get_module_request(i);
-    let req_str = req.to_rust_string_lossy(scope);
-
-    if req_str == specifier_str {
-      let id = state.module_resolve_cb(&req_str, referrer_id);
-      match state.modules.get_info(id) {
-        Some(info) => return Some(v8::Local::new(scope, &info.handle)),
-        None => {
-          let msg = format!(
-            r#"Cannot resolve module "{}" from "{}""#,
-            req_str, referrer_name
-          );
-          throw_type_error(scope, msg);
-          return None;
-        }
-      }
+  let id = state.module_resolve_cb(&specifier_str, referrer_id);
+  match state.modules.get_info(id) {
+    Some(info) => return Some(v8::Local::new(scope, &info.handle)),
+    None => {
+      let msg = format!(
+        r#"Cannot resolve module "{}" from "{}""#,
+        specifier_str, referrer_name
+      );
+      throw_type_error(scope, msg);
+      return None;
     }
   }
-
-  None
 }
 
 // Returns promise details or throw TypeError, if argument passed isn't a Promise.
