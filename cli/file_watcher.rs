@@ -5,7 +5,6 @@ use core::task::{Context, Poll};
 use deno_core::error::AnyError;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
-use deno_core::ModuleSpecifier;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
@@ -115,20 +114,21 @@ where
   }
 }
 
-pub async fn watch_func_for_run<F, G>(
+pub async fn watch_func_with_module_resolution<F, G, T>(
   module_resolver: F,
   operation: G,
+  job_name: &str,
 ) -> Result<(), AnyError>
 where
-  F: Fn() -> WatchFuture<(Vec<PathBuf>, ModuleSpecifier)>,
-  G: Fn(ModuleSpecifier) -> WatchFuture<()>,
+  F: Fn() -> WatchFuture<(Vec<PathBuf>, T)>,
+  G: Fn(T) -> WatchFuture<()>,
 {
   let mut debounce = Debounce::new();
 
   loop {
-    let (paths, module_specifier) = module_resolver().await?;
+    let (paths, module) = module_resolver().await?;
     let _watcher = new_watcher(&paths, &debounce)?;
-    let func = error_handler(operation(module_specifier));
+    let func = error_handler(operation(module));
     let mut is_file_changed = false;
     select! {
       _ = debounce.next() => {
@@ -143,8 +143,9 @@ where
 
     if !is_file_changed {
       info!(
-        "{} Process terminated! Restarting on file change...",
+        "{} {} finished! Restarting on file change...",
         colors::intense_blue("Watcher"),
+        job_name,
       );
       debounce.next().await;
       info!(
