@@ -404,14 +404,14 @@ async fn bundle_command(
 
       debug!(">>>>> bundle END");
 
-      if let Some(out_file_) = out_file.as_ref() {
+      if let Some(out_file) = out_file.as_ref() {
         let output_bytes = output.as_bytes();
         let output_len = output_bytes.len();
-        deno_fs::write_file(out_file_, output_bytes, 0o644)?;
+        deno_fs::write_file(out_file, output_bytes, 0o644)?;
         info!(
           "{} {:?} ({})",
           colors::green("Emit"),
-          out_file_,
+          out_file,
           colors::gray(&info::human_size(output_len as f64))
         );
       } else {
