@@ -427,10 +427,6 @@ impl Modules {
     self.info.get(&id).map(|i| &i.import_specifiers)
   }
 
-  pub fn get_name(&self, id: ModuleId) -> Option<&String> {
-    self.info.get(&id).map(|i| &i.name)
-  }
-
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
     self.by_name.get(&specifier.to_string()).is_some()
   }

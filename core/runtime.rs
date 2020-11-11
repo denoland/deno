@@ -113,7 +113,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: Cell<bool>,
   //pub(crate) op_table: OpTable,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  loader: Rc<dyn ModuleLoader>,
+  pub loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
@@ -563,20 +563,6 @@ where
 }
 
 impl JsRuntimeState {
-  // Called by V8 during `Isolate::mod_instantiate`.
-  pub fn module_resolve_cb(
-    &mut self,
-    specifier: &str,
-    referrer_id: ModuleId,
-  ) -> ModuleId {
-    let referrer = self.modules.get_name(referrer_id).unwrap();
-    let specifier = self
-      .loader
-      .resolve(self.op_state.clone(), specifier, referrer, false)
-      .expect("Module should have been already resolved");
-    self.modules.get_id(specifier.as_str()).unwrap_or(0)
-  }
-
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,

@@ -714,6 +714,7 @@ fn shared_getter(
   rv.set(shared_ab.into())
 }
 
+// Called by V8 during `Isolate::mod_instantiate`.
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
@@ -722,35 +723,39 @@ pub fn module_resolve_callback<'s>(
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
   let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let state = state_rc.borrow();
 
   let referrer_global = v8::Global::new(scope, referrer);
-  let referrer_name = state
+  let referrer_info = state
     .modules
     .get_info_by_global(&referrer_global)
-    .expect("ModuleInfo not found")
-    .name
-    .to_string();
-  let referrer_id = state
-    .modules
-    .get_info_by_global(&referrer_global)
-    .expect("ModuleInfo not found")
-    .id;
+    .expect("ModuleInfo not found");
+  let referrer_name = referrer_info.name.to_string();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let id = state.module_resolve_cb(&specifier_str, referrer_id);
-  match state.modules.get_info(id) {
-    Some(info) => return Some(v8::Local::new(scope, &info.handle)),
-    None => {
-      let msg = format!(
-        r#"Cannot resolve module "{}" from "{}""#,
-        specifier_str, referrer_name
-      );
-      throw_type_error(scope, msg);
-      return None;
+  let resolved_specifier = state
+    .loader
+    .resolve(
+      state.op_state.clone(),
+      &specifier_str,
+      &referrer_name,
+      false,
+    )
+    .expect("Module should have been already resolved");
+
+  if let Some(id) = state.modules.get_id(resolved_specifier.as_str()) {
+    if let Some(info) = state.modules.get_info(id) {
+      return Some(v8::Local::new(scope, &info.handle));
     }
   }
+
+  let msg = format!(
+    r#"Cannot resolve module "{}" from "{}""#,
+    specifier_str, referrer_name
+  );
+  throw_type_error(scope, msg);
+  None
 }
 
 // Returns promise details or throw TypeError, if argument passed isn't a Promise.
