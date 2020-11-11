@@ -267,7 +267,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let module_global = v8::Global::new(scope, module);
   let info = state
     .modules
-    .get_info_by_global(&module_global)
+    .get_info(&module_global)
     .expect("Module not found");
 
   let url_key = v8::String::new(scope, "url").unwrap();
@@ -728,7 +728,7 @@ pub fn module_resolve_callback<'s>(
   let referrer_global = v8::Global::new(scope, referrer);
   let referrer_info = state
     .modules
-    .get_info_by_global(&referrer_global)
+    .get_info(&referrer_global)
     .expect("ModuleInfo not found");
   let referrer_name = referrer_info.name.to_string();
 
@@ -745,8 +745,8 @@ pub fn module_resolve_callback<'s>(
     .expect("Module should have been already resolved");
 
   if let Some(id) = state.modules.get_id(resolved_specifier.as_str()) {
-    if let Some(info) = state.modules.get_info(id) {
-      return Some(v8::Local::new(scope, &info.handle));
+    if let Some(handle) = state.modules.get_handle(id) {
+      return Some(v8::Local::new(scope, handle));
     }
   }
 

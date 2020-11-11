@@ -340,7 +340,6 @@ pub struct ModuleInfo {
   pub id: ModuleId,
   pub main: bool,
   pub name: String,
-  pub handle: v8::Global<v8::Module>,
   pub import_specifiers: Vec<ModuleSpecifier>,
 }
 
@@ -404,6 +403,7 @@ impl ModuleNameMap {
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
+  handles: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
   // FIXME(@bartlomieju): temporary solution to avoid cascading changes
@@ -413,6 +413,7 @@ pub struct Modules {
 impl Modules {
   pub fn new() -> Modules {
     Self {
+      handles: HashMap::new(),
       info: HashMap::new(),
       by_name: ModuleNameMap::new(),
       next_module_id: 1,
@@ -442,6 +443,7 @@ impl Modules {
     let id = self.next_module_id;
     self.next_module_id += 1;
     self.by_name.insert(name.clone(), id);
+    self.handles.insert(id, handle);
     self.info.insert(
       id,
       ModuleInfo {
@@ -449,7 +451,6 @@ impl Modules {
         main,
         name,
         import_specifiers,
-        handle,
       },
     );
     id
@@ -464,17 +465,19 @@ impl Modules {
     self.by_name.is_alias(name)
   }
 
-  pub fn get_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
-    self.info.get(&id)
+  pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
+    self.handles.get(&id).cloned()
   }
 
-  pub fn get_info_by_global(
+  pub fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
-    for info in self.info.values() {
-      if info.handle == global {
-        return Some(info);
+    // FIXME(@bartlomieju): iterating over all registered modules, this
+    // should use hash map lookup
+    for (id, handle) in self.handles.iter() {
+      if handle == global {
+        return self.info.get(id);
       }
     }
 

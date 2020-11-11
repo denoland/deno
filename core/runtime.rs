@@ -704,8 +704,8 @@ impl JsRuntime {
     let module = state_rc
       .borrow()
       .modules
-      .get_info(id)
-      .map(|info| v8::Local::new(tc_scope, &info.handle))
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
 
     if module.get_status() == v8::ModuleStatus::Errored {
@@ -742,10 +742,8 @@ impl JsRuntime {
     let module_handle = state_rc
       .borrow()
       .modules
-      .get_info(id)
-      .expect("ModuleInfo not found")
-      .handle
-      .clone();
+      .get_handle(id)
+      .expect("ModuleInfo not found");
 
     let status = {
       let scope =
@@ -832,8 +830,8 @@ impl JsRuntime {
     let module = state_rc
       .borrow()
       .modules
-      .get_info(id)
-      .map(|info| v8::Local::new(scope, &info.handle))
+      .get_handle(id)
+      .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
 
@@ -957,8 +955,8 @@ impl JsRuntime {
       let state = state_rc.borrow();
       state
         .modules
-        .get_info(mod_id)
-        .map(|info| v8::Local::new(scope, &info.handle))
+        .get_handle(mod_id)
+        .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found")
     };
     // Resolution success
