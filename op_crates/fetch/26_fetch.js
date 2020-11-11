@@ -1342,15 +1342,11 @@
             });
             return new Response(null, responseInit);
           case "manual":
-            responseInit = {};
-            responseData.set(responseInit, {
-              type: "opaqueredirect",
-              redirected: false,
-              url: "",
-            });
-            return new Response(null, responseInit);
+            // On the web this would return a `opaqueredirect` response, but
+            // those don't make sense server side. See denoland/deno#8351.
+            return response;
           case "follow":
-            // fallthrough
+          // fallthrough
           default: {
             let redirectUrl = response.headers.get("Location");
             if (redirectUrl == null) {
