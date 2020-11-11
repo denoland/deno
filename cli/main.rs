@@ -427,7 +427,7 @@ async fn bundle_command(
     file_watcher::watch_func_with_module_resolution(
       module_resolver,
       operation,
-      "bundle",
+      "Bundle",
     )
     .await?;
   } else {
@@ -674,7 +674,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   file_watcher::watch_func_with_module_resolution(
     module_resolver,
     operation,
-    "process",
+    "Process",
   )
   .await
 }

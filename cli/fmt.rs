@@ -62,7 +62,7 @@ pub async fn format(
   };
 
   if watch {
-    file_watcher::watch_func(target_file_resolver, operation, "fmt").await?;
+    file_watcher::watch_func(target_file_resolver, operation, "Fmt").await?;
   } else {
     operation(target_file_resolver()?).await?;
   }
