@@ -426,6 +426,54 @@ fn cache_invalidation_test_no_check() {
   assert_eq!(actual, "43\n");
 }
 
+#[tokio::test]
+async fn local_sources_not_cached_in_memory() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fixture_a_path = deno_dir.path().join("fixture_a.js");
+  let fixture_a = r#"
+    const worker_a = new Worker(
+      new URL("fixture_b.ts", import.meta.url).href,
+      { type: "module" },
+    );
+    await new Promise((res) => setTimeout(res, 3000));
+    worker_a.terminate();
+    const worker_b = new Worker(
+      new URL("fixture_b.ts", import.meta.url).href,
+      { type: "module" },
+    );
+    await new Promise((res) => setTimeout(res, 3000));
+    worker_b.terminate();
+  "#;
+  std::fs::write(fixture_a_path.clone(), fixture_a)
+    .expect("could not write file");
+  let fixture_b_path = deno_dir.path().join("fixture_b.ts");
+  let fixture_b = r#"
+    console.log("hello");
+  "#;
+  std::fs::write(fixture_b_path.clone(), fixture_b)
+    .expect("could not write file");
+  let fixture_b_update = r#"
+    console.log("goodbye");
+  "#;
+
+  let output_fut = tokio::process::Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg(fixture_a_path.to_str().unwrap())
+    .output();
+
+  std::thread::sleep(std::time::Duration::from_millis(2000));
+  std::fs::write(fixture_b_path, fixture_b_update)
+    .expect("could not write file");
+
+  let output = output_fut.await.expect("failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "hello\ngoodbye\n");
+}
+
 #[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
