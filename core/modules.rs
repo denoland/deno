@@ -337,6 +337,7 @@ impl Stream for RecursiveModuleLoad {
 }
 
 pub struct ModuleInfo {
+  pub id: ModuleId,
   pub main: bool,
   pub name: String,
   pub handle: v8::Global<v8::Module>,
@@ -410,6 +411,8 @@ impl ModuleNameMap {
 pub struct Modules {
   pub(crate) info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
+  // FIXME(@bartlomieju): temporary solution to avoid cascading changes
+  next_module_id: ModuleId,
 }
 
 impl Modules {
@@ -417,6 +420,7 @@ impl Modules {
     Self {
       info: HashMap::new(),
       by_name: ModuleNameMap::new(),
+      next_module_id: 1,
     }
   }
 
@@ -438,25 +442,28 @@ impl Modules {
 
   pub fn register(
     &mut self,
-    id: ModuleId,
     name: &str,
     main: bool,
     handle: v8::Global<v8::Module>,
     import_specifiers: Vec<ModuleSpecifier>,
-  ) {
+  ) -> ModuleId {
     let name = String::from(name);
     debug!("register_complete {}", name);
 
+    let id = self.next_module_id;
+    self.next_module_id += 1;
     self.by_name.insert(name.clone(), id);
     self.info.insert(
       id,
       ModuleInfo {
+        id,
         main,
         name,
         import_specifiers,
         handle,
       },
     );
+    id
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {
@@ -473,6 +480,19 @@ impl Modules {
       return None;
     }
     self.info.get(&id)
+  }
+
+  pub fn get_info_by_global(
+    &self,
+    global: &v8::Global<v8::Module>,
+  ) -> Option<&ModuleInfo> {
+    for info in self.info.values() {
+      if info.handle == global {
+        return Some(info);
+      }
+    }
+
+    None
   }
 }
 

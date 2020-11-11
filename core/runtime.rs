@@ -678,7 +678,6 @@ impl JsRuntime {
     }
 
     let module = maybe_module.unwrap();
-    let id = module.get_identity_hash();
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     for i in 0..module.get_module_requests_length() {
@@ -694,8 +693,7 @@ impl JsRuntime {
       import_specifiers.push(module_specifier);
     }
 
-    state_rc.borrow_mut().modules.register(
-      id,
+    let id = state_rc.borrow_mut().modules.register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),

@@ -264,10 +264,11 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
 
-  let id = module.get_identity_hash();
-  assert_ne!(id, 0);
-
-  let info = state.modules.get_info(id).expect("Module not found");
+  let module_global = v8::Global::new(scope, module);
+  let info = state
+    .modules
+    .get_info_by_global(&module_global)
+    .expect("Module not found");
 
   let url_key = v8::String::new(scope, "url").unwrap();
   let url_val = v8::String::new(scope, &info.name).unwrap();
@@ -723,13 +724,18 @@ pub fn module_resolve_callback<'s>(
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  let referrer_id = referrer.get_identity_hash();
+  let referrer_global = v8::Global::new(scope, referrer);
   let referrer_name = state
     .modules
-    .get_info(referrer_id)
+    .get_info_by_global(&referrer_global)
     .expect("ModuleInfo not found")
     .name
     .to_string();
+  let referrer_id = state
+    .modules
+    .get_info_by_global(&referrer_global)
+    .expect("ModuleInfo not found")
+    .id;
   let len_ = referrer.get_module_requests_length();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
