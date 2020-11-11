@@ -1216,8 +1216,8 @@ fn bundle_js_watch() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  assert!(dbg!(stderr_lines.next().unwrap()).contains("file_to_watch.js"));
-  assert!(dbg!(stderr_lines.next().unwrap()).contains("mod6.bundle.js"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
   assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
@@ -1300,7 +1300,7 @@ fn run_watch() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1314,7 +1314,7 @@ fn run_watch() {
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -1329,7 +1329,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_millis(500));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   // Confirm that restarting occurs when a new file is updated
   std::fs::write(&another_file, "export const foo = 42;")
@@ -1338,7 +1338,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_millis(500));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   child.kill().unwrap();
   drop(t);
@@ -1478,7 +1478,7 @@ fn run_watch_with_importmap_and_relative_paths() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
 
   child.kill().unwrap();
