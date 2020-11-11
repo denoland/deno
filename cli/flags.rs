@@ -417,6 +417,8 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  flags.watch = matches.is_present("watch");
+
   flags.subcommand = DenoSubcommand::Bundle {
     source_file,
     out_file,
@@ -792,6 +794,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
+    .arg(watch_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
