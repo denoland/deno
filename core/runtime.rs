@@ -715,13 +715,12 @@ impl JsRuntime {
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let state = state_rc.borrow();
-    let module = match state.modules.get_info(id) {
-      Some(info) => v8::Local::new(tc_scope, &info.handle),
-      None if id == 0 => return Ok(()),
-      _ => panic!("module id {} not found in module table", id),
-    };
-    drop(state);
+    let module = state_rc
+      .borrow()
+      .modules
+      .get_info(id)
+      .map(|info| v8::Local::new(tc_scope, &info.handle))
+      .expect("ModuleInfo not found");
 
     if module.get_status() == v8::ModuleStatus::Errored {
       exception_to_err_result(tc_scope, module.get_exception(), false)?
@@ -959,7 +958,6 @@ impl JsRuntime {
     let context = self.global_context();
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
-    assert!(mod_id != 0);
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let resolver_handle = state_rc

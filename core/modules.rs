@@ -373,17 +373,12 @@ impl ModuleNameMap {
   pub fn get(&self, name: &str) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
-      let cond = self.inner.get(mod_name);
-      match cond {
-        Some(SymbolicModule::Alias(target)) => {
+      let symbolic_module = self.inner.get(mod_name)?;
+      match symbolic_module {
+        SymbolicModule::Alias(target) => {
           mod_name = target;
         }
-        Some(SymbolicModule::Mod(mod_id)) => {
-          return Some(*mod_id);
-        }
-        _ => {
-          return None;
-        }
+        SymbolicModule::Mod(mod_id) => return Some(*mod_id),
       }
     }
   }
@@ -409,7 +404,7 @@ impl ModuleNameMap {
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
-  pub(crate) info: HashMap<ModuleId, ModuleInfo>,
+  info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
   // FIXME(@bartlomieju): temporary solution to avoid cascading changes
   next_module_id: ModuleId,
@@ -448,8 +443,6 @@ impl Modules {
     import_specifiers: Vec<ModuleSpecifier>,
   ) -> ModuleId {
     let name = String::from(name);
-    debug!("register_complete {}", name);
-
     let id = self.next_module_id;
     self.next_module_id += 1;
     self.by_name.insert(name.clone(), id);
@@ -476,9 +469,6 @@ impl Modules {
   }
 
   pub fn get_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
-    if id == 0 {
-      return None;
-    }
     self.info.get(&id)
   }
 
