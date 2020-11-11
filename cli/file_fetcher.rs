@@ -259,18 +259,16 @@ fn map_js_like_extension(
 }
 
 /// Remove shebangs from the start of source code strings
-fn strip_shebang(value: String) -> String {
+fn strip_shebang(mut value: String) -> String {
   if value.starts_with("#!") {
-    let value = if let Some(mid) = value.find('\n') {
+    if let Some(mid) = value.find('\n') {
       let (_, rest) = value.split_at(mid);
-      rest.to_string()
+      value = rest.to_string()
     } else {
-      "".to_string()
-    };
-    value
-  } else {
-    value
+      value.clear()
+    }
   }
+  value
 }
 
 /// A structure for resolving, fetching and caching source files.
