@@ -396,9 +396,11 @@ async fn bundle_command(
           maybe_config_path: flags.config_path,
         })?;
 
-      if flags.no_check && maybe_ignored_options.is_some() {
-        let ignored_options = maybe_ignored_options.unwrap();
-        eprintln!("{}", ignored_options);
+      match maybe_ignored_options {
+        Some(ignored_options) if flags.no_check => {
+          eprintln!("{}", ignored_options);
+        }
+        _ => {}
       }
       debug!("{}", stats);
 
