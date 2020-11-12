@@ -191,7 +191,7 @@ jobs:
 
       - name: Upload build artifacts (mac)
         if: |
-          !startsWith(matrix.os, 'macOS') &&
+          startsWith(matrix.os, 'macOS') &&
           github.repository == 'denoland/deno' &&
           matrix.kind == 'test_release'
         uses: actions/upload-artifact@v2
