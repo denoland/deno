@@ -10,8 +10,6 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
-use crate::fs::canonicalize_path;
-use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -27,6 +25,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use walkdir::WalkDir;
 
 const BOM_CHAR: char = '\u{FEFF}';
 
@@ -38,13 +37,9 @@ pub async fn format(
   watch: bool,
 ) -> Result<(), AnyError> {
   let target_file_resolver = || {
-    let mut target_files = collect_files(&args)?;
-    if !ignore.is_empty() {
-      // collect all files to be ignored
-      // and retain only files that should be formatted.
-      let ignore_files = collect_files(&ignore)?;
-      target_files.retain(|f| !ignore_files.contains(&f));
-    }
+    let ignore = ignore.clone();
+    // collect the files that are to be formatted
+    let target_files = collect_files(&args, ignore)?;
     Ok(target_files)
   };
 
@@ -246,22 +241,43 @@ fn is_supported(path: &Path) -> bool {
   }
 }
 
-pub fn collect_files(files: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
+pub fn collect_files(
+  files: &[PathBuf],
+  mut ignore: Vec<PathBuf>,
+) -> Result<Vec<PathBuf>, AnyError> {
   let mut target_files: Vec<PathBuf> = vec![];
 
+  // retain only the paths which exist and ignore the rest
+  ignore.retain(|i| i.exists());
+
   if files.is_empty() {
-    target_files.extend(files_in_subtree(
-      canonicalize_path(&std::env::current_dir()?)?,
-      is_supported,
-    ));
+    for entry in WalkDir::new(std::env::current_dir()?)
+      .into_iter()
+      .filter_entry(|e| {
+        !ignore.iter().any(|i| {
+          e.path()
+            .canonicalize()
+            .unwrap()
+            .starts_with(i.canonicalize().unwrap())
+        })
+      })
+    {
+      let entry_clone = entry?.clone();
+      if is_supported(entry_clone.path()) {
+        target_files.push(entry_clone.path().canonicalize()?)
+      }
+    }
   } else {
     for file in files {
-      if file.is_dir() {
-        target_files
-          .extend(files_in_subtree(canonicalize_path(file)?, is_supported));
-      } else {
-        target_files.push(canonicalize_path(file)?);
-      };
+      for entry in WalkDir::new(file)
+        .into_iter()
+        .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
+      {
+        let entry_clone = entry?.clone();
+        if is_supported(entry_clone.path()) {
+          target_files.push(entry_clone.into_path().canonicalize()?)
+        }
+      }
     }
   }
 
