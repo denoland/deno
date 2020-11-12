@@ -72,6 +72,20 @@ async fn error_handler(watch_future: WatchFuture<()>) {
   }
 }
 
+/// This function adds watcher functionality to subcommands like `fmt` or `lint`.
+/// The difference from [`watch_func_with_module_resolution`] is that this doesn't depend on
+/// [`ModuleGraph`] stuff.
+///
+/// - `target_resolver` is used for resolving file paths to be watched at every restarting of the watcher. The
+/// return value of this closure will then be passed to `operation` as an argument.
+///
+/// - `operation` is the actual operation we want to run every time the watcher detects file
+/// changes. For example, in the case where we would like to apply `fmt`, then `operation` would
+/// have the logic for it like calling `format_source_files`.
+///
+/// - `job_name` is just used for printing watcher status to terminal.
+///
+/// [`ModuleGraph`]: crate::module_graph::Graph
 pub async fn watch_func<F, G>(
   target_resolver: F,
   operation: G,
@@ -114,6 +128,19 @@ where
   }
 }
 
+/// This function adds watcher functionality to subcommands like `run` or `bundle`.
+/// The difference from [`watch_func`] is that this does depend on [`ModuleGraph`] stuff.
+///
+/// - `module_resolver` is used for both resolving file paths to be watched at every restarting of the watcher and buidling [`ModuleGraph`] or [`ModuleSpecifier`] which will then be passed to `operation`.
+///
+/// - `operation` is the actual operation we want to run every time the watcher detects file
+/// changes. For example, in the case where we would like to bundle, then `operation` would
+/// have the logic for it like doing bundle with the help of [`ModuleGraph`].
+///
+/// - `job_name` is just used for printing watcher status to terminal.
+///
+/// [`ModuleGraph`]: crate::module_graph::Graph
+/// [`ModuleSpecifier`]: deno_core::ModuleSpecifier
 pub async fn watch_func_with_module_resolution<F, G, T>(
   module_resolver: F,
   operation: G,
