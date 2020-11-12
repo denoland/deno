@@ -20,7 +20,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import EventEmitter, { captureRejectionSymbol } from "../events.ts";
 import Stream from "./stream.ts";
-import {Buffer} from "../buffer.ts";
+import { Buffer } from "../buffer.ts";
 import BufferList from "./buffer_list.ts";
 import {
   ERR_INVALID_OPT_VALUE,

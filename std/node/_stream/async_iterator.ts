@@ -1,4 +1,4 @@
-import type {Buffer} from "../buffer.ts";
+import type { Buffer } from "../buffer.ts";
 import finished from "./end-of-stream.ts";
 import Readable from "./readable.ts";
 import type Stream from "./stream.ts";

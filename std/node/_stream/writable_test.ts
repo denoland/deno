@@ -1,4 +1,4 @@
-import {Buffer} from "../buffer.ts";
+import { Buffer } from "../buffer.ts";
 import finished from "./end-of-stream.ts";
 import Writable from "../_stream/writable.ts";
 import { deferred } from "../../async/mod.ts";

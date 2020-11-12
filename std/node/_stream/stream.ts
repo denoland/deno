@@ -1,4 +1,4 @@
-import {Buffer} from "../buffer.ts";
+import { Buffer } from "../buffer.ts";
 import EventEmitter from "../events.ts";
 import type Writable from "./writable.ts";
 import { types } from "../util.ts";
