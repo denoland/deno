@@ -192,6 +192,7 @@ jobs:
           github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v2
         with:
+          name: deno
           path: target/release/deno*
 
       - name: Release
