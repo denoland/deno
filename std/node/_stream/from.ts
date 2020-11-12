@@ -1,4 +1,4 @@
-import Buffer from "../buffer.ts";
+import {Buffer} from "../buffer.ts";
 import Readable from "./readable.ts";
 import type { ReadableOptions } from "./readable.ts";
 import { ERR_INVALID_ARG_TYPE, ERR_STREAM_NULL_VALUES } from "../_errors.ts";

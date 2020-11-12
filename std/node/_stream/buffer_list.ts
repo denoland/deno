@@ -1,4 +1,4 @@
-import Buffer from "../buffer.ts";
+import {Buffer} from "../buffer.ts";
 
 type BufferListItem = {
   data: Buffer | string | Uint8Array;

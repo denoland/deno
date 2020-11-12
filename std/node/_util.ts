@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 export { promisify } from "./_util/_util_promisify.ts";
 export { callbackify } from "./_util/_util_callbackify.ts";
-import { codes, errorMap } from "./_errors.ts";
+import { 
+  ERR_OUT_OF_RANGE,
+  ERR_INVALID_ARG_TYPE,
+  errorMap,
+} from "./_errors.ts";
 import * as types from "./_util/_util_types.ts";
 export { types };
 
 const NumberIsSafeInteger = Number.isSafeInteger;
-const {
-  ERR_OUT_OF_RANGE,
-  ERR_INVALID_ARG_TYPE,
-} = codes;
 
 const DEFAULT_INSPECT_OPTIONS = {
   showHidden: false,

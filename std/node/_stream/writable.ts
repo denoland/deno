@@ -19,7 +19,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import Buffer from "../buffer.ts";
+import {Buffer} from "../buffer.ts";
 import Stream from "./stream.ts";
 import { captureRejectionSymbol } from "../events.ts";
 import { kConstruct, kDestroy } from "./symbols.ts";
