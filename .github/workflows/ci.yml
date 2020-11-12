@@ -189,7 +189,7 @@ jobs:
       - name: Upload build artifacts
         if: |
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          matrix.kind == 'test_release'
         uses: actions/upload-artifact@v2
         with:
           name: deno
