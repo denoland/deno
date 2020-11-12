@@ -131,7 +131,7 @@ where
 /// This function adds watcher functionality to subcommands like `run` or `bundle`.
 /// The difference from [`watch_func`] is that this does depend on [`ModuleGraph`] stuff.
 ///
-/// - `module_resolver` is used for both resolving file paths to be watched at every restarting of the watcher and buidling [`ModuleGraph`] or [`ModuleSpecifier`] which will then be passed to `operation`.
+/// - `module_resolver` is used for both resolving file paths to be watched at every restarting of the watcher and building [`ModuleGraph`] or [`ModuleSpecifier`] which will then be passed to `operation`.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
