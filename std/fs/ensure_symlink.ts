@@ -28,12 +28,16 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
   }
 
   await ensureDir(path.dirname(dest));
-  
+
   if (isWindows) {
-      const srcFilePathType = getFileInfoType(srcStatInfo);
-      await Deno.symlink(src, dest, { type: srcFilePathType === "dir" ? "dir" : "file" });
+    const srcFilePathType = getFileInfoType(srcStatInfo);
+    await Deno.symlink(
+      src,
+      dest,
+      { type: srcFilePathType === "dir" ? "dir" : "file" },
+    );
   } else {
-      await Deno.symlink(src, dest);
+    await Deno.symlink(src, dest);
   }
 }
 
@@ -59,10 +63,14 @@ export function ensureSymlinkSync(src: string, dest: string): void {
   }
 
   ensureDirSync(path.dirname(dest));
-  
+
   if (isWindows) {
     const srcFilePathType = getFileInfoType(srcStatInfo);
-    Deno.symlinkSync(src, dest, { type: srcFilePathType === "dir" ? "dir" : "file" });
+    Deno.symlinkSync(
+      src,
+      dest,
+      { type: srcFilePathType === "dir" ? "dir" : "file" },
+    );
   } else {
     Deno.symlinkSync(src, dest);
   }
