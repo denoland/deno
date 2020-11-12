@@ -4,7 +4,7 @@ use crate::colors;
 use core::task::{Context, Poll};
 use deno_core::error::AnyError;
 use deno_core::futures::stream::{Stream, StreamExt};
-use deno_core::futures::Future;
+use deno_core::futures::{Future, FutureExt};
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
@@ -53,7 +53,7 @@ impl Stream for Debounce {
       inner.event_detected.store(false, Ordering::Relaxed);
       Poll::Ready(Some(()))
     } else {
-      match Pin::new(&mut inner.delay).poll(cx) {
+      match inner.delay.poll_unpin(cx) {
         Poll::Ready(_) => {
           inner.delay = delay_for(DEBOUNCE_INTERVAL_MS);
           Poll::Pending
