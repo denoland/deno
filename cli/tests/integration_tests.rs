@@ -441,9 +441,8 @@ fn local_sources_not_cached_in_memory() {
     await new Promise((res) => setTimeout(res, 3000));
     worker_b.terminate();  
   "#;
-  std::fs::write(fixture_path.clone(), fixture)
-    .expect("could not write file");
-  
+  std::fs::write(fixture_path.clone(), fixture).expect("could not write file");
+
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
