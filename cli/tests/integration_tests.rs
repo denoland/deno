@@ -432,19 +432,31 @@ fn local_sources_not_cached_in_memory() {
   let fixture_path = deno_dir.path().join("fixture.js");
   let fixture = r#"
     const fixture_url = new URL("fixture.ts", import.meta.url);
-    await Deno.writeTextFile(fixture_url, `console.log("hello");\n`);
+    let resolve;
+    let p = new Promise((res) => resolve = res);
+    await Deno.writeTextFile(fixture_url, `self.postMessage("hello");\n`);
     const worker_a = new Worker(fixture_url.href, { type: "module" });
-    await new Promise((res) => setTimeout(res, 3000));
+    worker_a.onmessage = (msg) => {
+      console.log(msg.data);
+      resolve();
+    };
+    
+    await p;
+    p = new Promise((res) => resolve = res);
     worker_a.terminate();
-    await Deno.writeTextFile(fixture_url, `console.log("goodbye");\n`);
+    await Deno.writeTextFile(fixture_url, `self.postMessage("goodbye");\n`);
     const worker_b = new Worker(fixture_url.href, { type: "module" });
-    await new Promise((res) => setTimeout(res, 3000));
+    worker_b.onmessage = (msg) => {
+      console.log(msg.data);
+      resolve();
+    };
+    
+    await p;
     worker_b.terminate();  
   "#;
   std::fs::write(fixture_path.clone(), fixture).expect("could not write file");
 
   let output = Command::new(util::deno_exe_path())
-    .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("run")
     .arg("--allow-read")
