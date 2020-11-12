@@ -42,9 +42,7 @@ pub struct SharedQueue {
 
 impl SharedQueue {
   pub fn new(len: usize) -> Self {
-    let mut buf = Vec::new();
-    buf.resize(HEAD_INIT + len, 0);
-    let buf = buf.into_boxed_slice();
+    let buf = vec![0; HEAD_INIT + len].into_boxed_slice();
     let buf = v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf);
     let mut q = Self {
       buf: buf.make_shared(),
@@ -263,9 +261,7 @@ mod tests {
   }
 
   fn alloc_buf(byte_length: usize) -> Box<[u8]> {
-    let mut v = Vec::new();
-    v.resize(byte_length, 0);
-    v.into_boxed_slice()
+    vec![0; byte_length].into_boxed_slice()
   }
 
   #[test]
