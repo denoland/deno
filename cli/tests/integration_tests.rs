@@ -426,8 +426,8 @@ fn cache_invalidation_test_no_check() {
   assert_eq!(actual, "43\n");
 }
 
-#[tokio::test]
-async fn local_sources_not_cached_in_memory() {
+#[test]
+fn local_sources_not_cached_in_memory() {
   let deno_dir = TempDir::new().expect("tempdir fail");
   let fixture_path = deno_dir.path().join("fixture.js");
   let fixture = r#"
