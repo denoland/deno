@@ -406,7 +406,6 @@ pub struct Modules {
   handles: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
-  // FIXME(@bartlomieju): temporary solution to avoid cascading changes
   next_module_id: ModuleId,
 }
 
@@ -473,8 +472,8 @@ impl Modules {
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
-    // FIXME(@bartlomieju): iterating over all registered modules, this
-    // should use hash map lookup
+    // NOTE(@bartlomieju): not ideal, but I was unable to create
+    // another hashmap indexed by `handle`.
     for (id, handle) in self.handles.iter() {
       if handle == global {
         return self.info.get(id);
