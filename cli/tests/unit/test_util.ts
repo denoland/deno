@@ -10,7 +10,7 @@ export {
   assertMatch,
   assertNotEquals,
   assertStrictEquals,
-  assertStringContains,
+  assertStringIncludes,
   assertThrows,
   assertThrowsAsync,
   fail,
@@ -189,7 +189,7 @@ export function unitTest(
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   reject: (reason?: any) => void;
 }
 
@@ -208,7 +208,7 @@ export function createResolvable<T>(): Resolvable<T> {
 const encoder = new TextEncoder();
 
 // Replace functions with null, errors with their stack strings, and JSONify.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function serializeTestMessage(message: any): string {
   return JSON.stringify({
     start: message.start && {
@@ -225,7 +225,7 @@ function serializeTestMessage(message: any): string {
     },
     end: message.end && {
       ...message.end,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       results: message.end.results.map((result: any) => ({
         ...result,
         error: result.error?.stack,
@@ -236,7 +236,7 @@ function serializeTestMessage(message: any): string {
 
 export async function reportToConn(
   conn: Deno.Conn,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   message: any,
 ): Promise<void> {
   const line = serializeTestMessage(message);

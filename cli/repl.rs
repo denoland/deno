@@ -171,11 +171,10 @@ impl Validator for Helper {
               left
             ))))
           }
-          (None, c) => {
-            return Ok(ValidationResult::Invalid(Some(format!(
-              "Mismatched pairs: {:?} is unpaired",
-              c
-            ))))
+          (None, _) => {
+            // While technically invalid when unpaired, it should be V8's task to output error instead.
+            // Thus marked as valid with no info.
+            return Ok(ValidationResult::Valid(None));
           }
         },
         _ => {}
@@ -223,11 +222,15 @@ impl LineHighlighter {
       (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
       (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
       (?P<regexp>/(?:(?:\\/|[^\n/]))*?/[gimsuy]*) |
-      (?P<number>\d+(?:\.\d+)*(?:e[+-]?\d+)*n?) |
+      (?P<number>\b\d+(?:\.\d+)?(?:e[+-]?\d+)*n?\b) |
+      (?P<infinity>\b(?:Infinity|NaN)\b) |
+      (?P<hexnumber>\b0x[a-fA-F0-9]+\b) |
+      (?P<octalnumber>\b0o[0-7]+\b) |
+      (?P<binarynumber>\b0b[01]+\b) |
       (?P<boolean>\b(?:true|false)\b) |
       (?P<null>\b(?:null)\b) |
       (?P<undefined>\b(?:undefined)\b) |
-      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch)\b) |
+      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch|this)\b) |
       "#,
       )
       .unwrap();
@@ -242,21 +245,31 @@ impl Highlighter for LineHighlighter {
       .regex
       .replace_all(&line.to_string(), |caps: &Captures<'_>| {
         if let Some(cap) = caps.name("comment") {
-          format!("{}", colors::gray(cap.as_str()))
+          colors::gray(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("string") {
-          format!("{}", colors::green(cap.as_str()))
+          colors::green(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("regexp") {
-          format!("{}", colors::red(cap.as_str()))
+          colors::red(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("number") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("boolean") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("null") {
-          format!("{}", colors::yellow(cap.as_str()))
+          colors::yellow(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("undefined") {
-          format!("{}", colors::gray(cap.as_str()))
+          colors::gray(cap.as_str()).to_string()
         } else if let Some(cap) = caps.name("keyword") {
-          format!("{}", colors::cyan(cap.as_str()))
+          colors::cyan(cap.as_str()).to_string()
+        } else if let Some(cap) = caps.name("infinity") {
+          colors::yellow(cap.as_str()).to_string()
+        } else if let Some(cap) = caps.name("classes") {
+          colors::green_bold(cap.as_str()).to_string()
+        } else if let Some(cap) = caps.name("hexnumber") {
+          colors::yellow(cap.as_str()).to_string()
+        } else if let Some(cap) = caps.name("octalnumber") {
+          colors::yellow(cap.as_str()).to_string()
+        } else if let Some(cap) = caps.name("binarynumber") {
+          colors::yellow(cap.as_str()).to_string()
         } else {
           caps[0].to_string()
         }

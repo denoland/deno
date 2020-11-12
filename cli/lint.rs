@@ -40,20 +40,14 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint_files(
-  args: Vec<String>,
-  ignore: Vec<String>,
+  args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0] == "-" {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return lint_stdin(json);
   }
-  let mut target_files = collect_files(args)?;
-  if !ignore.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be linted.
-    let ignore_files = collect_files(ignore)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
-  }
+  let target_files = collect_files(args, ignore)?;
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 
@@ -115,11 +109,8 @@ pub fn print_rules_list() {
 
 fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
-    .ignore_file_directives(vec!["deno-lint-ignore-file"])
-    .ignore_diagnostic_directives(vec![
-      "deno-lint-ignore",
-      "eslint-disable-next-line",
-    ])
+    .ignore_file_directive("deno-lint-ignore-file")
+    .ignore_diagnostic_directive("deno-lint-ignore")
     .lint_unused_ignore_directives(true)
     // TODO(bartlomieju): switch to true
     .lint_unknown_rules(false)
@@ -139,7 +130,7 @@ fn lint_file(
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics = linter.lint(file_name, source_code.clone())?;
+  let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -168,7 +159,7 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
     .lint(pseudo_file_name.to_string(), source.clone())
     .map_err(|e| e.into())
   {
-    Ok(diagnostics) => {
+    Ok((_, diagnostics)) => {
       for d in diagnostics {
         has_error = true;
         reporter.visit_diagnostic(&d, source.split('\n').collect());
@@ -279,9 +270,9 @@ pub fn format_diagnostic(
           colors::red(&"^".repeat(line_len - range.start.col))
         ));
       } else if range.end.line == i {
-        lines.push(format!("{}", colors::red(&"^".repeat(range.end.col))));
+        lines.push(colors::red(&"^".repeat(range.end.col)).to_string());
       } else if line_len != 0 {
-        lines.push(format!("{}", colors::red(&"^".repeat(line_len))));
+        lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
     }
   }

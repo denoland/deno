@@ -183,7 +183,7 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
   };
 }
 
-function to_BigInt(number?: number | null) {
+function toBigInt(number?: number | null) {
   if (number === null || number === undefined) return null;
   return BigInt(number);
 }
@@ -192,16 +192,16 @@ export function convertFileInfoToBigIntStats(
   origin: Deno.FileInfo,
 ): BigIntStats {
   return {
-    dev: to_BigInt(origin.dev),
-    ino: to_BigInt(origin.ino),
-    mode: to_BigInt(origin.mode),
-    nlink: to_BigInt(origin.nlink),
-    uid: to_BigInt(origin.uid),
-    gid: to_BigInt(origin.gid),
-    rdev: to_BigInt(origin.rdev),
-    size: to_BigInt(origin.size) || 0n,
-    blksize: to_BigInt(origin.blksize),
-    blocks: to_BigInt(origin.blocks),
+    dev: toBigInt(origin.dev),
+    ino: toBigInt(origin.ino),
+    mode: toBigInt(origin.mode),
+    nlink: toBigInt(origin.nlink),
+    uid: toBigInt(origin.uid),
+    gid: toBigInt(origin.gid),
+    rdev: toBigInt(origin.rdev),
+    size: toBigInt(origin.size) || 0n,
+    blksize: toBigInt(origin.blksize),
+    blocks: toBigInt(origin.blocks),
     mtime: origin.mtime,
     atime: origin.atime,
     birthtime: origin.birthtime,

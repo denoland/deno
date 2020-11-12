@@ -15,15 +15,15 @@ import {
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const internalObj = Deno[Deno.internal];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const reportToConsole = internalObj.reportToConsole as (message: any) => void;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const runTests = internalObj.runTests as (options: any) => Promise<any>;
 
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   endMessage: any;
   permsStr: string;
 }
@@ -135,12 +135,12 @@ async function runTestsForPermissionSet(
   const conn = await listener.accept();
 
   let expectedPassedTests;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   let endMessage: any;
 
   try {
     for await (const line of readLines(conn)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       const message = JSON.parse(line) as any;
       reportToConsole(message);
       if (message.start != null) {

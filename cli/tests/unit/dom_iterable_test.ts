@@ -75,7 +75,7 @@ unitTest(function testDomIterableScope(): void {
 
   const domIterable = new DomIterable([["foo", 1]]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   function checkScope(thisArg: any, expected: any): void {
     function callback(this: typeof thisArg): void {
       assertEquals(this, expected);

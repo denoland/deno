@@ -387,7 +387,7 @@ impl ModuleNameMap {
     }
   }
 
-  /// Insert a name assocated module id.
+  /// Insert a name associated module id.
   pub fn insert(&mut self, name: String, id: ModuleId) {
     self.inner.insert(name, SymbolicModule::Mod(id));
   }

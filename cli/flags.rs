@@ -40,8 +40,8 @@ pub enum DenoSubcommand {
   },
   Fmt {
     check: bool,
-    files: Vec<String>,
-    ignore: Vec<String>,
+    files: Vec<PathBuf>,
+    ignore: Vec<PathBuf>,
   },
   Info {
     json: bool,
@@ -55,8 +55,8 @@ pub enum DenoSubcommand {
     force: bool,
   },
   Lint {
-    files: Vec<String>,
-    ignore: Vec<String>,
+    files: Vec<PathBuf>,
+    ignore: Vec<PathBuf>,
     rules: bool,
     json: bool,
   },
@@ -106,7 +106,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub config_path: Option<String>,
   pub coverage: bool,
-  pub ignore: Vec<String>,
+  pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
@@ -221,8 +221,11 @@ To evaluate code in the shell:
 
 lazy_static! {
   static ref LONG_VERSION: String = format!(
-    "{}\nv8 {}\ntypescript {}",
+    "{} ({}, {}, {})\nv8 {}\ntypescript {}",
     crate::version::DENO,
+    crate::version::GIT_COMMIT_HASH,
+    env!("PROFILE"),
+    env!("TARGET"),
     crate::version::v8(),
     crate::version::TYPESCRIPT
   );
@@ -357,11 +360,11 @@ fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let files = match matches.values_of("files") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   flags.subcommand = DenoSubcommand::Fmt {
@@ -579,6 +582,18 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.coverage = true;
   }
 
+  if matches.is_present("script_arg") {
+    let script_arg: Vec<String> = matches
+      .values_of("script_arg")
+      .unwrap()
+      .map(String::from)
+      .collect();
+
+    for v in script_arg {
+      flags.argv.push(v);
+    }
+  }
+
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
@@ -639,11 +654,11 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let files = match matches.values_of("files") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(String::from).collect(),
+    Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
   let rules = matches.is_present("rules");
@@ -694,7 +709,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
-        .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
@@ -1010,9 +1024,6 @@ rule name:
 
 Names of rules to ignore must be specified after ignore comment.
 
-ESLint ignore comments are also supported:
-  // eslint-disable-next-line @typescrit-eslint/no-explicit-any no-empty
-
 Ignore linting a file by adding an ignore comment at the top of the file:
   // deno-lint-ignore-file
 ",
@@ -1107,7 +1118,10 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("run"), true)
     .arg(watch_arg())
     .setting(AppSettings::TrailingVarArg)
-    .arg(script_arg())
+    .arg(
+        script_arg()
+        .required(true)
+    )
     .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
     .long_about(
 	  "Run a program given a filename or url to the module.
@@ -1132,6 +1146,7 @@ Deno allows specifying the filename '-' to read the file from stdin.
 
 fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("test"), true)
+    .setting(AppSettings::TrailingVarArg)
     .arg(
       Arg::with_name("failfast")
         .long("failfast")
@@ -1166,6 +1181,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .multiple(true),
     )
+    .arg(script_arg().last(true))
     .about("Run tests")
     .long_about(
       "Run tests using Deno's built-in test runner.
@@ -1183,7 +1199,6 @@ Directory arguments are expanded to all contained files matching the glob
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("script_arg")
     .multiple(true)
-    .required(true)
     .help("Script arg")
     .value_name("SCRIPT_ARG")
 }
@@ -1781,7 +1796,10 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: false,
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
+          files: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
         },
         ..Flags::default()
       }
@@ -1827,7 +1845,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint {
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
+          files: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
           rules: false,
           json: false,
           ignore: vec![],
@@ -1850,7 +1871,10 @@ mod tests {
           files: vec![],
           rules: false,
           json: false,
-          ignore: svec!["script_1.ts", "script_2.ts"],
+          ignore: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
         },
         unstable: true,
         ..Flags::default()
@@ -1883,7 +1907,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint {
-          files: vec!["script_1.ts".to_string()],
+          files: vec![PathBuf::from("script_1.ts")],
           rules: false,
           json: true,
           ignore: vec![],
@@ -2897,6 +2921,27 @@ mod tests {
         },
         coverage: true,
         unstable: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_double_hyphen() {
+    let r = flags_from_vec_safe(svec![
+      "deno", "test", "test.ts", "--", "arg1", "arg2"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          allow_none: false,
+          quiet: false,
+          filter: None,
+          include: Some(svec!["test.ts"]),
+        },
+        argv: svec!["arg1", "arg2"],
         ..Flags::default()
       }
     );

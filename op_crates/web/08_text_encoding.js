@@ -1061,6 +1061,7 @@
   class TextEncoder {
     encoding = "utf-8";
     encode(input = "") {
+      input = String(input);
       // Deno.core.encode() provides very efficient utf-8 encoding
       if (this.encoding === "utf-8") {
         return core.encode(input);

@@ -63,7 +63,7 @@ delete Object.prototype.__proto__;
     opCloseWorker();
   }
 
-  // TODO(bartlomieju): remove these funtions
+  // TODO(bartlomieju): remove these functions
   // Stuff for workers
   const onmessage = () => {};
   const onerror = () => {};
@@ -298,7 +298,7 @@ delete Object.prototype.__proto__;
       }
     });
 
-    const { args, cwd, noColor, pid, ppid, unstableFlag } = runtimeStart();
+    const { args, noColor, pid, ppid, unstableFlag } = runtimeStart();
 
     registerErrors();
 
@@ -330,7 +330,6 @@ delete Object.prototype.__proto__;
     Object.freeze(globalThis.Deno.core.sharedQueue);
     signals.setSignals();
 
-    util.log("cwd", cwd);
     util.log("args", args);
   }
 

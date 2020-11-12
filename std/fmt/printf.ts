@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//
-// This implementation is inspired by POSIX and Golang but does not port
-// implementation code.
+/**
+ * This implementation is inspired by POSIX and Golang but does not port
+ * implementation code. */
 
 enum State {
   PASSTHROUGH,
@@ -169,6 +169,10 @@ class Printf {
     }
   }
 
+  /**
+   * Handle width or precision
+   * @param wOrP
+   */
   handleWidthOrPrecisionRef(wOrP: WorP): void {
     if (this.argNum >= this.args.length) {
       // handle Positional should have already taken care of it...
@@ -191,6 +195,10 @@ class Printf {
     this.argNum++;
   }
 
+  /**
+   * Handle width and precision
+   * @param flags
+   */
   handleWidthAndPrecision(flags: Flags): void {
     const fmt = this.format;
     for (; this.i !== this.format.length; ++this.i) {
@@ -245,6 +253,7 @@ class Printf {
     }
   }
 
+  /** Handle positional */
   handlePositional(): void {
     if (this.format[this.i] !== "[") {
       // sanity only
@@ -277,8 +286,9 @@ class Printf {
     return;
   }
 
+  /** Handle less than */
   handleLessThan(): string {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const arg = this.args[this.argNum] as any;
     if ((arg || {}).constructor.name !== "Array") {
       throw new Error(`arg ${arg} is not an array. Todo better error handling`);
@@ -291,6 +301,7 @@ class Printf {
     return str + " ]";
   }
 
+  /** Handle verb */
   handleVerb(): void {
     const verb = this.format[this.i];
     this.verb = verb;
@@ -315,7 +326,7 @@ class Printf {
     this.state = State.PASSTHROUGH;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   _handleVerb(arg: any): string {
     switch (this.verb) {
       case "t":
@@ -356,6 +367,10 @@ class Printf {
     }
   }
 
+  /**
+   * Pad a string
+   * @param s text to pad
+   */
   pad(s: string): string {
     const padding = this.flags.zero ? "0" : " ";
 
@@ -365,6 +380,12 @@ class Printf {
 
     return s.padStart(this.flags.width, padding);
   }
+
+  /**
+   * Pad a number
+   * @param nStr
+   * @param neg
+   */
   padNum(nStr: string, neg: boolean): string {
     let sign: string;
     if (neg) {
@@ -397,6 +418,12 @@ class Printf {
     return nStr;
   }
 
+  /**
+   * Format a number
+   * @param n
+   * @param radix
+   * @param upcase
+   */
   fmtNumber(n: number, radix: number, upcase = false): string {
     let num = Math.abs(n).toString(radix);
     const prec = this.flags.precision;
@@ -432,6 +459,10 @@ class Printf {
     return this.padNum(num, n < 0);
   }
 
+  /**
+   * Format number with code points
+   * @param n
+   */
   fmtNumberCodePoint(n: number): string {
     let s = "";
     try {
@@ -442,6 +473,10 @@ class Printf {
     return this.pad(s);
   }
 
+  /**
+   * Format special float
+   * @param n
+   */
   fmtFloatSpecial(n: number): string {
     // formatting of NaN and Inf are pants-on-head
     // stupid and more or less arbitrary.
@@ -462,6 +497,11 @@ class Printf {
     return "";
   }
 
+  /**
+   * Round fraction to precision
+   * @param fractional
+   * @param precision
+   */
   roundFractionToPrecision(fractional: string, precision: number): string {
     if (fractional.length > precision) {
       fractional = "1" + fractional; // prepend a 1 in case of leading 0
@@ -477,6 +517,11 @@ class Printf {
     return fractional;
   }
 
+  /**
+   * Format float E
+   * @param n
+   * @param upcase
+   */
   fmtFloatE(n: number, upcase = false): string {
     const special = this.fmtFloatSpecial(n);
     if (special !== "") {
@@ -504,6 +549,10 @@ class Printf {
     return this.padNum(val, n < 0);
   }
 
+  /**
+   * Format float F
+   * @param n
+   */
   fmtFloatF(n: number): string {
     const special = this.fmtFloatSpecial(n);
     if (special !== "") {
@@ -548,6 +597,11 @@ class Printf {
     return this.padNum(`${dig}.${fractional}`, n < 0);
   }
 
+  /**
+   * Format float G
+   * @param n
+   * @param upcase
+   */
   fmtFloatG(n: number, upcase = false): string {
     const special = this.fmtFloatSpecial(n);
     if (special !== "") {
@@ -605,6 +659,10 @@ class Printf {
     return nStr;
   }
 
+  /**
+   * Format string
+   * @param s
+   */
   fmtString(s: string): string {
     if (this.flags.precision !== -1) {
       s = s.substr(0, this.flags.precision);
@@ -612,6 +670,11 @@ class Printf {
     return this.pad(s);
   }
 
+  /**
+   * Format hex
+   * @param val
+   * @param upper
+   */
   fmtHex(val: string | number, upper = false): string {
     // allow others types ?
     switch (typeof val) {
@@ -644,6 +707,10 @@ class Printf {
     }
   }
 
+  /**
+   * Format value
+   * @param val
+   */
   fmtV(val: Record<string, unknown>): string {
     if (this.flags.sharp) {
       const options = this.flags.precision !== -1
@@ -656,16 +723,33 @@ class Printf {
     }
   }
 
+  /**
+   * Format JSON
+   * @param val
+   */
   fmtJ(val: unknown): string {
     return JSON.stringify(val);
   }
 }
 
+/**
+ * Converts and format a variable number of `args` as is specified by `format`.
+ * `sprintf` returns the formatted string.
+ *
+ * @param format
+ * @param args
+ */
 export function sprintf(format: string, ...args: unknown[]): string {
   const printf = new Printf(format, ...args);
   return printf.doPrintf();
 }
 
+/**
+ * Converts and format a variable number of `args` as is specified by `format`.
+ * `printf` writes the formatted string to standard output.
+ * @param format
+ * @param args
+ */
 export function printf(format: string, ...args: unknown[]): void {
   const s = sprintf(format, ...args);
   Deno.stdout.writeSync(new TextEncoder().encode(s));

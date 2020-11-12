@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
-use crate::error::JsError;
 use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
 use crate::Op;
@@ -12,6 +11,7 @@ use futures::future::FutureExt;
 use rusty_v8 as v8;
 use std::cell::Cell;
 use std::convert::TryFrom;
+use std::io::{stdout, Write};
 use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
@@ -33,9 +33,6 @@ lazy_static! {
       },
       v8::ExternalReference {
         function: eval_context.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: format_error.map_fn_to()
       },
       v8::ExternalReference {
         getter: shared_getter.map_fn_to()
@@ -157,11 +154,6 @@ pub fn initialize_context<'s>(
   let eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
   let eval_context_val = eval_context_tmpl.get_function(scope).unwrap();
   core_val.set(scope, eval_context_key.into(), eval_context_val.into());
-
-  let format_error_key = v8::String::new(scope, "formatError").unwrap();
-  let format_error_tmpl = v8::FunctionTemplate::new(scope, format_error);
-  let format_error_val = format_error_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, format_error_key.into(), format_error_val.into());
 
   let encode_key = v8::String::new(scope, "encode").unwrap();
   let encode_tmpl = v8::FunctionTemplate::new(scope, encode);
@@ -293,7 +285,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut state = state_rc.borrow_mut();
 
   let promise = message.get_promise();
-  let promise_id = promise.get_identity_hash();
+  let promise_global = v8::Global::new(scope, promise);
 
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
@@ -301,10 +293,10 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       let error_global = v8::Global::new(scope, error);
       state
         .pending_promise_exceptions
-        .insert(promise_id, error_global);
+        .insert(promise_global, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
-      state.pending_promise_exceptions.remove(&promise_id);
+      state.pending_promise_exceptions.remove(&promise_global);
     }
     v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
     v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
@@ -361,8 +353,10 @@ fn print(
   };
   if is_err {
     eprint!("{}", str_.to_rust_string_lossy(tc_scope));
+    stdout().flush().unwrap();
   } else {
     print!("{}", str_.to_rust_string_lossy(tc_scope));
+    stdout().flush().unwrap();
   }
 }
 
@@ -600,20 +594,6 @@ fn eval_context(
   output.set(tc_scope, js_zero.into(), result.unwrap());
   output.set(tc_scope, js_one.into(), js_null.into());
   rv.set(output.into());
-}
-
-fn format_error(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let e = JsError::from_v8_exception(scope, args.get(0));
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
-  let e = (state.js_error_create_fn)(e);
-  let e = e.to_string();
-  let e = v8::String::new(scope, &e).unwrap();
-  rv.set(e.into())
 }
 
 fn encode(

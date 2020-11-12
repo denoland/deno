@@ -8,6 +8,7 @@
       if (key !== illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
+      super();
     }
 
     get [Symbol.toStringTag]() {
@@ -20,6 +21,7 @@
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
+      super();
     }
 
     get [Symbol.toStringTag]() {
@@ -32,6 +34,7 @@
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
+      super();
     }
 
     get [Symbol.toStringTag]() {

@@ -2,6 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
+use crate::fs::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
@@ -934,11 +935,8 @@ fn op_realpath_sync(
   debug!("op_realpath_sync {}", path.display());
   // corresponds to the realpath on Unix and
   // CreateFile and GetFinalPathNameByHandle on Windows
-  let realpath = std::fs::canonicalize(&path)?;
-  let mut realpath_str = into_string(realpath.into_os_string())?;
-  if cfg!(windows) {
-    realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
-  }
+  let realpath = canonicalize_path(&path)?;
+  let realpath_str = into_string(realpath.into_os_string())?;
   Ok(json!(realpath_str))
 }
 
@@ -963,11 +961,8 @@ async fn op_realpath_async(
     debug!("op_realpath_async {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = std::fs::canonicalize(&path)?;
-    let mut realpath_str = into_string(realpath.into_os_string())?;
-    if cfg!(windows) {
-      realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
-    }
+    let realpath = canonicalize_path(&path)?;
+    let realpath_str = into_string(realpath.into_os_string())?;
     Ok(json!(realpath_str))
   })
   .await

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
-//! [`dprint-plugin-typescript`](https://github.com/dsherret/dprint-plugin-typescript).
+//! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
 //!
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
@@ -9,7 +9,6 @@
 
 use crate::colors;
 use crate::diff::diff;
-use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -24,6 +23,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use walkdir::WalkDir;
 
 const BOM_CHAR: char = '\u{FEFF}';
 
@@ -32,21 +32,15 @@ const BOM_CHAR: char = '\u{FEFF}';
 /// First argument and ignore supports globs, and if it is `None`
 /// then the current directory is recursively walked.
 pub async fn format(
-  args: Vec<String>,
+  args: Vec<PathBuf>,
   check: bool,
-  exclude: Vec<String>,
+  exclude: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0] == "-" {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return format_stdin(check);
   }
-  // collect all files provided.
-  let mut target_files = collect_files(args)?;
-  if !exclude.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
-  }
+  // collect the files that are to be formatted
+  let target_files = collect_files(args, exclude)?;
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -232,23 +226,42 @@ fn is_supported(path: &Path) -> bool {
 }
 
 pub fn collect_files(
-  files: Vec<String>,
+  files: Vec<PathBuf>,
+  mut ignore: Vec<PathBuf>,
 ) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
 
+  // retain only the paths which exist and ignore the rest
+  ignore.retain(|i| i.exists());
+
   if files.is_empty() {
-    target_files.extend(files_in_subtree(
-      std::env::current_dir()?.canonicalize()?,
-      is_supported,
-    ));
+    for entry in WalkDir::new(std::env::current_dir()?)
+      .into_iter()
+      .filter_entry(|e| {
+        !ignore.iter().any(|i| {
+          e.path()
+            .canonicalize()
+            .unwrap()
+            .starts_with(i.canonicalize().unwrap())
+        })
+      })
+    {
+      let entry_clone = entry?.clone();
+      if is_supported(entry_clone.path()) {
+        target_files.push(entry_clone.path().canonicalize()?)
+      }
+    }
   } else {
-    for arg in files {
-      let p = PathBuf::from(arg);
-      if p.is_dir() {
-        target_files.extend(files_in_subtree(p.canonicalize()?, is_supported));
-      } else {
-        target_files.push(p.canonicalize()?);
-      };
+    for file in files {
+      for entry in WalkDir::new(file)
+        .into_iter()
+        .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
+      {
+        let entry_clone = entry?.clone();
+        if is_supported(entry_clone.path()) {
+          target_files.push(entry_clone.into_path().canonicalize()?)
+        }
+      }
     }
   }
 

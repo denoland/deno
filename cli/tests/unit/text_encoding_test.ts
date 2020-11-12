@@ -210,3 +210,17 @@ unitTest(function toStringShouldBeWebCompatibility(): void {
   const decoder = new TextDecoder();
   assertEquals(decoder.toString(), "[object TextDecoder]");
 });
+unitTest(function textEncoderShouldCoerceToString(): void {
+  const encoder = new TextEncoder();
+  const fixutreText = "text";
+  const fixture = {
+    toString() {
+      return fixutreText;
+    },
+  };
+
+  const bytes = encoder.encode(fixture as unknown as string);
+  const decoder = new TextDecoder();
+  const decoded = decoder.decode(bytes);
+  assertEquals(decoded, fixutreText);
+});

@@ -272,7 +272,7 @@ mod test {
   #[test]
   fn test_module_graph_info_display() {
     let fixture = get_fixture();
-    let actual = format!("{}", fixture);
+    let actual = fixture.to_string();
     assert!(actual.contains(" /a/b/c.ts"));
     assert!(actual.contains(" 99 unique"));
     assert!(actual.contains("(12.06KB)"));
