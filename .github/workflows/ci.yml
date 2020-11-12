@@ -186,14 +186,25 @@ jobs:
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
 
+      - name: Upload build artifacts (Windows)
+        if: |
+          startsWith(matrix.os, 'windows') &&
+          github.repository == 'denoland/deno' &&
+          matrix.kind == 'test_release'
+        uses: actions/upload-artifact@v2
+        with:
+          name: deno.exe
+          path: target/release/deno.exe
+
       - name: Upload build artifacts
         if: |
+          !startsWith(matrix.os, 'windows') &&
           github.repository == 'denoland/deno' &&
           matrix.kind == 'test_release'
         uses: actions/upload-artifact@v2
         with:
           name: deno
-          path: target/release/deno*
+          path: target/release/deno
 
       - name: Release
         uses: softprops/action-gh-release@v1
