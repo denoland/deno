@@ -3,6 +3,7 @@ export const osType = (() => {
     return Deno.build.os;
   }
 
+  // deno-lint-ignore no-explicit-any
   const navigator = (globalThis as any).navigator;
   if (navigator?.appVersion?.includes?.("Win") ?? false) {
     return "windows";
