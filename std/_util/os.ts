@@ -1,3 +1,5 @@
+// This module is browser compatible.
+
 export const osType = (() => {
   if (globalThis.Deno != null) {
     return Deno.build.os;
