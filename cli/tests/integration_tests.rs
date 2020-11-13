@@ -1310,7 +1310,7 @@ fn run_watch() {
     .expect("error writing file");
 
   // Events from the file watcher is "debounced", so we need to wait for the next execution to start
-  std::thread::sleep(std::time::Duration::from_millis(500));
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
@@ -1326,7 +1326,7 @@ fn run_watch() {
   )
   .expect("error writing file");
 
-  std::thread::sleep(std::time::Duration::from_millis(500));
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
   assert!(stderr_lines.next().unwrap().contains("Process finished"));
@@ -1335,7 +1335,7 @@ fn run_watch() {
   std::fs::write(&another_file, "export const foo = 42;")
     .expect("error writing file");
 
-  std::thread::sleep(std::time::Duration::from_millis(500));
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   assert!(stderr_lines.next().unwrap().contains("Process finished"));
