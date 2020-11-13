@@ -811,8 +811,18 @@ fn completions_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Generate shell completions")
     .long_about(
       "Output shell completion script to standard output.
-  deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
-  source /usr/local/etc/bash_completion.d/deno.bash",
+      On bash:
+      deno completions bash | sudo tee /etc/bash_completion.d/deno.bash > /dev/null
+      source /etc/bash_completion.d/deno.bash
+      On zsh:
+      deno completions zsh |sudo tee /usr/local/share/zsh/site-functions/_deno
+      Make sure to run compinit after the above command
+      On powershell:
+      deno completions powershell > $profile
+      .$profile
+      Note that the commands might differ on different distros. Please find out the folder in which 
+      your distro keeps bash completions script and redirect output of deno completions <shell> to
+      a file within the directory. To activate effects in the current shell, source the file in current shell instance"
     )
 }
 
