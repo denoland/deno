@@ -2,7 +2,6 @@ import "./global.ts";
 import { assert, assertStrictEquals } from "../testing/asserts.ts";
 import { Buffer as BufferModule } from "./buffer.ts";
 import processModule from "./process.ts";
-import { Buffer } from "./_buffer.ts";
 
 // Definitions for this are quite delicate
 // This ensures modifications to the global namespace don't break on TypeScript
