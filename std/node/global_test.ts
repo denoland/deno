@@ -22,9 +22,13 @@ Deno.test("global is correctly defined", () => {
 Deno.test("Buffer is correctly defined", () => {
   //Check that Buffer is defined as a type as well
   type x = Buffer;
+  // deno-lint-ignore no-undef
   assertStrictEquals(Buffer, BufferModule);
+  // deno-lint-ignore no-undef
   assert(Buffer.from);
+  // deno-lint-ignore no-undef
   assertStrictEquals(global.Buffer, BufferModule);
+  // deno-lint-ignore no-undef
   assert(global.Buffer.from);
   assertStrictEquals(globalThis.Buffer, BufferModule);
   assert(globalThis.Buffer.from);
@@ -37,7 +41,9 @@ Deno.test("process is correctly defined", () => {
   assertStrictEquals(process, processModule);
   // deno-lint-ignore no-undef
   assert(process.arch);
+  // deno-lint-ignore no-undef
   assertStrictEquals(global.process, processModule);
+  // deno-lint-ignore no-undef
   assert(global.process.arch);
   assertStrictEquals(globalThis.process, processModule);
   assert(globalThis.process.arch);
