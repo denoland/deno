@@ -98,9 +98,11 @@
     return "relatedTarget" in event;
   }
 
-  function isTrusted() {
-    return eventData.get(this).isTrusted;
-  }
+  const isTrusted = Object.getOwnPropertyDescriptor({
+    get isTrusted() {
+      return eventData.get(this).isTrusted;
+    },
+  }, "isTrusted").get;
 
   class Event {
     #canceledFlag = false;

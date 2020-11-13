@@ -103,7 +103,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
+  pub(crate) pending_promise_exceptions:
+    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
   pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
@@ -803,9 +804,9 @@ impl JsRuntime {
         );
         let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
-        let promise_id = promise.get_identity_hash();
+        let promise_global = v8::Global::new(scope, promise);
         let mut state = state_rc.borrow_mut();
-        state.pending_promise_exceptions.remove(&promise_id);
+        state.pending_promise_exceptions.remove(&promise_global);
         let promise_global = v8::Global::new(scope, promise);
         let module_global = v8::Global::new(scope, module);
 
@@ -885,9 +886,9 @@ impl JsRuntime {
         );
         let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
-        let promise_id = promise.get_identity_hash();
+        let promise_global = v8::Global::new(scope, promise);
         let mut state = state_rc.borrow_mut();
-        state.pending_promise_exceptions.remove(&promise_id);
+        state.pending_promise_exceptions.remove(&promise_global);
         let promise_global = v8::Global::new(scope, promise);
         assert!(
           state.pending_mod_evaluate.is_none(),
@@ -1385,7 +1386,14 @@ impl JsRuntime {
       return Ok(());
     }
 
-    let key = { *state.pending_promise_exceptions.keys().next().unwrap() };
+    let key = {
+      state
+        .pending_promise_exceptions
+        .keys()
+        .next()
+        .unwrap()
+        .clone()
+    };
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     drop(state);
 
@@ -1578,8 +1586,7 @@ pub mod tests {
         assert_eq!(bufs.len(), 1);
         assert_eq!(bufs[0].len(), 1);
         assert_eq!(bufs[0][0], 42);
-        let mut vec = Vec::<u8>::new();
-        vec.resize(100 * 1024 * 1024, 0);
+        let mut vec = vec![0u8; 100 * 1024 * 1024];
         vec[0] = 99;
         let buf = vec.into_boxed_slice();
         Op::Sync(buf)
@@ -1594,8 +1601,7 @@ pub mod tests {
         assert_eq!(bufs.len(), 1);
         assert_eq!(bufs[0].len(), 1);
         assert_eq!(bufs[0][0], 42);
-        let mut vec = Vec::<u8>::new();
-        vec.resize(100 * 1024 * 1024, 0);
+        let mut vec = vec![0u8; 100 * 1024 * 1024];
         vec[0] = 4;
         let buf = vec.into_boxed_slice();
         Op::Async(futures::future::ready(buf).boxed())
