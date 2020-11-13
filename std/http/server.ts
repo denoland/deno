@@ -175,8 +175,14 @@ export class Server implements AsyncIterable<ServerRequest> {
         this.untrackConnection(request.conn);
         return;
       }
-      // Consume unread body and trailers if receiver didn't consume those data
-      await request.finalize();
+
+      try {
+        // Consume unread body and trailers if receiver didn't consume those data
+        await request.finalize();
+      } catch (error) {
+        // Invalid data was received or the connection was closed.
+        break;
+      }
     }
 
     this.untrackConnection(conn);
