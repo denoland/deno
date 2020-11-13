@@ -1,38 +1,44 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import process from "./process.ts";
-import { Buffer as buffer } from "./buffer.ts";
+import processModule from "./process.ts";
+import { Buffer as bufferModule } from "./buffer.ts";
 
-Object.defineProperty(globalThis, Symbol.toStringTag, {
-  value: "global",
+Object.defineProperty(globalThis, "global", {
+  value: globalThis,
   writable: false,
   enumerable: false,
   configurable: true,
 });
-
-// deno-lint-ignore no-explicit-any
-(globalThis as any)["global"] = globalThis;
-
-// Define the type for the global declration
-type Process = typeof process;
-type Buffer = typeof buffer;
+type GlobalType = {
+  process: typeof processModule;
+  Buffer: typeof bufferModule;
+};
 
 Object.defineProperty(globalThis, "process", {
-  value: process,
+  value: processModule,
+  enumerable: false,
+  writable: true,
+  configurable: true,
+});
+
+Object.defineProperty(globalThis, "Buffer", {
+  value: bufferModule,
   enumerable: false,
   writable: true,
   configurable: true,
 });
 
 declare global {
-  const process: Process;
-  const Buffer: Buffer;
-}
+  interface Window {
+    global: GlobalType;
+  }
 
-Object.defineProperty(globalThis, "Buffer", {
-  value: buffer,
-  enumerable: false,
-  writable: true,
-  configurable: true,
-});
+  interface globalThis {
+    global: GlobalType;
+  }
+
+  var global: GlobalType;
+  var process: typeof processModule;
+  var Buffer: bufferModule;
+}
 
 export {};
