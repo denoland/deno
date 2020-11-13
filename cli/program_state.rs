@@ -207,12 +207,6 @@ impl ProgramState {
         && maybe_referrer.is_none()
         && specifier.as_url().scheme() == "file")
     {
-      let message = if let Some(referrer) = maybe_referrer {
-        format!("Compiled module not found \"{}\"\n  From: {}\n    If the source module contains only types, use `import type` and `export type` to import it instead.", module_specifier, referrer)
-      } else {
-        format!("Compiled module not found \"{}\"\n  If the source module contains only types, use `import type` and `export type` to import it instead.", module_specifier)
-      };
-      info!("{}: {}", crate::colors::yellow("warning"), message);
       CompiledModule {
         code: "".to_string(),
         name: specifier.as_url().to_string(),
