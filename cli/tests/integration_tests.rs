@@ -427,50 +427,6 @@ fn cache_invalidation_test_no_check() {
 }
 
 #[test]
-fn local_sources_not_cached_in_memory() {
-  let deno_dir = TempDir::new().expect("tempdir fail");
-  let fixture_path = deno_dir.path().join("fixture.js");
-  let fixture = r#"
-    const fixture_url = new URL("fixture.ts", import.meta.url);
-    let resolve;
-    let p = new Promise((res) => resolve = res);
-    await Deno.writeTextFile(fixture_url, `self.postMessage("hello");\n`);
-    const worker_a = new Worker(fixture_url.href, { type: "module" });
-    worker_a.onmessage = (msg) => {
-      console.log(msg.data);
-      resolve();
-    };
-    
-    await p;
-    p = new Promise((res) => resolve = res);
-    worker_a.terminate();
-    await Deno.writeTextFile(fixture_url, `self.postMessage("goodbye");\n`);
-    const worker_b = new Worker(fixture_url.href, { type: "module" });
-    worker_b.onmessage = (msg) => {
-      console.log(msg.data);
-      resolve();
-    };
-    
-    await p;
-    worker_b.terminate();  
-  "#;
-  std::fs::write(fixture_path.clone(), fixture).expect("could not write file");
-
-  let output = Command::new(util::deno_exe_path())
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("--allow-read")
-    .arg("--allow-write")
-    .arg(fixture_path.to_str().unwrap())
-    .output()
-    .expect("could not start sub process");
-
-  assert!(output.status.success());
-  let actual = std::str::from_utf8(&output.stdout).unwrap();
-  assert_eq!(actual, "hello\ngoodbye\n");
-}
-
-#[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
@@ -2180,6 +2136,11 @@ itest!(_059_fs_relative_path_perm {
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
   output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+});
+
+itest!(local_sources_not_cached_in_memory {
+  args: "run --allow-read --allow-write no_mem_cache.js",
+  output: "no_mem_cache.js.out",
 });
 
 #[cfg(unix)]
