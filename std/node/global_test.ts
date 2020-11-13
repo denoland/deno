@@ -2,6 +2,7 @@ import "./global.ts";
 import { assert, assertStrictEquals } from "../testing/asserts.ts";
 import { Buffer as BufferModule } from "./buffer.ts";
 import processModule from "./process.ts";
+import { Buffer } from "./_buffer.ts";
 
 // Definitions for this are quite delicate
 // This ensures modifications to the global namespace don't break on TypeScript
@@ -20,9 +21,9 @@ Deno.test("global is correctly defined", () => {
 });
 
 Deno.test("Buffer is correctly defined", () => {
-  // deno-lint-ignore no-undef
+  //Check that Buffer is defined as a type as well
+  type x = Buffer;
   assertStrictEquals(Buffer, BufferModule);
-  // deno-lint-ignore no-undef
   assert(Buffer.from);
   assertStrictEquals(globalThis.Buffer, BufferModule);
   assert(globalThis.Buffer.from);

@@ -5,8 +5,6 @@ import { Buffer } from "./buffer.ts";
 Deno.test({
   name: "Buffer global scope",
   fn() {
-    // deno-lint-ignore ban-ts-comment
-    // @ts-expect-error
     assert(window.Buffer === Buffer);
     assert(globalThis.Buffer === Buffer);
   },
