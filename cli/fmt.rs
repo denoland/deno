@@ -242,10 +242,13 @@ pub fn collect_files(
       for entry in WalkDir::new(file)
         .into_iter()
         .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
+        .filter_map(|e| match e {
+          Ok(e) if !e.file_type().is_dir() => Some(e),
+          _ => None,
+        })
       {
-        let entry_clone = entry?.clone();
-        if is_supported(entry_clone.path()) {
-          target_files.push(entry_clone.into_path().canonicalize()?)
+        if is_supported(entry.path()) {
+          target_files.push(entry.into_path().canonicalize()?)
         }
       }
     }
