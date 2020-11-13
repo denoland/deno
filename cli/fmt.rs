@@ -71,24 +71,10 @@ async fn check_source_files(
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
-            match diff(&file_text, &formatted_text) {
-              Ok(diff) => {
-                info!("");
-                info!(
-                  "{} {}:",
-                  colors::bold("from"),
-                  file_path.display().to_string()
-                );
-                info!("{}", diff);
-              }
-              Err(e) => {
-                eprintln!(
-                  "Error generating diff: {}",
-                  file_path.to_string_lossy()
-                );
-                eprintln!("   {}", e);
-              }
-            }
+            let diff = diff(&file_text, &formatted_text);
+            info!("");
+            info!("{} {}:", colors::bold("from"), file_path.display());
+            info!("{}", diff);
           }
         }
         Err(e) => {

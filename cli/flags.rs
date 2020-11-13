@@ -9,6 +9,7 @@ use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -425,7 +426,6 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let shell: &str = matches.value_of("shell").unwrap();
   let mut buf: Vec<u8> = vec![];
-  use std::str::FromStr;
   clap_root().gen_completions_to(
     "deno",
     clap::Shell::from_str(shell).unwrap(),
@@ -1324,7 +1324,7 @@ fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(cache_bl) = matches.values_of("reload") {
     let raw_cache_blocklist: Vec<String> =
-      cache_bl.map(std::string::ToString::to_string).collect();
+      cache_bl.map(ToString::to_string).collect();
     if raw_cache_blocklist.is_empty() {
       flags.reload = true;
     } else {
@@ -1475,7 +1475,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   if let Some(net_wl) = matches.values_of("allow-net") {
     let raw_net_allowlist: Vec<String> =
-      net_wl.map(std::string::ToString::to_string).collect();
+      net_wl.map(ToString::to_string).collect();
     if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
@@ -1515,18 +1515,16 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   use deno_core::url::Url;
   let mut out: Vec<String> = vec![];
   for urlstr in urls.iter() {
-    use std::str::FromStr;
-    let result = Url::from_str(urlstr);
-    if result.is_err() {
+    if let Ok(mut url) = Url::from_str(urlstr) {
+      url.set_fragment(None);
+      let mut full_url = String::from(url.as_str());
+      if full_url.len() > 1 && full_url.ends_with('/') {
+        full_url.pop();
+      }
+      out.push(full_url);
+    } else {
       panic!("Bad Url: {}", urlstr);
     }
-    let mut url = result.unwrap();
-    url.set_fragment(None);
-    let mut full_url = String::from(url.as_str());
-    if full_url.len() > 1 && full_url.ends_with('/') {
-      full_url.pop();
-    }
-    out.push(full_url);
   }
   out
 }
