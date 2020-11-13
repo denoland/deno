@@ -218,8 +218,10 @@ pub fn collect_files(
   let mut target_files: Vec<PathBuf> = vec![];
 
   // retain only the paths which exist and ignore the rest
-  let mut canonicalized_ignore =
-    ignore.into_iter().filter_map(|i| i.canonicalize().ok());
+  let canonicalized_ignore: Vec<PathBuf> = ignore
+    .into_iter()
+    .filter_map(|i| i.canonicalize().ok())
+    .collect();
 
   let files = if files.is_empty() {
     vec![std::env::current_dir()?]
@@ -231,8 +233,9 @@ pub fn collect_files(
     for entry in WalkDir::new(file)
       .into_iter()
       .filter_entry(|e| {
-        !canonicalized_ignore
-          .any(|i| e.path().canonicalize().map_or(false, |c| c.starts_with(i)))
+        e.path().canonicalize().map_or(false, |c| {
+          !canonicalized_ignore.iter().any(|i| c.starts_with(i))
+        })
       })
       .filter_map(|e| match e {
         Ok(e) if !e.file_type().is_dir() && is_supported(e.path()) => Some(e),
@@ -329,19 +332,78 @@ where
   }
 }
 
-#[test]
-fn test_is_supported() {
-  assert!(!is_supported(Path::new("tests/subdir/redirects")));
-  assert!(!is_supported(Path::new("README.md")));
-  assert!(is_supported(Path::new("lib/typescript.d.ts")));
-  assert!(is_supported(Path::new("cli/tests/001_hello.js")));
-  assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
-  assert!(is_supported(Path::new("foo.jsx")));
-  assert!(is_supported(Path::new("foo.tsx")));
-  assert!(is_supported(Path::new("foo.TS")));
-  assert!(is_supported(Path::new("foo.TSX")));
-  assert!(is_supported(Path::new("foo.JS")));
-  assert!(is_supported(Path::new("foo.JSX")));
-  assert!(is_supported(Path::new("foo.mjs")));
-  assert!(!is_supported(Path::new("foo.mjsx")));
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::fs;
+  use tempfile::TempDir;
+
+  #[test]
+  fn test_is_supported() {
+    assert!(!is_supported(Path::new("tests/subdir/redirects")));
+    assert!(!is_supported(Path::new("README.md")));
+    assert!(is_supported(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported(Path::new("cli/tests/001_hello.js")));
+    assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported(Path::new("foo.jsx")));
+    assert!(is_supported(Path::new("foo.tsx")));
+    assert!(is_supported(Path::new("foo.TS")));
+    assert!(is_supported(Path::new("foo.TSX")));
+    assert!(is_supported(Path::new("foo.JS")));
+    assert!(is_supported(Path::new("foo.JSX")));
+    assert!(is_supported(Path::new("foo.mjs")));
+    assert!(!is_supported(Path::new("foo.mjsx")));
+  }
+
+  #[test]
+  fn test_collect_files() {
+    // dir.ts
+    // ├── a.ts
+    // ├── b.js
+    // ├── child
+    // │   ├── e.mjs
+    // │   ├── f.mjsx
+    // │   ├── .foo.TS
+    // │   └── README.md
+    // ├── c.tsx
+    // ├── d.jsx
+    // └── ignore
+    //     ├── g.d.ts
+    //     └── .gitignore
+
+    let t = TempDir::new().expect("tempdir fail");
+
+    let root_dir_path = t.path().join("dir.ts");
+    fs::create_dir(&root_dir_path).expect("Failed to create directory");
+    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
+    for f in root_dir_files.iter() {
+      let path = root_dir_path.join(f);
+      fs::write(path, "").expect("Failed to create file");
+    }
+
+    let child_dir_path = root_dir_path.join("child");
+    fs::create_dir(&child_dir_path).expect("Failed to create directory");
+    let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
+    for f in child_dir_files.iter() {
+      let path = child_dir_path.join(f);
+      fs::write(path, "").expect("Failed to create file");
+    }
+
+    let ignore_dir_path = root_dir_path.join("ignore");
+    fs::create_dir(&ignore_dir_path).expect("Failed to create directory");
+    let ignore_dir_files = ["g.d.ts", ".gitignore"];
+    for f in ignore_dir_files.iter() {
+      let path = ignore_dir_path.join(f);
+      fs::write(path, "").expect("Failed to create file");
+    }
+
+    let result =
+      collect_files(vec![root_dir_path], vec![ignore_dir_path]).unwrap();
+    for (actual, expected) in result
+      .iter()
+      .zip(vec![".foo.TS", "e.mjs", "d.jsx", "c.tsx", "b.js", "a.ts"])
+    {
+      assert!(actual.ends_with(expected));
+    }
+  }
 }
