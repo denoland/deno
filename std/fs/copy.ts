@@ -3,8 +3,7 @@ import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { getFileInfoType, isSubdir } from "./_util.ts";
 import { assert } from "../_util/assert.ts";
-
-const isWindows = Deno.build.os === "windows";
+import { isWindows } from "../_util/os.ts";
 
 export interface CopyOptions {
   /**
