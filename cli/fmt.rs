@@ -213,44 +213,33 @@ fn is_supported(path: &Path) -> bool {
 
 pub fn collect_files(
   files: Vec<PathBuf>,
-  mut ignore: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
 ) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
 
   // retain only the paths which exist and ignore the rest
-  ignore.retain(|i| i.exists());
+  let mut canonicalized_ignore =
+    ignore.into_iter().filter_map(|i| i.canonicalize().ok());
 
-  if files.is_empty() {
-    for entry in WalkDir::new(std::env::current_dir()?)
+  let files = if files.is_empty() {
+    vec![std::env::current_dir()?]
+  } else {
+    files
+  };
+
+  for file in files {
+    for entry in WalkDir::new(file)
       .into_iter()
       .filter_entry(|e| {
-        !ignore.iter().any(|i| {
-          e.path()
-            .canonicalize()
-            .unwrap()
-            .starts_with(i.canonicalize().unwrap())
-        })
+        !canonicalized_ignore
+          .any(|i| e.path().canonicalize().map_or(false, |c| c.starts_with(i)))
+      })
+      .filter_map(|e| match e {
+        Ok(e) if !e.file_type().is_dir() && is_supported(e.path()) => Some(e),
+        _ => None,
       })
     {
-      let entry_clone = entry?.clone();
-      if is_supported(entry_clone.path()) {
-        target_files.push(entry_clone.path().canonicalize()?)
-      }
-    }
-  } else {
-    for file in files {
-      for entry in WalkDir::new(file)
-        .into_iter()
-        .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
-        .filter_map(|e| match e {
-          Ok(e) if !e.file_type().is_dir() => Some(e),
-          _ => None,
-        })
-      {
-        if is_supported(entry.path()) {
-          target_files.push(entry.into_path().canonicalize()?)
-        }
-      }
+      target_files.push(entry.into_path().canonicalize()?)
     }
   }
 
