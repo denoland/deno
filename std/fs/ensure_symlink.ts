@@ -2,7 +2,7 @@
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
-import { getFileInfoType } from "./_util.ts";
+import { getFileInfoType, PathType } from "./_util.ts";
 
 const isWindows = Deno.build.os == "windows";
 
@@ -28,7 +28,7 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
   await ensureDir(path.dirname(dest));
 
   const srcStatInfo: Deno.FileInfo | undefined = await Deno.lstat(src);
-  const srcFilePathType: Deno.PathType | undefined = getFileInfoType(
+  const srcFilePathType: PathType | undefined = getFileInfoType(
     srcStatInfo,
   );
 
@@ -63,7 +63,7 @@ export function ensureSymlinkSync(src: string, dest: string): void {
   ensureDirSync(path.dirname(dest));
 
   const srcStatInfo: Deno.FileInfo | undefined = Deno.lstatSync(src);
-  const srcFilePathType: Deno.PathType | undefined = getFileInfoType(
+  const srcFilePathType: PathType | undefined = getFileInfoType(
     srcStatInfo,
   );
 
