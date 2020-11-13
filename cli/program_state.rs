@@ -192,31 +192,30 @@ impl ProgramState {
       .expect("Cached source file doesn't exist");
 
     let specifier = out.specifier.clone();
-    let compiled_module = if let Some((code, _)) =
-      self.get_emit(&specifier.as_url())
-    {
-      CompiledModule {
-        code: String::from_utf8(code).unwrap(),
-        name: specifier.as_url().to_string(),
-      }
-    // We expect a compiled source for any non-JavaScript files, except for
-    // local files that have an unknown media type and no referrer (root modules
-    // that do not have an extension.)
-    } else if out.media_type != MediaType::JavaScript
-      && !(out.media_type == MediaType::Unknown
-        && maybe_referrer.is_none()
-        && specifier.as_url().scheme() == "file")
-    {
-      CompiledModule {
-        code: "".to_string(),
-        name: specifier.as_url().to_string(),
-      }
-    } else {
-      CompiledModule {
-        code: out.source,
-        name: specifier.as_url().to_string(),
-      }
-    };
+    let compiled_module =
+      if let Some((code, _)) = self.get_emit(&specifier.as_url()) {
+        CompiledModule {
+          code: String::from_utf8(code).unwrap(),
+          name: specifier.as_url().to_string(),
+        }
+      // We expect a compiled source for any non-JavaScript files, except for
+      // local files that have an unknown media type and no referrer (root modules
+      // that do not have an extension.)
+      } else if out.media_type != MediaType::JavaScript
+        && !(out.media_type == MediaType::Unknown
+          && maybe_referrer.is_none()
+          && specifier.as_url().scheme() == "file")
+      {
+        CompiledModule {
+          code: "".to_string(),
+          name: specifier.as_url().to_string(),
+        }
+      } else {
+        CompiledModule {
+          code: out.source,
+          name: specifier.as_url().to_string(),
+        }
+      };
 
     Ok(compiled_module)
   }
