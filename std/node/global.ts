@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import "./global.d.ts";
 import { process as processModule } from "./process.ts";
 import { Buffer as bufferModule } from "./_buffer.ts";

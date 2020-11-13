@@ -2,6 +2,9 @@
 import { process as processModule } from "./process.ts";
 import { Buffer as bufferModule } from "./buffer.ts";
 
+// d.ts files allow us to declare Buffer as a value and as a type
+// type something = Buffer | something_else; is quite common
+
 type GlobalType = {
   process: typeof processModule;
   Buffer: typeof bufferModule;
