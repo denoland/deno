@@ -23,7 +23,6 @@ mod flags_allow_net;
 mod fmt;
 mod fmt_errors;
 mod fs;
-mod global_timer;
 mod http_cache;
 mod http_util;
 mod import_map;
@@ -188,7 +187,7 @@ async fn info_command(
     if json {
       write_json_to_stdout(&json!(info))?;
     } else {
-      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())?;
+      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())?;
     }
     Ok(())
   } else {
@@ -734,8 +733,7 @@ pub fn main() {
       for f in unrecognized_v8_flags {
         eprintln!("error: V8 did not recognize flag '{}'", f);
       }
-      eprintln!();
-      eprintln!("For a list of V8 flags, use '--v8-flags=--help'");
+      eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
       std::process::exit(1);
     }
     if v8_flags_includes_help {
@@ -855,8 +853,7 @@ pub fn main() {
 
   let result = tokio_util::run_basic(fut);
   if let Err(err) = result {
-    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
-    eprintln!("{}", msg);
+    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }
 }

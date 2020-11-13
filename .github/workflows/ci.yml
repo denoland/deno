@@ -61,7 +61,7 @@ jobs:
           !startsWith(github.ref, 'refs/tags/std/')
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
