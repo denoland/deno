@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import processModule from "./process.ts";
+import {process as processModule} from "./process.ts";
 import { Buffer as bufferModule } from "./buffer.ts";
 
 Object.defineProperty(globalThis, "global", {
@@ -8,10 +8,6 @@ Object.defineProperty(globalThis, "global", {
   enumerable: false,
   configurable: true,
 });
-type GlobalType = {
-  process: typeof processModule;
-  Buffer: typeof bufferModule;
-};
 
 Object.defineProperty(globalThis, "process", {
   value: processModule,
@@ -27,6 +23,11 @@ Object.defineProperty(globalThis, "Buffer", {
   configurable: true,
 });
 
+type GlobalType = {
+  process: typeof processModule;
+  Buffer: bufferModule;
+};
+
 declare global {
   interface Window {
     global: GlobalType;
@@ -38,7 +39,7 @@ declare global {
 
   var global: GlobalType;
   var process: typeof processModule;
-  var Buffer: bufferModule;
+  var Buffer: typeof bufferModule;
 }
 
 export {};
