@@ -75,6 +75,4 @@ declare global {
   };
 }
 
-type x = Buffer;
-
 export {};
