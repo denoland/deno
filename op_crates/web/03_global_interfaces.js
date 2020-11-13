@@ -4,7 +4,7 @@
   const illegalConstructorKey = Symbol("illegalConstuctorKey");
 
   class Window extends EventTarget {
-    constructor(key) {
+    constructor(key = null) {
       if (key !== illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
