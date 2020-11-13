@@ -25,7 +25,7 @@ Object.defineProperty(globalThis, "Buffer", {
 
 type GlobalType = {
   process: typeof processModule;
-  Buffer: bufferModule;
+  Buffer: typeof bufferModule;
 };
 
 declare global {
