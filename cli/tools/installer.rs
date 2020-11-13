@@ -1,7 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::file_watcher;
 use crate::flags::Flags;
 use crate::fs_util::canonicalize_path;
+use crate::tools::bundler;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -137,13 +139,14 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
   Some(stem)
 }
 
-pub fn install(
+pub async fn install(
   flags: Flags,
-  module_url: &str,
+  source_file: &str,
   args: Vec<String>,
   name: Option<String>,
   root: Option<PathBuf>,
   force: bool,
+  bundle: bool,
 ) -> Result<(), AnyError> {
   let root = if let Some(root) = root {
     canonicalize_path(&root)?
@@ -162,10 +165,10 @@ pub fn install(
   };
 
   // Check if module_url is remote
-  let module_url = if is_remote_url(module_url) {
-    Url::parse(module_url).expect("Should be valid url")
+  let module_url = if is_remote_url(source_file) {
+    Url::parse(source_file).expect("Should be valid url")
   } else {
-    let module_path = PathBuf::from(module_url);
+    let module_path = PathBuf::from(source_file);
     let module_path = if module_path.is_absolute() {
       module_path
     } else {
@@ -205,7 +208,7 @@ pub fn install(
     executable_args.push("--location".to_string());
     executable_args.push(url.to_string());
   }
-  if let Some(ca_file) = flags.ca_file {
+  if let Some(ca_file) = flags.ca_file.clone() {
     executable_args.push("--cert".to_string());
     executable_args.push(ca_file)
   }
@@ -262,37 +265,59 @@ pub fn install(
     executable_args.push(format!("--inspect-brk={}", inspect_brk.to_string()));
   }
 
-  if let Some(import_map_path) = flags.import_map_path {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("import_map.json");
-    executable_args.push("--import-map".to_string());
-    executable_args.push(copy_path.to_str().unwrap().to_string());
-    extra_files.push((copy_path, fs::read_to_string(import_map_path)?));
-  }
+  if bundle {
+    let mut out_file_ = installation_dir.join(name.clone());
+    out_file_.set_extension("js");
+    executable_args.push(out_file_.to_string_lossy().to_string());
+    executable_args.extend_from_slice(&args);
 
-  if let Some(config_path) = flags.config_path {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("tsconfig.json");
-    executable_args.push("--config".to_string());
-    executable_args.push(copy_path.to_str().unwrap().to_string());
-    extra_files.push((copy_path, fs::read_to_string(config_path)?));
-  }
+    let module_resolver =
+      bundler::get_module_resolver(&flags, &source_file.to_string());
+    let operation = bundler::get_operation(&flags, &Some(out_file_));
 
-  if let Some(lock_path) = flags.lock {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("lock.json");
-    executable_args.push("--lock".to_string());
-    executable_args.push(copy_path.to_str().unwrap().to_string());
-    extra_files.push((copy_path, fs::read_to_string(lock_path)?));
-  }
+    let module_graph = match module_resolver().await {
+      file_watcher::ModuleResolutionResult::Fail { error, .. } => {
+        return Err(error)
+      }
+      file_watcher::ModuleResolutionResult::Success { module_info, .. } => {
+        module_info
+      }
+    };
+    operation(module_graph).await?;
+  } else {
+    // --no-bundle
+    if let Some(import_map_path) = flags.import_map_path {
+      let mut copy_path = file_path.clone();
+      copy_path.set_extension("import_map.json");
+      executable_args.push("--import-map".to_string());
+      executable_args.push(copy_path.to_str().unwrap().to_string());
+      extra_files.push((copy_path, fs::read_to_string(import_map_path)?));
+    }
 
-  executable_args.push(module_url.to_string());
-  executable_args.extend_from_slice(&args);
+    if let Some(config_path) = flags.config_path {
+      let mut copy_path = file_path.clone();
+      copy_path.set_extension("tsconfig.json");
+      executable_args.push("--config".to_string());
+      executable_args.push(copy_path.to_str().unwrap().to_string());
+      extra_files.push((copy_path, fs::read_to_string(config_path)?));
+    }
+
+    if let Some(lock_path) = flags.lock {
+      let mut copy_path = file_path.clone();
+      copy_path.set_extension("lock.json");
+      executable_args.push("--lock".to_string());
+      executable_args.push(copy_path.to_str().unwrap().to_string());
+      extra_files.push((copy_path, fs::read_to_string(lock_path)?));
+    }
+    executable_args.push(module_url.to_string());
+    executable_args.extend_from_slice(&args);
+
+    for (path, contents) in extra_files {
+      fs::write(path, contents)?;
+    }
+  }
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
-  for (path, contents) in extra_files {
-    fs::write(path, contents)?;
-  }
 
   println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
@@ -418,8 +443,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_basic() {
+  #[tokio::test]
+  async fn install_basic() {
     let _guard = ENV_LOCK.lock().ok();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
@@ -441,7 +466,9 @@ mod tests {
       Some("echo_test".to_string()),
       None,
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
@@ -473,8 +500,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_unstable() {
+  #[tokio::test]
+  async fn install_unstable() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -489,7 +516,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -512,8 +541,56 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_inferred_name() {
+  #[tokio::test]
+  async fn install_with_bundle() {
+    let _g = test_util::http_server();
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir_path = temp_dir.path();
+    // Canonicalizes temp_dir_path here because it's symlinked path on mac
+    // and that causes assertion errors below.
+    let temp_dir_path = canonicalize_path(&temp_dir_path).unwrap();
+    let bin_dir = temp_dir_path.join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    install(
+      Flags { ..Flags::default() },
+      "http://localhost:4545/cli/tests/echo_server.ts",
+      vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir_path.to_path_buf()),
+      false,
+      true,
+    )
+    .await
+    .expect("Install failed");
+
+    let mut file_path = bin_dir.join("echo_test");
+    let mut bundle_path = file_path.clone();
+    bundle_path.set_extension("js");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+
+    assert!(file_path.exists());
+
+    let content = fs::read_to_string(file_path).unwrap();
+    println!("this is the file path {:?}", content);
+    println!("bundle_path is {:?}", &bundle_path);
+    if cfg!(windows) {
+      assert!(content.contains(&format!(
+        r#""run" "{}""#,
+        &bundle_path.to_string_lossy().to_string()
+      )));
+    } else {
+      assert!(content.contains(&format!(
+        r#"run {}"#,
+        &bundle_path.to_string_lossy().to_string()
+      )));
+    }
+  }
+
+  #[tokio::test]
+  async fn install_inferred_name() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -525,7 +602,9 @@ mod tests {
       None,
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_server");
@@ -544,8 +623,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_inferred_name_from_parent() {
+  #[tokio::test]
+  async fn install_inferred_name_from_parent() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -557,7 +636,9 @@ mod tests {
       None,
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("subdir");
@@ -576,8 +657,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_custom_dir_option() {
+  #[tokio::test]
+  async fn install_custom_dir_option() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -589,7 +670,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -608,8 +691,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_custom_dir_env_var() {
+  #[tokio::test]
+  async fn install_custom_dir_env_var() {
     let _guard = ENV_LOCK.lock().ok();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
@@ -624,7 +707,9 @@ mod tests {
       Some("echo_test".to_string()),
       None,
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -646,8 +731,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_with_flags() {
+  #[tokio::test]
+  async fn install_with_flags() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -665,7 +750,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -682,8 +769,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_local_module() {
+  #[tokio::test]
+  async fn install_local_module() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -698,7 +785,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -711,8 +800,8 @@ mod tests {
     assert!(content.contains(&local_module_url.to_string()));
   }
 
-  #[test]
-  fn install_force() {
+  #[tokio::test]
+  async fn install_force() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -724,7 +813,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");
@@ -741,7 +832,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
-    );
+      false,
+    )
+    .await;
     assert!(no_force_result.is_err());
     assert!(no_force_result
       .unwrap_err()
@@ -759,15 +852,17 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       true,
-    );
+      false,
+    )
+    .await;
     assert!(force_result.is_ok());
     // Assert modified
     let file_content_2 = fs::read_to_string(&file_path).unwrap();
     assert!(file_content_2.contains("cat.ts"));
   }
 
-  #[test]
-  fn install_with_config() {
+  #[tokio::test]
+  async fn install_with_config() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     let config_file_path = temp_dir.path().join("test_tsconfig.json");
@@ -786,7 +881,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       true,
-    );
+      false,
+    )
+    .await;
     eprintln!("result {:?}", result);
     assert!(result.is_ok());
 
@@ -800,8 +897,8 @@ mod tests {
 
   // TODO: enable on Windows after fixing batch escaping
   #[cfg(not(windows))]
-  #[test]
-  fn install_shell_escaping() {
+  #[tokio::test]
+  async fn install_shell_escaping() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -813,7 +910,9 @@ mod tests {
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
       false,
+      false,
     )
+    .await
     .expect("Install failed");
 
     let mut file_path = bin_dir.join("echo_test");

@@ -28,7 +28,7 @@ use tokio::time::Sleep;
 
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
-type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
+pub type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 #[pin_project(project = DebounceProjection)]
 struct Debounce {

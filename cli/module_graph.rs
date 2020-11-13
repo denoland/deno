@@ -15,11 +15,13 @@ use crate::info::ModuleInfoMap;
 use crate::info::ModuleInfoMapItem;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
+use crate::program_state::ProgramState;
 use crate::specifier_handler::CachedModule;
 use crate::specifier_handler::Dependency;
 use crate::specifier_handler::DependencyMap;
 use crate::specifier_handler::Emit;
 use crate::specifier_handler::FetchFuture;
+use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc;
 use crate::tsc_config::IgnoredCompilerOptions;
@@ -29,6 +31,7 @@ use deno_core::error::AnyError;
 
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
@@ -42,6 +45,7 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use std::collections::HashSet;
 use std::collections::{BTreeSet, HashMap};
@@ -1874,6 +1878,52 @@ impl GraphBuilder {
     self.graph.lock();
     self.graph
   }
+}
+
+pub async fn create_module_graph_and_maybe_check(
+  module_specifier: ModuleSpecifier,
+  program_state: Arc<ProgramState>,
+  debug: bool,
+) -> Result<Graph, AnyError> {
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
+    &program_state,
+    // when bundling, dynamic imports are only access for their type safety,
+    // therefore we will allow the graph to access any module.
+    Permissions::allow_all(),
+  )?));
+  let mut builder = GraphBuilder::new(
+    handler,
+    program_state.maybe_import_map.clone(),
+    program_state.lockfile.clone(),
+  );
+  builder.add(&module_specifier, false).await?;
+  let module_graph = builder.get_graph();
+
+  if !program_state.flags.no_check {
+    // TODO(@kitsonk) support bundling for workers
+    let lib = if program_state.flags.unstable {
+      TypeLib::UnstableDenoWindow
+    } else {
+      TypeLib::DenoWindow
+    };
+    let result_info = module_graph.clone().check(CheckOptions {
+      debug,
+      emit: false,
+      lib,
+      maybe_config_path: program_state.flags.config_path.clone(),
+      reload: program_state.flags.reload,
+    })?;
+
+    debug!("{}", result_info.stats);
+    if let Some(ignored_options) = result_info.maybe_ignored_options {
+      eprintln!("{}", ignored_options);
+    }
+    if !result_info.diagnostics.is_empty() {
+      return Err(generic_error(result_info.diagnostics.to_string()));
+    }
+  }
+
+  Ok(module_graph)
 }
 
 #[cfg(test)]

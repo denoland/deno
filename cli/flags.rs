@@ -59,6 +59,7 @@ pub enum DenoSubcommand {
     name: Option<String>,
     root: Option<PathBuf>,
     force: bool,
+    bundle: bool,
   },
   LanguageServer,
   Lint {
@@ -416,6 +417,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   let force = matches.is_present("force");
+  let bundle = !matches.is_present("no-bundle");
   let name = matches.value_of("name").map(|s| s.to_string());
   let cmd_values = matches.values_of("cmd").unwrap();
   let mut cmd = vec![];
@@ -432,6 +434,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     args,
     root,
     force,
+    bundle,
   };
 }
 
@@ -852,6 +855,11 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .short("f")
             .help("Forcefully overwrite existing installation")
             .takes_value(false))
+        .arg(
+          Arg::with_name("no-bundle")
+            .long("no-bundle")
+            .help("Do not bundle the script before installing")
+            .takes_value(false))
         .about("Install script as an executable")
         .long_about(
 "Installs a script as an executable in the installation root's bin directory.
@@ -876,6 +884,9 @@ The installation root is determined, in order of precedence:
   - --root option
   - DENO_INSTALL_ROOT environment variable
   - $HOME/.deno
+
+The installed scripts are bundled before installation. If you prefer not to bundle, use --no-bundle:
+  deno install --allow-net --allow-read --no-bundle https://deno.land/std/http/file_server.ts
 
 These must be added to the path manually if required.")
 }
@@ -2798,6 +2809,7 @@ mod tests {
           args: vec![],
           root: None,
           force: false,
+          bundle: true,
         },
         ..Flags::default()
       }
@@ -2807,7 +2819,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--no-bundle", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2817,6 +2829,7 @@ mod tests {
           args: svec!["foo", "bar"],
           root: Some(PathBuf::from("/foo")),
           force: true,
+          bundle: false,
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
