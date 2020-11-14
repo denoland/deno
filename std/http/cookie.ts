@@ -64,7 +64,6 @@ function toString(cookie: Cookie): string {
     out.push(`Max-Age=${cookie.maxAge}`);
   }
   if (cookie.domain) {
-    validateCookieProperty("Domain", cookie.domain);
     out.push(`Domain=${cookie.domain}`);
   }
   if (cookie.sameSite) {
