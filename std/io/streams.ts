@@ -34,3 +34,29 @@ export function fromStreamReader(
     },
   };
 }
+
+export function ReadableStreamFromAsyncIterator(
+  iterator: AsyncIterableIterator<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await iterator.next();
+
+      if (done) {
+        controller.close();
+      } else {
+        controller.enqueue(value);
+      }
+    },
+  });
+}
+
+export function WritableStreamFromWriter(
+  writer: Deno.Writer,
+): WritableStream<Uint8Array> {
+  return new WritableStream({
+    async write(chunk) {
+      await writer.write(chunk);
+    },
+  });
+}
