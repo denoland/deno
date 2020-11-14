@@ -229,7 +229,7 @@ async fn lint_command(
   }
 
   if list_rules {
-    lint::print_rules_list();
+    lint::print_rules_list(json);
     return Ok(());
   }
 
