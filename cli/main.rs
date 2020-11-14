@@ -39,6 +39,8 @@ mod js;
 #[cfg(feature = "tools")]
 mod lint;
 
+#[cfg(not(feature = "tools"))]
+mod fs_module_loader;
 mod lockfile;
 mod media_type;
 mod metrics;
@@ -46,8 +48,6 @@ mod metrics;
 mod module_graph;
 #[cfg(feature = "tools")]
 mod module_loader;
-#[cfg(not(feature = "tools"))]
-mod no_tools_module_loader;
 mod ops;
 mod permissions;
 mod program_state;

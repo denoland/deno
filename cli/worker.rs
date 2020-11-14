@@ -2,6 +2,8 @@
 
 use crate::colors;
 use crate::fmt_errors::JsError;
+#[cfg(not(feature = "tools"))]
+use crate::fs_module_loader::FsModuleLoader;
 use crate::inspector::DenoInspector;
 #[cfg(feature = "tools")]
 use crate::inspector::InspectorSession;
@@ -9,8 +11,6 @@ use crate::js;
 use crate::metrics::Metrics;
 #[cfg(feature = "tools")]
 use crate::module_loader::CliModuleLoader;
-#[cfg(not(feature = "tools"))]
-use crate::no_tools_module_loader::NoToolsModuleLoader;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
@@ -262,7 +262,7 @@ impl MainWorker {
     permissions: Permissions,
   ) -> Self {
     #[cfg(not(feature = "tools"))]
-    let loader = Rc::new(NoToolsModuleLoader);
+    let loader = Rc::new(FsModuleLoader);
     #[cfg(feature = "tools")]
     let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
     let mut worker = Worker::new(
@@ -415,7 +415,7 @@ impl WebWorker {
     has_deno_namespace: bool,
   ) -> Self {
     #[cfg(not(feature = "tools"))]
-    let loader = Rc::new(NoToolsModuleLoader);
+    let loader = Rc::new(FsModuleLoader);
     #[cfg(feature = "tools")]
     let loader = CliModuleLoader::new_for_worker();
     let mut worker = Worker::new(
