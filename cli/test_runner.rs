@@ -44,7 +44,8 @@ pub fn prepare_test_modules_urls(
   for path in include_paths {
     let p = deno_fs::normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = crate::fs::files_in_subtree(p, is_supported);
+      let test_files =
+        crate::fs::collect_files(vec![p], vec![], is_supported).unwrap();
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
