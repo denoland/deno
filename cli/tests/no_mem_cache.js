@@ -1,6 +1,7 @@
 const fixtureFile = await Deno.makeTempFile();
 console.log("fixtureFile", fixtureFile);
 const fixtureUrl = new URL(`file://${fixtureFile}`);
+console.log("fixtureUrl", fixtureUrl);
 let resolve;
 
 let p = new Promise((res) => resolve = res);
