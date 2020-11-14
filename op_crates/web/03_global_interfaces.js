@@ -17,7 +17,7 @@
   }
 
   class WorkerGlobalScope extends EventTarget {
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
@@ -30,7 +30,7 @@
   }
 
   class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
