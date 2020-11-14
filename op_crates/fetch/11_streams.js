@@ -82,12 +82,12 @@
           const clonedMap = new Map();
           objectCloneMemo.set(value, clonedMap);
           value.forEach((v, k) => {
-            clonedMap.set(cloneValue(k), cloneValue(v))
+            clonedMap.set(cloneValue(k), cloneValue(v));
           });
           return clonedMap;
         }
         if (value instanceof Set) {
-          const clonedSet = new Set([...value].map(cloneValue));;
+          const clonedSet = new Set([...value].map(cloneValue));
           objectCloneMemo.set(value, clonedSet);
           return clonedSet;
         }
