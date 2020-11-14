@@ -47,7 +47,7 @@ Deno.test({
         });
       },
       Error,
-      "The Name of the cookie (Space@) is invalid.",
+      'Invalid cookie name: "Space@".',
     );
   },
 });
