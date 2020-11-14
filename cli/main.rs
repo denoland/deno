@@ -582,8 +582,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .collect();
 
   if let Some(import_map) = program_state.flags.import_map_path.clone() {
-    paths_to_watch
-      .push(fs_util::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap());
+    paths_to_watch.push(
+      fs_util::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap(),
+    );
   }
 
   // FIXME(bartlomieju): new file watcher is created on after each restart
