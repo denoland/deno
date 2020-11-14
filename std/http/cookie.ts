@@ -70,7 +70,6 @@ function toString(cookie: Cookie): string {
     out.push(`SameSite=${cookie.sameSite}`);
   }
   if (cookie.path) {
-    validateCookieProperty("Path", cookie.path);
     out.push(`Path=${cookie.path}`);
   }
   if (cookie.expires) {
