@@ -87,12 +87,9 @@ function toString(cookie: Cookie): string {
  * @param key Name of the cookie.
  * @param value Value of the cookie.
  */
-function validateCookieProperty(
-  key: string,
-  value: string | undefined | null,
-): void {
+function validateCookieName(value: string | undefined | null): void {
   if (value && !FIELD_CONTENT_REGEXP.test(value)) {
-    throw new TypeError(`The ${key} of the cookie (${value}) is invalid.`);
+    throw new TypeError(`Invalid cookie name: "${value}".`);
   }
 }
 
