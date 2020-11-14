@@ -286,7 +286,7 @@ pub async fn run_all_servers() {
       Box::new(res)
     });
   let bad_redirect = warp::path("bad_redirect").map(|| -> Box<dyn Reply> {
-    let mut res = Response::new(Body::from(""));
+    let mut res = Response::new(Body::empty());
     *res.status_mut() = StatusCode::FOUND;
     Box::new(res)
   });

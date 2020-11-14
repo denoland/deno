@@ -218,3 +218,25 @@ unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
     fr.abort();
   });
 });
+
+unitTest(
+  async function fileReaderDispatchesEventsInCorrectOrder(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const fr = new FileReader();
+      const b1 = new Blob(["Hello World"]);
+      let out = "";
+      fr.addEventListener("loadend", () => {
+        out += "1";
+      });
+      fr.onloadend = (ev): void => {
+        out += "2";
+      };
+      fr.addEventListener("loadend", () => {
+        assertEquals(out, "12");
+        resolve();
+      });
+
+      fr.readAsDataURL(b1);
+    });
+  },
+);

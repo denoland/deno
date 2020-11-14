@@ -8,9 +8,9 @@
 //! the same functions as ops available in JS runtime.
 use crate::ast;
 use crate::colors;
-use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
+use crate::fs::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
 use deno_core::error::{generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
@@ -47,13 +47,7 @@ pub async fn lint_files(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return lint_stdin(json);
   }
-  let mut target_files = collect_files(args)?;
-  if !ignore.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be linted.
-    let ignore_files = collect_files(ignore)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
-  }
+  let target_files = collect_files(args, ignore, is_supported_ext)?;
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 

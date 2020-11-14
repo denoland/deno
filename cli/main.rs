@@ -733,8 +733,7 @@ pub fn main() {
       for f in unrecognized_v8_flags {
         eprintln!("error: V8 did not recognize flag '{}'", f);
       }
-      eprintln!();
-      eprintln!("For a list of V8 flags, use '--v8-flags=--help'");
+      eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
       std::process::exit(1);
     }
     if v8_flags_includes_help {
@@ -854,8 +853,7 @@ pub fn main() {
 
   let result = tokio_util::run_basic(fut);
   if let Err(err) = result {
-    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
-    eprintln!("{}", msg);
+    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }
 }

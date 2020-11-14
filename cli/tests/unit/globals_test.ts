@@ -40,6 +40,10 @@ unitTest(function globalThisInstanceofWindow(): void {
   assert(globalThis instanceof Window);
 });
 
+unitTest(function globalThisConstructorLength(): void {
+  assert(globalThis.constructor.length === 0);
+});
+
 unitTest(function globalThisInstanceofEventTarget(): void {
   assert(globalThis instanceof EventTarget);
 });
