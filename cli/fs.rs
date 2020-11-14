@@ -238,7 +238,7 @@ mod tests {
         path
           .file_name()
           .and_then(|f| f.to_str())
-          .map_or(false, |f| !f.starts_with("."))
+          .map_or(false, |f| !f.starts_with('.'))
       })
       .unwrap();
     let expected = [
@@ -251,7 +251,7 @@ mod tests {
       "d.jsx",
     ];
     for e in expected.iter() {
-      assert!(result.iter().find(|r| r.ends_with(e)).is_some());
+      assert!(result.iter().any(|r| r.ends_with(e)));
     }
     assert_eq!(result.len(), expected.len());
   }
