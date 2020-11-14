@@ -210,10 +210,15 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
       e.downcast_ref::<serde_json::error::Error>()
         .map(get_serde_json_error_class)
     })
-    // .or_else(|| {
-    //   e.downcast_ref::<DiagnosticBuffer>()
-    //     .map(get_diagnostic_class)
-    // })
+    .or_else(|| {
+      #[cfg(not(feature="no_tools"))]
+      let maybe_get_error = || e.downcast_ref::<DiagnosticBuffer>().map(get_diagnostic_class);
+
+      #[cfg(feature="no_tools")]
+      let maybe_get_error = || Option::<&'static str>::None;
+
+      (maybe_get_error)()
+    })
     .or_else(|| {
       e.downcast_ref::<url::ParseError>()
         .map(get_url_parse_error_class)

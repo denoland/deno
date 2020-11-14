@@ -8,34 +8,27 @@ use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
-#[cfg(not(feature="no_tools"))]
-use crate::media_type::MediaType;
-#[cfg(not(feature="no_tools"))]
-use crate::module_graph::CheckOptions;
-#[cfg(not(feature="no_tools"))]
-use crate::module_graph::GraphBuilder;
-#[cfg(not(feature="no_tools"))]
-use crate::module_graph::TranspileOptions;
-#[cfg(not(feature="no_tools"))]
-use crate::module_graph::TypeLib;
-#[cfg(not(feature="no_tools"))]
-use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
-#[cfg(not(feature="no_tools"))]
-use crate::specifier_handler::FetchHandler;
-
-#[cfg(not(feature="no_tools"))]
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-#[cfg(not(feature="no_tools"))]
-use std::cell::RefCell;
 use std::env;
-#[cfg(not(feature="no_tools"))]
-use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
+
+#[cfg(not(feature="no_tools"))]
+use {
+  crate::media_type::MediaType,
+  crate::module_graph::CheckOptions,
+  crate::module_graph::GraphBuilder,
+  crate::module_graph::TranspileOptions,
+  crate::module_graph::TypeLib,
+  crate::permissions::Permissions,
+  crate::specifier_handler::FetchHandler,
+  deno_core::error::generic_error,
+  std::cell::RefCell,
+  std::rc::Rc,
+};
 
 pub fn exit_unstable(api_name: &str) {
   eprintln!(

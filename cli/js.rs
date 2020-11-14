@@ -5,7 +5,7 @@ use deno_core::Snapshot;
 pub const TS_VERSION: &str = env!("TS_VERSION");
 
 pub static CLI_SNAPSHOT: &[u8] =
-  include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
+  include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));  
 #[cfg(not(feature="no_tools"))]
 pub static COMPILER_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
