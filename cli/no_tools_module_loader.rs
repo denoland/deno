@@ -46,6 +46,7 @@ impl ModuleLoader for NoToolsModuleLoader {
         module_url_found: module_specifier.to_string(),
       };
       Ok(module)
-    }.boxed_local()
+    }
+    .boxed_local()
   }
 }

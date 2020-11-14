@@ -3,20 +3,19 @@
 use crate::colors;
 use crate::fmt_errors::JsError;
 use crate::inspector::DenoInspector;
-#[cfg(feature="tools")]
+#[cfg(feature = "tools")]
 use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics::Metrics;
-#[cfg(feature="tools")]
+#[cfg(feature = "tools")]
 use crate::module_loader::CliModuleLoader;
-#[cfg(not(feature="tools"))]
+#[cfg(not(feature = "tools"))]
 use crate::no_tools_module_loader::NoToolsModuleLoader;
 use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
-use deno_core::ModuleLoader;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -26,6 +25,7 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
@@ -217,7 +217,7 @@ impl Worker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  #[cfg(feature="tools")]
+  #[cfg(feature = "tools")]
   pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
     let inspector = self.inspector.as_mut().unwrap();
 
@@ -261,9 +261,9 @@ impl MainWorker {
     main_module: ModuleSpecifier,
     permissions: Permissions,
   ) -> Self {
-    #[cfg(not(feature="tools"))]
+    #[cfg(not(feature = "tools"))]
     let loader = Rc::new(NoToolsModuleLoader);
-    #[cfg(feature="tools")]
+    #[cfg(feature = "tools")]
     let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
     let mut worker = Worker::new(
       "main".to_string(),
@@ -304,7 +304,7 @@ impl MainWorker {
       ops::permissions::init(js_runtime);
       ops::plugin::init(js_runtime);
       ops::process::init(js_runtime);
-      #[cfg(feature="tools")]
+      #[cfg(feature = "tools")]
       ops::runtime_compiler::init(js_runtime);
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
@@ -414,9 +414,9 @@ impl WebWorker {
     program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
   ) -> Self {
-    #[cfg(not(feature="tools"))]
+    #[cfg(not(feature = "tools"))]
     let loader = Rc::new(NoToolsModuleLoader);
-    #[cfg(feature="tools")]
+    #[cfg(feature = "tools")]
     let loader = CliModuleLoader::new_for_worker();
     let mut worker = Worker::new(
       name,
@@ -483,7 +483,7 @@ impl WebWorker {
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
         ops::crypto::init(js_runtime, program_state.flags.seed);
-        #[cfg(feature="tools")]
+        #[cfg(feature = "tools")]
         ops::runtime_compiler::init(js_runtime);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);

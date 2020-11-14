@@ -16,18 +16,13 @@ use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-#[cfg(feature="tools")]
+#[cfg(feature = "tools")]
 use {
-  crate::media_type::MediaType,
-  crate::module_graph::CheckOptions,
-  crate::module_graph::GraphBuilder,
-  crate::module_graph::TranspileOptions,
-  crate::module_graph::TypeLib,
-  crate::permissions::Permissions,
-  crate::specifier_handler::FetchHandler,
-  deno_core::error::generic_error,
-  std::cell::RefCell,
-  std::rc::Rc,
+  crate::media_type::MediaType, crate::module_graph::CheckOptions,
+  crate::module_graph::GraphBuilder, crate::module_graph::TranspileOptions,
+  crate::module_graph::TypeLib, crate::permissions::Permissions,
+  crate::specifier_handler::FetchHandler, deno_core::error::generic_error,
+  std::cell::RefCell, std::rc::Rc,
 };
 
 pub fn exit_unstable(api_name: &str) {
@@ -39,7 +34,7 @@ pub fn exit_unstable(api_name: &str) {
 }
 
 // TODO(@kitsonk) probably can refactor this better with the graph.
-#[cfg(feature="tools")]
+#[cfg(feature = "tools")]
 pub struct CompiledModule {
   pub code: String,
   pub name: String,
@@ -122,7 +117,7 @@ impl ProgramState {
   /// initialized by the JsRuntime. Its resposibility is to collect
   /// all dependencies and if it is required then also perform TS typecheck
   /// and traspilation.
-  #[cfg(feature="tools")]
+  #[cfg(feature = "tools")]
   pub async fn prepare_module_load(
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
@@ -184,7 +179,7 @@ impl ProgramState {
     Ok(())
   }
 
-  #[cfg(feature="tools")]
+  #[cfg(feature = "tools")]
   pub fn fetch_compiled_module(
     &self,
     module_specifier: ModuleSpecifier,
