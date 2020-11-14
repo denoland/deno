@@ -59,6 +59,7 @@ pub enum DenoSubcommand {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
     rules: bool,
+    rule_names: Vec<String>,
     json: bool,
   },
   Repl,
@@ -662,10 +663,15 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
+  let rule_names = match matches.values_of("rules") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint {
     files,
     rules,
+    rule_names,
     ignore,
     json,
   };
@@ -1031,7 +1037,10 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("rules")
         .long("rules")
-        .help("List available rules"),
+        .help("List all available rules or print docs for specified rules")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true),
     )
     .arg(
       Arg::with_name("ignore")

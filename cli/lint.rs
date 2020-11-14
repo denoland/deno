@@ -96,15 +96,20 @@ pub async fn lint_files(
   Ok(())
 }
 
-pub fn print_rules_list() {
+pub fn print_rules_list(rule_names: Vec<String>, json: bool) {
   let lint_rules = rules::get_recommended_rules();
 
-  // The rules should still be printed even if `--quiet` option is enabled,
-  // so use `println!` here instead of `info!`.
-  println!("Available rules:");
-  for rule in lint_rules {
-    println!(" - {}", rule.code());
+  if rule_names.is_empty() {
+    // The rules should still be printed even if `--quiet` option is enabled,
+    // so use `println!` here instead of `info!`.
+    println!("Available rules:");
+    for rule in lint_rules {
+      println!(" - {}", rule.code());
+    }
+    return;
   }
+  
+  
 }
 
 fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
