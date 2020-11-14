@@ -32,7 +32,7 @@ export interface Cookie {
 
 export type SameSite = "Strict" | "Lax" | "None";
 
-const FIELD_CONTENT_REGEXP = /^[^()@<>,;:\\"\[\]?={}\s]+$/;
+const FIELD_CONTENT_REGEXP = /^(?=[\x20-\x7E]*$)[^()@<>,;:\\"\[\]?={}\s]+$/;
 
 function toString(cookie: Cookie): string {
   if (!cookie.name) {
