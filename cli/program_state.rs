@@ -8,21 +8,31 @@ use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
+#[cfg(not(feature="no_tools"))]
 use crate::media_type::MediaType;
+#[cfg(not(feature="no_tools"))]
 use crate::module_graph::CheckOptions;
+#[cfg(not(feature="no_tools"))]
 use crate::module_graph::GraphBuilder;
+#[cfg(not(feature="no_tools"))]
 use crate::module_graph::TranspileOptions;
+#[cfg(not(feature="no_tools"))]
 use crate::module_graph::TypeLib;
+#[cfg(not(feature="no_tools"))]
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
+#[cfg(not(feature="no_tools"))]
 use crate::specifier_handler::FetchHandler;
 
+#[cfg(not(feature="no_tools"))]
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+#[cfg(not(feature="no_tools"))]
 use std::cell::RefCell;
 use std::env;
+#[cfg(not(feature="no_tools"))]
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -36,6 +46,7 @@ pub fn exit_unstable(api_name: &str) {
 }
 
 // TODO(@kitsonk) probably can refactor this better with the graph.
+#[cfg(not(feature="no_tools"))]
 pub struct CompiledModule {
   pub code: String,
   pub name: String,
@@ -118,6 +129,7 @@ impl ProgramState {
   /// initialized by the JsRuntime. Its resposibility is to collect
   /// all dependencies and if it is required then also perform TS typecheck
   /// and traspilation.
+  #[cfg(not(feature="no_tools"))]
   pub async fn prepare_module_load(
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
@@ -179,6 +191,7 @@ impl ProgramState {
     Ok(())
   }
 
+  #[cfg(not(feature="no_tools"))]
   pub fn fetch_compiled_module(
     &self,
     module_specifier: ModuleSpecifier,

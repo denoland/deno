@@ -9,6 +9,7 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
+#[cfg(not(feature="no_tools"))]
 use crate::ast::DiagnosticBuffer;
 use crate::import_map::ImportMapError;
 use deno_core::error::AnyError;
@@ -146,6 +147,7 @@ fn get_serde_json_error_class(
   }
 }
 
+#[cfg(not(feature="no_tools"))]
 fn get_diagnostic_class(_: &DiagnosticBuffer) -> &'static str {
   "SyntaxError"
 }
@@ -208,10 +210,10 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
       e.downcast_ref::<serde_json::error::Error>()
         .map(get_serde_json_error_class)
     })
-    .or_else(|| {
-      e.downcast_ref::<DiagnosticBuffer>()
-        .map(get_diagnostic_class)
-    })
+    // .or_else(|| {
+    //   e.downcast_ref::<DiagnosticBuffer>()
+    //     .map(get_diagnostic_class)
+    // })
     .or_else(|| {
       e.downcast_ref::<url::ParseError>()
         .map(get_url_parse_error_class)

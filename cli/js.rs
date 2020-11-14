@@ -6,14 +6,21 @@ pub const TS_VERSION: &str = env!("TS_VERSION");
 
 pub static CLI_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
+#[cfg(not(feature="no_tools"))]
 pub static COMPILER_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+#[cfg(not(feature="no_tools"))]
 pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
+#[cfg(not(feature="no_tools"))]
 pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
+#[cfg(not(feature="no_tools"))]
 pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
+#[cfg(not(feature="no_tools"))]
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
+#[cfg(not(feature="no_tools"))]
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
+#[cfg(not(feature="no_tools"))]
 pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 
 pub fn deno_isolate_init() -> Snapshot {
@@ -22,6 +29,7 @@ pub fn deno_isolate_init() -> Snapshot {
   Snapshot::Static(data)
 }
 
+#[cfg(not(feature="no_tools"))]
 pub fn compiler_isolate_init() -> Snapshot {
   debug!("Deno compiler isolate init with snapshots.");
   let data = COMPILER_SNAPSHOT;
