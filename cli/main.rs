@@ -72,42 +72,37 @@ mod version;
 mod worker;
 
 #[cfg(not(feature="no_tools"))]
-use crate::coverage::CoverageCollector;
-#[cfg(not(feature="no_tools"))]
-use crate::coverage::PrettyCoverageReporter;
+use {
+  crate::coverage::CoverageCollector,
+  crate::coverage::PrettyCoverageReporter,
+  crate::fs as deno_fs,
+  crate::specifier_handler::FetchHandler,
+  deno_core::serde_json,
+  deno_core::serde_json::json,
+  deno_core::url::Url,
+  deno_doc as doc,
+  deno_doc::parser::DocFileLoader,
+  program_state::exit_unstable,
+  std::sync::Arc,
+  upgrade::upgrade_command,
+};
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-#[cfg(not(feature="no_tools"))]
-use crate::fs as deno_fs;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
-#[cfg(not(feature="no_tools"))]
-use crate::specifier_handler::FetchHandler;
 use crate::worker::MainWorker;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
-#[cfg(not(feature="no_tools"))]
-use deno_core::serde_json;
-#[cfg(not(feature="no_tools"))]
-use deno_core::serde_json::json;
-#[cfg(not(feature="no_tools"))]
-use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
-#[cfg(not(feature="no_tools"))]
-use deno_doc as doc;
-#[cfg(not(feature="no_tools"))]
-use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
 use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
-#[cfg(not(feature="no_tools"))]
-use program_state::exit_unstable;
 use std::cell::RefCell;
 use std::env;
 use std::io::Read;
@@ -116,10 +111,6 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
-#[cfg(not(feature="no_tools"))]
-use std::sync::Arc;
-#[cfg(not(feature="no_tools"))]
-use upgrade::upgrade_command;
 
 #[cfg(not(feature="no_tools"))]
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
