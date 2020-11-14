@@ -570,7 +570,7 @@ Deno.test({
     const serverRoutine = async (): Promise<void> => {
       const server = serve(":8124");
       for await (const req of server) {
-        await req.respond({status: 200, body: "Hello, world!"});
+        await req.respond({ status: 200, body: "Hello, world!" });
         break;
       }
       server.close();
@@ -582,7 +582,9 @@ Deno.test({
     });
     await Deno.writeAll(
       conn,
-      encode("PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nzzzzzzz\r\nhello"),
+      encode(
+        "PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nzzzzzzz\r\nhello",
+      ),
     );
     await conn.closeWrite();
     const responseString = decode(await Deno.readAll(conn));
@@ -601,7 +603,7 @@ Deno.test({
     const serverRoutine = async (): Promise<void> => {
       const server = serve(":8124");
       for await (const req of server) {
-        await req.respond({status: 200, body: "Hello, world!"});
+        await req.respond({ status: 200, body: "Hello, world!" });
         break;
       }
       server.close();
