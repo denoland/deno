@@ -72,9 +72,67 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   Ok(normalize_path(&resolved_path))
 }
 
+/// Checks if the path has extension Deno supports.
+pub fn is_supported_ext(path: &Path) -> bool {
+  let lowercase_ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase());
+  if let Some(ext) = lowercase_ext {
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
+  } else {
+    false
+  }
+}
+
+/// Collects file paths that satisfy the given predicate, by recursively walking `files`.
+/// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
+pub fn collect_files<P>(
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+  predicate: P,
+) -> Result<Vec<PathBuf>, AnyError>
+where
+  P: Fn(&Path) -> bool,
+{
+  let mut target_files = Vec::new();
+
+  // retain only the paths which exist and ignore the rest
+  let canonicalized_ignore: Vec<PathBuf> = ignore
+    .into_iter()
+    .filter_map(|i| i.canonicalize().ok())
+    .collect();
+
+  let files = if files.is_empty() {
+    vec![std::env::current_dir()?]
+  } else {
+    files
+  };
+
+  for file in files {
+    for entry in WalkDir::new(file)
+      .into_iter()
+      .filter_entry(|e| {
+        e.path().canonicalize().map_or(false, |c| {
+          !canonicalized_ignore.iter().any(|i| c.starts_with(i))
+        })
+      })
+      .filter_map(|e| match e {
+        Ok(e) if !e.file_type().is_dir() && predicate(e.path()) => Some(e),
+        _ => None,
+      })
+    {
+      target_files.push(entry.into_path().canonicalize()?)
+    }
+  }
+
+  Ok(target_files)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+  use tempfile::TempDir;
 
   #[test]
   fn resolve_from_cwd_child() {
@@ -118,18 +176,83 @@ mod tests {
     let expected = Path::new("/a");
     assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
   }
-}
 
-pub fn files_in_subtree<F>(root: PathBuf, filter: F) -> Vec<PathBuf>
-where
-  F: Fn(&Path) -> bool,
-{
-  assert!(root.is_dir());
+  #[test]
+  fn test_is_supported_ext() {
+    assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
+    assert!(!is_supported_ext(Path::new("README.md")));
+    assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_ext(Path::new("cli/tests/001_hello.js")));
+    assert!(is_supported_ext(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext(Path::new("foo.jsx")));
+    assert!(is_supported_ext(Path::new("foo.tsx")));
+    assert!(is_supported_ext(Path::new("foo.TS")));
+    assert!(is_supported_ext(Path::new("foo.TSX")));
+    assert!(is_supported_ext(Path::new("foo.JS")));
+    assert!(is_supported_ext(Path::new("foo.JSX")));
+    assert!(is_supported_ext(Path::new("foo.mjs")));
+    assert!(!is_supported_ext(Path::new("foo.mjsx")));
+  }
 
-  WalkDir::new(root)
-    .into_iter()
-    .filter_map(|e| e.ok())
-    .map(|e| e.path().to_owned())
-    .filter(|p| !p.is_dir() && filter(&p))
-    .collect()
+  #[test]
+  fn test_collect_files() {
+    fn create_files(dir_path: &PathBuf, files: &[&str]) {
+      std::fs::create_dir(dir_path).expect("Failed to create directory");
+      for f in files {
+        let path = dir_path.join(f);
+        std::fs::write(path, "").expect("Failed to create file");
+      }
+    }
+
+    // dir.ts
+    // ├── a.ts
+    // ├── b.js
+    // ├── child
+    // │   ├── e.mjs
+    // │   ├── f.mjsx
+    // │   ├── .foo.TS
+    // │   └── README.md
+    // ├── c.tsx
+    // ├── d.jsx
+    // └── ignore
+    //     ├── g.d.ts
+    //     └── .gitignore
+
+    let t = TempDir::new().expect("tempdir fail");
+
+    let root_dir_path = t.path().join("dir.ts");
+    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
+    create_files(&root_dir_path, &root_dir_files);
+
+    let child_dir_path = root_dir_path.join("child");
+    let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
+    create_files(&child_dir_path, &child_dir_files);
+
+    let ignore_dir_path = root_dir_path.join("ignore");
+    let ignore_dir_files = ["g.d.ts", ".gitignore"];
+    create_files(&ignore_dir_path, &ignore_dir_files);
+
+    let result =
+      collect_files(vec![root_dir_path], vec![ignore_dir_path], |path| {
+        // exclude dotfiles
+        path
+          .file_name()
+          .and_then(|f| f.to_str())
+          .map_or(false, |f| !f.starts_with('.'))
+      })
+      .unwrap();
+    let expected = [
+      "a.ts",
+      "b.js",
+      "e.mjs",
+      "f.mjsx",
+      "README.md",
+      "c.tsx",
+      "d.jsx",
+    ];
+    for e in expected.iter() {
+      assert!(result.iter().any(|r| r.ends_with(e)));
+    }
+    assert_eq!(result.len(), expected.len());
+  }
 }

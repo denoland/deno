@@ -417,6 +417,7 @@ dependencies = [
  "chrono",
  "clap",
  "deno_core",
+ "deno_crypto",
  "deno_doc",
  "deno_fetch",
  "deno_lint",
@@ -437,7 +438,6 @@ dependencies = [
  "nix",
  "notify",
  "os_pipe",
- "rand 0.7.3",
  "regex",
  "ring",
  "rustyline",
@@ -481,6 +481,14 @@ dependencies = [
  "smallvec",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "deno_crypto"
+version = "0.1.1"
+dependencies = [
+ "deno_core",
+ "rand 0.7.3",
 ]
 
 [[package]]

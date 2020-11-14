@@ -9,6 +9,7 @@
 
 use crate::colors;
 use crate::diff::diff;
+use crate::fs::{collect_files, is_supported_ext};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -23,7 +24,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use walkdir::WalkDir;
 
 const BOM_CHAR: char = '\u{FEFF}';
 
@@ -40,7 +40,7 @@ pub async fn format(
     return format_stdin(check);
   }
   // collect the files that are to be formatted
-  let target_files = collect_files(args, exclude)?;
+  let target_files = collect_files(args, exclude, is_supported_ext)?;
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -199,61 +199,6 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-fn is_supported(path: &Path) -> bool {
-  let lowercase_ext = path
-    .extension()
-    .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-  if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
-  } else {
-    false
-  }
-}
-
-pub fn collect_files(
-  files: Vec<PathBuf>,
-  mut ignore: Vec<PathBuf>,
-) -> Result<Vec<PathBuf>, std::io::Error> {
-  let mut target_files: Vec<PathBuf> = vec![];
-
-  // retain only the paths which exist and ignore the rest
-  ignore.retain(|i| i.exists());
-
-  if files.is_empty() {
-    for entry in WalkDir::new(std::env::current_dir()?)
-      .into_iter()
-      .filter_entry(|e| {
-        !ignore.iter().any(|i| {
-          e.path()
-            .canonicalize()
-            .unwrap()
-            .starts_with(i.canonicalize().unwrap())
-        })
-      })
-    {
-      let entry_clone = entry?.clone();
-      if is_supported(entry_clone.path()) {
-        target_files.push(entry_clone.path().canonicalize()?)
-      }
-    }
-  } else {
-    for file in files {
-      for entry in WalkDir::new(file)
-        .into_iter()
-        .filter_entry(|e| !ignore.iter().any(|i| e.path().starts_with(i)))
-      {
-        let entry_clone = entry?.clone();
-        if is_supported(entry_clone.path()) {
-          target_files.push(entry_clone.into_path().canonicalize()?)
-        }
-      }
-    }
-  }
-
-  Ok(target_files)
-}
-
 fn get_config() -> dprint::configuration::Configuration {
   use dprint::configuration::*;
   ConfigurationBuilder::new().deno().build()
@@ -335,21 +280,4 @@ where
   } else {
     Ok(())
   }
-}
-
-#[test]
-fn test_is_supported() {
-  assert!(!is_supported(Path::new("tests/subdir/redirects")));
-  assert!(!is_supported(Path::new("README.md")));
-  assert!(is_supported(Path::new("lib/typescript.d.ts")));
-  assert!(is_supported(Path::new("cli/tests/001_hello.js")));
-  assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
-  assert!(is_supported(Path::new("foo.jsx")));
-  assert!(is_supported(Path::new("foo.tsx")));
-  assert!(is_supported(Path::new("foo.TS")));
-  assert!(is_supported(Path::new("foo.TSX")));
-  assert!(is_supported(Path::new("foo.JS")));
-  assert!(is_supported(Path::new("foo.JSX")));
-  assert!(is_supported(Path::new("foo.mjs")));
-  assert!(!is_supported(Path::new("foo.mjsx")));
 }

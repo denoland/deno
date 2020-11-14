@@ -278,7 +278,7 @@ impl MainWorker {
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime, None);
-      ops::random::init(js_runtime, program_state.flags.seed);
+      ops::crypto::init(js_runtime, program_state.flags.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -469,7 +469,7 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::random::init(js_runtime, program_state.flags.seed);
+        ops::crypto::init(js_runtime, program_state.flags.seed);
         ops::runtime_compiler::init(js_runtime);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
