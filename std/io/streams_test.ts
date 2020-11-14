@@ -183,8 +183,5 @@ Deno.test("toReadableCheck", async function (): Promise<void> {
     readChunks.push(decoder.decode(chunk));
   }
 
-  assertEquals(
-    expected,
-    readChunks,
-  );
+  assertEquals(expected, readChunks);
 });
