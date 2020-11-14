@@ -1,4 +1,5 @@
 const fixtureFile = await Deno.makeTempFile();
+console.log("fixtureFile", fixtureFile);
 const fixtureUrl = new URL(`file://${fixtureFile}`);
 let resolve;
 
