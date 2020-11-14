@@ -357,6 +357,14 @@ mod tests {
 
   #[test]
   fn test_collect_files() {
+    fn create_files(dir_path: &PathBuf, files: &[&str]) {
+      fs::create_dir(dir_path).expect("Failed to create directory");
+      for f in files {
+        let path = dir_path.join(f);
+        fs::write(path, "").expect("Failed to create file");
+      }
+    }
+
     // dir.ts
     // ├── a.ts
     // ├── b.js
@@ -374,36 +382,23 @@ mod tests {
     let t = TempDir::new().expect("tempdir fail");
 
     let root_dir_path = t.path().join("dir.ts");
-    fs::create_dir(&root_dir_path).expect("Failed to create directory");
     let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
-    for f in root_dir_files.iter() {
-      let path = root_dir_path.join(f);
-      fs::write(path, "").expect("Failed to create file");
-    }
+    create_files(&root_dir_path, &root_dir_files);
 
     let child_dir_path = root_dir_path.join("child");
-    fs::create_dir(&child_dir_path).expect("Failed to create directory");
     let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
-    for f in child_dir_files.iter() {
-      let path = child_dir_path.join(f);
-      fs::write(path, "").expect("Failed to create file");
-    }
+    create_files(&child_dir_path, &child_dir_files);
 
     let ignore_dir_path = root_dir_path.join("ignore");
-    fs::create_dir(&ignore_dir_path).expect("Failed to create directory");
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
-    for f in ignore_dir_files.iter() {
-      let path = ignore_dir_path.join(f);
-      fs::write(path, "").expect("Failed to create file");
-    }
+    create_files(&ignore_dir_path, &ignore_dir_files);
 
     let result =
       collect_files(vec![root_dir_path], vec![ignore_dir_path]).unwrap();
-    for (actual, expected) in result
-      .iter()
-      .zip(vec![".foo.TS", "e.mjs", "d.jsx", "c.tsx", "b.js", "a.ts"])
-    {
-      assert!(actual.ends_with(expected));
+    let expected = [".foo.TS", "e.mjs", "d.jsx", "c.tsx", "b.js", "a.ts"];
+    for e in expected.iter() {
+      assert!(result.iter().find(|r| r.ends_with(e)).is_some());
     }
+    assert_eq!(result.len(), expected.len());
   }
 }
