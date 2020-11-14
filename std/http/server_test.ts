@@ -565,6 +565,68 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[http] finalizing invalid chunked data closes connection",
+  async fn(): Promise<void> {
+    const serverRoutine = async (): Promise<void> => {
+      const server = serve(":8124");
+      for await (const req of server) {
+        await req.respond({status: 200, body: "Hello, world!"});
+        break;
+      }
+      server.close();
+    };
+    const p = serverRoutine();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode("PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nzzzzzzz\r\nhello"),
+    );
+    await conn.closeWrite();
+    const responseString = decode(await Deno.readAll(conn));
+    assertEquals(
+      responseString,
+      "HTTP/1.1 200 OK\r\ncontent-length: 13\r\n\r\nHello, world!",
+    );
+    conn.close();
+    await p;
+  },
+});
+
+Deno.test({
+  name: "[http] finalizing chunked unexpected EOF closes connection",
+  async fn(): Promise<void> {
+    const serverRoutine = async (): Promise<void> => {
+      const server = serve(":8124");
+      for await (const req of server) {
+        await req.respond({status: 200, body: "Hello, world!"});
+        break;
+      }
+      server.close();
+    };
+    const p = serverRoutine();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode("PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHello"),
+    );
+    conn.closeWrite();
+    const responseString = decode(await Deno.readAll(conn));
+    assertEquals(
+      responseString,
+      "HTTP/1.1 200 OK\r\ncontent-length: 13\r\n\r\nHello, world!",
+    );
+    conn.close();
+    await p;
+  },
+});
+
+Deno.test({
   name: "serveTLS Invalid Cert",
   fn: async (): Promise<void> => {
     async function iteratorReq(server: Server): Promise<void> {
