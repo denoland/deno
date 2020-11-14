@@ -37,11 +37,8 @@ pub async fn format(
   watch: bool,
 ) -> Result<(), AnyError> {
   let target_file_resolver = || {
-    let args = args.clone();
-    let ignore = ignore.clone();
     // collect the files that are to be formatted
-    let target_files = collect_files(args, ignore, is_supported_ext)?;
-    Ok(target_files)
+    collect_files(&args, &ignore, is_supported_ext)
   };
 
   let operation = |paths: Vec<PathBuf>| {

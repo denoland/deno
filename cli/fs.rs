@@ -88,8 +88,8 @@ pub fn is_supported_ext(path: &Path) -> bool {
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
 pub fn collect_files<P>(
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  files: &[PathBuf],
+  ignore: &[PathBuf],
   predicate: P,
 ) -> Result<Vec<PathBuf>, AnyError>
 where
@@ -99,15 +99,12 @@ where
 
   // retain only the paths which exist and ignore the rest
   let canonicalized_ignore: Vec<PathBuf> = ignore
-    .into_iter()
+    .iter()
     .filter_map(|i| i.canonicalize().ok())
     .collect();
 
-  let files = if files.is_empty() {
-    vec![std::env::current_dir()?]
-  } else {
-    files
-  };
+  let cur_dir = [std::env::current_dir()?];
+  let files = if files.is_empty() { &cur_dir } else { files };
 
   for file in files {
     for entry in WalkDir::new(file)
@@ -232,15 +229,14 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let result =
-      collect_files(vec![root_dir_path], vec![ignore_dir_path], |path| {
-        // exclude dotfiles
-        path
-          .file_name()
-          .and_then(|f| f.to_str())
-          .map_or(false, |f| !f.starts_with('.'))
-      })
-      .unwrap();
+    let result = collect_files(&[root_dir_path], &[ignore_dir_path], |path| {
+      // exclude dotfiles
+      path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map_or(false, |f| !f.starts_with('.'))
+    })
+    .unwrap();
     let expected = [
       "a.ts",
       "b.js",
