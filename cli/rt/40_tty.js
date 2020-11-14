@@ -11,8 +11,13 @@
     return core.jsonOpSync("op_isatty", { rid });
   }
 
-  function setRaw(rid, mode) {
-    core.jsonOpSync("op_set_raw", { rid, mode });
+  const DEFAULT_SET_RAW_OPTIONS = {
+    cbreak: false,
+  };
+
+  function setRaw(rid, mode, options = {}) {
+    const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
+    core.jsonOpSync("op_set_raw", { rid, mode, options: rOptions });
   }
 
   window.__bootstrap.tty = {
