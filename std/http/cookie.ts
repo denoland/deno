@@ -39,7 +39,7 @@ function toString(cookie: Cookie): string {
     return "";
   }
   const out: string[] = [];
-  validateCookieProperty("Name", cookie.name);
+  validateCookieName(cookie.name);
   out.push(`${cookie.name}=${cookie.value}`);
 
   // Fallback for invalid Set-Cookie
