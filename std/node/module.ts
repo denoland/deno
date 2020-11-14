@@ -34,12 +34,11 @@ import * as nodeUtil from "./util.ts";
 import * as path from "../path/mod.ts";
 import { assert } from "../_util/assert.ts";
 import { fileURLToPath, pathToFileURL } from "./url.ts";
+import { isWindows } from "../_util/os.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
 const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);
 const CHAR_COLON = ":".charCodeAt(0);
-
-const isWindows = Deno.build.os == "windows";
 
 const relativeResolveCache = Object.create(null);
 
