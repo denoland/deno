@@ -118,6 +118,11 @@ function abortSignalHandlerLocation() {
   const abortHandler = Object.getOwnPropertyDescriptor(signal, "onabort");
   assertEquals(abortHandler, undefined);
 }
+function abortSignalLength() {
+  const controller = new AbortController();
+  const { signal } = controller;
+  assertEquals(signal.constructor.length, 0);
+}
 function main() {
   basicAbortController();
   signalCallsOnabort();
@@ -128,6 +133,7 @@ function main() {
   abortSignalEventOrder();
   abortSignalEventOrderComplex();
   abortSignalHandlerLocation();
+  abortSignalLength();
 }
 
 main();
