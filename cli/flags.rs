@@ -1031,7 +1031,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("rules")
         .long("rules")
-        .help("List all available rules or print docs for specified rules"),
+        .help("List available rules"),
     )
     .arg(
       Arg::with_name("ignore")
