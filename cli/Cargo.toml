@@ -15,8 +15,8 @@ name = "deno"
 path = "main.rs"
 
 [features]
-default = ["deno_doc","deno_lint","dprint-plugin-typescript", "swc_bundler", "swc_ecmascript", "swc_common", "jsonc-parser"]
-no_tools = []
+tools = ["deno_doc","deno_lint","dprint-plugin-typescript", "swc_bundler", "swc_ecmascript", "swc_common", "jsonc-parser"]
+default = ["tools"]
 
 [[bench]]
 name = "deno_bench"

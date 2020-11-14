@@ -17,7 +17,7 @@ pub mod permissions;
 pub mod plugin;
 pub mod process;
 pub mod runtime;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 pub mod runtime_compiler;
 pub mod signal;
 pub mod timers;

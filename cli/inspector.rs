@@ -821,6 +821,7 @@ impl Future for DenoInspectorSession {
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
+#[cfg(feature="tools")]
 pub struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
@@ -829,6 +830,7 @@ pub struct InspectorSession {
   notification_queue: Vec<Value>,
 }
 
+#[cfg(feature="tools")]
 impl Deref for InspectorSession {
   type Target = v8::inspector::V8InspectorSession;
   fn deref(&self) -> &Self::Target {
@@ -836,12 +838,14 @@ impl Deref for InspectorSession {
   }
 }
 
+#[cfg(feature="tools")]
 impl DerefMut for InspectorSession {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.v8_session
   }
 }
 
+#[cfg(feature="tools")]
 impl v8::inspector::ChannelImpl for InspectorSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
     &self.v8_channel
@@ -880,6 +884,7 @@ impl v8::inspector::ChannelImpl for InspectorSession {
   fn flush_protocol_notifications(&mut self) {}
 }
 
+#[cfg(feature="tools")]
 impl InspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 

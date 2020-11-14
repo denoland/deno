@@ -3,12 +3,13 @@
 use crate::colors;
 use crate::fmt_errors::JsError;
 use crate::inspector::DenoInspector;
+#[cfg(feature="tools")]
 use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics::Metrics;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 use crate::module_loader::CliModuleLoader;
-#[cfg(feature="no_tools")]
+#[cfg(not(feature="tools"))]
 use crate::no_tools_module_loader::NoToolsModuleLoader;
 use crate::ops;
 use crate::ops::io::get_stdio;
@@ -216,6 +217,7 @@ impl Worker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
+  #[cfg(feature="tools")]
   pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
     let inspector = self.inspector.as_mut().unwrap();
 
@@ -259,9 +261,9 @@ impl MainWorker {
     main_module: ModuleSpecifier,
     permissions: Permissions,
   ) -> Self {
-    #[cfg(feature="no_tools")]
+    #[cfg(not(feature="tools"))]
     let loader = Rc::new(NoToolsModuleLoader);
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
     let mut worker = Worker::new(
       "main".to_string(),
@@ -302,7 +304,7 @@ impl MainWorker {
       ops::permissions::init(js_runtime);
       ops::plugin::init(js_runtime);
       ops::process::init(js_runtime);
-      #[cfg(not(feature="no_tools"))]
+      #[cfg(feature="tools")]
       ops::runtime_compiler::init(js_runtime);
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
@@ -412,9 +414,9 @@ impl WebWorker {
     program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
   ) -> Self {
-    #[cfg(feature="no_tools")]
+    #[cfg(not(feature="tools"))]
     let loader = Rc::new(NoToolsModuleLoader);
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     let loader = CliModuleLoader::new_for_worker();
     let mut worker = Worker::new(
       name,
@@ -481,7 +483,7 @@ impl WebWorker {
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
         ops::crypto::init(js_runtime, program_state.flags.seed);
-        #[cfg(not(feature="no_tools"))]
+        #[cfg(feature="tools")]
         ops::runtime_compiler::init(js_runtime);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);

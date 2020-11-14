@@ -6,72 +6,73 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod ast;
 mod checksum;
 mod colors;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod coverage;
 mod deno_dir;
 mod diagnostics;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod diff;
 mod disk_cache;
 mod errors;
 mod file_fetcher;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod file_watcher;
 mod flags;
 mod flags_allow_net;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod fmt;
 mod fmt_errors;
 mod fs;
 mod http_cache;
 mod http_util;
 mod import_map;
+#[cfg(feature="tools")]
 mod info;
 mod inspector;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod installer;
 mod js;
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod lint;
 
 mod lockfile;
 mod media_type;
 mod metrics;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod module_graph;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod module_loader;
-#[cfg(feature="no_tools")]
+#[cfg(not(feature="tools"))]
 mod no_tools_module_loader;
 mod ops;
 mod permissions;
 mod program_state;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod repl;
 mod resolve_addr;
 mod signal;
 mod source_maps;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod specifier_handler;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod test_runner;
 mod text_encoding;
 mod tokio_util;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod tsc;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod tsc_config;
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 mod upgrade;
 mod version;
 mod worker;
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 use {
   crate::coverage::CoverageCollector,
   crate::coverage::PrettyCoverageReporter,
@@ -85,9 +86,15 @@ use {
   program_state::exit_unstable,
   std::sync::Arc,
   upgrade::upgrade_command,
+  crate::file_fetcher::FileFetcher,
+  deno_core::futures::Future,
+  std::cell::RefCell,
+  std::pin::Pin,
+  std::rc::Rc,
+  crate::import_map::ImportMap,
+  std::path::PathBuf,
 };
 use crate::file_fetcher::File;
-use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -95,24 +102,18 @@ use crate::worker::MainWorker;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
-use deno_core::futures::Future;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use flags::DenoSubcommand;
 use flags::Flags;
-use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
-use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::rc::Rc;
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
 
@@ -125,7 +126,7 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
 where
   T: ?Sized + serde::ser::Serialize,
@@ -134,7 +135,7 @@ where
   serde_json::to_writer_pretty(writer, value).map_err(AnyError::from)
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 fn print_cache_info(
   state: &Arc<ProgramState>,
   json: bool,
@@ -165,7 +166,7 @@ fn print_cache_info(
   }
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
     "{}\n{}\n{}\n{}\n{}",
@@ -183,7 +184,7 @@ fn get_types(unstable: bool) -> String {
   types
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn info_command(
   flags: Flags,
   maybe_specifier: Option<String>,
@@ -222,7 +223,7 @@ async fn info_command(
   }
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn install_command(
   flags: Flags,
   module_url: String,
@@ -244,7 +245,7 @@ async fn install_command(
   installer::install(flags, &module_url, args, name, root, force)
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn lint_command(
   flags: Flags,
   files: Vec<PathBuf>,
@@ -264,7 +265,7 @@ async fn lint_command(
   lint::lint_files(files, ignore, json).await
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn cache_command(
   flags: Flags,
   files: Vec<String>,
@@ -292,7 +293,7 @@ async fn cache_command(
   Ok(())
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn eval_command(
   flags: Flags,
   code: String,
@@ -338,7 +339,7 @@ async fn eval_command(
   Ok(())
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn bundle_command(
   flags: Flags,
   source_file: String,
@@ -425,13 +426,13 @@ async fn bundle_command(
   Ok(())
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 struct DocLoader {
   fetcher: FileFetcher,
   maybe_import_map: Option<ImportMap>,
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 impl DocFileLoader for DocLoader {
   fn resolve(
     &self,
@@ -480,7 +481,7 @@ impl DocFileLoader for DocLoader {
   }
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn doc_command(
   flags: Flags,
   source_file: Option<String>,
@@ -549,7 +550,7 @@ async fn doc_command(
   }
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
@@ -593,7 +594,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let program_state = ProgramState::new(flags.clone())?;
@@ -651,9 +652,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   }
 
   if flags.watch {
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     return run_with_watch(flags, script).await;
-    #[cfg(feature="no_tools")]
+    #[cfg(not(feature="tools"))]
     unimplemented!()
   }
 
@@ -670,7 +671,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
@@ -816,39 +817,39 @@ pub fn main() {
   let fut = match flags.clone().subcommand {
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Bundle {
       source_file,
       out_file,
     } => bundle_command(flags, source_file, out_file).boxed_local(),
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Doc {
       source_file,
       json,
       filter,
       private,
     } => doc_command(flags, source_file, json, filter, private).boxed_local(),
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Eval {
       print,
       code,
       as_typescript,
     } => eval_command(flags, code, as_typescript, print).boxed_local(),
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Fmt {
       check,
       files,
       ignore,
     } => fmt::format(files, check, ignore).boxed_local(),
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Install {
       module_url,
       args,
@@ -858,7 +859,7 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Lint {
       files,
       rules,
@@ -867,9 +868,9 @@ pub fn main() {
     } => {
       lint_command(flags, files, rules, ignore, json).boxed_local()
     },
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Test {
       fail_fast,
       quiet,
@@ -878,7 +879,7 @@ pub fn main() {
       filter,
     } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
       .boxed_local(),
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
@@ -886,7 +887,7 @@ pub fn main() {
       }
       return;
     }
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Types => {
       let types = get_types(flags.unstable);
       if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
@@ -895,7 +896,7 @@ pub fn main() {
       }
       return;
     }
-    #[cfg(not(feature="no_tools"))]
+    #[cfg(feature="tools")]
     DenoSubcommand::Upgrade {
       force,
       dry_run,
@@ -905,7 +906,7 @@ pub fn main() {
     } => {
       upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
     }
-    #[cfg(feature="no_tools")]
+    #[cfg(not(feature="tools"))]
     DenoSubcommand::Lint { .. } |
     DenoSubcommand::Upgrade {.. } |
     DenoSubcommand::Types { .. } |

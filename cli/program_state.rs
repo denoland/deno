@@ -16,7 +16,7 @@ use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 use {
   crate::media_type::MediaType,
   crate::module_graph::CheckOptions,
@@ -39,7 +39,7 @@ pub fn exit_unstable(api_name: &str) {
 }
 
 // TODO(@kitsonk) probably can refactor this better with the graph.
-#[cfg(not(feature="no_tools"))]
+#[cfg(feature="tools")]
 pub struct CompiledModule {
   pub code: String,
   pub name: String,
@@ -122,7 +122,7 @@ impl ProgramState {
   /// initialized by the JsRuntime. Its resposibility is to collect
   /// all dependencies and if it is required then also perform TS typecheck
   /// and traspilation.
-  #[cfg(not(feature="no_tools"))]
+  #[cfg(feature="tools")]
   pub async fn prepare_module_load(
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
@@ -184,7 +184,7 @@ impl ProgramState {
     Ok(())
   }
 
-  #[cfg(not(feature="no_tools"))]
+  #[cfg(feature="tools")]
   pub fn fetch_compiled_module(
     &self,
     module_specifier: ModuleSpecifier,
