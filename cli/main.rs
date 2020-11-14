@@ -221,7 +221,6 @@ async fn lint_command(
   flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
-  rule_names: Vec<String>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
@@ -230,7 +229,7 @@ async fn lint_command(
   }
 
   if list_rules {
-    lint::print_rules_list(rules_names, json);
+    lint::print_rules_list(json);
     return Ok(());
   }
 
@@ -813,10 +812,9 @@ pub fn main() {
     DenoSubcommand::Lint {
       files,
       rules,
-      rule_names,
       ignore,
       json,
-    } => lint_command(flags, files, rules, rule_names, ignore, json).boxed_local(),
+    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
