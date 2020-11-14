@@ -11,9 +11,9 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 
-pub struct NoToolsModuleLoader;
+pub struct FsModuleLoader;
 
-impl ModuleLoader for NoToolsModuleLoader {
+impl ModuleLoader for FsModuleLoader {
   fn resolve(
     &self,
     _op_state: Rc<RefCell<OpState>>,
