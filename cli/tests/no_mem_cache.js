@@ -1,7 +1,9 @@
 const fixtureFile = await Deno.makeTempFile();
-console.log("fixtureFile", fixtureFile);
-const fixtureUrl = new URL(`file://${fixtureFile}`);
-console.log("fixtureUrl", fixtureUrl);
+const prefix = "file://";
+if (Deno.build.os == "windows") {
+  prefix += "/";
+}
+const fixtureUrl = new URL(`${prefix}${fixtureFile}`);
 let resolve;
 
 let p = new Promise((res) => resolve = res);
