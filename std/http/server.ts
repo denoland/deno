@@ -151,10 +151,15 @@ export class Server implements AsyncIterable<ServerRequest> {
           error instanceof Deno.errors.UnexpectedEof
         ) {
           // An error was thrown while parsing request headers.
-          await writeResponse(writer, {
-            status: 400,
-            body: encode(`${error.message}\r\n\r\n`),
-          });
+          // Try to send the "400 Bad Request" before closing the connection.
+          try {
+            await writeResponse(writer, {
+              status: 400,
+              body: encode(`${error.message}\r\n\r\n`),
+            });
+          } catch (error) {
+            // The connection is broken.
+          }
         }
         break;
       }
