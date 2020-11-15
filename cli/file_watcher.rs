@@ -22,8 +22,7 @@ use tokio::time::{delay_for, Delay};
 
 const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
 
-// TODO(bartlomieju): rename
-type WatchFuture<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
+type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
 
 struct Debounce {
   delay: Delay,
@@ -64,7 +63,7 @@ impl Stream for Debounce {
   }
 }
 
-async fn error_handler(watch_future: WatchFuture<()>) {
+async fn error_handler(watch_future: FileWatcherFuture<()>) {
   let result = watch_future.await;
   if let Err(err) = result {
     let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
@@ -93,7 +92,7 @@ pub async fn watch_func<F, G>(
 ) -> Result<(), AnyError>
 where
   F: Fn() -> Result<Vec<PathBuf>, AnyError>,
-  G: Fn(Vec<PathBuf>) -> WatchFuture<()>,
+  G: Fn(Vec<PathBuf>) -> FileWatcherFuture<()>,
 {
   let mut debounce = Debounce::new();
 
@@ -147,8 +146,8 @@ pub async fn watch_func_with_module_resolution<F, G, T>(
   job_name: &str,
 ) -> Result<(), AnyError>
 where
-  F: Fn() -> WatchFuture<(Vec<PathBuf>, T)>,
-  G: Fn(T) -> WatchFuture<()>,
+  F: Fn() -> FileWatcherFuture<(Vec<PathBuf>, T)>,
+  G: Fn(T) -> FileWatcherFuture<()>,
 {
   let mut debounce = Debounce::new();
 
