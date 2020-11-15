@@ -267,8 +267,11 @@ fn main() {
   let js_files = get_js_files("rt");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 
-  let js_files = get_js_files("tsc");
-  create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
+  #[cfg(feature = "tools")] 
+  {
+    let js_files = get_js_files("tsc");
+    create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
+  }
 
   #[cfg(target_os = "windows")]
   {
