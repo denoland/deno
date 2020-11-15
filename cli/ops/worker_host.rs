@@ -286,7 +286,11 @@ fn op_host_terminate_worker(
     .remove(&id)
     .expect("No worker handle found");
   worker_handle.terminate();
-  join_handle.join().expect("Panic in worker thread");
+  // FIXME(bartlomieju): join_result is ignored because worker might be
+  // terminated when still evaluating module with TLA - in such case error
+  // will be returned. That said handling of worker thread became a bit
+  // aged and should be refactored.
+  let _join_result = join_handle.join();
   Ok(json!({}))
 }
 
