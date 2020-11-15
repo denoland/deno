@@ -73,7 +73,7 @@ async fn error_handler(watch_future: FileWatcherFuture<()>) {
 
 /// This function adds watcher functionality to subcommands like `fmt` or `lint`.
 /// The difference from [`watch_func_with_module_resolution`] is that this doesn't depend on
-/// [`ModuleGraph`] stuff.
+/// [`ModuleGraph`].
 ///
 /// - `target_resolver` is used for resolving file paths to be watched at every restarting of the watcher. The
 /// return value of this closure will then be passed to `operation` as an argument.
@@ -128,7 +128,7 @@ where
 }
 
 /// This function adds watcher functionality to subcommands like `run` or `bundle`.
-/// The difference from [`watch_func`] is that this does depend on [`ModuleGraph`] stuff.
+/// The difference from [`watch_func`] is that this does depend on [`ModuleGraph`].
 ///
 /// - `module_resolver` is used for both resolving file paths to be watched at every restarting of the watcher and building [`ModuleGraph`] or [`ModuleSpecifier`] which will then be passed to `operation`.
 ///
