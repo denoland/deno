@@ -914,8 +914,9 @@ impl JsRuntime {
     poll_fn(|cx| {
       if let Poll::Ready(maybe_result) = receiver.poll_next_unpin(cx) {
         debug!("received module evaluate");
-        let evaluation_result =
-          maybe_result.expect("Mod evaluation channel didn't send a message");
+        let evaluation_result = maybe_result.ok_or_else(|| {
+          generic_error("Runtime terminated during module evaluation")
+        })?;
         return Poll::Ready(evaluation_result);
       }
       let _r = self.poll_event_loop(cx)?;
