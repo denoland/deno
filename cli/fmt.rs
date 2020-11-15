@@ -9,8 +9,7 @@
 
 use crate::colors;
 use crate::diff::diff;
-use crate::fs::canonicalize_path;
-use crate::fs::files_in_subtree;
+use crate::fs::{collect_files, is_supported_ext};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -40,14 +39,8 @@ pub async fn format(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return format_stdin(check);
   }
-  // collect all files provided.
-  let mut target_files = collect_files(args)?;
-  if !exclude.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
-  }
+  // collect the files that are to be formatted
+  let target_files = collect_files(args, exclude, is_supported_ext)?;
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -78,24 +71,10 @@ async fn check_source_files(
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
-            match diff(&file_text, &formatted_text) {
-              Ok(diff) => {
-                info!("");
-                info!(
-                  "{} {}:",
-                  colors::bold("from"),
-                  file_path.display().to_string()
-                );
-                info!("{}", diff);
-              }
-              Err(e) => {
-                eprintln!(
-                  "Error generating diff: {}",
-                  file_path.to_string_lossy()
-                );
-                eprintln!("   {}", e);
-              }
-            }
+            let diff = diff(&file_text, &formatted_text);
+            info!("");
+            info!("{} {}:", colors::bold("from"), file_path.display());
+            info!("{}", diff);
           }
         }
         Err(e) => {
@@ -220,42 +199,6 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-fn is_supported(path: &Path) -> bool {
-  let lowercase_ext = path
-    .extension()
-    .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-  if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
-  } else {
-    false
-  }
-}
-
-pub fn collect_files(
-  files: Vec<PathBuf>,
-) -> Result<Vec<PathBuf>, std::io::Error> {
-  let mut target_files: Vec<PathBuf> = vec![];
-
-  if files.is_empty() {
-    target_files.extend(files_in_subtree(
-      canonicalize_path(&std::env::current_dir()?)?,
-      is_supported,
-    ));
-  } else {
-    for file in files {
-      if file.is_dir() {
-        target_files
-          .extend(files_in_subtree(canonicalize_path(&file)?, is_supported));
-      } else {
-        target_files.push(canonicalize_path(&file)?);
-      };
-    }
-  }
-
-  Ok(target_files)
-}
-
 fn get_config() -> dprint::configuration::Configuration {
   use dprint::configuration::*;
   ConfigurationBuilder::new().deno().build()
@@ -337,21 +280,4 @@ where
   } else {
     Ok(())
   }
-}
-
-#[test]
-fn test_is_supported() {
-  assert!(!is_supported(Path::new("tests/subdir/redirects")));
-  assert!(!is_supported(Path::new("README.md")));
-  assert!(is_supported(Path::new("lib/typescript.d.ts")));
-  assert!(is_supported(Path::new("cli/tests/001_hello.js")));
-  assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
-  assert!(is_supported(Path::new("foo.jsx")));
-  assert!(is_supported(Path::new("foo.tsx")));
-  assert!(is_supported(Path::new("foo.TS")));
-  assert!(is_supported(Path::new("foo.TSX")));
-  assert!(is_supported(Path::new("foo.JS")));
-  assert!(is_supported(Path::new("foo.JSX")));
-  assert!(is_supported(Path::new("foo.mjs")));
-  assert!(!is_supported(Path::new("foo.mjsx")));
 }

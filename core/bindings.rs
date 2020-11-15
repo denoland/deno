@@ -285,7 +285,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut state = state_rc.borrow_mut();
 
   let promise = message.get_promise();
-  let promise_id = promise.get_identity_hash();
+  let promise_global = v8::Global::new(scope, promise);
 
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
@@ -293,10 +293,10 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       let error_global = v8::Global::new(scope, error);
       state
         .pending_promise_exceptions
-        .insert(promise_id, error_global);
+        .insert(promise_global, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
-      state.pending_promise_exceptions.remove(&promise_id);
+      state.pending_promise_exceptions.remove(&promise_global);
     }
     v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
     v8::PromiseRejectEvent::PromiseResolveAfterResolved => {

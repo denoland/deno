@@ -1728,11 +1728,6 @@ fn deno_test_no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
-#[test]
-fn util_test() {
-  util::run_python_script("tools/util_test.py")
-}
-
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[test]
@@ -2797,6 +2792,11 @@ itest!(unstable_disabled_ts2551 {
   output: "unstable_disabled_ts2551.out",
 });
 
+itest!(unstable_worker {
+  args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
+  output: "unstable_worker.ts.out",
+});
+
 itest!(_053_import_compression {
   args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
@@ -2863,6 +2863,11 @@ itest!(dynamic_import_conditional {
 itest!(tsx_imports {
   args: "run --reload tsx_imports.ts",
   output: "tsx_imports.ts.out",
+});
+
+itest!(fix_emittable_skipped {
+  args: "run --reload fix_emittable_skipped.js",
+  output: "fix_emittable_skipped.ts.out",
 });
 
 itest!(fix_exotic_specifiers {
@@ -3809,7 +3814,7 @@ async fn inspector_does_not_hang() {
   for i in 0..128u32 {
     let request_id = i + 10;
     // Expect the number {i} on stdout.
-    let s = format!("{}", i);
+    let s = i.to_string();
     assert_eq!(stdout_lines.next().unwrap(), s);
     // Expect hitting the `debugger` statement.
     let s = r#"{"method":"Debugger.paused","#;
