@@ -13,7 +13,7 @@ import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, "testdata");
+const testdataDir = path.resolve(Deno.cwd(), moduleDir, "testdata");
 
 function testCopy(
   name: string,

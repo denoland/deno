@@ -113,7 +113,7 @@ function getPathFromURLPosix(url: URL): string {
 
 /** Get fully resolved platform-specific File URL from the given file path */
 export function pathToFileURL(filepath: string): URL {
-  let resolved = path.resolve(filepath);
+  let resolved = path.resolve(Deno.cwd(), filepath);
   // path.resolve strips trailing slashes so we must add them back
   const filePathLast = filepath.charCodeAt(filepath.length - 1);
   if (

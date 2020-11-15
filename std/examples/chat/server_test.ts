@@ -5,7 +5,7 @@ import { BufReader } from "../../io/bufio.ts";
 import { delay } from "../../async/delay.ts";
 import { dirname, fromFileUrl, resolve } from "../../path/mod.ts";
 
-const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)));
+const moduleDir = resolve(Deno.cwd(), dirname(fromFileUrl(import.meta.url)));
 
 async function startServer(): Promise<
   Deno.Process<Deno.RunOptions & { stdout: "piped" }>
