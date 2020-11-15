@@ -169,7 +169,7 @@ Deno.test({
 Deno.test({
   name: "clearBenchmarks should clear all candidates",
   fn: async function (): Promise<void> {
-    dummyBench("test");
+    dummyBench({ name: "test" });
 
     clearBenchmarks();
     const benchingResults = await runBenchmarks({ silent: true });
@@ -185,8 +185,8 @@ Deno.test({
     // to reset candidates
     clearBenchmarks();
 
-    dummyBench("test");
-    dummyBench("onlyclear");
+    dummyBench({ name: "test" });
+    dummyBench({ name: "onlyclear" });
 
     clearBenchmarks({ only: /only/ });
     const benchingResults = await runBenchmarks({ silent: true });
@@ -203,8 +203,8 @@ Deno.test({
     // to reset candidates
     clearBenchmarks();
 
-    dummyBench("test");
-    dummyBench("skipclear");
+    dummyBench({ name: "test" });
+    dummyBench({ name: "skipclear" });
 
     clearBenchmarks({ skip: /skip/ });
     const benchingResults = await runBenchmarks({ silent: true });
@@ -221,10 +221,10 @@ Deno.test({
     // to reset candidates
     clearBenchmarks();
 
-    dummyBench("test");
-    dummyBench("clearonly");
-    dummyBench("clearskip");
-    dummyBench("clearonly");
+    dummyBench({ name: "test" });
+    dummyBench({ name: "clearonly" });
+    dummyBench({ name: "clearskip" });
+    dummyBench({ name: "clearonly" });
 
     clearBenchmarks({ only: /clear/, skip: /skip/ });
     const benchingResults = await runBenchmarks({ silent: true });
@@ -240,9 +240,9 @@ Deno.test({
   name: "progressCallback of runBenchmarks",
   fn: async function (): Promise<void> {
     clearBenchmarks();
-    dummyBench("skip");
-    dummyBench("single");
-    dummyBench("multiple", 2);
+    dummyBench({ name: "skip" });
+    dummyBench({ name: "single" });
+    dummyBench({ name: "multiple", runs: 2 });
 
     const progressCallbacks: BenchmarkRunProgress[] = [];
 
@@ -350,7 +350,7 @@ Deno.test({
   name: "async progressCallback",
   fn: async function (): Promise<void> {
     clearBenchmarks();
-    dummyBench("single");
+    dummyBench({ name: "single" });
 
     const asyncCallbacks = [];
 
@@ -367,10 +367,60 @@ Deno.test({
   },
 });
 
-function dummyBench(name: string, runs = 1): void {
+Deno.test({
+  name: "bench with only flag",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench({ name: "test" });
+    dummyBench({ name: "testWithOnly", only: true });
+    dummyBench({ name: "testWithSkip", only: true });
+
+    const benchingResults = await runBenchmarks();
+
+    // test will be filtered.
+    assertEquals(benchingResults.filtered, 1);
+    // testWithOnly, testWithSkip will be run.
+    assertEquals(benchingResults.results.length, 2);
+  },
+});
+
+Deno.test({
+  name: "bench with only flag and only, skip",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench({ name: "testWith" });
+    dummyBench({ name: "testWith2" });
+    dummyBench({ name: "testWithOnly", only: true });
+    dummyBench({ name: "testWithSkip" });
+
+    const benchingResults = await runBenchmarks(
+      { only: /testWith/, skip: /Skip/ },
+    );
+
+    // testWith, testWith2, testWithSkip will be filtered.
+    assertEquals(benchingResults.filtered, 3);
+    // testWithOnly will be run.
+    assertEquals(benchingResults.results.length, 1);
+  },
+});
+
+function dummyBench({
+  name,
+  runs = 1,
+  only = false,
+}: {
+  name: string;
+  runs?: number;
+  only?: boolean;
+}): void {
   bench({
     name,
     runs,
+    only,
     func(b) {
       b.start();
       b.stop();
