@@ -23,11 +23,12 @@ export interface BenchmarkFunction {
 
 /** Defines a benchmark definition with configurable runs. */
 export interface BenchmarkDefinition {
-  only?: boolean;
   func: BenchmarkFunction;
   name: string;
   /** Defines how many times the provided `func` should be benchmarked in succession */
   runs?: number;
+  /** Only items which 'only' is true would be executed if there is some item containing the 'only' flag. */
+  only?: boolean;
 }
 
 /** Defines runBenchmark's run constraints by matching benchmark names. */
@@ -198,7 +199,7 @@ export async function runBenchmarks(
   { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},
   progressCb?: (progress: BenchmarkRunProgress) => void | Promise<void>,
 ): Promise<BenchmarkRunResult> {
-  // If there is an item that only is true, proceed to benchmark only those items
+  // If there are benches where only is true, proceed to benchmark only those items
   const withOnly: BenchmarkDefinition[] = candidates.filter(
     ({ only }): boolean => only === true,
   );
