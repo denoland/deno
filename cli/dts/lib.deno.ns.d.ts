@@ -2058,7 +2058,7 @@ declare namespace Deno {
   export const version: {
     /** Deno's version. For example: `"1.0.0"` */
     deno: string;
-    /** The v8 version used by Deno. For example: `"8.0.0.0"` */
+    /** The V8 version used by Deno. For example: `"8.0.0.0"` */
     v8: string;
     /** The TypeScript version used by Deno. For example: `"4.0.0"` */
     typescript: string;
