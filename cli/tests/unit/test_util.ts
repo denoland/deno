@@ -356,7 +356,7 @@ unitTest(
 );
 
 export function pathToAbsoluteFileUrl(path: string): URL {
-  path = resolve(path);
+  path = resolve(Deno.cwd(), path);
 
   return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
 }

@@ -64,7 +64,7 @@ for (const pathname of tests) {
     ignore: ignore.includes(pathname),
     fn: async function () {
       const prelude = await Deno.readTextFile(
-        path.resolve(rootdir, pathname.replace(/\.wasm$/, ".json")),
+        path.resolve(Deno.cwd(), rootdir, pathname.replace(/\.wasm$/, ".json")),
       );
       const options = JSON.parse(prelude);
 
@@ -131,15 +131,7 @@ for (const pathname of tests) {
         assertEquals(status.code, options.exitCode ? +options.exitCode : 0);
 
         process.close();
-      } catch (err) {
-        throw err;
-      } finally {
-        await Deno.remove(workdir, { recursive: true });
-      }
-    },
-  });
-}
-
+      } catch (err) {However, there is another way: you can take the patch of the
 Deno.test("context_start", function () {
   assertThrows(
     () => {

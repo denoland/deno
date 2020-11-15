@@ -4,7 +4,7 @@ import { HmacSha1, Message, Sha1 } from "./sha1.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
-const testdataDir = resolve(moduleDir, "testdata");
+const testdataDir = resolve(Deno.cwd(), moduleDir, "testdata");
 
 /** Handy function to convert an array/array buffer to a string of hex values. */
 function toHexString(value: number[] | ArrayBuffer): string {

@@ -4,7 +4,7 @@ import * as path from "../path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, "testdata");
+const testdataDir = path.resolve(Deno.cwd(), moduleDir, "testdata");
 
 Deno.test("[fs] existsFile", async function (): Promise<void> {
   assertEquals(
