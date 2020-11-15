@@ -80,7 +80,7 @@ Deno.test(
     const testQueue = new TestQueue();
 
     for (const value of values) {
-      // eslint-disable-next-line require-await
+      // deno-lint-ignore require-await
       const asyncFn = async (): Promise<typeof value> => {
         return value;
       };
@@ -136,7 +136,7 @@ Deno.test(
     const testQueue = new TestQueue();
 
     for (const value of values) {
-      // eslint-disable-next-line require-await
+      // deno-lint-ignore require-await
       const asyncFn = async (): Promise<never> => {
         return Promise.reject(value);
       };
@@ -245,7 +245,7 @@ Deno.test("callbackify passes arguments to the original", async () => {
   const testQueue = new TestQueue();
 
   for (const value of values) {
-    // eslint-disable-next-line require-await
+    // deno-lint-ignore require-await
     const asyncFn = async (arg: typeof value): Promise<typeof value> => {
       assertStrictEquals(arg, value);
       return arg;
@@ -314,7 +314,7 @@ Deno.test("callbackify preserves the `this` binding", async () => {
     });
 
     const objectWithAsyncFunction = {
-      // eslint-disable-next-line require-await
+      // deno-lint-ignore require-await
       async fn(this: unknown, arg: typeof value): Promise<typeof value> {
         assertStrictEquals(this, objectWithAsyncFunction);
         return arg;
@@ -360,7 +360,7 @@ Deno.test("callbackify throws with non-function inputs", () => {
 Deno.test(
   "callbackify returns a function that throws if the last argument is not a function",
   () => {
-    // eslint-disable-next-line require-await
+    // deno-lint-ignore require-await
     async function asyncFn(): Promise<number> {
       return 42;
     }
