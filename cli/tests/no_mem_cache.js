@@ -4,7 +4,6 @@ if (Deno.build.os == "windows") {
   prefix += "/";
 }
 const fixtureUrl = new URL(`${prefix}${fixtureFile}`);
-console.log(fixtureFile, fixtureUrl);
 let resolve;
 
 let p = new Promise((res) => resolve = res);
