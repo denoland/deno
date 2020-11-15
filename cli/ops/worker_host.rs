@@ -281,11 +281,12 @@ fn op_host_terminate_worker(
 ) -> Result<Value, AnyError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let (join_handle, worker_handle) = state
+  let (join_handle, mut worker_handle) = state
     .borrow_mut::<WorkersTable>()
     .remove(&id)
     .expect("No worker handle found");
   worker_handle.terminate();
+  worker_handle.sender.close_channel();
   // FIXME(bartlomieju): join_result is ignored because worker might be
   // terminated when still evaluating module with TLA - in such case error
   // will be returned. That said handling of worker thread became a bit
