@@ -912,12 +912,9 @@ impl JsRuntime {
     let mut receiver = self.mod_evaluate_inner(id)?;
 
     poll_fn(|cx| {
-      if let Poll::Ready(maybe_result) = receiver.poll_next_unpin(cx) {
+      if let Poll::Ready(result) = receiver.poll_next_unpin(cx) {
         debug!("received module evaluate");
-        let evaluation_result = maybe_result.ok_or_else(|| {
-          generic_error("Runtime terminated during module evaluation")
-        })?;
-        return Poll::Ready(evaluation_result);
+        return Poll::Ready(result.unwrap());
       }
       let _r = self.poll_event_loop(cx)?;
       Poll::Pending
@@ -1126,7 +1123,7 @@ impl JsRuntime {
           v8::PromiseState::Fulfilled => {
             state.pending_mod_evaluate.take();
             scope.perform_microtask_checkpoint();
-            sender.try_send(Ok(())).expect("Failed to respond to pending mod evaluation on successful evaluation");
+            sender.try_send(Ok(())).unwrap();
           }
           v8::PromiseState::Rejected => {
             let exception = promise.result(scope);
@@ -1136,7 +1133,7 @@ impl JsRuntime {
             let err1 = exception_to_err_result::<()>(scope, exception, false)
               .map_err(|err| attach_handle_to_error(scope, err, exception))
               .unwrap_err();
-            sender.try_send(Err(err1)).expect("Failed to respond to pending mod evaluation on failed evaluation");
+            sender.try_send(Err(err1)).unwrap();
           }
         }
       }
