@@ -17,10 +17,9 @@ const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
   },
   runRequired(): void {
     const p = Deno.run({
-      cmd:
-        Deno.build.os === "windows"
-          ? ["cmd.exe", "/c", "echo hello"]
-          : ["printf", "hello"],
+      cmd: Deno.build.os === "windows"
+        ? ["cmd.exe", "/c", "echo hello"]
+        : ["printf", "hello"],
     });
     p.close();
   },
