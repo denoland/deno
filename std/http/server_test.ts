@@ -629,6 +629,54 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "[http] receiving bad request from a closed connection should not throw",
+  async fn(): Promise<void> {
+    const server = serve(":8124");
+    const serverRoutine = async (): Promise<void> => {
+      for await (const req of server) {
+        await req.respond({ status: 200, body: "Hello, world!" });
+      }
+    };
+    const p = serverRoutine();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode([
+        // A normal request is required:
+        "GET / HTTP/1.1",
+        "Host: localhost",
+        "",
+        // The bad request:
+        "GET / HTTP/1.1",
+        "Host: localhost",
+        "INVALID!HEADER!",
+        "",
+        "",
+      ].join("\r\n")),
+    );
+    // After sending the two requests, don't receive the reponses.
+
+    // Closing the connection now.
+    conn.close();
+
+    // The server will write responses to the closed connection,
+    // the first few `write()` calls will not throws, until the server received
+    // the TCP RST. So we need the normal request before the bad request to
+    // make the server do a few writes before it writes that `400` response.
+
+    // Wait for server to handle requests.
+    await delay(10);
+
+    server.close();
+    await p;
+  },
+});
+
+Deno.test({
   name: "serveTLS Invalid Cert",
   fn: async (): Promise<void> => {
     async function iteratorReq(server: Server): Promise<void> {
