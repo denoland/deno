@@ -860,17 +860,34 @@ impl CheckOutputIntegrationTest {
     reader.read_to_string(&mut actual).unwrap();
 
     let status = process.wait().expect("failed to finish process");
-    let exit_code = status.code().unwrap();
+
+    if let Some(exit_code) = status.code() {
+      if self.exit_code != exit_code {
+        println!("OUTPUT\n{}\nOUTPUT", actual);
+        panic!(
+          "bad exit code, expected: {:?}, actual: {:?}",
+          self.exit_code, exit_code
+        );
+      }
+    } else {
+      #[cfg(unix)]
+      {
+        use std::os::unix::process::ExitStatusExt;
+        let signal = status.signal().unwrap();
+        println!("OUTPUT\n{}\nOUTPUT", actual);
+        panic!(
+          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
+          self.exit_code, signal
+        );
+      }
+      #[cfg(not(unix))]
+      {
+        println!("OUTPUT\n{}\nOUTPUT", actual);
+        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
+      }
+    }
 
     actual = strip_ansi_codes(&actual).to_string();
-
-    if self.exit_code != exit_code {
-      println!("OUTPUT\n{}\nOUTPUT", actual);
-      panic!(
-        "bad exit code, expected: {:?}, actual: {:?}",
-        self.exit_code, exit_code
-      );
-    }
 
     let expected = if let Some(s) = self.output_str {
       s.to_owned()
