@@ -2138,11 +2138,6 @@ itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 
-itest!(local_sources_not_cached_in_memory {
-  args: "run --allow-read --allow-write no_mem_cache.js",
-  output: "no_mem_cache.js.out",
-});
-
 #[cfg(unix)]
 #[test]
 fn _061_permissions_request() {
