@@ -30,35 +30,8 @@ export function resolve(...pathSegments: string[]): string {
   let resolvedTail = "";
   let resolvedAbsolute = false;
 
-  for (let i = pathSegments.length - 1; i >= -1; i--) {
-    let path: string;
-    if (i >= 0) {
-      path = pathSegments[i];
-    } else if (!resolvedDevice) {
-      if (globalThis.Deno == null) {
-        throw new TypeError("Resolved a drive-letter-less path without a CWD.");
-      }
-      path = Deno.cwd();
-    } else {
-      if (globalThis.Deno == null) {
-        throw new TypeError("Resolved a relative path without a CWD.");
-      }
-      // Windows has the concept of drive-specific current working
-      // directories. If we've resolved a drive letter but not yet an
-      // absolute path, get cwd for that drive, or the process cwd if
-      // the drive cwd is not available. We're sure the device is not
-      // a UNC path at this points, because UNC paths are always absolute.
-      path = Deno.env.get(`=${resolvedDevice}`) || Deno.cwd();
-
-      // Verify that a cwd was found and that it actually points
-      // to our drive. If not, default to the drive's root.
-      if (
-        path === undefined ||
-        path.slice(0, 3).toLowerCase() !== `${resolvedDevice.toLowerCase()}\\`
-      ) {
-        path = `${resolvedDevice}\\`;
-      }
-    }
+  for (let i = pathSegments.length - 1; i >= 0; i--) {
+    const path: string = pathSegments[i];
 
     assertPath(path);
 
