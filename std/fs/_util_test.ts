@@ -7,7 +7,7 @@ import { ensureFileSync } from "./ensure_file.ts";
 import { ensureDirSync } from "./ensure_dir.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(Deno.cwd(), moduleDir, "testdata");
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("_isSubdir", function (): void {
   const pairs = [
