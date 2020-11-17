@@ -10,7 +10,7 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
-use crate::fs::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, is_supported_ext};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;

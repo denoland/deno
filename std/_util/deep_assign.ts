@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert } from "../_util/assert.ts";
+import { assert } from "./assert.ts";
 
 export function deepAssign<T, U>(target: T, source: U): T & U;
 export function deepAssign<T, U, V>(
