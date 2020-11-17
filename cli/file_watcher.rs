@@ -84,6 +84,8 @@ async fn error_handler(watch_future: FileWatcherFuture<()>) {
 ///
 /// - `job_name` is just used for printing watcher status to terminal.
 ///
+/// Note that the watcher will stop working if `target_resolver` fails at some point.
+///
 /// [`ModuleGraph`]: crate::module_graph::Graph
 pub async fn watch_func<F, G>(
   target_resolver: F,
@@ -130,13 +132,19 @@ where
 /// This function adds watcher functionality to subcommands like `run` or `bundle`.
 /// The difference from [`watch_func`] is that this does depend on [`ModuleGraph`].
 ///
-/// - `module_resolver` is used for both resolving file paths to be watched at every restarting of the watcher and building [`ModuleGraph`] or [`ModuleSpecifier`] which will then be passed to `operation`.
+/// - `module_resolver` is used for both resolving file paths to be watched at every restarting
+/// of the watcher and building [`ModuleGraph`] or [`ModuleSpecifier`] which will then be passed
+/// to `operation`.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like doing bundle with the help of [`ModuleGraph`].
 ///
 /// - `job_name` is just used for printing watcher status to terminal.
+///
+/// Note that the watcher will try to continue watching files using the previously resolved
+/// data if `module_resolver` fails at some point, which means the watcher won't work at all
+/// if `module_resolver` fails at the first attempt.
 ///
 /// [`ModuleGraph`]: crate::module_graph::Graph
 /// [`ModuleSpecifier`]: deno_core::ModuleSpecifier
@@ -148,13 +156,34 @@ pub async fn watch_func_with_module_resolution<F, G, T>(
 where
   F: Fn() -> FileWatcherFuture<(Vec<PathBuf>, T)>,
   G: Fn(T) -> FileWatcherFuture<()>,
+  T: Clone,
 {
   let mut debounce = Debounce::new();
+  // Store previous data. If module resolution fails at some point, the watcher will try to
+  // continue watching files using these data.
+  let mut paths = None;
+  let mut module = None;
 
   loop {
-    let (paths, module) = module_resolver().await?;
-    let _watcher = new_watcher(&paths, &debounce)?;
-    let func = error_handler(operation(module));
+    match module_resolver().await {
+      Ok((next_paths, next_module)) => {
+        paths = Some(next_paths);
+        module = Some(next_module);
+      }
+      Err(e) => {
+        // If at least one of `paths` and `module` is `None`, the watcher cannot decide which files
+        // should be watched. So return the error immediately without watching anything.
+        if paths.is_none() || module.is_none() {
+          return Err(e.into());
+        }
+      }
+    }
+    // These `unwrap`s never cause panic since `None` is already checked above.
+    let cur_paths = paths.clone().unwrap();
+    let cur_module = module.clone().unwrap();
+
+    let _watcher = new_watcher(&cur_paths, &debounce)?;
+    let func = error_handler(operation(cur_module));
     let mut is_file_changed = false;
     select! {
       _ = debounce.next() => {
@@ -202,7 +231,8 @@ fn new_watcher(
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 
   for path in paths {
-    watcher.watch(path, RecursiveMode::NonRecursive)?;
+    // Ignore any error e.g. `PathNotFound`
+    let _ = watcher.watch(path, RecursiveMode::NonRecursive);
   }
 
   Ok(watcher)
