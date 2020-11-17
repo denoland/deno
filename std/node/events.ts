@@ -227,12 +227,7 @@ export default class EventEmitter {
    * listener will result in the listener being added, and called, multiple
    * times.
    */
-  public on(
-    eventName: string | symbol,
-    listener: GenericFunction | WrappedFunction,
-  ): this {
-    return this.addListener(eventName, listener);
-  }
+  on = this.addListener;
 
   /**
    * Adds a one-time listener function for the event named eventName. The next
