@@ -174,7 +174,7 @@ where
         // If at least one of `paths` and `module` is `None`, the watcher cannot decide which files
         // should be watched. So return the error immediately without watching anything.
         if paths.is_none() || module.is_none() {
-          return Err(e.into());
+          return Err(e);
         }
       }
     }
