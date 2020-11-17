@@ -223,9 +223,12 @@ export class Server implements AsyncIterable<ServerRequest> {
       conn = await this.listener.accept();
     } catch (error) {
       if (
+        // The listener is closed:
         error instanceof Deno.errors.BadResource ||
+        // TLS handshake errors:
         error instanceof Deno.errors.InvalidData ||
-        error instanceof Deno.errors.UnexpectedEof
+        error instanceof Deno.errors.UnexpectedEof ||
+        error instanceof Deno.errors.ConnectionReset
       ) {
         return mux.add(this.acceptConnAndIterateHttpRequests(mux));
       }
