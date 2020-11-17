@@ -4,7 +4,7 @@ import { assertEquals } from "../testing/asserts.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
-const testdataDir = resolve(Deno.cwd(), moduleDir, "testdata");
+const testdataDir = resolve(moduleDir, "testdata");
 
 /** Handy function to convert an array/array buffer to a string of hex values. */
 function toHexString(value: number[] | ArrayBuffer): string {
