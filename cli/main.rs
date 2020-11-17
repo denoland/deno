@@ -92,7 +92,7 @@ use std::iter::once;
 #[cfg(feature = "tools")]
 use {
   crate::coverage::CoverageCollector, crate::coverage::PrettyCoverageReporter,
-  crate::file_fetcher::FileFetcher, crate::fs as deno_fs,
+  crate::file_fetcher::FileFetcher,
   crate::import_map::ImportMap, crate::specifier_handler::FetchHandler,
   deno_core::futures::Future, deno_core::serde_json,
   deno_core::serde_json::json, deno_core::url::Url, deno_doc as doc,
