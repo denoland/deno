@@ -32,23 +32,36 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Cookie Validation",
+  name: "Cookie Name Validation",
   fn(): void {
     const res: Response = {};
+    const tokens = [
+      '"id"',
+      "id\t",
+      "i\td",
+      "i d",
+      "i;d",
+      "{id}",
+      "[id]",
+      '"',
+      "id\u0091",
+    ];
     res.headers = new Headers();
-    assertThrows(
-      (): void => {
-        setCookie(res, {
-          name: "Space@",
-          value: "Cat",
-          httpOnly: true,
-          secure: true,
-          maxAge: 3,
-        });
-      },
-      Error,
-      'Invalid cookie name: "Space@".',
-    );
+    tokens.forEach((name) => {
+      assertThrows(
+        (): void => {
+          setCookie(res, {
+            name,
+            value: "Cat",
+            httpOnly: true,
+            secure: true,
+            maxAge: 3,
+          });
+        },
+        Error,
+        'Invalid cookie name: "' + name + '".',
+      );
+    });
   },
 });
 
