@@ -1,9 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+#[cfg(feature = "tools")]
 use crate::fmt_errors::JsError;
 #[cfg(not(feature = "tools"))]
 use crate::fs_module_loader::FsModuleLoader;
+#[cfg(feature = "tools")]
 use crate::inspector::DenoInspector;
 #[cfg(feature = "tools")]
 use crate::inspector::InspectorSession;
@@ -102,12 +104,14 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   external_channels: WorkerHandle,
+  #[cfg(feature = "tools")]
   inspector: Option<Box<DenoInspector>>,
   // Following fields are pub because they are accessed
   // when creating a new WebWorker instance.
   pub(crate) internal_channels: WorkerChannelsInternal,
   pub(crate) js_runtime: JsRuntime,
   pub(crate) name: String,
+  #[cfg(feature = "tools")]
   should_break_on_first_statement: bool,
   waker: AtomicWaker,
 }
@@ -120,14 +124,22 @@ impl Worker {
     module_loader: Rc<dyn ModuleLoader>,
     is_main: bool,
   ) -> Self {
+    #[cfg(feature = "tools")]
     let global_state_ = program_state.clone();
+
+    #[cfg(feature = "tools")]
+    let js_error_create_fn = Box::new(move |core_js_error| {
+      JsError::create(core_js_error, global_state_.clone())
+    });
+    #[cfg(feature = "tools")]
+    let js_error_create_fn = Some(js_error_create_fn);
+    #[cfg(not(feature = "tools"))]
+    let js_error_create_fn = None;
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
-      js_error_create_fn: Some(Box::new(move |core_js_error| {
-        JsError::create(core_js_error, global_state_.clone())
-      })),
+      js_error_create_fn,
       ..Default::default()
     });
     {
@@ -136,6 +148,7 @@ impl Worker {
       op_state.get_error_class_fn = &crate::errors::get_error_class_name;
     }
 
+    #[cfg(feature = "tools")]
     let inspector =
       if let Some(inspector_server) = &program_state.maybe_inspector_server {
         Some(DenoInspector::new(
@@ -148,6 +161,7 @@ impl Worker {
         None
       };
 
+    #[cfg(feature = "tools")]
     let should_break_on_first_statement = inspector.is_some()
       && is_main
       && program_state.flags.inspect_brk.is_some();
@@ -156,10 +170,12 @@ impl Worker {
 
     Self {
       external_channels,
+      #[cfg(feature = "tools")]
       inspector,
       internal_channels,
       js_runtime,
       name,
+      #[cfg(feature = "tools")]
       should_break_on_first_statement,
       waker: AtomicWaker::new(),
     }
@@ -205,6 +221,7 @@ impl Worker {
     self.external_channels.clone()
   }
 
+  #[cfg(feature = "tools")]
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
@@ -214,6 +231,9 @@ impl Worker {
         .wait_for_session_and_break_on_next_statement()
     }
   }
+
+  #[cfg(not(feature = "tools"))]
+  fn wait_for_inspector_session(&mut self) {}
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
@@ -229,6 +249,7 @@ impl Worker {
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
     // We always poll the inspector if it exists.
+    #[cfg(feature = "tools")]
     let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
     self.waker.register(cx.waker());
     self.js_runtime.poll_event_loop(cx)
@@ -239,6 +260,7 @@ impl Worker {
   }
 }
 
+#[cfg(feature = "tools")]
 impl Drop for Worker {
   fn drop(&mut self) {
     // The Isolate object must outlive the Inspector object, but this is
@@ -295,6 +317,7 @@ impl MainWorker {
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
+      #[cfg(feature = "tools")]
       ops::errors::init(js_runtime);
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
@@ -470,6 +493,7 @@ impl WebWorker {
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
+      #[cfg(feature = "tools")]
       ops::errors::init(js_runtime);
       ops::io::init(js_runtime);
       ops::websocket::init(js_runtime);

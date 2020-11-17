@@ -7,16 +7,21 @@ extern crate log;
 
 #[cfg(feature = "tools")]
 mod ast;
+#[cfg(feature = "tools")]
 mod checksum;
 mod colors;
 #[cfg(feature = "tools")]
 mod coverage;
+#[cfg(feature = "tools")]
 mod deno_dir;
+#[cfg(feature = "tools")]
 mod diagnostics;
 #[cfg(feature = "tools")]
 mod diff;
+#[cfg(feature = "tools")]
 mod disk_cache;
 mod errors;
+#[cfg(feature = "tools")]
 mod file_fetcher;
 #[cfg(feature = "tools")]
 mod file_watcher;
@@ -24,13 +29,17 @@ mod flags;
 mod flags_allow_net;
 #[cfg(feature = "tools")]
 mod fmt;
+#[cfg(feature = "tools")]
 mod fmt_errors;
 mod fs_util;
+#[cfg(feature = "tools")]
 mod http_cache;
 mod http_util;
+#[cfg(feature = "tools")]
 mod import_map;
 #[cfg(feature = "tools")]
 mod info;
+#[cfg(feature = "tools")]
 mod inspector;
 #[cfg(feature = "tools")]
 mod installer;
@@ -41,7 +50,9 @@ mod lint;
 
 #[cfg(not(feature = "tools"))]
 mod fs_module_loader;
+#[cfg(feature = "tools")]
 mod lockfile;
+#[cfg(feature = "tools")]
 mod media_type;
 mod metrics;
 #[cfg(feature = "tools")]
@@ -55,11 +66,13 @@ mod program_state;
 mod repl;
 mod resolve_addr;
 mod signal;
+#[cfg(feature = "tools")]
 mod source_maps;
 #[cfg(feature = "tools")]
 mod specifier_handler;
 #[cfg(feature = "tools")]
 mod test_runner;
+#[cfg(feature = "tools")]
 mod text_encoding;
 mod tokio_util;
 #[cfg(feature = "tools")]
@@ -71,8 +84,6 @@ mod upgrade;
 mod version;
 mod worker;
 
-use crate::file_fetcher::File;
-use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
@@ -92,13 +103,13 @@ use std::iter::once;
 #[cfg(feature = "tools")]
 use {
   crate::coverage::CoverageCollector, crate::coverage::PrettyCoverageReporter,
-  crate::file_fetcher::FileFetcher,
-  crate::import_map::ImportMap, crate::specifier_handler::FetchHandler,
-  deno_core::futures::Future, deno_core::serde_json,
-  deno_core::serde_json::json, deno_core::url::Url, deno_doc as doc,
-  deno_doc::parser::DocFileLoader, program_state::exit_unstable,
-  std::cell::RefCell, std::path::PathBuf, std::pin::Pin, std::rc::Rc,
-  std::sync::Arc, upgrade::upgrade_command,
+  crate::file_fetcher::File, crate::file_fetcher::FileFetcher,
+  crate::import_map::ImportMap, crate::media_type::MediaType,
+  crate::specifier_handler::FetchHandler, deno_core::futures::Future,
+  deno_core::serde_json, deno_core::serde_json::json, deno_core::url::Url,
+  deno_doc as doc, deno_doc::parser::DocFileLoader,
+  program_state::exit_unstable, std::cell::RefCell, std::path::PathBuf,
+  std::pin::Pin, std::rc::Rc, std::sync::Arc, upgrade::upgrade_command,
 };
 
 #[cfg(feature = "tools")]
@@ -551,6 +562,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   repl::run(&program_state, worker).await
 }
 
+#[cfg(feature = "tools")]
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
   let permissions = Permissions::from_flags(&flags);
@@ -636,6 +648,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
 async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   // Read script content from stdin
+  #[cfg(feature = "tools")]
   if script == "-" {
     return run_from_stdin(flags).await;
   }

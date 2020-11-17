@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#![allow(dead_code)]
+
 use crate::version;
 use bytes::Bytes;
 use deno_core::error::generic_error;

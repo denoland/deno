@@ -1,13 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#[cfg(feature = "tools")]
 use crate::deno_dir;
+#[cfg(feature = "tools")]
 use crate::file_fetcher::CacheSetting;
+#[cfg(feature = "tools")]
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
+#[cfg(feature = "tools")]
 use crate::http_cache;
+#[cfg(feature = "tools")]
 use crate::import_map::ImportMap;
+#[cfg(feature = "tools")]
 use crate::inspector::InspectorServer;
+#[cfg(feature = "tools")]
 use crate::lockfile::Lockfile;
+#[cfg(feature = "tools")]
 use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -46,21 +54,33 @@ pub struct CompiledModule {
 pub struct ProgramState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
+  #[cfg(feature = "tools")]
   pub dir: deno_dir::DenoDir,
+  #[cfg(feature = "tools")]
   pub file_fetcher: FileFetcher,
+  #[cfg(feature = "tools")]
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
+  #[cfg(feature = "tools")]
   pub maybe_import_map: Option<ImportMap>,
+  #[cfg(feature = "tools")]
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
 impl ProgramState {
   pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
-    let custom_root = env::var("DENO_DIR").map(String::into).ok();
+    #[cfg(feature = "tools")]
+    let custom_root: Option<String> =
+      env::var("DENO_DIR").map(String::into).ok();
+    #[cfg(feature = "tools")]
     let dir = deno_dir::DenoDir::new(custom_root)?;
+    #[cfg(feature = "tools")]
     let deps_cache_location = dir.root.join("deps");
+    #[cfg(feature = "tools")]
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
+    #[cfg(feature = "tools")]
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
 
+    #[cfg(feature = "tools")]
     let cache_usage = if flags.cached_only {
       CacheSetting::Only
     } else if !flags.cache_blocklist.is_empty() {
@@ -71,6 +91,7 @@ impl ProgramState {
       CacheSetting::Use
     };
 
+    #[cfg(feature = "tools")]
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
@@ -78,6 +99,7 @@ impl ProgramState {
       ca_file.as_deref(),
     )?;
 
+    #[cfg(feature = "tools")]
     let lockfile = if let Some(filename) = &flags.lock {
       let lockfile = Lockfile::new(filename.clone(), flags.lock_write)?;
       Some(Arc::new(Mutex::new(lockfile)))
@@ -85,6 +107,7 @@ impl ProgramState {
       None
     };
 
+    #[cfg(feature = "tools")]
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
@@ -96,18 +119,25 @@ impl ProgramState {
         }
       };
 
+    #[cfg(feature = "tools")]
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
+    #[cfg(feature = "tools")]
     let maybe_inspector_server = match maybe_inspect_host {
       Some(host) => Some(Arc::new(InspectorServer::new(host))),
       None => None,
     };
 
     let program_state = ProgramState {
+      #[cfg(feature = "tools")]
       dir,
       flags,
+      #[cfg(feature = "tools")]
       file_fetcher,
+      #[cfg(feature = "tools")]
       lockfile,
+      #[cfg(feature = "tools")]
       maybe_import_map,
+      #[cfg(feature = "tools")]
       maybe_inspector_server,
     };
     Ok(Arc::new(program_state))
@@ -230,6 +260,7 @@ impl ProgramState {
 
   // TODO(@kitsonk) this should be a straight forward API on file_fetcher or
   // whatever future refactors do...
+  #[cfg(feature = "tools")]
   fn get_emit(&self, url: &Url) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
     match url.scheme() {
       // we should only be looking for emits for schemes that denote external
@@ -284,6 +315,7 @@ impl ProgramState {
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
 // else, like a refactored file_fetcher.
+#[cfg(feature = "tools")]
 impl SourceMapGetter for ProgramState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {

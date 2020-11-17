@@ -4,6 +4,7 @@ mod dispatch_minimal;
 pub use dispatch_minimal::MinimalOp;
 
 pub mod crypto;
+#[cfg(feature = "tools")]
 pub mod errors;
 pub mod fetch;
 pub mod fs;

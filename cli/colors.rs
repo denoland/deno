@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#![allow(dead_code)]
+
 use regex::Regex;
 use std::env;
 use std::fmt;

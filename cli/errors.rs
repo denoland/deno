@@ -11,6 +11,7 @@
 
 #[cfg(feature = "tools")]
 use crate::ast::DiagnosticBuffer;
+#[cfg(feature = "tools")]
 use crate::import_map::ImportMapError;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -41,6 +42,7 @@ fn get_env_var_error_class(error: &env::VarError) -> &'static str {
   }
 }
 
+#[cfg(feature = "tools")]
 fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
   "URIError"
 }
@@ -185,8 +187,16 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
         .map(get_env_var_error_class)
     })
     .or_else(|| {
-      e.downcast_ref::<ImportMapError>()
-        .map(get_import_map_error_class)
+      #[cfg(feature = "tools")]
+      let maybe_get_error = || {
+        e.downcast_ref::<ImportMapError>()
+          .map(get_import_map_error_class)
+      };
+
+      #[cfg(not(feature = "tools"))]
+      let maybe_get_error = || Option::<&'static str>::None;
+
+      (maybe_get_error)()
     })
     .or_else(|| e.downcast_ref::<io::Error>().map(get_io_error_class))
     .or_else(|| {

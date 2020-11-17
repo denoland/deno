@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+#[cfg(feature = "tools")]
 use crate::fmt_errors::JsError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
@@ -301,6 +302,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
         }
       });
 
+      #[cfg(feature = "tools")]
       if let Ok(js_error) = error.downcast::<JsError>() {
         serialized_error = json!({
           "type": "terminalError",
@@ -323,6 +325,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
         }
       });
 
+      #[cfg(feature = "tools")]
       if let Ok(js_error) = error.downcast::<JsError>() {
         serialized_error = json!({
           "type": "error",
