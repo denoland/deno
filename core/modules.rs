@@ -234,6 +234,7 @@ impl RecursiveModuleLoad {
       _ => unreachable!(),
     };
 
+    eprintln!("prepare result before");
     let prepare_result = self
       .loader
       .prepare_load(
@@ -244,6 +245,7 @@ impl RecursiveModuleLoad {
         self.is_dynamic_import(),
       )
       .await;
+    eprintln!("prepare result after {:#?}", prepare_result);
 
     match prepare_result {
       Ok(()) => (self.id, Ok(self)),

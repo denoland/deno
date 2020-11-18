@@ -2765,6 +2765,11 @@ itest!(top_level_for_await_ts {
   output: "top_level_for_await.out",
 });
 
+itest!(top_level_await_missing_dyn_import {
+  args: "run --allow-read tla_missing_dyn_import/a.mjs",
+  output: "tla_missing_dyn_import.out",
+});
+
 itest!(unstable_disabled {
   args: "run --reload unstable.ts",
   exit_code: 1,

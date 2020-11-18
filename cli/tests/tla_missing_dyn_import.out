@@ -1,0 +1,2 @@
+caught import b.mjs error [WILDCARD]
+caught import c.mjs error [WILDCARD]

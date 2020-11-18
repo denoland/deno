@@ -743,6 +743,7 @@ pub fn module_resolve_callback<'s>(
       match state.modules.get_info(id) {
         Some(info) => return Some(v8::Local::new(scope, &info.handle)),
         None => {
+          eprintln!("module resolve callback error");
           let msg = format!(
             r#"Cannot resolve module "{}" from "{}""#,
             req_str, referrer_name

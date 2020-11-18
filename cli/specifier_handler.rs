@@ -267,6 +267,10 @@ impl SpecifierHandler for FetchHandler {
           let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {
             if e.kind() == std::io::ErrorKind::NotFound {
               let message = if let Some(location) = &maybe_location {
+                eprintln!(
+                  "specifier handler error {:#?} {:#?}",
+                  requested_specifier, is_dynamic
+                );
                 format!(
                   "Cannot resolve module \"{}\" from \"{}\".",
                   requested_specifier, location.filename

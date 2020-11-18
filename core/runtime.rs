@@ -595,6 +595,7 @@ impl JsRuntimeState {
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
+    eprintln!("dyn import cb {} {}", specifier, referrer);
     let fut = load.prepare().boxed_local();
     self.preparing_dyn_imports.push(fut);
   }
@@ -1313,8 +1314,10 @@ impl JsRuntime {
       code,
       loader,
     );
+    eprintln!("load module {}", specifier);
     let (_load_id, prepare_result) = load.prepare().await;
 
+    eprintln!("load module result {:#?}", prepare_result.is_err());
     let mut load = prepare_result?;
 
     while let Some(info_result) = load.next().await {
