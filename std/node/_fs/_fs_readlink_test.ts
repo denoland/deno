@@ -31,6 +31,23 @@ Deno.test({
 });
 
 Deno.test({
+  name: "readlinkUrlSuccess",
+  async fn() {
+    const data = await new Promise((res, rej) => {
+      readlink(new URL(`file://${newname}`), (err, data) => {
+        if (err) {
+          rej(err);
+        }
+        res(data);
+      });
+    });
+
+    assertEquals(typeof data, "string");
+    assertEquals(data as string, oldname);
+  },
+});
+
+Deno.test({
   name: "readlinkEncodeBufferSuccess",
   async fn() {
     const data = await new Promise((res, rej) => {
@@ -51,6 +68,15 @@ Deno.test({
   name: "readlinkSyncSuccess",
   fn() {
     const data = readlinkSync(newname);
+    assertEquals(typeof data, "string");
+    assertEquals(data as string, oldname);
+  },
+});
+
+Deno.test({
+  name: "readlinkSyncUrlSuccess",
+  fn() {
+    const data = readlinkSync(new URL(`file://${newname}`));
     assertEquals(typeof data, "string");
     assertEquals(data as string, oldname);
   },

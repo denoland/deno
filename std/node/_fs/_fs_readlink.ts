@@ -52,8 +52,6 @@ export function readlink(
   optOrCallback: ReadlinkCallback | ReadlinkOptions,
   callback?: ReadlinkCallback,
 ): void {
-  path = path instanceof URL ? fromFileUrl(path) : path;
-
   let cb: ReadlinkCallback | undefined;
   if (typeof optOrCallback === "function") {
     cb = optOrCallback;
@@ -75,7 +73,5 @@ export function readlinkSync(
   path: string | URL,
   opt?: ReadlinkOptions,
 ): string | Uint8Array {
-  path = path instanceof URL ? fromFileUrl(path) : path;
-
   return maybeEncode(Deno.readLinkSync(path), getEncoding(opt));
 }
