@@ -35,7 +35,7 @@ export class Sha1 {
   constructor(sharedMemory = false) {
     this.init(sharedMemory);
   }
-  protected init(sharedMemory: boolean){
+  protected init(sharedMemory: boolean) {
     if (sharedMemory) {
       // deno-fmt-ignore
       blocks[0] = blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
@@ -52,7 +52,6 @@ export class Sha1 {
 
     this.#block = this.#start = this.#bytes = this.#hBytes = 0;
     this.#finalized = this.#hashed = false;
-
   }
   update(message: Message): this {
     if (this.#finalized) {
@@ -386,29 +385,29 @@ export class Sha1 {
     return buffer;
   }
 }
-export class HmacSha1 extends Sha1{
-  #sharedMemory:boolean;
-  #inner:boolean;
-  #oKeyPad:number[];
-  constructor(secretKey:Message,sharedMemory=false) {
+export class HmacSha1 extends Sha1 {
+  #sharedMemory: boolean;
+  #inner: boolean;
+  #oKeyPad: number[];
+  constructor(secretKey: Message, sharedMemory = false) {
     super(sharedMemory);
-    let key: number[]|Uint8Array|undefined;
-    if (typeof secretKey ==="string"){
-      const bytes:number[]=[];
-      const length:number= secretKey.length;
-      let index= 0;
+    let key: number[] | Uint8Array | undefined;
+    if (typeof secretKey === "string") {
+      const bytes: number[] = [];
+      const length: number = secretKey.length;
+      let index = 0;
       for (let i = 0; i < length; i++) {
         let code = secretKey.charCodeAt(i);
-        if (code<0x80){
+        if (code < 0x80) {
           bytes[index++] = code;
-        }else if (code<0x800){
-          bytes[index++] = 0xc0 | (code>>6);
-          bytes[index++] = 0x80 | (code&0x3f);
-        }else if (code<0xd800||code>=0xe000){
+        } else if (code < 0x800) {
+          bytes[index++] = 0xc0 | (code >> 6);
+          bytes[index++] = 0x80 | (code & 0x3f);
+        } else if (code < 0xd800 || code >= 0xe000) {
           bytes[index++] = 0xe0 | (code >> 12);
           bytes[index++] = 0x80 | ((code >> 6) & 0x3f);
           bytes[index++] = 0x80 | (code & 0x3f);
-        }else {
+        } else {
           code = 0x10000 +
             (((code & 0x3ff) << 10) | (secretKey.charCodeAt(++i) & 0x3ff));
           bytes[index++] = 0xf0 | (code >> 18);
@@ -418,20 +417,20 @@ export class HmacSha1 extends Sha1{
         }
       }
       key = bytes;
-    }else {
+    } else {
       if (secretKey instanceof ArrayBuffer) {
         key = new Uint8Array(secretKey);
       } else {
         key = secretKey;
       }
     }
-    if (key.length>64){
+    if (key.length > 64) {
       key = new Sha1(true).update(key).array();
     }
-    const oKeyPad:number[] = [];
-    const iKeyPad:number[] = [];
+    const oKeyPad: number[] = [];
+    const iKeyPad: number[] = [];
     for (let i = 0; i < 64; i++) {
-      const b=key[i]||0;
+      const b = key[i] || 0;
       oKeyPad[i] = 0x5c ^ b;
       iKeyPad[i] = 0x36 ^ b;
     }
@@ -439,9 +438,9 @@ export class HmacSha1 extends Sha1{
     this.update(iKeyPad);
     this.#oKeyPad = oKeyPad;
     this.#inner = true;
-    this.#sharedMemory = sharedMemory
+    this.#sharedMemory = sharedMemory;
   }
-  protected finalize():void{
+  protected finalize(): void {
     super.finalize();
     if (this.#inner) {
       this.#inner = false;
