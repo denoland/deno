@@ -1503,6 +1503,7 @@ pub mod tests {
   use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
+  use std::path::PathBuf;
 
   pub fn run_in_task<F>(f: F)
   where
@@ -2605,5 +2606,75 @@ main();
         _ => panic!(),
       };
     })
+  }
+
+  #[test]
+  fn dyn_circular_import() {
+    #[derive(Clone, Default)]
+    struct DynImportCircularLoader {
+      pub resolve_count: Arc<AtomicUsize>,
+      pub load_count: Arc<AtomicUsize>,
+    }
+
+    impl ModuleLoader for DynImportCircularLoader {
+      fn resolve(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, AnyError> {
+        self.resolve_count.fetch_add(1, Ordering::Relaxed);
+        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        self.load_count.fetch_add(1, Ordering::Relaxed);
+        let filename = PathBuf::from(specifier.to_string())
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .to_string();
+        eprintln!("{}", filename.as_str());
+        let code = match filename.as_str() {
+          "a.js" => "import './b.js';",
+          "b.js" => "import './c.js';\nimport './a.js';",
+          "c.js" => "import './d.js';",
+          "d.js" => "// pass",
+          _ => unreachable!(),
+        };
+        let info = ModuleSource {
+          module_url_specified: specifier.to_string(),
+          module_url_found: specifier.to_string(),
+          code: code.to_owned(),
+        };
+        async move { Ok(info) }.boxed()
+      }
+    }
+
+    let loader = Rc::new(DynImportCircularLoader::default());
+    let resolve_count = loader.resolve_count.clone();
+    let load_count = loader.load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader), 
+      ..Default::default()
+    });
+
+    // Dynamically import mod_b
+    runtime
+        .execute("file:///entry.js", "import('./b.js');\nimport('./a.js');").unwrap();
+
+    let result = futures::executor::block_on(runtime.run_event_loop());
+    eprintln!("result {:?}", result);
+    assert!(result.is_ok());
+    eprintln!("{}", resolve_count.load(Ordering::Relaxed));
+    eprintln!("{}", load_count.load(Ordering::Relaxed));
   }
 }
