@@ -10,7 +10,6 @@ extern crate log;
 mod ast;
 mod checksum;
 mod colors;
-mod coverage;
 mod deno_dir;
 mod diagnostics;
 mod diff;
@@ -48,8 +47,6 @@ mod tsc_config;
 mod version;
 mod worker;
 
-use crate::coverage::CoverageCollector;
-use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
@@ -675,7 +672,8 @@ async fn test_command(
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
-    let mut coverage_collector = CoverageCollector::new(session);
+    let mut coverage_collector =
+      tools::coverage::CoverageCollector::new(session);
     coverage_collector.start_collecting().await?;
 
     Some(coverage_collector)
@@ -694,10 +692,14 @@ async fn test_command(
     let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverages =
-      coverage::filter_script_coverages(coverages, test_file_url, test_modules);
+    let filtered_coverages = tools::coverage::filter_script_coverages(
+      coverages,
+      test_file_url,
+      test_modules,
+    );
 
-    let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
+    let mut coverage_reporter =
+      tools::coverage::PrettyCoverageReporter::new(quiet);
     for coverage in filtered_coverages {
       coverage_reporter.visit_coverage(&coverage);
     }
