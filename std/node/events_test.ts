@@ -667,3 +667,21 @@ Deno.test({
     assertEquals(ee.listenerCount("error"), 0);
   },
 });
+
+// Event emitter's `on` previously referenced addListener internally, so overriding addListener
+// would cause a deadlock
+// This is a regression test
+Deno.test("Elements that extend EventEmitter listener alias don't end up in a deadlock", () => {
+  class X extends EventEmitter {
+    addListener(eventName: string, listener: () => void) {
+      return super.on(eventName, listener);
+    }
+  }
+
+  const x = new X();
+  try {
+    x.on("x", () => {});
+  } catch (e) {
+    fail();
+  }
+});
