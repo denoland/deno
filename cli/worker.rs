@@ -127,19 +127,15 @@ impl Worker {
     #[cfg(feature = "tools")]
     let global_state_ = program_state.clone();
 
-    #[cfg(feature = "tools")]
-    let js_error_create_fn = Box::new(move |core_js_error| {
-      JsError::create(core_js_error, global_state_.clone())
-    });
-    #[cfg(feature = "tools")]
-    let js_error_create_fn = Some(js_error_create_fn);
-    #[cfg(not(feature = "tools"))]
-    let js_error_create_fn = None;
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
-      js_error_create_fn,
+      #[cfg(feature = "tools")]
+      js_error_create_fn: Some(Box::new(move |core_js_error| {
+        JsError::create(core_js_error, global_state_.clone())
+      })),
+      #[cfg(not(feature = "tools"))]
+      js_error_create_fn: None,
       ..Default::default()
     });
     {

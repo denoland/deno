@@ -21,6 +21,7 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -69,7 +70,7 @@ pub struct ProgramState {
 impl ProgramState {
   pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     #[cfg(feature = "tools")]
-    let custom_root: Option<String> =
+    let custom_root: Option<PathBuf> =
       env::var("DENO_DIR").map(String::into).ok();
     #[cfg(feature = "tools")]
     let dir = deno_dir::DenoDir::new(custom_root)?;
