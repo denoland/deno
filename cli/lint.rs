@@ -10,7 +10,7 @@ use crate::ast;
 use crate::colors;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::fs::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
 use deno_core::error::{generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;

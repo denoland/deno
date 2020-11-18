@@ -22,7 +22,7 @@ mod flags;
 mod flags_allow_net;
 mod fmt;
 mod fmt_errors;
-mod fs;
+mod fs_util;
 mod http_cache;
 mod http_util;
 mod import_map;
@@ -57,7 +57,6 @@ use crate::coverage::CoverageCollector;
 use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::fs as deno_fs;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -381,7 +380,7 @@ async fn bundle_command(
   if let Some(out_file_) = out_file.as_ref() {
     let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
-    deno_fs::write_file(out_file_, output_bytes, 0o644)?;
+    fs_util::write_file(out_file_, output_bytes, 0o644)?;
     info!(
       "{} {:?} ({})",
       colors::green("Emit"),
@@ -583,8 +582,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .collect();
 
   if let Some(import_map) = program_state.flags.import_map_path.clone() {
-    paths_to_watch
-      .push(fs::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap());
+    paths_to_watch.push(
+      fs_util::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap(),
+    );
   }
 
   // FIXME(bartlomieju): new file watcher is created on after each restart

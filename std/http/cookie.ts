@@ -32,11 +32,14 @@ export interface Cookie {
 
 export type SameSite = "Strict" | "Lax" | "None";
 
+const FIELD_CONTENT_REGEXP = /^(?=[\x20-\x7E]*$)[^()@<>,;:\\"\[\]?={}\s]+$/;
+
 function toString(cookie: Cookie): string {
   if (!cookie.name) {
     return "";
   }
   const out: string[] = [];
+  validateCookieName(cookie.name);
   out.push(`${cookie.name}=${cookie.value}`);
 
   // Fallback for invalid Set-Cookie
@@ -77,6 +80,17 @@ function toString(cookie: Cookie): string {
     out.push(cookie.unparsed.join("; "));
   }
   return out.join("; ");
+}
+
+/**
+ * Validate Cookie property.
+ * @param key Name of the cookie.
+ * @param value Value of the cookie.
+ */
+function validateCookieName(value: string | undefined | null): void {
+  if (value && !FIELD_CONTENT_REGEXP.test(value)) {
+    throw new TypeError(`Invalid cookie name: "${value}".`);
+  }
 }
 
 /**
