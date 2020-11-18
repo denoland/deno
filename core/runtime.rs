@@ -1500,10 +1500,10 @@ pub mod tests {
   use futures::FutureExt;
   use std::io;
   use std::ops::FnOnce;
+  use std::path::PathBuf;
   use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
-  use std::path::PathBuf;
 
   pub fn run_in_task<F>(f: F)
   where
@@ -2663,13 +2663,14 @@ main();
     let resolve_count = loader.resolve_count.clone();
     let load_count = loader.load_count.clone();
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader), 
+      module_loader: Some(loader),
       ..Default::default()
     });
 
     // Dynamically import mod_b
     runtime
-        .execute("file:///entry.js", "import('./b.js');\nimport('./a.js');").unwrap();
+      .execute("file:///entry.js", "import('./b.js');\nimport('./a.js');")
+      .unwrap();
 
     let result = futures::executor::block_on(runtime.run_event_loop());
     eprintln!("result {:?}", result);
