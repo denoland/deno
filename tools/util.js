@@ -31,7 +31,7 @@ async function getFilesFromGit(baseDir, cmd) {
   return files;
 }
 
-async function gitLsFiles(baseDir, patterns) {
+function gitLsFiles(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "git",
@@ -50,7 +50,7 @@ async function gitLsFiles(baseDir, patterns) {
 }
 
 /** List all files staged for commit */
-async function gitStaged(baseDir, patterns) {
+function gitStaged(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "git",

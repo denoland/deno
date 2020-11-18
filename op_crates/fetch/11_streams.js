@@ -1073,14 +1073,17 @@
         throw new TypeError("method is not callable");
       }
       if (algoArgCount === 0) {
+        // deno-lint-ignore require-await
         return async () => call(method, underlyingObject, extraArgs);
       } else {
+        // deno-lint-ignore require-await
         return async (arg) => {
           const fullArgs = [arg, ...extraArgs];
           return call(method, underlyingObject, fullArgs);
         };
       }
     }
+    // deno-lint-ignore require-await
     return async () => undefined;
   }
 
@@ -2492,6 +2495,7 @@
       if (typeof transformMethod !== "function") {
         throw new TypeError("tranformer.transform must be callable.");
       }
+      // deno-lint-ignore require-await
       transformAlgorithm = async (chunk) =>
         call(transformMethod, transformer, [chunk, controller]);
     }
