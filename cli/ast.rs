@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::file_fetcher::TextDocument;
 use crate::media_type::MediaType;
+use crate::tsc_config;
 
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
-use std::result;
 use std::sync::Arc;
 use std::sync::RwLock;
 use swc_common::chain;
@@ -22,6 +22,7 @@ use swc_common::errors::HandlerFlags;
 use swc_common::FileName;
 use swc_common::Globals;
 use swc_common::Loc;
+use swc_common::SourceFile;
 use swc_common::SourceMap;
 use swc_common::Span;
 use swc_ecmascript::ast::Module;
@@ -39,12 +40,10 @@ use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::helpers;
 use swc_ecmascript::transforms::pass::Optional;
-use swc_ecmascript::transforms::proposals::decorators;
+use swc_ecmascript::transforms::proposals;
 use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
-
-type Result<V> = result::Result<V, AnyError>;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
@@ -70,6 +69,18 @@ impl Into<Location> for swc_common::Loc {
       line: self.line,
       col: self.col_display,
     }
+  }
+}
+
+impl Into<ModuleSpecifier> for Location {
+  fn into(self) -> ModuleSpecifier {
+    ModuleSpecifier::resolve_url_or_path(&self.filename).unwrap()
+  }
+}
+
+impl std::fmt::Display for Location {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "{}:{}:{}", self.filename, self.line, self.col)
   }
 }
 
@@ -174,7 +185,10 @@ pub fn get_syntax(media_type: &MediaType) -> Syntax {
 
 /// Options which can be adjusted when transpiling a module.
 #[derive(Debug, Clone)]
-pub struct TranspileOptions {
+pub struct EmitOptions {
+  /// Indicate if JavaScript is being checked/transformed as well, or if it is
+  /// only TypeScript.
+  pub check_js: bool,
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -191,14 +205,30 @@ pub struct TranspileOptions {
   pub transform_jsx: bool,
 }
 
-impl Default for TranspileOptions {
+impl Default for EmitOptions {
   fn default() -> Self {
-    TranspileOptions {
+    EmitOptions {
+      check_js: false,
       emit_metadata: false,
       inline_source_map: true,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
       transform_jsx: true,
+    }
+  }
+}
+
+impl From<tsc_config::TsConfig> for EmitOptions {
+  fn from(config: tsc_config::TsConfig) -> Self {
+    let options: tsc_config::EmitConfigOptions =
+      serde_json::from_value(config.0).unwrap();
+    EmitOptions {
+      check_js: options.check_js,
+      emit_metadata: options.emit_decorator_metadata,
+      inline_source_map: options.inline_source_map,
+      jsx_factory: options.jsx_factory,
+      jsx_fragment_factory: options.jsx_fragment_factory,
+      transform_jsx: options.jsx == "react",
     }
   }
 }
@@ -246,8 +276,8 @@ impl ParsedModule {
   /// The result is a tuple of the code and optional source map as strings.
   pub fn transpile(
     self,
-    options: &TranspileOptions,
-  ) -> Result<(TextDocument, Option<TextDocument>)> {
+    options: &EmitOptions,
+  ) -> Result<(String, Option<String>), AnyError> {
     let program = Program::Module(self.module);
 
     let jsx_pass = react::react(
@@ -264,10 +294,11 @@ impl ParsedModule {
     );
     let mut passes = chain!(
       Optional::new(jsx_pass, options.transform_jsx),
-      decorators::decorators(decorators::Config {
+      proposals::decorators::decorators(proposals::decorators::Config {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
+      helpers::inject_helpers(),
       typescript::strip(),
       fixer(Some(&self.comments)),
     );
@@ -297,7 +328,7 @@ impl ParsedModule {
       program.emit_with(&mut emitter)?;
     }
     let mut src = String::from_utf8(buf)?;
-    let mut map: Option<TextDocument> = None;
+    let mut map: Option<String> = None;
     {
       let mut buf = Vec::new();
       self
@@ -310,10 +341,10 @@ impl ParsedModule {
         let encoded_map = base64::encode(buf);
         src.push_str(&encoded_map);
       } else {
-        map = Some(TextDocument::from(buf));
+        map = Some(String::from_utf8(buf)?);
       }
     }
-    Ok((src.into(), map))
+    Ok((src, map))
   }
 }
 
@@ -326,11 +357,14 @@ impl ParsedModule {
 /// - `source` - The source code for the module.
 /// - `media_type` - The media type for the module.
 ///
+// NOTE(bartlomieju): `specifier` has `&str` type instead of
+// `&ModuleSpecifier` because runtime compiler APIs don't
+// require valid module specifiers
 pub fn parse(
-  specifier: &ModuleSpecifier,
+  specifier: &str,
   source: &str,
   media_type: &MediaType,
-) -> Result<ParsedModule> {
+) -> Result<ParsedModule, AnyError> {
   let source_map = SourceMap::default();
   let source_file = source_map.new_source_file(
     FileName::Custom(specifier.to_string()),
@@ -373,6 +407,128 @@ pub fn parse(
   })
 }
 
+/// A low level function which transpiles a source module into an swc
+/// SourceFile.
+pub fn transpile_module(
+  filename: &str,
+  src: &str,
+  media_type: &MediaType,
+  emit_options: &EmitOptions,
+  globals: &Globals,
+  cm: Rc<SourceMap>,
+) -> Result<(Rc<SourceFile>, Module), AnyError> {
+  // TODO(@kitsonk) DRY-up with ::parse()
+  let error_buffer = ErrorBuffer::new();
+  let handler = Handler::with_emitter_and_flags(
+    Box::new(error_buffer.clone()),
+    HandlerFlags {
+      can_emit_warnings: true,
+      dont_buffer_diagnostics: true,
+      ..HandlerFlags::default()
+    },
+  );
+  let comments = SingleThreadedComments::default();
+  let syntax = get_syntax(media_type);
+  let source_file =
+    cm.new_source_file(FileName::Custom(filename.to_string()), src.to_string());
+  let lexer = Lexer::new(
+    syntax,
+    TARGET,
+    StringInput::from(&*source_file),
+    Some(&comments),
+  );
+  let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
+  let sm = cm.clone();
+  let module = parser.parse_module().map_err(move |err| {
+    let mut diagnostic = err.into_diagnostic(&handler);
+    diagnostic.emit();
+
+    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
+      sm.lookup_char_pos(span.lo)
+    })
+  })?;
+  // TODO(@kitsonk) DRY-up with ::transpile()
+  let jsx_pass = react::react(
+    cm,
+    Some(&comments),
+    react::Options {
+      pragma: emit_options.jsx_factory.clone(),
+      pragma_frag: emit_options.jsx_fragment_factory.clone(),
+      // this will use `Object.assign()` instead of the `_extends` helper
+      // when spreading props.
+      use_builtins: true,
+      ..Default::default()
+    },
+  );
+  let mut passes = chain!(
+    Optional::new(jsx_pass, emit_options.transform_jsx),
+    proposals::decorators::decorators(proposals::decorators::Config {
+      legacy: true,
+      emit_metadata: emit_options.emit_metadata
+    }),
+    helpers::inject_helpers(),
+    typescript::strip(),
+    fixer(Some(&comments)),
+  );
+  let module = swc_common::GLOBALS.set(globals, || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      module.fold_with(&mut passes)
+    })
+  });
+
+  Ok((source_file, module))
+}
+
+pub struct BundleHook;
+
+impl swc_bundler::Hook for BundleHook {
+  fn get_import_meta_props(
+    &self,
+    span: swc_common::Span,
+    module_record: &swc_bundler::ModuleRecord,
+  ) -> Result<Vec<swc_ecmascript::ast::KeyValueProp>, AnyError> {
+    use swc_ecmascript::ast;
+
+    // we use custom file names, and swc "wraps" these in `<` and `>` so, we
+    // want to strip those back out.
+    let mut value = module_record.file_name.to_string();
+    value.pop();
+    value.remove(0);
+
+    Ok(vec![
+      ast::KeyValueProp {
+        key: ast::PropName::Ident(ast::Ident::new("url".into(), span)),
+        value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
+          span,
+          value: value.into(),
+          has_escape: false,
+        }))),
+      },
+      ast::KeyValueProp {
+        key: ast::PropName::Ident(ast::Ident::new("main".into(), span)),
+        value: Box::new(if module_record.is_entry {
+          ast::Expr::Member(ast::MemberExpr {
+            span,
+            obj: ast::ExprOrSuper::Expr(Box::new(ast::Expr::MetaProp(
+              ast::MetaPropExpr {
+                meta: ast::Ident::new("import".into(), span),
+                prop: ast::Ident::new("meta".into(), span),
+              },
+            ))),
+            prop: Box::new(ast::Expr::Ident(ast::Ident::new(
+              "main".into(),
+              span,
+            ))),
+            computed: false,
+          })
+        } else {
+          ast::Expr::Lit(ast::Lit::Bool(ast::Bool { span, value: false }))
+        }),
+      },
+    ])
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -386,8 +542,9 @@ mod tests {
     let source = r#"import * as bar from "./test.ts";
     const foo = await import("./foo.ts");
     "#;
-    let parsed_module = parse(&specifier, source, &MediaType::JavaScript)
-      .expect("could not parse module");
+    let parsed_module =
+      parse(specifier.as_str(), source, &MediaType::JavaScript)
+        .expect("could not parse module");
     let actual = parsed_module.analyze_dependencies();
     assert_eq!(
       actual,
@@ -434,19 +591,15 @@ mod tests {
       }
     }
     "#;
-    let module = parse(&specifier, source, &MediaType::TypeScript)
+    let module = parse(specifier.as_str(), source, &MediaType::TypeScript)
       .expect("could not parse module");
     let (code, maybe_map) = module
-      .transpile(&TranspileOptions::default())
+      .transpile(&EmitOptions::default())
       .expect("could not strip types");
-    assert!(code
-      .to_string()
-      .unwrap()
-      .starts_with("var D;\n(function(D) {\n"));
-    assert!(code
-      .to_string()
-      .unwrap()
-      .contains("\n//# sourceMappingURL=data:application/json;base64,"));
+    assert!(code.starts_with("var D;\n(function(D) {\n"));
+    assert!(
+      code.contains("\n//# sourceMappingURL=data:application/json;base64,")
+    );
     assert!(maybe_map.is_none());
   }
 
@@ -462,15 +615,12 @@ mod tests {
       }
     }
     "#;
-    let module = parse(&specifier, source, &MediaType::TSX)
+    let module = parse(specifier.as_str(), source, &MediaType::TSX)
       .expect("could not parse module");
     let (code, _) = module
-      .transpile(&TranspileOptions::default())
+      .transpile(&EmitOptions::default())
       .expect("could not strip types");
-    assert!(code
-      .to_string()
-      .unwrap()
-      .contains("React.createElement(\"div\", null"));
+    assert!(code.contains("React.createElement(\"div\", null"));
   }
 
   #[test]
@@ -496,14 +646,11 @@ mod tests {
       }
     }
     "#;
-    let module = parse(&specifier, source, &MediaType::TypeScript)
+    let module = parse(specifier.as_str(), source, &MediaType::TypeScript)
       .expect("could not parse module");
     let (code, _) = module
-      .transpile(&TranspileOptions::default())
+      .transpile(&EmitOptions::default())
       .expect("could not strip types");
-    assert!(code
-      .to_string()
-      .unwrap()
-      .contains("_applyDecoratedDescriptor("));
+    assert!(code.contains("_applyDecoratedDescriptor("));
   }
 }

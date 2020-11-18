@@ -1,14 +1,25 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
+use crate::colors;
+use crate::media_type::MediaType;
+use crate::module_graph::BundleType;
+use crate::module_graph::EmitOptions;
+use crate::module_graph::GraphBuilder;
 use crate::permissions::Permissions;
-use crate::tsc::runtime_bundle;
-use crate::tsc::runtime_compile;
-use crate::tsc::runtime_transpile;
+use crate::specifier_handler::FetchHandler;
+use crate::specifier_handler::MemoryHandler;
+use crate::specifier_handler::SpecifierHandler;
+use crate::tsc_config;
+
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
+use deno_core::error::Context;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
+use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -34,35 +45,53 @@ async fn op_compile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
-  let cli_state = super::global_state2(&state);
-  let global_state = cli_state.clone();
-  let permissions = {
+  if args.bundle {
+    super::check_unstable2(&state, "Deno.bundle");
+  } else {
+    super::check_unstable2(&state, "Deno.compile");
+  }
+  let program_state = super::global_state2(&state);
+  let runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
-  let fut = if args.bundle {
-    runtime_bundle(
-      &global_state,
-      permissions,
-      &args.root_name,
-      &args.sources,
-      &args.options,
-    )
-    .boxed_local()
+  let handler: Rc<RefCell<dyn SpecifierHandler>> =
+    if let Some(sources) = args.sources {
+      Rc::new(RefCell::new(MemoryHandler::new(sources)))
+    } else {
+      Rc::new(RefCell::new(FetchHandler::new(
+        &program_state,
+        runtime_permissions,
+      )?))
+    };
+  let mut builder = GraphBuilder::new(handler, None, None);
+  let specifier = ModuleSpecifier::resolve_url_or_path(&args.root_name)
+    .context("The root specifier is invalid.")?;
+  builder.add(&specifier, false).await?;
+  let graph = builder.get_graph();
+  let bundle_type = if args.bundle {
+    BundleType::Esm
   } else {
-    runtime_compile(
-      &global_state,
-      permissions,
-      &args.root_name,
-      &args.sources,
-      &args.options,
-    )
-    .boxed_local()
+    BundleType::None
   };
-  let result = fut.await?;
-  Ok(result)
+  let debug = program_state.flags.log_level == Some(log::Level::Debug);
+  let maybe_user_config: Option<HashMap<String, Value>> =
+    if let Some(options) = args.options {
+      Some(serde_json::from_str(&options)?)
+    } else {
+      None
+    };
+  let (emitted_files, result_info) = graph.emit(EmitOptions {
+    bundle_type,
+    debug,
+    maybe_user_config,
+  })?;
+
+  Ok(json!({
+    "emittedFiles": emitted_files,
+    "diagnostics": result_info.diagnostics,
+  }))
 }
 
 #[derive(Deserialize, Debug)]
@@ -71,16 +100,58 @@ struct TranspileArgs {
   options: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct RuntimeTranspileEmit {
+  source: String,
+  map: Option<String>,
+}
+
 async fn op_transpile(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.transpile");
+  super::check_unstable2(&state, "Deno.transpileOnly");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let cli_state = super::global_state2(&state);
-  let global_state = cli_state.clone();
-  let result =
-    runtime_transpile(global_state, &args.sources, &args.options).await?;
+
+  let mut compiler_options = tsc_config::TsConfig::new(json!({
+    "checkJs": true,
+    "emitDecoratorMetadata": false,
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
+    "inlineSourceMap": false,
+  }));
+
+  let user_options: HashMap<String, Value> = if let Some(options) = args.options
+  {
+    serde_json::from_str(&options)?
+  } else {
+    HashMap::new()
+  };
+  let maybe_ignored_options =
+    compiler_options.merge_user_config(&user_options)?;
+  // TODO(@kitsonk) these really should just be passed back to the caller
+  if let Some(ignored_options) = maybe_ignored_options {
+    info!("{}: {}", colors::yellow("warning"), ignored_options);
+  }
+
+  let emit_options: ast::EmitOptions = compiler_options.into();
+  let mut emit_map = HashMap::new();
+
+  for (specifier, source) in args.sources {
+    let media_type = MediaType::from(&specifier);
+    let parsed_module = ast::parse(&specifier, &source, &media_type)?;
+    let (source, maybe_source_map) = parsed_module.transpile(&emit_options)?;
+
+    emit_map.insert(
+      specifier.to_string(),
+      RuntimeTranspileEmit {
+        source,
+        map: maybe_source_map,
+      },
+    );
+  }
+  let result = serde_json::to_value(emit_map)?;
   Ok(result)
 }

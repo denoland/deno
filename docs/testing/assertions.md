@@ -18,8 +18,8 @@ The assertions module provides 10 assertions:
 - `assertEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertNotEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertStrictEquals(actual: unknown, expected: unknown, msg?: string): void`
-- `assertStringContains(actual: string, expected: string, msg?: string): void`
-- `assertArrayContains(actual: unknown[], expected: unknown[], msg?: string): void`
+- `assertStringIncludes(actual: string, expected: string, msg?: string): void`
+- `assertArrayIncludes(actual: unknown[], expected: unknown[], msg?: string): void`
 - `assertMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertNotMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertThrows(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
@@ -92,25 +92,25 @@ precise check against two primitive types.
 ### Contains
 
 There are two methods available to assert a value contains a value,
-`assertStringContains()` and `assertArrayContains()`.
+`assertStringIncludes()` and `assertArrayIncludes()`.
 
-The `assertStringContains()` assertion does a simple includes check on a string
+The `assertStringIncludes()` assertion does a simple includes check on a string
 to see if it contains the expected string.
 
 ```js
 Deno.test("Test Assert String Contains", () => {
-  assertStringContains("Hello World", "Hello");
+  assertStringIncludes("Hello World", "Hello");
 });
 ```
 
-The `assertArrayContains()` assertion is slightly more advanced and can find
+The `assertArrayIncludes()` assertion is slightly more advanced and can find
 both a value within an array and an array of values within an array.
 
 ```js
 Deno.test("Test Assert Array Contains", () => {
-  assertArrayContains([1, 2, 3], [1]);
-  assertArrayContains([1, 2, 3], [1, 2]);
-  assertArrayContains(Array.from("Hello World"), Array.from("Hello"));
+  assertArrayIncludes([1, 2, 3], [1]);
+  assertArrayIncludes([1, 2, 3], [1, 2]);
+  assertArrayIncludes(Array.from("Hello World"), Array.from("Hello"));
 });
 ```
 

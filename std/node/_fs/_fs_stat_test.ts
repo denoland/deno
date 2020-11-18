@@ -22,40 +22,40 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.isFile(), expected.isFile);
   assertEquals(actual.isDirectory(), expected.isDirectory);
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
-  // assertEquals(actual.ctimeMs === expected.ctime?.getTime());
-  // assertEquals(actual.ctime?.getTime() === expected.ctime?.getTime());
+}
+
+function toBigInt(num?: number | null) {
+  if (num === undefined || num === null) return null;
+  return BigInt(num);
 }
 
 export function assertStatsBigInt(
   actual: BigIntStats,
   expected: Deno.FileInfo,
 ) {
-  assertEquals(actual.dev, BigInt(expected.dev));
-  assertEquals(actual.gid, BigInt(expected.gid));
-  assertEquals(actual.size, BigInt(expected.size));
-  assertEquals(actual.blksize, BigInt(expected.blksize));
-  assertEquals(actual.blocks, BigInt(expected.blocks));
-  assertEquals(actual.ino, BigInt(expected.ino));
-  assertEquals(actual.gid, BigInt(expected.gid));
-  assertEquals(actual.mode, BigInt(expected.mode));
-  assertEquals(actual.nlink, BigInt(expected.nlink));
-  assertEquals(actual.rdev, BigInt(expected.rdev));
-  assertEquals(actual.uid, BigInt(expected.uid));
+  assertEquals(actual.dev, toBigInt(expected.dev));
+  assertEquals(actual.gid, toBigInt(expected.gid));
+  assertEquals(actual.size, toBigInt(expected.size));
+  assertEquals(actual.blksize, toBigInt(expected.blksize));
+  assertEquals(actual.blocks, toBigInt(expected.blocks));
+  assertEquals(actual.ino, toBigInt(expected.ino));
+  assertEquals(actual.gid, toBigInt(expected.gid));
+  assertEquals(actual.mode, toBigInt(expected.mode));
+  assertEquals(actual.nlink, toBigInt(expected.nlink));
+  assertEquals(actual.rdev, toBigInt(expected.rdev));
+  assertEquals(actual.uid, toBigInt(expected.uid));
   assertEquals(actual.atime?.getTime(), expected.atime?.getTime());
   assertEquals(actual.mtime?.getTime(), expected.mtime?.getTime());
   assertEquals(actual.birthtime?.getTime(), expected.birthtime?.getTime());
   assertEquals(Number(actual.atimeMs), expected.atime?.getTime());
   assertEquals(Number(actual.mtimeMs), expected.mtime?.getTime());
   assertEquals(Number(actual.birthtimeMs), expected.birthtime?.getTime());
-  assertEquals(Number(actual.atimeNs) / 1e6, expected.atime?.getTime());
-  assertEquals(Number(actual.mtimeNs) / 1e6, expected.atime?.getTime());
-  assertEquals(Number(actual.birthtimeNs) / 1e6, expected.atime?.getTime());
+  assertEquals(actual.atimeNs === null, actual.atime === null);
+  assertEquals(actual.mtimeNs === null, actual.mtime === null);
+  assertEquals(actual.birthtimeNs === null, actual.birthtime === null);
   assertEquals(actual.isFile(), expected.isFile);
   assertEquals(actual.isDirectory(), expected.isDirectory);
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
-  // assertEquals(actual.ctime?.getTime() === expected.ctime?.getTime());
-  // assertEquals(Number(actual.ctimeMs) === expected.ctime?.getTime());
-  // assertEquals(Number(actual.ctimeNs) / 1e+6 === expected.ctime?.getTime());
 }
 
 Deno.test({

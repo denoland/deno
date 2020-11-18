@@ -23,13 +23,13 @@ cargo test std_tests
 Lint the code:
 
 ```shell
-./tools/lint.py
+deno run -A --unstable ./tools/lint.js
 ```
 
 Format the code:
 
 ```shell
-./tools/format.py
+deno run -A --unstable ./tools/format.js
 ```
 
 ### Profiling

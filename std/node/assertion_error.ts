@@ -363,10 +363,10 @@ export interface AssertionErrorConstructorOptions {
   expected?: unknown;
   operator?: string;
   details?: AssertionErrorDetailsDescriptor[];
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // deno-lint-ignore ban-types
   stackStartFn?: Function;
   // Compatibility with older versions.
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // deno-lint-ignore ban-types
   stackStartFunction?: Function;
 }
 

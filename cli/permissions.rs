@@ -2,11 +2,12 @@
 
 use crate::colors;
 use crate::flags::Flags;
-use crate::fs::resolve_from_cwd;
+use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::url;
+use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::env::current_dir;
@@ -42,37 +43,6 @@ impl PermissionState {
     let message = format!("{}, run again with the {} flag", msg, flag_name);
     Err(custom_error("PermissionDenied", message))
   }
-
-  /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(self, other: &Self) -> Result<(), AnyError> {
-    if self == PermissionState::Denied && other != &PermissionState::Denied
-      || self == PermissionState::Prompt && other == &PermissionState::Granted
-    {
-      return Err(permission_escalation_error());
-    }
-    Ok(())
-  }
-}
-
-impl From<usize> for PermissionState {
-  fn from(val: usize) -> Self {
-    match val {
-      0 => PermissionState::Granted,
-      1 => PermissionState::Prompt,
-      2 => PermissionState::Denied,
-      _ => unreachable!(),
-    }
-  }
-}
-
-impl From<bool> for PermissionState {
-  fn from(val: bool) -> Self {
-    if val {
-      PermissionState::Granted
-    } else {
-      PermissionState::Prompt
-    }
-  }
 }
 
 impl fmt::Display for PermissionState {
@@ -98,20 +68,6 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub denied_list: HashSet<T>,
 }
 
-impl<T: Eq + Hash> UnaryPermission<T> {
-  /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(&self, other: &Self) -> Result<(), AnyError> {
-    self.global_state.check_fork(&other.global_state)?;
-    if !self.granted_list.is_superset(&other.granted_list) {
-      return Err(permission_escalation_error());
-    }
-    if !self.denied_list.is_subset(&other.denied_list) {
-      return Err(permission_escalation_error());
-    }
-    Ok(())
-  }
-}
-
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<PathBuf>,
@@ -132,26 +88,33 @@ fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
 
 impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
+    fn state_from_flag_bool(flag: bool) -> PermissionState {
+      if flag {
+        PermissionState::Granted
+      } else {
+        PermissionState::Prompt
+      }
+    }
     Self {
       read: UnaryPermission::<PathBuf> {
-        global_state: PermissionState::from(flags.allow_read),
+        global_state: state_from_flag_bool(flags.allow_read),
         granted_list: resolve_fs_allowlist(&flags.read_allowlist),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        global_state: PermissionState::from(flags.allow_write),
+        global_state: state_from_flag_bool(flags.allow_write),
         granted_list: resolve_fs_allowlist(&flags.write_allowlist),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        global_state: PermissionState::from(flags.allow_net),
+        global_state: state_from_flag_bool(flags.allow_net),
         granted_list: flags.net_allowlist.iter().cloned().collect(),
         ..Default::default()
       },
-      env: PermissionState::from(flags.allow_env),
-      run: PermissionState::from(flags.allow_run),
-      plugin: PermissionState::from(flags.allow_plugin),
-      hrtime: PermissionState::from(flags.allow_hrtime),
+      env: state_from_flag_bool(flags.allow_env),
+      run: state_from_flag_bool(flags.allow_run),
+      plugin: state_from_flag_bool(flags.allow_plugin),
+      hrtime: state_from_flag_bool(flags.allow_hrtime),
     }
   }
 
@@ -269,7 +232,7 @@ impl Permissions {
       ));
     }
     Ok(self.query_net(
-      &format!("{}", parsed.host().unwrap()),
+      &parsed.host().unwrap().to_string(),
       parsed.port_or_known_default(),
     ))
   }
@@ -572,6 +535,21 @@ impl Permissions {
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
+  /// A helper function that determines if the module specifier is a local or
+  /// remote, and performs a read or net check for the specifier.
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let url = specifier.as_url();
+    if url.scheme() == "file" {
+      let path = url.to_file_path().unwrap();
+      self.check_read(&path)
+    } else {
+      self.check_net_url(url)
+    }
+  }
+
   pub fn check_env(&self) -> Result<(), AnyError> {
     self
       .env
@@ -593,36 +571,7 @@ impl Permissions {
   pub fn check_hrtime(&self) -> Result<(), AnyError> {
     self
       .hrtime
-      .check("access to high precision time", "--allow-run")
-  }
-
-  #[allow(clippy::too_many_arguments)]
-  pub fn fork(
-    &self,
-    read: UnaryPermission<PathBuf>,
-    write: UnaryPermission<PathBuf>,
-    net: UnaryPermission<String>,
-    env: PermissionState,
-    run: PermissionState,
-    plugin: PermissionState,
-    hrtime: PermissionState,
-  ) -> Result<Permissions, AnyError> {
-    self.read.check_fork(&read)?;
-    self.write.check_fork(&write)?;
-    self.net.check_fork(&net)?;
-    self.env.check_fork(&env)?;
-    self.run.check_fork(&run)?;
-    self.plugin.check_fork(&plugin)?;
-    self.hrtime.check_fork(&hrtime)?;
-    Ok(Permissions {
-      read,
-      write,
-      net,
-      env,
-      run,
-      plugin,
-      hrtime,
-    })
+      .check("access to high precision time", "--allow-hrtime")
   }
 }
 
@@ -724,10 +673,6 @@ fn check_host_and_port_list(
   allowlist.contains(host)
     || (port.is_some()
       && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
-}
-
-fn permission_escalation_error() -> AnyError {
-  custom_error("PermissionDenied", "Arguments escalate parent permissions")
 }
 
 #[cfg(test)]
@@ -888,6 +833,57 @@ mod tests {
   }
 
   #[test]
+  fn check_specifiers() {
+    let read_allowlist = if cfg!(target_os = "windows") {
+      vec![PathBuf::from("C:\\a")]
+    } else {
+      vec![PathBuf::from("/a")]
+    };
+    let perms = Permissions::from_flags(&Flags {
+      read_allowlist,
+      net_allowlist: svec!["localhost"],
+      ..Default::default()
+    });
+
+    let mut fixtures = vec![
+      (
+        ModuleSpecifier::resolve_url_or_path("http://localhost:4545/mod.ts")
+          .unwrap(),
+        true,
+      ),
+      (
+        ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
+          .unwrap(),
+        false,
+      ),
+    ];
+
+    if cfg!(target_os = "windows") {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/b/mod.ts").unwrap(),
+        false,
+      ));
+    } else {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///b/mod.ts").unwrap(),
+        false,
+      ));
+    }
+
+    for (specifier, expected) in fixtures {
+      assert_eq!(perms.check_specifier(&specifier).is_ok(), expected);
+    }
+  }
+
+  #[test]
   fn test_deserialize_perms() {
     let json_perms = r#"
     {
@@ -933,51 +929,6 @@ mod tests {
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
     assert_eq!(perms0, deserialized_perms);
-  }
-
-  #[test]
-  fn test_fork() {
-    let perms0 = Permissions::from_flags(&Flags::default());
-    perms0
-      .fork(
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Prompt,
-          ..Default::default()
-        },
-        PermissionState::Prompt,
-        PermissionState::Prompt,
-        PermissionState::Denied,
-        PermissionState::Denied,
-      )
-      .expect("Fork should succeed.");
-    perms0
-      .fork(
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        UnaryPermission {
-          global_state: PermissionState::Granted,
-          ..Default::default()
-        },
-        PermissionState::Granted,
-        PermissionState::Granted,
-        PermissionState::Denied,
-        PermissionState::Denied,
-      )
-      .expect_err("Fork should fail.");
   }
 
   #[test]

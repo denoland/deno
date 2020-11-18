@@ -7,9 +7,22 @@
 // comments which point to steps of the specification that are not implemented.
 
 ((window) => {
-  /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
-
   const customInspect = Symbol.for("Deno.customInspect");
+
+  function cloneArrayBuffer(
+    srcBuffer,
+    srcByteOffset,
+    srcLength,
+    _cloneConstructor,
+  ) {
+    // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
+    return srcBuffer.slice(
+      srcByteOffset,
+      srcByteOffset + srcLength,
+    );
+  }
+
+  const objectCloneMemo = new WeakMap();
 
   /** Clone a value in a similar way to structured cloning.  It is similar to a
  * StructureDeserialize(StructuredSerialize(...)). */
@@ -88,6 +101,7 @@
       }
       case "symbol":
       case "function":
+        // fallthrough
       default:
         throw new DOMException("Uncloneable value in stream", "DataCloneError");
     }
@@ -1057,14 +1071,17 @@
         throw new TypeError("method is not callable");
       }
       if (algoArgCount === 0) {
+        // deno-lint-ignore require-await
         return async () => call(method, underlyingObject, extraArgs);
       } else {
+        // deno-lint-ignore require-await
         return async (arg) => {
           const fullArgs = [arg, ...extraArgs];
           return call(method, underlyingObject, fullArgs);
         };
       }
     }
+    // deno-lint-ignore require-await
     return async () => undefined;
   }
 
@@ -2151,10 +2168,10 @@
     let canceled2 = false;
     let reason1 = undefined;
     let reason2 = undefined;
-    /* eslint-disable prefer-const */
+    // deno-lint-ignore prefer-const
     let branch1;
+    // deno-lint-ignore prefer-const
     let branch2;
-    /* eslint-enable prefer-const */
     const cancelPromise = getDeferred();
     const pullAlgorithm = () => {
       if (reading) {
@@ -2476,6 +2493,7 @@
       if (typeof transformMethod !== "function") {
         throw new TypeError("tranformer.transform must be callable.");
       }
+      // deno-lint-ignore require-await
       transformAlgorithm = async (chunk) =>
         call(transformMethod, transformer, [chunk, controller]);
     }
@@ -3365,7 +3383,6 @@
     }
     stream[sym.backpressure] = backpressure;
   }
-  /* eslint-enable */
 
   class CountQueuingStrategy {
     constructor({ highWaterMark }) {

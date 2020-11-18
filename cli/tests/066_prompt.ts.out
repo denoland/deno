@@ -1,0 +1,10 @@
+[WILDCARD]What is your name? [Jane Doe] Your name is John Doe.
+What is your name? [Jane Doe] Your name is Jane Doe.
+Prompt Your input is foo.
+Question 0 [y/N] Your answer is true
+Question 1 [y/N] Your answer is false
+Question 2 [y/N] Your answer is false
+Confirm [y/N] Your answer is false
+What is Windows EOL? Your answer is "windows"
+Hi [Enter] Alert [Enter] The end of test
+What is EOF? Your answer is null

@@ -3,8 +3,6 @@
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-var */
-
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.web" />
@@ -606,15 +604,20 @@ declare class URL {
   toJSON(): string;
 }
 
-interface MessageEventInit extends EventInit {
-  data?: any;
+interface MessageEventInit<T = any> extends EventInit {
+  data?: T;
   origin?: string;
   lastEventId?: string;
 }
 
-declare class MessageEvent extends Event {
-  readonly data: any;
-  readonly origin: string;
+declare class MessageEvent<T = any> extends Event {
+  /**
+   * Returns the data of the message.
+   */
+  readonly data: T;
+  /**
+   * Returns the last event ID string, for server-sent events.
+   */
   readonly lastEventId: string;
   constructor(type: string, eventInitDict?: MessageEventInit);
 }

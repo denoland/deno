@@ -3,7 +3,7 @@ import { getLevelByName, getLevelName, LogLevels } from "./levels.ts";
 import type { LevelName } from "./levels.ts";
 import type { BaseHandler } from "./handlers.ts";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 export type GenericFunction = (...args: any[]) => any;
 
 export interface LogRecordOptions {

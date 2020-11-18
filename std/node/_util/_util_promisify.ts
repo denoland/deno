@@ -57,16 +57,16 @@ class NodeInvalidArgTypeError extends TypeError {
 }
 
 export function promisify(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   original: (...args: any[]) => void,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
 ): (...args: any[]) => Promise<any> {
   if (typeof original !== "function") {
     throw new NodeInvalidArgTypeError("original", "Function", original);
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   if ((original as any)[kCustomPromisifiedSymbol]) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const fn = (original as any)[kCustomPromisifiedSymbol];
     if (typeof fn !== "function") {
       throw new NodeInvalidArgTypeError(
@@ -85,9 +85,9 @@ export function promisify(
 
   // Names to create an object from in case the callback receives multiple
   // arguments, e.g. ['bytesRead', 'buffer'] for fs.read.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const argumentNames = (original as any)[kCustomPromisifyArgsSymbol];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   function fn(this: any, ...args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
       original.call(this, ...args, (err: Error, ...values: unknown[]) => {
@@ -97,7 +97,7 @@ export function promisify(
         if (argumentNames !== undefined && values.length > 1) {
           const obj = {};
           for (let i = 0; i < argumentNames.length; i++) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // deno-lint-ignore no-explicit-any
             (obj as any)[argumentNames[i]] = values[i];
           }
           resolve(obj);

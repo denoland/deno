@@ -18,7 +18,7 @@ export default class Dir {
     return this.dirPath;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   read(callback?: (...args: any[]) => void): Promise<Dirent | null> {
     return new Promise((resolve, reject) => {
       if (!this.asyncIterator) {
@@ -57,7 +57,7 @@ export default class Dir {
    * directories, and therefore does not need to close directories when
    * finished reading.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   close(callback?: (...args: any[]) => void): Promise<void> {
     return new Promise((resolve, reject) => {
       try {

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert } from "../_util/assert.ts";
+import { assert } from "./assert.ts";
 
 export function deepAssign<T, U>(target: T, source: U): T & U;
 export function deepAssign<T, U, V>(
@@ -14,11 +14,11 @@ export function deepAssign<T, U, V, W>(
   source3: W,
 ): T & U & V & W;
 export function deepAssign(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   target: Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   ...sources: any[]
-): // eslint-disable-next-line @typescript-eslint/ban-types
+): // deno-lint-ignore ban-types
 object | undefined {
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];

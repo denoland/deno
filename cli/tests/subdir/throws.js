@@ -1,4 +1,4 @@
-/* eslint-disable */
+// deno-lint-ignore-file
 export function boo() {
   console.log("Boo!");
 }

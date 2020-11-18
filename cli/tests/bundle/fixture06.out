@@ -1,0 +1,12 @@
+const importMeta = {
+    url: "file:///tests/fixture06.ts",
+    main: import.meta.main
+};
+const importMeta1 = {
+    url: "file:///tests/subdir/f.ts",
+    main: false
+};
+const isMain = importMeta1.main;
+const modUrl = importMeta1.url;
+console.log(isMain, modUrl);
+console.log(importMeta.main, importMeta.url);

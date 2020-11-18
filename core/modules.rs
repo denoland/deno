@@ -341,13 +341,6 @@ pub struct ModuleInfo {
   pub name: String,
   pub handle: v8::Global<v8::Module>,
   pub import_specifiers: Vec<ModuleSpecifier>,
-  // TODO(bartlomieju): there should be "state"
-  // field that describes if module is already being loaded,
-  // so concurent dynamic imports don't introduce dead lock
-  // pub state: LoadState {
-  //   Loading(shared_future),
-  //   Loaded,
-  // },
 }
 
 /// A symbolic module entity.
@@ -394,7 +387,7 @@ impl ModuleNameMap {
     }
   }
 
-  /// Insert a name assocated module id.
+  /// Insert a name associated module id.
   pub fn insert(&mut self, name: String, id: ModuleId) {
     self.inner.insert(name, SymbolicModule::Mod(id));
   }
@@ -686,7 +679,7 @@ mod tests {
       ]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
@@ -753,7 +746,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -829,7 +822,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -976,7 +969,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
 

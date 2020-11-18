@@ -305,7 +305,10 @@ class Parser {
       dataString = dataString.replace(/,]/g, "]");
     }
 
-    if (dataString[0] === "{" && dataString[dataString.length - 1] === "}") {
+    if (
+      (dataString[0] === "{" && dataString[dataString.length - 1] === "}") ||
+      (dataString[0] === "[" && dataString[dataString.length - 1] === "]")
+    ) {
       const reg = /([a-zA-Z0-9-_\.]*) (=)/gi;
       let result;
       while ((result = reg.exec(dataString))) {
@@ -449,7 +452,7 @@ class Parser {
         }
         obj[k] = v;
         if (v instanceof Object) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // deno-lint-ignore no-explicit-any
           this._propertyClean(v as any);
         }
       }
@@ -483,7 +486,7 @@ class Dumper {
     this.srcObject = srcObjc;
   }
   dump(): string[] {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     this.output = this._parse(this.srcObject as any);
     this.output = this._format();
     return this.output;

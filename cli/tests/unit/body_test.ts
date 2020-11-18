@@ -2,9 +2,9 @@
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 // just a hack to get a body object
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function buildBody(body: any, headers?: Headers): Body {
-  const stub = new Request("", {
+  const stub = new Request("http://foo/", {
     body: body,
     headers,
   });

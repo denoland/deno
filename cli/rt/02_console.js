@@ -157,6 +157,7 @@
     iterableLimit: 100,
     showProxy: false,
     colors: false,
+    getters: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -172,21 +173,14 @@
     static kClearScreenDown = "\x1b[0J";
   }
 
-  /* eslint-disable @typescript-eslint/no-use-before-define */
-
   function getClassInstanceName(instance) {
-    if (typeof instance !== "object") {
+    if (typeof instance != "object") {
       return "";
     }
-    if (!instance) {
-      return "";
+    const constructor = instance?.constructor;
+    if (typeof constructor == "function") {
+      return constructor.name ?? "";
     }
-
-    const proto = Object.getPrototypeOf(instance);
-    if (proto && proto.constructor) {
-      return proto.constructor.name; // could be "Object" or "Array"
-    }
-
     return "";
   }
 
@@ -198,10 +192,17 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
-    // Might be Function/AsyncFunction/GeneratorFunction
-    const cstrName = Object.getPrototypeOf(value).constructor.name;
+    // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
+    let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
+    if (!cstrName) {
+      // If prototype is removed or broken,
+      // use generic 'Function' instead.
+      cstrName = "Function";
+    }
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
       return `[${cstrName}: ${value.name}]`;
@@ -357,7 +358,6 @@
       let order = "padStart";
       if (value !== undefined) {
         for (let i = 0; i < entries.length; i++) {
-          /* eslint-disable @typescript-eslint/no-explicit-any */
           if (
             typeof value[i] !== "number" &&
             typeof value[i] !== "bigint"
@@ -365,7 +365,6 @@
             order = "padEnd";
             break;
           }
-          /* eslint-enable */
         }
       }
       // Each iteration creates a single line of grouped entries.
@@ -482,6 +481,7 @@
       .replace(/\t/g, "\\t")
       .replace(/\v/g, "\\v")
       .replace(
+        // deno-lint-ignore no-control-regex
         /[\x00-\x1f\x7f-\x9f]/g,
         (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
       );
@@ -518,11 +518,12 @@
   ) {
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
-      case "string":
+      case "string": {
         const trunc = value.length > STR_ABBREVIATE_SIZE
           ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
+      }
       default:
         return inspectValue(value, ctx, level, inspectOptions);
     }
@@ -765,31 +766,73 @@
     const red = maybeColor(colors.red, inspectOptions);
 
     for (const key of stringKeys) {
-      let propertyValue;
-      let error = null;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
+      if (inspectOptions.getters) {
+        let propertyValue;
+        let error = null;
+        try {
+          propertyValue = value[key];
+        } catch (error_) {
+          error = error_;
+        }
+        const inspectedValue = error == null
+          ? inspectValueWithQuotes(
+            propertyValue,
+            ctx,
+            level + 1,
+            inspectOptions,
+          )
+          : red(`[Thrown ${error.name}: ${error.message}]`);
+        entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
+      } else {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor.get !== undefined && descriptor.set !== undefined) {
+          entries.push(`${maybeQuoteString(key)}: [Getter/Setter]`);
+        } else if (descriptor.get !== undefined) {
+          entries.push(`${maybeQuoteString(key)}: [Getter]`);
+        } else {
+          entries.push(
+            `${maybeQuoteString(key)}: ${
+              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+            }`,
+          );
+        }
       }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
-        : red(`[Thrown ${error.name}: ${error.message}]`);
-      entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
     }
+
     for (const key of symbolKeys) {
-      let propertyValue;
-      let error;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
+      if (inspectOptions.getters) {
+        let propertyValue;
+        let error;
+        try {
+          propertyValue = value[key];
+        } catch (error_) {
+          error = error_;
+        }
+        const inspectedValue = error == null
+          ? inspectValueWithQuotes(
+            propertyValue,
+            ctx,
+            level + 1,
+            inspectOptions,
+          )
+          : red(`Thrown ${error.name}: ${error.message}`);
+        entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
+      } else {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor.get !== undefined && descriptor.set !== undefined) {
+          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter/Setter]`);
+        } else if (descriptor.get !== undefined) {
+          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter]`);
+        } else {
+          entries.push(
+            `[${maybeQuoteSymbol(key)}]: ${
+              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+            }`,
+          );
+        }
       }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
-        : red(`Thrown ${error.name}: ${error.message}`);
-      entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
     }
+
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +
       colors.stripColor(entries.join("")).length;
@@ -824,7 +867,9 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in op_crates/web we don't want to depend on unique "Deno.customInspect"
@@ -837,7 +882,9 @@
     ) {
       try {
         return String(value[nonUniqueCustomInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1115,7 +1162,7 @@
     let inValue = false;
     let currentKey = null;
     let parenthesesDepth = 0;
-    currentPart = "";
+    let currentPart = "";
     for (let i = 0; i < cssString.length; i++) {
       const c = cssString[i];
       if (c == "(") {
@@ -1382,10 +1429,12 @@
   const timerMap = new Map();
   const isConsoleInstance = Symbol("isConsoleInstance");
 
-  const CONSOLE_INSPECT_OPTIONS = {
-    ...DEFAULT_INSPECT_OPTIONS,
-    colors: true,
-  };
+  function getConsoleInspectOptions() {
+    return {
+      ...DEFAULT_INSPECT_OPTIONS,
+      colors: !(globalThis.Deno?.noColor ?? false),
+    };
+  }
 
   class Console {
     #printFunc = null;
@@ -1408,7 +1457,7 @@
     log = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
-          ...CONSOLE_INSPECT_OPTIONS,
+          ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
         false,
@@ -1420,7 +1469,8 @@
 
     dir = (obj, options = {}) => {
       this.#printFunc(
-        inspectArgs([obj], { ...CONSOLE_INSPECT_OPTIONS, ...options }) + "\n",
+        inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
+          "\n",
         false,
       );
     };
@@ -1430,7 +1480,7 @@
     warn = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
-          ...CONSOLE_INSPECT_OPTIONS,
+          ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
         true,
@@ -1636,7 +1686,7 @@
     trace = (...args) => {
       const message = inspectArgs(
         args,
-        { ...CONSOLE_INSPECT_OPTIONS, indentLevel: 0 },
+        { ...getConsoleInspectOptions(), indentLevel: 0 },
       );
       const err = {
         name: "Trace",

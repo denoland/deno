@@ -16,6 +16,7 @@ export const sep = "/";
 export const delimiter = ":";
 
 // path.resolve([from ...], to)
+/** resolves `pathSegments` into an absolute path.  */
 export function resolve(...pathSegments: string[]): string {
   let resolvedPath = "";
   let resolvedAbsolute = false;
@@ -60,6 +61,7 @@ export function resolve(...pathSegments: string[]): string {
   else return ".";
 }
 
+/** Notmalize the `path`, resolving `'..'` and `'.'` segments. */
 export function normalize(path: string): string {
   assertPath(path);
 
@@ -84,6 +86,7 @@ export function isAbsolute(path: string): boolean {
   return path.length > 0 && path.charCodeAt(0) === CHAR_FORWARD_SLASH;
 }
 
+/** Join all given a sequence of `paths`,then normalizes the resulting path. */
 export function join(...paths: string[]): string {
   if (paths.length === 0) return ".";
   let joined: string | undefined;
@@ -99,6 +102,7 @@ export function join(...paths: string[]): string {
   return normalize(joined);
 }
 
+/** Return the relative path from `from` to `to` based on current working directory. */
 export function relative(from: string, to: string): string {
   assertPath(from);
   assertPath(to);
@@ -186,6 +190,7 @@ export function toNamespacedPath(path: string): string {
   return path;
 }
 
+/** Return the directory name of a `path`. */
 export function dirname(path: string): string {
   assertPath(path);
   if (path.length === 0) return ".";
@@ -209,6 +214,7 @@ export function dirname(path: string): string {
   return path.slice(0, end);
 }
 
+/** Return the last portion of a `path`. Trailing directory separators are ignored. */
 export function basename(path: string, ext = ""): string {
   if (ext !== undefined && typeof ext !== "string") {
     throw new TypeError('"ext" argument must be a string');
@@ -283,6 +289,7 @@ export function basename(path: string, ext = ""): string {
   }
 }
 
+/** Return the extention of the `path`. */
 export function extname(path: string): string {
   assertPath(path);
   let startDot = -1;
@@ -333,8 +340,8 @@ export function extname(path: string): string {
   return path.slice(startDot, end);
 }
 
+/** Generate a path from `FormatInputPathObject` object. */
 export function format(pathObject: FormatInputPathObject): string {
-  /* eslint-disable max-len */
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
       `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`,
@@ -343,6 +350,7 @@ export function format(pathObject: FormatInputPathObject): string {
   return _format("/", pathObject);
 }
 
+/** Return a `ParsedPath` object of the `path`. */
 export function parse(path: string): ParsedPath {
   assertPath(path);
 
@@ -439,4 +447,17 @@ export function fromFileUrl(url: string | URL): string {
   return decodeURIComponent(
     url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
   );
+}
+
+/** Converts a path string to a file URL.
+ *
+ *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
+ */
+export function toFileUrl(path: string): URL {
+  if (!isAbsolute(path)) {
+    throw new TypeError("Must be an absolute path.");
+  }
+  const url = new URL("file:///");
+  url.pathname = path.replace(/%/g, "%25").replace(/\\/g, "%5C");
+  return url;
 }

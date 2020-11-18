@@ -31,18 +31,11 @@
       this.#abortAlgorithms.delete(algorithm);
     }
 
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
       super();
-      this.onabort = null;
-      this.addEventListener("abort", (evt) => {
-        const { onabort } = this;
-        if (typeof onabort === "function") {
-          onabort.call(this, evt);
-        }
-      });
     }
 
     get aborted() {
@@ -53,7 +46,7 @@
       return "AbortSignal";
     }
   }
-
+  defineEventHandler(AbortSignal.prototype, "abort");
   class AbortController {
     #signal = new AbortSignal(illegalConstructorKey);
 
@@ -68,6 +61,43 @@
     get [Symbol.toStringTag]() {
       return "AbortController";
     }
+  }
+
+  const handlerSymbol = Symbol("eventHandlers");
+
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return wrappedHandler.handler.call(this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+  // TODO(benjamingr) reuse this here and websocket where possible
+  function defineEventHandler(emitter, name) {
+    // HTML specification section 8.1.5.1
+    Object.defineProperty(emitter, `on${name}`, {
+      get() {
+        return this[handlerSymbol]?.get(name)?.handler;
+      },
+      set(value) {
+        if (!this[handlerSymbol]) {
+          this[handlerSymbol] = new Map();
+        }
+        let handlerWrapper = this[handlerSymbol]?.get(name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+        }
+        this[handlerSymbol].set(name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
   }
 
   window.AbortSignal = AbortSignal;

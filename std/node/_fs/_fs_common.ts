@@ -49,7 +49,7 @@ export function getEncoding(
   optOrCallback?:
     | FileOptions
     | WriteFileOptions
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     | ((...args: any[]) => any)
     | Encodings
     | null,

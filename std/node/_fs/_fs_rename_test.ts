@@ -11,6 +11,7 @@ Deno.test({
     await new Promise((resolve, reject) => {
       rename(file, newPath, (err) => {
         if (err) reject(err);
+        resolve();
       });
     })
       .then(() => {
@@ -18,7 +19,10 @@ Deno.test({
         assertEquals(existsSync(file), false);
       })
       .catch(() => fail())
-      .finally(() => Deno.removeSync(file));
+      .finally(() => {
+        if (existsSync(file)) Deno.removeSync(file);
+        if (existsSync(newPath)) Deno.removeSync(newPath);
+      });
   },
 });
 
