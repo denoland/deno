@@ -228,7 +228,8 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-/// Wrapper around deno_core::JsError which provides color to_string.
+/// Wrapper around deno_core::JsError which provides colorful
+/// string representation.
 #[derive(Debug)]
 pub struct PrettyJsError(JsError);
 
