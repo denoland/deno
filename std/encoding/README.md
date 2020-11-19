@@ -231,7 +231,7 @@ console.log(tomlObject);
 
 YAML parser / dumper for Deno.
 
-Heavily inspired from [js-yaml].
+Heavily inspired from [`js-yaml`](https://github.com/nodeca/js-yaml).
 
 ### Basic usage
 
