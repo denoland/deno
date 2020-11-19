@@ -195,6 +195,17 @@ const stringifyTestCases: (StringifyTestCase | StringifyTestCaseError)[] = [
   {
     columns: [
       {
+        fn: (str: string) => Promise.resolve(str.toUpperCase()),
+        prop: ["msg", "value"],
+      },
+    ],
+    data: [{ msg: { value: "foo" } }, { msg: { value: "bar" } }],
+    expected: `value${NEWLINE}FOO${NEWLINE}BAR${NEWLINE}`,
+    name: "[CSV_stringify] Transform function 1 async",
+  },
+  {
+    columns: [
+      {
         fn: (obj: { value: string }) => obj.value,
         prop: "msg",
       },
