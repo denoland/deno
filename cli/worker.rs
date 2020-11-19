@@ -11,6 +11,7 @@ use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
+use crate::source_maps::apply_source_map;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
@@ -121,7 +122,9 @@ impl Worker {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
       js_error_create_fn: Some(Box::new(move |core_js_error| {
-        PrettyJsError::create(core_js_error, global_state_.clone())
+        let source_mapped_error =
+          apply_source_map(&core_js_error, global_state_.clone());
+        PrettyJsError::create(source_mapped_error)
       })),
       ..Default::default()
     });
