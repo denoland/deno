@@ -11,7 +11,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-futures = "0.3.5"
+futures = "0.3.8"
 deno_core = { path = "../core" }
 
 [dev-dependencies]
