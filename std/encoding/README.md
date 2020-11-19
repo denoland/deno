@@ -97,24 +97,30 @@ function is as follows:
 (data: DataItem[], columns: Column[], options?: StringifyOptions): Promise<string>
 ```
 
-  - **`data`** is the source data to stringify. It's an array of items which are plain objects or arrays.
-  
-    `DataItem: Record<string, unknown> | unknown[]`
+- **`data`** is the source data to stringify. It's an array of items which are
+  plain objects or arrays.
 
-    ```ts
-    const data = [
-      {
-        name: "Deno",
-        repo: { org: "denoland", name: "deno" },
-        runsOn: ["Rust", "TypeScript"],
-      },
-    ];
-    ```
+  `DataItem: Record<string, unknown> | unknown[]`
 
-  - **`columns`** is a list of instructions for how to target and transform the data for each column of output. This is also where you can provide an explicit header name for the column.
+      ```ts
+      const data = [
+        {
+          name: "Deno",
+          repo: { org: "denoland", name: "deno" },
+          runsOn: ["Rust", "TypeScript"],
+        },
+      ];
+      ```
 
-    `Column`:
-      - The most essential aspect of a column is accessing the property holding the data for that column on each object in the data array. If that member is at the top level, `Column` can simply be a property accessor, which is either a `string` (if it's a plain object) or a `number` (if it's an array).
+- **`columns`** is a list of instructions for how to target and transform the
+  data for each column of output. This is also where you can provide an explicit
+  header name for the column.
+
+  `Column`:
+  - The most essential aspect of a column is accessing the property holding the
+    data for that column on each object in the data array. If that member is at
+    the top level, `Column` can simply be a property accessor, which is either a
+    `string` (if it's a plain object) or a `number` (if it's an array).
 
         ```ts
         const columns = [
@@ -122,13 +128,15 @@ function is as follows:
         ];
         ```
 
-        Each property accessor will be used as the header for the column:
+    Each property accessor will be used as the header for the column:
 
-        | name |
-        |:---:|
-        | Deno |
+    | name |
+    | :--: |
+    | Deno |
 
-      - If the required data is not at the top level (it's nested in other objects/arrays), then a simple property accessor won't work, so an array of them will be required.
+  - If the required data is not at the top level (it's nested in other
+    objects/arrays), then a simple property accessor won't work, so an array of
+    them will be required.
 
         ```ts
         const columns = [
@@ -137,17 +145,24 @@ function is as follows:
         ];
         ```
 
-        When using arrays of property accessors, the header names inherit the value of the last accessor in each array:
+    When using arrays of property accessors, the header names inherit the value
+    of the last accessor in each array:
 
-        | name | org |
-        |:---:|:---:|
-        | deno | denoland |
+    | name |   org    |
+    | :--: | :------: |
+    | deno | denoland |
 
-      - If the data is not already in the required output format, or a different column header is desired, then a `ColumnDetails` object type can be used for each column:
+  - If the data is not already in the required output format, or a different
+    column header is desired, then a `ColumnDetails` object type can be used for
+    each column:
 
-        - **`fn?: (value: any) => string | Promise<string>`** is an optional function to transform the targeted data into the desired format
-        - **`header?: string`** is the optional value to use for the column header name
-        - **`prop: PropertyAccessor | PropertyAccessor[]`** is the property accessor (`string` or `number`) or array of property accessors used to access the data on each object
+    - **`fn?: (value: any) => string | Promise<string>`** is an optional
+      function to transform the targeted data into the desired format
+    - **`header?: string`** is the optional value to use for the column header
+      name
+    - **`prop: PropertyAccessor | PropertyAccessor[]`** is the property accessor
+      (`string` or `number`) or array of property accessors used to access the
+      data on each object
 
         ```ts
         const columns = [
@@ -165,19 +180,20 @@ function is as follows:
         ];
         ```
 
-        | name | language 1 | language 2 |
-        |:---:|:---:|:---:|
-        | Deno | rust | typescript |
+    | name | language 1 | language 2 |
+    | :--: | :--------: | :--------: |
+    | Deno |    rust    | typescript |
 
-  - **`options`** are options for the delimiter-seprated output.
+- **`options`** are options for the delimiter-seprated output.
 
-    - **`headers?: boolean`**: Whether or not to include the row of headers. Default: `true`
-    
-    - **`separator?: string`**: Delimiter used to separate values. Examples:
-      - `","` _comma_ (Default)
-      - `"\t"` _tab_
-      - `"|"` _pipe_
-      - etc.
+  - **`headers?: boolean`**: Whether or not to include the row of headers.
+    Default: `true`
+
+  - **`separator?: string`**: Delimiter used to separate values. Examples:
+    - `","` _comma_ (Default)
+    - `"\t"` _tab_
+    - `"|"` _pipe_
+    - etc.
 
 ### Basic Usage
 
@@ -195,7 +211,10 @@ console.log(
 ```
 
 ```ts
-import { Column, stringify } from "https://deno.land/std@$STD_VERSION/encoding/csv.ts";
+import {
+  Column,
+  stringify,
+} from "https://deno.land/std@$STD_VERSION/encoding/csv.ts";
 
 type Character = {
   age: number;
@@ -231,7 +250,7 @@ console.log(await stringify(data, columns));
 // first,age
 // Rick,70
 // Morty,14
-// 
+//
 
 columns = [
   {
@@ -245,11 +264,11 @@ columns = [
   },
 ];
 
-console.log(await stringify(data, columns, {separator: "\t"}));
+console.log(await stringify(data, columns, { separator: "\t" }));
 // name	is_adult
 // Rick Sanchez	true
 // Morty Smith	false
-// 
+//
 ```
 
 ## TOML
