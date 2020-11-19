@@ -233,9 +233,9 @@ fn format_maybe_source_line(
 
 /// Wrapper around deno_core::JsError which provides color to_string.
 #[derive(Debug)]
-pub struct JsError(CoreJsError);
+pub struct PrettyJsError(CoreJsError);
 
-impl JsError {
+impl PrettyJsError {
   pub fn create(
     core_js_error: CoreJsError,
     source_map_getter: Arc<impl SourceMapGetter>,
@@ -246,14 +246,14 @@ impl JsError {
   }
 }
 
-impl Deref for JsError {
+impl Deref for PrettyJsError {
   type Target = CoreJsError;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl fmt::Display for JsError {
+impl fmt::Display for PrettyJsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut frames = self.0.frames.clone();
 
@@ -290,7 +290,7 @@ impl fmt::Display for JsError {
   }
 }
 
-impl Error for JsError {}
+impl Error for PrettyJsError {}
 
 #[cfg(test)]
 mod tests {
