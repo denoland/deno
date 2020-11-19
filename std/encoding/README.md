@@ -32,12 +32,24 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 
 ### API
 
-#### `readMatrix(reader: BufReader, opt: ReadOptions = { comma: ",", trimLeadingSpace: false, lazyQuotes: false }): Promise<string[][]>`
+#### `readMatrix`
+
+```ts
+(reader: BufReader, opt: ReadOptions = {
+  comma: ",",
+  trimLeadingSpace: false,
+  lazyQuotes: false,
+}): Promise<string[][]>
+```
 
 Parse the CSV from the `reader` with the options provided and return
 `string[][]`.
 
-#### `parse(input: string | BufReader, opt: ParseOptions = { skipFirstRow: false }): Promise<unknown[]>`:
+#### `parse`
+
+```ts
+(input: string | BufReader, opt: ParseOptions = { skipFirstRow: false }): Promise<unknown[]>
+```
 
 Parse the CSV string/buffer with the options provided. The result of this
 function is as follows:
