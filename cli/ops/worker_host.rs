@@ -293,16 +293,9 @@ fn op_host_terminate_worker(
 fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::TerminalError(error) => {
-      let mut serialized_error = json!({
-        "type": "terminalError",
-        "error": {
-          "message": error.to_string(),
-        }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
+    WorkerEvent::TerminalError(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => {
+        json!({
           "type": "terminalError",
           "error": {
             "message": js_error.message,
@@ -310,21 +303,20 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
             "lineNumber": js_error.line_number,
             "columnNumber": js_error.start_column,
           }
-        });
+        })
       }
-
-      serialized_error
-    }
-    WorkerEvent::Error(error) => {
-      let mut serialized_error = json!({
-        "type": "error",
-        "error": {
-          "message": error.to_string(),
-        }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
+      Err(error) => {
+        json!({
+          "type": "terminalError",
+          "error": {
+            "message": error.to_string(),
+          }
+        })
+      }
+    },
+    WorkerEvent::Error(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => {
+        json!({
           "type": "error",
           "error": {
             "message": js_error.message,
@@ -332,11 +324,17 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
             "lineNumber": js_error.line_number,
             "columnNumber": js_error.start_column,
           }
-        });
+        })
       }
-
-      serialized_error
-    }
+      Err(error) => {
+        json!({
+          "type": "error",
+          "error": {
+            "message": error.to_string(),
+          }
+        })
+      }
+    },
   }
 }
 
