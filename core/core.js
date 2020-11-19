@@ -121,7 +121,8 @@ SharedQueue Binary Layout
     const end = off + buf.byteLength;
     const alignedEnd = (end + 3) & ~3;
     const index = numRecords();
-    const shouldNotPush = alignedEnd > shared32.byteLength || index >= MAX_RECORDS;
+    const shouldNotPush = alignedEnd > shared32.byteLength ||
+      index >= MAX_RECORDS;
     if (shouldNotPush) {
       // console.log("shared_queue.js push fail");
       return false;
