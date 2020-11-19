@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#![allow(dead_code)]
+
 use deno_core::error::custom_error;
 use deno_core::json_op_sync;
 use deno_core::serde_json;
@@ -262,13 +264,13 @@ fn main() {
 
   // Main snapshot
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-
   let js_files = get_js_files("rt");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 
+  // TSC snapshot
   #[cfg(feature = "tools")]
   {
+    let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
     let js_files = get_js_files("tsc");
     create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
   }

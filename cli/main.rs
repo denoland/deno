@@ -62,6 +62,7 @@ mod text_encoding;
 mod tokio_util;
 #[cfg(feature = "tools")]
 mod tools;
+#[cfg(feature = "tools")]
 mod tsc;
 #[cfg(feature = "tools")]
 mod tsc_config;

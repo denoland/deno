@@ -17,6 +17,7 @@ use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
+#[cfg(feature = "tools")]
 use crate::source_maps::apply_source_map;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
