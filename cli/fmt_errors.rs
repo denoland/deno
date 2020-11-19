@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors;
-use deno_core::error::{AnyError, JsError as CoreJsError, JsStackFrame};
+use deno_core::error::{AnyError, JsError, JsStackFrame};
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
@@ -230,17 +230,17 @@ fn format_maybe_source_line(
 
 /// Wrapper around deno_core::JsError which provides color to_string.
 #[derive(Debug)]
-pub struct PrettyJsError(CoreJsError);
+pub struct PrettyJsError(JsError);
 
 impl PrettyJsError {
-  pub fn create(core_js_error: CoreJsError) -> AnyError {
-    let js_error = Self(core_js_error);
-    js_error.into()
+  pub fn create(js_error: JsError) -> AnyError {
+    let pretty_js_error = Self(js_error);
+    pretty_js_error.into()
   }
 }
 
 impl Deref for PrettyJsError {
-  type Target = CoreJsError;
+  type Target = JsError;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
