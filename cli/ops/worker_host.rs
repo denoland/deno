@@ -2,7 +2,7 @@
 
 use crate::colors;
 #[cfg(feature = "tools")]
-use crate::fmt_errors::JsError;
+use crate::fmt_errors::PrettyJsError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -303,7 +303,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
       });
 
       #[cfg(feature = "tools")]
-      if let Ok(js_error) = error.downcast::<JsError>() {
+      if let Ok(js_error) = error.downcast::<PrettyJsError>() {
         serialized_error = json!({
           "type": "terminalError",
           "error": {
@@ -326,7 +326,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
       });
 
       #[cfg(feature = "tools")]
-      if let Ok(js_error) = error.downcast::<JsError>() {
+      if let Ok(js_error) = error.downcast::<PrettyJsError>() {
         serialized_error = json!({
           "type": "error",
           "error": {
