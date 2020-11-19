@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::fmt_errors::PrettyJsError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -11,6 +10,7 @@ use crate::worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
@@ -301,7 +301,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
         }
       });
 
-      if let Ok(js_error) = error.downcast::<PrettyJsError>() {
+      if let Ok(js_error) = error.downcast::<JsError>() {
         serialized_error = json!({
           "type": "terminalError",
           "error": {
@@ -323,7 +323,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
         }
       });
 
-      if let Ok(js_error) = error.downcast::<PrettyJsError>() {
+      if let Ok(js_error) = error.downcast::<JsError>() {
         serialized_error = json!({
           "type": "error",
           "error": {
