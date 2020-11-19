@@ -116,9 +116,9 @@ async function getValuesFromItem(
  * Default: `true`
  *
  * @param separator Delimiter used to separate values. Examples:
- *  - `,` _comma_ (Default)
- *  - `\t` _tab_
- *  - `|` _pipe_
+ *  - `","` _comma_ (Default)
+ *  - `"\t"` _tab_
+ *  - `"|"` _pipe_
  *  - etc.
  */
 export type StringifyOptions = {
