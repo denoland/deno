@@ -112,7 +112,7 @@ async function getValuesFromItem(
 }
 
 /**
- * @param headers Whether to include the header row or not.
+ * @param headers Whether or not to include the row of headers.
  * Default: `true`
  *
  * @param separator Delimiter used to separate values. Examples:
