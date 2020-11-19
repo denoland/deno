@@ -1,10 +1,10 @@
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 [package]
-name = "deno_fetch"
-version = "0.11.0"
+name = "deno_crypto"
+version = "0.2.0"
 edition = "2018"
-description = "provides fetch Web API to deno_core"
+description = "Collection of WebCrypto APIs"
 authors = ["the Deno authors"]
 license = "MIT"
 readme = "README.md"
@@ -15,5 +15,5 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.68.0", path = "../../core" }
-reqwest = { version = "0.10.8", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
-serde = { version = "1.0.116", features = ["derive"] }
+rand = "0.7.3"
+

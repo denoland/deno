@@ -55,11 +55,7 @@ struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 impl FileCache {
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<File> {
     let cache = self.0.lock().unwrap();
-    if let Some(file) = cache.get(specifier) {
-      Some(file.clone())
-    } else {
-      None
-    }
+    cache.get(specifier).cloned()
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
@@ -259,18 +255,16 @@ fn map_js_like_extension(
 }
 
 /// Remove shebangs from the start of source code strings
-fn strip_shebang(value: String) -> String {
+fn strip_shebang(mut value: String) -> String {
   if value.starts_with("#!") {
-    let value = if let Some(mid) = value.find('\n') {
+    if let Some(mid) = value.find('\n') {
       let (_, rest) = value.split_at(mid);
-      rest.to_string()
+      value = rest.to_string()
     } else {
-      "".to_string()
-    };
-    value
-  } else {
-    value
+      value.clear()
+    }
   }
+  value
 }
 
 /// A structure for resolving, fetching and caching source files.
@@ -457,8 +451,7 @@ impl FileFetcher {
       Ok(file)
     } else {
       let is_local = scheme == "file";
-
-      let result = if is_local {
+      if is_local {
         fetch_local(specifier)
       } else if !self.allow_remote {
         Err(custom_error(
@@ -466,25 +459,40 @@ impl FileFetcher {
           format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
         ))
       } else {
-        self.fetch_remote(specifier, permissions, 10).await
-      };
-
-      if let Ok(file) = &result {
-        self.cache.insert(specifier.clone(), file.clone());
+        let result = self.fetch_remote(specifier, permissions, 10).await;
+        // only cache remote resources, as they are the only things that would
+        // be "expensive" to fetch multiple times during an invocation, and it
+        // also allows local file sources to be changed, enabling things like
+        // dynamic import and workers to be updated while Deno is running.
+        if let Ok(file) = &result {
+          self.cache.insert(specifier.clone(), file.clone());
+        }
+        result
       }
-
-      result
     }
-  }
-
-  /// Get a previously in memory cached file.
-  pub fn get_cached(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    self.cache.get(specifier)
   }
 
   /// Get the location of the current HTTP cache associated with the fetcher.
   pub fn get_http_cache_location(&self) -> PathBuf {
     self.http_cache.location.clone()
+  }
+
+  /// A synchronous way to retrieve a source file, where if the file has already
+  /// been cached in memory it will be returned, otherwise for local files will
+  /// be read from disk.
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<File> {
+    let maybe_file = self.cache.get(specifier);
+    if maybe_file.is_none() {
+      let is_local = specifier.as_url().scheme() == "file";
+      if is_local {
+        if let Ok(file) = fetch_local(specifier) {
+          return Some(file);
+        }
+      }
+      None
+    } else {
+      maybe_file
+    }
   }
 
   /// Insert a temporary module into the in memory cache for the file fetcher.
@@ -784,7 +792,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_get_cached() {
+  async fn test_get_source() {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = ModuleSpecifier::resolve_url(
@@ -797,7 +805,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
 
-    let maybe_file = file_fetcher.get_cached(&specifier);
+    let maybe_file = file_fetcher.get_source(&specifier);
     assert!(maybe_file.is_some());
     let file = maybe_file.unwrap();
     assert_eq!(file.source, "export const redirect = 1;\n");
@@ -1301,6 +1309,32 @@ mod tests {
     // because we converted to a "fixed" directory, we need to cleanup after
     // ourselves.
     let _ = fs::remove_dir_all(temp_dir);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_local_bypasses_file_cache() {
+    let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
+    let fixture_path = temp_dir.path().join("mod.ts");
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(&fixture_path.to_string_lossy())
+        .unwrap();
+    fs::write(fixture_path.clone(), r#"console.log("hello deno");"#)
+      .expect("could not write file");
+    let result = file_fetcher
+      .fetch(&specifier, &Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    assert_eq!(file.source, r#"console.log("hello deno");"#);
+
+    fs::write(fixture_path, r#"console.log("goodbye deno");"#)
+      .expect("could not write file");
+    let result = file_fetcher
+      .fetch(&specifier, &Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    assert_eq!(file.source, r#"console.log("goodbye deno");"#);
   }
 
   #[tokio::test]

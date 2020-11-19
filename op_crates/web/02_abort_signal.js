@@ -31,7 +31,7 @@
       this.#abortAlgorithms.delete(algorithm);
     }
 
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }

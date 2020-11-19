@@ -16,8 +16,7 @@ import {
   walkSync,
 } from "./walk.ts";
 import { assert } from "../_util/assert.ts";
-
-const isWindows = Deno.build.os == "windows";
+import { isWindows } from "../_util/os.ts";
 
 export interface ExpandGlobOptions extends Omit<GlobOptions, "os"> {
   root?: string;

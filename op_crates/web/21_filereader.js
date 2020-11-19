@@ -51,9 +51,6 @@
             // fire a progress event for loadstart
             const ev = new ProgressEvent("loadstart", {});
             fr.dispatchEvent(ev);
-            if (fr.onloadstart !== null) {
-              fr.onloadstart(ev);
-            }
           });
         }
         // 3. Set isFirstChunk to false.
@@ -71,9 +68,6 @@
               loaded: size,
             });
             fr.dispatchEvent(ev);
-            if (fr.onprogress !== null) {
-              fr.onprogress(ev);
-            }
           }
 
           chunkPromise = reader.read();
@@ -118,9 +112,6 @@
                 total: size,
               });
               fr.dispatchEvent(ev);
-              if (fr.onload !== null) {
-                fr.onload(ev);
-              }
             }
 
             // 5. If fr’s state is not "loading", fire a progress event called loadend at the fr.
@@ -132,9 +123,6 @@
                 total: size,
               });
               fr.dispatchEvent(ev);
-              if (fr.onloadend !== null) {
-                fr.onloadend(ev);
-              }
             }
           });
 
@@ -152,9 +140,6 @@
         {
           const ev = new ProgressEvent("error", {});
           fr.dispatchEvent(ev);
-          if (fr.onerror !== null) {
-            fr.onerror(ev);
-          }
         }
 
         //If fr’s state is not "loading", fire a progress event called loadend at fr.
@@ -162,9 +147,6 @@
         if (fr.readyState !== FileReader.LOADING) {
           const ev = new ProgressEvent("loadend", {});
           fr.dispatchEvent(ev);
-          if (fr.onloadend !== null) {
-            fr.onloadend(ev);
-          }
         }
 
         break;
@@ -174,13 +156,6 @@
 
   class FileReader extends EventTarget {
     error = null;
-    onabort = null;
-    onerror = null;
-    onload = null;
-    onloadend = null;
-    onloadstart = null;
-    onprogress = null;
-
     readyState = FileReader.EMPTY;
     result = null;
     aborting = false;
@@ -210,17 +185,11 @@
       // Fire a progress event called abort at the context object.
       const ev = new ProgressEvent("abort", {});
       this.dispatchEvent(ev);
-      if (this.onabort !== null) {
-        this.onabort(ev);
-      }
 
       // If context object's state is not "loading", fire a progress event called loadend at the context object.
       if (this.readyState !== FileReader.LOADING) {
         const ev = new ProgressEvent("loadend", {});
         this.dispatchEvent(ev);
-        if (this.onloadend !== null) {
-          this.onloadend(ev);
-        }
       }
     }
     readAsArrayBuffer(blob) {
@@ -241,6 +210,49 @@
   FileReader.EMPTY = 0;
   FileReader.LOADING = 1;
   FileReader.DONE = 2;
+
+  const handlerSymbol = Symbol("eventHandlers");
+
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return wrappedHandler.handler.call(this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+  // TODO(benjamingr) reuse when we can reuse code between web crates
+  function defineEventHandler(emitter, name) {
+    // HTML specification section 8.1.5.1
+    Object.defineProperty(emitter, `on${name}`, {
+      get() {
+        return this[handlerSymbol]?.get(name)?.handler;
+      },
+      set(value) {
+        if (!this[handlerSymbol]) {
+          this[handlerSymbol] = new Map();
+        }
+        let handlerWrapper = this[handlerSymbol]?.get(name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+        }
+        this[handlerSymbol].set(name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
+  }
+  defineEventHandler(FileReader.prototype, "error");
+  defineEventHandler(FileReader.prototype, "loadstart");
+  defineEventHandler(FileReader.prototype, "load");
+  defineEventHandler(FileReader.prototype, "loadend");
+  defineEventHandler(FileReader.prototype, "progress");
+  defineEventHandler(FileReader.prototype, "abort");
 
   window.__bootstrap.fileReader = {
     FileReader,
