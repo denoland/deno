@@ -143,6 +143,7 @@ Deno.test("toWritableCheck", async function (): Promise<void> {
   const chunks: string[] = ["hello", "deno", "land"];
   const decoder = new TextDecoder();
 
+  // deno-lint-ignore require-await
   async function write(p: Uint8Array): Promise<number> {
     written.push(decoder.decode(p));
     return p.length;
@@ -165,6 +166,7 @@ Deno.test("toReadableCheck", async function (): Promise<void> {
   const readChunks: string[] = [];
   const encoder = new TextEncoder();
 
+  // deno-lint-ignore require-await
   async function read(p: Uint8Array): Promise<number | null> {
     const chunk = chunks.shift();
     if (chunk === undefined) {
