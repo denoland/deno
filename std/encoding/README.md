@@ -82,8 +82,8 @@ function is as follows:
 
 ##### `ReadOptions`
 
-- **`comma?: string;`**: Character which separates values. Default: `','`.
-- **`comment?: string;`**: Character to start a comment. Default: `'#'`.
+- **`comma?: string;`**: Character which separates values. Default: `","`.
+- **`comment?: string;`**: Character to start a comment. Default: `"#"`.
 - **`trimLeadingSpace?: boolean;`**: Flag to trim the leading space of the
   value. Default: `false`.
 - **`lazyQuotes?: boolean;`**: Allow unquoted quote in a quoted field or non
