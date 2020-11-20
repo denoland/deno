@@ -151,10 +151,15 @@ export class Server implements AsyncIterable<ServerRequest> {
           error instanceof Deno.errors.UnexpectedEof
         ) {
           // An error was thrown while parsing request headers.
-          await writeResponse(writer, {
-            status: 400,
-            body: encode(`${error.message}\r\n\r\n`),
-          });
+          // Try to send the "400 Bad Request" before closing the connection.
+          try {
+            await writeResponse(writer, {
+              status: 400,
+              body: encode(`${error.message}\r\n\r\n`),
+            });
+          } catch (error) {
+            // The connection is broken.
+          }
         }
         break;
       }
@@ -175,8 +180,14 @@ export class Server implements AsyncIterable<ServerRequest> {
         this.untrackConnection(request.conn);
         return;
       }
-      // Consume unread body and trailers if receiver didn't consume those data
-      await request.finalize();
+
+      try {
+        // Consume unread body and trailers if receiver didn't consume those data
+        await request.finalize();
+      } catch (error) {
+        // Invalid data was received or the connection was closed.
+        break;
+      }
     }
 
     this.untrackConnection(conn);
@@ -212,9 +223,12 @@ export class Server implements AsyncIterable<ServerRequest> {
       conn = await this.listener.accept();
     } catch (error) {
       if (
+        // The listener is closed:
         error instanceof Deno.errors.BadResource ||
+        // TLS handshake errors:
         error instanceof Deno.errors.InvalidData ||
-        error instanceof Deno.errors.UnexpectedEof
+        error instanceof Deno.errors.UnexpectedEof ||
+        error instanceof Deno.errors.ConnectionReset
       ) {
         return mux.add(this.acceptConnAndIterateHttpRequests(mux));
       }
