@@ -9,7 +9,7 @@ const moduleDir = dirname(fromFileUrl(import.meta.url));
 let server: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 async function startServer(): Promise<void> {
   server = Deno.run({
-    cmd: [Deno.execPath(), "run", "-A", "racing_server.ts"],
+    cmd: [Deno.execPath(), "run", "--quiet", "-A", "racing_server.ts"],
     cwd: moduleDir,
     stdout: "piped",
   });

@@ -7,7 +7,7 @@ const moduleDir = dirname(fromFileUrl(import.meta.url));
 Deno.test("[examples/colors] print a colored text", async () => {
   const decoder = new TextDecoder();
   const process = Deno.run({
-    cmd: [Deno.execPath(), "run", "colors.ts"],
+    cmd: [Deno.execPath(), "run", "--quiet", "colors.ts"],
     cwd: moduleDir,
     stdout: "piped",
   });
