@@ -76,7 +76,6 @@ pub enum DenoSubcommand {
   Upgrade {
     dry_run: bool,
     force: bool,
-    nightly: bool,
     version: Option<String>,
     output: Option<PathBuf>,
     ca_file: Option<String>,
@@ -224,13 +223,9 @@ To evaluate code in the shell:
 lazy_static! {
   static ref LONG_VERSION: String = format!(
     "{} ({}, {}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
+    crate::version::DENO,
     crate::version::GIT_COMMIT_HASH,
-    if crate::version::is_nightly() {
-      "nightly"
-    } else {
-      env!("PROFILE")
-    },
+    env!("PROFILE"),
     env!("TARGET"),
     crate::version::v8(),
     crate::version::TYPESCRIPT
@@ -313,7 +308,7 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     // Disable clap's auto-detection of terminal width
     .set_term_width(0)
     // Disable each subcommand having its own version.
-    .version(crate::version::deno())
+    .version(crate::version::DENO)
     .long_version(LONG_VERSION.as_str())
     .arg(
       Arg::with_name("unstable")
@@ -624,7 +619,6 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
-  let nightly = matches.is_present("nightly");
   let version = matches.value_of("version").map(|s| s.to_string());
   let output = if matches.is_present("output") {
     let install_root = matches.value_of("output").unwrap();
@@ -636,7 +630,6 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
-    nightly,
     version,
     output,
     ca_file,
@@ -949,12 +942,6 @@ update to a different location, use the --output flag
         .long("force")
         .short("f")
         .help("Replace current exe even if not out-of-date"),
-    )
-    .arg(
-      Arg::with_name("nightly")
-        .long("nightly")
-        .requires("unstable")
-        .help("Upgrade to a nightly build of deno"),
     )
     .arg(ca_file_arg())
 }
@@ -1579,7 +1566,6 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
-          nightly: false,
           version: None,
           output: None,
           ca_file: None,
@@ -3012,7 +2998,6 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: false,
           dry_run: false,
-          nightly: false,
           version: None,
           output: None,
           ca_file: Some("example.crt".to_owned()),

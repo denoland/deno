@@ -14,10 +14,11 @@ lazy_static! {
   static ref ARCHIVE_NAME: String = format!("deno-{}.zip", env!("TARGET"));
 }
 
+const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+
 pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
-  nightly: bool,
   version: Option<String>,
   output: Option<PathBuf>,
   ca_file: Option<String>,
@@ -33,16 +34,9 @@ pub async fn upgrade_command(
 
   let client = client_builder.build()?;
 
-  let release_url = if nightly {
-    "https://github.com/denoland/deno_nightly/releases"
-  } else {
-    "https://github.com/denoland/deno/releases"
-  };
-
   let install_version = match version {
     Some(passed_version) => {
-      if !force && output.is_none() && crate::version::deno() == passed_version
-      {
+      if !force && output.is_none() && crate::version::DENO == passed_version {
         println!("Version {} is already installed", passed_version);
         return Ok(());
       } else {
@@ -50,25 +44,15 @@ pub async fn upgrade_command(
       }
     }
     None => {
-      let latest_url = format!("{}/latest", release_url);
-      let latest_version = get_latest_version(&client, &*latest_url).await?;
+      let latest_version = get_latest_version(&client).await?;
 
-      let current_is_most_recent = if nightly && crate::version::is_nightly() {
-        let current = crate::version::deno().replace(".", "").parse::<u32>()?;
-        let latest = latest_version.replace(".", "").parse::<u32>()?;
-        current >= latest
-      } else if !nightly && !crate::version::is_nightly() {
-        let current = semver_parse(crate::version::deno()).unwrap();
-        let latest = semver_parse(&*latest_version).unwrap();
-        current >= latest
-      } else {
-        false
-      };
+      let current = semver_parse(crate::version::DENO).unwrap();
+      let latest = semver_parse(&latest_version).unwrap();
 
-      if !force && output.is_none() && current_is_most_recent {
+      if !force && output.is_none() && current >= latest {
         println!(
           "Local deno version {} is the most recent release",
-          crate::version::deno()
+          crate::version::DENO
         );
         return Ok(());
       } else {
@@ -78,14 +62,7 @@ pub async fn upgrade_command(
     }
   };
 
-  let download_url = format!(
-    "{}/download/{}{}/{}",
-    release_url,
-    if nightly { "" } else { "v" },
-    &install_version,
-    *ARCHIVE_NAME
-  );
-  let archive_data = download_package(&*download_url, client).await?;
+  let archive_data = download_package(client, &install_version).await?;
 
   println!("Deno is upgrading to version {}", &install_version);
 
@@ -110,25 +87,30 @@ pub async fn upgrade_command(
   Ok(())
 }
 
-async fn get_latest_version(
-  client: &Client,
-  latest_url: &str,
-) -> Result<String, AnyError> {
+async fn get_latest_version(client: &Client) -> Result<String, AnyError> {
   println!("Looking up latest version");
 
-  let res = client.get(latest_url).send().await?;
+  let res = client
+    .get(&format!("{}/latest", RELEASE_URL))
+    .send()
+    .await?;
   let version = res.url().path_segments().unwrap().last().unwrap();
 
   Ok(version.replace("v", ""))
 }
 
 async fn download_package(
-  url: &str,
   client: Client,
+  install_version: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  println!("Checking {}", url);
+  let download_url = format!(
+    "{}/download/v{}/{}",
+    RELEASE_URL, install_version, *ARCHIVE_NAME
+  );
 
-  let res = client.get(url).send().await?;
+  println!("Checking {}", &download_url);
+
+  let res = client.get(&download_url).send().await?;
 
   if res.status().is_success() {
     println!("Download has been found");
