@@ -706,5 +706,15 @@ export async function* readStringDelim(
 export async function* readLines(
   reader: Reader,
 ): AsyncIterableIterator<string> {
-  yield* readStringDelim(reader, "\n");
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  for await (let chunk of readDelim(reader, encoder.encode("\n"))) {
+    // Finding a CR at the end of the line is evidence of a
+    // "\r\n" at the end of the line. The "\r" part should be
+    // removed too.
+    if (chunk[chunk.length - 1] == CR) {
+      chunk = chunk.slice(0, chunk.length - 1);
+    }
+    yield decoder.decode(chunk);
+  }
 }
