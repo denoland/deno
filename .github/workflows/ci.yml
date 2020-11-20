@@ -105,13 +105,13 @@ jobs:
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
-      - name: Remove unused versions of Python
-        if: startsWith(matrix.os, 'windows')
-        run: |-
-          $env:PATH -split ";" |
-            Where-Object { Test-Path "$_\python.exe" } |
-            Select-Object -Skip 1 |
-            ForEach-Object { Move-Item "$_" "$_.disabled" }
+      # - name: Remove unused versions of Python
+      #   if: startsWith(matrix.os, 'windows')
+      #   run: |-
+      #     $env:PATH -split ";" |
+      #       Where-Object { Test-Path "$_\python.exe" } |
+      #       Select-Object -Skip 1 |
+      #       ForEach-Object { Move-Item "$_" "$_.disabled" }
 
       - name: Log versions
         run: |
