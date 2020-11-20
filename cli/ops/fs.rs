@@ -2,7 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::fs::canonicalize_path;
+use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
