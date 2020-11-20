@@ -112,6 +112,11 @@ function fileLenToString(len: number): string {
   return `${(len / base).toFixed(2)}${suffix[suffixIndex]}`;
 }
 
+/**
+ * Returns an HTTP Response with the requested file as the body
+ * @param req The server request context used to cleanup the file handle
+ * @param filePath Path of the file to serve
+ */
 export async function serveFile(
   req: ServerRequest,
   filePath: string,
