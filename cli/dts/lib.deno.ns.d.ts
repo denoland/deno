@@ -2054,13 +2054,15 @@ declare namespace Deno {
     env?: string;
   };
 
-  interface Version {
-    deno: string;
-    v8: string;
-    typescript: string;
-  }
   /** Version related information. */
-  export const version: Version;
+  export const version: {
+    /** Deno's version. For example: `"1.0.0"` */
+    deno: string;
+    /** The V8 version used by Deno. For example: `"8.0.0.0"` */
+    v8: string;
+    /** The TypeScript version used by Deno. For example: `"4.0.0"` */
+    typescript: string;
+  };
 
   /** Returns the script arguments to the program. If for example we run a
    * program:

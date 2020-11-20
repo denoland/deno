@@ -19,6 +19,11 @@ export class AssertionError extends Error {
   }
 }
 
+/**
+ * Converts the input into a string. Objects, Sets and Maps are sorted so as to
+ * make tests less flaky
+ * @param v Value to be formatted
+ */
 export function _format(v: unknown): string {
   return globalThis.Deno
     ? Deno.inspect(v, {
@@ -31,6 +36,10 @@ export function _format(v: unknown): string {
     : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
 }
 
+/**
+ * Colors the output of assertion diffs
+ * @param diffType Difference type, either added or removed
+ */
 function createColor(diffType: DiffType): (s: string) => string {
   switch (diffType) {
     case DiffType.added:
@@ -42,6 +51,10 @@ function createColor(diffType: DiffType): (s: string) => string {
   }
 }
 
+/**
+ * Prefixes `+` or `-` in diff output
+ * @param diffType Difference type, either added or removed
+ */
 function createSign(diffType: DiffType): string {
   switch (diffType) {
     case DiffType.added:
@@ -77,6 +90,11 @@ function isKeyedCollection(x: unknown): x is Set<unknown> {
   return [Symbol.iterator, "size"].every((k) => k in (x as Set<unknown>));
 }
 
+/**
+ * Deep equality comparison used in assertions
+ * @param c actual value
+ * @param d expected value
+ */
 export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
   return (function compare(a: unknown, b: unknown): boolean {

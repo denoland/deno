@@ -5,6 +5,8 @@ import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import * as all from "./process.ts";
 import { argv, env } from "./process.ts";
+import { delay } from "../async/delay.ts";
+import "./global.ts";
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
@@ -162,5 +164,25 @@ Deno.test({
     assertEquals(process.stderr.fd, Deno.stderr.rid);
     // TODO(jayhelton) Uncomment out this assertion once PTY is supported
     // assert(process.stderr.isTTY);
+  },
+});
+
+Deno.test({
+  name: "process.nextTick",
+  async fn() {
+    let withoutArguments = false;
+    process.nextTick(() => {
+      withoutArguments = true;
+    });
+
+    const expected = 12;
+    let result;
+    process.nextTick((x: number) => {
+      result = x;
+    }, 12);
+
+    await delay(10);
+    assert(withoutArguments);
+    assertEquals(result, expected);
   },
 });
