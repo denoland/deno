@@ -3,8 +3,7 @@ import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
 import { getFileInfoType } from "./_util.ts";
-
-const isWindows = Deno.build.os == "windows";
+import { isWindows } from "../_util/os.ts";
 
 /**
  * Ensures that the link exists.

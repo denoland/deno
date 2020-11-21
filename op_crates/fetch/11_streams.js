@@ -81,13 +81,14 @@
         if (value instanceof Map) {
           const clonedMap = new Map();
           objectCloneMemo.set(value, clonedMap);
-          value.forEach((v, k) => clonedMap.set(k, cloneValue(v)));
+          value.forEach((v, k) => {
+            clonedMap.set(cloneValue(k), cloneValue(v));
+          });
           return clonedMap;
         }
         if (value instanceof Set) {
-          const clonedSet = new Map();
+          const clonedSet = new Set([...value].map(cloneValue));
           objectCloneMemo.set(value, clonedSet);
-          value.forEach((v, k) => clonedSet.set(k, cloneValue(v)));
           return clonedSet;
         }
 
@@ -97,6 +98,7 @@
         for (const key of sourceKeys) {
           clonedObj[key] = cloneValue(value[key]);
         }
+        Reflect.setPrototypeOf(clonedObj, Reflect.getPrototypeOf(value));
         return clonedObj;
       }
       case "symbol":
@@ -1071,14 +1073,17 @@
         throw new TypeError("method is not callable");
       }
       if (algoArgCount === 0) {
+        // deno-lint-ignore require-await
         return async () => call(method, underlyingObject, extraArgs);
       } else {
+        // deno-lint-ignore require-await
         return async (arg) => {
           const fullArgs = [arg, ...extraArgs];
           return call(method, underlyingObject, fullArgs);
         };
       }
     }
+    // deno-lint-ignore require-await
     return async () => undefined;
   }
 
@@ -2490,6 +2495,7 @@
       if (typeof transformMethod !== "function") {
         throw new TypeError("tranformer.transform must be callable.");
       }
+      // deno-lint-ignore require-await
       transformAlgorithm = async (chunk) =>
         call(transformMethod, transformer, [chunk, controller]);
     }

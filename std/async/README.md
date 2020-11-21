@@ -1,8 +1,8 @@
 # async
 
-async is a module to provide help with aysncronous tasks.
+async is a module to provide help with asynchronous tasks.
 
-# usage
+# Usage
 
 The following functions and class are exposed in `mod.ts`:
 
