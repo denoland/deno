@@ -2,7 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::fs::canonicalize_path;
+use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
@@ -13,8 +13,8 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use rand::thread_rng;
-use rand::Rng;
+use deno_crypto::rand::thread_rng;
+use deno_crypto::rand::Rng;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;

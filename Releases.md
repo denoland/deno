@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.5.3 / 2020.11.16
+
+- feat(unstable): support deno lint --rules --json (#8384)
+- fix: fix various global objects constructor length (#8373)
+- fix: allow declaration emits for Deno.compile() (#8303)
+- fix: allow root modules be .mjs/.cjs (#8310)
+- fix: allow setting of importsNotUsedAsValues in Deno.compile() (#8306)
+- fix: do not write tsbuildinfo when diagnostics are emitted (#8311)
+- fix: don't walk the subdirectory twice when using the `--ignore` flag (#8040,
+  #8375)
+- fix: local sources are not cached in memory (#8328)
+- fix: Use safe shell escaping in `deno install` (#7613)
+- fix: DOM handler order in Websocket and Worker (#8320, #8334)
+- fix(op_crates/web) make isTrusted not constructable (#8337)
+- fix(op_crates/web): FileReader event handler order (#8348)
+- fix(op_crates/web): handler order when reassign (#8264)
+- refactor: deno_crypto op crate (#7956)
+
+Changes in std version 0.78.0:
+
+- feat(std/node): consistent Node.js builtin shapes (#8274)
+- fix(std/http): flush body chunks for HTTP chunked encoding (#8349)
+- refactor(std/fs): moved isCopyFolder to options (#8319)
+
 ### 1.5.2 / 2020.11.09
 
 - fix(core/error): Remove extra newline from JsError::fmt() (#8145)

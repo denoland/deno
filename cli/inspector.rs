@@ -235,9 +235,9 @@ async fn server(
   pin_mut!(server_handler);
 
   select! {
-    _ = register_inspector_handler => (),
+    _ = register_inspector_handler => {},
     _ = deregister_inspector_handler => unreachable!(),
-    _ = server_handler => (),
+    _ = server_handler => {},
   }
 }
 

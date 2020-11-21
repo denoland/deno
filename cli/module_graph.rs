@@ -2180,7 +2180,7 @@ pub mod tests {
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert!(actual.contains("const b = \"b\";"));
-    assert!(actual.contains("console.log(b);"));
+    assert!(actual.contains("console.log(mod);"));
   }
 
   #[tokio::test]

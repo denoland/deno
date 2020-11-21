@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::flags::Flags;
-use crate::fs::canonicalize_path;
+use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
