@@ -83,13 +83,12 @@ function toString(cookie: Cookie): string {
 }
 
 /**
- * Validate Cookie property.
- * @param key Name of the cookie.
- * @param value Value of the cookie.
+ * Validate Cookie Name.
+ * @param name Cookie name.
  */
-function validateCookieName(value: string | undefined | null): void {
-  if (value && !FIELD_CONTENT_REGEXP.test(value)) {
-    throw new TypeError(`Invalid cookie name: "${value}".`);
+function validateCookieName(name: string | undefined | null): void {
+  if (name && !FIELD_CONTENT_REGEXP.test(name)) {
+    throw new TypeError(`Invalid cookie name: "${name}".`);
   }
 }
 
