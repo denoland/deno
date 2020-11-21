@@ -1213,9 +1213,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.77"
+version = "0.2.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2f96b10ec2560088a8e76961b00d47107b3a625fecb76dedb29ee7ccbf98235"
+checksum = "4d58d1b70b004888f764dfbf6a26a3b0342a1632d33968e4a179d8011c760614"
 
 [[package]]
 name = "log"
@@ -2003,9 +2003,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "692dddfb8ae9915b19774a05cadc71363c98bad4fafc13636579da5a7a110016"
+checksum = "abf06ea79ead18b3f81707b78e6d7813e83c772d0cb4b43caf3fa35a5df7eaab"
 dependencies = [
  "bitflags",
  "cargo_gn",
