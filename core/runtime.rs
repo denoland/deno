@@ -114,7 +114,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: Cell<bool>,
   //pub(crate) op_table: OpTable,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  loader: Rc<dyn ModuleLoader>,
+  pub loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
@@ -573,20 +573,6 @@ where
 
 impl JsRuntimeState {
   // Called by V8 during `Isolate::mod_instantiate`.
-  pub fn module_resolve_cb(
-    &mut self,
-    specifier: &str,
-    referrer_id: ModuleId,
-  ) -> ModuleId {
-    let referrer = self.modules.get_name(referrer_id).unwrap();
-    let specifier = self
-      .loader
-      .resolve(self.op_state.clone(), specifier, referrer, false)
-      .expect("Module should have been already resolved");
-    self.modules.get_id(specifier.as_str()).unwrap_or(0)
-  }
-
-  // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
     resolver_handle: v8::Global<v8::PromiseResolver>,
@@ -687,7 +673,6 @@ impl JsRuntime {
     }
 
     let module = maybe_module.unwrap();
-    let id = module.get_identity_hash();
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     for i in 0..module.get_module_requests_length() {
@@ -703,8 +688,7 @@ impl JsRuntime {
       import_specifiers.push(module_specifier);
     }
 
-    state_rc.borrow_mut().modules.register(
-      id,
+    let id = state_rc.borrow_mut().modules.register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),
@@ -726,13 +710,12 @@ impl JsRuntime {
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let state = state_rc.borrow();
-    let module = match state.modules.get_info(id) {
-      Some(info) => v8::Local::new(tc_scope, &info.handle),
-      None if id == 0 => return Ok(()),
-      _ => panic!("module id {} not found in module table", id),
-    };
-    drop(state);
+    let module = state_rc
+      .borrow()
+      .modules
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
+      .expect("ModuleInfo not found");
 
     if module.get_status() == v8::ModuleStatus::Errored {
       exception_to_err_result(tc_scope, module.get_exception(), false)?
@@ -768,10 +751,8 @@ impl JsRuntime {
     let module_handle = state_rc
       .borrow()
       .modules
-      .get_info(id)
-      .expect("ModuleInfo not found")
-      .handle
-      .clone();
+      .get_handle(id)
+      .expect("ModuleInfo not found");
 
     let status = {
       let scope =
@@ -858,8 +839,8 @@ impl JsRuntime {
     let module = state_rc
       .borrow()
       .modules
-      .get_info(id)
-      .map(|info| v8::Local::new(scope, &info.handle))
+      .get_handle(id)
+      .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
 
@@ -970,7 +951,6 @@ impl JsRuntime {
     let context = self.global_context();
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
-    assert!(mod_id != 0);
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let resolver_handle = state_rc
@@ -984,8 +964,8 @@ impl JsRuntime {
       let state = state_rc.borrow();
       state
         .modules
-        .get_info(mod_id)
-        .map(|info| v8::Local::new(scope, &info.handle))
+        .get_handle(mod_id)
+        .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found")
     };
     // Resolution success
