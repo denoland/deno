@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+//! This module provides feature to upgrade deno executable
+
 use crate::AnyError;
 use deno_fetch::reqwest;
 use deno_fetch::reqwest::Client;
@@ -47,7 +49,13 @@ pub async fn upgrade_command(
       let latest_version = get_latest_version(&client).await?;
 
       let current = semver_parse(crate::version::DENO).unwrap();
-      let latest = semver_parse(&latest_version).unwrap();
+      let latest = match semver_parse(&latest_version) {
+        Ok(v) => v,
+        Err(_) => {
+          eprintln!("Invalid semver passed");
+          std::process::exit(1)
+        }
+      };
 
       if !force && output.is_none() && current >= latest {
         println!(
