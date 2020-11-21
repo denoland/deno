@@ -1199,6 +1199,13 @@ Directory arguments are expanded to all contained files matching the glob
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("script_arg")
     .multiple(true)
+    // NOTE: these defaults are provided
+    // so `deno run --v8-flags=--help` works
+    // without specifying file to run.
+    .default_value_ifs(&[
+      ("v8-flags", Some("--help"), "_"),
+      ("v8-flags", Some("-help"), "_"),
+    ])
     .help("Script arg")
     .value_name("SCRIPT_ARG")
 }
@@ -1646,17 +1653,12 @@ mod tests {
 
   #[test]
   fn run_v8_flags() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "run",
-      "--v8-flags=--help",
-      "script.ts"
-    ]);
+    let r = flags_from_vec_safe(svec!["deno", "run", "--v8-flags=--help"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string(),
+          script: "_".to_string(),
         },
         v8_flags: Some(svec!["--help"]),
         ..Flags::default()
