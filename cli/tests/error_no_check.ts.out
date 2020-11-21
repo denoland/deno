@@ -1,1 +1,2 @@
 error: Uncaught SyntaxError: The requested module './subdir/type_and_code.ts' does not provide an export named 'AnInterface'
+[WILDCARD]

@@ -188,7 +188,7 @@ impl ProgramState {
     // really should just be getting this from the module graph.
     let out = self
       .file_fetcher
-      .get_cached(&module_specifier)
+      .get_source(&module_specifier)
       .expect("Cached source file doesn't exist");
 
     let specifier = out.specifier.clone();
@@ -323,7 +323,7 @@ impl SourceMapGetter for ProgramState {
     line_number: usize,
   ) -> Option<String> {
     if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
-      self.file_fetcher.get_cached(&specifier).map(|out| {
+      self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();

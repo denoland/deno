@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::fmt_errors::JsError;
+use crate::fmt_errors::PrettyJsError;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorSession;
 use crate::js;
@@ -11,6 +11,7 @@ use crate::ops;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
+use crate::source_maps::apply_source_map;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
@@ -121,7 +122,9 @@ impl Worker {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
       js_error_create_fn: Some(Box::new(move |core_js_error| {
-        JsError::create(core_js_error, global_state_.clone())
+        let source_mapped_error =
+          apply_source_map(&core_js_error, global_state_.clone());
+        PrettyJsError::create(source_mapped_error)
       })),
       ..Default::default()
     });
@@ -278,7 +281,7 @@ impl MainWorker {
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime, None);
-      ops::random::init(js_runtime, program_state.flags.seed);
+      ops::crypto::init(js_runtime, program_state.flags.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -469,7 +472,7 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::random::init(js_runtime, program_state.flags.seed);
+        ops::crypto::init(js_runtime, program_state.flags.seed);
         ops::runtime_compiler::init(js_runtime);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);

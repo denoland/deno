@@ -123,6 +123,22 @@ export function getSystemErrorName(code: number): string | undefined {
   return errorMap.get(code)?.[0];
 }
 
+/**
+ * https://nodejs.org/api/util.html#util_util_deprecate_fn_msg_code
+ * @param _code This implementation of deprecate won't apply the deprecation code
+ */
+export function deprecate<A extends Array<unknown>, B>(
+  this: unknown,
+  callback: (...args: A) => B,
+  msg: string,
+  _code?: string,
+) {
+  return function (this: unknown, ...args: A) {
+    console.warn(msg);
+    return callback.apply(this, args);
+  };
+}
+
 import { _TextDecoder, _TextEncoder } from "./_utils.ts";
 
 /** The global TextDecoder */

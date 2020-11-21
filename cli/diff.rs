@@ -2,8 +2,6 @@
 
 use crate::colors;
 use dissimilar::{diff as difference, Chunk};
-use std::fmt;
-use std::fmt::Write;
 
 fn fmt_add() -> String {
   colors::green_bold("+").to_string()
@@ -36,33 +34,31 @@ fn write_line_diff(
   line_number_width: usize,
   orig: &mut String,
   edit: &mut String,
-) -> fmt::Result {
+) {
   let split = orig.split('\n').enumerate();
   for (i, s) in split {
-    write!(
-      diff,
+    diff.push_str(&format!(
       "{:width$}{} ",
       *orig_line + i,
       colors::gray(" |"),
       width = line_number_width
-    )?;
-    write!(diff, "{}", fmt_rem())?;
-    write!(diff, "{}", s)?;
-    writeln!(diff)?;
+    ));
+    diff.push_str(&fmt_rem());
+    diff.push_str(s);
+    diff.push('\n');
   }
 
   let split = edit.split('\n').enumerate();
   for (i, s) in split {
-    write!(
-      diff,
+    diff.push_str(&format!(
       "{:width$}{} ",
       *edit_line + i,
       colors::gray(" |"),
       width = line_number_width
-    )?;
-    write!(diff, "{}", fmt_add())?;
-    write!(diff, "{}", s)?;
-    writeln!(diff)?;
+    ));
+    diff.push_str(&fmt_add());
+    diff.push_str(s);
+    diff.push('\n');
   }
 
   *orig_line += orig.split('\n').count();
@@ -70,14 +66,12 @@ fn write_line_diff(
 
   orig.clear();
   edit.clear();
-
-  Ok(())
 }
 
 /// Print diff of the same file_path, before and after formatting.
 ///
 /// Diff format is loosely based on Github diff formatting.
-pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
+pub fn diff(orig_text: &str, edit_text: &str) -> String {
   let lines = edit_text.split('\n').count();
   let line_number_width = lines.to_string().chars().count();
 
@@ -87,10 +81,10 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
   let mut text2 = edit_text.to_string();
 
   if !text1.ends_with('\n') {
-    writeln!(text1)?;
+    text1.push('\n');
   }
   if !text2.ends_with('\n') {
-    writeln!(text2)?;
+    text2.push('\n');
   }
 
   let mut orig_line: usize = 1;
@@ -134,7 +128,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
                 line_number_width,
                 &mut orig,
                 &mut edit,
-              )?;
+              );
               changes = false
             } else {
               orig.clear();
@@ -149,7 +143,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
       }
     }
   }
-  Ok(diff)
+  diff
 }
 
 #[test]
@@ -157,16 +151,17 @@ fn test_diff() {
   let simple_console_log_unfmt = "console.log('Hello World')";
   let simple_console_log_fmt = "console.log(\"Hello World\");";
   assert_eq!(
-    colors::strip_ansi_codes(
-      &diff(simple_console_log_unfmt, simple_console_log_fmt).unwrap()
-    ),
+    colors::strip_ansi_codes(&diff(
+      simple_console_log_unfmt,
+      simple_console_log_fmt
+    )),
     "1 | -console.log('Hello World')\n1 | +console.log(\"Hello World\");\n"
   );
 
   let line_number_unfmt = "\n\n\n\nconsole.log(\n'Hello World'\n)";
   let line_number_fmt = "console.log(\n\"Hello World\"\n);";
   assert_eq!(
-    colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt).unwrap()),
+    colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt)),
     "1 | -\n2 | -\n3 | -\n4 | -\n5 | -console.log(\n1 | +console.log(\n6 | -'Hello World'\n2 | +\"Hello World\"\n7 | -)\n3 | +);\n"
   )
 }
