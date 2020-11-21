@@ -403,7 +403,8 @@ impl ModuleNameMap {
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
-  handles: HashMap<ModuleId, v8::Global<v8::Module>>,
+  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
   next_module_id: ModuleId,
@@ -412,7 +413,8 @@ pub struct Modules {
 impl Modules {
   pub fn new() -> Modules {
     Self {
-      handles: HashMap::new(),
+      handles_by_id: HashMap::new(),
+      ids_by_handle: HashMap::new(),
       info: HashMap::new(),
       by_name: ModuleNameMap::new(),
       next_module_id: 1,
@@ -442,7 +444,8 @@ impl Modules {
     let id = self.next_module_id;
     self.next_module_id += 1;
     self.by_name.insert(name.clone(), id);
-    self.handles.insert(id, handle);
+    self.handles_by_id.insert(id, handle.clone());
+    self.ids_by_handle.insert(handle, id);
     self.info.insert(
       id,
       ModuleInfo {
@@ -465,21 +468,17 @@ impl Modules {
   }
 
   pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
-    self.handles.get(&id).cloned()
+    self.handles_by_id.get(&id).cloned()
   }
 
   pub fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
-    // NOTE(@bartlomieju): not ideal, but I was unable to create
-    // another hashmap indexed by `handle`.
-    for (id, handle) in self.handles.iter() {
-      if handle == global {
-        return self.info.get(id);
-      }
+    if let Some(id) = self.ids_by_handle.get(global) {
+      return self.info.get(id);
     }
-
+  
     None
   }
 }
