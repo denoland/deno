@@ -37,6 +37,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
+      CARGO_TERM_COLOR: always
 
     steps:
       - name: Configure git
@@ -60,18 +61,31 @@ jobs:
           !startsWith(github.ref, 'refs/tags/std/')
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.47.0
+          rust-version: 1.48.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
         run: |
           rustup component add clippy
           rustup component add rustfmt
+
+      - name: Install Deno
+        if: |
+          !startsWith(matrix.os, 'windows')
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          echo "$HOME/.deno/bin" >> $GITHUB_PATH
+
+      - name: Install Deno (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
 
       - name: Install Python
         uses: actions/setup-python@v1
@@ -93,14 +107,15 @@ jobs:
           python --version
           rustc --version
           cargo --version
+          deno --version
 
-      - name: lint.py
+      - name: lint.js
         if: matrix.kind == 'lint'
-        run: python ./tools/lint.py
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
-      - name: test_format.py
+      - name: test_format.js
         if: matrix.kind == 'lint'
-        run: python ./tools/test_format.py
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
 
       - name: Build release
         if: |
@@ -133,7 +148,7 @@ jobs:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          python ./tools/build_benchmark_jsons.py --release
+          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
@@ -206,6 +221,9 @@ jobs:
           cargo publish
           sleep 30
           cd ../fetch
+          cargo publish
+          sleep 30
+          cd ../crypto
           cargo publish
           sleep 30
           cd ../../cli

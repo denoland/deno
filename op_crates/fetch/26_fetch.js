@@ -166,6 +166,7 @@
     if (typeof str !== "string") {
       return false;
     }
+    // deno-lint-ignore no-control-regex
     return /^[\x00-\x7F]*$/.test(str);
   }
 
@@ -1349,7 +1350,8 @@
             });
             return new Response(null, responseInit);
           case "follow":
-          default:
+            // fallthrough
+          default: {
             let redirectUrl = response.headers.get("Location");
             if (redirectUrl == null) {
               return response; // Unspecified
@@ -1363,6 +1365,7 @@
             url = redirectUrl;
             redirected = true;
             remRedirectCount--;
+          }
         }
       } else {
         return response;

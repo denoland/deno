@@ -69,7 +69,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
     if (Number.isNaN(chunkSize) || chunkSize < 0) {
-      throw new Error("Invalid chunk size");
+      throw new Deno.errors.InvalidData("Invalid chunk size");
     }
     if (chunkSize > 0) {
       if (chunkSize > buf.byteLength) {
@@ -171,21 +171,21 @@ function parseTrailer(field: string | null): Headers | undefined {
 }
 
 export async function writeChunkedBody(
-  w: Deno.Writer,
+  w: BufWriter,
   r: Deno.Reader,
 ): Promise<void> {
-  const writer = BufWriter.create(w);
   for await (const chunk of Deno.iter(r)) {
     if (chunk.byteLength <= 0) continue;
     const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
     const end = encoder.encode("\r\n");
-    await writer.write(start);
-    await writer.write(chunk);
-    await writer.write(end);
+    await w.write(start);
+    await w.write(chunk);
+    await w.write(end);
+    await w.flush();
   }
 
   const endChunk = encoder.encode("0\r\n\r\n");
-  await writer.write(endChunk);
+  await w.write(endChunk);
 }
 
 /** Write trailer headers to writer. It should mostly should be called after

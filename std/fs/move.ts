@@ -24,13 +24,13 @@ export async function move(
     if (await exists(dest)) {
       await Deno.remove(dest, { recursive: true });
     }
-    await Deno.rename(src, dest);
   } else {
     if (await exists(dest)) {
       throw new Error("dest already exists.");
     }
-    await Deno.rename(src, dest);
   }
+
+  await Deno.rename(src, dest);
 
   return;
 }
@@ -53,11 +53,11 @@ export function moveSync(
     if (existsSync(dest)) {
       Deno.removeSync(dest, { recursive: true });
     }
-    Deno.renameSync(src, dest);
   } else {
     if (existsSync(dest)) {
       throw new Error("dest already exists.");
     }
-    Deno.renameSync(src, dest);
   }
+
+  Deno.renameSync(src, dest);
 }

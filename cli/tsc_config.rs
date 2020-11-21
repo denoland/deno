@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::fs_util::canonicalize_path;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -8,6 +9,7 @@ use jsonc_parser::JsonValue;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -50,37 +52,49 @@ impl fmt::Display for IgnoredCompilerOptions {
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: [&str; 10] = [
+const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
+  "allowUmdGlobalAccess",
+  "baseUrl",
+  "declaration",
+  "declarationMap",
+  "downlevelIteration",
   "esModuleInterop",
+  "emitDeclarationOnly",
+  "importHelpers",
   "inlineSourceMap",
   "inlineSources",
   // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
   "module",
+  "noEmitHelpers",
   "noLib",
+  "noResolve",
+  "outDir",
+  "paths",
   "preserveConstEnums",
   "reactNamespace",
+  "rootDir",
+  "rootDirs",
+  "skipLibCheck",
   "sourceMap",
+  "sourceRoot",
   "target",
+  "types",
+  "useDefineForClassFields",
 ];
 
-const IGNORED_RUNTIME_COMPILER_OPTIONS: [&str; 50] = [
-  "allowUmdGlobalAccess",
+const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "assumeChangesOnlyAffectDirectDependencies",
-  "baseUrl",
   "build",
+  "charset",
   "composite",
-  "declaration",
-  "declarationMap",
   "diagnostics",
-  "downlevelIteration",
+  "disableSizeLimit",
   "emitBOM",
-  "emitDeclarationOnly",
   "extendedDiagnostics",
   "forceConsistentCasingInFileNames",
   "generateCpuProfile",
   "help",
-  "importHelpers",
   "incremental",
   "init",
   "listEmittedFiles",
@@ -90,29 +104,21 @@ const IGNORED_RUNTIME_COMPILER_OPTIONS: [&str; 50] = [
   "moduleResolution",
   "newLine",
   "noEmit",
-  "noEmitHelpers",
   "noEmitOnError",
-  "noResolve",
   "out",
   "outDir",
   "outFile",
-  "paths",
   "preserveSymlinks",
   "preserveWatchOutput",
   "pretty",
+  "project",
   "resolveJsonModule",
-  "rootDir",
-  "rootDirs",
   "showConfig",
   "skipDefaultLibCheck",
-  "skipLibCheck",
-  "sourceRoot",
   "stripInternal",
   "traceResolution",
   "tsBuildInfoFile",
-  "types",
   "typeRoots",
-  "useDefineForClassFields",
   "version",
   "watch",
 ];
@@ -166,12 +172,6 @@ struct TSConfigJson {
   include: Option<Vec<String>>,
   references: Option<Value>,
   type_acquisition: Option<Value>,
-}
-
-pub fn parse_raw_config(config_text: &str) -> Result<Value, AnyError> {
-  assert!(!config_text.is_empty());
-  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
-  Ok(jsonc_to_serde(jsonc))
 }
 
 fn parse_compiler_options(
@@ -230,7 +230,10 @@ impl TsConfig {
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
-    self.0.to_string().as_bytes().to_owned()
+    let map = self.0.as_object().unwrap();
+    let ordered: BTreeMap<_, _> = map.iter().collect();
+    let value = json!(ordered);
+    value.to_string().as_bytes().to_owned()
   }
 
   /// Return the value of the `checkJs` compiler option, defaulting to `false`
@@ -262,7 +265,7 @@ impl TsConfig {
     if let Some(path) = maybe_path {
       let cwd = std::env::current_dir()?;
       let config_file = cwd.join(path);
-      let config_path = config_file.canonicalize().map_err(|_| {
+      let config_path = canonicalize_path(&config_file).map_err(|_| {
         std::io::Error::new(
           std::io::ErrorKind::InvalidInput,
           format!(
@@ -390,14 +393,23 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_raw_config() {
-    let invalid_config_text = r#"{
-      "compilerOptions": {
-        // comments are allowed
-    }"#;
-    let errbox = parse_raw_config(invalid_config_text).unwrap_err();
-    assert!(errbox
-      .to_string()
-      .starts_with("Unterminated object on line 1"));
+  fn test_tsconfig_as_bytes() {
+    let mut tsconfig1 = TsConfig::new(json!({
+      "strict": true,
+      "target": "esnext",
+    }));
+    tsconfig1.merge(&json!({
+      "target": "es5",
+      "module": "amd",
+    }));
+    let mut tsconfig2 = TsConfig::new(json!({
+      "target": "esnext",
+      "strict": true,
+    }));
+    tsconfig2.merge(&json!({
+      "module": "amd",
+      "target": "es5",
+    }));
+    assert_eq!(tsconfig1.as_bytes(), tsconfig2.as_bytes());
   }
 }

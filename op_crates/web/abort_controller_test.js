@@ -23,7 +23,7 @@ function assertThrows(fn) {
 }
 
 function basicAbortController() {
-  controller = new AbortController();
+  const controller = new AbortController();
   assert(controller);
   const { signal } = controller;
   assert(signal);
@@ -83,6 +83,46 @@ function abortSignalIllegalConstructor() {
   assertEquals(error.message, "Illegal constructor.");
 }
 
+function abortSignalEventOrder() {
+  const arr = [];
+  const controller = new AbortController();
+  const { signal } = controller;
+  signal.addEventListener("abort", () => arr.push(1));
+  signal.onabort = () => arr.push(2);
+  signal.addEventListener("abort", () => arr.push(3));
+  controller.abort();
+  assertEquals(arr[0], 1);
+  assertEquals(arr[1], 2);
+  assertEquals(arr[2], 3);
+}
+
+function abortSignalEventOrderComplex() {
+  const arr = [];
+  const controller = new AbortController();
+  const { signal } = controller;
+  signal.addEventListener("abort", () => arr.push(1));
+  signal.onabort = () => {
+    throw new Error();
+  };
+  signal.addEventListener("abort", () => arr.push(3));
+  signal.onabort = () => arr.push(2);
+  controller.abort();
+  assertEquals(arr[0], 1);
+  assertEquals(arr[1], 2);
+  assertEquals(arr[2], 3);
+}
+
+function abortSignalHandlerLocation() {
+  const controller = new AbortController();
+  const { signal } = controller;
+  const abortHandler = Object.getOwnPropertyDescriptor(signal, "onabort");
+  assertEquals(abortHandler, undefined);
+}
+function abortSignalLength() {
+  const controller = new AbortController();
+  const { signal } = controller;
+  assertEquals(signal.constructor.length, 0);
+}
 function main() {
   basicAbortController();
   signalCallsOnabort();
@@ -90,6 +130,10 @@ function main() {
   onlyAbortsOnce();
   controllerHasProperToString();
   abortSignalIllegalConstructor();
+  abortSignalEventOrder();
+  abortSignalEventOrderComplex();
+  abortSignalHandlerLocation();
+  abortSignalLength();
 }
 
 main();

@@ -14,6 +14,7 @@ async function startServer(): Promise<
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-net",
       "--allow-read",
       "server.ts",

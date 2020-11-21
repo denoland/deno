@@ -112,6 +112,11 @@ function fileLenToString(len: number): string {
   return `${(len / base).toFixed(2)}${suffix[suffixIndex]}`;
 }
 
+/**
+ * Returns an HTTP Response with the requested file as the body
+ * @param req The server request context used to cleanup the file handle
+ * @param filePath Path of the file to serve
+ */
 export async function serveFile(
   req: ServerRequest,
   filePath: string,
@@ -322,14 +327,15 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 }
 
 function normalizeURL(url: string): string {
-  let normalizedUrl = posix.normalize(url);
+  let normalizedUrl = url;
   try {
-    normalizedUrl = decodeURIComponent(normalizedUrl);
+    normalizedUrl = decodeURI(normalizedUrl);
   } catch (e) {
     if (!(e instanceof URIError)) {
       throw e;
     }
   }
+  normalizedUrl = posix.normalize(normalizedUrl);
   const startOfParams = normalizedUrl.indexOf("?");
   return startOfParams > -1
     ? normalizedUrl.slice(0, startOfParams)

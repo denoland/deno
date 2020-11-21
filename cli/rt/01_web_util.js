@@ -88,22 +88,26 @@
         if (value instanceof Map) {
           const clonedMap = new Map();
           objectCloneMemo.set(value, clonedMap);
-          value.forEach((v, k) => clonedMap.set(k, cloneValue(v)));
+          value.forEach((v, k) => {
+            clonedMap.set(cloneValue(k), cloneValue(v));
+          });
           return clonedMap;
         }
         if (value instanceof Set) {
-          const clonedSet = new Map();
+          // assumes that cloneValue still takes only one argument
+          const clonedSet = new Set([...value].map(cloneValue));
           objectCloneMemo.set(value, clonedSet);
-          value.forEach((v, k) => clonedSet.set(k, cloneValue(v)));
           return clonedSet;
         }
 
+        // default for objects
         const clonedObj = {};
         objectCloneMemo.set(value, clonedObj);
         const sourceKeys = Object.getOwnPropertyNames(value);
         for (const key of sourceKeys) {
           clonedObj[key] = cloneValue(value[key]);
         }
+        Reflect.setPrototypeOf(clonedObj, Reflect.getPrototypeOf(value));
         return clonedObj;
       }
       case "symbol":
@@ -113,9 +117,44 @@
     }
   }
 
+  const handlerSymbol = Symbol("eventHandlers");
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return wrappedHandler.handler.call(this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+  function defineEventHandler(emitter, name) {
+    // HTML specification section 8.1.5.1
+    Object.defineProperty(emitter, `on${name}`, {
+      get() {
+        return this[handlerSymbol]?.get(name)?.handler;
+      },
+      set(value) {
+        if (!this[handlerSymbol]) {
+          this[handlerSymbol] = new Map();
+        }
+        let handlerWrapper = this[handlerSymbol]?.get(name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+        }
+        this[handlerSymbol].set(name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
+  }
   window.__bootstrap.webUtil = {
     illegalConstructorKey,
     requiredArguments,
+    defineEventHandler,
     cloneValue,
   };
 })(this);

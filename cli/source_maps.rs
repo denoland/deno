@@ -2,7 +2,7 @@
 
 //! This mod provides functions to remap a `JsError` based on a source map.
 
-use deno_core::error::JsError as CoreJsError;
+use deno_core::error::JsError;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
@@ -26,9 +26,9 @@ pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 /// file names and line/column numbers point to the location in the original
 /// source, rather than the transpiled source code.
 pub fn apply_source_map<G: SourceMapGetter>(
-  js_error: &CoreJsError,
+  js_error: &JsError,
   getter: Arc<G>,
-) -> CoreJsError {
+) -> JsError {
   // Note that js_error.frames has already been source mapped in
   // prepareStackTrace().
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -71,7 +71,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     _ => js_error.source_line.clone(),
   };
 
-  CoreJsError {
+  JsError {
     message: js_error.message.clone(),
     source_line,
     script_resource_name,
@@ -198,7 +198,7 @@ mod tests {
 
   #[test]
   fn apply_source_map_line() {
-    let e = CoreJsError {
+    let e = JsError {
       message: "TypeError: baz".to_string(),
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),

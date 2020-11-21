@@ -298,6 +298,7 @@ impl ParsedModule {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
+      helpers::inject_helpers(),
       typescript::strip(),
       fixer(Some(&self.comments)),
     );
@@ -413,6 +414,7 @@ pub fn transpile_module(
   src: &str,
   media_type: &MediaType,
   emit_options: &EmitOptions,
+  globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
   // TODO(@kitsonk) DRY-up with ::parse()
@@ -464,10 +466,15 @@ pub fn transpile_module(
       legacy: true,
       emit_metadata: emit_options.emit_metadata
     }),
+    helpers::inject_helpers(),
     typescript::strip(),
     fixer(Some(&comments)),
   );
-  let module = module.fold_with(&mut passes);
+  let module = swc_common::GLOBALS.set(globals, || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      module.fold_with(&mut passes)
+    })
+  });
 
   Ok((source_file, module))
 }
@@ -475,23 +482,50 @@ pub fn transpile_module(
 pub struct BundleHook;
 
 impl swc_bundler::Hook for BundleHook {
-  fn get_import_meta_url(
+  fn get_import_meta_props(
     &self,
     span: swc_common::Span,
-    file: &swc_common::FileName,
-  ) -> Result<Option<swc_ecmascript::ast::Expr>, AnyError> {
+    module_record: &swc_bundler::ModuleRecord,
+  ) -> Result<Vec<swc_ecmascript::ast::KeyValueProp>, AnyError> {
+    use swc_ecmascript::ast;
+
     // we use custom file names, and swc "wraps" these in `<` and `>` so, we
     // want to strip those back out.
-    let mut value = file.to_string();
+    let mut value = module_record.file_name.to_string();
     value.pop();
     value.remove(0);
-    Ok(Some(swc_ecmascript::ast::Expr::Lit(
-      swc_ecmascript::ast::Lit::Str(swc_ecmascript::ast::Str {
-        span,
-        value: value.into(),
-        has_escape: false,
-      }),
-    )))
+
+    Ok(vec![
+      ast::KeyValueProp {
+        key: ast::PropName::Ident(ast::Ident::new("url".into(), span)),
+        value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
+          span,
+          value: value.into(),
+          has_escape: false,
+        }))),
+      },
+      ast::KeyValueProp {
+        key: ast::PropName::Ident(ast::Ident::new("main".into(), span)),
+        value: Box::new(if module_record.is_entry {
+          ast::Expr::Member(ast::MemberExpr {
+            span,
+            obj: ast::ExprOrSuper::Expr(Box::new(ast::Expr::MetaProp(
+              ast::MetaPropExpr {
+                meta: ast::Ident::new("import".into(), span),
+                prop: ast::Ident::new("meta".into(), span),
+              },
+            ))),
+            prop: Box::new(ast::Expr::Ident(ast::Ident::new(
+              "main".into(),
+              span,
+            ))),
+            computed: false,
+          })
+        } else {
+          ast::Expr::Lit(ast::Lit::Bool(ast::Bool { span, value: false }))
+        }),
+      },
+    ])
   }
 }
 

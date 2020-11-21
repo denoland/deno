@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-undef
-/* eslint-disable */
+// deno-lint-ignore-file
 const { helloB } = require("./cjs_b.js");
 const C = require("./subdir/cjs_c");
 const leftPad = require("left-pad");

@@ -1,3 +1,3 @@
 [WILDCARD]
-DEBUG RS - [WILDCARD] - fetch_source_file specifier: file:[WILDCARD]cli/tests/subdir/type_reference.d.ts [WILDCARD]
+DEBUG RS - [WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]cli/tests/subdir/type_reference.d.ts
 [WILDCARD]

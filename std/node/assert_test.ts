@@ -13,7 +13,6 @@ import {
 import AssertionError from "./assertion_error.ts";
 
 import assert, {
-  assert as assert_,
   AssertionError as AssertionError_,
   deepStrictEqual,
   fail,
@@ -26,13 +25,7 @@ import assert, {
 } from "./assert.ts";
 
 Deno.test("API should be exposed", () => {
-  assertStrictEquals(
-    assert_,
-    assert,
-    "`assert()` should be the default export",
-  );
-  assertStrictEquals(assert_, denoAssert, "`assert()` should be exposed");
-  assertStrictEquals(assert_, ok, "`assert()` should be an alias of `ok()`");
+  assertStrictEquals(assert, ok, "`assert()` should be an alias of `ok()`");
   assertStrictEquals(
     assertEquals,
     deepStrictEqual,

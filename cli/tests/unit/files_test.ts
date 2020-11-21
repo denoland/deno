@@ -319,7 +319,7 @@ unitTest(
     // writing null should throw an error
     await assertThrowsAsync(
       async (): Promise<void> => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
         await file.write(null as any);
       },
     ); // TODO: Check error kind when dispatch_minimal pipes errors properly
@@ -346,7 +346,7 @@ unitTest(
 
     // reading file into null buffer should throw an error
     await assertThrowsAsync(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       await file.read(null as any);
     }, TypeError);
     // TODO: Check error kind when dispatch_minimal pipes errors properly

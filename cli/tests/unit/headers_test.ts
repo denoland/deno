@@ -22,7 +22,7 @@ unitTest(function newHeaderTest(): void {
   new Headers(undefined);
   new Headers({});
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     new Headers(null as any);
   } catch (e) {
     assertEquals(
@@ -36,11 +36,11 @@ const headerDict: Record<string, string> = {
   name1: "value1",
   name2: "value2",
   name3: "value3",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   name4: undefined as any,
   "Content-Type": "value4",
 };
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const headerSeq: any[] = [];
 for (const name in headerDict) {
   headerSeq.push([name, headerDict[name]]);
@@ -273,7 +273,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
@@ -297,7 +297,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
@@ -317,7 +317,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (headers as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {

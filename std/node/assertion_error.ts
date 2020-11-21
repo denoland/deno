@@ -44,8 +44,7 @@ const {
   keys: ObjectKeys,
 } = Object;
 
-import { codes } from "./_errors.ts";
-const { ERR_INVALID_ARG_TYPE } = codes;
+import { ERR_INVALID_ARG_TYPE } from "./_errors.ts";
 
 let blue = "";
 let green = "";
@@ -363,10 +362,10 @@ export interface AssertionErrorConstructorOptions {
   expected?: unknown;
   operator?: string;
   details?: AssertionErrorDetailsDescriptor[];
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // deno-lint-ignore ban-types
   stackStartFn?: Function;
   // Compatibility with older versions.
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // deno-lint-ignore ban-types
   stackStartFunction?: Function;
 }
 
