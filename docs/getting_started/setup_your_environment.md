@@ -38,13 +38,19 @@ source /etc/bash_completion.d/deno.bash
 
 Example (zsh):
 
-```shel
-deno completions zsh |sudo tee /usr/local/share/zsh/site-functions/_deno
+```shell
+deno completions zsh | sudo tee /usr/local/share/zsh/site-functions/_deno
+```
+
+Example (fish):
+
+```shell
+deno completions fish > ~/.config/fish/completions/deno.fish
 ```
 
 Example (Powershell):
 
-```shel
+```shell
 deno completions powershell > $profile
 .$profile
 ```
