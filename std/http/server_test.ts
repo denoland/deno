@@ -370,6 +370,7 @@ Deno.test({
       cmd: [
         Deno.execPath(),
         "run",
+        "--quiet",
         "--allow-net",
         "testdata/simple_server.ts",
       ],
@@ -415,6 +416,7 @@ Deno.test({
       cmd: [
         Deno.execPath(),
         "run",
+        "--quiet",
         "--allow-net",
         "--allow-read",
         "testdata/simple_https_server.ts",

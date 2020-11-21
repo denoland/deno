@@ -88,22 +88,26 @@
         if (value instanceof Map) {
           const clonedMap = new Map();
           objectCloneMemo.set(value, clonedMap);
-          value.forEach((v, k) => clonedMap.set(k, cloneValue(v)));
+          value.forEach((v, k) => {
+            clonedMap.set(cloneValue(k), cloneValue(v));
+          });
           return clonedMap;
         }
         if (value instanceof Set) {
-          const clonedSet = new Map();
+          // assumes that cloneValue still takes only one argument
+          const clonedSet = new Set([...value].map(cloneValue));
           objectCloneMemo.set(value, clonedSet);
-          value.forEach((v, k) => clonedSet.set(k, cloneValue(v)));
           return clonedSet;
         }
 
+        // default for objects
         const clonedObj = {};
         objectCloneMemo.set(value, clonedObj);
         const sourceKeys = Object.getOwnPropertyNames(value);
         for (const key of sourceKeys) {
           clonedObj[key] = cloneValue(value[key]);
         }
+        Reflect.setPrototypeOf(clonedObj, Reflect.getPrototypeOf(value));
         return clonedObj;
       }
       case "symbol":
