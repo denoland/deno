@@ -60,7 +60,6 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
@@ -625,6 +624,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
+  no_run: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
@@ -644,31 +644,44 @@ async fn test_command(
     }
     return Ok(());
   }
-
-  let test_file_path = cwd.join("$deno$test.ts");
-  let test_file_url =
-    Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file = tools::test_runner::render_test_file(
-    test_modules.clone(),
-    fail_fast,
-    quiet,
-    filter,
-  );
-  let main_module =
-    ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+  let main_module = ModuleSpecifier::resolve_path("$deno$test.ts")?;
   // Create a dummy source file.
   let source_file = File {
-    local: test_file_url.to_file_path().unwrap(),
+    local: main_module.as_url().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: test_file.clone(),
-    specifier: ModuleSpecifier::from(test_file_url.clone()),
+    source: tools::test_runner::render_test_file(
+      test_modules.clone(),
+      fail_fast,
+      quiet,
+      filter,
+    ),
+    specifier: main_module.clone(),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
   program_state.file_fetcher.insert_cached(source_file);
+
+  if no_run {
+    let lib = if flags.unstable {
+      module_graph::TypeLib::UnstableDenoWindow
+    } else {
+      module_graph::TypeLib::DenoWindow
+    };
+    program_state
+      .prepare_module_load(
+        main_module.clone(),
+        lib,
+        Permissions::allow_all(),
+        false,
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
+    return Ok(());
+  }
+
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
@@ -694,7 +707,7 @@ async fn test_command(
 
     let filtered_coverages = tools::coverage::filter_script_coverages(
       coverages,
-      test_file_url,
+      main_module.as_url().clone(),
       test_modules,
     );
 
@@ -815,13 +828,16 @@ pub fn main() {
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
+      no_run,
       fail_fast,
       quiet,
       include,
       allow_none,
       filter,
-    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
-      .boxed_local(),
+    } => {
+      test_command(flags, include, no_run, fail_fast, quiet, allow_none, filter)
+        .boxed_local()
+    }
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
