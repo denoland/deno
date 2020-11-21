@@ -170,6 +170,10 @@ pub struct RuntimeOptions {
   /// is set to `JsError::create()`.
   pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
 
+  /// Allows to map error type to a string "class" used to represent
+  /// error in JavaScript.
+  pub get_error_class_fn: Option<GetErrorClassFn>,
+
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
@@ -254,7 +258,11 @@ impl JsRuntime {
     let js_error_create_fn = options
       .js_error_create_fn
       .unwrap_or_else(|| Box::new(JsError::create));
-    let op_state = OpState::default();
+    let mut op_state = OpState::default();
+
+    if let Some(get_error_class_fn) = options.get_error_class_fn {
+      op_state.get_error_class_fn = get_error_class_fn;
+    }
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
