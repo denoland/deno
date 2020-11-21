@@ -3017,12 +3017,17 @@ itest!(deno_doc_types_hint {
 });
 
 itest!(deno_doc_types_ref {
-  args: "doc doc/types_ref.ts",
+  args: "doc doc/types_ref.js",
   output: "doc/types_ref.out",
 });
 
 itest!(deno_doc_types_header {
   args: "doc doc/types_header.ts",
+  output: "doc/types_header.out",
+});
+
+itest!(deno_doc_types_header_direct {
+  args: "doc http://127.0.0.1:4545/xTypeScriptTypes.js",
   output: "doc/types_header.out",
 });
 
