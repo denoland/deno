@@ -3011,6 +3011,21 @@ itest!(deno_doc_import_map {
   output: "doc/use_import_map.out",
 });
 
+itest!(deno_doc_types_hint {
+  args: "doc doc/types_hint.ts",
+  output: "doc/types_hint.out",
+});
+
+itest!(deno_doc_types_ref {
+  args: "doc doc/types_ref.ts",
+  output: "doc/types_ref.out",
+});
+
+itest!(deno_doc_types_header {
+  args: "doc doc/types_header.ts",
+  output: "doc/types_header.out",
+});
+
 itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
