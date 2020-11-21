@@ -478,7 +478,7 @@ impl Modules {
     if let Some(id) = self.ids_by_handle.get(global) {
       return self.info.get(id);
     }
-  
+
     None
   }
 }
