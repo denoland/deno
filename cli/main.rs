@@ -10,7 +10,6 @@ extern crate log;
 mod ast;
 mod checksum;
 mod colors;
-mod coverage;
 mod deno_dir;
 mod diagnostics;
 mod diff;
@@ -20,7 +19,6 @@ mod file_fetcher;
 mod file_watcher;
 mod flags;
 mod flags_allow_net;
-mod fmt;
 mod fmt_errors;
 mod fs_util;
 mod http_cache;
@@ -28,9 +26,7 @@ mod http_util;
 mod import_map;
 mod info;
 mod inspector;
-mod installer;
 mod js;
-mod lint;
 mod lockfile;
 mod media_type;
 mod metrics;
@@ -39,22 +35,18 @@ mod module_loader;
 mod ops;
 mod permissions;
 mod program_state;
-mod repl;
 mod resolve_addr;
 mod signal;
 mod source_maps;
 mod specifier_handler;
-mod test_runner;
 mod text_encoding;
 mod tokio_util;
+mod tools;
 mod tsc;
 mod tsc_config;
-mod upgrade;
 mod version;
 mod worker;
 
-use crate::coverage::CoverageCollector;
-use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
@@ -88,7 +80,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use upgrade::upgrade_command;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -213,7 +204,7 @@ async fn install_command(
     MainWorker::new(&program_state, main_module.clone(), permissions);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
-  installer::install(flags, &module_url, args, name, root, force)
+  tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
 async fn lint_command(
@@ -228,11 +219,11 @@ async fn lint_command(
   }
 
   if list_rules {
-    lint::print_rules_list(json);
+    tools::lint::print_rules_list(json);
     return Ok(());
   }
 
-  lint::lint_files(files, ignore, json).await
+  tools::lint::lint_files(files, ignore, json).await
 }
 
 async fn cache_command(
@@ -523,7 +514,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
     MainWorker::new(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
 
-  repl::run(&program_state, worker).await
+  tools::repl::run(&program_state, worker).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
@@ -643,7 +634,8 @@ async fn test_command(
   let permissions = Permissions::from_flags(&flags);
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
+  let test_modules =
+    tools::test_runner::prepare_test_modules_urls(include, &cwd)?;
 
   if test_modules.is_empty() {
     println!("No matching test modules found");
@@ -656,7 +648,7 @@ async fn test_command(
   let test_file_path = cwd.join("$deno$test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file = test_runner::render_test_file(
+  let test_file = tools::test_runner::render_test_file(
     test_modules.clone(),
     fail_fast,
     quiet,
@@ -680,7 +672,8 @@ async fn test_command(
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
-    let mut coverage_collector = CoverageCollector::new(session);
+    let mut coverage_collector =
+      tools::coverage::CoverageCollector::new(session);
     coverage_collector.start_collecting().await?;
 
     Some(coverage_collector)
@@ -699,10 +692,14 @@ async fn test_command(
     let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverages =
-      coverage::filter_script_coverages(coverages, test_file_url, test_modules);
+    let filtered_coverages = tools::coverage::filter_script_coverages(
+      coverages,
+      test_file_url,
+      test_modules,
+    );
 
-    let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
+    let mut coverage_reporter =
+      tools::coverage::PrettyCoverageReporter::new(quiet);
     for coverage in filtered_coverages {
       coverage_reporter.visit_coverage(&coverage);
     }
@@ -796,7 +793,7 @@ pub fn main() {
       check,
       files,
       ignore,
-    } => fmt::format(files, check, ignore).boxed_local(),
+    } => tools::fmt::format(files, check, ignore).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
@@ -847,7 +844,8 @@ pub fn main() {
       output,
       ca_file,
     } => {
-      upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
+      tools::upgrade::upgrade_command(dry_run, force, version, output, ca_file)
+        .boxed_local()
     }
   };
 

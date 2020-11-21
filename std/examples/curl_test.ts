@@ -20,6 +20,7 @@ Deno.test({
       cmd: [
         Deno.execPath(),
         "run",
+        "--quiet",
         "--allow-net",
         "curl.ts",
         "http://localhost:8081",
