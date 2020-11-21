@@ -97,15 +97,17 @@ function validateCookieName(name: string | undefined | null): void {
  * Validate Path Value.
  * @param path Path value.
  */
-function validatePath(path: string | null):void {
-  if(path == null) {
+function validatePath(path: string | null): void {
+  if (path == null) {
     return;
   }
-  for(let i=0;i<path.length;i++) {
+  for (let i = 0; i < path.length; i++) {
     const c = path.charAt(i);
-    if(c < String.fromCharCode(0x20) || c > String.fromCharCode(0x7E) || c==';') {
+    if (
+      c < String.fromCharCode(0x20) || c > String.fromCharCode(0x7E) || c == ";"
+    ) {
       throw new Error(
-        path + ": Invalid cookie path char '" + c + "'"
+        path + ": Invalid cookie path char '" + c + "'",
       );
     }
   }

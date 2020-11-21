@@ -83,7 +83,8 @@ Deno.test({
         });
       },
       Error,
-      path + ": Invalid cookie path char ';'");
+      path + ": Invalid cookie path char ';'",
+    );
   },
 });
 
