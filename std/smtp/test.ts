@@ -807,9 +807,57 @@ SendMail is working for me.
 });
 
 Deno.test({
-  ignore: true,
   name: "[smtp] sendMail with AUTH",
-  fn: async () => {},
+  fn: async () => {
+    const port = 4507;
+    const l = Deno.listen({ transport: "tcp", port });
+    const { addr } = l;
+    assert(addr.transport === "tcp");
+    try {
+      const done = deferred<void>();
+      (async () => {
+        const conn = await l.accept();
+        const tc = new TextProtoConn(conn);
+        try {
+          await tc.printLine("220 hello world");
+          const msg = await tc.readLine();
+          const wantMsg = "EHLO localhost";
+          assertStrictEquals(msg, wantMsg);
+          await tc.printLine("250 mx.google.com at your service");
+          done.resolve();
+        } catch (err) {
+          done.reject(err);
+        } finally {
+          conn.close();
+        }
+      })();
+
+      await assertThrowsAsync(
+        () =>
+          sendMail({
+            addr,
+            auth: plainAuth({
+              identity: "",
+              username: "user",
+              password: "pass",
+              host: "smtp.google.com",
+            }),
+            from: "test@example.com",
+            to: ["other@example.com"],
+            msg: `From: test@example.com
+To: other@example.com
+Subject: SendMail test
+SendMail is working for me.
+`.replaceAll("\n", "\r\n"),
+          }),
+        Error,
+        "smtp: server doesn't support AUTH",
+      );
+      await done;
+    } finally {
+      l.close();
+    }
+  },
 });
 
 Deno.test({
