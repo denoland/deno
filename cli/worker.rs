@@ -21,7 +21,6 @@ use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -114,9 +113,16 @@ impl Worker {
   pub fn new(
     name: String,
     startup_snapshot: Snapshot,
+    program_state: Arc<ProgramState>,
     module_loader: Rc<CliModuleLoader>,
-    js_error_create_fn: Box<JsErrorCreateFn>,
   ) -> Self {
+    let program_state_ = program_state.clone();
+    let js_error_create_fn = Box::new(move |core_js_error| {
+      let source_mapped_error =
+        apply_source_map(&core_js_error, program_state_.clone());
+      PrettyJsError::create(source_mapped_error)
+    });
+
     let js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
@@ -247,17 +253,12 @@ impl MainWorker {
     let program_state = program_state.clone();
     let program_state_ = program_state.clone();
     let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
-    let js_error_create_fn = Box::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, program_state_.clone());
-      PrettyJsError::create(source_mapped_error)
-    });
 
     let mut worker = Worker::new(
       "main".to_string(),
       js::deno_isolate_init(),
+      program_state_,
       loader,
-      js_error_create_fn,
     );
 
     if let Some(inspector_server) = program_state.maybe_inspector_server.clone()
@@ -409,16 +410,10 @@ impl WebWorker {
     program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
   ) -> Self {
-    let program_state_ = program_state.clone();
     let loader = CliModuleLoader::new_for_worker();
-    let js_error_create_fn = Box::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, program_state_.clone());
-      PrettyJsError::create(source_mapped_error)
-    });
 
     let mut worker =
-      Worker::new(name, js::deno_isolate_init(), loader, js_error_create_fn);
+      Worker::new(name, js::deno_isolate_init(), program_state.clone(), loader);
 
     if let Some(inspector_server) = program_state.maybe_inspector_server.clone()
     {

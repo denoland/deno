@@ -48,7 +48,6 @@ pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
 pub use crate::runtime::GetErrorClassFn;
-pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
