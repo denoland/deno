@@ -133,10 +133,6 @@ delete Object.prototype.__proto__;
     // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
     // so we will ignore complaints about this compiler setting.
     5070,
-    // TS6054: File '...' has an unsupported extension. The only supported
-    // extensions are '.ts', ... '.jsx'. This is confused by querystrings and
-    // hashes in file URLs. It should be handled by the loader anyway.
-    6054,
     // TS7016: Could not find a declaration file for module '...'. '...'
     // implicitly has an 'any' type.  This is due to `allowJs` being off by
     // default but importing of a JavaScript module.
@@ -313,6 +309,11 @@ delete Object.prototype.__proto__;
 
     const { options, errors: configFileParsingDiagnostics } = ts
       .convertCompilerOptionsFromJson(config, "", "tsconfig.json");
+    // The `allowNonTsExtensions` is a "hidden" compiler option used in VSCode
+    // which is not allowed to be passed in JSON, we need it to allow special
+    // URLs which Deno supports. So we need to either ignore the diagnostic, or
+    // inject it ourselves.
+    Object.assign(options, { allowNonTsExtensions: true });
     const program = ts.createIncrementalProgram({
       rootNames,
       options,
