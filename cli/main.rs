@@ -48,7 +48,6 @@ mod version;
 mod worker;
 
 use crate::file_fetcher::File;
-use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -67,7 +66,6 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
-use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
 use program_state::exit_unstable;
@@ -384,56 +382,49 @@ async fn bundle_command(
   Ok(())
 }
 
-struct DocLoader {
-  fetcher: FileFetcher,
-  maybe_import_map: Option<ImportMap>,
+/// When parsing lib.deno.d.ts, only `DocParser::parse_source` is used, 
+/// which never even references the loader, so this is just a stub for that scenario.
+struct StubDocLoader;
+
+impl DocFileLoader for StubDocLoader {
+  fn resolve(
+    &self,
+    _specifier: &str,
+    _referrer: &str,
+  ) -> Result<String, doc::DocError> {
+    unreachable!()
+  }
+
+  fn load_source_code(
+    &self,
+    _specifier: &str,
+  ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
+    unreachable!()
+  }
 }
 
-impl DocFileLoader for DocLoader {
+impl DocFileLoader for module_graph::Graph {
   fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<String, doc::DocError> {
-    let maybe_resolved =
-      if let Some(import_map) = self.maybe_import_map.as_ref() {
-        import_map
-          .resolve(specifier, referrer)
-          .map_err(|e| doc::DocError::Resolve(e.to_string()))?
-      } else {
-        None
-      };
-
-    let resolved_specifier = if let Some(resolved) = maybe_resolved {
-      resolved
-    } else {
-      ModuleSpecifier::resolve_import(specifier, referrer)
-        .map_err(|e| doc::DocError::Resolve(e.to_string()))?
-    };
-
-    Ok(resolved_specifier.to_string())
+    let referrer = &ModuleSpecifier::resolve_url_or_path(referrer)
+      .expect("Expected valid specifier");
+    match self.resolve(specifier, referrer, true) {
+      Ok(specifier) => Ok(specifier.to_string()),
+      Err(e) => Err(doc::DocError::Resolve(e.to_string())),
+    }
   }
 
   fn load_source_code(
     &self,
     specifier: &str,
   ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
-    let fetcher = self.fetcher.clone();
     let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
       .expect("Expected valid specifier");
-    async move {
-      let source_file = fetcher
-        .fetch(&specifier, &Permissions::allow_all())
-        .await
-        .map_err(|e| {
-          doc::DocError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-          ))
-        })?;
-      Ok(source_file.source)
-    }
-    .boxed_local()
+    let source = self.get_source(&specifier).expect("Unknown dependency");
+    async move { Ok(source) }.boxed_local()
   }
 }
 
@@ -447,13 +438,10 @@ async fn doc_command(
   let program_state = ProgramState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
-  let loader = Box::new(DocLoader {
-    fetcher: program_state.file_fetcher.clone(),
-    maybe_import_map: program_state.maybe_import_map.clone(),
-  });
-  let doc_parser = doc::DocParser::new(loader, private);
-
   let parse_result = if source_file == "--builtin" {
+    let loader = Box::new(StubDocLoader);
+    let doc_parser = doc::DocParser::new(loader, private);
+
     let syntax = ast::get_syntax(&MediaType::Dts);
     doc_parser.parse_source(
       "lib.deno.d.ts",
@@ -461,13 +449,48 @@ async fn doc_command(
       get_types(flags.unstable).as_str(),
     )
   } else {
-    let path = PathBuf::from(&source_file);
-    let media_type = MediaType::from(&path);
-    let syntax = ast::get_syntax(&media_type);
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
+
+    // If the root module has external types, the module graph won't redirect it,
+    // so instead create a dummy file which exports everything from the actual file being documented.
+    let root_specifier =
+      ModuleSpecifier::resolve_url_or_path("./$deno$doc.ts").unwrap();
+    let root = File {
+      local: PathBuf::from("./$deno$doc.ts"),
+      maybe_types: None,
+      media_type: MediaType::TypeScript,
+      source: format!(
+        "export * from '{}';",
+        module_specifier.to_string().replace("'", "\\'")
+      ),
+      specifier: root_specifier.clone(),
+    };
+
+    // Save our fake file into file fetcher cache.
+    program_state.file_fetcher.insert_cached(root);
+
+    let handler = Rc::new(RefCell::new(FetchHandler::new(
+      &program_state,
+      Permissions::allow_all(),
+    )?));
+    let mut builder = module_graph::GraphBuilder::new(
+      handler,
+      program_state.maybe_import_map.clone(),
+      program_state.lockfile.clone(),
+    );
+    builder.add(&root_specifier, false).await?;
+    let graph = builder.get_graph();
+
+    // Don't actually document the dummy file itself, since `deno_doc` only supports reexports one level deep right now.
+    let file_name = graph
+      .resolve(module_specifier.as_str(), &root_specifier, true)
+      .unwrap()
+      .to_string();
+
+    let doc_parser = doc::DocParser::new(Box::new(graph), private);
     doc_parser
-      .parse_with_reexports(&module_specifier.to_string(), syntax)
+      .parse_with_reexports(&file_name, ast::get_syntax(&MediaType::TypeScript))
       .await
   };
 
