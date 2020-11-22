@@ -213,11 +213,11 @@ Deno.test({
   fn: () => {
     assertThrows((): void => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (datetime as any).parse("2019-01-01 00:00", "x-y-z");
+      datetime.parse("2019-01-01 00:00", "x-y-z");
     }, Error);
     assertThrows((): void => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (datetime as any).parse("2019-01-01", "x-y-z");
+      datetime.parse("2019-01-01", "x-y-z");
     }, Error);
   },
 });
@@ -291,35 +291,51 @@ Deno.test({
       datetime.format(new Date("2019-01-01T21:00:00"), "hh:mm:ss a"),
     );
 
+    function getHourOffsetString(date: Date) {
+      const offset = date.getTimezoneOffset();
+      const hours = offset / 60;
+      const sign = hours < 0 ? "+" : "-";
+      const hoursString = `${sign}${String(Math.abs(hours)).padStart(2, "0")}`;
+      return hoursString;
+    }
+
     // timezone
     assertEquals(
       datetime.format(
         new Date("2020-10-22T00:00:00.000Z"),
         "yyyy-MM-dd'T'hh:mm:ss.SSSZ",
       ),
-      "2020-10-22T00:00:00.000+0200",
+      `2020-10-22T00:00:00.000${
+        getHourOffsetString(new Date("2020-10-22T00:00:00.000Z"))
+      }00`,
     );
     assertEquals(
       datetime.format(
         new Date("2020-10-22T00:00:00.000Z"),
         "yyyy-MM-dd'T'hh:mm:ss.SSSZ",
       ),
-      "2020-10-22T00:00:00.000+0200",
+      `2020-10-22T00:00:00.000${
+        getHourOffsetString(new Date("2020-10-22T00:00:00.000Z"))
+      }00`,
     );
     assertEquals(
       datetime.format(
         new Date("2020-10-22T00:00:00.000Z"),
         "yyyy-MM-dd'T'hh:mm:ss.SSSZ",
       ),
-      "2020-10-22T00:00:00.000+0200",
+      `2020-10-22T00:00:00.000${
+        getHourOffsetString(new Date("2020-10-22T00:00:00.000Z"))
+      }00`,
     );
 
     assertEquals(
       datetime.format(
-        new Date("2020-10-22T02:00:00.000"),
+        new Date("2020-10-22T02:00:00.000Z"),
         "yyyy-MM-dd'T'hh:mm:ss.SSSZZZZZ",
       ),
-      "2020-10-22T00:00:00.000+02:00",
+      `2020-10-22T02:00:00.000${
+        getHourOffsetString(new Date("2020-10-22T02:00:00.000Z"))
+      }:00`,
     );
 
     // quoted literal
