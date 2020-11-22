@@ -3904,6 +3904,8 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   let stdin = child.stdin.take().unwrap();
 
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
   let stdout = child.stdout.as_mut().unwrap();
   let mut stdout_lines = std::io::BufReader::new(stdout)
     .lines()
@@ -3941,7 +3943,11 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     match step {
       StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
       StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
-      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+      WsRecv(s) => {
+        let msg = socket_rx.next().await.unwrap();
+        eprintln!("{} - {} - {}", s, msg, msg.len());
+        assert!(msg.starts_with(s))
+      }
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
     }
   }
