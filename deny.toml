@@ -1,0 +1,60 @@
+targets = [
+  {triple = "x86_64-unknown-linux-gnu"},
+  {triple = "x86_64-apple-darwin"},
+  {triple = "x86_64-pc-windows-msvc"},
+]
+
+# https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html
+[advisories]
+# The lint level for security vulnerabilities
+vulnerability = "deny"
+# The lint level for unmaintained crates
+unmaintained = "warn"
+# The lint level for crates that have been yanked from their source registry
+yanked = "warn"
+# The lint level for crates with security notices. Note that as of
+# 2019-12-17 there are no security notice advisories in
+# https://github.com/rustsec/advisory-db
+notice = "warn"
+
+[licenses]
+# The lint level for crates which do not have a detectable license
+unlicensed = "deny"
+# Blanket approval or denial for OSI-approved or FSF Free/Libre licenses
+allow-osi-fsf-free = "both"
+# Lint level for licenses considered copyleft
+copyleft = "warn"
+# The confidence threshold for detecting a license from license text.
+# We want really high confidence when inferring licenses
+confidence-threshold = 0.8
+# List of explictly allowed licenses
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "MPL-2.0",
+  "ISC",
+  "BSD-2-Clause",
+]
+
+# https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
+[bans]
+# Lint level for when multiple versions of the same crate are detected
+multiple-versions = "warn"
+# Lint level for when a crate version requirement is `*`
+wildcards = "allow"
+# The graph highlighting used when creating dotgraphs for crates
+highlight = "all"
+
+# https://embarkstudios.github.io/cargo-deny/checks/sources/cfg.html
+[sources]
+# Lint level for what to happen when a crate from a crate registry that is not
+# in the allow list is encountered
+unknown-registry = "warn"
+# Lint level for what to happen when a crate from a git repository that is not
+# in the allow list is encountered
+unknown-git = "warn"
+# List of URLs for allowed crate registries. Defaults to the crates.io index
+# if not specified. If it is specified but empty, no registries are allowed.
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# List of URLs for allowed Git repositories
+allow-git = []

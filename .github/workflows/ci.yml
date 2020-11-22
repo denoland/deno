@@ -3,6 +3,22 @@ name: ci
 on: [push, pull_request]
 
 jobs:
+  cargo-deny:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        checks:
+          - advisories
+          - bans licenses sources
+
+    # Prevent sudden announcement of a new advisory from failing ci:
+    continue-on-error: ${{ matrix.checks == 'advisories' }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        command: check ${{ matrix.checks }}
   build:
     name: ${{ matrix.kind }} ${{ matrix.os }}
     if: |
