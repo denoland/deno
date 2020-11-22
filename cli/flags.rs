@@ -66,6 +66,7 @@ pub enum DenoSubcommand {
     script: String,
   },
   Test {
+    no_run: bool,
     fail_fast: bool,
     quiet: bool,
     allow_none: bool,
@@ -572,8 +573,9 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true);
 
+  let no_run = matches.is_present("no-run");
   let failfast = matches.is_present("failfast");
-  let allow_none = matches.is_present("allow_none");
+  let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
   let coverage = matches.is_present("coverage");
@@ -606,6 +608,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   flags.subcommand = DenoSubcommand::Test {
+    no_run,
     fail_fast: failfast,
     quiet,
     include,
@@ -1148,13 +1151,20 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("test"), true)
     .setting(AppSettings::TrailingVarArg)
     .arg(
+      Arg::with_name("no-run")
+        .long("no-run")
+        .help("Cache test modules, but don't run tests")
+        .takes_value(false)
+        .requires("unstable"),
+    )
+    .arg(
       Arg::with_name("failfast")
         .long("failfast")
         .help("Stop on first error")
         .takes_value(false),
     )
     .arg(
-      Arg::with_name("allow_none")
+      Arg::with_name("allow-none")
         .long("allow-none")
         .help("Don't return error code if no test files are found")
         .takes_value(false),
@@ -2838,109 +2848,23 @@ mod tests {
   }
 
   #[test]
-  fn test_with_allow_net() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "test",
-      "--allow-net",
-      "--allow-none",
-      "dir1/",
-      "dir2/"
-    ]);
+  fn test_with_flags() {
+    #[rustfmt::skip]
+    let r = flags_from_vec_safe(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Test {
+          no_run: true,
           fail_fast: false,
-          filter: None,
+          filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
         },
-        allow_net: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn test_filter() {
-    let r = flags_from_vec_safe(svec!["deno", "test", "--filter=foo", "dir1"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test {
-          fail_fast: false,
-          allow_none: false,
-          quiet: false,
-          filter: Some("foo".to_string()),
-          include: Some(svec!["dir1"]),
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn test_filter_leading_hyphen() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "test", "--filter", "- foo", "dir1"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test {
-          fail_fast: false,
-          allow_none: false,
-          quiet: false,
-          filter: Some("- foo".to_string()),
-          include: Some(svec!["dir1"]),
-        },
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn test_coverage() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "test",
-      "--unstable",
-      "--coverage",
-      "dir1"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test {
-          fail_fast: false,
-          allow_none: false,
-          quiet: false,
-          filter: None,
-          include: Some(svec!["dir1"]),
-        },
-        coverage: true,
         unstable: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn test_double_hyphen() {
-    let r = flags_from_vec_safe(svec![
-      "deno", "test", "test.ts", "--", "arg1", "arg2"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test {
-          fail_fast: false,
-          allow_none: false,
-          quiet: false,
-          filter: None,
-          include: Some(svec!["test.ts"]),
-        },
+        coverage: true,
+        allow_net: true,
         argv: svec!["arg1", "arg2"],
         ..Flags::default()
       }
