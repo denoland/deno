@@ -2197,6 +2197,12 @@ itest!(_074_worker_nested_error {
   exit_code: 1,
 });
 
+itest!(_075_websocket_no_permission {
+  args: "run 075_websocket_no_permission.js",
+  output: "075_websocket_no_permission.js.out",
+  exit_code: 0,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

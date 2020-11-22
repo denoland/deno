@@ -1,0 +1,1 @@
+new WebSocket("ws://localhost");

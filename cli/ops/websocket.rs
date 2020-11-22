@@ -60,8 +60,16 @@ pub async fn op_ws_create(
   let args: CreateArgs = serde_json::from_value(args)?;
   {
     let s = state.borrow();
-    s.borrow::<Permissions>()
-      .check_net_url(&url::Url::parse(&args.url)?)?;
+    match s
+      .borrow::<Permissions>()
+      .check_net_url(&url::Url::parse(&args.url)?)
+    {
+      Ok(_) => {}
+      Err(e) => {
+        info!("{}: {}", crate::colors::yellow("warning"), e);
+        return Err(e);
+      }
+    }
   }
   let ca_file = {
     let cli_state = super::global_state2(&state);

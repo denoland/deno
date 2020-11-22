@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
   const { requiredArguments, defineEventHandler } = window.__bootstrap.webUtil;
   const CONNECTING = 0;
@@ -91,10 +90,6 @@
           this.dispatchEvent(closeEvent);
         }
       }).catch((err) => {
-        if (err instanceof errors.PermissionDenied) {
-          throw err;
-        }
-
         this.#readyState = CLOSED;
 
         const errorEv = new ErrorEvent(
