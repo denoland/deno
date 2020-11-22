@@ -919,19 +919,7 @@ pub fn main() {
         .boxed_local()
     }
     #[cfg(not(feature = "tools"))]
-    DenoSubcommand::Lint { .. }
-    | DenoSubcommand::Upgrade { .. }
-    | DenoSubcommand::Types { .. }
-    | DenoSubcommand::Completions { .. }
-    | DenoSubcommand::Repl { .. }
-    | DenoSubcommand::Test { .. }
-    | DenoSubcommand::Install { .. }
-    | DenoSubcommand::Info { .. }
-    | DenoSubcommand::Fmt { .. }
-    | DenoSubcommand::Cache { .. }
-    | DenoSubcommand::Eval { .. }
-    | DenoSubcommand::Doc { .. }
-    | DenoSubcommand::Bundle { .. } => {
+    _ => {
       async { Err(generic_error("Toolchain not compiled")) }.boxed_local()
     }
   };
