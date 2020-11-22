@@ -3,307 +3,246 @@
 ## Usage
 
 ```ts
-import * as log from "https://deno.land/std@$STD_VERSION/log/mod.ts";
+import {
+  ConsoleHandler,
+  Logger,
+  logLevels,
+} from "https://deno.land/std@0.78.0/log/mod.ts";
 
-// Simple default logger out of the box. You can customize it
-// by overriding logger and handler named "default", or providing
-// additional logger configurations. You can log any data type.
-log.debug("Hello world");
-log.info(123456);
-log.warning(true);
-log.error({ foo: "bar", fizz: "bazz" });
-log.critical("500 Internal server error");
+const consoleHandler = new ConsoleHandler(logLevels.trace);
 
-// custom configuration with 2 loggers (the default and `tasks` loggers).
-await log.setup({
-  handlers: {
-    console: new log.handlers.ConsoleHandler("DEBUG"),
+const logger = new Logger(logLevels.trace, { handlers: [consoleHandler] });
 
-    file: new log.handlers.FileHandler("WARNING", {
-      filename: "./log.txt",
-      // you can change format of output message using any keys in `LogRecord`.
-      formatter: "{levelName} {msg}",
-    }),
-  },
-
-  loggers: {
-    // configure default logger available via short-hand methods above.
-    default: {
-      level: "DEBUG",
-      handlers: ["console", "file"],
-    },
-
-    tasks: {
-      level: "ERROR",
-      handlers: ["console"],
-    },
-  },
-});
-
-let logger;
-
-// get default logger.
-logger = log.getLogger();
-logger.debug("fizz"); // logs to `console`, because `file` handler requires "WARNING" level.
-logger.warning(41256); // logs to both `console` and `file` handlers.
-
-// get custom logger
-logger = log.getLogger("tasks");
-logger.debug("fizz"); // won't get output because this logger has "ERROR" level.
-logger.error({ productType: "book", value: "126.11" }); // log to `console`.
-
-// if you try to use a logger that hasn't been configured
-// you're good to go, it gets created automatically with level set to 0
-// so no message is logged.
-const unknownLogger = log.getLogger("mystery");
-unknownLogger.info("foobar"); // no-op
+logger.trace("Hello");
+logger.debug("world");
+logger.info(123456);
+logger.warn(true);
+logger.error({ foo: "bar", fizz: "bazz" });
 ```
 
-## Advanced usage
+Output
 
-### Loggers
+```sh
+Hello
+world
+123456
+true
+{ foo: "bar", fizz: "bazz" }
+```
 
-Loggers are objects that you interact with. When you use a logger method it
-constructs a `LogRecord` and passes it down to its handlers for output. To
-create custom loggers, specify them in `loggers` when calling `log.setup`.
-
-#### `LogRecord`
-
-`LogRecord` is an object that encapsulates provided message and arguments as
-well some meta data that can be later used when formatting a message.
+## Advanced Usage
 
 ```ts
-class LogRecord {
-  readonly msg: string;
-  readonly args: any[];
-  readonly datetime: Date;
-  readonly level: number;
-  readonly levelName: string;
-  readonly loggerName: string;
-}
+import {
+  ConsoleHandler,
+  FileHandler,
+  Logger,
+  logLevels,
+} from "https://deno.land/std@0.78.0/log/mod.ts";
+
+const consoleHandler = new ConsoleHandler(logLevels.info);
+const fileHandler = new FileHandler(logLevels.warn, {
+  filename: "./log.txt",
+  formatter: ({ logLevel, message }) =>
+    `${logLevel.name} ${JSON.stringify(message)}`,
+});
+const firstLogger = new Logger(logLevels.info, {
+  handlers: [consoleHandler, fileHandler],
+});
+
+const secondLogger = new Logger(logLevels.error, {
+  handlers: [consoleHandler],
+});
+
+firstLogger.debug("fizz"); // logs to no handler, because `consoleHandler` handler requires "info" level and `fileHandler` handler requires "warn" level
+firstLogger.info("fizz"); // logs to `consoleHandler`, because `file` handler requires "warn" level
+firstLogger.warn(41256); // logs to both `consoleHandler` and `fileHandler`
+
+secondLogger.debug("fizz"); // logs to no handler, because this `secondLogger` has "Error" level
+secondLogger.error({ productType: "book", value: "126.11" }); // logs to `consoleHandler`
 ```
 
-### Handlers
+## LogLevels
 
-Handlers are responsible for actual output of log messages. When a handler is
+The default log levels are
+
+| LogLevel | Name    | Code |
+| -------: | ------- | ---- |
+|    trace | "Trace" | 10   |
+|    debug | "Debug" | 20   |
+|     info | "Info"  | 30   |
+|     warn | "Warn"  | 40   |
+|    error | "Error" | 50   |
+
+### Custom LogLevels
+
+You can add custom logLevels by creating a `LogLevel` instance and adding it to
+the handlers by calling `handler.addLogLevel`. Additionally, create a custom
+`Logger` class and implement a method to handle the log level logic.
+
+#### Example
+
+```ts
+import {
+  ConsoleHandler,
+  Logger,
+  LogLevel,
+  logLevels,
+} from "https://deno.land/std@0.78.0/log/mod.ts";
+import { bold, red } from "https://deno.land/std@0.78.0/fmt/colors.ts";
+
+const customLogLevels = {
+  ...logLevels,
+  fatal: new LogLevel("Fatal", 60),
+};
+
+class CustomLogger extends Logger {
+  fatal(message: unknown, ...args: unknown[]) {
+    this.dispatch(customLogLevels.fatal, message, ...args);
+    Deno.exit(1);
+  }
+}
+
+const customConsoleHandler = new ConsoleHandler(customLogLevels.trace);
+customConsoleHandler.addLogLevel(
+  customLogLevels.fatal,
+  (message: string) => console.log(bold(red(message))),
+);
+
+const customlogger = new CustomLogger(customLogLevels.trace, {
+  handlers: [customConsoleHandler],
+});
+
+customlogger.trace("log trace message");
+customlogger.debug("log debug message");
+customlogger.info("log info message");
+customlogger.warn("log warn message");
+customlogger.error("log error message");
+customlogger.fatal("log fatal message");
+```
+
+## Handler
+
+A handler is responsible for actual output of log messages. When a handler is
 called by a logger, it firstly checks that `LogRecord`'s level is not lower than
 level of the handler. If level check passes, handlers formats log record into
 string and outputs it to target.
 
-`log` module comes with three built-in handlers:
+### Custom Message Format
 
-#### `ConsoleHandler`
+If you want to override default format of message you can define formatter
+option for handler.
 
-This is the default logger. It will output color coded log messages to the
-console via `console.log()`. This logger takes `HandlerOptions`:
+### Example
 
-```typescript
-type FormatterFunction = (logRecord: LogRecord) => string;
-
-interface HandlerOptions {
-  formatter?: string | FormatterFunction; //see `Custom message format` below
-}
+```ts
+const consoleHandler = new ConsoleHandler(logLevels.debug, {
+  formatter: ({ logLevel, message }) =>
+    `Custom formatter: ${logLevel.name} ${message}`,
+});
+const logger = new Logger(logLevels.debug, {
+  handlers: [consoleHandler],
+});
+logger.debug("Hello world");
 ```
 
-#### `FileHandler`
+Output
 
-This handler will output to a file using an optional mode (default is `a`, e.g.
-append). The file will grow indefinitely. It uses a buffer for writing to file.
-Logs can be manually flushed with `fileHandler.flush()`. Log messages with a log
-level greater than error are immediately flushed. Logs are also flushed on
-process completion. This logger takes `FileOptions`:
-
-```typescript
-interface FileHandlerOptions {
-  formatter?: string | FormatterFunction; //see `Custom message format` below
-  filename: string;
-  mode?: LogMode; // 'a', 'w', 'x'
-}
+```sh
+Custom formatter: Debug Hello world
 ```
 
-Behavior of the log modes is as follows:
+## Built-in Handlers
 
-- `'a'` - Default mode. Appends new log messages to the end of an existing log
-  file, or create a new log file if none exists.
-- `'w'` - Upon creation of the handler, any existing log file will be removed
-  and a new one created.
-- `'x'` - This will create a new log file and throw an error if one already
-  exists.
+This module comes with three built-in handlers:
+
+### ConsoleHandler
+
+This handler will output color coded log messages to the console.
+
+| Method | Color   |
+| -----: | ------- |
+|  trace | default |
+|  debug | default |
+|   info | blue    |
+|   warn | yellow  |
+|  error | red     |
+
+### FileHandler
+
+This handler will output to a file.
+
+#### Mode
+
+You can specify a `mode` to change the behavior of the handler:
+
+|                       Mode | Description                                                                                                                            |
+| -------------------------: | -------------------------------------------------------------------------------------------------------------------------------------- |
+| <nobr>"a" (default)</nobr> | Appends new log messages to the end of an existing log file, or create a new log file if none exists. The file will grow indefinitely. |
+|                        "w" | Upon creation of the handler, any existing log file will be removed and a new one created.                                             |
+|                        "x" | This will create a new log file and throw an error if one already exists.                                                              |
+
+#### Permissions
 
 This handler requires `--allow-write` permission on the log file.
 
-#### `RotatingFileHandler`
+### RotatingFileHandler
 
-This handler extends the functionality of the `FileHandler` by "rotating" the
+This handler extends the functionality of the `FileHandler` by _rotating_ the
 log file when it reaches a certain size. `maxBytes` specifies the maximum size
 in bytes that the log file can grow to before rolling over to a new one. If the
 size of the new log message plus the current log file size exceeds `maxBytes`
-then a roll over is triggered. When a roll over occurs, before the log message
-is written, the log file is renamed and appended with `.1`. If a `.1` version
-already existed, it would have been renamed `.2` first and so on. The maximum
-number of log files to keep is specified by `maxBackupCount`. After the renames
-are complete the log message is written to the original, now blank, file.
+then a roll over is triggered.
 
-Example: Given `log.txt`, `log.txt.1`, `log.txt.2` and `log.txt.3`, a
-`maxBackupCount` of 3 and a new log message which would cause `log.txt` to
-exceed `maxBytes`, then `log.txt.2` would be renamed to `log.txt.3` (thereby
-discarding the original contents of `log.txt.3` since 3 is the maximum number of
-backups to keep), `log.txt.1` would be renamed to `log.txt.2`, `log.txt` would
-be renamed to `log.txt.1` and finally `log.txt` would be created from scratch
-where the new log message would be written.
+When a roll over occurs, before the log message is written, the log file is
+renamed and appended with `.1`. If a `.1` version already existed, it would have
+been renamed `.2` first and so on.
 
-This handler uses a buffer for writing log messages to file. Logs can be
-manually flushed with `fileHandler.flush()`. Log messages with a log level
-greater than ERROR are immediately flushed. Logs are also flushed on process
-completion.
+The maximum number of log files to keep is specified by `maxBackupCount`. After
+the renames are complete the log message is written to the original, now blank,
+file.
 
-Options for this handler are:
+#### Mode
 
-```typescript
-interface RotatingFileHandlerOptions {
-  maxBytes: number;
-  maxBackupCount: number;
-  formatter?: string | FormatterFunction; //see `Custom message format` below
-  filename: string;
-  mode?: LogMode; // 'a', 'w', 'x'
-}
-```
+You can specify a `mode` to change the behavior of the handler:
 
-Additional notes on `mode` as described above:
+|                       Mode | Description                                                                                                                                                      |
+| -------------------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <nobr>"a" (default)</nobr> | Appends new log messages to the end of an existing log file, or create a new log file if none exists. The file will grow indefinitely.                           |
+|                        "w" | In addition to starting with a clean log file, this mode will also cause any existing backups (up to `maxBackupCount`) to be deleted giving a fully clean slate. |
+|                        "x" | This will create a new log file and throw an error if one or any backups (up to `maxBackupCount`) already exists.                                                |
 
-- `'a'` Default mode. As above, this will pick up where the logs left off in
-  rotation, or create a new log file if it doesn't exist.
-- `'w'` in addition to starting with a clean `filename`, this mode will also
-  cause any existing backups (up to `maxBackupCount`) to be deleted on setup
-  giving a fully clean slate.
-- `'x'` requires that neither `filename`, nor any backups (up to
-  `maxBackupCount`), exist before setup.
+#### Permissions
 
 This handler requires both `--allow-read` and `--allow-write` permissions on the
 log files.
 
 ### Custom message format
 
-If you want to override default format of message you can define `formatter`
+If you want to override default format of message you can define formatter
 option for handler. It can be either simple string-based format that uses
-`LogRecord` fields or more complicated function-based one that takes `LogRecord`
-as argument and outputs string.
+LogRecord fields or more complicated function-based one that takes LogRecord as
+argument and outputs string.
 
-Eg.
-
-```ts
-await log.setup({
-  handlers: {
-    stringFmt: new log.handlers.ConsoleHandler("DEBUG", {
-      formatter: "[{levelName}] {msg}"
-    }),
-
-    functionFmt: new log.handlers.ConsoleHandler("DEBUG", {
-      formatter: logRecord => {
-        let msg = `${logRecord.level} ${logRecord.msg}`;
-
-        logRecord.args.forEach((arg, index) => {
-          msg += `, arg${index}: ${arg}`;
-        });
-
-        return msg;
-      }
-    }),
-
-    anotherFmt: new log.handlers.ConsoleHandler("DEBUG", {
-      formatter: "[{loggerName}] - {levelName} {msg}"
-    }),
-  },
-
-  loggers: {
-     default: {
-       level: "DEBUG",
-       handlers: ["stringFmt", "functionFmt"],
-     },
-     dataLogger: {
-       level: "INFO",
-       handlers: ["anotherFmt"],
-     }
-  }
-})
-
-// calling:
-log.debug("Hello, world!", 1, "two", [3, 4, 5]);
-// results in:
-[DEBUG] Hello, world! // output from "stringFmt" handler.
-10 Hello, world!, arg0: 1, arg1: two, arg3: [3, 4, 5] // output from "functionFmt" formatter.
-
-// calling:
-log.getLogger("dataLogger").error("oh no!");
-// results in:
-[dataLogger] - ERROR oh no! // output from anotherFmt handler.
-```
-
-#### Custom handlers
-
-Custom handlers can be implemented by subclassing `BaseHandler` or
-`WriterHandler`.
-
-`BaseHandler` is bare-bones handler that has no output logic at all,
-
-`WriterHandler` is an abstract class that supports any target with `Writer`
-interface.
-
-During setup async hooks `setup` and `destroy` are called, you can use them to
-open and close file/HTTP connection or any other action you might need.
-
-For examples check source code of `FileHandler` and `TestHandler`.
-
-### Inline Logging
-
-Log functions return the data passed in the `msg` parameter. Data is returned
-regardless if the logger actually logs it.
-
-```ts
-const stringData: string = logger.debug("hello world");
-const booleanData: boolean = logger.debug(true, 1, "abc");
-const fn = (): number => {
-  return 123;
-};
-const resolvedFunctionData: number = logger.debug(fn());
-console.log(stringData); // 'hello world'
-console.log(booleanData); // true
-console.log(resolvedFunctionData); // 123
-```
-
-### Lazy Log Evaluation
+## Lazy Log Evaluation
 
 Some log statements are expensive to compute. In these cases, you can use lazy
 log evaluation to prevent the computation taking place if the logger won't log
-the message.
+the message. Methods `trace`, `debug`, `info`, `warn`, and `error` can therefore
+also take a function as an argument.
+
+### Example
 
 ```ts
-// `expensiveFn(5)` is only evaluated if this logger is configured for debug logging.
-logger.debug(() => `this is expensive: ${expensiveFn(5)}`);
-```
+const logger = new Logger(logLevels.error);
 
-> NOTE: When using lazy log evaluation, `undefined` will be returned if the
-> resolver function is not called because the logger won't log it. It is an
-> antipattern use lazy evaluation with inline logging because the return value
-> depends on the current log level.
+function expensiveFn() {
+  const sum = 1 + 1;
+  return `this is the sum: ${sum}`;
+}
 
-Example:
-
-```ts
-await log.setup({
-  handlers: {
-    console: new log.handlers.ConsoleHandler("DEBUG"),
-  },
-
-  loggers: {
-    tasks: {
-      level: "ERROR",
-      handlers: ["console"],
-    },
-  },
-});
-
-// not logged, as debug < error.
-const data: string | undefined = logger.debug(() => someExpenseFn(5, true));
-console.log(data); // undefined
+// expensiveFn is not being executed because logger has "error" level
+logger.debug(expensiveFn);
+// expensiveFn is being executed because logger has "error" level
+logger.error(expensiveFn);
 ```

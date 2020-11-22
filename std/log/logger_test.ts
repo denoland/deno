@@ -1,255 +1,337 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertMatch } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
 import { Logger, LogRecord } from "./logger.ts";
-import { LevelName, LogLevels } from "./levels.ts";
-import { BaseHandler } from "./handlers.ts";
+import { ConsoleHandler, Handler } from "./handlers.ts";
+import { logLevels } from "./levels.ts";
 
-class TestHandler extends BaseHandler {
+class TestHandler extends Handler {
   public messages: string[] = [];
   public records: LogRecord[] = [];
+
+  handlerFunctions = {
+    [logLevels.trace.code]: (message: string) => this.messages.push(message),
+    [logLevels.debug.code]: (message: string) => this.messages.push(message),
+    [logLevels.info.code]: (message: string) => this.messages.push(message),
+    [logLevels.warn.code]: (message: string) => this.messages.push(message),
+    [logLevels.error.code]: (message: string) => this.messages.push(message),
+  };
 
   handle(record: LogRecord): void {
     this.records.push(record);
     super.handle(record);
   }
-
-  public log(str: string): void {
-    this.messages.push(str);
-  }
 }
 
 Deno.test({
-  name: "Logger names can be output in logs",
+  name: "default instance",
   fn() {
-    const handlerNoName = new TestHandler("DEBUG");
-    const handlerWithLoggerName = new TestHandler("DEBUG", {
-      formatter: "[{loggerName}] {levelName} {msg}",
+    const logger = new Logger(logLevels.debug, {
+      handlers: [new ConsoleHandler(logLevels.debug)],
+    });
+    assertEquals(logger.logLevel, logLevels.debug);
+    assert(logger.handlers[0] instanceof ConsoleHandler);
+  },
+});
+
+Deno.test({
+  name: "default name",
+  fn() {
+    const logLevel = logLevels.debug;
+    const handlerNoName = new TestHandler(logLevel);
+    const handlerWithLoggerName = new TestHandler(logLevel, {
+      formatter: ({ loggerName, logLevel, message }) =>
+        `[${loggerName}] ${logLevel.name} ${message}`,
     });
 
-    const logger = new Logger("config", "DEBUG", {
+    const logger = new Logger(logLevel, {
       handlers: [handlerNoName, handlerWithLoggerName],
     });
     logger.debug("hello");
-    assertEquals(handlerNoName.messages[0], "DEBUG hello");
-    assertEquals(handlerWithLoggerName.messages[0], "[config] DEBUG hello");
+    assertEquals(handlerNoName.messages[0], "Debug hello");
+    assertEquals(handlerWithLoggerName.messages[0], "[logger] Debug hello");
   },
 });
 
-Deno.test("simpleLogger", function (): void {
-  const handler = new TestHandler("DEBUG");
-  let logger = new Logger("default", "DEBUG");
+Deno.test({
+  name: "custom name",
+  fn() {
+    const logLevel = logLevels.debug;
+    const handlerNoName = new TestHandler(logLevel);
+    const handlerWithLoggerName = new TestHandler(logLevel, {
+      formatter: ({ loggerName, logLevel, message }) =>
+        `[${loggerName}] ${logLevel.name} ${message}`,
+    });
 
-  assertEquals(logger.level, LogLevels.DEBUG);
-  assertEquals(logger.levelName, "DEBUG");
-  assertEquals(logger.handlers, []);
-
-  logger = new Logger("default", "DEBUG", { handlers: [handler] });
-
-  assertEquals(logger.handlers, [handler]);
+    const logger = new Logger(logLevel, {
+      name: "config",
+      handlers: [handlerNoName, handlerWithLoggerName],
+    });
+    logger.debug("hello");
+    assertEquals(handlerNoName.messages[0], "Debug hello");
+    assertEquals(handlerWithLoggerName.messages[0], "[config] Debug hello");
+  },
 });
 
-Deno.test("customHandler", function (): void {
-  const handler = new TestHandler("DEBUG");
-  const logger = new Logger("default", "DEBUG", { handlers: [handler] });
+Deno.test({
+  name: "get set logLevel",
+  fn() {
+    const logger = new Logger(logLevels.error);
 
-  const inlineData: string = logger.debug("foo", 1, 2);
+    logger.logLevel = logLevels.error;
 
+    assertEquals(logger.logLevel, logLevels.error);
+  },
+});
+
+Deno.test({
+  name: "get set level",
+  fn() {
+    const logger = new Logger(logLevels.error);
+
+    logger.logLevel = logLevels.error;
+
+    assertEquals(logger.logLevel, logLevels.error);
+  },
+});
+
+Deno.test("default methods", function (): void {
+  const logger = new Logger(logLevels.error);
+  const sym = Symbol("a");
+  logger.debug("foo");
+  logger.debug(() => "foo");
+  logger.info(456, 1, 2, 3);
+  logger.info(() => true);
+  logger.warn(sym);
+  logger.warn(() => null);
+  logger.error(undefined, 1, 2, 3);
+  logger.error(() => 5n);
+});
+
+Deno.test("custom handler", function (): void {
+  const logLevel = logLevels.debug;
+  const handler = new TestHandler(logLevel);
+  const logger = new Logger(logLevel, {
+    handlers: [handler],
+  });
+
+  logger.debug("foo", 1, 2);
   const record = handler.records[0];
-  assertEquals(record.msg, "foo");
+  assertEquals(record.message, "foo");
   assertEquals(record.args, [1, 2]);
-  assertEquals(record.level, LogLevels.DEBUG);
-  assertEquals(record.levelName, "DEBUG");
+  assertEquals(record.logLevel, logLevels.debug);
+  assertEquals(record.logLevel, logLevel);
 
-  assertEquals(handler.messages, ["DEBUG foo"]);
-  assertEquals(inlineData!, "foo");
+  assertEquals(handler.messages, ["Debug foo 1 2"]);
 });
 
-Deno.test("logFunctions", function (): void {
-  const doLog = (level: LevelName): TestHandler => {
-    const handler = new TestHandler(level);
-    const logger = new Logger("default", level, { handlers: [handler] });
-    const debugData = logger.debug("foo");
-    const infoData = logger.info("bar");
-    const warningData = logger.warning("baz");
-    const errorData = logger.error("boo");
-    const criticalData = logger.critical("doo");
-    assertEquals(debugData, "foo");
-    assertEquals(infoData, "bar");
-    assertEquals(warningData, "baz");
-    assertEquals(errorData, "boo");
-    assertEquals(criticalData, "doo");
-    return handler;
+Deno.test("lazy log evaluation", function (): void {
+  const logLevel = logLevels.error;
+  const handler = new TestHandler(logLevel);
+  const logger = new Logger(logLevel, {
+    handlers: [handler],
+  });
+  let called = false;
+
+  const expensiveFunction = (): string => {
+    called = true;
+    return "expensive function result";
+  };
+  logger.debug(expensiveFunction);
+  assert(!called);
+  assertEquals(handler.messages[0], undefined);
+  logger.error(expensiveFunction);
+  assert(called);
+  assertEquals(handler.messages[0], "Error expensive function result");
+});
+
+Deno.test("argument types", function (): void {
+  const handler = new TestHandler(logLevels.debug);
+  const logger = new Logger(logLevels.debug, {
+    handlers: [handler],
+  });
+  const sym = Symbol();
+  const syma = Symbol("a");
+  const fn = (): string => {
+    return "abc";
   };
 
-  let handler: TestHandler;
-  handler = doLog("DEBUG");
+  // string
+  logger.debug("abc");
+  logger.debug("def", 1);
+  assertEquals(handler.messages[0], "Debug abc");
+  assertEquals(handler.messages[1], "Debug def 1");
 
-  assertEquals(handler.messages, [
-    "DEBUG foo",
-    "INFO bar",
-    "WARNING baz",
-    "ERROR boo",
-    "CRITICAL doo",
-  ]);
+  // null
+  logger.info(null);
+  logger.info(null, 1);
+  assertEquals(handler.messages[2], "Info null");
+  assertEquals(handler.messages[3], "Info null 1");
 
-  handler = doLog("INFO");
+  // number
+  logger.warn(3);
+  logger.warn(3, 1);
+  assertEquals(handler.messages[4], "Warn 3");
+  assertEquals(handler.messages[5], "Warn 3 1");
 
-  assertEquals(handler.messages, [
-    "INFO bar",
-    "WARNING baz",
-    "ERROR boo",
-    "CRITICAL doo",
-  ]);
+  // bigint
+  logger.error(5n);
+  logger.error(5n, 1);
+  assertEquals(handler.messages[6], "Error 5");
+  assertEquals(handler.messages[7], "Error 5 1");
 
-  handler = doLog("WARNING");
+  // boolean
+  logger.error(true);
+  logger.error(false, 1);
+  assertEquals(handler.messages[8], "Error true");
+  assertEquals(handler.messages[9], "Error false 1");
 
-  assertEquals(handler.messages, ["WARNING baz", "ERROR boo", "CRITICAL doo"]);
+  // undefined
+  logger.debug(undefined);
+  logger.debug(undefined, 1);
+  assertEquals(handler.messages[10], "Debug undefined");
+  assertEquals(handler.messages[11], "Debug undefined 1");
 
-  handler = doLog("ERROR");
+  // symbol
+  logger.info(sym);
+  logger.info(syma, 1);
+  assertEquals(handler.messages[12], "Info Symbol()");
+  assertEquals(handler.messages[13], "Info Symbol(a) 1");
 
-  assertEquals(handler.messages, ["ERROR boo", "CRITICAL doo"]);
+  // function
+  logger.warn(fn);
+  logger.warn(fn, 1);
+  assertEquals(handler.messages[14], "Warn abc");
+  assertEquals(handler.messages[15], "Warn abc 1");
 
-  handler = doLog("CRITICAL");
-
-  assertEquals(handler.messages, ["CRITICAL doo"]);
+  // object
+  logger.error({
+    payload: "data",
+    other: 123,
+  });
+  logger.error(
+    { payload: "data", other: 123 },
+    1,
+  );
+  assertEquals(handler.messages[16], 'Error {"payload":"data","other":123}');
+  assertEquals(handler.messages[17], 'Error {"payload":"data","other":123} 1');
 });
 
-Deno.test(
-  "String resolver fn will not execute if msg will not be logged",
-  function (): void {
-    const handler = new TestHandler("ERROR");
-    const logger = new Logger("default", "ERROR", { handlers: [handler] });
-    let called = false;
+Deno.test({
+  name: "mutable handlers",
+  fn() {
+    const testHandlerA = new TestHandler(logLevels.debug);
+    const testHandlerB = new TestHandler(logLevels.debug);
+    const logger = new Logger(logLevels.debug, {
+      handlers: [testHandlerA],
+    });
+    logger.info("message1");
+    assertEquals(testHandlerA.messages.length, 1);
+    assertEquals(testHandlerA.messages[0], "Info message1");
+    assertEquals(testHandlerB.messages.length, 0);
 
-    const expensiveFunction = (): string => {
-      called = true;
-      return "expensive function result";
-    };
+    logger.handlers = [testHandlerA, testHandlerB];
 
-    const inlineData: string | undefined = logger.debug(
-      expensiveFunction,
-      1,
-      2,
-    );
-    assert(!called);
-    assertEquals(inlineData, undefined);
+    logger.info("message2");
+    assertEquals(testHandlerA.messages.length, 2);
+    assertEquals(testHandlerA.messages[1], "Info message2");
+    assertEquals(testHandlerB.messages.length, 1);
+    assertEquals(testHandlerB.messages[0], "Info message2");
+
+    logger.handlers = [testHandlerB];
+
+    logger.info("message3");
+    assertEquals(testHandlerA.messages.length, 2);
+    assertEquals(testHandlerB.messages.length, 2);
+    assertEquals(testHandlerB.messages[1], "Info message3");
+
+    logger.handlers = [];
+    logger.info("message4");
+    assertEquals(testHandlerA.messages.length, 2);
+    assertEquals(testHandlerB.messages.length, 2);
   },
-);
-
-Deno.test("String resolver fn resolves as expected", function (): void {
-  const handler = new TestHandler("ERROR");
-  const logger = new Logger("default", "ERROR", { handlers: [handler] });
-  const expensiveFunction = (x: number): string => {
-    return "expensive function result " + x;
-  };
-
-  const firstInlineData = logger.error(() => expensiveFunction(5));
-  const secondInlineData = logger.error(() => expensiveFunction(12), 1, "abc");
-  assertEquals(firstInlineData, "expensive function result 5");
-  assertEquals(secondInlineData, "expensive function result 12");
 });
 
-Deno.test(
-  "All types map correctly to log strings and are returned as is",
-  function (): void {
-    const handler = new TestHandler("DEBUG");
-    const logger = new Logger("default", "DEBUG", { handlers: [handler] });
-    const sym = Symbol();
-    const syma = Symbol("a");
-    const fn = (): string => {
-      return "abc";
-    };
+Deno.test("trace", function (): void {
+  const logLevel = logLevels.trace;
+  const handler = new TestHandler(logLevel);
 
-    // string
-    const data1: string = logger.debug("abc");
-    assertEquals(data1, "abc");
-    const data2: string = logger.debug("def", 1);
-    assertEquals(data2, "def");
-    assertEquals(handler.messages[0], "DEBUG abc");
-    assertEquals(handler.messages[1], "DEBUG def");
+  const logger = new Logger(logLevel, {
+    handlers: [handler],
+  });
 
-    // null
-    const data3: null = logger.info(null);
-    assertEquals(data3, null);
-    const data4: null = logger.info(null, 1);
-    assertEquals(data4, null);
-    assertEquals(handler.messages[2], "INFO null");
-    assertEquals(handler.messages[3], "INFO null");
+  logger.trace("foo");
+  logger.trace("bar", 1, 2);
 
-    // number
-    const data5: number = logger.warning(3);
-    assertEquals(data5, 3);
-    const data6: number = logger.warning(3, 1);
-    assertEquals(data6, 3);
-    assertEquals(handler.messages[4], "WARNING 3");
-    assertEquals(handler.messages[5], "WARNING 3");
+  assertEquals(
+    handler.messages,
+    [`${logLevel.name} foo`, `${logLevel.name} bar 1 2`],
+  );
+});
 
-    // bigint
-    const data7: bigint = logger.error(5n);
-    assertEquals(data7, 5n);
-    const data8: bigint = logger.error(5n, 1);
-    assertEquals(data8, 5n);
-    assertEquals(handler.messages[6], "ERROR 5");
-    assertEquals(handler.messages[7], "ERROR 5");
+Deno.test("debug", function (): void {
+  const logLevel = logLevels.debug;
+  const handler = new TestHandler(logLevel);
 
-    // boolean
-    const data9: boolean = logger.critical(true);
-    assertEquals(data9, true);
-    const data10: boolean = logger.critical(false, 1);
-    assertEquals(data10, false);
-    assertEquals(handler.messages[8], "CRITICAL true");
-    assertEquals(handler.messages[9], "CRITICAL false");
+  const logger = new Logger(logLevel, {
+    handlers: [handler],
+  });
 
-    // undefined
-    const data11: undefined = logger.debug(undefined);
-    assertEquals(data11, undefined);
-    const data12: undefined = logger.debug(undefined, 1);
-    assertEquals(data12, undefined);
-    assertEquals(handler.messages[10], "DEBUG undefined");
-    assertEquals(handler.messages[11], "DEBUG undefined");
+  logger.debug("foo");
+  logger.debug("bar", 1, 2);
 
-    // symbol
-    const data13: symbol = logger.info(sym);
-    assertEquals(data13, sym);
-    const data14: symbol = logger.info(syma, 1);
-    assertEquals(data14, syma);
-    assertEquals(handler.messages[12], "INFO Symbol()");
-    assertEquals(handler.messages[13], "INFO Symbol(a)");
+  assertEquals(
+    handler.messages,
+    [`${logLevel.name} foo`, `${logLevel.name} bar 1 2`],
+  );
+});
 
-    // function
-    const data15: string | undefined = logger.warning(fn);
-    assertEquals(data15, "abc");
-    const data16: string | undefined = logger.warning(fn, 1);
-    assertEquals(data16, "abc");
-    assertEquals(handler.messages[14], "WARNING abc");
-    assertEquals(handler.messages[15], "WARNING abc");
+Deno.test("info", function (): void {
+  const logLevel = logLevels.info;
+  const handler = new TestHandler(logLevel);
 
-    // object
-    const data17: { payload: string; other: number } = logger.error({
-      payload: "data",
-      other: 123,
-    });
-    assertEquals(data17, {
-      payload: "data",
-      other: 123,
-    });
-    const data18: { payload: string; other: number } = logger.error(
-      { payload: "data", other: 123 },
-      1,
-    );
-    assertEquals(data18, {
-      payload: "data",
-      other: 123,
-    });
-    assertEquals(handler.messages[16], 'ERROR {"payload":"data","other":123}');
-    assertEquals(handler.messages[17], 'ERROR {"payload":"data","other":123}');
+  const logger = new Logger(logLevel, {
+    handlers: [handler],
+  });
 
-    // error
-    const error = new RangeError("Uh-oh!");
-    const data19: RangeError = logger.error(error);
-    assertEquals(data19, error);
-    const messages19 = handler.messages[18].split("\n");
-    assertEquals(messages19[0], `ERROR ${error.name}: ${error.message}`);
-    assertMatch(messages19[1], /^\s+at file:.*\d+:\d+$/);
-  },
-);
+  logger.info("foo");
+  logger.info("bar", 1, 2);
+
+  assertEquals(
+    handler.messages,
+    [`${logLevel.name} foo`, `${logLevel.name} bar 1 2`],
+  );
+});
+
+Deno.test("warn", function (): void {
+  const logLevel = logLevels.warn;
+  const handler = new TestHandler(logLevel);
+
+  const logger = new Logger(logLevel, {
+    handlers: [handler],
+  });
+
+  logger.warn("foo");
+  logger.warn("bar", 1, 2);
+
+  assertEquals(
+    handler.messages,
+    [`${logLevel.name} foo`, `${logLevel.name} bar 1 2`],
+  );
+});
+
+Deno.test("error", function (): void {
+  const logLevel = logLevels.error;
+  const handler = new TestHandler(logLevel);
+
+  const logger = new Logger(logLevel, {
+    handlers: [handler],
+  });
+
+  logger.error("foo");
+  logger.error("bar", 1, 2);
+
+  assertEquals(
+    handler.messages,
+    [`${logLevel.name} foo`, `${logLevel.name} bar 1 2`],
+  );
+});

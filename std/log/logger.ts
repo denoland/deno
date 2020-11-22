@@ -1,33 +1,48 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { getLevelByName, getLevelName, LogLevels } from "./levels.ts";
-import type { LevelName } from "./levels.ts";
-import type { BaseHandler } from "./handlers.ts";
+import { Handler } from "./handlers.ts";
+import { LogLevel, logLevels } from "./levels.ts";
+
+export function asString(data: unknown): string {
+  if (typeof data === "string") {
+    return data;
+  } else if (
+    data === null ||
+    typeof data === "number" ||
+    typeof data === "bigint" ||
+    typeof data === "boolean" ||
+    typeof data === "undefined" ||
+    typeof data === "symbol"
+  ) {
+    return String(data);
+  } else if (typeof data === "object") {
+    return JSON.stringify(data);
+  }
+  return "undefined";
+}
 
 // deno-lint-ignore no-explicit-any
 export type GenericFunction = (...args: any[]) => any;
 
 export interface LogRecordOptions {
-  msg: string;
+  message: unknown;
   args: unknown[];
-  level: number;
+  logLevel: LogLevel;
   loggerName: string;
 }
 
 export class LogRecord {
-  readonly msg: string;
+  readonly message: unknown;
   #args: unknown[];
   #datetime: Date;
-  readonly level: number;
-  readonly levelName: string;
+  readonly logLevel: LogLevel;
   readonly loggerName: string;
 
   constructor(options: LogRecordOptions) {
-    this.msg = options.msg;
     this.#args = [...options.args];
-    this.level = options.level;
-    this.loggerName = options.loggerName;
     this.#datetime = new Date();
-    this.levelName = getLevelName(options.level);
+    this.message = options.message;
+    this.logLevel = options.logLevel;
+    this.loggerName = options.loggerName;
   }
   get args(): unknown[] {
     return [...this.#args];
@@ -37,153 +52,58 @@ export class LogRecord {
   }
 }
 
-export interface LoggerOptions {
-  handlers?: BaseHandler[];
+const DEFAULT_LOGGER_NAME = "logger";
+
+export class BaseLogger {
+  name: string;
+  logLevel: LogLevel;
+  handlers: Handler[];
+  constructor(logLevel: LogLevel, {
+    name = DEFAULT_LOGGER_NAME,
+    handlers = [],
+  }: {
+    name?: string;
+    handlers?: Handler[];
+  } = {}) {
+    this.name = name;
+    this.logLevel = logLevel;
+    this.handlers = handlers;
+  }
+
+  protected dispatch(logLevel: LogLevel, message: unknown, ...args: unknown[]) {
+    if (this.logLevel.code > logLevel.code) return;
+
+    if (message instanceof Function) {
+      message = message(logLevel);
+    }
+
+    message = asString(message);
+
+    const record = new LogRecord({
+      loggerName: this.name,
+      message,
+      args,
+      logLevel,
+    });
+
+    this.handlers.forEach((handler) => handler.handle(record));
+  }
 }
 
-export class Logger {
-  #level: LogLevels;
-  #handlers: BaseHandler[];
-  readonly #loggerName: string;
-
-  constructor(
-    loggerName: string,
-    levelName: LevelName,
-    options: LoggerOptions = {},
-  ) {
-    this.#loggerName = loggerName;
-    this.#level = getLevelByName(levelName);
-    this.#handlers = options.handlers || [];
+export class Logger extends BaseLogger {
+  trace(message: unknown, ...args: unknown[]) {
+    return this.dispatch(logLevels.trace, message, ...args);
   }
-
-  get level(): LogLevels {
-    return this.#level;
+  debug(message: unknown, ...args: unknown[]) {
+    return this.dispatch(logLevels.debug, message, ...args);
   }
-  set level(level: LogLevels) {
-    this.#level = level;
+  info(message: unknown, ...args: unknown[]) {
+    return this.dispatch(logLevels.info, message, ...args);
   }
-
-  get levelName(): LevelName {
-    return getLevelName(this.#level);
+  warn(message: unknown, ...args: unknown[]) {
+    return this.dispatch(logLevels.warn, message, ...args);
   }
-  set levelName(levelName: LevelName) {
-    this.#level = getLevelByName(levelName);
-  }
-
-  get loggerName(): string {
-    return this.#loggerName;
-  }
-
-  set handlers(hndls: BaseHandler[]) {
-    this.#handlers = hndls;
-  }
-  get handlers(): BaseHandler[] {
-    return this.#handlers;
-  }
-
-  /** If the level of the logger is greater than the level to log, then nothing
-   * is logged, otherwise a log record is passed to each log handler.  `msg` data
-   * passed in is returned.  If a function is passed in, it is only evaluated
-   * if the msg will be logged and the return value will be the result of the
-   * function, not the function itself, unless the function isn't called, in which
-   * case undefined is returned.  All types are coerced to strings for logging.
-   */
-  private _log<T>(
-    level: number,
-    msg: (T extends GenericFunction ? never : T) | (() => T),
-    ...args: unknown[]
-  ): T | undefined {
-    if (this.level > level) {
-      return msg instanceof Function ? undefined : msg;
-    }
-
-    let fnResult: T | undefined;
-    let logMessage: string;
-    if (msg instanceof Function) {
-      fnResult = msg();
-      logMessage = this.asString(fnResult);
-    } else {
-      logMessage = this.asString(msg);
-    }
-    const record: LogRecord = new LogRecord({
-      msg: logMessage,
-      args: args,
-      level: level,
-      loggerName: this.loggerName,
-    });
-
-    this.#handlers.forEach((handler): void => {
-      handler.handle(record);
-    });
-
-    return msg instanceof Function ? fnResult : msg;
-  }
-
-  asString(data: unknown): string {
-    if (typeof data === "string") {
-      return data;
-    } else if (
-      data === null ||
-      typeof data === "number" ||
-      typeof data === "bigint" ||
-      typeof data === "boolean" ||
-      typeof data === "undefined" ||
-      typeof data === "symbol"
-    ) {
-      return String(data);
-    } else if (data instanceof Error) {
-      return data.stack!;
-    } else if (typeof data === "object") {
-      return JSON.stringify(data);
-    }
-    return "undefined";
-  }
-
-  debug<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  debug<T>(msg: T extends GenericFunction ? never : T, ...args: unknown[]): T;
-  debug<T>(
-    msg: (T extends GenericFunction ? never : T) | (() => T),
-    ...args: unknown[]
-  ): T | undefined {
-    return this._log(LogLevels.DEBUG, msg, ...args);
-  }
-
-  info<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  info<T>(msg: T extends GenericFunction ? never : T, ...args: unknown[]): T;
-  info<T>(
-    msg: (T extends GenericFunction ? never : T) | (() => T),
-    ...args: unknown[]
-  ): T | undefined {
-    return this._log(LogLevels.INFO, msg, ...args);
-  }
-
-  warning<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  warning<T>(msg: T extends GenericFunction ? never : T, ...args: unknown[]): T;
-  warning<T>(
-    msg: (T extends GenericFunction ? never : T) | (() => T),
-    ...args: unknown[]
-  ): T | undefined {
-    return this._log(LogLevels.WARNING, msg, ...args);
-  }
-
-  error<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  error<T>(msg: T extends GenericFunction ? never : T, ...args: unknown[]): T;
-  error<T>(
-    msg: (T extends GenericFunction ? never : T) | (() => T),
-    ...args: unknown[]
-  ): T | undefined {
-    return this._log(LogLevels.ERROR, msg, ...args);
-  }
-
-  critical<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  critical<T>(
-    msg: T extends GenericFunction ? never : T,
-    ...args: unknown[]
-  ): T;
-  critical<T>(
-    msg: (T extends GenericFunction ? never : T) | (() => T),
-    ...args: unknown[]
-  ): T | undefined {
-    return this._log(LogLevels.CRITICAL, msg, ...args);
+  error(message: unknown, ...args: unknown[]) {
+    return this.dispatch(logLevels.error, message, ...args);
   }
 }
