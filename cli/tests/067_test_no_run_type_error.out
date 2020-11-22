@@ -1,0 +1,4 @@
+[WILDCARD]error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+const a: string = 1;
+      ^
+    at [WILDCARD]foo_test.ts[WILDCARD]
