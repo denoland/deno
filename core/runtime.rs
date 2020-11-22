@@ -53,7 +53,7 @@ pub enum Snapshot {
   Boxed(Box<[u8]>),
 }
 
-type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
+pub type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
 
 pub type GetErrorClassFn =
   &'static dyn for<'e> Fn(&'e AnyError) -> &'static str;
