@@ -1,52 +1,99 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-// Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
-
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
+// Copyright Node.js contributors. All rights reserved. MIT License.
+/************ NOT IMPLEMENTED
+* ERR_INVALID_ARG_VALUE
+* ERR_INVALID_MODULE_SPECIFIER
+* ERR_INVALID_PACKAGE_TARGET
+* ERR_INVALID_URL_SCHEME
+* ERR_MANIFEST_ASSERT_INTEGRITY
+* ERR_MISSING_ARGS
+* ERR_MODULE_NOT_FOUND
+* ERR_PACKAGE_PATH_NOT_EXPORTED
+* ERR_QUICSESSION_VERSION_NEGOTIATION
+* ERR_REQUIRE_ESM
+* ERR_SOCKET_BAD_PORT
+* ERR_TLS_CERT_ALTNAME_INVALID
+* ERR_UNHANDLED_ERROR
+* ERR_WORKER_INVALID_EXEC_ARGV
+* ERR_WORKER_PATH
+* ERR_QUIC_ERROR
+* ERR_SOCKET_BUFFER_SIZE //System error, shouldn't ever happen inside Deno
+* ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
+* ERR_TTY_INIT_FAILED //System error, shouldn't ever happen inside Deno
+* ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
+*************/
 
 import { unreachable } from "../testing/asserts.ts";
 
-// It will do so until we'll have Node errors completely ported (#5944):
+/**
+ * All error instances in Node have additional methods and properties
+ * This export class is meant to be extended by these instances abstracting native JS error instances
+ */
+export class NodeErrorAbstraction extends Error {
+  code: string;
 
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L251
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L299
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L325
-// Ref: https://github.com/nodejs/node/blob/50d28d4b3a616b04537feff014aa70437f064e30/lib/internal/errors.js#L943
-class ERR_INVALID_ARG_TYPE extends TypeError {
-  code = "ERR_INVALID_ARG_TYPE";
-
-  constructor(a1: string, a2: string, a3: unknown) {
-    super(
-      `The "${a1}" argument must be of type ${a2.toLocaleLowerCase()}. Received ${typeof a3} (${a3})`,
-    );
-    const { name } = this;
-    // Add the error code to the name to include it in the stack trace.
-    this.name = `${name} [${this.code}]`;
-    // Access the stack to generate the error message including the error code from the name.
-    this.stack;
-    // Reset the name to the actual name.
+  constructor(name: string, code: string, message: string) {
+    super(message);
+    this.code = code;
     this.name = name;
+    //This number changes dependending on the name of this class
+    //20 characters as of now
+    this.stack = this.stack && `${name} [${this.code}]${this.stack.slice(20)}`;
+  }
+
+  toString() {
+    return `${this.name} [${this.code}]: ${this.message}`;
   }
 }
 
-class ERR_OUT_OF_RANGE extends RangeError {
+export class NodeError extends NodeErrorAbstraction {
+  constructor(code: string, message: string) {
+    super(Error.prototype.name, code, message);
+  }
+}
+
+export class NodeSyntaxError extends NodeErrorAbstraction
+  implements SyntaxError {
+  constructor(code: string, message: string) {
+    super(SyntaxError.prototype.name, code, message);
+    Object.setPrototypeOf(this, SyntaxError.prototype);
+  }
+}
+
+export class NodeRangeError extends NodeErrorAbstraction {
+  constructor(code: string, message: string) {
+    super(RangeError.prototype.name, code, message);
+    Object.setPrototypeOf(this, RangeError.prototype);
+  }
+}
+
+export class NodeTypeError extends NodeErrorAbstraction implements TypeError {
+  constructor(code: string, message: string) {
+    super(TypeError.prototype.name, code, message);
+    Object.setPrototypeOf(this, TypeError.prototype);
+  }
+}
+
+export class NodeURIError extends NodeErrorAbstraction implements URIError {
+  constructor(code: string, message: string) {
+    super(URIError.prototype.name, code, message);
+    Object.setPrototypeOf(this, URIError.prototype);
+  }
+}
+
+export class ERR_INVALID_ARG_TYPE extends NodeTypeError {
+  constructor(a1: string, a2: string | string[], a3: unknown) {
+    super(
+      "ERR_INVALID_ARG_TYPE",
+      `The "${a1}" argument must be of type ${
+        typeof a2 === "string"
+          ? a2.toLocaleLowerCase()
+          : a2.map((x) => x.toLocaleLowerCase()).join(", ")
+      }. Received ${typeof a3} (${a3})`,
+    );
+  }
+}
+
+export class ERR_OUT_OF_RANGE extends RangeError {
   code = "ERR_OUT_OF_RANGE";
 
   constructor(str: string, range: string, received: unknown) {
@@ -63,11 +110,6 @@ class ERR_OUT_OF_RANGE extends RangeError {
     this.name = name;
   }
 }
-
-export const codes = {
-  ERR_INVALID_ARG_TYPE,
-  ERR_OUT_OF_RANGE,
-};
 
 // In Node these values are coming from libuv:
 // Ref: https://github.com/libuv/libuv/blob/v1.x/include/uv/errno.h
@@ -342,3 +384,100 @@ export const errorMap = new Map<number, [string, string]>(
     ? linux
     : unreachable(),
 );
+export class ERR_METHOD_NOT_IMPLEMENTED extends NodeError {
+  constructor(x: string) {
+    super(
+      "ERR_METHOD_NOT_IMPLEMENTED",
+      `The ${x} method is not implemented`,
+    );
+  }
+}
+export class ERR_MULTIPLE_CALLBACK extends NodeError {
+  constructor() {
+    super(
+      "ERR_MULTIPLE_CALLBACK",
+      `Callback called multiple times`,
+    );
+  }
+}
+export class ERR_STREAM_ALREADY_FINISHED extends NodeError {
+  constructor(x: string) {
+    super(
+      "ERR_STREAM_ALREADY_FINISHED",
+      `Cannot call ${x} after a stream was finished`,
+    );
+  }
+}
+export class ERR_STREAM_CANNOT_PIPE extends NodeError {
+  constructor() {
+    super(
+      "ERR_STREAM_CANNOT_PIPE",
+      `Cannot pipe, not readable`,
+    );
+  }
+}
+export class ERR_STREAM_DESTROYED extends NodeError {
+  constructor(x: string) {
+    super(
+      "ERR_STREAM_DESTROYED",
+      `Cannot call ${x} after a stream was destroyed`,
+    );
+  }
+}
+export class ERR_STREAM_NULL_VALUES extends NodeTypeError {
+  constructor() {
+    super(
+      "ERR_STREAM_NULL_VALUES",
+      `May not write null values to stream`,
+    );
+  }
+}
+export class ERR_STREAM_PREMATURE_CLOSE extends NodeError {
+  constructor() {
+    super(
+      "ERR_STREAM_PREMATURE_CLOSE",
+      `Premature close`,
+    );
+  }
+}
+export class ERR_STREAM_PUSH_AFTER_EOF extends NodeError {
+  constructor() {
+    super(
+      "ERR_STREAM_PUSH_AFTER_EOF",
+      `stream.push() after EOF`,
+    );
+  }
+}
+export class ERR_STREAM_UNSHIFT_AFTER_END_EVENT extends NodeError {
+  constructor() {
+    super(
+      "ERR_STREAM_UNSHIFT_AFTER_END_EVENT",
+      `stream.unshift() after end event`,
+    );
+  }
+}
+export class ERR_STREAM_WRITE_AFTER_END extends NodeError {
+  constructor() {
+    super(
+      "ERR_STREAM_WRITE_AFTER_END",
+      `write after end`,
+    );
+  }
+}
+export class ERR_UNKNOWN_ENCODING extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_UNKNOWN_ENCODING",
+      `Unknown encoding: ${x}`,
+    );
+  }
+}
+
+export class ERR_INVALID_OPT_VALUE extends NodeTypeError {
+  constructor(name: string, value: unknown) {
+    super(
+      "ERR_INVALID_OPT_VALUE",
+      `The value "${value}" is invalid for option "${name}"`,
+    );
+  }
+}

@@ -2185,6 +2185,12 @@ fn _066_prompt() {
   util::test_pty(args, output, input);
 }
 
+itest!(_067_test_no_run_type_error {
+  args: "test --unstable --no-run test_type_error",
+  output: "067_test_no_run_type_error.out",
+  exit_code: 1,
+});
+
 itest!(_073_worker_error {
   args: "run -A 073_worker_error.ts",
   output: "073_worker_error.ts.out",
