@@ -574,7 +574,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true);
 
   let no_run = matches.is_present("no-run");
-  let failfast = matches.is_present("failfast");
+  let fail_fast = matches.is_present("fail-fast");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
@@ -609,7 +609,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.subcommand = DenoSubcommand::Test {
     no_run,
-    fail_fast: failfast,
+    fail_fast,
     quiet,
     include,
     filter,
@@ -1158,8 +1158,9 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .requires("unstable"),
     )
     .arg(
-      Arg::with_name("failfast")
-        .long("failfast")
+      Arg::with_name("fail-fast")
+        .long("fail-fast")
+        .alias("failfast")
         .help("Stop on first error")
         .takes_value(false),
     )

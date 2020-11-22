@@ -1887,7 +1887,7 @@ itest!(deno_test {
 });
 
 itest!(deno_test_fail_fast {
-  args: "test --failfast test_runner_test.ts",
+  args: "test --fail-fast test_runner_test.ts",
   exit_code: 1,
   output: "deno_test_fail_fast.out",
 });
