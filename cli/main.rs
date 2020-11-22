@@ -77,6 +77,7 @@ use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::Future;
 use deno_core::futures::future::FutureExt;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
@@ -88,16 +89,16 @@ use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
+use std::pin::Pin;
 
 #[cfg(feature = "tools")]
 use {
   crate::file_fetcher::File, crate::file_fetcher::FileFetcher,
   crate::import_map::ImportMap, crate::media_type::MediaType,
-  crate::specifier_handler::FetchHandler, deno_core::futures::Future,
-  deno_core::serde_json, deno_core::serde_json::json, deno_doc as doc,
+  crate::specifier_handler::FetchHandler, deno_core::serde_json,
+  deno_core::serde_json::json, deno_doc as doc,
   deno_doc::parser::DocFileLoader, program_state::exit_unstable,
-  std::cell::RefCell, std::path::PathBuf, std::pin::Pin, std::rc::Rc,
-  std::sync::Arc,
+  std::cell::RefCell, std::path::PathBuf, std::rc::Rc, std::sync::Arc,
 };
 
 #[cfg(feature = "tools")]
@@ -762,40 +763,35 @@ async fn test_command(
   Ok(())
 }
 
-pub fn main() {
-  #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
-
-  let args: Vec<String> = env::args().collect();
-  let flags = flags::flags_from_vec(args);
-
-  if let Some(ref v8_flags) = flags.v8_flags {
-    let v8_flags_includes_help = v8_flags
-      .iter()
-      .any(|flag| flag == "-help" || flag == "--help");
-    let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(v8_flags.iter().cloned())
-      .collect::<Vec<_>>();
-    let unrecognized_v8_flags = v8_set_flags(v8_flags)
-      .into_iter()
-      .skip(1)
-      .collect::<Vec<_>>();
-    if !unrecognized_v8_flags.is_empty() {
-      for f in unrecognized_v8_flags {
-        eprintln!("error: V8 did not recognize flag '{}'", f);
-      }
-      eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
-      std::process::exit(1);
+fn init_v8_flags(v8_flags: &[String]) {
+  let v8_flags_includes_help = v8_flags
+    .iter()
+    .any(|flag| flag == "-help" || flag == "--help");
+  let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+    .chain(v8_flags.iter().cloned())
+    .collect::<Vec<_>>();
+  let unrecognized_v8_flags = v8_set_flags(v8_flags)
+    .into_iter()
+    .skip(1)
+    .collect::<Vec<_>>();
+  if !unrecognized_v8_flags.is_empty() {
+    for f in unrecognized_v8_flags {
+      eprintln!("error: V8 did not recognize flag '{}'", f);
     }
-    if v8_flags_includes_help {
-      std::process::exit(0);
-    }
+    eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
+    std::process::exit(1);
   }
+  if v8_flags_includes_help {
+    std::process::exit(0);
+  }
+}
 
-  let log_level = match flags.log_level {
+fn init_logger(maybe_level: Option<Level>) {
+  let log_level = match maybe_level {
     Some(level) => level,
     None => Level::Info, // Default log level
   };
+
   env_logger::Builder::from_env(
     env_logger::Env::default()
       .default_filter_or(log_level.to_level_filter().to_string()),
@@ -823,43 +819,40 @@ pub fn main() {
     }
   })
   .init();
+}
 
-  let fut = match flags.clone().subcommand {
+#[cfg(feature = "tools")]
+fn get_subcommand(
+  flags: Flags,
+) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  match flags.clone().subcommand {
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
-
-    #[cfg(feature = "tools")]
     DenoSubcommand::Bundle {
       source_file,
       out_file,
     } => bundle_command(flags, source_file, out_file).boxed_local(),
-    #[cfg(feature = "tools")]
     DenoSubcommand::Doc {
       source_file,
       json,
       filter,
       private,
     } => doc_command(flags, source_file, json, filter, private).boxed_local(),
-    #[cfg(feature = "tools")]
     DenoSubcommand::Eval {
       print,
       code,
       as_typescript,
     } => eval_command(flags, code, as_typescript, print).boxed_local(),
-    #[cfg(feature = "tools")]
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
-    #[cfg(feature = "tools")]
     DenoSubcommand::Fmt {
       check,
       files,
       ignore,
     } => tools::fmt::format(files, check, ignore).boxed_local(),
-    #[cfg(feature = "tools")]
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
-    #[cfg(feature = "tools")]
     DenoSubcommand::Install {
       module_url,
       args,
@@ -869,16 +862,13 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    #[cfg(feature = "tools")]
     DenoSubcommand::Lint {
       files,
       rules,
       ignore,
       json,
     } => lint_command(flags, files, rules, ignore, json).boxed_local(),
-    #[cfg(feature = "tools")]
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
-    #[cfg(feature = "tools")]
     DenoSubcommand::Test {
       no_run,
       fail_fast,
@@ -890,24 +880,21 @@ pub fn main() {
       test_command(flags, include, no_run, fail_fast, quiet, allow_none, filter)
         .boxed_local()
     }
-    #[cfg(feature = "tools")]
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
-    #[cfg(feature = "tools")]
     DenoSubcommand::Types => {
       let types = get_types(flags.unstable);
       if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
-    #[cfg(feature = "tools")]
     DenoSubcommand::Upgrade {
       force,
       dry_run,
@@ -918,13 +905,31 @@ pub fn main() {
       tools::upgrade::upgrade_command(dry_run, force, version, output, ca_file)
         .boxed_local()
     }
-    #[cfg(not(feature = "tools"))]
-    _ => {
-      async { Err(generic_error("Toolchain not compiled")) }.boxed_local()
-    }
-  };
+  }
+}
 
-  let result = tokio_util::run_basic(fut);
+#[cfg(not(feature = "tools"))]
+fn get_subcommand(
+  flags: Flags,
+) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  match flags.clone().subcommand {
+    DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
+    _ => async { Err(generic_error("Toolchain not compiled")) }.boxed_local(),
+  }
+}
+
+pub fn main() {
+  #[cfg(windows)]
+  colors::enable_ansi(); // For Windows 10
+
+  let args: Vec<String> = env::args().collect();
+  let flags = flags::flags_from_vec(args);
+  if let Some(ref v8_flags) = flags.v8_flags {
+    init_v8_flags(v8_flags);
+  }
+  init_logger(flags.log_level);
+  let subcommand_fut = get_subcommand(flags);
+  let result = tokio_util::run_basic(subcommand_fut);
   if let Err(err) = result {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
