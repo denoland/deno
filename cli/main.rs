@@ -5,11 +5,28 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+mod colors;
+mod errors;
+mod flags;
+mod flags_allow_net;
+mod fs_util;
+mod http_util;
+mod js;
+mod metrics;
+mod ops;
+mod permissions;
+mod program_state;
+mod resolve_addr;
+mod signal;
+mod text_encoding;
+mod tokio_util;
+mod version;
+mod worker;
+
 #[cfg(feature = "tools")]
 mod ast;
 #[cfg(feature = "tools")]
 mod checksum;
-mod colors;
 #[cfg(feature = "tools")]
 mod deno_dir;
 #[cfg(feature = "tools")]
@@ -18,56 +35,42 @@ mod diagnostics;
 mod diff;
 #[cfg(feature = "tools")]
 mod disk_cache;
-mod errors;
 #[cfg(feature = "tools")]
 mod file_fetcher;
 #[cfg(feature = "tools")]
 mod file_watcher;
-mod flags;
-mod flags_allow_net;
 #[cfg(feature = "tools")]
 mod fmt_errors;
-#[cfg(not(feature = "tools"))]
-mod fs_module_loader;
-mod fs_util;
 #[cfg(feature = "tools")]
 mod http_cache;
-mod http_util;
 #[cfg(feature = "tools")]
 mod import_map;
 #[cfg(feature = "tools")]
 mod info;
 #[cfg(feature = "tools")]
 mod inspector;
-mod js;
 #[cfg(feature = "tools")]
 mod lockfile;
 #[cfg(feature = "tools")]
 mod media_type;
-mod metrics;
 #[cfg(feature = "tools")]
 mod module_graph;
 #[cfg(feature = "tools")]
 mod module_loader;
-mod ops;
-mod permissions;
-mod program_state;
-mod resolve_addr;
-mod signal;
 #[cfg(feature = "tools")]
 mod source_maps;
 #[cfg(feature = "tools")]
 mod specifier_handler;
-mod text_encoding;
-mod tokio_util;
 #[cfg(feature = "tools")]
 mod tools;
 #[cfg(feature = "tools")]
 mod tsc;
 #[cfg(feature = "tools")]
 mod tsc_config;
-mod version;
-mod worker;
+
+// Compiled only for "lite" binary
+#[cfg(not(feature = "tools"))]
+mod fs_module_loader;
 
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
