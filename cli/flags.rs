@@ -361,6 +361,7 @@ fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -417,6 +418,8 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
+
+  flags.watch = matches.is_present("watch");
 
   flags.subcommand = DenoSubcommand::Bundle {
     source_file,
@@ -723,6 +726,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -793,6 +797,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
+    .arg(watch_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -1855,6 +1860,44 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec_safe(svec!["deno", "fmt", "--watch", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt {
+          ignore: vec![],
+          check: false,
+          files: vec![],
+        },
+        watch: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "fmt",
+      "--check",
+      "--watch",
+      "--unstable",
+      "foo.ts",
+      "--ignore=bar.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt {
+          ignore: vec![PathBuf::from("bar.js")],
+          check: true,
+          files: vec![PathBuf::from("foo.ts")],
+        },
+        watch: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -2403,6 +2446,29 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn bundle_watch() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "bundle",
+      "--watch",
+      "--unstable",
+      "source.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
+        watch: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    )
   }
 
   #[test]
