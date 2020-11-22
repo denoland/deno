@@ -2203,6 +2203,11 @@ itest!(_074_worker_nested_error {
   exit_code: 1,
 });
 
+itest!(_075_import_local_query_hash {
+  args: "run 075_import_local_query_hash.ts",
+  output: "075_import_local_query_hash.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

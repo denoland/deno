@@ -133,6 +133,10 @@ delete Object.prototype.__proto__;
     // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
     // so we will ignore complaints about this compiler setting.
     5070,
+    // TS6054: File '...' has an unsupported extension. The only supported
+    // extensions are '.ts', ... '.jsx'. This is confused by querystrings and
+    // hashes in file URLs. It should be handled by the loader anyway.
+    6054,
     // TS7016: Could not find a declaration file for module '...'. '...'
     // implicitly has an 'any' type.  This is due to `allowJs` being off by
     // default but importing of a JavaScript module.
@@ -150,7 +154,7 @@ delete Object.prototype.__proto__;
 
   /** An object literal of the incremental compiler host, which provides the
    * specific "bindings" to the Deno environment that tsc needs to work.
-   * 
+   *
    * @type {ts.CompilerHost} */
   const host = {
     fileExists(fileName) {
@@ -299,7 +303,7 @@ delete Object.prototype.__proto__;
    */
 
   /** The API that is called by Rust when executing a request.
-   * @param {Request} request 
+   * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames }) {
     setLogDebug(debugFlag, "TS");
@@ -338,7 +342,7 @@ delete Object.prototype.__proto__;
   let hasStarted = false;
 
   /** Startup the runtime environment, setting various flags.
-   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg 
+   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg
    */
   function startup({ debugFlag = false }) {
     if (hasStarted) {
