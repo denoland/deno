@@ -131,3 +131,15 @@ export function validateIntegerRange(
     );
   }
 }
+
+type OptionalSpread<T> = T extends undefined ? []
+  : [T];
+
+export function once(callback: (...args: OptionalSpread<undefined>) => void) {
+  let called = false;
+  return function (this: unknown, ...args: OptionalSpread<undefined>) {
+    if (called) return;
+    called = true;
+    callback.apply(this, args);
+  };
+}
