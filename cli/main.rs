@@ -646,13 +646,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let operation = |main_module: ModuleSpecifier| {
     let flags = flags.clone();
+    let permissions = Permissions::from_flags(&flags);
     async move {
-      let permissions = Permissions::from_flags(&flags);
-      // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
-      // will use cached source files
-      let gs = ProgramState::new(flags)?;
       let main_module = main_module.clone();
-      let mut worker = MainWorker::new(&gs, main_module.clone(), permissions);
+      let program_state = ProgramState::new(flags)?;
+      let mut worker =
+        MainWorker::new(&program_state, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
