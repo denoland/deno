@@ -2186,7 +2186,7 @@ fn _066_prompt() {
 }
 
 itest!(_067_test_no_run_type_error {
-  args: "test --no-run test_type_error",
+  args: "test --unstable --no-run test_type_error",
   output: "067_test_no_run_type_error.out",
   exit_code: 1,
 });

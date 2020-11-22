@@ -1154,7 +1154,8 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("no-run")
         .long("no-run")
         .help("Cache test modules, but don't run tests")
-        .takes_value(false),
+        .takes_value(false)
+        .requires("unstable"),
     )
     .arg(
       Arg::with_name("failfast")
