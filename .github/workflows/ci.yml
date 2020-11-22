@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   cargo-deny:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
         checks:
