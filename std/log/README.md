@@ -43,8 +43,7 @@ import {
 const consoleHandler = new ConsoleHandler(logLevels.info);
 const fileHandler = new FileHandler(logLevels.warn, {
   filename: "./log.txt",
-  formatter: ({ logLevel, message }) =>
-    `${logLevel.name} ${JSON.stringify(message)}`,
+  formatter: ({ logLevel, message }) => `${logLevel.name} ${message}`,
 });
 const firstLogger = new Logger(logLevels.info, {
   handlers: [consoleHandler, fileHandler],

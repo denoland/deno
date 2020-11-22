@@ -23,7 +23,6 @@ class TestHandler extends Handler {
     [logLevels.warn.code]: (message: string) => this.messages.push(message),
     [logLevels.error.code]: (message: string) => this.messages.push(message),
   };
-
 }
 
 Deno.test("simpleHandler", function (): void {
