@@ -3022,12 +3022,12 @@ itest!(deno_doc_types_ref {
 });
 
 itest!(deno_doc_types_header {
-  args: "doc doc/types_header.ts",
+  args: "doc --reload doc/types_header.ts",
   output: "doc/types_header.out",
 });
 
 itest!(deno_doc_types_header_direct {
-  args: "doc http://127.0.0.1:4545/xTypeScriptTypes.js",
+  args: "doc --reload http://127.0.0.1:4545/xTypeScriptTypes.js",
   output: "doc/types_header.out",
 });
 
