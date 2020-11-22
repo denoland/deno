@@ -95,6 +95,7 @@ function validateCookieName(name: string | undefined | null): void {
 
 /**
  * Validate Path Value.
+ * @see https://tools.ietf.org/html/rfc6265#section-4.1.2.4
  * @param path Path value.
  */
 function validatePath(path: string | null): void {
