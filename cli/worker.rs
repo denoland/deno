@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::fmt_errors::PrettyJsError;
 use crate::inspector::DenoInspector;
+use crate::inspector::InspectorServer;
 use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics::Metrics;
@@ -114,17 +115,14 @@ impl Worker {
     startup_snapshot: Snapshot,
     program_state: Arc<ProgramState>,
     module_loader: Rc<CliModuleLoader>,
-    is_main: bool,
   ) -> Self {
-    let global_state_ = program_state.clone();
-
     let js_error_create_fn = Box::new(move |core_js_error| {
       let source_mapped_error =
-        apply_source_map(&core_js_error, global_state_.clone());
+        apply_source_map(&core_js_error, program_state.clone());
       PrettyJsError::create(source_mapped_error)
     });
 
-    let mut js_runtime = JsRuntime::new(RuntimeOptions {
+    let js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(startup_snapshot),
       js_error_create_fn: Some(js_error_create_fn),
@@ -132,31 +130,15 @@ impl Worker {
       ..Default::default()
     });
 
-    let inspector =
-      if let Some(inspector_server) = &program_state.maybe_inspector_server {
-        Some(DenoInspector::new(
-          &mut js_runtime,
-          Some(inspector_server.clone()),
-        ))
-      } else if program_state.flags.coverage || program_state.flags.repl {
-        Some(DenoInspector::new(&mut js_runtime, None))
-      } else {
-        None
-      };
-
-    let should_break_on_first_statement = inspector.is_some()
-      && is_main
-      && program_state.flags.inspect_brk.is_some();
-
     let (internal_channels, external_channels) = create_channels();
 
     Self {
       external_channels,
-      inspector,
+      inspector: None,
       internal_channels,
       js_runtime,
       name,
-      should_break_on_first_statement,
+      should_break_on_first_statement: false,
       waker: AtomicWaker::new(),
     }
   }
@@ -211,9 +193,20 @@ impl Worker {
     }
   }
 
-  /// Create new inspector session. This function panics if Worker
-  /// was not configured to create inspector.
+  pub fn attach_inspector(
+    &mut self,
+    inspector_server: Arc<InspectorServer>,
+    break_on_first_statement: bool,
+  ) {
+    let inspector =
+      DenoInspector::new(&mut self.js_runtime, Some(inspector_server));
+    self.inspector = Some(inspector);
+    self.should_break_on_first_statement = break_on_first_statement;
+  }
+
   pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
+    let inspector = DenoInspector::new(&mut self.js_runtime, None);
+    self.inspector = Some(inspector);
     let inspector = self.inspector.as_mut().unwrap();
 
     InspectorSession::new(&mut **inspector)
@@ -257,13 +250,22 @@ impl MainWorker {
     permissions: Permissions,
   ) -> Self {
     let loader = CliModuleLoader::new(program_state.maybe_import_map.clone());
+
     let mut worker = Worker::new(
       "main".to_string(),
       js::deno_isolate_init(),
       program_state.clone(),
       loader,
-      true,
     );
+
+    if let Some(inspector_server) = program_state.maybe_inspector_server.clone()
+    {
+      worker.attach_inspector(
+        inspector_server,
+        program_state.flags.inspect_brk.is_some(),
+      );
+    }
+
     let js_runtime = &mut worker.js_runtime;
     {
       // All ops registered in this function depend on these
@@ -406,13 +408,13 @@ impl WebWorker {
     has_deno_namespace: bool,
   ) -> Self {
     let loader = CliModuleLoader::new_for_worker();
-    let mut worker = Worker::new(
-      name,
-      js::deno_isolate_init(),
-      program_state.clone(),
-      loader,
-      false,
-    );
+    let mut worker =
+      Worker::new(name, js::deno_isolate_init(), program_state.clone(), loader);
+
+    if let Some(inspector_server) = program_state.maybe_inspector_server.clone()
+    {
+      worker.attach_inspector(inspector_server, false);
+    }
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
