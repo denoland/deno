@@ -116,10 +116,9 @@ impl Worker {
     program_state: Arc<ProgramState>,
     module_loader: Rc<CliModuleLoader>,
   ) -> Self {
-    let program_state_ = program_state.clone();
     let js_error_create_fn = Box::new(move |core_js_error| {
       let source_mapped_error =
-        apply_source_map(&core_js_error, program_state_.clone());
+        apply_source_map(&core_js_error, program_state.clone());
       PrettyJsError::create(source_mapped_error)
     });
 
@@ -201,13 +200,13 @@ impl Worker {
   ) {
     let inspector =
       DenoInspector::new(&mut self.js_runtime, Some(inspector_server));
-    self.inspector = Some(inspector);
+    self.inspector.replace(inspector);
     self.should_break_on_first_statement = break_on_first_statement;
   }
 
   pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
     let inspector = DenoInspector::new(&mut self.js_runtime, None);
-    self.inspector = Some(inspector);
+    self.inspector.replace(inspector);
     let inspector = self.inspector.as_mut().unwrap();
 
     InspectorSession::new(&mut **inspector)
