@@ -382,7 +382,7 @@ async fn bundle_command(
   Ok(())
 }
 
-/// When parsing lib.deno.d.ts, only `DocParser::parse_source` is used, 
+/// When parsing lib.deno.d.ts, only `DocParser::parse_source` is used,
 /// which never even references the loader, so this is just a stub for that scenario.
 struct StubDocLoader;
 
