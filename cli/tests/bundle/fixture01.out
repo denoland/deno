@@ -1,7 +1,7 @@
-const a = function() {
+const mod = function() {
     const a = "a";
     return {
         a
     };
 }();
-console.log(a);
+console.log(mod);

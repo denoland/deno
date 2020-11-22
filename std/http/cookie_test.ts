@@ -66,6 +66,29 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Cookie Path Validation",
+  fn(): void {
+    const res: Response = {};
+    const path = "/;domain=sub.domain.com";
+    res.headers = new Headers();
+    assertThrows(
+      (): void => {
+        setCookie(res, {
+          name: "Space",
+          value: "Cat",
+          httpOnly: true,
+          secure: true,
+          path,
+          maxAge: 3,
+        });
+      },
+      Error,
+      path + ": Invalid cookie path char ';'",
+    );
+  },
+});
+
+Deno.test({
   name: "Cookie Delete",
   fn(): void {
     const res: Response = {};

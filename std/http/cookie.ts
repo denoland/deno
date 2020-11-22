@@ -70,6 +70,7 @@ function toString(cookie: Cookie): string {
     out.push(`SameSite=${cookie.sameSite}`);
   }
   if (cookie.path) {
+    validatePath(cookie.path);
     out.push(`Path=${cookie.path}`);
   }
   if (cookie.expires) {
@@ -83,13 +84,33 @@ function toString(cookie: Cookie): string {
 }
 
 /**
- * Validate Cookie property.
- * @param key Name of the cookie.
- * @param value Value of the cookie.
+ * Validate Cookie Name.
+ * @param name Cookie name.
  */
-function validateCookieName(value: string | undefined | null): void {
-  if (value && !FIELD_CONTENT_REGEXP.test(value)) {
-    throw new TypeError(`Invalid cookie name: "${value}".`);
+function validateCookieName(name: string | undefined | null): void {
+  if (name && !FIELD_CONTENT_REGEXP.test(name)) {
+    throw new TypeError(`Invalid cookie name: "${name}".`);
+  }
+}
+
+/**
+ * Validate Path Value.
+ * @see https://tools.ietf.org/html/rfc6265#section-4.1.2.4
+ * @param path Path value.
+ */
+function validatePath(path: string | null): void {
+  if (path == null) {
+    return;
+  }
+  for (let i = 0; i < path.length; i++) {
+    const c = path.charAt(i);
+    if (
+      c < String.fromCharCode(0x20) || c > String.fromCharCode(0x7E) || c == ";"
+    ) {
+      throw new Error(
+        path + ": Invalid cookie path char '" + c + "'",
+      );
+    }
   }
 }
 
