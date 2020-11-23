@@ -9,7 +9,7 @@ targets = [
 # The lint level for security vulnerabilities
 vulnerability = "deny"
 # The lint level for unmaintained crates
-unmaintained = "warn"
+unmaintained = "deny"
 # The lint level for crates that have been yanked from their source registry
 yanked = "deny"
 # The lint level for crates with security notices. Note that as of
@@ -55,7 +55,7 @@ license-files = [
 # https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "deny"
+multiple-versions = "warn"
 # Lint level for when a crate version requirement is `*`
 wildcards = "allow"
 # The graph highlighting used when creating dotgraphs for crates
