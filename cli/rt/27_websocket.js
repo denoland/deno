@@ -2,7 +2,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { requiredArguments } = window.__bootstrap.webUtil;
+  const { requiredArguments, defineEventHandler } = window.__bootstrap.webUtil;
   const CONNECTING = 0;
   const OPEN = 1;
   const CLOSING = 2;
@@ -61,14 +61,12 @@
             }).then(() => {
               this.#readyState = CLOSED;
 
-              const errEvent = new Event("error");
+              const errEvent = new ErrorEvent("error");
               errEvent.target = this;
-              this.onerror?.(errEvent);
               this.dispatchEvent(errEvent);
 
               const event = new CloseEvent("close");
               event.target = this;
-              this.onclose?.(event);
               this.dispatchEvent(event);
               core.close(this.#rid);
             });
@@ -76,7 +74,6 @@
             this.#readyState = OPEN;
             const event = new Event("open");
             event.target = this;
-            this.onopen?.(event);
             this.dispatchEvent(event);
 
             this.#eventLoop();
@@ -84,14 +81,12 @@
         } else {
           this.#readyState = CLOSED;
 
-          const errEvent = new Event("error");
+          const errEvent = new ErrorEvent("error");
           errEvent.target = this;
-          this.onerror?.(errEvent);
           this.dispatchEvent(errEvent);
 
           const closeEvent = new CloseEvent("close");
           closeEvent.target = this;
-          this.onclose?.(closeEvent);
           this.dispatchEvent(closeEvent);
         }
       }).catch((err) => {
@@ -102,12 +97,10 @@
           { error: err, message: err.toString() },
         );
         errorEv.target = this;
-        this.onerror?.(errorEv);
         this.dispatchEvent(errorEv);
 
         const closeEv = new CloseEvent("close");
         closeEv.target = this;
-        this.onclose?.(closeEv);
         this.dispatchEvent(closeEv);
       });
     }
@@ -158,11 +151,6 @@
     get url() {
       return this.#url;
     }
-
-    onopen = () => {};
-    onerror = () => {};
-    onclose = () => {};
-    onmessage = () => {};
 
     send(data) {
       requiredArguments("WebSocket.send", arguments.length, 1);
@@ -241,7 +229,6 @@
             reason,
           });
           event.target = this;
-          this.onclose?.(event);
           this.dispatchEvent(event);
           core.close(this.#rid);
         });
@@ -272,7 +259,6 @@
             origin: this.#url,
           });
           event.target = this;
-          this.onmessage?.(event);
           this.dispatchEvent(event);
 
           this.#eventLoop();
@@ -284,20 +270,17 @@
             reason: message.reason,
           });
           event.target = this;
-          this.onclose?.(event);
           this.dispatchEvent(event);
         } else if (message.type === "error") {
           this.#readyState = CLOSED;
 
-          const errorEv = new Event("error");
+          const errorEv = new ErrorEvent("error");
           errorEv.target = this;
-          this.onerror?.(errorEv);
           this.dispatchEvent(errorEv);
 
           this.#readyState = CLOSED;
           const closeEv = new CloseEvent("close");
           closeEv.target = this;
-          this.onclose?.(closeEv);
           this.dispatchEvent(closeEv);
         }
       }
@@ -319,6 +302,10 @@
     },
   });
 
+  defineEventHandler(WebSocket.prototype, "message");
+  defineEventHandler(WebSocket.prototype, "error");
+  defineEventHandler(WebSocket.prototype, "close");
+  defineEventHandler(WebSocket.prototype, "open");
   window.__bootstrap.webSocket = {
     WebSocket,
   };

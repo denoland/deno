@@ -10,7 +10,7 @@ import {
   assert,
   assertEquals,
   assertMatch,
-  assertStringContains,
+  assertStringIncludes,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
 import {
@@ -370,6 +370,7 @@ Deno.test({
       cmd: [
         Deno.execPath(),
         "run",
+        "--quiet",
         "--allow-net",
         "testdata/simple_server.ts",
       ],
@@ -415,6 +416,7 @@ Deno.test({
       cmd: [
         Deno.execPath(),
         "run",
+        "--quiet",
         "--allow-net",
         "--allow-read",
         "testdata/simple_https_server.ts",
@@ -498,7 +500,7 @@ Deno.test({
     const nread = await conn.read(res);
     assert(nread !== null);
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
-    assertStringContains(resStr, "/hello");
+    assertStringIncludes(resStr, "/hello");
     server.close();
     await p;
     // Client connection should still be open, verify that
@@ -561,6 +563,118 @@ Deno.test({
     conn.close();
     server.close();
     assert((await entry).done);
+  },
+});
+
+Deno.test({
+  name: "[http] finalizing invalid chunked data closes connection",
+  async fn(): Promise<void> {
+    const serverRoutine = async (): Promise<void> => {
+      const server = serve(":8124");
+      for await (const req of server) {
+        await req.respond({ status: 200, body: "Hello, world!" });
+        break;
+      }
+      server.close();
+    };
+    const p = serverRoutine();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode(
+        "PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nzzzzzzz\r\nhello",
+      ),
+    );
+    await conn.closeWrite();
+    const responseString = decode(await Deno.readAll(conn));
+    assertEquals(
+      responseString,
+      "HTTP/1.1 200 OK\r\ncontent-length: 13\r\n\r\nHello, world!",
+    );
+    conn.close();
+    await p;
+  },
+});
+
+Deno.test({
+  name: "[http] finalizing chunked unexpected EOF closes connection",
+  async fn(): Promise<void> {
+    const serverRoutine = async (): Promise<void> => {
+      const server = serve(":8124");
+      for await (const req of server) {
+        await req.respond({ status: 200, body: "Hello, world!" });
+        break;
+      }
+      server.close();
+    };
+    const p = serverRoutine();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode("PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHello"),
+    );
+    conn.closeWrite();
+    const responseString = decode(await Deno.readAll(conn));
+    assertEquals(
+      responseString,
+      "HTTP/1.1 200 OK\r\ncontent-length: 13\r\n\r\nHello, world!",
+    );
+    conn.close();
+    await p;
+  },
+});
+
+Deno.test({
+  name:
+    "[http] receiving bad request from a closed connection should not throw",
+  async fn(): Promise<void> {
+    const server = serve(":8124");
+    const serverRoutine = async (): Promise<void> => {
+      for await (const req of server) {
+        await req.respond({ status: 200, body: "Hello, world!" });
+      }
+    };
+    const p = serverRoutine();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode([
+        // A normal request is required:
+        "GET / HTTP/1.1",
+        "Host: localhost",
+        "",
+        // The bad request:
+        "GET / HTTP/1.1",
+        "Host: localhost",
+        "INVALID!HEADER!",
+        "",
+        "",
+      ].join("\r\n")),
+    );
+    // After sending the two requests, don't receive the reponses.
+
+    // Closing the connection now.
+    conn.close();
+
+    // The server will write responses to the closed connection,
+    // the first few `write()` calls will not throws, until the server received
+    // the TCP RST. So we need the normal request before the bad request to
+    // make the server do a few writes before it writes that `400` response.
+
+    // Wait for server to handle requests.
+    await delay(10);
+
+    server.close();
+    await p;
   },
 });
 

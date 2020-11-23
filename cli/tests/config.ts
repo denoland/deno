@@ -1,4 +1,5 @@
-/* eslint-disable */
+// deno-lint-ignore-file
+
 function b() {
   return function (
     _target: any,

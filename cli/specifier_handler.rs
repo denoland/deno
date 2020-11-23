@@ -3,12 +3,14 @@
 use crate::ast::Location;
 use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
-use crate::file_fetcher::SourceFileFetcher;
+use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
@@ -61,7 +63,6 @@ pub struct CachedModule {
   pub specifier: ModuleSpecifier,
 }
 
-#[cfg(test)]
 impl Default for CachedModule {
   fn default() -> Self {
     let specifier = ModuleSpecifier::resolve_url("file:///example.js").unwrap();
@@ -215,16 +216,17 @@ impl CompiledFileMetadata {
 pub struct FetchHandler {
   /// An instance of disk where generated (emitted) files are stored.
   disk_cache: DiskCache,
-  /// A set of permissions to apply to dynamic imports.
-  dynamic_permissions: Permissions,
+  /// The set of current runtime permissions which need to be applied to
+  /// dynamic imports.
+  runtime_permissions: Permissions,
   /// A clone of the `program_state` file fetcher.
-  file_fetcher: SourceFileFetcher,
+  file_fetcher: FileFetcher,
 }
 
 impl FetchHandler {
   pub fn new(
     program_state: &Arc<ProgramState>,
-    dynamic_permissions: Permissions,
+    runtime_permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
@@ -233,7 +235,7 @@ impl FetchHandler {
 
     Ok(FetchHandler {
       disk_cache,
-      dynamic_permissions,
+      runtime_permissions,
       file_fetcher,
     })
   }
@@ -250,26 +252,41 @@ impl SpecifierHandler for FetchHandler {
     // permissions need to be applied.  Other static imports have all
     // permissions.
     let permissions = if is_dynamic {
-      self.dynamic_permissions.clone()
+      self.runtime_permissions.clone()
     } else {
       Permissions::allow_all()
     };
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
-    let maybe_referrer: Option<ModuleSpecifier> =
-      if let Some(location) = &maybe_location {
-        Some(location.clone().into())
-      } else {
-        None
-      };
 
     async move {
       let source_file = file_fetcher
-        .fetch_source_file(&requested_specifier, maybe_referrer, permissions)
+        .fetch(&requested_specifier, &permissions)
         .await
         .map_err(|err| {
+          let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {
+            if e.kind() == std::io::ErrorKind::NotFound {
+              let message = if let Some(location) = &maybe_location {
+                format!(
+                  "Cannot resolve module \"{}\" from \"{}\".",
+                  requested_specifier, location.filename
+                )
+              } else {
+                format!("Cannot resolve module \"{}\".", requested_specifier)
+              };
+              custom_error("NotFound", message)
+            } else {
+              err
+            }
+          } else {
+            err
+          };
           if let Some(location) = maybe_location {
-            if !is_dynamic {
+            // Injected modules (like test and eval) come with locations, but
+            // they are confusing to the user to print out the location because
+            // they cannot actually get to the source code that is quoted, as
+            // it only exists in the runtime memory of Deno.
+            if !location.filename.contains("$deno$") {
               HandlerError::FetchErrorWithLocation(err.to_string(), location)
                 .into()
             } else {
@@ -279,9 +296,9 @@ impl SpecifierHandler for FetchHandler {
             err
           }
         })?;
-      let url = source_file.url.clone();
+      let url = source_file.specifier.as_url();
       let is_remote = url.scheme() != "file";
-      let filename = disk_cache.get_cache_filename_with_extension(&url, "meta");
+      let filename = disk_cache.get_cache_filename_with_extension(url, "meta");
       let maybe_version = if let Ok(bytes) = disk_cache.get(&filename) {
         if let Ok(compiled_file_metadata) =
           CompiledFileMetadata::from_bytes(&bytes)
@@ -311,20 +328,19 @@ impl SpecifierHandler for FetchHandler {
         maybe_emit_path =
           Some((disk_cache.location.join(emit_path), maybe_map_path));
       };
-      let specifier = ModuleSpecifier::from(url);
 
       Ok(CachedModule {
         is_remote,
         maybe_dependencies: None,
         maybe_emit,
         maybe_emit_path,
-        maybe_types: source_file.types_header,
+        maybe_types: source_file.maybe_types,
         maybe_version,
         media_type: source_file.media_type,
         requested_specifier,
-        source: source_file.source_code,
-        source_path: source_file.filename,
-        specifier,
+        source: source_file.source,
+        source_path: source_file.local,
+        specifier: source_file.specifier,
       })
     }
     .boxed_local()
@@ -421,23 +437,129 @@ impl SpecifierHandler for FetchHandler {
   }
 }
 
+pub struct MemoryHandler {
+  sources: HashMap<String, String>,
+}
+
+impl MemoryHandler {
+  pub fn new(sources: HashMap<String, String>) -> Self {
+    Self { sources }
+  }
+}
+
+impl SpecifierHandler for MemoryHandler {
+  fn fetch(
+    &mut self,
+    specifier: ModuleSpecifier,
+    _maybe_referrer: Option<Location>,
+    _is_dynamic: bool,
+  ) -> FetchFuture {
+    let mut specifier_text = specifier.to_string();
+    if !self.sources.contains_key(&specifier_text) {
+      specifier_text = specifier_text.replace("file:///", "/");
+      if !self.sources.contains_key(&specifier_text) {
+        // Convert `C:/a/path/file.ts` to `/a/path/file.ts`
+        specifier_text = specifier_text[3..].to_string()
+      }
+    }
+    let result = if let Some(source) = self.sources.get(&specifier_text) {
+      let media_type = MediaType::from(&specifier);
+      let is_remote = specifier.as_url().scheme() != "file";
+
+      Ok(CachedModule {
+        source: source.to_string(),
+        requested_specifier: specifier.clone(),
+        specifier,
+        media_type,
+        is_remote,
+        ..Default::default()
+      })
+    } else {
+      Err(custom_error(
+        "NotFound",
+        format!("Unable to find specifier in sources: {}", specifier),
+      ))
+    };
+
+    Box::pin(future::ready(result))
+  }
+
+  fn get_tsbuildinfo(
+    &self,
+    _specifier: &ModuleSpecifier,
+  ) -> Result<Option<String>, AnyError> {
+    Ok(None)
+  }
+
+  fn set_cache(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _emit: &Emit,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_types(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _types: String,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_tsbuildinfo(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _tsbuildinfo: String,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_deps(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _dependencies: DependencyMap,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn set_version(
+    &mut self,
+    _specifier: &ModuleSpecifier,
+    _version: String,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+}
+
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use tempfile::TempDir;
+
+  macro_rules! map (
+    { $($key:expr => $value:expr),+ } => {
+      {
+        let mut m = ::std::collections::HashMap::new();
+        $(
+          m.insert($key, $value);
+        )+
+        m
+      }
+    };
+  );
 
   fn setup() -> (TempDir, FetchHandler) {
     let temp_dir = TempDir::new().expect("could not setup");
     let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf()))
       .expect("could not setup");
 
-    let file_fetcher = SourceFileFetcher::new(
+    let file_fetcher = FileFetcher::new(
       HttpCache::new(&temp_dir.path().to_path_buf().join("deps")),
+      CacheSetting::Use,
       true,
-      Vec::new(),
-      false,
-      false,
       None,
     )
     .expect("could not setup");
@@ -445,7 +567,7 @@ pub mod tests {
 
     let fetch_handler = FetchHandler {
       disk_cache,
-      dynamic_permissions: Permissions::default(),
+      runtime_permissions: Permissions::default(),
       file_fetcher,
     };
 
@@ -520,5 +642,112 @@ pub mod tests {
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
     assert_eq!(cached_module.is_remote, false);
+  }
+
+  #[tokio::test]
+  async fn test_memory_handler_fetch() {
+    let a_src = r#"
+      import * as b from "./b.ts";
+      console.log(b);
+    "#;
+    let b_src = r#"
+      export const b = "b";
+    "#;
+    let c_src = r#"
+      export const c = "c";
+    "#;
+    let d_src = r#"
+      export const d: string;
+    "#;
+    let sources = map!(
+      "/a.ts" => a_src,
+      "/b.ts" => b_src,
+      "https://deno.land/x/c.js" => c_src,
+      "https://deno.land/x/d.d.ts" => d_src
+    );
+    let sources: HashMap<String, String> = sources
+      .iter()
+      .map(|(k, v)| (k.to_string(), v.to_string()))
+      .collect();
+    let mut handler = MemoryHandler::new(sources);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///b.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, b_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/c.js").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, c_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::JavaScript);
+    assert_eq!(actual.is_remote, true);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/d.d.ts")
+        .unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, d_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::Dts);
+    assert_eq!(actual.is_remote, true);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/missing.ts")
+        .unwrap();
+    handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect_err("should have errored");
+
+    let specifier = ModuleSpecifier::resolve_url_or_path("/a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
+
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path("file:///C:/a.ts").unwrap();
+    let actual: CachedModule = handler
+      .fetch(specifier.clone(), None, false)
+      .await
+      .expect("could not fetch module");
+    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.requested_specifier, specifier);
+    assert_eq!(actual.specifier, specifier);
+    assert_eq!(actual.media_type, MediaType::TypeScript);
+    assert_eq!(actual.is_remote, false);
   }
 }

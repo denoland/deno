@@ -1,3 +1,2 @@
-[WILDCARD]error: Uncaught BadResource: Bad resource ID
+[WILDCARD]error: Uncaught (in promise) BadResource: Bad resource ID
 [WILDCARD]
-    at async main ([WILDCARD]tests/044_bad_resource.ts:[WILDCARD])

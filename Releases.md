@@ -6,6 +6,176 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.5.4 / 2020.11.23
+
+- feat(unstable): Add deno test --no-run (#8093)
+- feat(unstable): Support --watch flag for bundle and fmt subcommands (#8276)
+- fix: Support "deno run --v8-flags=--help" without script (#8110)
+- fix(tsc): Allow non-standard extensions on imports (#8464)
+- refactor: Improve Deno.version type declaration (#8391)
+- refactor: Rename --failfast to --fail-fast for test subcommand (#8456)
+- upgrade: rusty_v8 0.13.0, v8 8.8.278.2 (#8446)
+
+Changes in std version 0.79.0:
+
+- feat(std/hash): Add HmacSha1 (#8418)
+- feat(std/http): Check if cookie property is valid (#7189)
+- feat(std/http): Validate cookie path value (#8457)
+- feat(std/io): ReadableStream from AsyncIterator & WritableStream from Writer
+  (#8378)
+- feat(std/log): Log error stack (#8401)
+- feat(std/node): Add os.totalmem, os.freemem (#8317)
+- feat(std/node): Add ReadableStream, WritableStream, errors support (#7569)
+- feat(std/node): Add util.deprecate (#8407)
+- feat(std/node): Add process.nextTick (#8386)
+- fix(std/http): Fix error handling in the request iterator (#8365)
+- fix(std/node) Fix event extendability (#8409)
+- fix(std/node): Correct typings for global, globalThis, window (#8363)
+
+### 1.5.3 / 2020.11.16
+
+- feat(unstable): support deno lint --rules --json (#8384)
+- fix: fix various global objects constructor length (#8373)
+- fix: allow declaration emits for Deno.compile() (#8303)
+- fix: allow root modules be .mjs/.cjs (#8310)
+- fix: allow setting of importsNotUsedAsValues in Deno.compile() (#8306)
+- fix: do not write tsbuildinfo when diagnostics are emitted (#8311)
+- fix: don't walk the subdirectory twice when using the `--ignore` flag (#8040,
+  #8375)
+- fix: local sources are not cached in memory (#8328)
+- fix: Use safe shell escaping in `deno install` (#7613)
+- fix: DOM handler order in Websocket and Worker (#8320, #8334)
+- fix(op_crates/web) make isTrusted not constructable (#8337)
+- fix(op_crates/web): FileReader event handler order (#8348)
+- fix(op_crates/web): handler order when reassign (#8264)
+- refactor: deno_crypto op crate (#7956)
+
+Changes in std version 0.78.0:
+
+- feat(std/node): consistent Node.js builtin shapes (#8274)
+- fix(std/http): flush body chunks for HTTP chunked encoding (#8349)
+- refactor(std/fs): moved isCopyFolder to options (#8319)
+
+### 1.5.2 / 2020.11.09
+
+- fix(core/error): Remove extra newline from JsError::fmt() (#8145)
+- fix(op_crates/web): make TextEncoder work with forced non-strings (#8206)
+- fix(op_crates/web): fix URLSearchParams, malformed url handling (#8092)
+- fix(op_crates/web): define abort event handler on prototype (#8230)
+- fix(cli/repl): Fixing syntax highlighting (#8202)
+- fix: inject helpers when transpiling via swc (#8221)
+- fix: add commit hash and target to long_version output (#8133)
+- fix: correct libs sent to tsc for unstable worker (#8260)
+- fix: properly handle type checking root modules with type definitions (#8263)
+- fix: allow remapping to locals for import map (#8262)
+- fix: ensure that transitory dependencies are emitted (#8275)
+- fix: make onabort event handler web compatible (#8225)
+- fix: display of non-ASCII characters on Windows (#8199)
+- refactor: Cleanup Flags to Permissions conversion (#8213)
+- refactor: migrate runtime compile/bundle to new infrastructure (#8192)
+- refactor: cleanup compiler snapshot and tsc/module_graph (#8220)
+- refactor: remove ProgramState::permissions (#8228)
+- refactor: refactor file_fetcher (#8245)
+- refactor: rewrite permission_test to not depend on Python (#8291)
+- refactor: auto detect target triples for upgrade (#8286)
+- build: migrate to dlint (#8176)
+- build: remove eslint (#8232)
+- build: rewrite tools/ scripts to deno (#8247)
+- build: full color ci logs (#8280)
+- upgrade: TypeScript to 4.0.5 (#8138)
+- upgrade: deno_doc, deno_lint, dprint, swc (#8292)
+
+Changes in std version 0.77.0:
+
+- feat(std/node/fs): add realpath and realpathSync (#8169)
+- feat(std/wasi): add start method to Context (#8141)
+- fix(std/flags): Fix parse incorrectly parsing alias flags with equals (#8216)
+- fix(std/node): only define Node.js globals when loading std/node/global
+  (#8281)
+
+### 1.5.1 / 2020.10.31
+
+- fix: Accept Windows line breaks in prompt/confirm/alert (#8149)
+- fix: Deno.fdata(), Deno.fdatasync() added to stable (#8193)
+- fix: Strip "\\?\" prefix when displaying Windows paths (#8135)
+- fix: Make hashes of tsconfig deterministic (#8167)
+- fix: Module graph handles redirects properly (#8159)
+- fix: Restore tripleslash lib refs support (#8157)
+- fix: Panic in bundler (#8168)
+- fix(repl): Don't hang on unpaired braces (#8151)
+- refactor: Don't spin up V8 for `deno cache` (#8186)
+- refactor: Create a single watcher for whole process (#8083)
+- upgrade: deno_doc, deno_lint, dprint, swc (#8197)
+
+Changes in std version 0.76.0:
+
+- feat(std/node/crypto): Add randomBytes and pbkdf2 (#8191)
+- fix(std/wasi): Remove stray console.log call (#8156)
+
+### 1.5.0 / 2020.10.27
+
+- BREAKING: Enable isolatedModules by default (#8050)
+- feat(bundle): Add support for --no-check (#8023)
+- feat(console): Inspect with colors regardless of Deno.noColor (#7778)
+- feat(doc): Support --import-map flag (#7821)
+- feat(fmt): Make --ignore flag stable (#7922)
+- feat(install): Add missing flags for deno install (#7601)
+- feat(repl): Add regex based syntax highlighter (#7811)
+- feat(repl): Add tab completion (#7827)
+- feat(test): Pass script args to test command (#8121)
+- feat(unstable): Add Deno.sleepSync() (#7974)
+- feat(unstable): Add Deno.systemCpuInfo() (#7774)
+- feat: Add alert, confirm, and prompt (#7507)
+- feat: Add types for WeakRef/FinalizationRegistry (#8056)
+- feat: Stabilize Deno.fsync and Deno.fdatasync (#8038)
+- fix(console): Fix the test cases of function inspections (#7965)
+- fix(console): Only inspect getters with option (#7830)
+- fix(core): Indicate exceptions in promises (#8124)
+- fix(core): Top Level Await module execution (#7946)
+- fix(op_crates/fetch): Body.body should be stream of Uint8Array (#8030)
+- fix(op_crates/fetch): Ensure Request.method is a string (#8100)
+- fix(op_crates/web): Better TextEncoder error message (#8005)
+- fix(op_crates/web): Expose event properties in console output (#8103)
+- fix(op_crates/web): TextEncoder should throw RangeError (#8039)
+- fix(op_crates/web): URL.pathname backslash replacement (#7937)
+- fix(repl): Ignore pair matching inside literals (#8037)
+- fix(repl): Keyboard interrupt should continue (#7960)
+- fix(repl): Unterminated string literal should invalidate (#7896)
+- fix(repl): Write all results to stdout (#7893)
+- fix(rt/main): Add global interface objects (#7875)
+- fix(rt/performance): Check for object props in startOrMeasureOptions (#7884)
+- fix(rt/websockets): Only add Sec-WebSocket-Protocol if not empty (#7936)
+- fix(test): Return error when awaiting unresolved promise (#7968)
+- fix: Do not throw on empty typescript files (#8143)
+- fix: Fix inspection of Function (#7930)
+- fix: Handle URL paths in Deno.mkdir() (#8140)
+- fix: Handling of relative importmaps while using watch (#7950)
+- fix: Print error stacks from the origin Worker (#7987)
+- fix: Restore permission check on workers (#8123)
+- fix: Use -rw-r--r-- for cache files (#8132)
+- fix: Use rid getter for stdio (#8014)
+- fix: handle roots with extensions that don't match media type (#8114)
+- refactor(core): more control over isolate creation (#8000)
+- refactor: New TSC infrastructure (#7996, #7981, #7892)
+- refactor: Rename --importmap to --import-map (#7032)
+- refactor: Rewrite Deno.transpileOnly() to use SWC (#8090)
+- upgrade: deno_doc, deno_lint, dprint, swc (#8009, #8077)
+- upgrade: rusty_v8 and v8 8.7.220.3 (#8017)
+
+Changes in std version 0.75.0:
+
+- feat(std/fs/node): Add more APIs (#7921)
+- feat(std/path): Add toFileUrl() (#7971)
+- feat(std/testing): Add assertExists assertion (#7874)
+- feat(std/testing): Add assertObjectMatch assertion (#8001)
+- fix(std/http): Path traversal in file_server.ts (#8134)
+- fix(std/toml): Parsing inline arrays of inline tables (#7902)
+- fix(std/encoding): base64 properly encodes mbc and handles Uint8Arrays (#7807)
+- fix(std/http/file_server): File server should ignore query params (#8116)
+- fix(std/node): Buffer.copy doesn't work as expected (#8125)
+- fix(std/wasi): Disallow path_open outside of pre-opened dirfd (#8078)
+- refactor(std/testing): Rename assert_Contains to assert_Includes (#7951)
+
 ### 1.4.6 / 2020.10.10
 
 - fix: 100% CPU idling problem by reverting #7672 (#7911)

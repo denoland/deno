@@ -2,11 +2,12 @@
 
 use crate::colors;
 use crate::flags::Flags;
-use crate::fs::resolve_from_cwd;
+use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::url;
+use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::env::current_dir;
@@ -44,27 +45,6 @@ impl PermissionState {
   }
 }
 
-impl From<usize> for PermissionState {
-  fn from(val: usize) -> Self {
-    match val {
-      0 => PermissionState::Granted,
-      1 => PermissionState::Prompt,
-      2 => PermissionState::Denied,
-      _ => unreachable!(),
-    }
-  }
-}
-
-impl From<bool> for PermissionState {
-  fn from(val: bool) -> Self {
-    if val {
-      PermissionState::Granted
-    } else {
-      PermissionState::Prompt
-    }
-  }
-}
-
 impl fmt::Display for PermissionState {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
@@ -83,7 +63,7 @@ impl Default for PermissionState {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
-  pub program_state: PermissionState,
+  pub global_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
 }
@@ -108,26 +88,33 @@ fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
 
 impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
+    fn state_from_flag_bool(flag: bool) -> PermissionState {
+      if flag {
+        PermissionState::Granted
+      } else {
+        PermissionState::Prompt
+      }
+    }
     Self {
       read: UnaryPermission::<PathBuf> {
-        program_state: PermissionState::from(flags.allow_read),
+        global_state: state_from_flag_bool(flags.allow_read),
         granted_list: resolve_fs_allowlist(&flags.read_allowlist),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        program_state: PermissionState::from(flags.allow_write),
+        global_state: state_from_flag_bool(flags.allow_write),
         granted_list: resolve_fs_allowlist(&flags.write_allowlist),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        program_state: PermissionState::from(flags.allow_net),
+        global_state: state_from_flag_bool(flags.allow_net),
         granted_list: flags.net_allowlist.iter().cloned().collect(),
         ..Default::default()
       },
-      env: PermissionState::from(flags.allow_env),
-      run: PermissionState::from(flags.allow_run),
-      plugin: PermissionState::from(flags.allow_plugin),
-      hrtime: PermissionState::from(flags.allow_hrtime),
+      env: state_from_flag_bool(flags.allow_env),
+      run: state_from_flag_bool(flags.allow_run),
+      plugin: state_from_flag_bool(flags.allow_plugin),
+      hrtime: state_from_flag_bool(flags.allow_hrtime),
     }
   }
 
@@ -152,15 +139,15 @@ impl Permissions {
   pub fn allow_all() -> Self {
     Self {
       read: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       write: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       net: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -172,7 +159,7 @@ impl Permissions {
 
   pub fn query_read(&self, path: &Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    if self.read.program_state == PermissionState::Denied
+    if self.read.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
         Some(path) => check_path_blocklist(path, &self.read.denied_list),
@@ -180,7 +167,7 @@ impl Permissions {
     {
       return PermissionState::Denied;
     }
-    if self.read.program_state == PermissionState::Granted
+    if self.read.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
         Some(path) => check_path_allowlist(path, &self.read.granted_list),
@@ -193,7 +180,7 @@ impl Permissions {
 
   pub fn query_write(&self, path: &Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    if self.write.program_state == PermissionState::Denied
+    if self.write.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
         Some(path) => check_path_blocklist(path, &self.write.denied_list),
@@ -201,7 +188,7 @@ impl Permissions {
     {
       return PermissionState::Denied;
     }
-    if self.write.program_state == PermissionState::Granted
+    if self.write.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
         Some(path) => check_path_allowlist(path, &self.write.granted_list),
@@ -213,12 +200,12 @@ impl Permissions {
   }
 
   pub fn query_net(&self, host: &str, port: Option<u16>) -> PermissionState {
-    if self.net.program_state == PermissionState::Denied
+    if self.net.global_state == PermissionState::Denied
       || check_host_and_port_list(host, port, &self.net.denied_list)
     {
       return PermissionState::Denied;
     }
-    if self.net.program_state == PermissionState::Granted
+    if self.net.global_state == PermissionState::Granted
       || check_host_and_port_list(host, port, &self.net.granted_list)
     {
       return PermissionState::Granted;
@@ -231,7 +218,7 @@ impl Permissions {
     url: &Option<&str>,
   ) -> Result<PermissionState, AnyError> {
     if url.is_none() {
-      return Ok(self.net.program_state);
+      return Ok(self.net.global_state);
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
@@ -245,7 +232,7 @@ impl Permissions {
       ));
     }
     Ok(self.query_net(
-      &format!("{}", parsed.host().unwrap()),
+      &parsed.host().unwrap().to_string(),
       parsed.port_or_known_default(),
     ))
   }
@@ -287,7 +274,7 @@ impl Permissions {
             .denied_list
             .retain(|path| !resolved_path.starts_with(path));
           self.read.denied_list.insert(resolved_path);
-          self.read.program_state = PermissionState::Denied;
+          self.read.global_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -297,10 +284,10 @@ impl Permissions {
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests read access") {
           self.read.granted_list.clear();
-          self.read.program_state = PermissionState::Granted;
+          self.read.global_state = PermissionState::Granted;
           return PermissionState::Granted;
         } else {
-          self.read.program_state = PermissionState::Denied;
+          self.read.global_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -329,7 +316,7 @@ impl Permissions {
             .denied_list
             .retain(|path| !resolved_path.starts_with(path));
           self.write.denied_list.insert(resolved_path);
-          self.write.program_state = PermissionState::Denied;
+          self.write.global_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -339,10 +326,10 @@ impl Permissions {
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests write access") {
           self.write.granted_list.clear();
-          self.write.program_state = PermissionState::Granted;
+          self.write.global_state = PermissionState::Granted;
           return PermissionState::Granted;
         } else {
-          self.write.program_state = PermissionState::Denied;
+          self.write.global_state = PermissionState::Denied;
           return PermissionState::Denied;
         }
       }
@@ -365,7 +352,7 @@ impl Permissions {
           return Ok(PermissionState::Granted);
         } else {
           self.net.denied_list.insert(url.to_string());
-          self.net.program_state = PermissionState::Denied;
+          self.net.global_state = PermissionState::Denied;
           return Ok(PermissionState::Denied);
         }
       }
@@ -375,10 +362,10 @@ impl Permissions {
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests network access") {
           self.net.granted_list.clear();
-          self.net.program_state = PermissionState::Granted;
+          self.net.global_state = PermissionState::Granted;
           return Ok(PermissionState::Granted);
         } else {
-          self.net.program_state = PermissionState::Denied;
+          self.net.global_state = PermissionState::Denied;
           return Ok(PermissionState::Denied);
         }
       }
@@ -439,8 +426,8 @@ impl Permissions {
         .retain(|path_| !path_.starts_with(&path));
     } else {
       self.read.granted_list.clear();
-      if self.read.program_state == PermissionState::Granted {
-        self.read.program_state = PermissionState::Prompt;
+      if self.read.global_state == PermissionState::Granted {
+        self.read.global_state = PermissionState::Prompt;
       }
     }
     self.query_read(path)
@@ -455,8 +442,8 @@ impl Permissions {
         .retain(|path_| !path_.starts_with(&path));
     } else {
       self.write.granted_list.clear();
-      if self.write.program_state == PermissionState::Granted {
-        self.write.program_state = PermissionState::Prompt;
+      if self.write.global_state == PermissionState::Granted {
+        self.write.global_state = PermissionState::Prompt;
       }
     }
     self.query_write(path)
@@ -470,8 +457,8 @@ impl Permissions {
       self.net.granted_list.remove(*url);
     } else {
       self.net.granted_list.clear();
-      if self.net.program_state == PermissionState::Granted {
-        self.net.program_state = PermissionState::Prompt;
+      if self.net.global_state == PermissionState::Granted {
+        self.net.global_state = PermissionState::Prompt;
       }
     }
     self.query_net_url(url)
@@ -546,6 +533,21 @@ impl Permissions {
     self
       .query_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
+  }
+
+  /// A helper function that determines if the module specifier is a local or
+  /// remote, and performs a read or net check for the specifier.
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let url = specifier.as_url();
+    if url.scheme() == "file" {
+      let path = url.to_file_path().unwrap();
+      self.check_read(&path)
+    } else {
+      self.check_net_url(url)
+    }
   }
 
   pub fn check_env(&self) -> Result<(), AnyError> {
@@ -831,21 +833,72 @@ mod tests {
   }
 
   #[test]
+  fn check_specifiers() {
+    let read_allowlist = if cfg!(target_os = "windows") {
+      vec![PathBuf::from("C:\\a")]
+    } else {
+      vec![PathBuf::from("/a")]
+    };
+    let perms = Permissions::from_flags(&Flags {
+      read_allowlist,
+      net_allowlist: svec!["localhost"],
+      ..Default::default()
+    });
+
+    let mut fixtures = vec![
+      (
+        ModuleSpecifier::resolve_url_or_path("http://localhost:4545/mod.ts")
+          .unwrap(),
+        true,
+      ),
+      (
+        ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
+          .unwrap(),
+        false,
+      ),
+    ];
+
+    if cfg!(target_os = "windows") {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/b/mod.ts").unwrap(),
+        false,
+      ));
+    } else {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///b/mod.ts").unwrap(),
+        false,
+      ));
+    }
+
+    for (specifier, expected) in fixtures {
+      assert_eq!(perms.check_specifier(&specifier).is_ok(), expected);
+    }
+  }
+
+  #[test]
   fn test_deserialize_perms() {
     let json_perms = r#"
     {
       "read": {
-        "program_state": "Granted",
+        "global_state": "Granted",
         "granted_list": [],
         "denied_list": []
       },
       "write": {
-        "program_state": "Granted",
+        "global_state": "Granted",
         "granted_list": [],
         "denied_list": []
       },
       "net": {
-        "program_state": "Granted",
+        "global_state": "Granted",
         "granted_list": [],
         "denied_list": []
       },
@@ -857,15 +910,15 @@ mod tests {
     "#;
     let perms0 = Permissions {
       read: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       write: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       net: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -882,15 +935,15 @@ mod tests {
   fn test_query() {
     let perms1 = Permissions {
       read: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       write: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       net: UnaryPermission {
-        program_state: PermissionState::Granted,
+        global_state: PermissionState::Granted,
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -900,17 +953,17 @@ mod tests {
     };
     let perms2 = Permissions {
       read: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       write: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       net: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         granted_list: ["127.0.0.1:8000".to_string()].iter().cloned().collect(),
         ..Default::default()
       },
@@ -950,15 +1003,15 @@ mod tests {
   fn test_request() {
     let mut perms = Permissions {
       read: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Default::default()
       },
       write: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Default::default()
       },
       net: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Default::default()
       },
       env: PermissionState::Prompt,
@@ -1006,17 +1059,17 @@ mod tests {
   fn test_revoke() {
     let mut perms = Permissions {
       read: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       write: UnaryPermission {
-        program_state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       net: UnaryPermission {
-        program_state: PermissionState::Denied,
+        global_state: PermissionState::Denied,
         ..Default::default()
       },
       env: PermissionState::Granted,

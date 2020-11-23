@@ -33,6 +33,7 @@ fn std_tests() {
 fn std_lint() {
   let status = util::deno_cmd()
     .arg("lint")
+    .arg("--unstable")
     .arg(format!(
       "--ignore={}",
       util::root_path().join("std/node/tests").to_string_lossy()
@@ -471,6 +472,53 @@ fn fmt_test() {
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
+}
+
+#[test]
+fn fmt_watch_test() {
+  let t = TempDir::new().expect("tempdir fail");
+  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::root_path().join("cli/tests/badly_formatted.mjs");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(&badly_formatted)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("Failed to spawn script");
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert!(stderr_lines.next().unwrap().contains("badly_formatted.js"));
+
+  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  assert_eq!(expected, actual);
+
+  // Change content of the file again to be badly formatted
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Check if file has been automatically formatted by watcher
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  assert_eq!(expected, actual);
+
+  child.kill().unwrap();
+  drop(t);
 }
 
 #[test]
@@ -1142,6 +1190,103 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
+fn bundle_js_watch() {
+  use std::path::PathBuf;
+  // Test strategy extends this of test bundle_js by adding watcher
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "console.log('Hello world');")
+    .expect("error writing file");
+  assert!(file_to_watch.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(&file_to_watch)
+    .arg(&bundle)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+
+  std::fs::write(&file_to_watch, "console.log('Hello world2');")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+
+  deno.kill().unwrap();
+  drop(t);
+}
+
+/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+#[test]
+fn bundle_watch_fail() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(&file_to_watch)
+    .arg("--watch")
+    .arg("--unstable")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(!deno.wait().unwrap().success());
+
+  drop(t);
+}
+
+#[test]
 fn info_with_compiled_source() {
   let _g = util::http_server();
   let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
@@ -1200,7 +1345,7 @@ fn run_watch() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1208,12 +1353,86 @@ fn run_watch() {
   // Change content of the file
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Add dependency
+  let another_file = t.path().join("another_file.js");
+  std::fs::write(&another_file, "export const foo = 0;")
+    .expect("error writing file");
+  std::fs::write(
+    &file_to_watch,
+    "import { foo } from './another_file.js'; console.log(foo);",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains('0'));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Confirm that restarting occurs when a new file is updated
+  std::fs::write(&another_file, "export const foo = 42;")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Then restore the file
+  std::fs::write(
+    &file_to_watch,
+    "import { foo } from './another_file.js'; console.log(foo);",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   child.kill().unwrap();
+  drop(t);
+}
+
+/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+#[test]
+fn run_watch_fail() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&file_to_watch)
+    .arg("--watch")
+    .arg("--unstable")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(!child.wait().unwrap().success());
+
   drop(t);
 }
 
@@ -1253,6 +1472,40 @@ fn repl_test_pty_multiline() {
     assert!(output.contains("/(/"));
     assert!(output.contains("/{/"));
     assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
+
+    fork.wait().unwrap();
+  } else {
+    util::deno_cmd()
+      .current_dir(tests_path)
+      .env("NO_COLOR", "1")
+      .arg("repl")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+  }
+}
+
+#[cfg(unix)]
+#[test]
+fn repl_test_pty_unpaired_braces() {
+  use std::io::Read;
+  use util::pty::fork::*;
+
+  let tests_path = util::tests_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b")\n").unwrap();
+    master.write_all(b"]\n").unwrap();
+    master.write_all(b"}\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unexpected token ')'"));
+    assert!(output.contains("Unexpected token ']'"));
+    assert!(output.contains("Unexpected token '}'"));
 
     fork.wait().unwrap();
   } else {
@@ -1317,7 +1570,7 @@ fn run_watch_with_importmap_and_relative_paths() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
 
   child.kill().unwrap();
@@ -1516,6 +1769,21 @@ fn repl_test_eval_unterminated() {
 }
 
 #[test]
+fn repl_test_unpaired_braces() {
+  for right_brace in &[")", "]", "}"] {
+    let (out, err) = util::run_and_collect_output(
+      true,
+      "repl",
+      Some(vec![right_brace]),
+      None,
+      false,
+    );
+    assert!(out.contains("Unexpected token"));
+    assert!(err.is_empty());
+  }
+}
+
+#[test]
 fn repl_test_reference_error() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -1673,11 +1941,6 @@ fn deno_test_no_color() {
   assert!(out.contains("test fail ... FAILED"));
   assert!(out.contains("test ignored ... ignored"));
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
-}
-
-#[test]
-fn util_test() {
-  util::run_python_script("tools/util_test.py")
 }
 
 macro_rules! itest(
@@ -1839,7 +2102,7 @@ itest!(deno_test {
 });
 
 itest!(deno_test_fail_fast {
-  args: "test --failfast test_runner_test.ts",
+  args: "test --fail-fast test_runner_test.ts",
   exit_code: 1,
   output: "deno_test_fail_fast.out",
 });
@@ -2132,10 +2395,16 @@ fn _066_prompt() {
   let args = "run --unstable 066_prompt.ts";
   let output = "066_prompt.ts.out";
   // These are answers to prompt, confirm, and alert calls.
-  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\n\n\n";
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
 
   util::test_pty(args, output, input);
 }
+
+itest!(_067_test_no_run_type_error {
+  args: "test --unstable --no-run test_type_error",
+  output: "067_test_no_run_type_error.out",
+  exit_code: 1,
+});
 
 itest!(_073_worker_error {
   args: "run -A 073_worker_error.ts",
@@ -2147,6 +2416,11 @@ itest!(_074_worker_nested_error {
   args: "run -A 074_worker_nested_error.ts",
   output: "074_worker_nested_error.ts.out",
   exit_code: 1,
+});
+
+itest!(_075_import_local_query_hash {
+  args: "run 075_import_local_query_hash.ts",
+  output: "075_import_local_query_hash.ts.out",
 });
 
 itest!(js_import_detect {
@@ -2270,6 +2544,11 @@ itest!(config {
   args: "run --reload --config config.tsconfig.json config.ts",
   exit_code: 1,
   output: "config.ts.out",
+});
+
+itest!(emtpy_typescript {
+  args: "run --reload subdir/empty.ts",
+  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
 });
 
 itest!(error_001 {
@@ -2466,6 +2745,19 @@ itest!(error_local_static_import_from_remote_js {
   output: "error_local_static_import_from_remote.js.out",
 });
 
+itest!(error_worker_permissions_local {
+  args: "run --reload error_worker_permissions_local.ts",
+  output: "error_worker_permissions_local.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_worker_permissions_remote {
+  args: "run --reload error_worker_permissions_remote.ts",
+  http_server: true,
+  output: "error_worker_permissions_remote.ts.out",
+  exit_code: 1,
+});
+
 itest!(exit_error42 {
   exit_code: 42,
   args: "run --quiet --reload exit_error42.ts",
@@ -2497,6 +2789,11 @@ itest!(no_check {
   args: "run --quiet --reload --no-check 006_url_imports.ts",
   output: "006_url_imports.ts.out",
   http_server: true,
+});
+
+itest!(no_check_decorators {
+  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  output: "no_check_decorators.ts.out",
 });
 
 itest!(lib_ref {
@@ -2564,6 +2861,11 @@ itest!(ts_type_imports {
 itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
+});
+
+itest!(ts_decorators_bundle {
+  args: "bundle ts_decorators_bundle.ts",
+  output: "ts_decorators_bundle.out",
 });
 
 itest!(ts_type_only_import {
@@ -2716,6 +3018,11 @@ itest!(unstable_disabled_ts2551 {
   output: "unstable_disabled_ts2551.out",
 });
 
+itest!(unstable_worker {
+  args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
+  output: "unstable_worker.ts.out",
+});
+
 itest!(_053_import_compression {
   args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
@@ -2784,6 +3091,11 @@ itest!(tsx_imports {
   output: "tsx_imports.ts.out",
 });
 
+itest!(fix_emittable_skipped {
+  args: "run --reload fix_emittable_skipped.js",
+  output: "fix_emittable_skipped.ts.out",
+});
+
 itest!(fix_exotic_specifiers {
   args: "run --quiet --reload fix_exotic_specifiers.ts",
   output: "fix_exotic_specifiers.ts.out",
@@ -2840,6 +3152,12 @@ itest!(proto_exploit {
   output: "proto_exploit.js.out",
 });
 
+itest!(redirect_cache {
+  http_server: true,
+  args: "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
+  output: "redirect_cache.out",
+});
+
 itest!(deno_test_coverage {
   args: "test --coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
@@ -2847,13 +3165,13 @@ itest!(deno_test_coverage {
 });
 
 itest!(deno_lint {
-  args: "lint lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_quiet {
-  args: "lint --quiet lint/file1.js",
+  args: "lint --unstable --quiet lint/file1.js",
   output: "lint/expected_quiet.out",
   exit_code: 1,
 });
@@ -2866,19 +3184,19 @@ itest!(deno_lint_json {
 });
 
 itest!(deno_lint_ignore {
-  args: "lint --ignore=lint/file1.js,lint/malformed.js lint/",
+  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_glob {
-  args: "lint --ignore=lint/malformed.js lint/",
+  args: "lint --unstable --ignore=lint/malformed.js lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_from_stdin {
-  args: "lint -",
+  args: "lint --unstable -",
   input: Some("let a: any;"),
   output: "lint/expected_from_stdin.out",
   exit_code: 1,
@@ -2892,14 +3210,14 @@ itest!(deno_lint_from_stdin_json {
 });
 
 itest!(deno_lint_rules {
-  args: "lint --rules",
+  args: "lint --unstable --rules",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
 
 // Make sure that the rules are printed if quiet option is enabled.
 itest!(deno_lint_rules_quiet {
-  args: "lint --rules -q",
+  args: "lint --unstable --rules -q",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
@@ -2917,12 +3235,6 @@ itest!(deno_doc {
 itest!(deno_doc_import_map {
   args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
-});
-
-itest!(compiler_js_error {
-  args: "run --unstable compiler_js_error.ts",
-  output: "compiler_js_error.ts.out",
-  exit_code: 1,
 });
 
 itest!(import_file_with_colon {
@@ -3728,7 +4040,7 @@ async fn inspector_does_not_hang() {
   for i in 0..128u32 {
     let request_id = i + 10;
     // Expect the number {i} on stdout.
-    let s = format!("{}", i);
+    let s = i.to_string();
     assert_eq!(stdout_lines.next().unwrap(), s);
     // Expect hitting the `debugger` statement.
     let s = r#"{"method":"Debugger.paused","#;
@@ -4060,6 +4372,7 @@ fn lint_ignore_unexplicit_files() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("lint")
+    .arg("--unstable")
     .arg("--ignore=./")
     .stderr(std::process::Stdio::piped())
     .spawn()

@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
   unitTest,
 } from "./test_util.ts";
 
@@ -41,9 +41,9 @@ unitTest(function formDataParamsGetSuccess(): void {
   formData.append("a", "true");
   formData.append("b", "false");
   formData.append("a", "null");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   formData.append("d", undefined as any);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   formData.append("e", null as any);
   assertEquals(formData.get("a"), "true");
   assertEquals(formData.get("b"), "false");
@@ -70,10 +70,10 @@ unitTest(function formDataParamsSetSuccess(): void {
   assertEquals(formData.getAll("b"), ["false"]);
   formData.set("a", "false");
   assertEquals(formData.getAll("a"), ["false"]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   formData.set("d", undefined as any);
   assertEquals(formData.get("d"), "undefined");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   formData.set("e", null as any);
   assertEquals(formData.get("e"), "null");
 });
@@ -143,7 +143,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (formData as any)[method]();
       hasThrown = 1;
     } catch (err) {
@@ -155,7 +155,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringContains(
+    assertStringIncludes(
       errMsg,
       `${method} requires at least 1 argument, but only 0 present`,
     );
@@ -167,7 +167,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (formData as any)[method]();
       hasThrown = 1;
     } catch (err) {
@@ -179,7 +179,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringContains(
+    assertStringIncludes(
       errMsg,
       `${method} requires at least 2 arguments, but only 0 present`,
     );
@@ -187,7 +187,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (formData as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
@@ -199,7 +199,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringContains(
+    assertStringIncludes(
       errMsg,
       `${method} requires at least 2 arguments, but only 1 present`,
     );

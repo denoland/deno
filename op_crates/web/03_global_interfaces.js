@@ -4,10 +4,11 @@
   const illegalConstructorKey = Symbol("illegalConstuctorKey");
 
   class Window extends EventTarget {
-    constructor(key) {
+    constructor(key = null) {
       if (key !== illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
+      super();
     }
 
     get [Symbol.toStringTag]() {
@@ -16,10 +17,11 @@
   }
 
   class WorkerGlobalScope extends EventTarget {
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
+      super();
     }
 
     get [Symbol.toStringTag]() {
@@ -28,10 +30,11 @@
   }
 
   class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
+      super();
     }
 
     get [Symbol.toStringTag]() {

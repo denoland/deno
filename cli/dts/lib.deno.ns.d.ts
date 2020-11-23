@@ -40,7 +40,7 @@ declare interface Performance {
 
 declare interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   detail?: any;
 
   /** Timestamp to be used as the mark time. */
@@ -49,7 +49,7 @@ declare interface PerformanceMarkOptions {
 
 declare interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
@@ -1847,7 +1847,7 @@ declare namespace Deno {
   export function metrics(): Metrics;
 
   interface ResourceMap {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     [rid: number]: any;
   }
 
@@ -2054,13 +2054,15 @@ declare namespace Deno {
     env?: string;
   };
 
-  interface Version {
-    deno: string;
-    v8: string;
-    typescript: string;
-  }
   /** Version related information. */
-  export const version: Version;
+  export const version: {
+    /** Deno's version. For example: `"1.0.0"` */
+    deno: string;
+    /** The V8 version used by Deno. For example: `"8.0.0.0"` */
+    v8: string;
+    /** The TypeScript version used by Deno. For example: `"4.0.0"` */
+    typescript: string;
+  };
 
   /** Returns the script arguments to the program. If for example we run a
    * program:

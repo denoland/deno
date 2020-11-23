@@ -173,8 +173,6 @@
     static kClearScreenDown = "\x1b[0J";
   }
 
-  /* eslint-disable @typescript-eslint/no-use-before-define */
-
   function getClassInstanceName(instance) {
     if (typeof instance != "object") {
       return "";
@@ -194,7 +192,9 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
@@ -358,7 +358,6 @@
       let order = "padStart";
       if (value !== undefined) {
         for (let i = 0; i < entries.length; i++) {
-          /* eslint-disable @typescript-eslint/no-explicit-any */
           if (
             typeof value[i] !== "number" &&
             typeof value[i] !== "bigint"
@@ -366,7 +365,6 @@
             order = "padEnd";
             break;
           }
-          /* eslint-enable */
         }
       }
       // Each iteration creates a single line of grouped entries.
@@ -483,6 +481,7 @@
       .replace(/\t/g, "\\t")
       .replace(/\v/g, "\\v")
       .replace(
+        // deno-lint-ignore no-control-regex
         /[\x00-\x1f\x7f-\x9f]/g,
         (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
       );
@@ -519,11 +518,12 @@
   ) {
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
-      case "string":
+      case "string": {
         const trunc = value.length > STR_ABBREVIATE_SIZE
           ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
+      }
       default:
         return inspectValue(value, ctx, level, inspectOptions);
     }
@@ -784,7 +784,7 @@
           : red(`[Thrown ${error.name}: ${error.message}]`);
         entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
       } else {
-        let descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
           entries.push(`${maybeQuoteString(key)}: [Getter/Setter]`);
         } else if (descriptor.get !== undefined) {
@@ -818,7 +818,7 @@
           : red(`Thrown ${error.name}: ${error.message}`);
         entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
       } else {
-        let descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
           entries.push(`[${maybeQuoteSymbol(key)}]: [Getter/Setter]`);
         } else if (descriptor.get !== undefined) {
@@ -867,7 +867,9 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in op_crates/web we don't want to depend on unique "Deno.customInspect"
@@ -880,7 +882,9 @@
     ) {
       try {
         return String(value[nonUniqueCustomInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1158,7 +1162,7 @@
     let inValue = false;
     let currentKey = null;
     let parenthesesDepth = 0;
-    currentPart = "";
+    let currentPart = "";
     for (let i = 0; i < cssString.length; i++) {
       const c = cssString[i];
       if (c == "(") {

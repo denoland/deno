@@ -26,7 +26,7 @@ use swc_ecmascript::ast;
 use swc_ecmascript::visit::Node;
 use swc_ecmascript::visit::Visit;
 
-use crate::test_runner::is_supported;
+use crate::tools::test_runner::is_supported;
 
 lazy_static! {
   // matches non-dynamic js imports
@@ -176,7 +176,7 @@ pub async fn parse_jsdocs(
     let path = PathBuf::from(&url.to_string());
     let media_type = MediaType::from(&path);
     let specifier = ModuleSpecifier::resolve_url(&url.to_string())?;
-    let parsed_module = parse(&specifier, &source_code, &media_type)?;
+    let parsed_module = parse(specifier.as_str(), &source_code, &media_type)?;
     let mut doc_tester = DocTester::new(parsed_module);
     results.extend(doc_tester.get_comments());
   }
@@ -224,9 +224,9 @@ pub fn prepare_doctests(
     .collect();
   let imports_str = import_set.into_iter().collect::<Vec<_>>().join("\n");
   test_file.push_str(&imports_str);
-  test_file.push_str("\n");
+  test_file.push('\n');
   test_file.push_str(&tests);
-  test_file.push_str("\n");
+  test_file.push('\n');
   test_file.push_str("// @ts-ignore\n");
 
   let options = if let Some(filter) = filter {

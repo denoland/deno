@@ -1,18 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
-import Buffer from "./buffer.ts";
-
-Deno.test({
-  name: "Buffer global scope",
-  fn() {
-    // deno-lint-ignore ban-ts-comment
-    // @ts-expect-error
-    assert(window.Buffer === Buffer);
-    // deno-lint-ignore ban-ts-comment
-    // @ts-expect-error
-    assert(globalThis.Buffer === Buffer);
-  },
-});
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import { Buffer } from "./buffer.ts";
 
 Deno.test({
   name: "alloc fails on negative numbers",
@@ -260,10 +248,15 @@ Deno.test({
 Deno.test({
   name: "Two Buffers are concatenated",
   fn() {
-    const buffer1 = Buffer.alloc(1);
-    const buffer2 = Buffer.alloc(2);
+    const data1 = [1, 2, 3];
+    const data2 = [4, 5, 6];
+
+    const buffer1 = Buffer.from(data1);
+    const buffer2 = Buffer.from(data2);
+
     const resultBuffer = Buffer.concat([buffer1, buffer2]);
-    assertEquals(resultBuffer.length, 3, "Buffer length should be 3");
+    const expectedBuffer = Buffer.from([...data1, ...data2]);
+    assertEquals(resultBuffer, expectedBuffer);
   },
 });
 
@@ -285,27 +278,95 @@ Deno.test({
 });
 
 Deno.test({
-  name: "concat respects totalLenght parameter",
+  name: "Buffer concat respects totalLenght parameter",
   fn() {
+    const maxLength1 = 10;
     const buffer1 = Buffer.alloc(2);
     const buffer2 = Buffer.alloc(2);
-    const resultBuffer = Buffer.concat([buffer1, buffer2], 10);
-    assertEquals(resultBuffer.length, 10, "Buffer length should be 10");
+    assertEquals(
+      Buffer.concat([buffer1, buffer2], maxLength1).length,
+      maxLength1,
+    );
+
+    const maxLength2 = 3;
+    const buffer3 = Buffer.alloc(2);
+    const buffer4 = Buffer.alloc(2);
+    assertEquals(
+      Buffer.concat([buffer3, buffer4], maxLength2).length,
+      maxLength2,
+    );
   },
 });
 
 Deno.test({
-  name: "concat totalLenght throws if is lower than the size of the buffers",
+  name: "Buffer copy works as expected",
   fn() {
-    const buffer1 = Buffer.alloc(2);
-    const buffer2 = Buffer.alloc(2);
-    assertThrows(
-      () => {
-        Buffer.concat([buffer1, buffer2], 3);
-      },
-      RangeError,
-      "offset is out of bounds",
-      "should throw on negative numbers",
+    const data1 = new Uint8Array([1, 2, 3]);
+    const data2 = new Uint8Array([4, 5, 6]);
+
+    const buffer1 = Buffer.from(data1);
+    const buffer2 = Buffer.from(data2);
+
+    //Mutates data_1
+    data1.set(data2);
+    //Mutates buffer_1
+    buffer2.copy(buffer1);
+
+    assertEquals(
+      data1,
+      buffer1,
+    );
+  },
+});
+
+Deno.test({
+  name: "Buffer copy respects the starting point for copy",
+  fn() {
+    const buffer1 = Buffer.from([1, 2, 3]);
+    const buffer2 = Buffer.alloc(8);
+
+    buffer1.copy(buffer2, 5);
+
+    const expected = Buffer.from([0, 0, 0, 0, 0, 1, 2, 3]);
+
+    assertEquals(
+      buffer2,
+      expected,
+    );
+  },
+});
+
+Deno.test({
+  name: "Buffer copy doesn't throw on offset but copies until offset reached",
+  fn() {
+    const buffer1 = Buffer.from([1, 2, 3]);
+    const buffer2 = Buffer.alloc(8);
+
+    const writtenBytes1 = buffer1.copy(buffer2, 6);
+
+    assertEquals(
+      writtenBytes1,
+      2,
+    );
+
+    assertEquals(
+      buffer2,
+      Buffer.from([0, 0, 0, 0, 0, 0, 1, 2]),
+    );
+
+    const buffer3 = Buffer.from([1, 2, 3]);
+    const buffer4 = Buffer.alloc(8);
+
+    const writtenBytes2 = buffer3.copy(buffer4, 8);
+
+    assertEquals(
+      writtenBytes2,
+      0,
+    );
+
+    assertEquals(
+      buffer4,
+      Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]),
     );
   },
 });

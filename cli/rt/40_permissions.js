@@ -17,7 +17,7 @@
   }
 
   class PermissionStatus {
-    constructor(state, key) {
+    constructor(state = null, key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }

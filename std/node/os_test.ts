@@ -201,18 +201,25 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Total memory amount should be greater than 0",
+  fn() {
+    assert(os.totalmem() > 0);
+  },
+});
+
+Deno.test({
+  name: "Free memory amount should be greater than 0",
+  fn() {
+    assert(os.freemem() > 0);
+  },
+});
+
+Deno.test({
   name: "APIs not yet implemented",
   fn() {
     assertThrows(
       () => {
         os.cpus();
-      },
-      Error,
-      "Not implemented",
-    );
-    assertThrows(
-      () => {
-        os.freemem();
       },
       Error,
       "Not implemented",
@@ -234,13 +241,6 @@ Deno.test({
     assertThrows(
       () => {
         os.setPriority(0);
-      },
-      Error,
-      "Not implemented",
-    );
-    assertThrows(
-      () => {
-        os.totalmem();
       },
       Error,
       "Not implemented",

@@ -1,4 +1,4 @@
-/* eslint-disable */
+// deno-lint-ignore-file
 export interface D {
   resolve: any;
   reject: any;

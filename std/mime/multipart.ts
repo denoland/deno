@@ -26,7 +26,7 @@ export interface FormFile {
 }
 
 /** Type guard for FormFile */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 export function isFormFile(x: any): x is FormFile {
   return hasOwnProperty(x, "filename") && hasOwnProperty(x, "type");
 }

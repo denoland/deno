@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 ((window) => {
   const core = window.Deno.core;
   const { Window } = window.__bootstrap.globalInterfaces;
   const { log } = window.__bootstrap.util;
+  const { defineEventHandler } = window.__bootstrap.webUtil;
 
   function createWorker(
     specifier,
@@ -88,9 +88,6 @@
           cancelable: false,
           data,
         });
-        if (this.onmessageerror) {
-          this.onmessageerror(msgErrorEvent);
-        }
         return;
       }
 
@@ -98,10 +95,6 @@
         cancelable: false,
         data,
       });
-
-      if (this.onmessage) {
-        this.onmessage(msgEvent);
-      }
 
       this.dispatchEvent(msgEvent);
     };
@@ -117,9 +110,6 @@
       });
 
       let handled = false;
-      if (this.onerror) {
-        this.onerror(event);
-      }
 
       this.dispatchEvent(event);
       if (event.defaultPrevented) {
@@ -205,6 +195,10 @@
       }
     }
   }
+
+  defineEventHandler(Worker.prototype, "error");
+  defineEventHandler(Worker.prototype, "message");
+  defineEventHandler(Worker.prototype, "messageerror");
 
   window.__bootstrap.worker = {
     Worker,

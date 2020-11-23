@@ -17,6 +17,6 @@ https://github.com/denoland/deno/blob/master/docs/contributing.md
 2. Ensure there is a related issue and it is referenced in the PR text.
 3. Ensure there are tests that cover the changes.
 4. Ensure `cargo test` passes.
-5. Ensure `./tools/format.py` passes without changing files.
-6. Ensure `./tools/lint.py` passes.
+5. Ensure `./tools/format.js` passes without changing files.
+6. Ensure `./tools/lint.js` passes.
 -->

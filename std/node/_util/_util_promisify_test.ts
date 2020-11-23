@@ -29,7 +29,7 @@ import {
 import { promisify } from "./_util_promisify.ts";
 import * as fs from "../fs.ts";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 type VoidFunction = (...args: any[]) => void;
 
 const readFile = promisify(fs.readFile);

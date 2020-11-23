@@ -40,6 +40,10 @@ unitTest(function globalThisInstanceofWindow(): void {
   assert(globalThis instanceof Window);
 });
 
+unitTest(function globalThisConstructorLength(): void {
+  assert(globalThis.constructor.length === 0);
+});
+
 unitTest(function globalThisInstanceofEventTarget(): void {
   assert(globalThis instanceof EventTarget);
 });
@@ -60,7 +64,6 @@ unitTest(function webAssemblyExists(): void {
   assert(typeof WebAssembly.compile === "function");
 });
 
-/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
 declare global {
   // deno-lint-ignore no-namespace
   namespace Deno {
@@ -68,26 +71,25 @@ declare global {
     var core: any;
   }
 }
-/* eslint-enable */
 
 unitTest(function DenoNamespaceImmutable(): void {
   const denoCopy = window.Deno;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (Deno as any) = 1;
   } catch {
     // pass
   }
   assert(denoCopy === Deno);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (window as any).Deno = 1;
   } catch {
     // pass
   }
   assert(denoCopy === Deno);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     delete (window as any).Deno;
   } catch {
     // pass
@@ -96,14 +98,14 @@ unitTest(function DenoNamespaceImmutable(): void {
 
   const { readFile } = Deno;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (Deno as any).readFile = 1;
   } catch {
     // pass
   }
   assert(readFile === Deno.readFile);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     delete (window as any).Deno.readFile;
   } catch {
     // pass

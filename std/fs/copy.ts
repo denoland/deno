@@ -3,8 +3,7 @@ import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { getFileInfoType, isSubdir } from "./_util.ts";
 import { assert } from "../_util/assert.ts";
-
-const isWindows = Deno.build.os === "windows";
+import { isWindows } from "../_util/os.ts";
 
 export interface CopyOptions {
   /**
@@ -20,11 +19,17 @@ export interface CopyOptions {
   preserveTimestamps?: boolean;
 }
 
+interface InternalCopyOptions extends CopyOptions {
+  /**
+   * default is `false`
+   */
+  isFolder?: boolean;
+}
+
 async function ensureValidCopy(
   src: string,
   dest: string,
-  options: CopyOptions,
-  isCopyFolder = false,
+  options: InternalCopyOptions,
 ): Promise<Deno.FileInfo | undefined> {
   let destStat: Deno.FileInfo;
 
@@ -37,7 +42,7 @@ async function ensureValidCopy(
     throw err;
   }
 
-  if (isCopyFolder && !destStat.isDirectory) {
+  if (options.isFolder && !destStat.isDirectory) {
     throw new Error(
       `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
@@ -52,8 +57,7 @@ async function ensureValidCopy(
 function ensureValidCopySync(
   src: string,
   dest: string,
-  options: CopyOptions,
-  isCopyFolder = false,
+  options: InternalCopyOptions,
 ): Deno.FileInfo | undefined {
   let destStat: Deno.FileInfo;
   try {
@@ -65,7 +69,7 @@ function ensureValidCopySync(
     throw err;
   }
 
-  if (isCopyFolder && !destStat.isDirectory) {
+  if (options.isFolder && !destStat.isDirectory) {
     throw new Error(
       `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
@@ -81,7 +85,7 @@ function ensureValidCopySync(
 async function copyFile(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   await Deno.copyFile(src, dest);
@@ -93,7 +97,11 @@ async function copyFile(
   }
 }
 /* copy file to dest synchronously */
-function copyFileSync(src: string, dest: string, options: CopyOptions): void {
+function copyFileSync(
+  src: string,
+  dest: string,
+  options: InternalCopyOptions,
+): void {
   ensureValidCopySync(src, dest, options);
   Deno.copyFileSync(src, dest);
   if (options.preserveTimestamps) {
@@ -108,7 +116,7 @@ function copyFileSync(src: string, dest: string, options: CopyOptions): void {
 async function copySymLink(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
@@ -132,7 +140,7 @@ async function copySymLink(
 function copySymlinkSync(
   src: string,
   dest: string,
-  options: CopyOptions,
+  options: InternalCopyOptions,
 ): void {
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
@@ -159,7 +167,10 @@ async function copyDir(
   dest: string,
   options: CopyOptions,
 ): Promise<void> {
-  const destStat = await ensureValidCopy(src, dest, options, true);
+  const destStat = await ensureValidCopy(src, dest, {
+    ...options,
+    isFolder: true,
+  });
 
   if (!destStat) {
     await ensureDir(dest);
@@ -187,7 +198,10 @@ async function copyDir(
 
 /* copy folder from src to dest synchronously */
 function copyDirSync(src: string, dest: string, options: CopyOptions): void {
-  const destStat = ensureValidCopySync(src, dest, options, true);
+  const destStat = ensureValidCopySync(src, dest, {
+    ...options,
+    isFolder: true,
+  });
 
   if (!destStat) {
     ensureDirSync(dest);

@@ -83,10 +83,12 @@ unitTest(function performanceMeasure() {
 
 unitTest(function performanceIllegalConstructor() {
   assertThrows(() => new Performance(), TypeError, "Illegal constructor.");
+  assertEquals(Performance.length, 0);
 });
 
 unitTest(function performanceEntryIllegalConstructor() {
   assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor.");
+  assertEquals(PerformanceEntry.length, 0);
 });
 
 unitTest(function performanceMeasureIllegalConstructor() {

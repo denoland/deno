@@ -34,12 +34,11 @@ import * as nodeUtil from "./util.ts";
 import * as path from "../path/mod.ts";
 import { assert } from "../_util/assert.ts";
 import { fileURLToPath, pathToFileURL } from "./url.ts";
+import { isWindows } from "../_util/os.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
 const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);
 const CHAR_COLON = ":".charCodeAt(0);
-
-const isWindows = Deno.build.os == "windows";
 
 const relativeResolveCache = Object.create(null);
 
@@ -81,7 +80,7 @@ function updateChildren(
 
 class Module {
   id: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   exports: any;
   parent: Module | null;
   filename: string | null;
@@ -102,7 +101,7 @@ class Module {
   }
   static builtinModules: string[] = [];
   static _extensions: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     [key: string]: (module: Module, filename: string) => any;
   } = Object.create(null);
   static _cache: { [key: string]: Module } = Object.create(null);
@@ -116,7 +115,7 @@ class Module {
 
   // Loads a module at the given file path. Returns that module's
   // `exports` property.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   require(id: string): any {
     if (id === "") {
       throw new Error(`id '${id}' must be a non-empty string`);
@@ -146,7 +145,7 @@ class Module {
   // the correct helper variables (require, module, exports) to
   // the file.
   // Returns exception, if any.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   _compile(content: string, filename: string): any {
     // manifest code removed
     const compiledWrapper = wrapSafe(filename, content);
@@ -348,7 +347,7 @@ class Module {
   // 3. Otherwise, create a new module for the file and save it to the cache.
   //    Then have it load  the file contents before returning its exports
   //    object.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   static _load(request: string, parent: Module, isMain: boolean): any {
     let relResolveCacheIdentifier: string | undefined;
     if (parent) {
@@ -587,7 +586,7 @@ class Module {
 
 // Polyfills.
 const nativeModulePolyfill = new Map<string, Module>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function createNativeModule(id: string, exports: any): Module {
   const mod = new Module(id);
   mod.exports = exports;
@@ -643,9 +642,9 @@ const packageJsonCache = new Map<string, PackageInfo | null>();
 interface PackageInfo {
   name?: string;
   main?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   exports?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   type?: any;
 }
 
@@ -714,7 +713,7 @@ function readPackageMain(requestPath: string): string | undefined {
   return pkg ? pkg.main : undefined;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function readPackageExports(requestPath: string): any | undefined {
   const pkg = readPackage(requestPath);
   return pkg ? pkg.exports : undefined;
@@ -806,7 +805,7 @@ function findLongestRegisteredExtension(filename: string): string {
 
 // --experimental-resolve-self trySelf() support removed.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function isConditionalDotExportSugar(exports: any, _basePath: string): boolean {
   if (typeof exports === "string") return true;
   if (Array.isArray(exports)) return true;
@@ -916,7 +915,7 @@ function resolveExports(
 
 function resolveExportsTarget(
   pkgPath: URL,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   target: any,
   subpath: string,
   basePath: string,
@@ -993,7 +992,7 @@ function resolveExportsTarget(
 const nmChars = [115, 101, 108, 117, 100, 111, 109, 95, 101, 100, 111, 110];
 const nmLen = nmChars.length;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function emitCircularRequireWarning(prop: any): void {
   console.error(
     `Accessing non-existent property '${
@@ -1007,7 +1006,7 @@ function emitCircularRequireWarning(prop: any): void {
 const CircularRequirePrototypeWarningProxy = new Proxy(
   {},
   {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     get(target: Record<string, any>, prop: string): any {
       if (prop in target) return target[prop];
       emitCircularRequireWarning(prop);
@@ -1028,7 +1027,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
 // and are not identical to the versions on the global object.
 const PublicObjectPrototype = window.Object.prototype;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function getExportsForCircularRequire(module: Module): any {
   if (
     module.exports &&
@@ -1047,9 +1046,9 @@ function getExportsForCircularRequire(module: Module): any {
 }
 
 type RequireWrapper = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   exports: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   require: any,
   module: Module,
   __filename: string,
@@ -1059,7 +1058,7 @@ type RequireWrapper = (
 function wrapSafe(filename: string, content: string): RequireWrapper {
   // TODO: fix this
   const wrapper = Module.wrap(content);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const [f, err] = (Deno as any).core.evalContext(wrapper, filename);
   if (err) {
     throw err;
@@ -1108,9 +1107,9 @@ function createRequireFromPath(filename: string): RequireFunction {
   return makeRequireFunction(m);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 type Require = (id: string) => any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 type RequireResolve = (request: string, options: any) => string;
 interface RequireResolveFunction extends RequireResolve {
   paths: (request: string) => string[] | null;
@@ -1118,13 +1117,13 @@ interface RequireResolveFunction extends RequireResolve {
 
 interface RequireFunction extends Require {
   resolve: RequireResolveFunction;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   extensions: { [key: string]: (module: Module, filename: string) => any };
   cache: { [key: string]: Module };
 }
 
 function makeRequireFunction(mod: Module): RequireFunction {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const require = function require(path: string): any {
     return mod.require(path);
   };

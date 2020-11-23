@@ -364,11 +364,11 @@ impl Display for JsError {
     if let Some(stack) = &self.stack {
       let stack_lines = stack.lines();
       if stack_lines.count() > 1 {
-        return writeln!(f, "{}", stack);
+        return write!(f, "{}", stack);
       }
     }
 
-    writeln!(f, "{}", self.message)?;
+    write!(f, "{}", self.message)?;
     if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {
         let source_loc = format_source_loc(
@@ -376,7 +376,7 @@ impl Display for JsError {
           self.line_number.unwrap(),
           self.start_column.unwrap(),
         );
-        writeln!(f, "    at {}", source_loc)?;
+        write!(f, "\n    at {}", source_loc)?;
       }
     }
     Ok(())

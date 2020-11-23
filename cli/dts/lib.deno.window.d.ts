@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
@@ -51,5 +49,3 @@ declare function confirm(message?: string): boolean;
  * @param defaultValue
  */
 declare function prompt(message?: string, defaultValue?: string): string | null;
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

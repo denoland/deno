@@ -32,9 +32,7 @@ fn op_start(
   let gs = &super::program_state(state);
 
   Ok(json!({
-    // TODO(bartlomieju): `cwd` field is not used in JS, remove?
     "args": gs.flags.argv.clone(),
-    "cwd": &env::current_dir().unwrap(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
     "denoVersion": version::DENO,
     "noColor": !colors::use_color(),

@@ -408,7 +408,7 @@ Deno.test({
     setTimeout(() => {
       ee.emit("event", 42, "foo");
     }, 0);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const valueArr: any[] = await once(ee, "event");
     assertEquals(valueArr, [42, "foo"]);
   },
@@ -422,7 +422,7 @@ Deno.test({
       const event: Event = new Event("event", { composed: true });
       et.dispatchEvent(event);
     }, 0);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const eventObj: any[] = await once(et, "event");
     assert(!eventObj[0].isTrusted);
   },
@@ -666,4 +666,22 @@ Deno.test({
     assertEquals(ee.listenerCount("foo"), 0);
     assertEquals(ee.listenerCount("error"), 0);
   },
+});
+
+// Event emitter's `on` previously referenced addListener internally, so overriding addListener
+// would cause a deadlock
+// This is a regression test
+Deno.test("Elements that extend EventEmitter listener alias don't end up in a deadlock", () => {
+  class X extends EventEmitter {
+    addListener(eventName: string, listener: () => void) {
+      return super.on(eventName, listener);
+    }
+  }
+
+  const x = new X();
+  try {
+    x.on("x", () => {});
+  } catch (e) {
+    fail();
+  }
 });

@@ -223,3 +223,23 @@ unitTest(
     assertEquals(callCount, 2);
   },
 );
+unitTest(function eventTargetDispatchShouldSetTargetNoListener(): void {
+  const target = new EventTarget();
+  const event = new Event("foo");
+  assertEquals(event.target, null);
+  target.dispatchEvent(event);
+  assertEquals(event.target, target);
+});
+
+unitTest(function eventTargetDispatchShouldSetTargetInListener(): void {
+  const target = new EventTarget();
+  const event = new Event("foo");
+  assertEquals(event.target, null);
+  let called = false;
+  target.addEventListener("foo", (e) => {
+    assertEquals(e.target, target);
+    called = true;
+  });
+  target.dispatchEvent(event);
+  assertEquals(called, true);
+});

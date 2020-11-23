@@ -68,21 +68,5 @@ const instance = await WebAssembly.instantiate(module, {
   "wasi_snapshot_preview1": context.exports,
 });
 
-const {
-  _start: start,
-  _initialize: initialize,
-  memory,
-} = instance.exports;
-
-context.memory = memory as WebAssembly.Memory;
-
-if (start instanceof Function) {
-  start();
-} else if (initialize instanceof Function) {
-  initialize();
-} else {
-  throw new Error(
-    "No '_start' or '_initialize' entry point found in WebAssembly module, make sure to compile with wasm32-wasi as the target.",
-  );
-}
+context.start(instance);
 ```

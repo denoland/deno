@@ -19,6 +19,10 @@
     return core.jsonOpSync("op_system_memory_info");
   }
 
+  function systemCpuInfo() {
+    return core.jsonOpSync("op_system_cpu_info");
+  }
+
   function exit(code = 0) {
     core.jsonOpSync("op_exit", { code });
     throw new Error("Code not reachable");
@@ -55,6 +59,7 @@
     exit,
     osRelease,
     systemMemoryInfo,
+    systemCpuInfo,
     hostname,
     loadavg,
   };

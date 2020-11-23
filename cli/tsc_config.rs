@@ -1,12 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::fs_util::canonicalize_path;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use jsonc_parser::JsonValue;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -20,6 +23,7 @@ use std::str::FromStr;
 pub struct EmitConfigOptions {
   pub check_js: bool,
   pub emit_decorator_metadata: bool,
+  pub inline_source_map: bool,
   pub jsx: String,
   pub jsx_factory: String,
   pub jsx_fragment_factory: String,
@@ -30,82 +34,91 @@ pub struct EmitConfigOptions {
 #[derive(Debug, Clone, PartialEq)]
 pub struct IgnoredCompilerOptions {
   pub items: Vec<String>,
-  pub path: PathBuf,
+  pub maybe_path: Option<PathBuf>,
 }
 
 impl fmt::Display for IgnoredCompilerOptions {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut codes = self.items.clone();
     codes.sort();
-
-    write!(f, "Unsupported compiler options in \"{}\".\n  The following options were ignored:\n    {}", self.path.to_string_lossy(), codes.join(", "))
+    if let Some(path) = &self.maybe_path {
+      write!(f, "Unsupported compiler options in \"{}\".\n  The following options were ignored:\n    {}", path.to_string_lossy(), codes.join(", "))
+    } else {
+      write!(f, "Unsupported compiler options provided.\n  The following options were ignored:\n    {}", codes.join(", "))
+    }
   }
 }
 
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: [&str; 61] = [
+const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
-  "assumeChangesOnlyAffectDirectDependencies",
   "baseUrl",
-  "build",
-  "composite",
   "declaration",
-  "declarationDir",
   "declarationMap",
-  "diagnostics",
   "downlevelIteration",
-  "emitBOM",
-  "emitDeclarationOnly",
   "esModuleInterop",
+  "emitDeclarationOnly",
+  "importHelpers",
+  "inlineSourceMap",
+  "inlineSources",
+  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
+  "module",
+  "noEmitHelpers",
+  "noLib",
+  "noResolve",
+  "outDir",
+  "paths",
+  "preserveConstEnums",
+  "reactNamespace",
+  "rootDir",
+  "rootDirs",
+  "skipLibCheck",
+  "sourceMap",
+  "sourceRoot",
+  "target",
+  "types",
+  "useDefineForClassFields",
+];
+
+const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
+  "assumeChangesOnlyAffectDirectDependencies",
+  "build",
+  "charset",
+  "composite",
+  "diagnostics",
+  "disableSizeLimit",
+  "emitBOM",
   "extendedDiagnostics",
   "forceConsistentCasingInFileNames",
   "generateCpuProfile",
   "help",
-  "importHelpers",
   "incremental",
-  "inlineSourceMap",
-  "inlineSources",
   "init",
-  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
   "maxNodeModuleJsDepth",
-  "module",
   "moduleResolution",
   "newLine",
   "noEmit",
-  "noEmitHelpers",
   "noEmitOnError",
-  "noLib",
-  "noResolve",
   "out",
   "outDir",
   "outFile",
-  "paths",
-  "preserveConstEnums",
   "preserveSymlinks",
   "preserveWatchOutput",
   "pretty",
-  "reactNamespace",
+  "project",
   "resolveJsonModule",
-  "rootDir",
-  "rootDirs",
   "showConfig",
   "skipDefaultLibCheck",
-  "skipLibCheck",
-  "sourceMap",
-  "sourceRoot",
   "stripInternal",
-  "target",
   "traceResolution",
   "tsBuildInfoFile",
-  "types",
   "typeRoots",
-  "useDefineForClassFields",
   "version",
   "watch",
 ];
@@ -161,10 +174,32 @@ struct TSConfigJson {
   type_acquisition: Option<Value>,
 }
 
-pub fn parse_raw_config(config_text: &str) -> Result<Value, AnyError> {
-  assert!(!config_text.is_empty());
-  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
-  Ok(jsonc_to_serde(jsonc))
+fn parse_compiler_options(
+  compiler_options: &HashMap<String, Value>,
+  maybe_path: Option<PathBuf>,
+  is_runtime: bool,
+) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
+  let mut filtered: HashMap<String, Value> = HashMap::new();
+  let mut items: Vec<String> = Vec::new();
+
+  for (key, value) in compiler_options.iter() {
+    let key = key.as_str();
+    if (!is_runtime && IGNORED_COMPILER_OPTIONS.contains(&key))
+      || IGNORED_RUNTIME_COMPILER_OPTIONS.contains(&key)
+    {
+      items.push(key.to_string());
+    } else {
+      filtered.insert(key.to_string(), value.to_owned());
+    }
+  }
+  let value = serde_json::to_value(filtered)?;
+  let maybe_ignored_options = if !items.is_empty() {
+    Some(IgnoredCompilerOptions { items, maybe_path })
+  } else {
+    None
+  };
+
+  Ok((value, maybe_ignored_options))
 }
 
 /// Take a string of JSONC, parse it and return a serde `Value` of the text.
@@ -176,29 +211,12 @@ pub fn parse_config(
   assert!(!config_text.is_empty());
   let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
   let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
-  let mut compiler_options: HashMap<String, Value> = HashMap::new();
-  let mut items: Vec<String> = Vec::new();
 
-  if let Some(in_compiler_options) = config.compiler_options {
-    for (key, value) in in_compiler_options.iter() {
-      if IGNORED_COMPILER_OPTIONS.contains(&key.as_str()) {
-        items.push(key.to_owned());
-      } else {
-        compiler_options.insert(key.to_owned(), value.to_owned());
-      }
-    }
-  }
-  let options_value = serde_json::to_value(compiler_options)?;
-  let ignored_options = if !items.is_empty() {
-    Some(IgnoredCompilerOptions {
-      items,
-      path: path.to_path_buf(),
-    })
+  if let Some(compiler_options) = config.compiler_options {
+    parse_compiler_options(&compiler_options, Some(path.to_owned()), false)
   } else {
-    None
-  };
-
-  Ok((options_value, ignored_options))
+    Ok((json!({}), None))
+  }
 }
 
 /// A structure for managing the configuration of TypeScript
@@ -212,7 +230,10 @@ impl TsConfig {
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
-    self.0.to_string().as_bytes().to_owned()
+    let map = self.0.as_object().unwrap();
+    let ordered: BTreeMap<_, _> = map.iter().collect();
+    let value = json!(ordered);
+    value.to_string().as_bytes().to_owned()
   }
 
   /// Return the value of the `checkJs` compiler option, defaulting to `false`
@@ -237,14 +258,14 @@ impl TsConfig {
   ///
   /// When there are options ignored out of the file, a warning will be written
   /// to stderr regarding the options that were ignored.
-  pub fn merge_user_config(
+  pub fn merge_tsconfig(
     &mut self,
     maybe_path: Option<String>,
   ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
     if let Some(path) = maybe_path {
       let cwd = std::env::current_dir()?;
       let config_file = cwd.join(path);
-      let config_path = config_file.canonicalize().map_err(|_| {
+      let config_path = canonicalize_path(&config_file).map_err(|_| {
         std::io::Error::new(
           std::io::ErrorKind::InvalidInput,
           format!(
@@ -262,6 +283,19 @@ impl TsConfig {
     } else {
       Ok(None)
     }
+  }
+
+  /// Take a map of compiler options, filtering out any that are ignored, then
+  /// merge it with the current configuration, returning any options that might
+  /// have been ignored.
+  pub fn merge_user_config(
+    &mut self,
+    user_options: &HashMap<String, Value>,
+  ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
+    let (value, maybe_ignored_options) =
+      parse_compiler_options(user_options, None, true)?;
+    json_merge(&mut self.0, &value);
+    Ok(maybe_ignored_options)
   }
 }
 
@@ -321,20 +355,61 @@ mod tests {
       ignored,
       Some(IgnoredCompilerOptions {
         items: vec!["build".to_string()],
-        path: config_path,
+        maybe_path: Some(config_path),
       }),
     );
   }
 
   #[test]
-  fn test_parse_raw_config() {
-    let invalid_config_text = r#"{
-      "compilerOptions": {
-        // comments are allowed
-    }"#;
-    let errbox = parse_raw_config(invalid_config_text).unwrap_err();
-    assert!(errbox
-      .to_string()
-      .starts_with("Unterminated object on line 1"));
+  fn test_tsconfig_merge_user_options() {
+    let mut tsconfig = TsConfig::new(json!({
+      "target": "esnext",
+      "module": "esnext",
+    }));
+    let user_options = serde_json::from_value(json!({
+      "target": "es6",
+      "build": true,
+      "strict": false,
+    }))
+    .expect("could not convert to hashmap");
+    let maybe_ignored_options = tsconfig
+      .merge_user_config(&user_options)
+      .expect("could not merge options");
+    assert_eq!(
+      tsconfig.0,
+      json!({
+        "module": "esnext",
+        "target": "es6",
+        "strict": false,
+      })
+    );
+    assert_eq!(
+      maybe_ignored_options,
+      Some(IgnoredCompilerOptions {
+        items: vec!["build".to_string()],
+        maybe_path: None
+      })
+    );
+  }
+
+  #[test]
+  fn test_tsconfig_as_bytes() {
+    let mut tsconfig1 = TsConfig::new(json!({
+      "strict": true,
+      "target": "esnext",
+    }));
+    tsconfig1.merge(&json!({
+      "target": "es5",
+      "module": "amd",
+    }));
+    let mut tsconfig2 = TsConfig::new(json!({
+      "target": "esnext",
+      "strict": true,
+    }));
+    tsconfig2.merge(&json!({
+      "module": "amd",
+      "target": "es5",
+    }));
+    assert_eq!(tsconfig1.as_bytes(), tsconfig2.as_bytes());
   }
 }

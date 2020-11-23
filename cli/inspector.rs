@@ -235,9 +235,9 @@ async fn server(
   pin_mut!(server_handler);
 
   select! {
-    _ = register_inspector_handler => (),
+    _ = register_inspector_handler => {},
     _ = deregister_inspector_handler => unreachable!(),
-    _ = server_handler => (),
+    _ = server_handler => {},
   }
 }
 
@@ -934,7 +934,7 @@ impl InspectorSession {
 
     let response = response_rx.await.unwrap();
     if let Some(error) = response.get("error") {
-      return Err(generic_error(format!("{}", error)));
+      return Err(generic_error(error.to_string()));
     }
 
     let result = response.get("result").unwrap().clone();
