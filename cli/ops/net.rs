@@ -229,7 +229,7 @@ async fn op_datagram_send(
       let address_path = Path::new(&args.path);
       {
         let s = state.borrow();
-        s.borrow::<Permissions>().check_read(&address_path)?;
+        s.borrow::<Permissions>().check_write(&address_path)?;
       }
       let mut state = state.borrow_mut();
       let resource = state
