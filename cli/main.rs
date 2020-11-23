@@ -934,7 +934,7 @@ pub fn main() {
     } => tools::upgrade::upgrade_command(
       dry_run, force, canary, version, output, ca_file,
     )
-      .boxed_local(),
+    .boxed_local(),
   };
 
   let result = tokio_util::run_basic(fut);
