@@ -215,10 +215,9 @@ jobs:
       - name: Upload canary (unix)
         if: |
           runner.os != 'Windows' &&
-          matrix.kind == 'test_release'
-        #  &&
-        #  github.repository == 'denoland/deno' &&
-        #  github.ref == 'refs/heads/master'
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/$(git rev-parse HEAD)/
           echo $(git rev-parse HEAD) > canary-latest.txt
@@ -227,10 +226,9 @@ jobs:
       - name: Upload canary (windows)
         if: |
           runner.os == 'Windows' &&
-          matrix.kind == 'test_release'
-        #  &&
-        #  github.repository == 'denoland/deno' &&
-        #  github.ref == 'refs/heads/master'
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
