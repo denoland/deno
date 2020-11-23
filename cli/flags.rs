@@ -1598,7 +1598,7 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
-          canary: true,
+          canary: false,
           version: None,
           output: None,
           ca_file: None,
