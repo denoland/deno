@@ -11,11 +11,11 @@ vulnerability = "deny"
 # The lint level for unmaintained crates
 unmaintained = "warn"
 # The lint level for crates that have been yanked from their source registry
-yanked = "warn"
+yanked = "deny"
 # The lint level for crates with security notices. Note that as of
 # 2019-12-17 there are no security notice advisories in
 # https://github.com/rustsec/advisory-db
-notice = "warn"
+notice = "deny"
 
 [licenses]
 # The lint level for crates which do not have a detectable license
@@ -30,16 +30,32 @@ confidence-threshold = 0.8
 # List of explictly allowed licenses
 allow = [
   "Apache-2.0",
+  "BSD-2-Clause",
+  "CC0-1.0",
+  "ISC",
   "MIT",
   "MPL-2.0",
-  "ISC",
-  "BSD-2-Clause",
+  "OpenSSL",
+]
+[[licenses.clarify]]
+name = "ring"
+# SPDX considers OpenSSL to encompass both the OpenSSL and SSLeay licenses
+# https://spdx.org/licenses/OpenSSL.html
+# ISC - Both BoringSSL and ring use this for their new files
+# MIT - "Files in third_party/ have their own licenses, as described therein. The MIT
+# license, for third_party/fiat, which, unlike other third_party directories, is
+# compiled into non-test libraries, is included below."
+# OpenSSL - Obviously
+# Reference:  https://github.com/EmbarkStudios/cargo-deny/issues/110
+expression = "ISC AND MIT AND OpenSSL"
+license-files = [
+  {path = "LICENSE", hash = 0xbd0eed23},
 ]
 
 # https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "warn"
+multiple-versions = "deny"
 # Lint level for when a crate version requirement is `*`
 wildcards = "allow"
 # The graph highlighting used when creating dotgraphs for crates
@@ -49,10 +65,10 @@ highlight = "all"
 [sources]
 # Lint level for what to happen when a crate from a crate registry that is not
 # in the allow list is encountered
-unknown-registry = "warn"
+unknown-registry = "deny"
 # Lint level for what to happen when a crate from a git repository that is not
 # in the allow list is encountered
-unknown-git = "warn"
+unknown-git = "deny"
 # List of URLs for allowed crate registries. Defaults to the crates.io index
 # if not specified. If it is specified but empty, no registries are allowed.
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
