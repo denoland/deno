@@ -3,6 +3,7 @@
 [package]
 name = "test_plugin"
 version = "0.0.1"
+license = "MIT"
 authors = ["the deno authors"]
 edition = "2018"
 publish = false
