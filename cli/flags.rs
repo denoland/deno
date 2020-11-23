@@ -819,22 +819,8 @@ fn completions_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Generate shell completions")
     .long_about(
       "Output shell completion script to standard output.
-
-bash:
-  deno completions bash | sudo tee /etc/bash_completion.d/deno.bash > /dev/null
-  source /etc/bash_completion.d/deno.bash
-
-zsh:
-  deno completions zsh |sudo tee /usr/local/share/zsh/site-functions/_deno
-
-  Make sure to run compinit after the above command
-
-fish:
-  deno completions fish > ~/.config/fish/completions/deno.fish  
-
-powershell:
-  deno completions powershell > $profile
-  .$profile",
+  deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
+  source /usr/local/etc/bash_completion.d/deno.bash",
     )
 }
 
