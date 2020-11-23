@@ -57,6 +57,7 @@ export const handlers = {
   RotatingFileHandler,
 };
 
+/** Get a logger instance. If not specified `name`, get the default logger.  */
 export function getLogger(name?: string): Logger {
   if (!name) {
     const d = state.loggers.get("default");
@@ -75,6 +76,7 @@ export function getLogger(name?: string): Logger {
   return result;
 }
 
+/** Log with debug level, using default logger. */
 export function debug<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function debug<T>(
   msg: T extends GenericFunction ? never : T,
@@ -91,6 +93,7 @@ export function debug<T>(
   return getLogger("default").debug(msg, ...args);
 }
 
+/** Log with info level, using default logger. */
 export function info<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function info<T>(
   msg: T extends GenericFunction ? never : T,
@@ -107,6 +110,7 @@ export function info<T>(
   return getLogger("default").info(msg, ...args);
 }
 
+/** Log with warning level, using default logger. */
 export function warning<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function warning<T>(
   msg: T extends GenericFunction ? never : T,
@@ -123,6 +127,7 @@ export function warning<T>(
   return getLogger("default").warning(msg, ...args);
 }
 
+/** Log with error level, using default logger. */
 export function error<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function error<T>(
   msg: T extends GenericFunction ? never : T,
@@ -139,6 +144,7 @@ export function error<T>(
   return getLogger("default").error(msg, ...args);
 }
 
+/** Log with critical level, using default logger. */
 export function critical<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function critical<T>(
   msg: T extends GenericFunction ? never : T,
@@ -155,6 +161,7 @@ export function critical<T>(
   return getLogger("default").critical(msg, ...args);
 }
 
+/** Setup logger config. */
 export async function setup(config: LogConfig): Promise<void> {
   state.config = {
     handlers: { ...DEFAULT_CONFIG.handlers, ...config.handlers },

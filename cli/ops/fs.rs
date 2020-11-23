@@ -2,6 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
+use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
@@ -12,8 +13,8 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use rand::thread_rng;
-use rand::Rng;
+use deno_crypto::rand::thread_rng;
+use deno_crypto::rand::Rng;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;
@@ -282,7 +283,6 @@ fn op_fdatasync_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.fdatasync");
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
@@ -297,8 +297,6 @@ async fn op_fdatasync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.fdatasync");
-
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
@@ -319,7 +317,6 @@ fn op_fsync_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.fsync");
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(state, rid, |r| match r {
@@ -334,8 +331,6 @@ async fn op_fsync_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.fsync");
-
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
@@ -940,11 +935,8 @@ fn op_realpath_sync(
   debug!("op_realpath_sync {}", path.display());
   // corresponds to the realpath on Unix and
   // CreateFile and GetFinalPathNameByHandle on Windows
-  let realpath = std::fs::canonicalize(&path)?;
-  let mut realpath_str = into_string(realpath.into_os_string())?;
-  if cfg!(windows) {
-    realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
-  }
+  let realpath = canonicalize_path(&path)?;
+  let realpath_str = into_string(realpath.into_os_string())?;
   Ok(json!(realpath_str))
 }
 
@@ -969,11 +961,8 @@ async fn op_realpath_async(
     debug!("op_realpath_async {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = std::fs::canonicalize(&path)?;
-    let mut realpath_str = into_string(realpath.into_os_string())?;
-    if cfg!(windows) {
-      realpath_str = realpath_str.trim_start_matches("\\\\?\\").to_string();
-    }
+    let realpath = canonicalize_path(&path)?;
+    let realpath_str = into_string(realpath.into_os_string())?;
     Ok(json!(realpath_str))
   })
   .await

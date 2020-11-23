@@ -52,19 +52,14 @@
       sources: !!sources,
       options,
     });
+    /** @type {{ emittedFiles: Record<string, string>, diagnostics: any[] }} */
     const result = await opCompile(payload);
-    util.assert(result.emitMap);
+    util.assert(result.emittedFiles);
     const maybeDiagnostics = result.diagnostics.length === 0
       ? undefined
       : result.diagnostics;
 
-    const emitMap = {};
-
-    for (const [key, emittedSource] of Object.entries(result.emitMap)) {
-      emitMap[key] = emittedSource.contents;
-    }
-
-    return [maybeDiagnostics, emitMap];
+    return [maybeDiagnostics, result.emittedFiles];
   }
 
   // TODO(bartlomieju): change return type to interface?
@@ -84,12 +79,14 @@
       sources: !!sources,
       options,
     });
+    /** @type {{ emittedFiles: Record<string, string>, diagnostics: any[] }} */
     const result = await opCompile(payload);
-    util.assert(result.output);
+    const output = result.emittedFiles["deno:///bundle.js"];
+    util.assert(output);
     const maybeDiagnostics = result.diagnostics.length === 0
       ? undefined
       : result.diagnostics;
-    return [maybeDiagnostics, result.output];
+    return [maybeDiagnostics, output];
   }
 
   window.__bootstrap.compilerApi = {

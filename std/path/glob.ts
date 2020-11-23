@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // This module is browser compatible.
 
-import { NATIVE_OS } from "./_constants.ts";
+import { osType } from "../_util/os.ts";
 import { join, normalize } from "./mod.ts";
 import { SEP, SEP_PATTERN } from "./separator.ts";
 
@@ -80,7 +80,7 @@ const rangeEscapeChars = ["-", "\\", "]"];
  *   the group occurs not nested at the end of the segment. */
 export function globToRegExp(
   glob: string,
-  { extended = true, globstar: globstarOption = true, os = NATIVE_OS }:
+  { extended = true, globstar: globstarOption = true, os = osType }:
     GlobToRegExpOptions = {},
 ): RegExp {
   if (glob == "") {
@@ -316,7 +316,6 @@ export function globToRegExp(
 /** Test whether the given string is a glob */
 export function isGlob(str: string): boolean {
   const chars: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
-  /* eslint-disable-next-line max-len */
   const regex =
     /\\(.)|(^!|\*|[\].+)]\?|\[[^\\\]]+\]|\{[^\\}]+\}|\(\?[:!=][^\\)]+\)|\([^|]+\|[^\\)]+\))/;
 

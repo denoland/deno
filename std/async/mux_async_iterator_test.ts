@@ -2,21 +2,18 @@
 import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import { MuxAsyncIterator } from "./mux_async_iterator.ts";
 
-// eslint-disable-next-line require-await
 async function* gen123(): AsyncIterableIterator<number> {
   yield 1;
   yield 2;
   yield 3;
 }
 
-// eslint-disable-next-line require-await
 async function* gen456(): AsyncIterableIterator<number> {
   yield 4;
   yield 5;
   yield 6;
 }
 
-// eslint-disable-next-line require-await
 async function* genThrows(): AsyncIterableIterator<number> {
   yield 7;
   throw new Error("something went wrong");

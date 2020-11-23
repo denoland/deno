@@ -20,6 +20,10 @@
     return core.jsonOpSync("op_now");
   }
 
+  function sleepSync(millis = 0) {
+    return core.jsonOpSync("op_sleep_sync", { millis });
+  }
+
   // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
 
   class RBNode {
@@ -545,5 +549,6 @@
     opStopGlobalTimer,
     opStartGlobalTimer,
     opNow,
+    sleepSync,
   };
 })(this);

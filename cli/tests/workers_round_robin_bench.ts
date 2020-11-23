@@ -7,7 +7,7 @@ const cmdsPerWorker = 400;
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   reject: (reason?: any) => void;
 }
 

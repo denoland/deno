@@ -36,6 +36,11 @@ function createCommon<T>(A: T[], B: T[], reverse?: boolean): T[] {
   return common;
 }
 
+/**
+ * Renders the differences between the actual and expected values
+ * @param A Actual value
+ * @param B Expected value
+ */
 export function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
   const prefixCommon = createCommon(A, B);
   const suffixCommon = createCommon(

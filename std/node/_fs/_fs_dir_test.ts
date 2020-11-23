@@ -7,7 +7,7 @@ Deno.test({
   name: "Closing current directory with callback is successful",
   fn() {
     let calledBack = false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     new Dir(".").close((valOrErr: any) => {
       assert(!valOrErr);
       calledBack = true;
@@ -51,7 +51,7 @@ Deno.test({
       let calledBack = false;
       const fileFromCallback: Dirent | null = await new Dir(
         testDir,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
       ).read((err: any, res: Dirent) => {
         assert(res === null);
         assert(err === null);
@@ -81,7 +81,7 @@ Deno.test({
       const dir: Dir = new Dir(testDir);
       const firstRead: Dirent | null = await dir.read();
       const secondRead: Dirent | null = await dir.read(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
         (err: any, secondResult: Dirent) => {
           assert(
             secondResult.name === "bar.txt" ||

@@ -37,6 +37,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
+      CARGO_TERM_COLOR: always
 
     steps:
       - name: Configure git
@@ -60,18 +61,31 @@ jobs:
           !startsWith(github.ref, 'refs/tags/std/')
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.47.0
+          rust-version: 1.48.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
         run: |
           rustup component add clippy
           rustup component add rustfmt
+
+      - name: Install Deno
+        if: |
+          !startsWith(matrix.os, 'windows')
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          echo "$HOME/.deno/bin" >> $GITHUB_PATH
+
+      - name: Install Deno (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
 
       - name: Install Python
         uses: actions/setup-python@v1
@@ -93,68 +107,15 @@ jobs:
           python --version
           rustc --version
           cargo --version
+          deno --version
 
-      - name: Configure cargo data directory
-        # After this point, all cargo registry and crate data is stored in
-        # $GITHUB_WORKSPACE/.cargo_home. This allows us to cache only the files
-        # that are needed during the build process. Additionally, this works
-        # around a bug in the 'cache' action that causes directories outside of
-        # the workspace dir to be saved/restored incorrectly.
-        run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
-
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          # Note: crates from the denoland/deno git repo always get rebuilt,
-          # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,
-          # so we cache only those subdirectories of target/{debug|release} that
-          # contain the build output for crates that come from the registry.
-          path: |-
-            .cargo_home
-            target/*/.*
-            target/*/build
-            target/*/deps
-            target/*/gn_out
-          key: deno-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            deno-${{ matrix.os }}-${{ matrix.kind }}-
-
-        # It seems that the 'target' directory does not always get restored
-        # from cache correctly on MacOS. In the build log we see the following:
-        #
-        #   Fresh serde_derive v1.0.115
-        #
-        # But a little while after that Cargo aborts because 'serde_derive' is
-        # now nowhere to be found. We're not the only ones experiencing this,
-        # see https://github.com/actions-rs/cargo/issues/111.
-        #
-        #   error[E0463]: can't find crate for `serde_derive`
-        #   ##[error]   --> /Users/runner/.cargo/registry/src/github.com-
-        #       |           1ecc6299db9ec823/serde-1.0.115/src/lib.rs:285:1
-        #       |
-        #   285 | extern crate serde_derive;
-        #       | ^^^^^^^^^^^^^^^^^^^^^^^^^^ can't find crate
-      - name: Work around MacOS + Cargo + Github Actions cache bug
-        if: runner.os == 'macOS'
-        run: |
-          cargo clean --locked --release \
-                      -p ast_node \
-                      -p is-macro \
-                      -p serde_derive \
-                      -p swc_ecma_codegen \
-                      -p swc_ecma_codegen_macros \
-                      -p swc_ecma_parser \
-                      -p swc_ecma_parser_macros \
-                      -p swc_visit \
-                      -p swc_visit_macros
-
-      - name: lint.py
+      - name: lint.js
         if: matrix.kind == 'lint'
-        run: python ./tools/lint.py
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
-      - name: test_format.py
+      - name: test_format.js
         if: matrix.kind == 'lint'
-        run: python ./tools/test_format.py
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
 
       - name: Build release
         if: |
@@ -187,7 +148,7 @@ jobs:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          python ./tools/build_benchmark_jsons.py --release
+          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
@@ -260,6 +221,9 @@ jobs:
           cargo publish
           sleep 30
           cd ../fetch
+          cargo publish
+          sleep 30
+          cd ../crypto
           cargo publish
           sleep 30
           cd ../../cli

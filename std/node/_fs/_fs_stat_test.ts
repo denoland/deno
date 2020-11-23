@@ -24,7 +24,7 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
 }
 
-function to_BigInt(num?: number | null) {
+function toBigInt(num?: number | null) {
   if (num === undefined || num === null) return null;
   return BigInt(num);
 }
@@ -33,17 +33,17 @@ export function assertStatsBigInt(
   actual: BigIntStats,
   expected: Deno.FileInfo,
 ) {
-  assertEquals(actual.dev, to_BigInt(expected.dev));
-  assertEquals(actual.gid, to_BigInt(expected.gid));
-  assertEquals(actual.size, to_BigInt(expected.size));
-  assertEquals(actual.blksize, to_BigInt(expected.blksize));
-  assertEquals(actual.blocks, to_BigInt(expected.blocks));
-  assertEquals(actual.ino, to_BigInt(expected.ino));
-  assertEquals(actual.gid, to_BigInt(expected.gid));
-  assertEquals(actual.mode, to_BigInt(expected.mode));
-  assertEquals(actual.nlink, to_BigInt(expected.nlink));
-  assertEquals(actual.rdev, to_BigInt(expected.rdev));
-  assertEquals(actual.uid, to_BigInt(expected.uid));
+  assertEquals(actual.dev, toBigInt(expected.dev));
+  assertEquals(actual.gid, toBigInt(expected.gid));
+  assertEquals(actual.size, toBigInt(expected.size));
+  assertEquals(actual.blksize, toBigInt(expected.blksize));
+  assertEquals(actual.blocks, toBigInt(expected.blocks));
+  assertEquals(actual.ino, toBigInt(expected.ino));
+  assertEquals(actual.gid, toBigInt(expected.gid));
+  assertEquals(actual.mode, toBigInt(expected.mode));
+  assertEquals(actual.nlink, toBigInt(expected.nlink));
+  assertEquals(actual.rdev, toBigInt(expected.rdev));
+  assertEquals(actual.uid, toBigInt(expected.uid));
   assertEquals(actual.atime?.getTime(), expected.atime?.getTime());
   assertEquals(actual.mtime?.getTime(), expected.mtime?.getTime());
   assertEquals(actual.birthtime?.getTime(), expected.birthtime?.getTime());

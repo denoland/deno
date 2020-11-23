@@ -53,6 +53,10 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("02_abort_signal.js"),
     ),
     (
+      "deno:op_crates/web/03_global_interfaces.js",
+      include_str!("03_global_interfaces.js"),
+    ),
+    (
       "deno:op_crates/web/08_text_encoding.js",
       include_str!("08_text_encoding.js"),
     ),

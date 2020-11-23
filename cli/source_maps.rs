@@ -2,12 +2,13 @@
 
 //! This mod provides functions to remap a `JsError` based on a source map.
 
-use deno_core::error::JsError as CoreJsError;
+use deno_core::error::JsError;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
+use std::sync::Arc;
 
-pub trait SourceMapGetter {
+pub trait SourceMapGetter: Sync + Send {
   /// Returns the raw source map file.
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>>;
   fn get_source_line(
@@ -25,9 +26,9 @@ pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 /// file names and line/column numbers point to the location in the original
 /// source, rather than the transpiled source code.
 pub fn apply_source_map<G: SourceMapGetter>(
-  js_error: &CoreJsError,
-  getter: &G,
-) -> CoreJsError {
+  js_error: &JsError,
+  getter: Arc<G>,
+) -> JsError {
   // Note that js_error.frames has already been source mapped in
   // prepareStackTrace().
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -39,7 +40,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
       // start_column is 0-based, we need 1-based here.
       js_error.start_column.map(|n| n + 1),
       &mut mappings_map,
-      getter,
+      getter.clone(),
     );
   let start_column = start_column.map(|n| n - 1);
   // It is better to just move end_column to be the same distance away from
@@ -70,7 +71,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     _ => js_error.source_line.clone(),
   };
 
-  CoreJsError {
+  JsError {
     message: js_error.message.clone(),
     source_line,
     script_resource_name,
@@ -87,7 +88,7 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
   line_number: Option<i64>,
   column_number: Option<i64>,
   mappings_map: &mut CachedMaps,
-  getter: &G,
+  getter: Arc<G>,
 ) -> (Option<String>, Option<i64>, Option<i64>) {
   match (file_name, line_number, column_number) {
     (Some(file_name_v), Some(line_v), Some(column_v)) => {
@@ -104,7 +105,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
   line_number: i64,
   column_number: i64,
   mappings_map: &mut CachedMaps,
-  getter: &G,
+  getter: Arc<G>,
 ) -> (String, i64, i64) {
   let maybe_source_map = get_mappings(&file_name, mappings_map, getter);
   let default_pos = (file_name, line_number, column_number);
@@ -134,7 +135,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
 fn get_mappings<'a, G: SourceMapGetter>(
   file_name: &str,
   mappings_map: &'a mut CachedMaps,
-  getter: &G,
+  getter: Arc<G>,
 ) -> &'a Option<SourceMap> {
   mappings_map
     .entry(file_name.to_string())
@@ -145,7 +146,7 @@ fn get_mappings<'a, G: SourceMapGetter>(
 // the module meta data.
 fn parse_map_string<G: SourceMapGetter>(
   file_name: &str,
-  getter: &G,
+  getter: Arc<G>,
 ) -> Option<SourceMap> {
   getter
     .get_source_map(file_name)
@@ -197,7 +198,7 @@ mod tests {
 
   #[test]
   fn apply_source_map_line() {
-    let e = CoreJsError {
+    let e = JsError {
       message: "TypeError: baz".to_string(),
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),
@@ -207,8 +208,8 @@ mod tests {
       frames: vec![],
       stack: None,
     };
-    let getter = MockSourceMapGetter {};
-    let actual = apply_source_map(&e, &getter);
+    let getter = Arc::new(MockSourceMapGetter {});
+    let actual = apply_source_map(&e, getter);
     assert_eq!(actual.source_line, Some("console.log('foo');".to_string()));
   }
 }

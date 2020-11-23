@@ -9,7 +9,7 @@ import { join, parse } from "../../path/mod.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { closeSync } from "./_fs_close.ts";
 
-const temp_dir = parse(Deno.makeTempFileSync()).dir;
+const tempDir = parse(Deno.makeTempFileSync()).dir;
 
 Deno.test({
   name: "ASYNC: open file",
@@ -44,7 +44,7 @@ Deno.test({
 Deno.test({
   name: "open with flag 'a'",
   fn() {
-    const file = join(temp_dir, "some_random_file");
+    const file = join(tempDir, "some_random_file");
     const fd = openSync(file, "a");
     assertEquals(typeof fd, "number");
     assertEquals(existsSync(file), true);
@@ -71,7 +71,7 @@ Deno.test({
 Deno.test({
   name: "open with flag 'a+'",
   fn() {
-    const file = join(temp_dir, "some_random_file2");
+    const file = join(tempDir, "some_random_file2");
     const fd = openSync(file, "a+");
     assertEquals(typeof fd, "number");
     assertEquals(existsSync(file), true);
@@ -97,7 +97,7 @@ Deno.test({
 Deno.test({
   name: "open with flag 'as'",
   fn() {
-    const file = join(temp_dir, "some_random_file10");
+    const file = join(tempDir, "some_random_file10");
     const fd = openSync(file, "as");
     assertEquals(existsSync(file), true);
     assertEquals(typeof fd, "number");
@@ -108,7 +108,7 @@ Deno.test({
 Deno.test({
   name: "open with flag 'as+'",
   fn() {
-    const file = join(temp_dir, "some_random_file10");
+    const file = join(tempDir, "some_random_file10");
     const fd = openSync(file, "as+");
     assertEquals(existsSync(file), true);
     assertEquals(typeof fd, "number");
@@ -119,7 +119,7 @@ Deno.test({
 Deno.test({
   name: "open with flag 'r'",
   fn() {
-    const file = join(temp_dir, "some_random_file3");
+    const file = join(tempDir, "some_random_file3");
     assertThrows(() => {
       openSync(file, "r");
     }, Error);
@@ -129,7 +129,7 @@ Deno.test({
 Deno.test({
   name: "open with flag 'r+'",
   fn() {
-    const file = join(temp_dir, "some_random_file4");
+    const file = join(tempDir, "some_random_file4");
     assertThrows(() => {
       openSync(file, "r+");
     }, Error);
@@ -146,7 +146,7 @@ Deno.test({
     assertEquals(Deno.readTextFileSync(file), "");
     closeSync(fd);
 
-    const file2 = join(temp_dir, "some_random_file5");
+    const file2 = join(tempDir, "some_random_file5");
     const fd2 = openSync(file2, "w");
     assertEquals(typeof fd2, "number");
     assertEquals(existsSync(file2), true);
@@ -185,7 +185,7 @@ Deno.test({
     assertEquals(Deno.readTextFileSync(file), "");
     closeSync(fd);
 
-    const file2 = join(temp_dir, "some_random_file6");
+    const file2 = join(tempDir, "some_random_file6");
     const fd2 = openSync(file2, "w+");
     assertEquals(typeof fd2, "number");
     assertEquals(existsSync(file2), true);

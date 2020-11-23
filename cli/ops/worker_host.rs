@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fmt_errors::JsError;
+use crate::colors;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -8,7 +8,10 @@ use crate::tokio_util::create_basic_runtime;
 use crate::worker::WebWorker;
 use crate::worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
+use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -25,7 +28,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+#[derive(Deserialize)]
+struct HostUnhandledErrorArgs {
+  message: String,
+}
+
+pub fn init(
+  rt: &mut deno_core::JsRuntime,
+  sender: Option<mpsc::Sender<WorkerEvent>>,
+) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
@@ -40,6 +51,21 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(rt, "op_host_post_message", op_host_post_message);
   super::reg_json_async(rt, "op_host_get_message", op_host_get_message);
+  super::reg_json_sync(
+    rt,
+    "op_host_unhandled_error",
+    move |_state, args, _zero_copy| {
+      if let Some(mut sender) = sender.clone() {
+        let args: HostUnhandledErrorArgs = serde_json::from_value(args)?;
+        sender
+          .try_send(WorkerEvent::Error(generic_error(args.message)))
+          .expect("Failed to propagate error event to parent worker");
+        Ok(json!(true))
+      } else {
+        Err(generic_error("Cannot be called from main worker."))
+      }
+    },
+  );
 }
 
 pub type WorkersTable = HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>;
@@ -162,6 +188,12 @@ fn run_worker_thread(
     }
 
     if let Err(e) = result {
+      eprintln!(
+        "{}: Uncaught (in worker \"{}\") {}",
+        colors::red_bold("error"),
+        name,
+        e.to_string().trim_start_matches("Uncaught "),
+      );
       sender
         .try_send(WorkerEvent::TerminalError(e))
         .expect("Failed to post message to host");
@@ -261,50 +293,40 @@ fn op_host_terminate_worker(
 fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::TerminalError(error) => {
-      let mut serialized_error = json!({
+    WorkerEvent::TerminalError(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => json!({
+        "type": "terminalError",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
         "type": "terminalError",
         "error": {
           "message": error.to_string(),
         }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
-          "type": "terminalError",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        });
-      }
-
-      serialized_error
-    }
-    WorkerEvent::Error(error) => {
-      let mut serialized_error = json!({
+      }),
+    },
+    WorkerEvent::Error(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => json!({
+        "type": "error",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
         "type": "error",
         "error": {
           "message": error.to_string(),
         }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
-          "type": "error",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        });
-      }
-
-      serialized_error
-    }
+      }),
+    },
   }
 }
 

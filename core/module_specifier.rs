@@ -149,7 +149,7 @@ impl ModuleSpecifier {
   /// Converts a string representing a relative or absolute path into a
   /// ModuleSpecifier. A relative path is considered relative to the current
   /// working directory.
-  fn resolve_path(
+  pub fn resolve_path(
     path_str: &str,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let path = current_dir().unwrap().join(path_str);

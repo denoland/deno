@@ -11,7 +11,7 @@
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
   unitTest,
 } from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
@@ -184,7 +184,6 @@ unitTest(function consoleTestStringifyLongStrings(): void {
   assertEquals(actual, veryLongString);
 });
 
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
 unitTest(function consoleTestStringifyCircular(): void {
   class Base {
     a = 1;
@@ -196,7 +195,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     m2() {}
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const nestedObj: any = {
     num: 1,
     bool: true,
@@ -345,7 +344,6 @@ unitTest(function consoleTestStringifyCircular(): void {
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
-/* eslint-enable @typescript-eslint/explicit-function-return-type */
 
 unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   const f = function f() {};
@@ -363,7 +361,7 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
 });
 
 unitTest(function consoleTestStringifyWithDepth(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
     stripColor(inspectArgs([nestedObj], { depth: 3 })),
@@ -1144,7 +1142,7 @@ class StringBuffer {
 }
 
 type ConsoleExamineFunc = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   csl: any,
   out: StringBuffer,
   err?: StringBuffer,
@@ -1530,7 +1528,6 @@ unitTest(function inspectGetters(): void {
 
   assertEquals(
     Deno.inspect({
-      // deno-lint-ignore getter-return
       get foo() {
         throw new Error("bar");
       },
@@ -1704,5 +1701,5 @@ unitTest(function inspectProxy(): void {
 
 unitTest(function inspectColors(): void {
   assertEquals(Deno.inspect(1), "1");
-  assertStringContains(Deno.inspect(1, { colors: true }), "\x1b[");
+  assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
 });

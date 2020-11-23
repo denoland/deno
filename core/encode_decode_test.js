@@ -1,4 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+function assert(cond) {
+  if (!cond) {
+    throw Error("assert");
+  }
+}
 
 function assertArrayEquals(a1, a2) {
   if (a1.length !== a2.length) throw Error("assert");

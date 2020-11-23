@@ -70,11 +70,11 @@
     }
 
     constructor(
-      name,
-      entryType,
-      startTime,
-      duration,
-      key,
+      name = null,
+      entryType = null,
+      startTime = null,
+      duration = null,
+      key = null,
     ) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
@@ -185,7 +185,7 @@
   }
 
   class Performance {
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
@@ -249,7 +249,10 @@
       startOrMeasureOptions = {},
       endMark,
     ) {
-      if (startOrMeasureOptions && typeof startOrMeasureOptions === "object") {
+      if (
+        startOrMeasureOptions && typeof startOrMeasureOptions === "object" &&
+        Object.keys(startOrMeasureOptions).length > 0
+      ) {
         if (endMark) {
           throw new TypeError("Options cannot be passed with endMark.");
         }

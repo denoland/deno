@@ -9,7 +9,7 @@ no "magical" module resolution. Instead, imported modules are specified as files
 (including extensions) or fully qualified URL imports. Typescript modules can be
 directly imported. E.g.
 
-```
+```ts
 import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import { queue } from "./collections.ts";
 ```

@@ -13,6 +13,7 @@
   "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
     ".cargo_home",
+    ".git",
     "cli/dts/lib.d.ts",
     "cli/dts/lib.dom*",
     "cli/dts/lib.es*",

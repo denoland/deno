@@ -11,7 +11,7 @@ import { assert, assertEquals } from "../../std/testing/asserts.ts";
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   reject: (reason?: any) => void;
 }
 
@@ -93,7 +93,7 @@ Deno.test({
       { type: "module" },
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     throwingWorker.onerror = (e: any): void => {
       e.preventDefault();
       assert(/Uncaught Error: Thrown error/.test(e.message));
@@ -133,7 +133,7 @@ Deno.test({
       { type: "module" },
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     fetchingWorker.onerror = (e: any): void => {
       e.preventDefault();
       promise.reject(e.message);
@@ -330,6 +330,30 @@ Deno.test({
       promise.resolve();
     };
     w.postMessage(null);
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "Worker event handler order",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const w = new Worker(
+      new URL("subdir/test_worker.ts", import.meta.url).href,
+      { type: "module", name: "tsWorker" },
+    );
+    const arr: number[] = [];
+    w.addEventListener("message", () => arr.push(1));
+    w.onmessage = (e): void => {
+      arr.push(2);
+    };
+    w.addEventListener("message", () => arr.push(3));
+    w.addEventListener("message", () => {
+      assertEquals(arr, [1, 2, 3]);
+      promise.resolve();
+    });
+    w.postMessage("Hello World");
     await promise;
     w.terminate();
   },

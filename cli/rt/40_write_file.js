@@ -18,7 +18,7 @@
       }
     }
 
-    const openOptions = !!options.append
+    const openOptions = options.append
       ? { write: true, create: true, append: true }
       : { write: true, create: true, truncate: true };
     const file = openSync(path, openOptions);
@@ -48,7 +48,7 @@
       }
     }
 
-    const openOptions = !!options.append
+    const openOptions = options.append
       ? { write: true, create: true, append: true }
       : { write: true, create: true, truncate: true };
     const file = await open(path, openOptions);

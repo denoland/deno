@@ -5,7 +5,7 @@
 
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
-You can use import maps with the `--importmap=<FILE>` CLI flag.
+You can use import maps with the `--import-map=<FILE>` CLI flag.
 
 Current limitations:
 
@@ -37,7 +37,7 @@ console.log(red("hello world"));
 Then:
 
 ```shell
-$ deno run --importmap=import_map.json --unstable color.ts
+$ deno run --import-map=import_map.json --unstable color.ts
 ```
 
 To use starting directory for absolute imports:

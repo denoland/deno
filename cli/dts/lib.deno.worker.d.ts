@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
-
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
@@ -60,5 +58,3 @@ declare var onerror:
 declare var close: () => void;
 declare var name: string;
 declare var postMessage: (message: any) => void;
-
-/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */

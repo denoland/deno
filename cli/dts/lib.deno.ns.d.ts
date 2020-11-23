@@ -40,7 +40,7 @@ declare interface Performance {
 
 declare interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   detail?: any;
 
   /** Timestamp to be used as the mark time. */
@@ -49,7 +49,7 @@ declare interface PerformanceMarkOptions {
 
 declare interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
@@ -676,6 +676,52 @@ declare namespace Deno {
     whence: SeekMode,
   ): Promise<number>;
 
+  /**
+   * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 1);
+   * Deno.fsyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
+   * ```
+   */
+  export function fsyncSync(rid: number): void;
+
+  /**
+   * Flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 1);
+   * await Deno.fsync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
+   * ```
+   */
+  export function fsync(rid: number): Promise<void>;
+
+  /*
+   * Synchronously flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.fdatasyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasyncSync(rid: number): void;
+
+  /**
+   * Flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.fdatasync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasync(rid: number): Promise<void>;
+
   /** Close the given resource ID (rid) which has been previously opened, such
    * as via opening or creating a file.  Closing a file when you are finished
    * with it is important to avoid leaking resources.
@@ -710,11 +756,11 @@ declare namespace Deno {
   }
 
   /** A handle for `stdin`. */
-  export const stdin: Reader & ReaderSync & Closer & { rid: number };
+  export const stdin: Reader & ReaderSync & Closer & { readonly rid: number };
   /** A handle for `stdout`. */
-  export const stdout: Writer & WriterSync & Closer & { rid: number };
+  export const stdout: Writer & WriterSync & Closer & { readonly rid: number };
   /** A handle for `stderr`. */
-  export const stderr: Writer & WriterSync & Closer & { rid: number };
+  export const stderr: Writer & WriterSync & Closer & { readonly rid: number };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -1226,7 +1272,7 @@ declare namespace Deno {
   export function rename(oldpath: string, newpath: string): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
-   *  encoded string. Reading a directory returns an empty string.
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = Deno.readTextFileSync("hello.txt");
@@ -1237,7 +1283,7 @@ declare namespace Deno {
   export function readTextFileSync(path: string | URL): string;
 
   /** Asynchronously reads and returns the entire contents of a file as utf8
-   *  encoded string. Reading a directory returns an empty string.
+   *  encoded string. Reading a directory throws an error.
    *
    * ```ts
    * const data = await Deno.readTextFile("hello.txt");
@@ -1801,7 +1847,7 @@ declare namespace Deno {
   export function metrics(): Metrics;
 
   interface ResourceMap {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     [rid: number]: any;
   }
 
@@ -2008,13 +2054,15 @@ declare namespace Deno {
     env?: string;
   };
 
-  interface Version {
-    deno: string;
-    v8: string;
-    typescript: string;
-  }
   /** Version related information. */
-  export const version: Version;
+  export const version: {
+    /** Deno's version. For example: `"1.0.0"` */
+    deno: string;
+    /** The V8 version used by Deno. For example: `"8.0.0.0"` */
+    v8: string;
+    /** The TypeScript version used by Deno. For example: `"4.0.0"` */
+    typescript: string;
+  };
 
   /** Returns the script arguments to the program. If for example we run a
    * program:

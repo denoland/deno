@@ -2,7 +2,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { gray, green, italic, red, yellow } = window.__bootstrap.colors;
+  const colors = window.__bootstrap.colors;
   const { exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
@@ -19,6 +19,8 @@
   }
 
   function formatDuration(time = 0) {
+    const gray = colors.maybeColor(colors.gray);
+    const italic = colors.maybeColor(colors.italic);
     const timeStr = `(${time}ms)`;
     return gray(italic(timeStr));
   }
@@ -139,6 +141,9 @@ finishing test case.`;
   }
 
   function reportToConsole(message) {
+    const green = colors.maybeColor(colors.green);
+    const red = colors.maybeColor(colors.red);
+    const yellow = colors.maybeColor(colors.yellow);
     const redFailed = red("FAILED");
     const greenOk = green("ok");
     const yellowIgnored = yellow("ignored");

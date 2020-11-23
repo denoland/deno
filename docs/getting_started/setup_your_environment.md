@@ -32,43 +32,25 @@ The supported shells are:
 Example (bash):
 
 ```shell
-deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
-source /usr/local/etc/bash_completion.d/deno.bash
+deno completions bash | sudo tee /etc/bash_completion.d/deno.bash > /dev/null
+source /etc/bash_completion.d/deno.bash
 ```
 
-Example (zsh without framework):
+Example (zsh):
 
 ```shell
-mkdir ~/.zsh # create a folder to save your completions. it can be anywhere
-deno completions zsh > ~/.zsh/_deno
+deno completions zsh | sudo tee /usr/local/share/zsh/site-functions/_deno
 ```
 
-then add this to your `.zshrc`
+Example (fish):
 
 ```shell
-fpath=(~/.zsh $fpath)
-autoload -Uz compinit
-compinit -u
+deno completions fish > ~/.config/fish/completions/deno.fish
 ```
-
-and restart your terminal. note that if completions are still not loading, you
-may need to run `rm ~/.zcompdump/` to remove previously generated completions
-and then `compinit` to generate them again.
-
-Example (zsh + oh-my-zsh) [recommended for zsh users] :
-
-```shell
-mkdir ~/.oh-my-zsh/custom/plugins/deno
-deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
-```
-
-After this add deno plugin under plugins tag in `~/.zshrc` file. for tools like
-`antigen` path will be `~/.antigen/bundles/robbyrussell/oh-my-zsh/plugins` and
-command will be `antigen bundle deno` and so on.
 
 Example (Powershell):
 
-```shel
+```shell
 deno completions powershell > $profile
 .$profile
 ```

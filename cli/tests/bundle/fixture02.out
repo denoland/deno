@@ -1,0 +1,14 @@
+const mod = function() {
+    const c = "c";
+    const c1 = c;
+    class C {
+    }
+    return {
+        c,
+        default: C
+    };
+}();
+const c = mod;
+const b = "b";
+console.log(b);
+console.log(mod);

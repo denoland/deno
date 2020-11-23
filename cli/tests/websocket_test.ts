@@ -273,3 +273,23 @@ Deno.test("echo arraybuffer with binaryType arraybuffer", async () => {
   };
   await promise;
 });
+
+Deno.test("Event Handlers order", async () => {
+  const promise = createResolvable();
+  const ws = new WebSocket("ws://localhost:4242");
+  const arr: number[] = [];
+  ws.onerror = (): void => fail();
+  ws.addEventListener("message", () => arr.push(1));
+  ws.onmessage = () => fail();
+  ws.addEventListener("message", () => {
+    arr.push(3);
+    ws.close();
+    assertEquals(arr, [1, 2, 3]);
+  });
+  ws.onmessage = () => arr.push(2);
+  ws.onopen = (): void => ws.send("Echo");
+  ws.onclose = (): void => {
+    promise.resolve();
+  };
+  await promise;
+});

@@ -1,17 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 ((window) => {
-  const { stdin, stdout } = window.__bootstrap.files;
+  const { stdin } = window.__bootstrap.files;
   const { isatty } = window.__bootstrap.tty;
   const LF = "\n".charCodeAt(0);
-  const encoder = new TextEncoder();
+  const CR = "\r".charCodeAt(0);
   const decoder = new TextDecoder();
+  const core = window.Deno.core;
 
   function alert(message = "Alert") {
     if (!isatty(stdin.rid)) {
       return;
     }
 
-    stdout.writeSync(encoder.encode(`${message} [Enter] `));
+    core.print(`${message} [Enter] `, false);
 
     readLineFromStdinSync();
   }
@@ -21,7 +22,7 @@
       return false;
     }
 
-    stdout.writeSync(encoder.encode(`${message} [y/N] `));
+    core.print(`${message} [y/N] `, false);
 
     const answer = readLineFromStdinSync();
 
@@ -35,10 +36,10 @@
       return null;
     }
 
-    stdout.writeSync(encoder.encode(`${message} `));
+    core.print(`${message} `, false);
 
     if (defaultValue) {
-      stdout.writeSync(encoder.encode(`[${defaultValue}] `));
+      core.print(`[${defaultValue}] `, false);
     }
 
     return readLineFromStdinSync() || defaultValue;
@@ -50,7 +51,20 @@
 
     while (true) {
       const n = stdin.readSync(c);
-      if (n === 0 || c[0] === LF) {
+      if (n === null || n === 0) {
+        break;
+      }
+      if (c[0] === CR) {
+        const n = stdin.readSync(c);
+        if (c[0] === LF) {
+          break;
+        }
+        buf.push(CR);
+        if (n === null || n === 0) {
+          break;
+        }
+      }
+      if (c[0] === LF) {
         break;
       }
       buf.push(c[0]);

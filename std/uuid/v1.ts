@@ -48,7 +48,7 @@ export function generate(
   let clockseq = options.clockseq !== undefined ? options.clockseq : _clockseq;
 
   if (node == null || clockseq == null) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     const seedBytes: any = options.random ||
       options.rng ||
       crypto.getRandomValues(new Uint8Array(16));

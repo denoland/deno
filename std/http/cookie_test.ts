@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Response, ServerRequest } from "./server.ts";
 import { deleteCookie, getCookies, setCookie } from "./cookie.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 
 Deno.test({
   name: "Cookie parser",
@@ -28,6 +28,63 @@ Deno.test({
       wide: "1",
       SID: "123",
     });
+  },
+});
+
+Deno.test({
+  name: "Cookie Name Validation",
+  fn(): void {
+    const res: Response = {};
+    const tokens = [
+      '"id"',
+      "id\t",
+      "i\td",
+      "i d",
+      "i;d",
+      "{id}",
+      "[id]",
+      '"',
+      "id\u0091",
+    ];
+    res.headers = new Headers();
+    tokens.forEach((name) => {
+      assertThrows(
+        (): void => {
+          setCookie(res, {
+            name,
+            value: "Cat",
+            httpOnly: true,
+            secure: true,
+            maxAge: 3,
+          });
+        },
+        Error,
+        'Invalid cookie name: "' + name + '".',
+      );
+    });
+  },
+});
+
+Deno.test({
+  name: "Cookie Path Validation",
+  fn(): void {
+    const res: Response = {};
+    const path = "/;domain=sub.domain.com";
+    res.headers = new Headers();
+    assertThrows(
+      (): void => {
+        setCookie(res, {
+          name: "Space",
+          value: "Cat",
+          httpOnly: true,
+          secure: true,
+          path,
+          maxAge: 3,
+        });
+      },
+      Error,
+      path + ": Invalid cookie path char ';'",
+    );
   },
 });
 
