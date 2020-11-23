@@ -115,6 +115,7 @@ fn create_compiler_snapshot(
     "es2020",
     "es2020.intl",
     "es2020.promise",
+    "es2020.sharedmemory",
     "es2020.string",
     "es2020.symbol.wellknown",
     "esnext",

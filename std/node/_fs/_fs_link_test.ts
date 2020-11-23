@@ -8,7 +8,7 @@ Deno.test({
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const linkedFile: string = tempFile + ".link";
-    await new Promise((res, rej) => {
+    await new Promise<void>((res, rej) => {
       link(tempFile, linkedFile, (err) => {
         if (err) rej(err);
         else res();
@@ -31,7 +31,7 @@ Deno.test({
   name: "ASYNC: hard linking files passes error to callback",
   async fn() {
     let failed = false;
-    await new Promise((res, rej) => {
+    await new Promise<void>((res, rej) => {
       link("no-such-file", "no-such-file", (err) => {
         if (err) rej(err);
         else res();
