@@ -66,6 +66,44 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Cookie Value Validation",
+  fn(): void {
+    const res: Response = {};
+    const tokens = [
+      "1f\tWa",
+      "\t",
+      "1f Wa",
+      "1f;Wa",
+      '"1fWa',
+      "1f\\Wa",
+      '1f"Wa',
+      '"',
+      "1fWa\u0005",
+      "1f\u0091Wa",
+    ];
+    res.headers = new Headers();
+    tokens.forEach((value) => {
+      assertThrows(
+        (): void => {
+          setCookie(
+            res,
+            {
+              name: "Space",
+              value,
+              httpOnly: true,
+              secure: true,
+              maxAge: 3
+            },
+          );
+        },
+        Error,
+        "RFC2616 cookie value",
+      );
+    });
+  },
+});
+
+Deno.test({
   name: "Cookie Path Validation",
   fn(): void {
     const res: Response = {};
