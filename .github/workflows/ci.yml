@@ -104,10 +104,9 @@ jobs:
       - name: Setup gcloud (unix)
         if: |
           runner.os != 'Windows' &&
-          matrix.kind == 'test_release'
-        #  &&
-        #  github.repository == 'denoland/deno' &&
-        #  github.ref == 'refs/heads/master'
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -117,10 +116,9 @@ jobs:
       - name: Setup gcloud (windows)
         if: |
           runner.os == 'Windows' &&
-          matrix.kind == 'test_release'
-        #  &&
-        #  github.repository == 'denoland/deno' &&
-        #  github.ref == 'refs/heads/master'
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
         uses: google-github-actions/setup-gcloud@master
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
@@ -240,7 +238,7 @@ jobs:
           gsutil cp ./target/release/*.zip gs://dl.deno.land/$(git rev-parse HEAD)/
           echo $(git rev-parse HEAD) > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
-    
+
       - name: Release stable
         uses: softprops/action-gh-release@v1
         if: |
