@@ -1,7 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 /** This module is browser compatible. */
-
 import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import {
   CHAR_BACKWARD_SLASH,
@@ -22,6 +21,10 @@ import { assert } from "../_util/assert.ts";
 export const sep = "\\";
 export const delimiter = ";";
 
+/**
+ * Resolves path segments into a `path`
+ * @param pathSegments to process to path
+ */
 export function resolve(...pathSegments: string[]): string {
   let resolvedDevice = "";
   let resolvedTail = "";
@@ -146,6 +149,10 @@ export function resolve(...pathSegments: string[]): string {
   return resolvedDevice + (resolvedAbsolute ? "\\" : "") + resolvedTail || ".";
 }
 
+/**
+ * Normalizes a `path`
+ * @param path to normalize
+ */
 export function normalize(path: string): string {
   assertPath(path);
   const len = path.length;
@@ -260,6 +267,10 @@ export function normalize(path: string): string {
   }
 }
 
+/**
+ * Verifies whether path is absolute
+ * @param path to verify
+ */
 export function isAbsolute(path: string): boolean {
   assertPath(path);
   const len = path.length;
@@ -278,6 +289,10 @@ export function isAbsolute(path: string): boolean {
   return false;
 }
 
+/**
+ * Join all given a sequence of `paths`,then normalizes the resulting path.
+ * @param paths to be joined and normalized
+ */
 export function join(...paths: string[]): string {
   const pathsCount = paths.length;
   if (pathsCount === 0) return ".";
@@ -340,10 +355,14 @@ export function join(...paths: string[]): string {
   return normalize(joined);
 }
 
-// It will solve the relative path from `from` to `to`, for instance:
-//  from = 'C:\\orandea\\test\\aaa'
-//  to = 'C:\\orandea\\impl\\bbb'
-// The output of the function should be: '..\\..\\impl\\bbb'
+/**
+ * It will solve the relative path from `from` to `to`, for instance:
+ *  from = 'C:\\orandea\\test\\aaa'
+ *  to = 'C:\\orandea\\impl\\bbb'
+ * The output of the function should be: '..\\..\\impl\\bbb'
+ * @param from relative path
+ * @param to relative path
+ */
 export function relative(from: string, to: string): string {
   assertPath(from);
   assertPath(to);
@@ -448,6 +467,10 @@ export function relative(from: string, to: string): string {
   }
 }
 
+/**
+ * Resolves path to a namespace path
+ * @param path to resolve to namespace
+ */
 export function toNamespacedPath(path: string): string {
   // Note: this will *probably* throw somewhere.
   if (typeof path !== "string") return path;
@@ -482,6 +505,10 @@ export function toNamespacedPath(path: string): string {
   return path;
 }
 
+/**
+ * Return the directory name of a `path`.
+ * @param path to determine name for
+ */
 export function dirname(path: string): string {
   assertPath(path);
   const len = path.length;
@@ -570,6 +597,11 @@ export function dirname(path: string): string {
   return path.slice(0, end);
 }
 
+/**
+ * Return the last portion of a `path`. Trailing directory separators are ignored.
+ * @param path to process
+ * @param ext of path directory
+ */
 export function basename(path: string, ext = ""): string {
   if (ext !== undefined && typeof ext !== "string") {
     throw new TypeError('"ext" argument must be a string');
@@ -655,6 +687,10 @@ export function basename(path: string, ext = ""): string {
   }
 }
 
+/**
+ * Return the extension of the `path`.
+ * @param path with extension
+ */
 export function extname(path: string): string {
   assertPath(path);
   let start = 0;
@@ -719,6 +755,10 @@ export function extname(path: string): string {
   return path.slice(startDot, end);
 }
 
+/**
+ * Generate a path from `FormatInputPathObject` object.
+ * @param pathObject with path
+ */
 export function format(pathObject: FormatInputPathObject): string {
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
@@ -728,6 +768,10 @@ export function format(pathObject: FormatInputPathObject): string {
   return _format("\\", pathObject);
 }
 
+/**
+ * Return a `ParsedPath` object of the `path`.
+ * @param path to process
+ */
 export function parse(path: string): ParsedPath {
   assertPath(path);
 
@@ -877,11 +921,13 @@ export function parse(path: string): ParsedPath {
   return ret;
 }
 
-/** Converts a file URL to a path string.
+/**
+ * Converts a file URL to a path string.
  *
  *      fromFileUrl("file:///home/foo"); // "\\home\\foo"
  *      fromFileUrl("file:///C:/Users/foo"); // "C:\\Users\\foo"
  *      fromFileUrl("file://localhost/home/foo"); // "\\\\localhost\\home\\foo"
+ * @param url of a file URL
  */
 export function fromFileUrl(url: string | URL): string {
   url = url instanceof URL ? url : new URL(url);
@@ -900,11 +946,13 @@ export function fromFileUrl(url: string | URL): string {
   return path;
 }
 
-/** Converts a path string to a file URL.
+/**
+ * Converts a path string to a file URL.
  *
  *      toFileUrl("\\home\\foo"); // new URL("file:///home/foo")
  *      toFileUrl("C:\\Users\\foo"); // new URL("file:///C:/Users/foo")
  *      toFileUrl("\\\\localhost\\home\\foo"); // new URL("file://localhost/home/foo")
+ * @param path to convert to file URL
  */
 export function toFileUrl(path: string): URL {
   if (!isAbsolute(path)) {

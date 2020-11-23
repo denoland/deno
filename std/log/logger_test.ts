@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertMatch } from "../testing/asserts.ts";
 import { Logger, LogRecord } from "./logger.ts";
 import { LevelName, LogLevels } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
@@ -243,5 +243,13 @@ Deno.test(
     });
     assertEquals(handler.messages[16], 'ERROR {"payload":"data","other":123}');
     assertEquals(handler.messages[17], 'ERROR {"payload":"data","other":123}');
+
+    // error
+    const error = new RangeError("Uh-oh!");
+    const data19: RangeError = logger.error(error);
+    assertEquals(data19, error);
+    const messages19 = handler.messages[18].split("\n");
+    assertEquals(messages19[0], `ERROR ${error.name}: ${error.message}`);
+    assertMatch(messages19[1], /^\s+at file:.*\d+:\d+$/);
   },
 );
