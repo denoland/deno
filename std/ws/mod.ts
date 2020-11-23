@@ -31,9 +31,7 @@ export interface WebSocketCloseEvent {
   reason?: string;
 }
 
-/**
-   * Returns true if input value is a WebSocketCloseEvent, false otherwise.
-*/
+/** Returns true if input value is a WebSocketCloseEvent, false otherwise. */
 export function isWebSocketCloseEvent(
   a: WebSocketEvent,
 ): a is WebSocketCloseEvent {
@@ -42,9 +40,7 @@ export function isWebSocketCloseEvent(
 
 export type WebSocketPingEvent = ["ping", Uint8Array];
 
-/**
-   * Returns true if input value is a WebSocketPingEvent, false otherwise.
-*/
+/** Returns true if input value is a WebSocketPingEvent, false otherwise. */
 export function isWebSocketPingEvent(
   a: WebSocketEvent,
 ): a is WebSocketPingEvent {
@@ -53,9 +49,7 @@ export function isWebSocketPingEvent(
 
 export type WebSocketPongEvent = ["pong", Uint8Array];
 
-/**
-   * Returns true if input value is a WebSocketPongEvent, false otherwise.
-*/
+/** Returns true if input value is a WebSocketPongEvent, false otherwise. */
 export function isWebSocketPongEvent(
   a: WebSocketEvent,
 ): a is WebSocketPongEvent {
