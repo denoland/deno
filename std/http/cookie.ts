@@ -40,6 +40,7 @@ function toString(cookie: Cookie): string {
   }
   const out: string[] = [];
   validateCookieName(cookie.name);
+  validateCookieValue(cookie.value);
   out.push(`${cookie.name}=${cookie.value}`);
 
   // Fallback for invalid Set-Cookie
@@ -109,6 +110,31 @@ function validatePath(path: string | null): void {
     ) {
       throw new Error(
         path + ": Invalid cookie path char '" + c + "'",
+      );
+    }
+  }
+}
+
+/**
+ *Validate Cookie Value.
+ * @see https://tools.ietf.org/html/rfc6265#section-4.1
+ * @param value Cookie value.
+ */
+function validateCookieValue(value: string | null): void {
+  if (value == null) return;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charAt(i);
+    if (
+      c < String.fromCharCode(0x21)  || c == String.fromCharCode(0x22) ||
+      c == String.fromCharCode(0x2c) || c == String.fromCharCode(0x3b) ||
+      c == String.fromCharCode(0x5c) || c == String.fromCharCode(0x7f)
+    ) {
+      throw new Error("RFC2616 cookie value cannot have '" + c + "'");
+    }
+    if (c > String.fromCharCode(0x80)) {
+      throw new Error(
+        "RFC2616 cookie value can only have US-ASCII chars" +
+          c.charCodeAt(0).toString(16),
       );
     }
   }
