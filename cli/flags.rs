@@ -77,6 +77,7 @@ pub enum DenoSubcommand {
   Upgrade {
     dry_run: bool,
     force: bool,
+    canary: bool,
     version: Option<String>,
     output: Option<PathBuf>,
     ca_file: Option<String>,
@@ -224,7 +225,7 @@ To evaluate code in the shell:
 lazy_static! {
   static ref LONG_VERSION: String = format!(
     "{} ({}, {}, {})\nv8 {}\ntypescript {}",
-    crate::version::DENO,
+    crate::version::deno(),
     crate::version::GIT_COMMIT_HASH,
     env!("PROFILE"),
     env!("TARGET"),
@@ -244,7 +245,8 @@ pub fn flags_from_vec(args: Vec<String>) -> Flags {
 
 /// Same as flags_from_vec but does not exit on error.
 pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
-  let app = clap_root();
+  let version = crate::version::deno();
+  let app = clap_root(&*version);
   let matches = app.get_matches_from_safe(args)?;
 
   let mut flags = Flags::default();
@@ -298,7 +300,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   Ok(flags)
 }
 
-fn clap_root<'a, 'b>() -> App<'a, 'b> {
+fn clap_root<'a, 'b>(version: &'b str) -> App<'a, 'b> {
   clap::App::new("deno")
     .bin_name("deno")
     .global_settings(&[
@@ -309,7 +311,7 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     // Disable clap's auto-detection of terminal width
     .set_term_width(0)
     // Disable each subcommand having its own version.
-    .version(crate::version::DENO)
+    .version(version)
     .long_version(LONG_VERSION.as_str())
     .arg(
       Arg::with_name("unstable")
@@ -430,7 +432,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let shell: &str = matches.value_of("shell").unwrap();
   let mut buf: Vec<u8> = vec![];
-  clap_root().gen_completions_to(
+  clap_root(&*crate::version::deno()).gen_completions_to(
     "deno",
     clap::Shell::from_str(shell).unwrap(),
     &mut buf,
@@ -625,6 +627,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
+  let canary = matches.is_present("canary");
   let version = matches.value_of("version").map(|s| s.to_string());
   let output = if matches.is_present("output") {
     let install_root = matches.value_of("output").unwrap();
@@ -636,6 +639,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
+    canary,
     version,
     output,
     ca_file,
@@ -950,6 +954,11 @@ update to a different location, use the --output flag
         .long("force")
         .short("f")
         .help("Replace current exe even if not out-of-date"),
+    )
+    .arg(
+      Arg::with_name("canary")
+        .long("canary")
+        .help("Upgrade to canary builds"),
     )
     .arg(ca_file_arg())
 }
@@ -1589,6 +1598,7 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
+          canary: true,
           version: None,
           output: None,
           ca_file: None,
@@ -2991,6 +3001,7 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: false,
           dry_run: false,
+          canary: false,
           version: None,
           output: None,
           ca_file: Some("example.crt".to_owned()),
