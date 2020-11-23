@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::fmt_errors::JsError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -11,6 +10,7 @@ use crate::worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
@@ -293,50 +293,40 @@ fn op_host_terminate_worker(
 fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::TerminalError(error) => {
-      let mut serialized_error = json!({
+    WorkerEvent::TerminalError(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => json!({
+        "type": "terminalError",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
         "type": "terminalError",
         "error": {
           "message": error.to_string(),
         }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
-          "type": "terminalError",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        });
-      }
-
-      serialized_error
-    }
-    WorkerEvent::Error(error) => {
-      let mut serialized_error = json!({
+      }),
+    },
+    WorkerEvent::Error(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => json!({
+        "type": "error",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
         "type": "error",
         "error": {
           "message": error.to_string(),
         }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
-          "type": "error",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        });
-      }
-
-      serialized_error
-    }
+      }),
+    },
   }
 }
 

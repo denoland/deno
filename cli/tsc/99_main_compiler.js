@@ -150,7 +150,7 @@ delete Object.prototype.__proto__;
 
   /** An object literal of the incremental compiler host, which provides the
    * specific "bindings" to the Deno environment that tsc needs to work.
-   * 
+   *
    * @type {ts.CompilerHost} */
   const host = {
     fileExists(fileName) {
@@ -299,7 +299,7 @@ delete Object.prototype.__proto__;
    */
 
   /** The API that is called by Rust when executing a request.
-   * @param {Request} request 
+   * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames }) {
     setLogDebug(debugFlag, "TS");
@@ -309,6 +309,11 @@ delete Object.prototype.__proto__;
 
     const { options, errors: configFileParsingDiagnostics } = ts
       .convertCompilerOptionsFromJson(config, "", "tsconfig.json");
+    // The `allowNonTsExtensions` is a "hidden" compiler option used in VSCode
+    // which is not allowed to be passed in JSON, we need it to allow special
+    // URLs which Deno supports. So we need to either ignore the diagnostic, or
+    // inject it ourselves.
+    Object.assign(options, { allowNonTsExtensions: true });
     const program = ts.createIncrementalProgram({
       rootNames,
       options,
@@ -338,7 +343,7 @@ delete Object.prototype.__proto__;
   let hasStarted = false;
 
   /** Startup the runtime environment, setting various flags.
-   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg 
+   * @param {{ debugFlag?: boolean; legacyFlag?: boolean; }} msg
    */
   function startup({ debugFlag = false }) {
     if (hasStarted) {

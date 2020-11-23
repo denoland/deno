@@ -6,6 +6,7 @@ import * as path from "../path/mod.ts";
 import * as all from "./process.ts";
 import { argv, env } from "./process.ts";
 import { delay } from "../async/delay.ts";
+import "./global.ts";
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)

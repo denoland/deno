@@ -19,6 +19,7 @@ Deno.test("catSmoke", async function (): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-read",
       relative(Deno.cwd(), resolve(moduleDir, "cat.ts")),
       relative(Deno.cwd(), resolve(moduleDir, "..", "README.md")),

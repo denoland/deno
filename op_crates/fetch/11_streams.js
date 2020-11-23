@@ -81,13 +81,14 @@
         if (value instanceof Map) {
           const clonedMap = new Map();
           objectCloneMemo.set(value, clonedMap);
-          value.forEach((v, k) => clonedMap.set(k, cloneValue(v)));
+          value.forEach((v, k) => {
+            clonedMap.set(cloneValue(k), cloneValue(v));
+          });
           return clonedMap;
         }
         if (value instanceof Set) {
-          const clonedSet = new Map();
+          const clonedSet = new Set([...value].map(cloneValue));
           objectCloneMemo.set(value, clonedSet);
-          value.forEach((v, k) => clonedSet.set(k, cloneValue(v)));
           return clonedSet;
         }
 
@@ -97,6 +98,7 @@
         for (const key of sourceKeys) {
           clonedObj[key] = cloneValue(value[key]);
         }
+        Reflect.setPrototypeOf(clonedObj, Reflect.getPrototypeOf(value));
         return clonedObj;
       }
       case "symbol":

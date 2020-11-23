@@ -131,6 +131,8 @@ export class Logger {
       typeof data === "symbol"
     ) {
       return String(data);
+    } else if (data instanceof Error) {
+      return data.stack!;
     } else if (typeof data === "object") {
       return JSON.stringify(data);
     }
