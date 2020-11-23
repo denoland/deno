@@ -70,6 +70,8 @@ pub async fn op_ws_create(
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
+  request = request.header("User-Agent", format!("Deno/{}", crate::version::DENO));
+
   if !args.protocols.is_empty() {
     request = request.header("Sec-WebSocket-Protocol", args.protocols);
   }
