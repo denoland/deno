@@ -92,7 +92,7 @@ Deno.test({
               value,
               httpOnly: true,
               secure: true,
-              maxAge: 3
+              maxAge: 3,
             },
           );
         },

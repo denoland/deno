@@ -125,7 +125,7 @@ function validateCookieValue(value: string | null): void {
   for (let i = 0; i < value.length; i++) {
     const c = value.charAt(i);
     if (
-      c < String.fromCharCode(0x21)  || c == String.fromCharCode(0x22) ||
+      c < String.fromCharCode(0x21) || c == String.fromCharCode(0x22) ||
       c == String.fromCharCode(0x2c) || c == String.fromCharCode(0x3b) ||
       c == String.fromCharCode(0x5c) || c == String.fromCharCode(0x7f)
     ) {
