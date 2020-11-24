@@ -262,36 +262,22 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     flags.log_level = Some(Level::Error);
   }
 
-  if let Some(m) = matches.subcommand_matches("run") {
-    run_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("fmt") {
-    fmt_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("types") {
-    types_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("cache") {
-    cache_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("info") {
-    info_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("eval") {
-    eval_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("repl") {
-    repl_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("bundle") {
-    bundle_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("install") {
-    install_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("completions") {
-    completions_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("test") {
-    test_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("upgrade") {
-    upgrade_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("doc") {
-    doc_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("lint") {
-    lint_parse(&mut flags, m);
-  } else {
-    repl_parse(&mut flags, &matches);
+  match matches.subcommand() {
+    Some(("run", m)) => run_parse(&mut flags, m),
+    Some(("fmt", m)) => fmt_parse(&mut flags, m),
+    Some(("types", m)) => types_parse(&mut flags, m),
+    Some(("cache", m)) => cache_parse(&mut flags, m),
+    Some(("info", m)) => info_parse(&mut flags, m),
+    Some(("eval", m)) => eval_parse(&mut flags, m),
+    Some(("repl", m)) => repl_parse(&mut flags, m),
+    Some(("bundle", m)) => bundle_parse(&mut flags, m),
+    Some(("install", m)) => install_parse(&mut flags, m),
+    Some(("completions", m)) => completions_parse(&mut flags, m),
+    Some(("test", m)) => test_parse(&mut flags, m),
+    Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
+    Some(("doc", m)) => doc_parse(&mut flags, m),
+    Some(("lint", m)) => lint_parse(&mut flags, m),
+    _ => repl_parse(&mut flags, &matches),
   }
 
   Ok(flags)
@@ -299,7 +285,6 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
 
 fn clap_root<'a>() -> App<'a> {
   App::new("deno")
-    .bin_name("deno")
     .global_setting(AppSettings::UnifiedHelpMessage)
     .global_setting(AppSettings::ColorNever)
     .global_setting(AppSettings::VersionlessSubcommands)
@@ -425,29 +410,20 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  use clap_generate::generators::{Bash, Elvish, Fish, PowerShell, Zsh};
+  use clap_generate::generators::{Bash, Fish, PowerShell, Zsh};
 
-  let shell: &str = matches.value_of("shell").unwrap();
   let mut buf: Vec<u8> = vec![];
 
-  match shell {
-    "bash" => {
-      clap_generate::generate::<Bash, _>(&mut clap_root(), "deno", &mut buf)
+  let mut app = clap_root();
+  let name = "deno";
+
+  match matches.value_of("shell").unwrap() {
+    "bash" => clap_generate::generate::<Bash, _>(&mut app, name, &mut buf),
+    "fish" => clap_generate::generate::<Fish, _>(&mut app, name, &mut buf),
+    "powershell" => {
+      clap_generate::generate::<PowerShell, _>(&mut app, name, &mut buf)
     }
-    "elvish" => {
-      clap_generate::generate::<Elvish, _>(&mut clap_root(), "deno", &mut buf)
-    }
-    "fish" => {
-      clap_generate::generate::<Fish, _>(&mut clap_root(), "deno", &mut buf)
-    }
-    "powershell" => clap_generate::generate::<PowerShell, _>(
-      &mut clap_root(),
-      "deno",
-      &mut buf,
-    ),
-    "zsh" => {
-      clap_generate::generate::<Zsh, _>(&mut clap_root(), "deno", &mut buf)
-    }
+    "zsh" => clap_generate::generate::<Zsh, _>(&mut app, name, &mut buf),
     _ => unreachable!(),
   }
 
