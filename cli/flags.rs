@@ -431,11 +431,23 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let mut buf: Vec<u8> = vec![];
 
   match shell {
-    "bash" => clap_generate::generate::<Bash, _>(&mut clap_root(), "deno", &mut buf),
-    "elvish" => clap_generate::generate::<Elvish, _>(&mut clap_root(), "deno", &mut buf),
-    "fish" => clap_generate::generate::<Fish, _>(&mut clap_root(), "deno", &mut buf),
-    "powershell" => clap_generate::generate::<PowerShell, _>(&mut clap_root(), "deno", &mut buf),
-    "zsh" => clap_generate::generate::<Zsh, _>(&mut clap_root(), "deno", &mut buf),
+    "bash" => {
+      clap_generate::generate::<Bash, _>(&mut clap_root(), "deno", &mut buf)
+    }
+    "elvish" => {
+      clap_generate::generate::<Elvish, _>(&mut clap_root(), "deno", &mut buf)
+    }
+    "fish" => {
+      clap_generate::generate::<Fish, _>(&mut clap_root(), "deno", &mut buf)
+    }
+    "powershell" => clap_generate::generate::<PowerShell, _>(
+      &mut clap_root(),
+      "deno",
+      &mut buf,
+    ),
+    "zsh" => {
+      clap_generate::generate::<Zsh, _>(&mut clap_root(), "deno", &mut buf)
+    }
     _ => unreachable!(),
   }
 
@@ -721,7 +733,9 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .about("Ignore formatting particular source files. Use with --unstable"),
+        .about(
+          "Ignore formatting particular source files. Use with --unstable",
+        ),
     )
     .arg(
       Arg::new("files")
@@ -733,8 +747,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 }
 
 fn repl_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("repl"), false)
-    .about("Read Eval Print Loop")
+  runtime_args(App::new("repl"), false).about("Read Eval Print Loop")
 }
 
 fn install_subcommand<'a>() -> App<'a> {
@@ -794,11 +807,7 @@ These must be added to the path manually if required.")
 
 fn bundle_subcommand<'a>() -> App<'a> {
   compile_args(App::new("bundle"))
-    .arg(
-      Arg::new("source_file")
-        .takes_value(true)
-        .required(true),
-    )
+    .arg(Arg::new("source_file").takes_value(true).required(true))
     .arg(Arg::new("out_file").takes_value(true).required(false))
     .arg(watch_arg())
     .about("Bundle module and dependencies into single file")
@@ -816,14 +825,7 @@ fn completions_subcommand<'a>() -> App<'a> {
     .setting(AppSettings::DisableHelpSubcommand)
     .arg(
       Arg::new("shell")
-        // TODO
-        .possible_values(&[
-          "bash",
-          "elvish",
-          "fish",
-          "powershell",
-          "zsh",
-        ])
+        .possible_values(&["bash", "elvish", "fish", "powershell", "zsh"])
         .required(true),
     )
     .about("Generate shell completions")
@@ -1608,9 +1610,9 @@ mod tests {
   #[test]
   fn version() {
     let r = flags_from_vec_safe(svec!["deno", "--version"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::VersionDisplayed);
+    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
     let r = flags_from_vec_safe(svec!["deno", "-V"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::VersionDisplayed);
+    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
   }
 
   #[test]
