@@ -223,9 +223,8 @@ To evaluate code in the shell:
 
 lazy_static! {
   static ref LONG_VERSION: String = format!(
-    "{} ({}, {}, {})\nv8 {}\ntypescript {}",
+    "{} ({}, {})\nv8 {}\ntypescript {}",
     crate::version::deno(),
-    crate::version::GIT_COMMIT_HASH,
     env!("PROFILE"),
     env!("TARGET"),
     crate::version::v8(),
