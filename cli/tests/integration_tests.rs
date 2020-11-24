@@ -2423,12 +2423,6 @@ itest!(_075_import_local_query_hash {
   output: "075_import_local_query_hash.ts.out",
 });
 
-itest!(_076_websocket_no_permission {
-  args: "run 076_websocket_no_permission.js",
-  output: "076_websocket_no_permission.js.out",
-  exit_code: 0,
-});
-
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
