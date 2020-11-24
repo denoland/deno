@@ -38,7 +38,8 @@ pub async fn upgrade_command(
 
   let install_version = match version {
     Some(passed_version) => {
-      if !force && output.is_none() && crate::version::DENO == passed_version {
+      if !force && output.is_none() && crate::version::deno() == passed_version
+      {
         println!("Version {} is already installed", passed_version);
         return Ok(());
       } else {
@@ -48,7 +49,7 @@ pub async fn upgrade_command(
     None => {
       let latest_version = get_latest_version(&client).await?;
 
-      let current = semver_parse(crate::version::DENO).unwrap();
+      let current = semver_parse(&*crate::version::deno()).unwrap();
       let latest = match semver_parse(&latest_version) {
         Ok(v) => v,
         Err(_) => {
@@ -60,7 +61,7 @@ pub async fn upgrade_command(
       if !force && output.is_none() && current >= latest {
         println!(
           "Local deno version {} is the most recent release",
-          crate::version::DENO
+          crate::version::deno()
         );
         return Ok(());
       } else {
