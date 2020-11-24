@@ -101,7 +101,7 @@ Deno.test(
       read: true,
     });
 
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       writeFile(file.rid, "hello world", (err) => {
         if (err) return reject(err);
         resolve();
@@ -207,7 +207,7 @@ Deno.test(
       read: true,
     });
 
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       writeFile(file.rid, "hello world", { mode: 0o777 }, (err) => {
         if (err) return reject(err);
         resolve();

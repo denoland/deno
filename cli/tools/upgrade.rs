@@ -1,54 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides feature to upgrade deno executable
-//!
-//! At the moment it is only consumed using CLI but in
-//! the future it can be easily extended to provide
-//! the same functions as ops available in JS runtime.
 
-use crate::http_util::fetch_once;
-use crate::http_util::FetchOnceResult;
 use crate::AnyError;
-use deno_core::error::custom_error;
-use deno_core::futures::FutureExt;
-use deno_core::url::Url;
 use deno_fetch::reqwest;
-use deno_fetch::reqwest::redirect::Policy;
 use deno_fetch::reqwest::Client;
-use regex::Regex;
 use semver_parser::version::parse as semver_parse;
-use semver_parser::version::Version;
 use std::fs;
-use std::future::Future;
-use std::io::prelude::*;
 use std::path::Path;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::process::Command;
-use std::process::Stdio;
-use std::string::String;
 use tempfile::TempDir;
 
 lazy_static! {
   static ref ARCHIVE_NAME: String = format!("deno-{}.zip", env!("TARGET"));
 }
 
-async fn get_latest_version(client: &Client) -> Result<Version, AnyError> {
-  println!("Checking for latest version");
-  let body = client
-    .get(Url::parse(
-      "https://github.com/denoland/deno/releases/latest",
-    )?)
-    .send()
-    .await?
-    .text()
-    .await?;
-  let v = find_version(&body)?;
-  Ok(semver_parse(&v).unwrap())
-}
+const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
-/// Asynchronously updates deno executable to greatest version
-/// if greatest version is available.
 pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
@@ -56,55 +25,55 @@ pub async fn upgrade_command(
   output: Option<PathBuf>,
   ca_file: Option<String>,
 ) -> Result<(), AnyError> {
-  let mut client_builder = Client::builder().redirect(Policy::none());
+  let mut client_builder = Client::builder();
 
   // If we have been provided a CA Certificate, add it into the HTTP client
   if let Some(ca_file) = ca_file {
-    let buf = std::fs::read(ca_file);
-    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
+    let buf = std::fs::read(ca_file)?;
+    let cert = reqwest::Certificate::from_pem(&buf)?;
     client_builder = client_builder.add_root_certificate(cert);
   }
 
   let client = client_builder.build()?;
 
-  let current_version = semver_parse(crate::version::DENO).unwrap();
-
   let install_version = match version {
-    Some(passed_version) => match semver_parse(&passed_version) {
-      Ok(ver) => {
-        if !force && current_version == ver {
-          println!("Version {} is already installed", &ver);
-          return Ok(());
-        } else {
-          ver
-        }
+    Some(passed_version) => {
+      if !force && output.is_none() && crate::version::DENO == passed_version {
+        println!("Version {} is already installed", passed_version);
+        return Ok(());
+      } else {
+        passed_version
       }
-      Err(_) => {
-        eprintln!("Invalid semver passed");
-        std::process::exit(1)
-      }
-    },
+    }
     None => {
       let latest_version = get_latest_version(&client).await?;
 
-      if !force && current_version >= latest_version {
+      let current = semver_parse(crate::version::DENO).unwrap();
+      let latest = match semver_parse(&latest_version) {
+        Ok(v) => v,
+        Err(_) => {
+          eprintln!("Invalid semver passed");
+          std::process::exit(1)
+        }
+      };
+
+      if !force && output.is_none() && current >= latest {
         println!(
           "Local deno version {} is the most recent release",
-          &crate::version::DENO
+          crate::version::DENO
         );
         return Ok(());
       } else {
+        println!("Found latest version {}", &latest_version);
         latest_version
       }
     }
   };
 
-  let archive_data = download_package(
-    &compose_url_to_exec(&install_version)?,
-    client,
-    &install_version,
-  )
-  .await?;
+  let archive_data = download_package(client, &install_version).await?;
+
+  println!("Deno is upgrading to version {}", &install_version);
+
   let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
@@ -121,58 +90,43 @@ pub async fn upgrade_command(
     }
   }
 
-  println!("Upgrade done successfully");
+  println!("Upgraded successfully");
 
   Ok(())
 }
 
-fn download_package(
-  url: &Url,
+async fn get_latest_version(client: &Client) -> Result<String, AnyError> {
+  println!("Looking up latest version");
+
+  let res = client
+    .get(&format!("{}/latest", RELEASE_URL))
+    .send()
+    .await?;
+  let version = res.url().path_segments().unwrap().last().unwrap();
+
+  Ok(version.replace("v", ""))
+}
+
+async fn download_package(
   client: Client,
-  version: &Version,
-) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, AnyError>>>> {
-  println!("downloading {}", url);
-  let url = url.clone();
-  let version = version.clone();
-  let fut = async move {
-    match fetch_once(client.clone(), &url, None).await {
-      Ok(result) => {
-        println!(
-          "Version has been found\nDeno is upgrading to version {}",
-          &version
-        );
-        match result {
-          FetchOnceResult::Code(source, _) => Ok(source),
-          FetchOnceResult::NotModified => unreachable!(),
-          FetchOnceResult::Redirect(_url, _) => {
-            download_package(&_url, client, &version).await
-          }
-        }
-      }
-      Err(_) => {
-        println!("Version has not been found, aborting");
-        std::process::exit(1)
-      }
-    }
-  };
-  fut.boxed_local()
-}
-
-fn compose_url_to_exec(version: &Version) -> Result<Url, AnyError> {
-  let s = format!(
-    "https://github.com/denoland/deno/releases/download/v{}/{}",
-    version, *ARCHIVE_NAME
+  install_version: &str,
+) -> Result<Vec<u8>, AnyError> {
+  let download_url = format!(
+    "{}/download/v{}/{}",
+    RELEASE_URL, install_version, *ARCHIVE_NAME
   );
-  Url::parse(&s).map_err(AnyError::from)
-}
 
-fn find_version(text: &str) -> Result<String, AnyError> {
-  let re = Regex::new(r#"v([^\?]+)?""#)?;
-  if let Some(_mat) = re.find(text) {
-    let mat = _mat.as_str();
-    return Ok(mat[1..mat.len() - 1].to_string());
+  println!("Checking {}", &download_url);
+
+  let res = client.get(&download_url).send().await?;
+
+  if res.status().is_success() {
+    println!("Download has been found");
+    Ok(res.bytes().await?.to_vec())
+  } else {
+    println!("Download could not be found, aborting");
+    std::process::exit(1)
   }
-  Err(custom_error("NotFound", "Cannot read latest tag version"))
 }
 
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
@@ -189,16 +143,6 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
     .and_then(|ext| ext.to_str())
     .unwrap();
   let unpack_status = match archive_ext {
-    "gz" => {
-      let exe_file = fs::File::create(&exe_path)?;
-      let mut cmd = Command::new("gunzip")
-        .arg("-c")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::from(exe_file))
-        .spawn()?;
-      cmd.stdin.as_mut().unwrap().write_all(&archive_data)?;
-      cmd.wait()?
-    }
     "zip" if cfg!(windows) => {
       let archive_path = temp_dir.join("deno.zip");
       fs::write(&archive_path, &archive_data)?;
@@ -255,10 +199,7 @@ fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
   Ok(())
 }
 
-fn check_exe(
-  exe_path: &Path,
-  expected_version: &Version,
-) -> Result<(), AnyError> {
+fn check_exe(exe_path: &Path, expected_version: &str) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
@@ -267,10 +208,4 @@ fn check_exe(
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())
-}
-
-#[test]
-fn test_find_version() {
-  let url = "<html><body>You are being <a href=\"https://github.com/denoland/deno/releases/tag/v0.36.0\">redirected</a>.</body></html>";
-  assert_eq!(find_version(url).unwrap(), "0.36.0".to_string());
 }

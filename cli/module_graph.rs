@@ -1909,6 +1909,7 @@ pub mod tests {
       ("file:///tests/fixture12.ts", "fixture12.out"),
       ("file:///tests/fixture13.ts", "fixture13.out"),
       ("file:///tests/fixture14.ts", "fixture14.out"),
+      ("file:///tests/fixture15.ts", "fixture15.out"),
     ];
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/bundle");
@@ -2180,7 +2181,7 @@ pub mod tests {
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert!(actual.contains("const b = \"b\";"));
-    assert!(actual.contains("console.log(b);"));
+    assert!(actual.contains("console.log(mod);"));
   }
 
   #[tokio::test]
