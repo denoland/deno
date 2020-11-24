@@ -363,6 +363,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true);
 
   let root = if matches.is_present("root") {
+    // TODO: v3 - bug, is None even though is present
     let install_root = matches.value_of("root").unwrap();
     Some(PathBuf::from(install_root))
   } else {
@@ -989,8 +990,7 @@ Show documentation for runtime built-ins:
         .about("Dot separated path to symbol")
         .takes_value(true)
         .required(false)
-        .conflicts_with("json")
-        .conflicts_with("pretty"),
+        .conflicts_with("json"),
     )
 }
 
@@ -1384,6 +1384,7 @@ fn watch_arg<'a>() -> Arg<'a> {
   Arg::new("watch")
     .requires("unstable")
     .long("watch")
+    // TODO: v3 - conflict arg must be on subcommand
     .conflicts_with("inspect")
     .conflicts_with("inspect-brk")
     .about("Watch for file changes and restart process automatically")
