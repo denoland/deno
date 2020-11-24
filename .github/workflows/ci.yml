@@ -127,6 +127,15 @@ jobs:
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
+      - name: Configure canary build
+        if: |
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        shell: bash
+        run: |
+          echo "DENO_CANARY=true" >> $GITHUB_ENV
+
       - name: Log versions
         run: |
           node -v
