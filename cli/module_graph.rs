@@ -319,7 +319,7 @@ impl Module {
   /// version.
   pub fn is_emit_valid(&self, config: &[u8]) -> bool {
     if let Some(version) = self.maybe_version.clone() {
-      version == get_version(&self.source, &version::deno(), config)
+      version == get_version(&self.source, version::DENO, config)
     } else {
       false
     }
@@ -484,8 +484,7 @@ impl Module {
 
   /// Calculate the hashed version of the module and update the `maybe_version`.
   pub fn set_version(&mut self, config: &[u8]) {
-    self.maybe_version =
-      Some(get_version(&self.source, &version::deno(), config))
+    self.maybe_version = Some(get_version(&self.source, version::DENO, config))
   }
 
   pub fn size(&self) -> usize {
@@ -782,7 +781,7 @@ impl Graph {
     let root_names = self.get_root_names(!config.get_check_js());
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
-      vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
+      vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
 
     let response = tsc::exec(
@@ -905,7 +904,7 @@ impl Graph {
 
     let root_names = self.get_root_names(!config.get_check_js());
     let hash_data =
-      vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
+      vec![config.as_bytes(), version::DENO.as_bytes().to_owned()];
     let graph = Rc::new(RefCell::new(self));
 
     let response = tsc::exec(
@@ -1845,7 +1844,7 @@ pub mod tests {
   #[test]
   fn test_module_emit_valid() {
     let source = "console.log(42);".to_string();
-    let maybe_version = Some(get_version(&source, &version::deno(), b""));
+    let maybe_version = Some(get_version(&source, version::DENO, b""));
     let module = Module {
       source,
       maybe_version,
@@ -1855,7 +1854,7 @@ pub mod tests {
 
     let source = "console.log(42);".to_string();
     let old_source = "console.log(43);";
-    let maybe_version = Some(get_version(old_source, &version::deno(), b""));
+    let maybe_version = Some(get_version(old_source, version::DENO, b""));
     let module = Module {
       source,
       maybe_version,
@@ -1883,7 +1882,7 @@ pub mod tests {
   #[test]
   fn test_module_set_version() {
     let source = "console.log(42);".to_string();
-    let expected = Some(get_version(&source, &version::deno(), b""));
+    let expected = Some(get_version(&source, version::DENO, b""));
     let mut module = Module {
       source,
       ..Module::default()
