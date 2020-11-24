@@ -94,7 +94,9 @@ async function fetchExactPath(
   const request = encoder.encode("GET " + path + " HTTP/1.1\r\n\r\n");
   let conn: void | Deno.Conn;
   try {
-    conn = await Deno.connect({ hostname: hostname, port: port });
+    conn = await Deno.connect(
+      { hostname: hostname, port: port, transport: "tcp" },
+    );
     await Deno.writeAll(conn, request);
     let currentResult = "";
     let contentLength = -1;
@@ -243,9 +245,8 @@ Deno.test("checkPathTraversal", async function (): Promise<void> {
 Deno.test("checkPathTraversalNoLeadingSlash", async function (): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetchExactPath("localhost", 4507, "../../../..");
+    const res = await fetchExactPath("127.0.0.1", 4507, "../../../..");
     assertEquals(res.status, 400);
-    //assertStringIncludes(res.body, 'README.md');
   } finally {
     await killFileServer();
   }
@@ -256,7 +257,7 @@ Deno.test("checkPathTraversalAbsoluteURI", async function (): Promise<void> {
   try {
     //allowed per https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
     const res = await fetchExactPath(
-      "localhost",
+      "127.0.0.1",
       4507,
       "http://localhost/../../../..",
     );
