@@ -52,6 +52,7 @@ struct CheckPermissionArgs {
   url: String,
 }
 
+// needed because creating a ws instance in js is sync & should throw sync, but op is async
 pub fn op_ws_check_permission(
   state: &mut OpState,
   args: Value,
@@ -79,6 +80,15 @@ pub async fn op_ws_create(
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
   let args: CreateArgs = serde_json::from_value(args)?;
+
+  {
+    let s = state.borrow();
+    s.borrow::<Permissions>()
+      .check_net_url(&url::Url::parse(&args.url)?)
+      .expect(
+        "Permission check should have been done in op_ws_check_permission",
+      );
+  }
 
   let ca_file = {
     let cli_state = super::global_state2(&state);
