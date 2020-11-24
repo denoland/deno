@@ -129,10 +129,9 @@ jobs:
 
       - name: Configure canary build
         if: |
-          matrix.kind == 'test_release'
-        #  &&
-        # github.repository == 'denoland/deno' &&
-        # github.ref == 'refs/heads/master'
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
         shell: bash
         run: |
           echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -204,7 +203,6 @@ jobs:
           matrix.kind == 'test_release'
         run: |
           cd target/release
-          deno --version
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           ./deno types > lib.deno.d.ts
 
@@ -214,7 +212,6 @@ jobs:
           matrix.kind == 'test_release'
         run: |
           cd target/release
-          deno --version
           zip -r deno-x86_64-apple-darwin.zip deno
 
       - name: Pre-release (windows)
@@ -222,7 +219,6 @@ jobs:
           startsWith(matrix.os, 'windows') &&
           matrix.kind == 'test_release'
         run: |
-          target/release/deno.exe --version
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
 
       - name: Upload canary (unix)
