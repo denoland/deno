@@ -415,7 +415,8 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let mut buf: Vec<u8> = vec![];
 
-  let mut app = clap_root(&*crate::version::deno());
+  let version = crate::version::deno();
+  let mut app = clap_root(&*version);
   let name = "deno";
 
   match matches.value_of("shell").unwrap() {
