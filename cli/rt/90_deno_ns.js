@@ -100,7 +100,6 @@
     permissions: __bootstrap.permissions.permissions,
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
-    openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,

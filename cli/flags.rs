@@ -99,7 +99,6 @@ pub struct Flags {
   pub allow_env: bool,
   pub allow_hrtime: bool,
   pub allow_net: bool,
-  pub allow_plugin: bool,
   pub allow_read: bool,
   pub allow_run: bool,
   pub allow_write: bool,
@@ -178,10 +177,6 @@ impl Flags {
 
     if self.allow_run {
       args.push("--allow-run".to_string());
-    }
-
-    if self.allow_plugin {
-      args.push("--allow-plugin".to_string());
     }
 
     if self.allow_hrtime {
@@ -450,7 +445,6 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_run = true;
   flags.allow_read = true;
   flags.allow_write = true;
-  flags.allow_plugin = true;
   flags.allow_hrtime = true;
 }
 
@@ -461,7 +455,6 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_run = true;
   flags.allow_read = true;
   flags.allow_write = true;
-  flags.allow_plugin = true;
   flags.allow_hrtime = true;
   let code = matches.value_of("code").unwrap().to_string();
   let as_typescript = matches.is_present("ts");
@@ -1105,11 +1098,6 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow running subprocesses"),
     )
     .arg(
-      Arg::with_name("allow-plugin")
-        .long("allow-plugin")
-        .help("Allow loading plugins"),
-    )
-    .arg(
       Arg::with_name("allow-hrtime")
         .long("allow-hrtime")
         .help("Allow high resolution time measurement"),
@@ -1514,9 +1502,6 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("allow-run") {
     flags.allow_run = true;
   }
-  if matches.is_present("allow-plugin") {
-    flags.allow_plugin = true;
-  }
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
@@ -1527,7 +1512,6 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_run = true;
     flags.allow_read = true;
     flags.allow_write = true;
-    flags.allow_plugin = true;
     flags.allow_hrtime = true;
   }
 }
@@ -1736,7 +1720,6 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2100,7 +2083,6 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2123,7 +2105,6 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2151,7 +2132,6 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2188,7 +2168,6 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2208,7 +2187,6 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2242,7 +2220,6 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
       }

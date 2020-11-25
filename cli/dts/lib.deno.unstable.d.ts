@@ -190,25 +190,6 @@ declare namespace Deno {
     speed: number | undefined;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Open and initialize a plugin.
-   *
-   * ```ts
-   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   * const opId = Deno.core.ops()["some_op"];
-   * const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
-   * console.log(`Response from plugin ${response}`);
-   * ```
-   *
-   * Requires `allow-plugin` permission.
-   *
-   * The plugin system is not stable and will change in the future, hence the
-   * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/master/test_plugin
-   */
-  export function openPlugin(filename: string): number;
-
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
     Warning = 0,
@@ -1049,7 +1030,6 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
-    | "plugin"
     | "hrtime";
 
   /** The current status of the permission.
@@ -1086,10 +1066,6 @@ declare namespace Deno {
     name: "env";
   }
 
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
-  }
-
   export interface HrtimePermissionDescriptor {
     name: "hrtime";
   }
@@ -1104,7 +1080,6 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export class Permissions {

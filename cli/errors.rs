@@ -21,17 +21,6 @@ use std::env;
 use std::error::Error;
 use std::io;
 
-fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
-  use dlopen::Error::*;
-  match error {
-    NullCharacter(_) => "InvalidData",
-    OpeningLibraryError(ref e) => get_io_error_class(e),
-    SymbolGettingError(ref e) => get_io_error_class(e),
-    AddrNotMatchingDll(ref e) => get_io_error_class(e),
-    NullSymbol => "NotFound",
-  }
-}
-
 fn get_env_var_error_class(error: &env::VarError) -> &'static str {
   use env::VarError::*;
   match error {
@@ -174,10 +163,6 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
 
 pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_core::error::get_custom_error_class(e)
-    .or_else(|| {
-      e.downcast_ref::<dlopen::Error>()
-        .map(get_dlopen_error_class)
-    })
     .or_else(|| {
       e.downcast_ref::<env::VarError>()
         .map(get_env_var_error_class)

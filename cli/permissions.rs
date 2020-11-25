@@ -75,7 +75,6 @@ pub struct Permissions {
   pub net: UnaryPermission<String>,
   pub env: PermissionState,
   pub run: PermissionState,
-  pub plugin: PermissionState,
   pub hrtime: PermissionState,
 }
 
@@ -113,7 +112,6 @@ impl Permissions {
       },
       env: state_from_flag_bool(flags.allow_env),
       run: state_from_flag_bool(flags.allow_run),
-      plugin: state_from_flag_bool(flags.allow_plugin),
       hrtime: state_from_flag_bool(flags.allow_hrtime),
     }
   }
@@ -152,7 +150,6 @@ impl Permissions {
       },
       env: PermissionState::Granted,
       run: PermissionState::Granted,
-      plugin: PermissionState::Granted,
       hrtime: PermissionState::Granted,
     }
   }
@@ -243,10 +240,6 @@ impl Permissions {
 
   pub fn query_run(&self) -> PermissionState {
     self.run
-  }
-
-  pub fn query_plugin(&self) -> PermissionState {
-    self.plugin
   }
 
   pub fn query_hrtime(&self) -> PermissionState {
@@ -395,17 +388,6 @@ impl Permissions {
     self.run
   }
 
-  pub fn request_plugin(&mut self) -> PermissionState {
-    if self.plugin == PermissionState::Prompt {
-      if permission_prompt("Deno requests to open plugins") {
-        self.plugin = PermissionState::Granted;
-      } else {
-        self.plugin = PermissionState::Denied;
-      }
-    }
-    self.plugin
-  }
-
   pub fn request_hrtime(&mut self) -> PermissionState {
     if self.hrtime == PermissionState::Prompt {
       if permission_prompt("Deno requests access to high precision time") {
@@ -476,13 +458,6 @@ impl Permissions {
       self.run = PermissionState::Prompt;
     }
     self.run
-  }
-
-  pub fn revoke_plugin(&mut self) -> PermissionState {
-    if self.plugin == PermissionState::Granted {
-      self.plugin = PermissionState::Prompt;
-    }
-    self.plugin
   }
 
   pub fn revoke_hrtime(&mut self) -> PermissionState {
@@ -558,14 +533,6 @@ impl Permissions {
 
   pub fn check_run(&self) -> Result<(), AnyError> {
     self.run.check("access to run a subprocess", "--allow-run")
-  }
-
-  pub fn check_plugin(&self, path: &Path) -> Result<(), AnyError> {
-    let (_, display_path) = self.resolved_and_display_path(path);
-    self.plugin.check(
-      &format!("access to open a plugin: {}", display_path.display()),
-      "--allow-plugin",
-    )
   }
 
   pub fn check_hrtime(&self) -> Result<(), AnyError> {
@@ -904,7 +871,6 @@ mod tests {
       },
       "env": "Granted",
       "run": "Granted",
-      "plugin": "Granted",
       "hrtime": "Granted"
     }
     "#;
@@ -924,7 +890,6 @@ mod tests {
       env: PermissionState::Granted,
       run: PermissionState::Granted,
       hrtime: PermissionState::Granted,
-      plugin: PermissionState::Granted,
     };
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
@@ -948,7 +913,6 @@ mod tests {
       },
       env: PermissionState::Granted,
       run: PermissionState::Granted,
-      plugin: PermissionState::Granted,
       hrtime: PermissionState::Granted,
     };
     let perms2 = Permissions {
@@ -969,7 +933,6 @@ mod tests {
       },
       env: PermissionState::Prompt,
       run: PermissionState::Prompt,
-      plugin: PermissionState::Prompt,
       hrtime: PermissionState::Prompt,
     };
     #[rustfmt::skip]
@@ -992,8 +955,6 @@ mod tests {
       assert_eq!(perms2.query_env(), PermissionState::Prompt);
       assert_eq!(perms1.query_run(), PermissionState::Granted);
       assert_eq!(perms2.query_run(), PermissionState::Prompt);
-      assert_eq!(perms1.query_plugin(), PermissionState::Granted);
-      assert_eq!(perms2.query_plugin(), PermissionState::Prompt);
       assert_eq!(perms1.query_hrtime(), PermissionState::Granted);
       assert_eq!(perms2.query_hrtime(), PermissionState::Prompt);
     };
@@ -1016,7 +977,6 @@ mod tests {
       },
       env: PermissionState::Prompt,
       run: PermissionState::Prompt,
-      plugin: PermissionState::Prompt,
       hrtime: PermissionState::Prompt,
     };
     #[rustfmt::skip]
@@ -1044,10 +1004,6 @@ mod tests {
       assert_eq!(perms.request_run(), PermissionState::Denied);
       set_prompt_result(true);
       assert_eq!(perms.request_run(), PermissionState::Denied);
-      set_prompt_result(true);
-      assert_eq!(perms.request_plugin(), PermissionState::Granted);
-      set_prompt_result(false);
-      assert_eq!(perms.request_plugin(), PermissionState::Granted);
       set_prompt_result(false);
       assert_eq!(perms.request_hrtime(), PermissionState::Denied);
       set_prompt_result(true);
@@ -1074,7 +1030,6 @@ mod tests {
       },
       env: PermissionState::Granted,
       run: PermissionState::Granted,
-      plugin: PermissionState::Prompt,
       hrtime: PermissionState::Denied,
     };
     #[rustfmt::skip]
@@ -1088,7 +1043,6 @@ mod tests {
       assert_eq!(perms.revoke_net(&None).unwrap(), PermissionState::Denied);
       assert_eq!(perms.revoke_env(), PermissionState::Prompt);
       assert_eq!(perms.revoke_run(), PermissionState::Prompt);
-      assert_eq!(perms.revoke_plugin(), PermissionState::Prompt);
       assert_eq!(perms.revoke_hrtime(), PermissionState::Denied);
     };
   }

@@ -34,7 +34,6 @@ const PERMISSIONS: Deno.PermissionName[] = [
   "net",
   "env",
   "run",
-  "plugin",
   "hrtime",
 ];
 

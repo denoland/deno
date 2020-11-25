@@ -38,7 +38,6 @@ pub fn op_query_permission(
     "net" => permissions.query_net_url(&args.url.as_deref())?,
     "env" => permissions.query_env(),
     "run" => permissions.query_run(),
-    "plugin" => permissions.query_plugin(),
     "hrtime" => permissions.query_hrtime(),
     n => {
       return Err(custom_error(
@@ -64,7 +63,6 @@ pub fn op_revoke_permission(
     "net" => permissions.revoke_net(&args.url.as_deref())?,
     "env" => permissions.revoke_env(),
     "run" => permissions.revoke_run(),
-    "plugin" => permissions.revoke_plugin(),
     "hrtime" => permissions.revoke_hrtime(),
     n => {
       return Err(custom_error(
@@ -90,7 +88,6 @@ pub fn op_request_permission(
     "net" => permissions.request_net(&args.url.as_deref())?,
     "env" => permissions.request_env(),
     "run" => permissions.request_run(),
-    "plugin" => permissions.request_plugin(),
     "hrtime" => permissions.request_hrtime(),
     n => {
       return Err(custom_error(

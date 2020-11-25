@@ -294,7 +294,6 @@ impl MainWorker {
       ops::net::init(js_runtime);
       ops::os::init(js_runtime);
       ops::permissions::init(js_runtime);
-      ops::plugin::init(js_runtime);
       ops::process::init(js_runtime);
       ops::runtime_compiler::init(js_runtime);
       ops::signal::init(js_runtime);
@@ -468,7 +467,6 @@ impl WebWorker {
         ops::net::init(js_runtime);
         ops::os::init(js_runtime);
         ops::permissions::init(js_runtime);
-        ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
         ops::crypto::init(js_runtime, program_state.flags.seed);
         ops::runtime_compiler::init(js_runtime);

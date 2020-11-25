@@ -14,7 +14,6 @@ pub mod net;
 mod net_unix;
 pub mod os;
 pub mod permissions;
-pub mod plugin;
 pub mod process;
 pub mod runtime;
 pub mod runtime_compiler;

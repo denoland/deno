@@ -14,7 +14,6 @@ mod module_specifier;
 mod modules;
 mod normalize_path;
 mod ops;
-pub mod plugin_api;
 mod resources;
 mod resources2;
 mod runtime;
