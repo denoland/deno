@@ -64,7 +64,7 @@ const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "importHelpers",
   "inlineSourceMap",
   "inlineSources",
-  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
+  "isolatedModules",
   "module",
   "noEmitHelpers",
   "noLib",
