@@ -52,7 +52,9 @@ struct CheckPermissionArgs {
   url: String,
 }
 
-// needed because creating a ws instance in js is sync & should throw sync, but op is async
+// This op is needed because creating a WS instance in JavaScript is a sync
+// operation and should throw error when permissions are not fullfiled,
+// but actual op that connects WS is async.
 pub fn op_ws_check_permission(
   state: &mut OpState,
   args: Value,
