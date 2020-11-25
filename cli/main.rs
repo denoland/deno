@@ -792,37 +792,31 @@ async fn test_command(
   Ok(())
 }
 
-pub fn main() {
-  #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
-
-  let args: Vec<String> = env::args().collect();
-  let flags = flags::flags_from_vec(args);
-
-  if let Some(ref v8_flags) = flags.v8_flags {
-    let v8_flags_includes_help = v8_flags
-      .iter()
-      .any(|flag| flag == "-help" || flag == "--help");
-    let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(v8_flags.iter().cloned())
-      .collect::<Vec<_>>();
-    let unrecognized_v8_flags = v8_set_flags(v8_flags)
-      .into_iter()
-      .skip(1)
-      .collect::<Vec<_>>();
-    if !unrecognized_v8_flags.is_empty() {
-      for f in unrecognized_v8_flags {
-        eprintln!("error: V8 did not recognize flag '{}'", f);
-      }
-      eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
-      std::process::exit(1);
+fn init_v8_flags(v8_flags: &[String]) {
+  let v8_flags_includes_help = v8_flags
+    .iter()
+    .any(|flag| flag == "-help" || flag == "--help");
+  let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+    .chain(v8_flags.iter().cloned())
+    .collect::<Vec<_>>();
+  let unrecognized_v8_flags = v8_set_flags(v8_flags)
+    .into_iter()
+    .skip(1)
+    .collect::<Vec<_>>();
+  if !unrecognized_v8_flags.is_empty() {
+    for f in unrecognized_v8_flags {
+      eprintln!("error: V8 did not recognize flag '{}'", f);
     }
-    if v8_flags_includes_help {
-      std::process::exit(0);
-    }
+    eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
+    std::process::exit(1);
   }
+  if v8_flags_includes_help {
+    std::process::exit(0);
+  }
+}
 
-  let log_level = match flags.log_level {
+fn init_logger(maybe_level: Option<Level>) {
+  let log_level = match maybe_level {
     Some(level) => level,
     None => Level::Info, // Default log level
   };
@@ -853,8 +847,12 @@ pub fn main() {
     }
   })
   .init();
+}
 
-  let fut = match flags.clone().subcommand {
+fn get_subcommand(
+  flags: Flags,
+) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  match flags.clone().subcommand {
     DenoSubcommand::Bundle {
       source_file,
       out_file,
@@ -914,7 +912,7 @@ pub fn main() {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
     DenoSubcommand::Types => {
       let types = get_types(flags.unstable);
@@ -922,7 +920,7 @@ pub fn main() {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
     DenoSubcommand::Upgrade {
       force,
@@ -934,9 +932,23 @@ pub fn main() {
       tools::upgrade::upgrade_command(dry_run, force, version, output, ca_file)
         .boxed_local()
     }
-  };
+  }
+}
 
-  let result = tokio_util::run_basic(fut);
+pub fn main() {
+  #[cfg(windows)]
+  colors::enable_ansi(); // For Windows 10
+
+  let args: Vec<String> = env::args().collect();
+  let flags = flags::flags_from_vec(args);
+
+  if let Some(ref v8_flags) = flags.v8_flags {
+    init_v8_flags(v8_flags);
+  }
+  init_logger(flags.log_level);
+
+  let subcommand_future = get_subcommand(flags);
+  let result = tokio_util::run_basic(subcommand_future);
   if let Err(err) = result {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
