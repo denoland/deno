@@ -45,6 +45,7 @@ mod tools;
 mod tsc;
 mod tsc_config;
 mod version;
+mod web_worker;
 mod worker;
 
 use crate::file_fetcher::File;
