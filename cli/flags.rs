@@ -1113,7 +1113,7 @@ fn permission_args(app: App) -> App {
 
 fn run_subcommand<'a>() -> App<'a> {
   runtime_args(App::new("run"), true)
-    .arg(watch_arg())
+    .arg(watch_arg().conflicts_with("inspect").conflicts_with("inspect-brk"))
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg().required(true))
     .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
@@ -1385,9 +1385,6 @@ fn watch_arg<'a>() -> Arg<'a> {
   Arg::new("watch")
     .requires("unstable")
     .long("watch")
-    // TODO: v3 - conflict arg must be on subcommand
-    .conflicts_with("inspect")
-    .conflicts_with("inspect-brk")
     .about("Watch for file changes and restart process automatically")
     .long_about(
       "Watch for file changes and restart process automatically.
