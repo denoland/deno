@@ -199,10 +199,10 @@ Deno.test({
 ## Failing fast
 
 If you have a long running test suite and wish for it to stop on the first
-failure, you can specify the `--failfast` flag when running the suite.
+failure, you can specify the `--fail-fast` flag when running the suite.
 
 ```shell
-deno test --failfast
+deno test --fail-fast
 ```
 
 ## Test coverage

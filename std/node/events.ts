@@ -231,7 +231,7 @@ export default class EventEmitter {
     eventName: string | symbol,
     listener: GenericFunction | WrappedFunction,
   ): this {
-    return this.addListener(eventName, listener);
+    return this._addListener(eventName, listener, false);
   }
 
   /**

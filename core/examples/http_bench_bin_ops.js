@@ -134,7 +134,6 @@ async function main() {
 
   for (;;) {
     const rid = await accept(listenerRid);
-    // Deno.core.print(`accepted ${rid}`);
     if (rid < 0) {
       Deno.core.print(`accept error ${rid}`);
       return;

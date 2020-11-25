@@ -7,7 +7,7 @@ const moduleDir = dirname(fromFileUrl(import.meta.url));
 Deno.test("[examples/welcome] print a welcome message", async () => {
   const decoder = new TextDecoder();
   const process = Deno.run({
-    cmd: [Deno.execPath(), "run", "welcome.ts"],
+    cmd: [Deno.execPath(), "run", "--quiet", "welcome.ts"],
     cwd: moduleDir,
     stdout: "piped",
   });

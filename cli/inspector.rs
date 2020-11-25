@@ -201,7 +201,7 @@ async fn server(
 
   let json_version_route = warp::path!("json" / "version").map(|| {
     warp::reply::json(&json!({
-      "Browser": format!("Deno/{}", crate::version::DENO),
+      "Browser": format!("Deno/{}", crate::version::deno()),
       "Protocol-Version": "1.3",
       "V8-Version": crate::version::v8(),
     }))
@@ -235,9 +235,9 @@ async fn server(
   pin_mut!(server_handler);
 
   select! {
-    _ = register_inspector_handler => (),
+    _ = register_inspector_handler => {},
     _ = deregister_inspector_handler => unreachable!(),
-    _ = server_handler => (),
+    _ = server_handler => {},
   }
 }
 

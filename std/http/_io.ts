@@ -69,7 +69,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
     if (Number.isNaN(chunkSize) || chunkSize < 0) {
-      throw new Error("Invalid chunk size");
+      throw new Deno.errors.InvalidData("Invalid chunk size");
     }
     if (chunkSize > 0) {
       if (chunkSize > buf.byteLength) {
