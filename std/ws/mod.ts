@@ -31,6 +31,7 @@ export interface WebSocketCloseEvent {
   reason?: string;
 }
 
+/** Returns true if input value is a WebSocketCloseEvent, false otherwise. */
 export function isWebSocketCloseEvent(
   a: WebSocketEvent,
 ): a is WebSocketCloseEvent {
@@ -39,6 +40,7 @@ export function isWebSocketCloseEvent(
 
 export type WebSocketPingEvent = ["ping", Uint8Array];
 
+/** Returns true if input value is a WebSocketPingEvent, false otherwise. */
 export function isWebSocketPingEvent(
   a: WebSocketEvent,
 ): a is WebSocketPingEvent {
@@ -47,6 +49,7 @@ export function isWebSocketPingEvent(
 
 export type WebSocketPongEvent = ["pong", Uint8Array];
 
+/** Returns true if input value is a WebSocketPongEvent, false otherwise. */
 export function isWebSocketPongEvent(
   a: WebSocketEvent,
 ): a is WebSocketPongEvent {
@@ -102,7 +105,7 @@ export function unmask(payload: Uint8Array, mask?: Uint8Array): void {
   }
 }
 
-/** Write websocket frame to given writer */
+/** Write WebSocket frame to inputted writer. */
 export async function writeFrame(
   frame: WebSocketFrame,
   writer: Deno.Writer,
@@ -385,7 +388,7 @@ class WebSocketImpl implements WebSocket {
   }
 }
 
-/** Return whether given headers is acceptable for websocket  */
+/** Returns true if input headers are usable for WebSocket, otherwise false.  */
 export function acceptable(req: { headers: Headers }): boolean {
   const upgrade = req.headers.get("upgrade");
   if (!upgrade || upgrade.toLowerCase() !== "websocket") {
@@ -401,7 +404,7 @@ export function acceptable(req: { headers: Headers }): boolean {
 
 const kGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-/** Create sec-websocket-accept header value with given nonce */
+/** Create value of Sec-WebSocket-Accept header from inputted nonce. */
 export function createSecAccept(nonce: string): string {
   const sha1 = new Sha1();
   sha1.update(nonce + kGUID);
@@ -409,7 +412,7 @@ export function createSecAccept(nonce: string): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-/** Upgrade given TCP connection into websocket connection */
+/** Upgrade inputted TCP connection into WebSocket connection. */
 export async function acceptWebSocket(req: {
   conn: Deno.Conn;
   bufWriter: BufWriter;
@@ -439,7 +442,7 @@ export async function acceptWebSocket(req: {
 
 const kSecChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-.~_";
 
-/** Create WebSocket-Sec-Key. Base64 encoded 16 bytes string */
+/** Returns base64 encoded 16 bytes string for Sec-WebSocket-Key header. */
 export function createSecKey(): string {
   let key = "";
   for (let i = 0; i < 16; i++) {

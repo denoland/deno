@@ -6,12 +6,9 @@
 // Resources may or may not correspond to a real operating system file
 // descriptor (hence the different name).
 
+use crate::resources2::ResourceId;
 use std::any::Any;
 use std::collections::HashMap;
-
-/// ResourceId is Deno's version of a file descriptor. ResourceId is also referred
-/// to as `rid` in the code base.
-pub type ResourceId = u32;
 
 /// These store Deno's file descriptors. These are not necessarily the operating
 /// system ones.
