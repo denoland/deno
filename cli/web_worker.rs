@@ -109,21 +109,7 @@ fn create_channels(
   (internal_channels, external_channels)
 }
 
-/// Worker is a CLI wrapper for `deno_core::Isolate`.
-///
-/// It provides infrastructure to communicate with a worker and
-/// consequently between workers.
-///
-/// This struct is meant to be used as a base struct for concrete
-/// type of worker that registers set of ops.
-///
-/// Currently there are two types of workers:
-///  - `MainWorker`
-///  - `WebWorker`
-/// This worker is implementation of `Worker` Web API
-///
-/// At the moment this type of worker supports only
-/// communication with parent and creating new workers.
+/// This struct is an implementation of `Worker` Web API
 ///
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.

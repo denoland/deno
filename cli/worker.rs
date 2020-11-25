@@ -24,23 +24,13 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-/// Worker is a CLI wrapper for `deno_core::Isolate`.
-///
-/// It provides infrastructure to communicate with a worker and
-/// consequently between workers.
-///
-/// This struct is meant to be used as a base struct for concrete
-/// type of worker that registers set of ops.
-///
-/// Currently there are two types of workers:
-///  - `MainWorker`
-///  - `WebWorker`
-/// This worker is created and used by Deno executable.
+/// This worker is created and used by almost all
+/// subcommands in Deno executable.
 ///
 /// It provides ops available in the `Deno` namespace.
 ///
-/// All WebWorkers created during program execution are descendants of
-/// this worker.
+/// All `WebWorker`s created during program execution
+/// are descendants of this worker.
 pub struct MainWorker {
   inspector: Option<Box<DenoInspector>>,
   js_runtime: JsRuntime,
