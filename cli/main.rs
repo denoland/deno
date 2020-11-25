@@ -584,9 +584,7 @@ async fn doc_command(
   }
 }
 
-<<<<<<< HEAD
 #[cfg(feature = "tools")]
-=======
 async fn format_command(
   flags: Flags,
   args: Vec<PathBuf>,
@@ -601,7 +599,7 @@ async fn format_command(
   Ok(())
 }
 
->>>>>>> master
+#[cfg(feature = "tools")]
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
