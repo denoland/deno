@@ -333,84 +333,130 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-
-  debug!(">>>>> bundle START");
-  let program_state = ProgramState::new(flags.clone())?;
-
-  info!(
-    "{} {}",
-    colors::green("Bundle"),
-    module_specifier.to_string()
-  );
-
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
-    &program_state,
-    // when bundling, dynamic imports are only access for their type safety,
-    // therefore we will allow the graph to access any module.
-    Permissions::allow_all(),
-  )?));
-  let mut builder = module_graph::GraphBuilder::new(
-    handler,
-    program_state.maybe_import_map.clone(),
-    program_state.lockfile.clone(),
-  );
-  builder.add(&module_specifier, false).await?;
-  let graph = builder.get_graph();
-
   let debug = flags.log_level == Some(log::Level::Debug);
-  if !flags.no_check {
-    // TODO(@kitsonk) support bundling for workers
-    let lib = if flags.unstable {
-      module_graph::TypeLib::UnstableDenoWindow
-    } else {
-      module_graph::TypeLib::DenoWindow
-    };
-    let graph = graph.clone();
-    let result_info = graph.check(module_graph::CheckOptions {
-      debug,
-      emit: false,
-      lib,
-      maybe_config_path: flags.config_path.clone(),
-      reload: flags.reload,
-    })?;
 
-    debug!("{}", result_info.stats);
-    if let Some(ignored_options) = result_info.maybe_ignored_options {
-      eprintln!("{}", ignored_options);
+  let module_resolver = || {
+    let flags = flags.clone();
+    let source_file = source_file.clone();
+    async move {
+      let module_specifier =
+        ModuleSpecifier::resolve_url_or_path(&source_file)?;
+
+      debug!(">>>>> bundle START");
+      let program_state = ProgramState::new(flags.clone())?;
+
+      info!(
+        "{} {}",
+        colors::green("Bundle"),
+        module_specifier.to_string()
+      );
+
+      let handler = Rc::new(RefCell::new(FetchHandler::new(
+        &program_state,
+        // when bundling, dynamic imports are only access for their type safety,
+        // therefore we will allow the graph to access any module.
+        Permissions::allow_all(),
+      )?));
+      let mut builder = module_graph::GraphBuilder::new(
+        handler,
+        program_state.maybe_import_map.clone(),
+        program_state.lockfile.clone(),
+      );
+      builder.add(&module_specifier, false).await?;
+      let module_graph = builder.get_graph();
+
+      if !flags.no_check {
+        // TODO(@kitsonk) support bundling for workers
+        let lib = if flags.unstable {
+          module_graph::TypeLib::UnstableDenoWindow
+        } else {
+          module_graph::TypeLib::DenoWindow
+        };
+        let result_info =
+          module_graph.clone().check(module_graph::CheckOptions {
+            debug,
+            emit: false,
+            lib,
+            maybe_config_path: flags.config_path.clone(),
+            reload: flags.reload,
+          })?;
+
+        debug!("{}", result_info.stats);
+        if let Some(ignored_options) = result_info.maybe_ignored_options {
+          eprintln!("{}", ignored_options);
+        }
+        if !result_info.diagnostics.is_empty() {
+          return Err(generic_error(result_info.diagnostics.to_string()));
+        }
+      }
+
+      let mut paths_to_watch: Vec<PathBuf> = module_graph
+        .get_modules()
+        .iter()
+        .filter_map(|specifier| specifier.as_url().to_file_path().ok())
+        .collect();
+
+      if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
+        paths_to_watch
+          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      }
+
+      Ok((paths_to_watch, module_graph))
     }
-    if !result_info.diagnostics.is_empty() {
-      return Err(generic_error(result_info.diagnostics.to_string()));
+    .boxed_local()
+  };
+
+  let operation = |module_graph: module_graph::Graph| {
+    let flags = flags.clone();
+    let out_file = out_file.clone();
+    async move {
+      let (output, stats, maybe_ignored_options) =
+        module_graph.bundle(module_graph::BundleOptions {
+          debug,
+          maybe_config_path: flags.config_path,
+        })?;
+
+      match maybe_ignored_options {
+        Some(ignored_options) if flags.no_check => {
+          eprintln!("{}", ignored_options);
+        }
+        _ => {}
+      }
+      debug!("{}", stats);
+
+      debug!(">>>>> bundle END");
+
+      if let Some(out_file) = out_file.as_ref() {
+        let output_bytes = output.as_bytes();
+        let output_len = output_bytes.len();
+        fs_util::write_file(out_file, output_bytes, 0o644)?;
+        info!(
+          "{} {:?} ({})",
+          colors::green("Emit"),
+          out_file,
+          colors::gray(&info::human_size(output_len as f64))
+        );
+      } else {
+        println!("{}", output);
+      }
+
+      Ok(())
     }
-  }
+    .boxed_local()
+  };
 
-  let (output, stats, maybe_ignored_options) =
-    graph.bundle(module_graph::BundleOptions {
-      debug,
-      maybe_config_path: flags.config_path,
-    })?;
-
-  if flags.no_check && maybe_ignored_options.is_some() {
-    let ignored_options = maybe_ignored_options.unwrap();
-    eprintln!("{}", ignored_options);
-  }
-  debug!("{}", stats);
-
-  debug!(">>>>> bundle END");
-
-  if let Some(out_file_) = out_file.as_ref() {
-    let output_bytes = output.as_bytes();
-    let output_len = output_bytes.len();
-    fs_util::write_file(out_file_, output_bytes, 0o644)?;
-    info!(
-      "{} {:?} ({})",
-      colors::green("Emit"),
-      out_file_,
-      colors::gray(&info::human_size(output_len as f64))
-    );
+  if flags.watch {
+    file_watcher::watch_func_with_module_resolution(
+      module_resolver,
+      operation,
+      "Bundle",
+    )
+    .await?;
   } else {
-    println!("{}", output);
+    let (_, module_graph) = module_resolver().await?;
+    operation(module_graph).await?;
   }
+
   Ok(())
 }
 
@@ -538,7 +584,24 @@ async fn doc_command(
   }
 }
 
+<<<<<<< HEAD
 #[cfg(feature = "tools")]
+=======
+async fn format_command(
+  flags: Flags,
+  args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+  check: bool,
+) -> Result<(), AnyError> {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
+    return tools::fmt::format_stdin(check);
+  }
+
+  tools::fmt::format(args, ignore, check, flags.watch).await?;
+  Ok(())
+}
+
+>>>>>>> master
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
@@ -585,44 +648,49 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
 #[cfg(feature = "tools")]
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let program_state = ProgramState::new(flags.clone())?;
-
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
-    &program_state,
-    Permissions::allow_all(),
-  )?));
-  let mut builder = module_graph::GraphBuilder::new(
-    handler,
-    program_state.maybe_import_map.clone(),
-    program_state.lockfile.clone(),
-  );
-  builder.add(&main_module, false).await?;
-  let module_graph = builder.get_graph();
-
-  // Find all local files in graph
-  let mut paths_to_watch: Vec<PathBuf> = module_graph
-    .get_modules()
-    .iter()
-    .filter(|specifier| specifier.as_url().scheme() == "file")
-    .map(|specifier| specifier.as_url().to_file_path().unwrap())
-    .collect();
-
-  if let Some(import_map) = program_state.flags.import_map_path.clone() {
-    paths_to_watch.push(
-      fs_util::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap(),
-    );
-  }
-
-  // FIXME(bartlomieju): new file watcher is created on after each restart
-  file_watcher::watch_func(&paths_to_watch, move || {
-    // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
-    // will use cached source files
-    let gs = ProgramState::new(flags.clone()).unwrap();
-    let permissions = Permissions::from_flags(&flags);
-    let main_module = main_module.clone();
+  let module_resolver = || {
+    let script = script.clone();
+    let flags = flags.clone();
     async move {
-      let mut worker = MainWorker::new(&gs, main_module.clone(), permissions);
+      let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
+      let program_state = ProgramState::new(flags)?;
+      let handler = Rc::new(RefCell::new(FetchHandler::new(
+        &program_state,
+        Permissions::allow_all(),
+      )?));
+      let mut builder = module_graph::GraphBuilder::new(
+        handler,
+        program_state.maybe_import_map.clone(),
+        program_state.lockfile.clone(),
+      );
+      builder.add(&main_module, false).await?;
+      let module_graph = builder.get_graph();
+
+      // Find all local files in graph
+      let mut paths_to_watch: Vec<PathBuf> = module_graph
+        .get_modules()
+        .iter()
+        .filter_map(|specifier| specifier.as_url().to_file_path().ok())
+        .collect();
+
+      if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
+        paths_to_watch
+          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      }
+
+      Ok((paths_to_watch, main_module))
+    }
+    .boxed_local()
+  };
+
+  let operation = |main_module: ModuleSpecifier| {
+    let flags = flags.clone();
+    let permissions = Permissions::from_flags(&flags);
+    async move {
+      let main_module = main_module.clone();
+      let program_state = ProgramState::new(flags)?;
+      let mut worker =
+        MainWorker::new(&program_state, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -631,7 +699,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       Ok(())
     }
     .boxed_local()
-  })
+  };
+
+  file_watcher::watch_func_with_module_resolution(
+    module_resolver,
+    operation,
+    "Process",
+  )
   .await
 }
 
@@ -849,7 +923,7 @@ fn get_subcommand(
       check,
       files,
       ignore,
-    } => tools::fmt::format(files, check, ignore).boxed_local(),
+    } => format_command(flags, files, ignore, check).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }

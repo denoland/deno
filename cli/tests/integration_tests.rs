@@ -475,6 +475,53 @@ fn fmt_test() {
 }
 
 #[test]
+fn fmt_watch_test() {
+  let t = TempDir::new().expect("tempdir fail");
+  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::root_path().join("cli/tests/badly_formatted.mjs");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(&badly_formatted)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("Failed to spawn script");
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert!(stderr_lines.next().unwrap().contains("badly_formatted.js"));
+
+  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  assert_eq!(expected, actual);
+
+  // Change content of the file again to be badly formatted
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Check if file has been automatically formatted by watcher
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  assert_eq!(expected, actual);
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+#[test]
 fn fmt_stdin_error() {
   use std::io::Write;
   let mut deno = util::deno_cmd()
@@ -1143,6 +1190,103 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
+fn bundle_js_watch() {
+  use std::path::PathBuf;
+  // Test strategy extends this of test bundle_js by adding watcher
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "console.log('Hello world');")
+    .expect("error writing file");
+  assert!(file_to_watch.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(&file_to_watch)
+    .arg(&bundle)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+
+  std::fs::write(&file_to_watch, "console.log('Hello world2');")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+
+  deno.kill().unwrap();
+  drop(t);
+}
+
+/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+#[test]
+fn bundle_watch_fail() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(&file_to_watch)
+    .arg("--watch")
+    .arg("--unstable")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(!deno.wait().unwrap().success());
+
+  drop(t);
+}
+
+#[test]
 fn info_with_compiled_source() {
   let _g = util::http_server();
   let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
@@ -1201,7 +1345,7 @@ fn run_watch() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1209,15 +1353,86 @@ fn run_watch() {
   // Change content of the file
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
-
   // Events from the file watcher is "debounced", so we need to wait for the next execution to start
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Add dependency
+  let another_file = t.path().join("another_file.js");
+  std::fs::write(&another_file, "export const foo = 0;")
+    .expect("error writing file");
+  std::fs::write(
+    &file_to_watch,
+    "import { foo } from './another_file.js'; console.log(foo);",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains('0'));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Confirm that restarting occurs when a new file is updated
+  std::fs::write(&another_file, "export const foo = 42;")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+
+  // Then restore the file
+  std::fs::write(
+    &file_to_watch,
+    "import { foo } from './another_file.js'; console.log(foo);",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
 
   child.kill().unwrap();
+  drop(t);
+}
+
+/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+#[test]
+fn run_watch_fail() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&file_to_watch)
+    .arg("--watch")
+    .arg("--unstable")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(!child.wait().unwrap().success());
+
   drop(t);
 }
 
@@ -1355,7 +1570,7 @@ fn run_watch_with_importmap_and_relative_paths() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  assert!(stderr_lines.next().unwrap().contains("Process terminated"));
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
 
   child.kill().unwrap();
@@ -2201,6 +2416,11 @@ itest!(_074_worker_nested_error {
   args: "run -A 074_worker_nested_error.ts",
   output: "074_worker_nested_error.ts.out",
   exit_code: 1,
+});
+
+itest!(_075_import_local_query_hash {
+  args: "run 075_import_local_query_hash.ts",
+  output: "075_import_local_query_hash.ts.out",
 });
 
 itest!(js_import_detect {

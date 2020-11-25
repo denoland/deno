@@ -8,12 +8,12 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::StreamExt;
 use deno_core::futures::{ready, SinkExt};
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::{serde_json, ZeroCopyBuf};
 use http::{Method, Request, Uri};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -34,6 +34,7 @@ use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_ws_check_permission", op_ws_check_permission);
   super::reg_json_async(rt, "op_ws_create", op_ws_create);
   super::reg_json_async(rt, "op_ws_send", op_ws_send);
   super::reg_json_async(rt, "op_ws_close", op_ws_close);
@@ -44,6 +45,29 @@ type MaybeTlsStream =
   StreamSwitcher<TcpStream, tokio_rustls::client::TlsStream<TcpStream>>;
 
 type WsStream = WebSocketStream<MaybeTlsStream>;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckPermissionArgs {
+  url: String,
+}
+
+// This op is needed because creating a WS instance in JavaScript is a sync
+// operation and should throw error when permissions are not fullfiled,
+// but actual op that connects WS is async.
+pub fn op_ws_check_permission(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CheckPermissionArgs = serde_json::from_value(args)?;
+
+  state
+    .borrow::<Permissions>()
+    .check_net_url(&url::Url::parse(&args.url)?)?;
+
+  Ok(json!({}))
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,11 +82,16 @@ pub async fn op_ws_create(
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
   let args: CreateArgs = serde_json::from_value(args)?;
+
   {
     let s = state.borrow();
     s.borrow::<Permissions>()
-      .check_net_url(&url::Url::parse(&args.url)?)?;
+      .check_net_url(&url::Url::parse(&args.url)?)
+      .expect(
+        "Permission check should have been done in op_ws_check_permission",
+      );
   }
+
   let ca_file = {
     let cli_state = super::global_state2(&state);
     cli_state.flags.ca_file.clone()

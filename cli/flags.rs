@@ -223,9 +223,8 @@ To evaluate code in the shell:
 
 lazy_static! {
   static ref LONG_VERSION: String = format!(
-    "{} ({}, {}, {})\nv8 {}\ntypescript {}",
-    crate::version::DENO,
-    crate::version::GIT_COMMIT_HASH,
+    "{} ({}, {})\nv8 {}\ntypescript {}",
+    crate::version::deno(),
     env!("PROFILE"),
     env!("TARGET"),
     crate::version::v8(),
@@ -244,7 +243,8 @@ pub fn flags_from_vec(args: Vec<String>) -> Flags {
 
 /// Same as flags_from_vec but does not exit on error.
 pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
-  let app = clap_root();
+  let version = crate::version::deno();
+  let app = clap_root(&*version);
   let matches = app.get_matches_from_safe(args)?;
 
   let mut flags = Flags::default();
@@ -298,7 +298,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   Ok(flags)
 }
 
-fn clap_root<'a, 'b>() -> App<'a, 'b> {
+fn clap_root<'a, 'b>(version: &'b str) -> App<'a, 'b> {
   clap::App::new("deno")
     .bin_name("deno")
     .global_settings(&[
@@ -309,7 +309,7 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     // Disable clap's auto-detection of terminal width
     .set_term_width(0)
     // Disable each subcommand having its own version.
-    .version(crate::version::DENO)
+    .version(version)
     .long_version(LONG_VERSION.as_str())
     .arg(
       Arg::with_name("unstable")
@@ -361,6 +361,7 @@ fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -418,6 +419,8 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  flags.watch = matches.is_present("watch");
+
   flags.subcommand = DenoSubcommand::Bundle {
     source_file,
     out_file,
@@ -427,7 +430,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let shell: &str = matches.value_of("shell").unwrap();
   let mut buf: Vec<u8> = vec![];
-  clap_root().gen_completions_to(
+  clap_root(&*crate::version::deno()).gen_completions_to(
     "deno",
     clap::Shell::from_str(shell).unwrap(),
     &mut buf,
@@ -723,6 +726,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -793,6 +797,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
+    .arg(watch_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -814,22 +819,8 @@ fn completions_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Generate shell completions")
     .long_about(
       "Output shell completion script to standard output.
-
-bash:
-  deno completions bash | sudo tee /etc/bash_completion.d/deno.bash > /dev/null
-  source /etc/bash_completion.d/deno.bash
-
-zsh:
-  deno completions zsh |sudo tee /usr/local/share/zsh/site-functions/_deno
-
-  Make sure to run compinit after the above command
-
-fish:
-  deno completions fish > ~/.config/fish/completions/deno.fish  
-
-powershell:
-  deno completions powershell > $profile
-  .$profile",
+  deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
+  source /usr/local/etc/bash_completion.d/deno.bash",
     )
 }
 
@@ -1855,6 +1846,44 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec_safe(svec!["deno", "fmt", "--watch", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt {
+          ignore: vec![],
+          check: false,
+          files: vec![],
+        },
+        watch: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "fmt",
+      "--check",
+      "--watch",
+      "--unstable",
+      "foo.ts",
+      "--ignore=bar.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt {
+          ignore: vec![PathBuf::from("bar.js")],
+          check: true,
+          files: vec![PathBuf::from("foo.ts")],
+        },
+        watch: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -2403,6 +2432,29 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn bundle_watch() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "bundle",
+      "--watch",
+      "--unstable",
+      "source.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
+        watch: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    )
   }
 
   #[test]
