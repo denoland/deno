@@ -164,21 +164,21 @@ function is as follows:
       (`string` or `number`) or array of property accessors used to access the
       data on each object
 
-        ```ts
-        const columns = [
-          "name",
-          {
-            prop: ["runsOn", 0],
-            header: "language 1",
-            fn: (str: string) => str.toLowerCase(),
-          },
-          {
-            prop: ["runsOn", 1],
-            header: "language 2",
-            fn: (str: string) => str.toLowerCase(),
-          },
-        ];
-        ```
+          ```ts
+          const columns = [
+            "name",
+            {
+              prop: ["runsOn", 0],
+              header: "language 1",
+              fn: (str: string) => str.toLowerCase(),
+            },
+            {
+              prop: ["runsOn", 1],
+              header: "language 2",
+              fn: (str: string) => str.toLowerCase(),
+            },
+          ];
+          ```
 
     | name | language 1 | language 2 |
     | :--: | :--------: | :--------: |
