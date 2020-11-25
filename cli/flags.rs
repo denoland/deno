@@ -283,7 +283,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   Ok(flags)
 }
 
-fn clap_root<'a>(version: &'a str) -> App<'a> {
+fn clap_root(version: &str) -> App {
   App::new("deno")
     .global_setting(AppSettings::UnifiedHelpMessage)
     .global_setting(AppSettings::ColorNever)
