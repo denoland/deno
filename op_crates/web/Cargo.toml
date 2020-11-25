@@ -19,4 +19,4 @@ idna = "0.2.0"
 serde = { version = "1.0.116", features = ["derive"] }
 
 [dev-dependencies]
-futures = "0.3.5"
+futures = "0.3.8"

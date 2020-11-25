@@ -222,9 +222,8 @@ To evaluate code in the shell:
 
 lazy_static! {
   static ref LONG_VERSION: String = format!(
-    "{} ({}, {}, {})\nv8 {}\ntypescript {}",
-    crate::version::DENO,
-    crate::version::GIT_COMMIT_HASH,
+    "{} ({}, {})\nv8 {}\ntypescript {}",
+    crate::version::deno(),
     env!("PROFILE"),
     env!("TARGET"),
     crate::version::v8(),
@@ -243,7 +242,8 @@ pub fn flags_from_vec(args: Vec<String>) -> Flags {
 
 /// Same as flags_from_vec but does not exit on error.
 pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
-  let app = clap_root();
+  let version = crate::version::deno();
+  let app = clap_root(&*version);
   let matches = app.try_get_matches_from(args)?;
 
   let mut flags = Flags::default();
@@ -283,7 +283,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   Ok(flags)
 }
 
-fn clap_root<'a>() -> App<'a> {
+fn clap_root<'a>(version: &'a str) -> App<'a> {
   App::new("deno")
     .global_setting(AppSettings::UnifiedHelpMessage)
     .global_setting(AppSettings::ColorNever)
@@ -291,7 +291,7 @@ fn clap_root<'a>() -> App<'a> {
     // Disable clap's auto-detection of terminal width
     .max_term_width(0)
     // Disable each subcommand having its own version.
-    .version(crate::version::DENO)
+    .version(version)
     .long_version(LONG_VERSION.as_str())
     .arg(
       Arg::new("unstable")
@@ -415,7 +415,7 @@ fn completions_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let mut buf: Vec<u8> = vec![];
 
-  let mut app = clap_root();
+  let mut app = clap_root(&*crate::version::deno());
   let name = "deno";
 
   match matches.value_of("shell").unwrap() {
