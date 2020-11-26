@@ -7,36 +7,32 @@
       "deps": [
         "[WILDCARD]cli/tests/recursive_imports/A.ts"
       ],
-      "size": 96
+      "size": [WILDCARD]
     },
     "[WILDCARD]cli/tests/recursive_imports/A.ts": {
       "deps": [
         "[WILDCARD]cli/tests/recursive_imports/B.ts",
         "[WILDCARD]cli/tests/recursive_imports/common.ts"
       ],
-      "size": 114
+      "size": [WILDCARD]
     },
     "[WILDCARD]cli/tests/recursive_imports/B.ts": {
       "deps": [
         "[WILDCARD]cli/tests/recursive_imports/C.ts",
         "[WILDCARD]cli/tests/recursive_imports/common.ts"
       ],
-      "size": 114
+      "size": [WILDCARD]
     },
     "[WILDCARD]cli/tests/recursive_imports/C.ts": {
       "deps": [
         "[WILDCARD]cli/tests/recursive_imports/A.ts",
         "[WILDCARD]cli/tests/recursive_imports/common.ts"
       ],
-      "size": 132
+      "size": [WILDCARD]
     },
     "[WILDCARD]cli/tests/recursive_imports/common.ts": {
       "deps": [],
-      "size": 34
+      "size": [WILDCARD]
     }
   },
-  "local": "/home/wperron/github.com/wperron/deno/cli/tests/076_info_json_deps_order.ts",
-  "map": null,
-  "module": "[WILDCARD]cli/tests/076_info_json_deps_order.ts",
-  "totalSize": 490
-}
+[WILDCARD]
