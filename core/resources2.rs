@@ -65,8 +65,8 @@ pub type ResourceTable2 = ResourceTable;
 /// the key in the map.
 #[derive(Default)]
 pub struct ResourceTable {
-  index: HashMap<ResourceId, Rc<dyn Resource>>,
-  next_rid: ResourceId,
+  pub(crate) index: HashMap<ResourceId, Rc<dyn Resource>>,
+  pub(crate) next_rid: ResourceId,
 }
 
 impl ResourceTable {

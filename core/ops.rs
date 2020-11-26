@@ -47,7 +47,10 @@ impl Default for OpState {
   fn default() -> OpState {
     OpState {
       resource_table: Default::default(),
-      resource_table_2: Default::default(),
+      resource_table_2: crate::resources2::ResourceTable {
+        index: Default::default(),
+        next_rid: 1000000,
+      },
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
@@ -296,9 +299,17 @@ pub fn op_close(
     .and_then(Value::as_u64)
     .ok_or_else(|| type_error("missing or invalid `rid`"))?;
 
-  state
-    .resource_table
-    .close(rid as u32)
-    .ok_or_else(bad_resource_id)?;
+  if rid >= 1000000 {
+    state
+      .resource_table_2
+      .close(rid as u32)
+      .ok_or_else(bad_resource_id)?;
+  } else {
+    state
+      .resource_table
+      .close(rid as u32)
+      .ok_or_else(bad_resource_id)?;
+  }
+  
   Ok(json!({}))
 }
