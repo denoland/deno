@@ -10,21 +10,22 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures;
-use deno_core::futures::future::poll_fn;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::AsyncMutFuture;
+use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::rc::Rc;
-use std::task::Context;
-use std::task::Poll;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -56,29 +57,14 @@ async fn accept_tcp(
 ) -> Result<Value, AnyError> {
   let rid = args.rid as u32;
 
-  let accept_fut = poll_fn(|cx| {
-    let mut state = state.borrow_mut();
-    let listener_resource = state
-      .resource_table
-      .get_mut::<TcpListenerResource>(rid)
-      .ok_or_else(|| bad_resource("Listener has been closed"))?;
-    let listener = &mut listener_resource.listener;
-    match listener.poll_accept(cx).map_err(AnyError::from) {
-      Poll::Ready(Ok((stream, addr))) => {
-        listener_resource.untrack_task();
-        Poll::Ready(Ok((stream, addr)))
-      }
-      Poll::Pending => {
-        listener_resource.track_task(cx)?;
-        Poll::Pending
-      }
-      Poll::Ready(Err(e)) => {
-        listener_resource.untrack_task();
-        Poll::Ready(Err(e))
-      }
-    }
-  });
-  let (tcp_stream, _socket_addr) = accept_fut.await?;
+  let resource = state
+    .borrow()
+    .resource_table_2
+    .get::<TcpListenerResource>(rid)
+    .ok_or_else(|| bad_resource("Listener has been closed"))?;
+  let mut listener = resource.borrow_mut().await;
+  let (tcp_stream, _socket_addr) = (&mut *listener).accept().await?;
+
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -137,18 +123,14 @@ async fn receive_udp(
 
   let rid = args.rid as u32;
 
-  let receive_fut = poll_fn(|cx| {
-    let mut state = state.borrow_mut();
-    let resource = state
-      .resource_table
-      .get_mut::<UdpSocketResource>(rid)
-      .ok_or_else(|| bad_resource("Socket has been closed"))?;
-    let socket = &mut resource.socket;
-    socket
-      .poll_recv_from(cx, &mut zero_copy)
-      .map_err(AnyError::from)
-  });
-  let (size, remote_addr) = receive_fut.await?;
+  let resource = state
+    .borrow_mut()
+    .resource_table_2
+    .get::<UdpSocketResource>(rid)
+    .ok_or_else(|| bad_resource("Socket has been closed"))?;
+  let mut socket = resource.borrow_mut().await;
+  let (size, remote_addr) = socket.recv_from(&mut zero_copy).await?;
+
   Ok(json!({
     "size": size,
     "remoteAddr": {
@@ -206,19 +188,18 @@ async fn op_datagram_send(
           .check_net(&args.hostname, args.port)?;
       }
       let addr = resolve_addr(&args.hostname, args.port)?;
-      poll_fn(move |cx| {
-        let mut state = state.borrow_mut();
-        let resource = state
-          .resource_table
-          .get_mut::<UdpSocketResource>(rid as u32)
-          .ok_or_else(|| bad_resource("Socket has been closed"))?;
-        resource
-          .socket
-          .poll_send_to(cx, &zero_copy, &addr)
-          .map_ok(|byte_length| json!(byte_length))
-          .map_err(AnyError::from)
-      })
-      .await
+
+      let resource = state
+        .borrow_mut()
+        .resource_table_2
+        .get::<UdpSocketResource>(rid as u32)
+        .ok_or_else(|| bad_resource("Socket has been closed"))?;
+      let mut socket = resource.borrow_mut().await;
+      socket
+        .send_to(&zero_copy, &addr)
+        .await
+        .map(|byte_length| json!(byte_length))
+        .map_err(AnyError::from)
     }
     #[cfg(unix)]
     SendArgs {
@@ -379,57 +360,36 @@ fn op_shutdown(
   Ok(json!({}))
 }
 
-#[allow(dead_code)]
 struct TcpListenerResource {
-  listener: TcpListener,
-  waker: Option<futures::task::AtomicWaker>,
-  local_addr: SocketAddr,
+  listener: AsyncRefCell<TcpListener>,
 }
 
-impl Drop for TcpListenerResource {
-  fn drop(&mut self) {
-    self.wake_task();
+impl Resource for TcpListenerResource {
+  fn name(&self) -> Cow<str> {
+    "tcpListener".into()
   }
 }
 
 impl TcpListenerResource {
-  /// Track the current task so future awaiting for connection
-  /// can be notified when listener is closed.
-  ///
-  /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), AnyError> {
-    // Currently, we only allow tracking a single accept task for a listener.
-    // This might be changed in the future with multiple workers.
-    // Caveat: TcpListener by itself also only tracks an accept task at a time.
-    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-    if self.waker.is_some() {
-      return Err(custom_error("Busy", "Another accept task is ongoing"));
-    }
-
-    let waker = futures::task::AtomicWaker::new();
-    waker.register(cx.waker());
-    self.waker.replace(waker);
-    Ok(())
-  }
-
-  /// Notifies a task when listener is closed so accept future can resolve.
-  pub fn wake_task(&mut self) {
-    if let Some(waker) = self.waker.as_ref() {
-      waker.wake();
-    }
-  }
-
-  /// Stop tracking a task.
-  /// Happens when the task is done and thus no further tracking is needed.
-  pub fn untrack_task(&mut self) {
-    if self.waker.is_some() {
-      self.waker.take();
-    }
+  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<TcpListener> {
+    RcRef::map(self, |r| &r.listener).borrow_mut()
   }
 }
 
 struct UdpSocketResource {
-  socket: UdpSocket,
+  socket: AsyncRefCell<UdpSocket>,
+}
+
+impl Resource for UdpSocketResource {
+  fn name(&self) -> Cow<str> {
+    "udpSocket".into()
+  }
+}
+
+impl UdpSocketResource {
+  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<UdpSocket> {
+    RcRef::map(self, |r| &r.socket).borrow_mut()
+  }
 }
 
 #[derive(Deserialize)]
@@ -461,13 +421,9 @@ fn listen_tcp(
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
-    listener,
-    waker: None,
-    local_addr,
+    listener: AsyncRefCell::new(listener),
   };
-  let rid = state
-    .resource_table
-    .add("tcpListener", Box::new(listener_resource));
+  let rid = state.resource_table_2.add(listener_resource);
 
   Ok((rid, local_addr))
 }
@@ -479,10 +435,10 @@ fn listen_udp(
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
-  let socket_resource = UdpSocketResource { socket };
-  let rid = state
-    .resource_table
-    .add("udpSocket", Box::new(socket_resource));
+  let socket_resource = UdpSocketResource {
+    socket: AsyncRefCell::new(socket),
+  };
+  let rid = state.resource_table_2.add(socket_resource);
 
   Ok((rid, local_addr))
 }
