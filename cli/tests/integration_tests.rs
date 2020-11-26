@@ -221,6 +221,47 @@ pub fn test_raw_tty() {
   }
 }
 
+#[cfg(unix)]
+#[test]
+pub fn test_raw_tty_cbreak() {
+  use std::io::{Read, Write};
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fork = Fork::from_ptmx().unwrap();
+
+  if let Ok(mut master) = fork.is_parent() {
+    let mut obytes: [u8; 100] = [0; 100];
+    let mut nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
+    // write SIGINT
+    master.write_all(&[3]).unwrap();
+    master.flush().unwrap();
+    nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
+  } else {
+    use std::process::*;
+    // Keep echo enabled such that 'C^' would be printed in non-raw mode.
+    let mut child = Command::new(deno_exe)
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("--unstable")
+      .arg("cli/tests/raw_mode_cbreak.ts")
+      .stdin(Stdio::inherit())
+      .stdout(Stdio::inherit())
+      // Warning: errors may be swallowed. Try to comment stderr null if
+      // experiencing problems.
+      .stderr(Stdio::null())
+      .spawn()
+      .expect("Failed to spawn script");
+    // Capture and ignore SIGINT here in order to let the child process get it too
+    ctrlc::set_handler(|| {}).unwrap();
+    child.wait().unwrap();
+    drop(child);
+  }
+}
+
 #[test]
 fn test_pattern_match() {
   // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
