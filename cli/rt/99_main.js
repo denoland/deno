@@ -297,6 +297,8 @@ delete Object.prototype.__proto__;
       return wrappedHandler;
     }
     // TODO(benjamingr) reuse when we can reuse code between web crates
+    // This function is very similar to `defineEventHandler` in `01_web_util.js`
+    // but it returns `null` instead of `undefined` is handler is not defined.
     function defineEventHandler(emitter, name) {
       // HTML specification section 8.1.5.1
       Object.defineProperty(emitter, `on${name}`, {
