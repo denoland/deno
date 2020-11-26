@@ -906,7 +906,7 @@ impl JsRuntime {
         // If `None` is returned it means that runtime was destroyed before
         // evaluation was complete. This can happen in Web Worker when `self.close()`
         // is called at top level.
-        let result = maybe_result.unwrap_or_else(|| Ok(()));
+        let result = maybe_result.unwrap_or(Ok(()));
         return Poll::Ready(result);
       }
       let _r = self.poll_event_loop(cx)?;
