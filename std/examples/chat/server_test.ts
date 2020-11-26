@@ -60,7 +60,7 @@ Deno.test({
     let ws: WebSocket;
     try {
       ws = new WebSocket("ws://127.0.0.1:8080/ws");
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         ws.onmessage = ((message) => {
           assertEquals(message.data, "Connected: [1]");
           ws.onmessage = ((message) => {

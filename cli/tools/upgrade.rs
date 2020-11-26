@@ -44,7 +44,7 @@ pub async fn upgrade_command(
         passed_hash.truncate(7);
         crate::version::GIT_COMMIT_HASH == passed_hash
       } else {
-        crate::version::DENO == passed_version
+        crate::version::deno() == passed_version
       };
 
       if !force && output.is_none() && current_is_passed {
@@ -66,7 +66,7 @@ pub async fn upgrade_command(
         latest_hash.truncate(7);
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else {
-        let current = semver_parse(&crate::version::DENO).unwrap();
+        let current = semver_parse(&*crate::version::deno()).unwrap();
         let latest = match semver_parse(&latest_version) {
           Ok(v) => v,
           Err(_) => {
@@ -80,7 +80,7 @@ pub async fn upgrade_command(
       if !force && output.is_none() && current_is_most_recent {
         println!(
           "Local deno version {} is the most recent release",
-          crate::version::DENO
+          crate::version::deno()
         );
         return Ok(());
       } else {

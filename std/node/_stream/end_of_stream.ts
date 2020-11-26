@@ -1,5 +1,6 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 import { once } from "../_utils.ts";
+import type Duplex from "./duplex.ts";
 import type Readable from "./readable.ts";
 import type Stream from "./stream.ts";
 import type { ReadableState } from "./readable.ts";
@@ -11,7 +12,7 @@ import {
   NodeErrorAbstraction,
 } from "../_errors.ts";
 
-type StreamImplementations = Readable | Stream | Writable;
+export type StreamImplementations = Duplex | Readable | Stream | Writable;
 
 // TODO(Soremwar)
 // Bring back once requests are implemented
@@ -49,7 +50,7 @@ function isReadableEnded(stream: Readable) {
   return rState.endEmitted || (rState.ended && rState.length === 0);
 }
 
-interface FinishedOptions {
+export interface FinishedOptions {
   error?: boolean;
   readable?: boolean;
   writable?: boolean;
