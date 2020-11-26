@@ -366,6 +366,7 @@ mod tests {
       .unwrap();
     worker
   }
+
   #[tokio::test]
   async fn test_worker_messages() {
     let (handle_sender, handle_receiver) =
