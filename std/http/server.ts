@@ -116,6 +116,7 @@ export class ServerRequest {
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
   private connections: Deno.Conn[] = [];
+  private consecutiveErrors = 0;
 
   constructor(public listener: Deno.Listener) {}
 
@@ -222,18 +223,31 @@ export class Server implements AsyncIterable<ServerRequest> {
     try {
       conn = await this.listener.accept();
     } catch (error) {
+      if (this.closing) return;
       if (
-        // The listener is closed:
-        error instanceof Deno.errors.BadResource ||
         // TLS handshake errors:
         error instanceof Deno.errors.InvalidData ||
         error instanceof Deno.errors.UnexpectedEof ||
-        error instanceof Deno.errors.ConnectionReset
+        error instanceof Deno.errors.ConnectionReset ||
+        error instanceof Deno.errors.BrokenPipe ||
+        // NotConnected can be thrown (issue #8499):
+        error instanceof Deno.errors.NotConnected
       ) {
-        return mux.add(this.acceptConnAndIterateHttpRequests(mux));
+        // Ignore known errors.
+      } else {
+        // FIXME: This is a workaround. Bacause the error types from `accept()`
+        // are uncertain, we just ignore all errors for now.
+        if (++this.consecutiveErrors >= 100) {
+          // Throw for more than 100 consecutive errors in case there is
+          // something bad in the listener.
+          throw error;
+        }
       }
-      throw error;
+      // Aceept another connection.
+      mux.add(this.acceptConnAndIterateHttpRequests(mux));
+      return;
     }
+    this.consecutiveErrors = 0;
     this.trackConnection(conn);
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
