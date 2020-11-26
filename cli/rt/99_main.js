@@ -31,7 +31,6 @@ delete Object.prototype.__proto__;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
-  const { defineEventHandler } = window.__bootstrap.webUtil;
 
   let windowIsClosing = false;
 
@@ -285,6 +284,42 @@ delete Object.prototype.__proto__;
     Object.setPrototypeOf(globalThis, Window.prototype);
     eventTarget.setEventTargetData(globalThis);
 
+    const handlerSymbol = Symbol("eventHandlers");
+
+    function makeWrappedHandler(handler) {
+      function wrappedHandler(...args) {
+        if (typeof wrappedHandler.handler !== "function") {
+          return;
+        }
+        return wrappedHandler.handler.call(this, ...args);
+      }
+      wrappedHandler.handler = handler;
+      return wrappedHandler;
+    }
+    // TODO(benjamingr) reuse when we can reuse code between web crates
+    function defineEventHandler(emitter, name) {
+      // HTML specification section 8.1.5.1
+      Object.defineProperty(emitter, `on${name}`, {
+        get() {
+          return this[handlerSymbol]?.get(name)?.handler ?? null;
+        },
+        set(value) {
+          if (!this[handlerSymbol]) {
+            this[handlerSymbol] = new Map();
+          }
+          let handlerWrapper = this[handlerSymbol]?.get(name);
+          if (handlerWrapper) {
+            handlerWrapper.handler = value;
+          } else {
+            handlerWrapper = makeWrappedHandler(value);
+            this.addEventListener(name, handlerWrapper);
+          }
+          this[handlerSymbol].set(name, handlerWrapper);
+        },
+        configurable: true,
+        enumerable: true,
+      });
+    }
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
 
