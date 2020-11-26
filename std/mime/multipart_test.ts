@@ -145,7 +145,7 @@ Deno.test("multipartMultipartWriter3", async function (): Promise<void> {
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       await mw.writeFile("bar", "file", null as any);
     },
     Error,

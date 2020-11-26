@@ -64,11 +64,11 @@ Deno.test({
   name: "[std/datetime] invalidParseDateTimeFormatThrows",
   fn: () => {
     assertThrows((): void => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (datetime as any).parse("2019-01-01 00:00", "x-y-z");
     }, Error);
     assertThrows((): void => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (datetime as any).parse("2019-01-01", "x-y-z");
     }, Error);
   },
@@ -77,16 +77,6 @@ Deno.test({
 Deno.test({
   name: "[std/datetime] format",
   fn: () => {
-    // Date
-    assertEquals(
-      "2019-01-01",
-      datetime.format(new Date("2019-01-01"), "yyyy-MM-dd"),
-    );
-    assertEquals(
-      "01.01.2019",
-      datetime.format(new Date("2019-01-01"), "dd.MM.yyyy"),
-    );
-
     // 00 hours
     assertEquals(
       "01:00:00",
@@ -277,7 +267,6 @@ Deno.test({
   name: "[std/datetime] weekOfYear",
   fn: () => {
     assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:00:00.000Z")), 1);
-    assertEquals(datetime.weekOfYear(new Date("2020-12-28T03:00:00.000Z")), 53); // 53 weeks in 2020
     assertEquals(datetime.weekOfYear(new Date("2020-06-28T03:00:00.000Z")), 26);
 
     // iso weeks year starting sunday
@@ -385,5 +374,16 @@ Deno.test({
     assertEquals(difference.seconds, 3661);
     assertEquals(difference.minutes, 61);
     assertEquals(difference.hours, 1);
+  },
+});
+
+Deno.test({
+  name: "[std/datetime] constants",
+  fn(): void {
+    assertEquals(datetime.SECOND, 1e3);
+    assertEquals(datetime.MINUTE, datetime.SECOND * 60);
+    assertEquals(datetime.HOUR, datetime.MINUTE * 60);
+    assertEquals(datetime.DAY, datetime.HOUR * 24);
+    assertEquals(datetime.WEEK, datetime.DAY * 7);
   },
 });

@@ -166,6 +166,7 @@
     if (typeof str !== "string") {
       return false;
     }
+    // deno-lint-ignore no-control-regex
     return /^[\x00-\x7F]*$/.test(str);
   }
 
@@ -786,7 +787,7 @@
 
         this._stream = new ReadableStream({
           start(controller) {
-            controller.enqueue(buf);
+            controller.enqueue(new Uint8Array(buf));
             controller.close();
           },
         });
@@ -985,11 +986,12 @@
         this.headers = new Headers(input.headers);
         this.credentials = input.credentials;
         this._stream = input._stream;
-      } else if (typeof input === "string") {
-        this.url = input;
+      } else {
+        // TODO(nayeemrmn): Base from `--location` when implemented and set.
+        this.url = new URL(String(input)).href;
       }
 
-      if (init && "method" in init) {
+      if (init && "method" in init && init.method) {
         this.method = normalizeMethod(init.method);
       }
 
@@ -1340,15 +1342,12 @@
             });
             return new Response(null, responseInit);
           case "manual":
-            responseInit = {};
-            responseData.set(responseInit, {
-              type: "opaqueredirect",
-              redirected: false,
-              url: "",
-            });
-            return new Response(null, responseInit);
+            // On the web this would return a `opaqueredirect` response, but
+            // those don't make sense server side. See denoland/deno#8351.
+            return response;
           case "follow":
-          default:
+          // fallthrough
+          default: {
             let redirectUrl = response.headers.get("Location");
             if (redirectUrl == null) {
               return response; // Unspecified
@@ -1362,6 +1361,7 @@
             url = redirectUrl;
             redirected = true;
             remRedirectCount--;
+          }
         }
       } else {
         return response;

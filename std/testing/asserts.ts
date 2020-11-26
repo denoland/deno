@@ -8,7 +8,7 @@ import { diff, DiffResult, DiffType } from "./_diff.ts";
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
 interface Constructor {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   new (...args: any[]): any;
 }
 
@@ -19,6 +19,11 @@ export class AssertionError extends Error {
   }
 }
 
+/**
+ * Converts the input into a string. Objects, Sets and Maps are sorted so as to
+ * make tests less flaky
+ * @param v Value to be formatted
+ */
 export function _format(v: unknown): string {
   return globalThis.Deno
     ? Deno.inspect(v, {
@@ -31,6 +36,10 @@ export function _format(v: unknown): string {
     : `"${String(v).replace(/(?=["\\])/g, "\\")}"`;
 }
 
+/**
+ * Colors the output of assertion diffs
+ * @param diffType Difference type, either added or removed
+ */
 function createColor(diffType: DiffType): (s: string) => string {
   switch (diffType) {
     case DiffType.added:
@@ -42,6 +51,10 @@ function createColor(diffType: DiffType): (s: string) => string {
   }
 }
 
+/**
+ * Prefixes `+` or `-` in diff output
+ * @param diffType Difference type, either added or removed
+ */
 function createSign(diffType: DiffType): string {
   switch (diffType) {
     case DiffType.added:
@@ -77,6 +90,11 @@ function isKeyedCollection(x: unknown): x is Set<unknown> {
   return [Symbol.iterator, "size"].every((k) => k in (x as Set<unknown>));
 }
 
+/**
+ * Deep equality comparison used in assertions
+ * @param c actual value
+ * @param d expected value
+ */
 export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
   return (function compare(a: unknown, b: unknown): boolean {
@@ -330,10 +348,27 @@ export function assertNotStrictEquals(
 }
 
 /**
- * Make an assertion that actual contains expected. If not
+ * Make an assertion that actual is not null or undefined. If not
  * then thrown.
  */
-export function assertStringContains(
+export function assertExists(
+  actual: unknown,
+  msg?: string,
+): void {
+  if (actual === undefined || actual === null) {
+    if (!msg) {
+      msg =
+        `actual: "${actual}" expected to match anything but null or undefined`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
+ * Make an assertion that actual includes expected. If not
+ * then thrown.
+ */
+export function assertStringIncludes(
   actual: string,
   expected: string,
   msg?: string,
@@ -347,26 +382,26 @@ export function assertStringContains(
 }
 
 /**
- * Make an assertion that `actual` contains the `expected` values.
+ * Make an assertion that `actual` includes the `expected` values.
  * If not then an error will be thrown.
  *
  * Type parameter can be specified to ensure values under comparison have the same type.
  * For example:
  *```ts
- *assertArrayContains<number>([1, 2], [2])
+ *assertArrayIncludes<number>([1, 2], [2])
  *```
  */
-export function assertArrayContains(
+export function assertArrayIncludes(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
   msg?: string,
 ): void;
-export function assertArrayContains<T>(
+export function assertArrayIncludes<T>(
   actual: ArrayLike<T>,
   expected: ArrayLike<T>,
   msg?: string,
 ): void;
-export function assertArrayContains(
+export function assertArrayIncludes(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
   msg?: string,
@@ -388,7 +423,7 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${_format(actual)}" expected to contain: "${
+    msg = `actual: "${_format(actual)}" expected to include: "${
       _format(expected)
     }"\nmissing: ${_format(missing)}`;
   }
@@ -427,6 +462,48 @@ export function assertNotMatch(
     }
     throw new AssertionError(msg);
   }
+}
+
+/**
+ * Make an assertion that `actual` object is a subset of `expected` object, deeply.
+ * If not, then throw.
+ */
+export function assertObjectMatch(
+  actual: Record<PropertyKey, unknown>,
+  expected: Record<PropertyKey, unknown>,
+): void {
+  type loose = Record<PropertyKey, unknown>;
+  const seen = new WeakMap();
+  return assertEquals(
+    (function filter(a: loose, b: loose): loose {
+      // Prevent infinite loop with circular references with same filter
+      if ((seen.has(a)) && (seen.get(a) === b)) {
+        return a;
+      }
+      seen.set(a, b);
+      // Filter keys and symbols which are present in both actual and expected
+      const filtered = {} as loose;
+      const entries = [
+        ...Object.getOwnPropertyNames(a),
+        ...Object.getOwnPropertySymbols(a),
+      ]
+        .filter((key) => key in b)
+        .map((key) => [key, a[key as string]]) as Array<[string, unknown]>;
+      // Build filtered object and filter recursively on nested objects references
+      for (const [key, value] of entries) {
+        if (typeof value === "object") {
+          const subset = (b as loose)[key];
+          if ((typeof subset === "object") && (subset)) {
+            filtered[key] = filter(value as loose, subset as loose);
+            continue;
+          }
+        }
+        filtered[key] = value;
+      }
+      return filtered;
+    })(actual, expected),
+    expected,
+  );
 }
 
 /**

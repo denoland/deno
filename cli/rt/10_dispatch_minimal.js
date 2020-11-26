@@ -50,7 +50,13 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      throw new (core.getErrorClass(res.err.className))(res.err.message);
+      const ErrorClass = core.getErrorClass(res.err.className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw new ErrorClass(res.err.message);
     }
     return res.result;
   }

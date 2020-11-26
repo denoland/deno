@@ -1,1 +1,2 @@
-error: Uncaught TypeError: Cannot resolve module "[WILDCARD]/bad-module.ts" from "[WILDCARD]/error_005_missing_dynamic_import.ts"
+error: Cannot resolve module "[WILDCARD]/bad-module.ts" from "[WILDCARD]/error_005_missing_dynamic_import.ts".
+    at file:///[WILDCARD]/error_005_missing_dynamic_import.ts:3:26

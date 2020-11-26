@@ -5,19 +5,19 @@ more about the runtime.
 
 ## Basic
 
-- [Hello World](./examples/hello_world)
-- [Import and Export Modules](./examples/import_export)
-- [How to Manage Dependencies](./examples/manage_dependencies)
-- [Fetch Data](./examples/fetch_data)
-- [Read and Write Files](./examples/read_write_files)
+- [Hello World](./examples/hello_world.md)
+- [Import and Export Modules](./examples/import_export.md)
+- [How to Manage Dependencies](./examples/manage_dependencies.md)
+- [Fetch Data](./examples/fetch_data.md)
+- [Read and Write Files](./examples/read_write_files.md)
 
 ## Advanced
 
-- [Unix Cat](./examples/unix_cat)
-- [File Server](./examples/file_server)
-- [TCP Echo](./examples/tcp_echo)
-- [Subprocess](./examples/subprocess)
-- [Permissions](./examples/permissions)
-- [OS Signals](./examples/os_signals)
-- [File System Events](./examples/file_system_events)
-- [Testing If Main](./examples/testing_if_main)
+- [Unix Cat](./examples/unix_cat.md)
+- [File Server](./examples/file_server.md)
+- [TCP Echo](./examples/tcp_echo.md)
+- [Subprocess](./examples/subprocess.md)
+- [Permissions](./examples/permissions.md)
+- [OS Signals](./examples/os_signals.md)
+- [File System Events](./examples/file_system_events.md)
+- [Testing If Main](./examples/testing_if_main.md)

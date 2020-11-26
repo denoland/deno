@@ -2,7 +2,6 @@
 
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
-use crate::http_util::HttpBody;
 use crate::metrics::metrics_op;
 use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
@@ -184,14 +183,12 @@ impl StreamResourceHolder {
 }
 
 pub enum StreamResource {
-  Stdin(tokio::io::Stdin, TTYMetadata),
   FsFile(Option<(tokio::fs::File, FileMetadata)>),
   TcpStream(Option<tokio::net::TcpStream>),
   #[cfg(not(windows))]
   UnixStream(tokio::net::UnixStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-  HttpBody(Box<HttpBody>),
   ChildStdin(tokio::process::ChildStdin),
   ChildStdout(tokio::process::ChildStdout),
   ChildStderr(tokio::process::ChildStderr),
@@ -223,7 +220,6 @@ impl DenoAsyncRead for StreamResource {
     let f: &mut dyn UnpinAsyncRead = match self {
       FsFile(Some((f, _))) => f,
       FsFile(None) => return Poll::Ready(Err(resource_unavailable())),
-      Stdin(f, _) => f,
       TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
@@ -231,7 +227,6 @@ impl DenoAsyncRead for StreamResource {
       ServerTlsStream(f) => f,
       ChildStdout(f) => f,
       ChildStderr(f) => f,
-      HttpBody(f) => f,
       _ => return Err(bad_resource_id()).into(),
     };
     let v = ready!(Pin::new(f).poll_read(cx, buf))?;

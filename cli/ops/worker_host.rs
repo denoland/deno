@@ -1,14 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fmt_errors::JsError;
-use crate::global_state::GlobalState;
+use crate::colors;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::tokio_util::create_basic_runtime;
-use crate::worker::WebWorker;
-use crate::worker::WebWorkerHandle;
-use crate::worker::WorkerEvent;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WorkerEvent;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
+use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -25,7 +28,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+#[derive(Deserialize)]
+struct HostUnhandledErrorArgs {
+  message: String,
+}
+
+pub fn init(
+  rt: &mut deno_core::JsRuntime,
+  sender: Option<mpsc::Sender<WorkerEvent>>,
+) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
@@ -40,6 +51,21 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
   super::reg_json_sync(rt, "op_host_post_message", op_host_post_message);
   super::reg_json_async(rt, "op_host_get_message", op_host_get_message);
+  super::reg_json_sync(
+    rt,
+    "op_host_unhandled_error",
+    move |_state, args, _zero_copy| {
+      if let Some(mut sender) = sender.clone() {
+        let args: HostUnhandledErrorArgs = serde_json::from_value(args)?;
+        sender
+          .try_send(WorkerEvent::Error(generic_error(args.message)))
+          .expect("Failed to propagate error event to parent worker");
+        Ok(json!(true))
+      } else {
+        Err(generic_error("Cannot be called from main worker."))
+      }
+    },
+  );
 }
 
 pub type WorkersTable = HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>;
@@ -48,7 +74,7 @@ pub type WorkerId = u32;
 fn create_web_worker(
   worker_id: u32,
   name: String,
-  global_state: &Arc<GlobalState>,
+  program_state: &Arc<ProgramState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
@@ -57,12 +83,12 @@ fn create_web_worker(
     name.clone(),
     permissions,
     specifier,
-    global_state.clone(),
+    program_state.clone(),
     has_deno_namespace,
   );
 
   if has_deno_namespace {
-    let state = worker.isolate.op_state();
+    let state = worker.js_runtime.op_state();
     let mut state = state.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
     if let Some(stream) = stdin {
@@ -91,13 +117,13 @@ fn create_web_worker(
 fn run_worker_thread(
   worker_id: u32,
   name: String,
-  global_state: &Arc<GlobalState>,
+  program_state: &Arc<ProgramState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), AnyError> {
-  let global_state = global_state.clone();
+  let program_state = program_state.clone();
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
 
@@ -111,7 +137,7 @@ fn run_worker_thread(
     let result = create_web_worker(
       worker_id,
       name,
-      &global_state,
+      &program_state,
       permissions,
       specifier.clone(),
       has_deno_namespace,
@@ -153,8 +179,21 @@ fn run_worker_thread(
       rt.block_on(load_future)
     };
 
+    let mut sender = worker.internal_channels.sender.clone();
+
+    // If sender is closed it means that worker has already been closed from
+    // within using "globalThis.close()"
+    if sender.is_closed() {
+      return;
+    }
+
     if let Err(e) = result {
-      let mut sender = worker.internal_channels.sender.clone();
+      eprintln!(
+        "{}: Uncaught (in worker \"{}\") {}",
+        colors::red_bold("error"),
+        name,
+        e.to_string().trim_start_matches("Uncaught "),
+      );
       sender
         .try_send(WorkerEvent::TerminalError(e))
         .expect("Failed to post message to host");
@@ -166,7 +205,8 @@ fn run_worker_thread(
     // TODO(bartlomieju): this thread should return result of event loop
     // that means that we should store JoinHandle to thread to ensure
     // that it actually terminates.
-    rt.block_on(worker).expect("Panic in event loop");
+    rt.block_on(worker.run_event_loop())
+      .expect("Panic in event loop");
     debug!("Worker thread shuts down {}", &name);
   })?;
 
@@ -209,7 +249,7 @@ fn op_create_worker(
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
-  let cli_state = super::global_state(state);
+  let cli_state = super::program_state(state);
 
   let (join_handle, worker_handle) = run_worker_thread(
     worker_id,
@@ -253,50 +293,40 @@ fn op_host_terminate_worker(
 fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::TerminalError(error) => {
-      let mut serialized_error = json!({
+    WorkerEvent::TerminalError(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => json!({
+        "type": "terminalError",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
         "type": "terminalError",
         "error": {
           "message": error.to_string(),
         }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
-          "type": "terminalError",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        });
-      }
-
-      serialized_error
-    }
-    WorkerEvent::Error(error) => {
-      let mut serialized_error = json!({
+      }),
+    },
+    WorkerEvent::Error(error) => match error.downcast::<JsError>() {
+      Ok(js_error) => json!({
+        "type": "error",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
         "type": "error",
         "error": {
           "message": error.to_string(),
         }
-      });
-
-      if let Ok(js_error) = error.downcast::<JsError>() {
-        serialized_error = json!({
-          "type": "error",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        });
-      }
-
-      serialized_error
-    }
+      }),
+    },
   }
 }
 

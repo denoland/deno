@@ -88,6 +88,16 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     ],
     None,
   ),
+  (
+    "bundle",
+    &["bundle", "std/examples/chat/server_test.ts"],
+    None,
+  ),
+  (
+    "bundle_no_check",
+    &["bundle", "--no-check", "std/examples/chat/server_test.ts"],
+    None,
+  ),
 ];
 
 const RESULT_KEYS: &[&str] =
@@ -173,10 +183,10 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
   for file in walkdir::WalkDir::new(target_dir) {
-    if file.is_err() {
-      continue;
-    }
-    let file = file.unwrap();
+    let file = match file {
+      Ok(file) => file,
+      Err(_) => continue,
+    };
     let filename = file.file_name().to_str().unwrap().to_string();
 
     if !BINARY_TARGET_FILES.contains(&filename.as_str()) {
@@ -303,7 +313,7 @@ fn run_strace_benchmarks(
         deno_exe.to_str().unwrap(),
       ])
       .args(args.iter())
-      .stdout(Stdio::null())
+      .stdout(Stdio::inherit())
       .spawn()?
       .wait()?;
 
@@ -314,7 +324,7 @@ fn run_strace_benchmarks(
     thread_count.insert(
       name.to_string(),
       Value::Number(Number::from(
-        strace_result.get("clone").unwrap().calls + 1,
+        strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1,
       )),
     );
     syscall_count.insert(

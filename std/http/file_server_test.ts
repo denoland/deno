@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
@@ -21,6 +25,7 @@ async function startFileServer({
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-read",
       "--allow-net",
       "file_server.ts",
@@ -46,6 +51,7 @@ async function startFileServerAsLibrary({}: FileServerCfg = {}): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-read",
       "--allow-net",
       "testdata/file_server_as_library.ts",
@@ -147,6 +153,37 @@ Deno.test("serveFallback", async function (): Promise<void> {
   }
 });
 
+Deno.test("checkPathTraversal", async function (): Promise<void> {
+  await startFileServer();
+  try {
+    const res = await fetch(
+      "http://localhost:4507/../../../../../../../..",
+    );
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 200);
+    const listing = await res.text();
+    assertStringIncludes(listing, "README.md");
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("checkURIEncodedPathTraversal", async function (): Promise<void> {
+  await startFileServer();
+  try {
+    const res = await fetch(
+      "http://localhost:4507/%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2F..",
+    );
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 404);
+    const _ = await res.text();
+  } finally {
+    await killFileServer();
+  }
+});
+
 Deno.test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   await startFileServer();
   try {
@@ -170,6 +207,7 @@ Deno.test("printHelp", async function (): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       // TODO(ry) It ought to be possible to get the help output without
       // --allow-read.
       "--allow-read",
@@ -206,6 +244,21 @@ Deno.test("file_server running as library", async function (): Promise<void> {
   }
 });
 
+Deno.test("file_server should ignore query params", async () => {
+  await startFileServer();
+  try {
+    const res = await fetch("http://localhost:4507/README.md?key=value");
+    assertEquals(res.status, 200);
+    const downloadedFile = await res.text();
+    const localFile = new TextDecoder().decode(
+      await Deno.readFile(join(moduleDir, "README.md")),
+    );
+    assertEquals(downloadedFile, localFile);
+  } finally {
+    await killFileServer();
+  }
+});
+
 async function startTlsFileServer({
   target = ".",
   port = 4577,
@@ -214,6 +267,7 @@ async function startTlsFileServer({
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-read",
       "--allow-net",
       "file_server.ts",
@@ -269,6 +323,7 @@ Deno.test("partial TLS arguments fail", async function (): Promise<void> {
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-read",
       "--allow-net",
       "file_server.ts",

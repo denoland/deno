@@ -84,7 +84,7 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (response as any).bodyUsed = true;
   });
   await response.blob();
@@ -133,6 +133,7 @@ unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   assert(response.body !== null);
   let total = 0;
   for await (const chunk of response.body) {
+    assert(chunk instanceof Uint8Array);
     total += chunk.length;
   }
 
@@ -145,12 +146,13 @@ unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assert(response.body !== null);
-  const reader = await response.body.getReader();
+  const reader = response.body.getReader();
   let total = 0;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     assert(value);
+    assert(value instanceof Uint8Array);
     total += value.length;
   }
 
@@ -691,18 +693,10 @@ unitTest(
     const response = await fetch("http://localhost:4546/", {
       redirect: "manual",
     }); // will redirect to http://localhost:4545/
-    assertEquals(response.status, 0);
-    assertEquals(response.statusText, "");
-    assertEquals(response.url, "");
-    assertEquals(response.type, "opaqueredirect");
-    try {
-      await response.text();
-      fail(
-        "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)",
-      );
-    } catch (e) {
-      return;
-    }
+    assertEquals(response.status, 301);
+    assertEquals(response.url, "http://localhost:4546/");
+    assertEquals(response.type, "default");
+    assertEquals(response.headers.get("Location"), "http://localhost:4545/");
   },
 );
 

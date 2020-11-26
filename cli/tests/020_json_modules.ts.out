@@ -1,3 +1,5 @@
 [WILDCARD]
-error: TypeError: Cannot resolve extension for "[WILDCARD]config.json" with mediaType "Json".
+error: An unsupported media type was attempted to be imported as a module.
+  Specifier: [WILDCARD]cli/tests/subdir/config.json
+  MediaType: Json
 [WILDCARD]

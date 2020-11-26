@@ -113,7 +113,9 @@ Deno.test("appendFileWithLongNameToTarArchive", async function (): Promise<
   const untar = new Untar(tar.getReader());
   const result = await untar.extract();
   assert(result !== null);
+  assert(!result.consumed);
   const untarText = new TextDecoder("utf-8").decode(await Deno.readAll(result));
+  assert(result.consumed);
 
   // tests
   assertEquals(result.fileName, fileName);
@@ -137,6 +139,7 @@ Deno.test("untarAsyncIterator", async function (): Promise<void> {
   // read data from a tar archive
   const untar = new Untar(tar.getReader());
 
+  let lastEntry;
   for await (const entry of untar) {
     const expected = entries.shift();
     assert(expected);
@@ -145,11 +148,14 @@ Deno.test("untarAsyncIterator", async function (): Promise<void> {
     if (expected.filePath) {
       content = await Deno.readFile(expected.filePath);
     }
-
     assertEquals(content, await Deno.readAll(entry));
     assertEquals(expected.name, entry.fileName);
-  }
 
+    if (lastEntry) assert(lastEntry.consumed);
+    lastEntry = entry;
+  }
+  assert(lastEntry);
+  assert(lastEntry.consumed);
   assertEquals(entries.length, 0);
 });
 

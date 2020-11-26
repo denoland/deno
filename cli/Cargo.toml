@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.4.4"
+version = "1.5.4"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,20 +20,24 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.61.0" }
-deno_web = { path = "../op_crates/web", version = "0.13.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.5.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
+deno_core = { path = "../core", version = "0.69.0" }
+deno_web = { path = "../op_crates/web", version = "0.20.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
+regex = "1.3.9"
+serde = { version = "1.0.116", features = ["derive"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.61.0" }
-deno_doc = "0.1.10"
-deno_lint = { version = "0.2.2", features = ["json"] }
-deno_web = { path = "../op_crates/web", version = "0.13.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.5.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
+deno_core = { path = "../core", version = "0.69.0" }
+deno_doc = "0.1.16"
+deno_lint = "0.2.11"
+deno_web = { path = "../op_crates/web", version = "0.20.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
@@ -43,7 +47,7 @@ clap = "2.33.3"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.24"
-dprint-plugin-typescript = "0.32.2"
+dprint-plugin-typescript = "0.32.9"
 filetime = "0.2.12"
 http = "0.2.1"
 indexmap = "1.6.0"
@@ -53,16 +57,17 @@ libc = "0.2.77"
 log = "0.4.11"
 env_logger = "0.7.1"
 notify = "5.0.0-pre.3"
-rand = "0.7.3"
 regex = "1.3.9"
 ring = "0.16.15"
 rustyline = { version = "6.3.0", default-features = false }
 rustyline-derive = "0.3.1"
 serde = { version = "1.0.116", features = ["derive"] }
+shell-escape = "0.1.5"
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
-swc_common = { version = "=0.10.3", features = ["sourcemap"] }
-swc_ecmascript = { version = "=0.8.3", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
+swc_bundler = "=0.17.1"
+swc_common = { version = "=0.10.5", features = ["sourcemap"] }
+swc_ecmascript = { version = "=0.14.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }

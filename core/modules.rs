@@ -337,9 +337,9 @@ impl Stream for RecursiveModuleLoad {
 }
 
 pub struct ModuleInfo {
+  pub id: ModuleId,
   pub main: bool,
   pub name: String,
-  pub handle: v8::Global<v8::Module>,
   pub import_specifiers: Vec<ModuleSpecifier>,
 }
 
@@ -372,22 +372,17 @@ impl ModuleNameMap {
   pub fn get(&self, name: &str) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
-      let cond = self.inner.get(mod_name);
-      match cond {
-        Some(SymbolicModule::Alias(target)) => {
+      let symbolic_module = self.inner.get(mod_name)?;
+      match symbolic_module {
+        SymbolicModule::Alias(target) => {
           mod_name = target;
         }
-        Some(SymbolicModule::Mod(mod_id)) => {
-          return Some(*mod_id);
-        }
-        _ => {
-          return None;
-        }
+        SymbolicModule::Mod(mod_id) => return Some(*mod_id),
       }
     }
   }
 
-  /// Insert a name assocated module id.
+  /// Insert a name associated module id.
   pub fn insert(&mut self, name: String, id: ModuleId) {
     self.inner.insert(name, SymbolicModule::Mod(id));
   }
@@ -408,15 +403,21 @@ impl ModuleNameMap {
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
-  pub(crate) info: HashMap<ModuleId, ModuleInfo>,
+  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
+  info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
+  next_module_id: ModuleId,
 }
 
 impl Modules {
   pub fn new() -> Modules {
     Self {
+      handles_by_id: HashMap::new(),
+      ids_by_handle: HashMap::new(),
       info: HashMap::new(),
       by_name: ModuleNameMap::new(),
+      next_module_id: 1,
     }
   }
 
@@ -428,35 +429,33 @@ impl Modules {
     self.info.get(&id).map(|i| &i.import_specifiers)
   }
 
-  pub fn get_name(&self, id: ModuleId) -> Option<&String> {
-    self.info.get(&id).map(|i| &i.name)
-  }
-
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
     self.by_name.get(&specifier.to_string()).is_some()
   }
 
   pub fn register(
     &mut self,
-    id: ModuleId,
     name: &str,
     main: bool,
     handle: v8::Global<v8::Module>,
     import_specifiers: Vec<ModuleSpecifier>,
-  ) {
+  ) -> ModuleId {
     let name = String::from(name);
-    debug!("register_complete {}", name);
-
+    let id = self.next_module_id;
+    self.next_module_id += 1;
     self.by_name.insert(name.clone(), id);
+    self.handles_by_id.insert(id, handle.clone());
+    self.ids_by_handle.insert(handle, id);
     self.info.insert(
       id,
       ModuleInfo {
+        id,
         main,
         name,
         import_specifiers,
-        handle,
       },
     );
+    id
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {
@@ -468,11 +467,19 @@ impl Modules {
     self.by_name.is_alias(name)
   }
 
-  pub fn get_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
-    if id == 0 {
-      return None;
+  pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
+    self.handles_by_id.get(&id).cloned()
+  }
+
+  pub fn get_info(
+    &self,
+    global: &v8::Global<v8::Module>,
+  ) -> Option<&ModuleInfo> {
+    if let Some(id) = self.ids_by_handle.get(global) {
+      return self.info.get(id);
     }
-    self.info.get(&id)
+
+    None
   }
 }
 
@@ -667,7 +674,7 @@ mod tests {
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    runtime.mod_evaluate(a_id).unwrap();
+    futures::executor::block_on(runtime.mod_evaluate(a_id)).unwrap();
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -679,7 +686,7 @@ mod tests {
       ]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
@@ -734,7 +741,7 @@ mod tests {
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      runtime.mod_evaluate(circular1_id).unwrap();
+      runtime.mod_evaluate(circular1_id).await.unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -746,7 +753,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -811,7 +818,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      runtime.mod_evaluate(redirect1_id).unwrap();
+      runtime.mod_evaluate(redirect1_id).await.unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -822,7 +829,7 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(&runtime);
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
       let modules = &state.modules;
 
@@ -961,7 +968,7 @@ mod tests {
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    runtime.mod_evaluate(main_id).unwrap();
+    futures::executor::block_on(runtime.mod_evaluate(main_id)).unwrap();
 
     let l = loads.lock().unwrap();
     assert_eq!(
@@ -969,7 +976,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = JsRuntime::state(&runtime);
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
     let modules = &state.modules;
 

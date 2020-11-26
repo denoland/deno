@@ -18,13 +18,15 @@ pretty-printed diff of failing assertion.
   and `expected` are equal.
 - `assertStrictEquals()` - Compares `actual` and `expected` strictly, therefore
   for non-primitives the values must reference the same instance.
-- `assertStringContains()` - Make an assertion that `actual` contains
+- `assertStringIncludes()` - Make an assertion that `actual` includes
   `expected`.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
 - `assertNotMatch()` - Make an assertion that `actual` not match RegExp
   `expected`.
-- `assertArrayContains()` - Make an assertion that `actual` array contains the
+- `assertArrayIncludes()` - Make an assertion that `actual` array includes the
   `expected` values.
+- `assertObjectMatch()` - Make an assertion that `actual` object match
+  `expected` subset object
 - `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,
   this function does. Also compares any errors thrown to an optional expected
   `Error` class and checks that the error `.message` includes an optional
@@ -40,7 +42,7 @@ pretty-printed diff of failing assertion.
 Basic usage:
 
 ```ts
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test({
   name: "testing example",
@@ -156,7 +158,10 @@ After that simply calling `runBenchmarks()` will benchmark all registered
 benchmarks and log the results in the commandline.
 
 ```ts
-import { bench, runBenchmarks } from "https://deno.land/std/testing/bench.ts";
+import {
+  bench,
+  runBenchmarks,
+} from "https://deno.land/std@$STD_VERSION/testing/bench.ts";
 
 bench(function forIncrementX1e9(b): void {
   b.start();

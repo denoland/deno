@@ -8,13 +8,13 @@ WebSockets, use the
 
 ```ts
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { serve } from "https://deno.land/std/http/server.ts";
+import { serve } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
   WebSocket,
-} from "https://deno.land/std/ws/mod.ts";
+} from "https://deno.land/std@$STD_VERSION/ws/mod.ts";
 
 async function handleWs(sock: WebSocket) {
   console.log("socket connected!");

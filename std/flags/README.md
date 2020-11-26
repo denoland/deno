@@ -5,7 +5,7 @@ Command line arguments parser for Deno based on minimist.
 # Example
 
 ```ts
-import { parse } from "https://deno.land/std/flags/mod.ts";
+import { parse } from "https://deno.land/std@$STD_VERSION/flags/mod.ts";
 
 console.dir(parse(Deno.args));
 ```
@@ -56,7 +56,7 @@ options can be:
   example:
   ```ts
   // $ deno run example.ts -- a arg1
-  import { parse } from "https://deno.land/std/flags/mod.ts";
+  import { parse } from "https://deno.land/std@$STD_VERSION/flags/mod.ts";
   console.dir(parse(Deno.args, { "--": false }));
   // output: { _: [ "a", "arg1" ] }
   console.dir(parse(Deno.args, { "--": true }));

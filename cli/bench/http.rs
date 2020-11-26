@@ -191,7 +191,7 @@ fn deno_http(deno_exe: &str) -> Result<HttpBenchmarkResult> {
       "--allow-net",
       "--reload",
       "--unstable",
-      "std/http/http_bench.ts",
+      "std/http/bench.ts",
       &server_addr(port),
     ],
     port,
@@ -299,5 +299,5 @@ fn node_tcp() -> Result<HttpBenchmarkResult> {
 fn hyper_http(exe: &str) -> Result<HttpBenchmarkResult> {
   let port = get_port();
   println!("http_benchmark testing RUST hyper");
-  run(&[exe, &format!("{}", port)], port, None, None)
+  run(&[exe, &port.to_string()], port, None, None)
 }

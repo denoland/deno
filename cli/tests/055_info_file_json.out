@@ -1,33 +1,33 @@
 {
-  "module": "file://[WILDCARD]005_more_imports.ts",
-  "local": "[WILDCARD]005_more_imports.ts",
-  "fileType": "TypeScript",
   "compiled": null,
-  "map": null,
   "depCount": 3,
-  "totalSize": 757,
+  "fileType": "TypeScript",
   "files": {
-    "file://[WILDCARD]005_more_imports.ts": {
-      "size": 211,
+    "file:///[WILDCARD]/cli/tests/005_more_imports.ts": {
       "deps": [
-        "file://[WILDCARD]/subdir/mod1.ts"
-      ]
+        "file:///[WILDCARD]/cli/tests/subdir/mod1.ts"
+      ],
+      "size": 211
     },
-    "file://[WILDCARD]/subdir/mod1.ts": {
-      "size": 320,
+    "file:///[WILDCARD]/cli/tests/subdir/mod1.ts": {
       "deps": [
-        "file://[WILDCARD]/subdir/subdir2/mod2.ts"
-      ]
+        "file:///[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts"
+      ],
+      "size": 320
     },
-    "file://[WILDCARD]/subdir/print_hello.ts": {
-      "size": 63,
-      "deps": []
+    "file:///[WILDCARD]/cli/tests/subdir/print_hello.ts": {
+      "deps": [],
+      "size": 63
     },
-    "file://[WILDCARD]/subdir/subdir2/mod2.ts": {
-      "size": 163,
+    "file:///[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts": {
       "deps": [
-        "file://[WILDCARD]/subdir/print_hello.ts"
-      ]
+        "file:///[WILDCARD]/cli/tests/subdir/print_hello.ts"
+      ],
+      "size": 163
     }
-  }
+  },
+  "local": "[WILDCARD]005_more_imports.ts",
+  "map": null,
+  "module": "file:///[WILDCARD]/cli/tests/005_more_imports.ts",
+  "totalSize": 757
 }

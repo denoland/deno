@@ -46,7 +46,7 @@ This module provides an implementation of the WebAssembly System Interface.
 - [x] poll_oneoff
 - [x] proc_exit
 - [ ] proc_raise
-- [ ] sched_yield
+- [x] sched_yield
 - [x] random_get
 - [ ] sock_recv
 - [ ] sock_send
@@ -55,7 +55,7 @@ This module provides an implementation of the WebAssembly System Interface.
 ## Usage
 
 ```typescript
-import Context from "https://deno.land/std/wasi/snapshot_preview1.ts";
+import Context from "https://deno.land/std@$STD_VERSION/wasi/snapshot_preview1.ts";
 
 const context = new Context({
   args: Deno.args,
@@ -68,21 +68,5 @@ const instance = await WebAssembly.instantiate(module, {
   "wasi_snapshot_preview1": context.exports,
 });
 
-const {
-  _start: start,
-  _initialize: initialize,
-  memory,
-} = instance.exports;
-
-context.memory = memory as WebAssembly.Memory;
-
-if (start instanceof Function) {
-  start();
-} else if (initialize instanceof Function) {
-  initialize();
-} else {
-  throw new Error(
-    "No '_start' or '_initialize' entry point found in WebAssembly module, make sure to compile with wasm32-wasi as the target.",
-  );
-}
+context.start(instance);
 ```

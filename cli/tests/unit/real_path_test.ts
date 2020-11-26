@@ -1,20 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertMatch,
   assertThrows,
   assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
-  const incompletePath = "cli/tests/fixture.json";
-  const realPath = Deno.realPathSync(incompletePath);
+  const relative = "cli/tests/fixture.json";
+  const realPath = Deno.realPathSync(relative);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
+    assert(realPath.endsWith(relative));
   } else {
-    assert(/^[A-Z]/.test(realPath));
+    assertMatch(realPath, /^[A-Z]:\\/);
+    assert(realPath.endsWith(relative.replace(/\//g, "\\")));
   }
-  assert(realPath.endsWith(incompletePath));
 });
 
 unitTest(
@@ -27,13 +29,14 @@ unitTest(
     const symlink = testDir + "/symln";
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
-    const targetPath = Deno.realPathSync(symlink);
+    const realPath = Deno.realPathSync(symlink);
     if (Deno.build.os !== "windows") {
-      assert(targetPath.startsWith("/"));
+      assert(realPath.startsWith("/"));
+      assert(realPath.endsWith("/target"));
     } else {
-      assert(/^[A-Z]/.test(targetPath));
+      assertMatch(realPath, /^[A-Z]:\\/);
+      assert(realPath.endsWith("\\target"));
     }
-    assert(targetPath.endsWith("/target"));
   },
 );
 
@@ -52,14 +55,15 @@ unitTest({ perms: { read: true } }, function realPathSyncNotFound(): void {
 unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
   void
 > {
-  const incompletePath = "cli/tests/fixture.json";
-  const realPath = await Deno.realPath(incompletePath);
+  const relativePath = "cli/tests/fixture.json";
+  const realPath = await Deno.realPath(relativePath);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
+    assert(realPath.endsWith(relativePath));
   } else {
-    assert(/^[A-Z]/.test(realPath));
+    assertMatch(realPath, /^[A-Z]:\\/);
+    assert(realPath.endsWith(relativePath.replace(/\//g, "\\")));
   }
-  assert(realPath.endsWith(incompletePath));
 });
 
 unitTest(
@@ -72,13 +76,14 @@ unitTest(
     const symlink = testDir + "/symln";
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
-    const targetPath = await Deno.realPath(symlink);
+    const realPath = await Deno.realPath(symlink);
     if (Deno.build.os !== "windows") {
-      assert(targetPath.startsWith("/"));
+      assert(realPath.startsWith("/"));
+      assert(realPath.endsWith("/target"));
     } else {
-      assert(/^[A-Z]/.test(targetPath));
+      assertMatch(realPath, /^[A-Z]:\\/);
+      assert(realPath.endsWith("\\target"));
     }
-    assert(targetPath.endsWith("/target"));
   },
 );
 

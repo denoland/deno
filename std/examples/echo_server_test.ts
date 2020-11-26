@@ -9,7 +9,7 @@ Deno.test("[examples/echo_server]", async () => {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const process = Deno.run({
-    cmd: [Deno.execPath(), "run", "--allow-net", "echo_server.ts"],
+    cmd: [Deno.execPath(), "run", "--quiet", "--allow-net", "echo_server.ts"],
     cwd: moduleDir,
     stdout: "piped",
   });

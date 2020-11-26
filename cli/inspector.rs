@@ -201,7 +201,7 @@ async fn server(
 
   let json_version_route = warp::path!("json" / "version").map(|| {
     warp::reply::json(&json!({
-      "Browser": format!("Deno/{}", crate::version::DENO),
+      "Browser": format!("Deno/{}", crate::version::deno()),
       "Protocol-Version": "1.3",
       "V8-Version": crate::version::v8(),
     }))
@@ -235,9 +235,9 @@ async fn server(
   pin_mut!(server_handler);
 
   select! {
-    _ = register_inspector_handler => (),
+    _ = register_inspector_handler => {},
     _ = deregister_inspector_handler => unreachable!(),
-    _ = server_handler => (),
+    _ = server_handler => {},
   }
 }
 
@@ -390,11 +390,11 @@ impl DenoInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut deno_core::JsRuntime,
+    js_runtime: &mut deno_core::JsRuntime,
     server: Option<Arc<InspectorServer>>,
   ) -> Box<Self> {
-    let context = isolate.global_context();
-    let scope = &mut v8::HandleScope::new(&mut **isolate);
+    let context = js_runtime.global_context();
+    let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
 
     let (new_websocket_tx, new_websocket_rx) =
       mpsc::unbounded::<WebSocketProxy>();
@@ -826,6 +826,7 @@ pub struct InspectorSession {
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
+  notification_queue: Vec<Value>,
 }
 
 impl Deref for InspectorSession {
@@ -868,8 +869,12 @@ impl v8::inspector::ChannelImpl for InspectorSession {
 
   fn send_notification(
     &mut self,
-    _message: v8::UniquePtr<v8::inspector::StringBuffer>,
+    message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
+    let raw_message = message.unwrap().string().to_string();
+    let message = serde_json::from_str(&raw_message).unwrap();
+
+    self.notification_queue.push(message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
@@ -890,18 +895,25 @@ impl InspectorSession {
       let response_tx_map = HashMap::new();
       let next_message_id = 0;
 
+      let notification_queue = Vec::new();
+
       Self {
         v8_channel,
         v8_session,
         response_tx_map,
         next_message_id,
+        notification_queue,
       }
     })
   }
 
+  pub fn notifications(&mut self) -> Vec<Value> {
+    self.notification_queue.split_off(0)
+  }
+
   pub async fn post_message(
     &mut self,
-    method: String,
+    method: &str,
     params: Option<serde_json::Value>,
   ) -> Result<serde_json::Value, AnyError> {
     let id = self.next_message_id;
@@ -922,7 +934,7 @@ impl InspectorSession {
 
     let response = response_rx.await.unwrap();
     if let Some(error) = response.get("error") {
-      return Err(generic_error(format!("{}", error)));
+      return Err(generic_error(error.to_string()));
     }
 
     let result = response.get("result").unwrap().clone();

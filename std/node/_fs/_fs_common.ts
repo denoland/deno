@@ -1,20 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { notImplemented } from "../_utils.ts";
+import {
+  BinaryEncodings,
+  Encodings,
+  notImplemented,
+  TextEncodings,
+} from "../_utils.ts";
 
 export type CallbackWithError = (err?: Error | null) => void;
-
-export type TextEncodings =
-  | "ascii"
-  | "utf8"
-  | "utf-8"
-  | "utf16le"
-  | "ucs2"
-  | "ucs-2"
-  | "base64"
-  | "latin1"
-  | "hex";
-export type BinaryEncodings = "binary";
-export type Encodings = TextEncodings | BinaryEncodings;
 
 export interface FileOptions {
   encoding?: Encodings;
@@ -49,7 +41,7 @@ export function getEncoding(
   optOrCallback?:
     | FileOptions
     | WriteFileOptions
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     | ((...args: any[]) => any)
     | Encodings
     | null,

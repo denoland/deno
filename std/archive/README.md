@@ -3,7 +3,7 @@
 ## Tar
 
 ```ts
-import { Tar } from "https://deno.land/std/archive/tar.ts";
+import { Tar } from "https://deno.land/std@$STD_VERSION/archive/tar.ts";
 
 const tar = new Tar();
 const content = new TextEncoder().encode("Deno.land");
@@ -27,9 +27,9 @@ writer.close();
 ## Untar
 
 ```ts
-import { Untar } from "https://deno.land/std/archive/tar.ts";
-import { ensureFile } from "https://deno.land/std/fs/ensure_file.ts";
-import { ensureDir } from "https://deno.land/std/fs/ensure_dir.ts";
+import { Untar } from "https://deno.land/std@$STD_VERSION/archive/tar.ts";
+import { ensureFile } from "https://deno.land/std@$STD_VERSION/fs/ensure_file.ts";
+import { ensureDir } from "https://deno.land/std@$STD_VERSION/fs/ensure_dir.ts";
 
 const reader = await Deno.open("./out.tar", { read: true });
 const untar = new Untar(reader);

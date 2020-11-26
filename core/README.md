@@ -9,9 +9,12 @@ bindings.
 
 This Rust crate contains the essential V8 bindings for Deno's command-line
 interface (Deno CLI). The main abstraction here is the JsRuntime which provides
-a way to execute JavaScript. The JsRuntime is modeled as a
-`Future<Item=(), Error=JsError>` which completes once all of its ops have
-completed.
+a way to execute JavaScript.
+
+The JsRuntime implements an event loop abstraction for the executed code that
+keeps track of all pending tasks (async ops, dynamic module loads). It is user's
+responsibility to drive that loop by using `JsRuntime::run_event_loop` method -
+it must be executed in the context of Rust's future executor (eg. tokio, smol).
 
 In order to bind Rust functions into JavaScript, use the `Deno.core.dispatch()`
 function to trigger the "dispatch" callback in Rust. The user is responsible for

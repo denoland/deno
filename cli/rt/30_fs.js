@@ -77,7 +77,7 @@
   }
 
   function mkdirArgs(path, options) {
-    const args = { path, recursive: false };
+    const args = { path: pathFromURL(path), recursive: false };
     if (options != null) {
       if (typeof options.recursive == "boolean") {
         args.recursive = options.recursive;
@@ -128,11 +128,11 @@
   }
 
   function readLinkSync(path) {
-    return core.jsonOpSync("op_read_link_sync", { path });
+    return core.jsonOpSync("op_read_link_sync", { path: pathFromURL(path) });
   }
 
   function readLink(path) {
-    return core.jsonOpAsync("op_read_link_async", { path });
+    return core.jsonOpAsync("op_read_link_async", { path: pathFromURL(path) });
   }
 
   function realPathSync(path) {

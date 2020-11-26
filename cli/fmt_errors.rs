@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors;
-use crate::source_maps::apply_source_map;
-use crate::source_maps::SourceMapGetter;
-use deno_core::error::{AnyError, JsError as CoreJsError, JsStackFrame};
+use deno_core::error::{AnyError, JsError, JsStackFrame};
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
@@ -230,29 +228,26 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-/// Wrapper around deno_core::JsError which provides color to_string.
+/// Wrapper around deno_core::JsError which provides colorful
+/// string representation.
 #[derive(Debug)]
-pub struct JsError(CoreJsError);
+pub struct PrettyJsError(JsError);
 
-impl JsError {
-  pub fn create(
-    core_js_error: CoreJsError,
-    source_map_getter: &impl SourceMapGetter,
-  ) -> AnyError {
-    let core_js_error = apply_source_map(&core_js_error, source_map_getter);
-    let js_error = Self(core_js_error);
-    js_error.into()
+impl PrettyJsError {
+  pub fn create(js_error: JsError) -> AnyError {
+    let pretty_js_error = Self(js_error);
+    pretty_js_error.into()
   }
 }
 
-impl Deref for JsError {
-  type Target = CoreJsError;
+impl Deref for PrettyJsError {
+  type Target = JsError;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl fmt::Display for JsError {
+impl fmt::Display for PrettyJsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut frames = self.0.frames.clone();
 
@@ -289,7 +284,7 @@ impl fmt::Display for JsError {
   }
 }
 
-impl Error for JsError {}
+impl Error for PrettyJsError {}
 
 #[cfg(test)]
 mod tests {

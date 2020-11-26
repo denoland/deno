@@ -5,7 +5,7 @@ import {
   assertNotEquals,
   assertThrows,
   assertThrowsAsync,
-  createResolvable,
+  deferred,
   unitTest,
 } from "./test_util.ts";
 
@@ -306,7 +306,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function netTcpListenIteratorBreakClosesResource(): Promise<void> {
-    const promise = createResolvable();
+    const promise = deferred();
 
     async function iterate(listener: Deno.Listener): Promise<void> {
       let i = 0;
@@ -327,7 +327,7 @@ unitTest(
     const listener = Deno.listen(addr);
     iterate(listener);
 
-    await new Promise((resolve: () => void, _) => {
+    await new Promise<void>((resolve) => {
       setTimeout(resolve, 100);
     });
     const conn1 = await Deno.connect(addr);
@@ -440,7 +440,7 @@ unitTest(
   async function netCloseWriteSuccess() {
     const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
-    const closeDeferred = createResolvable();
+    const closeDeferred = deferred();
     listener.accept().then(async (conn) => {
       await conn.write(new Uint8Array([1, 2, 3]));
       await closeDeferred;
@@ -474,7 +474,7 @@ unitTest(
   async function netDoubleCloseWrite() {
     const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
-    const closeDeferred = createResolvable();
+    const closeDeferred = deferred();
     listener.accept().then(async (conn) => {
       await closeDeferred;
       conn.close();
@@ -497,7 +497,7 @@ unitTest(
   },
   async function netHangsOnClose() {
     let acceptedConn: Deno.Conn;
-    const resolvable = createResolvable();
+    const resolvable = deferred();
 
     async function iteratorReq(listener: Deno.Listener): Promise<void> {
       const p = new Uint8Array(10);

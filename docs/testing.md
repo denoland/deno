@@ -32,14 +32,14 @@ https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
 
 ```ts
 import {
-  assertArrayContains,
+  assertArrayIncludes,
   assertEquals,
 } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;
   assertEquals(x, 3);
-  assertArrayContains([1, 2, 3, 4, 5, 6], [3], "Expected 3 to be in the array");
+  assertArrayIncludes([1, 2, 3, 4, 5, 6], [3], "Expected 3 to be in the array");
 });
 ```
 
@@ -199,10 +199,10 @@ Deno.test({
 ## Failing fast
 
 If you have a long running test suite and wish for it to stop on the first
-failure, you can specify the `--failfast` flag when running the suite.
+failure, you can specify the `--fail-fast` flag when running the suite.
 
 ```shell
-deno test --failfast
+deno test --fail-fast
 ```
 
 ## Test coverage

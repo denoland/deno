@@ -1,4 +1,4 @@
-/* eslint-disable */
+// deno-lint-ignore-file
 let x = {
   a: {
     b: {

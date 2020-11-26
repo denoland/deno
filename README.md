@@ -64,8 +64,8 @@ deno run https://deno.land/std/examples/welcome.ts
 
 Or a more complex one:
 
-```sh
-import { serve } from "https://deno.land/std@0.69.0/http/server.ts";
+```ts
+import { serve } from "https://deno.land/std/http/server.ts";
 const s = serve({ port: 8000 });
 console.log("http://localhost:8000/");
 for await (const req of s) {
@@ -76,7 +76,8 @@ for await (const req of s) {
 You can find a more in depth introduction, examples, and environment setup
 guides in the [manual](https://deno.land/manual).
 
-More in-depth info can be found in the runtime [documentation](doc.deno.land).
+More in-depth info can be found in the runtime
+[documentation](https://doc.deno.land).
 
 ### Contributing
 

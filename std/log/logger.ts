@@ -3,7 +3,7 @@ import { getLevelByName, getLevelName, LogLevels } from "./levels.ts";
 import type { LevelName } from "./levels.ts";
 import type { BaseHandler } from "./handlers.ts";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 export type GenericFunction = (...args: any[]) => any;
 
 export interface LogRecordOptions {
@@ -131,6 +131,8 @@ export class Logger {
       typeof data === "symbol"
     ) {
       return String(data);
+    } else if (data instanceof Error) {
+      return data.stack!;
     } else if (typeof data === "object") {
       return JSON.stringify(data);
     }

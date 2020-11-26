@@ -29,14 +29,12 @@ fn op_start(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let gs = &super::global_state(state);
+  let gs = &super::program_state(state);
 
   Ok(json!({
-    // TODO(bartlomieju): `cwd` field is not used in JS, remove?
     "args": gs.flags.argv.clone(),
-    "cwd": &env::current_dir().unwrap(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    "denoVersion": version::DENO,
+    "denoVersion": version::deno(),
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "ppid": ppid(),

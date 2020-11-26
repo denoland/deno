@@ -22,7 +22,7 @@ export interface LoaderStateOptions {
   onWarning?(this: null, e?: YAMLError): void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 export type ResultType = any[] | Record<string, any> | string;
 
 export class LoaderState extends State {

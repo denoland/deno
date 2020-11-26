@@ -3,7 +3,7 @@ import { decode } from "../encoding/utf8.ts";
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
 } from "../testing/asserts.ts";
 import {
   fromFileUrl,
@@ -119,14 +119,20 @@ Deno.test("expandGlobIncludeDirs", async function (): Promise<void> {
 Deno.test("expandGlobPermError", async function (): Promise<void> {
   const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
   const p = Deno.run({
-    cmd: [Deno.execPath(), "run", "--unstable", exampleUrl.toString()],
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--quiet",
+      "--unstable",
+      exampleUrl.toString(),
+    ],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
-  assertStringContains(
+  assertStringIncludes(
     decode(await p.stderrOutput()),
     "Uncaught PermissionDenied",
   );

@@ -163,10 +163,21 @@ function textDecoderASCII() {
 function textDecoderErrorEncoding() {
   let didThrow = false;
   try {
-    new TextDecoder("foo");
+    new TextDecoder("Foo");
   } catch (e) {
     didThrow = true;
-    assert(e.message === "The encoding label provided ('foo') is invalid.");
+    assert(e.message === "The encoding label provided ('Foo') is invalid.");
+  }
+  assert(didThrow);
+}
+
+function textDecoderHandlesNotFoundInternalDecoder() {
+  let didThrow = false;
+  try {
+    new TextDecoder("gbk");
+  } catch (e) {
+    didThrow = true;
+    assert(e instanceof RangeError);
   }
   assert(didThrow);
 }
@@ -948,8 +959,8 @@ function singleByteEncodings() {
       9472, 9474, 9484, 9488, 9492, 9496, 9500, 9508,
       9516, 9524, 9532, 9600, 9604, 9608, 9612, 9616,
       9617, 9618, 9619, 8992, 9632, 8729, 8730, 8776,
-      8804, 8805, 160, 8993, 176, 178, 183, 247, 
-      9552, 9553, 9554, 1105, 9555, 9556, 9557, 9558, 
+      8804, 8805, 160, 8993, 176, 178, 183, 247,
+      9552, 9553, 9554, 1105, 9555, 9556, 9557, 9558,
       9559, 9560, 9561, 9562, 9563, 9564, 9565, 9566,
       9567, 9568, 9569, 1025, 9570, 9571, 9572, 9573,
       9574, 9575, 9576, 9577, 9578, 9579, 9580, 169,
@@ -1256,6 +1267,7 @@ function main() {
   textDecoderSharedInt32Array();
   toStringShouldBeWebCompatibility();
   singleByteEncodings();
+  textDecoderHandlesNotFoundInternalDecoder();
 }
 
 main();

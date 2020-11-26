@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs as deno_fs;
+use crate::fs_util;
 use crate::http_cache::url_to_filename;
 use deno_core::url::{Host, Url};
 use std::ffi::OsStr;
@@ -107,8 +107,9 @@ impl DiskCache {
       }
       scheme => {
         unimplemented!(
-          "Don't know how to create cache name for scheme: {}",
-          scheme
+          "Don't know how to create cache name for scheme: {}\n  Url: {}",
+          scheme,
+          url
         );
       }
     };
@@ -144,13 +145,8 @@ impl DiskCache {
       Some(ref parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
-    deno_fs::write_file(&path, data, 0o666)
+    fs_util::write_file(&path, data, crate::http_cache::CACHE_PERM)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
-  }
-
-  pub fn remove(&self, filename: &Path) -> std::io::Result<()> {
-    let path = self.location.join(filename);
-    fs::remove_file(path)
   }
 }
 

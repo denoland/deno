@@ -167,6 +167,29 @@ declare namespace Deno {
     swapFree: number;
   }
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the total number of logical cpus in the system along with
+   * the speed measured in MHz. If either the syscall to get the core
+   * count or speed of the cpu is unsuccessful the value of the it
+   * is undefined.
+   *
+   * ```ts
+   * console.log(Deno.systemCpuInfo());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   */
+  export function systemCpuInfo(): SystemCpuInfo;
+
+  export interface SystemCpuInfo {
+    /** Total number of logical cpus in the system */
+    cores: number | undefined;
+    /** The speed of the cpu measured in MHz */
+    speed: number | undefined;
+  }
+
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Open and initialize a plugin.
@@ -280,9 +303,6 @@ declare namespace Deno {
     /** Provide full support for iterables in `for..of`, spread and
      * destructuring when targeting ES5 or ES3. Defaults to `false`. */
     downlevelIteration?: boolean;
-    /** Emit a UTF-8 Byte Order Mark (BOM) in the beginning of output files.
-     * Defaults to `false`. */
-    emitBOM?: boolean;
     /** Only emit `.d.ts` declaration files. Defaults to `false`. */
     emitDeclarationOnly?: boolean;
     /** Emit design-type metadata for decorated declarations in source. See issue
@@ -293,8 +313,25 @@ declare namespace Deno {
      * ecosystem compatibility and enable `allowSyntheticDefaultImports` for type
      * system compatibility. Defaults to `true`. */
     esModuleInterop?: boolean;
-    /** Enables experimental support for ES decorators. Defaults to `false`. */
+    /** Enables experimental support for ES decorators. Defaults to `true`. */
     experimentalDecorators?: boolean;
+    /** Import emit helpers (e.g. `__extends`, `__rest`, etc..) from
+     * [tslib](https://www.npmjs.com/package/tslib). */
+    importHelpers?: boolean;
+    /** This flag controls how `import` works, there are 3 different options:
+     * 
+     * - `remove`: The default behavior of dropping import statements which only
+     *   reference types.
+     * - `preserve`: Preserves all `import` statements whose values or types are
+     *   never used. This can cause imports/side-effects to be preserved.
+     * - `error`: This preserves all imports (the same as the preserve option),
+     *   but will error when a value import is only used as a type. This might
+     *   be useful if you want to ensure no values are being accidentally
+     *   imported, but still make side-effect imports explicit.
+     * 
+     * This flag works because you can use `import type` to explicitly create an
+     * `import` statement which should never be emitted into JavaScript. */
+    importsNotUsedAsValues?: "remove" | "preserve" | "error";
     /** Emit a single file with source maps instead of having a separate file.
      * Defaults to `false`. */
     inlineSourceMap?: boolean;
@@ -302,7 +339,7 @@ declare namespace Deno {
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
     /** Perform additional checks to ensure that transpile only would be safe.
-     * Defaults to `false`. */
+     * Defaults to `true`. */
     isolatedModules?: boolean;
     /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
      * Defaults to `"react"`. */
@@ -310,12 +347,12 @@ declare namespace Deno {
     /** Specify the JSX factory function to use when targeting react JSX emit,
      * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
     jsxFactory?: string;
+    /** Specify the JSX fragment factory function to use when targeting react
+     * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
+    jsxFragmentFactory?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
-    /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
-     */
-    useDefineForClassFields?: boolean;
     /** List of library files to be included in the compilation. If omitted,
      * then the Deno main runtime libs are used. */
     lib?: string[];
@@ -366,10 +403,6 @@ declare namespace Deno {
     noUnusedLocals?: boolean;
     /** Report errors on unused parameters. Defaults to `false`. */
     noUnusedParameters?: boolean;
-    /** Redirect output structure to the directory. This only impacts
-     * `Deno.compile` and only changes the emitted file names. Defaults to
-     * `undefined`. */
-    outDir?: string;
     /** List of path mapping entries for module names to locations relative to the
      * `baseUrl`. Defaults to `undefined`. */
     paths?: Record<string, string[]>;
@@ -379,8 +412,6 @@ declare namespace Deno {
     /** Remove all comments except copy-right header comments beginning with
      * `/*!`. Defaults to `true`. */
     removeComments?: boolean;
-    /** Include modules imported with `.json` extension. Defaults to `true`. */
-    resolveJsonModule?: boolean;
     /** Specifies the root directory of input files. Only use to control the
      * output directory structure with `outDir`. Defaults to `undefined`. */
     rootDir?: string;
@@ -395,6 +426,8 @@ declare namespace Deno {
      * specified will be embedded in the sourceMap to direct the debugger where
      * the source files will be located. Defaults to `undefined`. */
     sourceRoot?: string;
+    /** Skip type checking of all declaration files (`*.d.ts`). */
+    skipLibCheck?: boolean;
     /** Enable all strict type checking options. Enabling `strict` enables
      * `noImplicitAny`, `noImplicitThis`, `alwaysStrict`, `strictBindCallApply`,
      * `strictNullChecks`, `strictFunctionTypes` and
@@ -449,6 +482,9 @@ declare namespace Deno {
      * ```
      */
     types?: string[];
+    /** Emit class fields with ECMAScript-standard semantics. Defaults to
+     * `false`. */
+    useDefineForClassFields?: boolean;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -480,8 +516,7 @@ declare namespace Deno {
    *                source map.
    * @param options An option object of options to send to the compiler. This is
    *                a subset of ts.CompilerOptions which can be supported by Deno.
-   *                Many of the options related to type checking and emitting
-   *                type declaration files will have no impact on the output.
+   *                If unsupported option is passed then the API will throw an error.
    */
   export function transpileOnly(
     sources: Record<string, string>,
@@ -1096,7 +1131,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.dir("home");
+     *   console.log(Deno.dir("home"));
      * } else {
      *   console.log("'env' permission is denied.");
      * }
@@ -1169,52 +1204,6 @@ declare namespace Deno {
    * ```
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
-
-  /* **UNSTABLE**: New API, yet to be vetted.
-   * Synchronously flushes any pending data operations of the given file stream to disk.
-   *  ```ts
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.fdatasyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
-   * ```
-   */
-  export function fdatasyncSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Flushes any pending data operations of the given file stream to disk.
-   *  ```ts
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.fdatasync(file.rid);
-   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
-   * ```
-   */
-  export function fdatasync(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
-   *  ```ts
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 1);
-   * Deno.fsyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
-   * ```
-   */
-  export function fsyncSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Flushes any pending data and metadata operations of the given file stream to disk.
-   *  ```ts
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 1);
-   * await Deno.fsync(file.rid);
-   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
-   * ```
-   */
-  export function fsync(rid: number): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
@@ -1312,6 +1301,17 @@ declare namespace Deno {
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
+
+  /** *UNSTABLE**: new API, yet to be vetted.
+   *
+   * SleepSync puts the main thread to sleep synchronously for a given amount of
+   * time in milliseconds.
+   *
+   * ```ts
+   * Deno.sleepSync(10);
+   * ```
+   */
+  export function sleepSync(millis: number): Promise<void>;
 }
 
 declare function fetch(

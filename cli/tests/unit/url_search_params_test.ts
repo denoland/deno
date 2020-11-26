@@ -49,10 +49,39 @@ unitTest(function urlSearchParamsInitString(): void {
 });
 
 unitTest(function urlSearchParamsInitStringWithPlusCharacter(): void {
-  const init = "q=a+b";
-  const searchParams = new URLSearchParams(init);
-  assertEquals(searchParams.toString(), init);
-  assertEquals(searchParams.get("q"), "a b");
+  let params = new URLSearchParams("q=a+b");
+  assertEquals(params.toString(), "q=a+b");
+  assertEquals(params.get("q"), "a b");
+
+  params = new URLSearchParams("q=a+b+c");
+  assertEquals(params.toString(), "q=a+b+c");
+  assertEquals(params.get("q"), "a b c");
+});
+
+unitTest(function urlSearchParamsInitStringWithMalformedParams(): void {
+  // These test cases are copied from Web Platform Tests
+  // https://github.com/web-platform-tests/wpt/blob/54c6d64/url/urlsearchparams-constructor.any.js#L60-L80
+  let params = new URLSearchParams("id=0&value=%");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("id"), 'Search params object has name "id"');
+  assert(params.has("value"), 'Search params object has name "value"');
+  assertEquals(params.get("id"), "0");
+  assertEquals(params.get("value"), "%");
+
+  params = new URLSearchParams("b=%2sf%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%2sf*");
+
+  params = new URLSearchParams("b=%2%2af%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%2*f*");
+
+  params = new URLSearchParams("b=%%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%*");
 });
 
 unitTest(function urlSearchParamsInitIterable(): void {
@@ -73,7 +102,7 @@ unitTest(function urlSearchParamsInitRecord(): void {
 unitTest(function urlSearchParamsInit(): void {
   const params1 = new URLSearchParams("a=b");
   assertEquals(params1.toString(), "a=b");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const params2 = new URLSearchParams(params1 as any);
   assertEquals(params2.toString(), "a=b");
 });
@@ -179,6 +208,12 @@ unitTest(function urlSearchParamsMissingPair(): void {
   assertEquals(searchParams.toString(), "c=4&a=54");
 });
 
+unitTest(function urlSearchParamsForShortEncodedChar(): void {
+  const init = { linefeed: "\n", tab: "\t" };
+  const searchParams = new URLSearchParams(init);
+  assertEquals(searchParams.toString(), "linefeed=%0A&tab=%09");
+});
+
 // If pair does not contain exactly two items, then throw a TypeError.
 // ref https://url.spec.whatwg.org/#interface-urlsearchparams
 unitTest(function urlSearchParamsShouldThrowTypeError(): void {
@@ -222,7 +257,7 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
       const searchParams = new URLSearchParams();
       let hasThrown = 0;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
         (searchParams as any)[method]();
         hasThrown = 1;
       } catch (err) {
@@ -239,7 +274,7 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
     const searchParams = new URLSearchParams();
     let hasThrown = 0;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       (searchParams as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
@@ -280,7 +315,7 @@ unitTest(function urlSearchParamsCustomSymbolIterator(): void {
 unitTest(
   function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
     const params = {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     (params as any)[Symbol.iterator] = function* (): IterableIterator<
       [number, number]
     > {

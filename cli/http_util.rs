@@ -33,7 +33,7 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
-    format!("Deno/{}", version::DENO).parse().unwrap(),
+    format!("Deno/{}", version::deno()).parse().unwrap(),
   );
   let mut builder = Client::builder()
     .redirect(Policy::none())
@@ -168,16 +168,6 @@ pub struct HttpBody {
   response: Response,
   chunk: Option<Bytes>,
   pos: usize,
-}
-
-impl HttpBody {
-  pub fn from(body: Response) -> Self {
-    Self {
-      response: body,
-      chunk: None,
-      pos: 0,
-    }
-  }
 }
 
 impl AsyncRead for HttpBody {

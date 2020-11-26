@@ -15,13 +15,6 @@ gclient_config.py_entries
 /node_modules
 /tsconfig.json
 
-# We use something stronger than lockfiles, we have all NPM modules stored in a
-# git. We do not download from NPM during build.
-# https://github.com/denoland/deno_third_party
-yarn.lock
-# yarn creates this in error.
-tools/node_modules/
-
 # compiled wasm files
 std/wasi/testdata/snapshot_preview1/
 

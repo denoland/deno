@@ -157,6 +157,7 @@
     iterableLimit: 100,
     showProxy: false,
     colors: false,
+    getters: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -172,21 +173,14 @@
     static kClearScreenDown = "\x1b[0J";
   }
 
-  /* eslint-disable @typescript-eslint/no-use-before-define */
-
   function getClassInstanceName(instance) {
-    if (typeof instance !== "object") {
+    if (typeof instance != "object") {
       return "";
     }
-    if (!instance) {
-      return "";
+    const constructor = instance?.constructor;
+    if (typeof constructor == "function") {
+      return constructor.name ?? "";
     }
-
-    const proto = Object.getPrototypeOf(instance);
-    if (proto && proto.constructor) {
-      return proto.constructor.name; // could be "Object" or "Array"
-    }
-
     return "";
   }
 
@@ -198,10 +192,17 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
-    // Might be Function/AsyncFunction/GeneratorFunction
-    const cstrName = Object.getPrototypeOf(value).constructor.name;
+    // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
+    let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
+    if (!cstrName) {
+      // If prototype is removed or broken,
+      // use generic 'Function' instead.
+      cstrName = "Function";
+    }
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
       return `[${cstrName}: ${value.name}]`;
@@ -357,7 +358,6 @@
       let order = "padStart";
       if (value !== undefined) {
         for (let i = 0; i < entries.length; i++) {
-          /* eslint-disable @typescript-eslint/no-explicit-any */
           if (
             typeof value[i] !== "number" &&
             typeof value[i] !== "bigint"
@@ -365,7 +365,6 @@
             order = "padEnd";
             break;
           }
-          /* eslint-enable */
         }
       }
       // Each iteration creates a single line of grouped entries.
@@ -482,6 +481,7 @@
       .replace(/\t/g, "\\t")
       .replace(/\v/g, "\\v")
       .replace(
+        // deno-lint-ignore no-control-regex
         /[\x00-\x1f\x7f-\x9f]/g,
         (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
       );
@@ -518,11 +518,12 @@
   ) {
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
-      case "string":
+      case "string": {
         const trunc = value.length > STR_ABBREVIATE_SIZE
           ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
+      }
       default:
         return inspectValue(value, ctx, level, inspectOptions);
     }
@@ -765,31 +766,73 @@
     const red = maybeColor(colors.red, inspectOptions);
 
     for (const key of stringKeys) {
-      let propertyValue;
-      let error = null;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
+      if (inspectOptions.getters) {
+        let propertyValue;
+        let error = null;
+        try {
+          propertyValue = value[key];
+        } catch (error_) {
+          error = error_;
+        }
+        const inspectedValue = error == null
+          ? inspectValueWithQuotes(
+            propertyValue,
+            ctx,
+            level + 1,
+            inspectOptions,
+          )
+          : red(`[Thrown ${error.name}: ${error.message}]`);
+        entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
+      } else {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor.get !== undefined && descriptor.set !== undefined) {
+          entries.push(`${maybeQuoteString(key)}: [Getter/Setter]`);
+        } else if (descriptor.get !== undefined) {
+          entries.push(`${maybeQuoteString(key)}: [Getter]`);
+        } else {
+          entries.push(
+            `${maybeQuoteString(key)}: ${
+              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+            }`,
+          );
+        }
       }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
-        : red(`[Thrown ${error.name}: ${error.message}]`);
-      entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
     }
+
     for (const key of symbolKeys) {
-      let propertyValue;
-      let error;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
+      if (inspectOptions.getters) {
+        let propertyValue;
+        let error;
+        try {
+          propertyValue = value[key];
+        } catch (error_) {
+          error = error_;
+        }
+        const inspectedValue = error == null
+          ? inspectValueWithQuotes(
+            propertyValue,
+            ctx,
+            level + 1,
+            inspectOptions,
+          )
+          : red(`Thrown ${error.name}: ${error.message}`);
+        entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
+      } else {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor.get !== undefined && descriptor.set !== undefined) {
+          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter/Setter]`);
+        } else if (descriptor.get !== undefined) {
+          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter]`);
+        } else {
+          entries.push(
+            `[${maybeQuoteSymbol(key)}]: ${
+              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+            }`,
+          );
+        }
       }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, ctx, level + 1, inspectOptions)
-        : red(`Thrown ${error.name}: ${error.message}`);
-      entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
     }
+
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +
       colors.stripColor(entries.join("")).length;
@@ -824,7 +867,9 @@
     if (customInspect in value && typeof value[customInspect] === "function") {
       try {
         return String(value[customInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in op_crates/web we don't want to depend on unique "Deno.customInspect"
@@ -837,7 +882,9 @@
     ) {
       try {
         return String(value[nonUniqueCustomInspect]());
-      } catch {}
+      } catch {
+        // pass
+      }
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1097,8 +1144,8 @@
     return null;
   }
 
-  function parseCss(cssString) {
-    const css = {
+  function getDefaultCss() {
+    return {
       backgroundColor: null,
       color: null,
       fontWeight: null,
@@ -1106,12 +1153,16 @@
       textDecorationColor: null,
       textDecorationLine: [],
     };
+  }
+
+  function parseCss(cssString) {
+    const css = getDefaultCss();
 
     const rawEntries = [];
     let inValue = false;
     let currentKey = null;
     let parenthesesDepth = 0;
-    currentPart = "";
+    let currentPart = "";
     for (let i = 0; i < cssString.length; i++) {
       const c = cssString[i];
       if (c == "(") {
@@ -1160,12 +1211,12 @@
           css.color = color;
         }
       } else if (key == "font-weight") {
-        if (["normal", "bold"].includes(value)) {
+        if (value == "bold") {
           css.fontWeight = value;
         }
       } else if (key == "font-style") {
-        if (["normal", "italic", "oblique", "oblique 14deg"].includes(value)) {
-          css.fontStyle = value;
+        if (["italic", "oblique", "oblique 14deg"].includes(value)) {
+          css.fontStyle = "italic";
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
@@ -1196,50 +1247,81 @@
     return css;
   }
 
-  function cssToAnsi(css) {
+  function colorEquals(color1, color2) {
+    return color1?.[0] == color2?.[0] && color1?.[1] == color2?.[1] &&
+      color1?.[2] == color2?.[2];
+  }
+
+  function cssToAnsi(css, prevCss = null) {
+    prevCss = prevCss ?? getDefaultCss();
     let ansi = "";
-    if (css.backgroundColor != null) {
-      const [r, g, b] = css.backgroundColor;
-      ansi += `\x1b[48;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[49m";
+    if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
+      if (css.backgroundColor != null) {
+        const [r, g, b] = css.backgroundColor;
+        ansi += `\x1b[48;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[49m";
+      }
     }
-    if (css.color != null) {
-      const [r, g, b] = css.color;
-      ansi += `\x1b[38;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[39m";
+    if (!colorEquals(css.color, prevCss.color)) {
+      if (css.color != null) {
+        const [r, g, b] = css.color;
+        ansi += `\x1b[38;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[39m";
+      }
     }
-    if (css.fontWeight == "bold") {
-      ansi += `\x1b[1m`;
-    } else {
-      ansi += "\x1b[22m";
+    if (css.fontWeight != prevCss.fontWeight) {
+      if (css.fontWeight == "bold") {
+        ansi += `\x1b[1m`;
+      } else {
+        ansi += "\x1b[22m";
+      }
     }
-    if (["italic", "oblique"].includes(css.fontStyle)) {
-      ansi += `\x1b[3m`;
-    } else {
-      ansi += "\x1b[23m";
+    if (css.fontStyle != prevCss.fontStyle) {
+      if (css.fontStyle == "italic") {
+        ansi += `\x1b[3m`;
+      } else {
+        ansi += "\x1b[23m";
+      }
     }
-    if (css.textDecorationColor != null) {
-      const [r, g, b] = css.textDecorationColor;
-      ansi += `\x1b[58;2;${r};${g};${b}m`;
-    } else {
-      ansi += "\x1b[59m";
+    if (!colorEquals(css.textDecorationColor, prevCss.textDecorationColor)) {
+      if (css.textDecorationColor != null) {
+        const [r, g, b] = css.textDecorationColor;
+        ansi += `\x1b[58;2;${r};${g};${b}m`;
+      } else {
+        ansi += "\x1b[59m";
+      }
     }
-    if (css.textDecorationLine.includes("line-through")) {
-      ansi += "\x1b[9m";
-    } else {
-      ansi += "\x1b[29m";
+    if (
+      css.textDecorationLine.includes("line-through") !=
+        prevCss.textDecorationLine.includes("line-through")
+    ) {
+      if (css.textDecorationLine.includes("line-through")) {
+        ansi += "\x1b[9m";
+      } else {
+        ansi += "\x1b[29m";
+      }
     }
-    if (css.textDecorationLine.includes("overline")) {
-      ansi += "\x1b[53m";
-    } else {
-      ansi += "\x1b[55m";
+    if (
+      css.textDecorationLine.includes("overline") !=
+        prevCss.textDecorationLine.includes("overline")
+    ) {
+      if (css.textDecorationLine.includes("overline")) {
+        ansi += "\x1b[53m";
+      } else {
+        ansi += "\x1b[55m";
+      }
     }
-    if (css.textDecorationLine.includes("underline")) {
-      ansi += "\x1b[4m";
-    } else {
-      ansi += "\x1b[24m";
+    if (
+      css.textDecorationLine.includes("underline") !=
+        prevCss.textDecorationLine.includes("underline")
+    ) {
+      if (css.textDecorationLine.includes("underline")) {
+        ansi += "\x1b[4m";
+      } else {
+        ansi += "\x1b[24m";
+      }
     }
     return ansi;
   }
@@ -1257,6 +1339,7 @@
       // have to append to `string` when a substitution occurs / at the end.
       let appendedChars = 0;
       let usedStyle = false;
+      let prevCss = null;
       for (let i = 0; i < first.length - 1; i++) {
         if (first[i] == "%") {
           const char = first[++i];
@@ -1293,9 +1376,15 @@
               );
             } else if (char == "c") {
               const value = args[a++];
-              formattedArg = noColor ? "" : cssToAnsi(parseCss(value));
-              if (formattedArg != "") {
-                usedStyle = true;
+              if (!noColor) {
+                const css = parseCss(value);
+                formattedArg = cssToAnsi(css, prevCss);
+                if (formattedArg != "") {
+                  usedStyle = true;
+                  prevCss = css;
+                }
+              } else {
+                formattedArg = "";
               }
             }
 
@@ -1340,10 +1429,12 @@
   const timerMap = new Map();
   const isConsoleInstance = Symbol("isConsoleInstance");
 
-  const CONSOLE_INSPECT_OPTIONS = {
-    ...DEFAULT_INSPECT_OPTIONS,
-    colors: true,
-  };
+  function getConsoleInspectOptions() {
+    return {
+      ...DEFAULT_INSPECT_OPTIONS,
+      colors: !(globalThis.Deno?.noColor ?? false),
+    };
+  }
 
   class Console {
     #printFunc = null;
@@ -1366,7 +1457,7 @@
     log = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
-          ...CONSOLE_INSPECT_OPTIONS,
+          ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
         false,
@@ -1378,7 +1469,8 @@
 
     dir = (obj, options = {}) => {
       this.#printFunc(
-        inspectArgs([obj], { ...CONSOLE_INSPECT_OPTIONS, ...options }) + "\n",
+        inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
+          "\n",
         false,
       );
     };
@@ -1388,7 +1480,7 @@
     warn = (...args) => {
       this.#printFunc(
         inspectArgs(args, {
-          ...CONSOLE_INSPECT_OPTIONS,
+          ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
         true,
@@ -1594,7 +1686,7 @@
     trace = (...args) => {
       const message = inspectArgs(
         args,
-        { ...CONSOLE_INSPECT_OPTIONS, indentLevel: 0 },
+        { ...getConsoleInspectOptions(), indentLevel: 0 },
       );
       const err = {
         name: "Trace",

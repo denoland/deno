@@ -1,404 +1,197 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::global_state::GlobalState;
-use crate::module_graph::{ModuleGraph, ModuleGraphFile, ModuleGraphLoader};
+use crate::media_type::serialize_media_type;
+use crate::MediaType;
 use crate::ModuleSpecifier;
-use crate::Permissions;
-use deno_core::error::AnyError;
-use serde::ser::Serializer;
+
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
+use serde::Serializer;
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::fmt;
+use std::path::PathBuf;
 
-// TODO(bartlomieju): rename
-/// Struct containing a module's dependency information.
-#[derive(Serialize)]
+/// The core structure representing information about a specific "root" file in
+/// a module graph.  This is used to represent information as part of the `info`
+/// subcommand.
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ModuleDepInfo {
-  module: String,
-  local: String,
-  file_type: String,
-  compiled: Option<String>,
-  map: Option<String>,
-  dep_count: usize,
+pub struct ModuleGraphInfo {
+  pub compiled: Option<PathBuf>,
+  pub dep_count: usize,
+  #[serde(serialize_with = "serialize_media_type")]
+  pub file_type: MediaType,
+  pub files: ModuleInfoMap,
   #[serde(skip_serializing)]
-  deps: FileInfoDepTree,
-  total_size: Option<usize>,
-  files: FileInfoDepFlatGraph,
+  pub info: ModuleInfo,
+  pub local: PathBuf,
+  pub map: Option<PathBuf>,
+  pub module: ModuleSpecifier,
+  pub total_size: usize,
 }
 
-impl ModuleDepInfo {
-  /// Creates a new `ModuleDepInfo` struct for the module with the provided `ModuleSpecifier`.
-  pub async fn new(
-    global_state: &Arc<GlobalState>,
-    module_specifier: ModuleSpecifier,
-  ) -> Result<Self, AnyError> {
-    // First load module as if it was to be executed by worker
-    // including compilation step
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      global_state.file_fetcher.clone(),
-      global_state.maybe_import_map.clone(),
-      Permissions::allow_all(),
-      false,
-      true,
-    );
-    module_graph_loader
-      .add_to_graph(&module_specifier, None)
-      .await?;
-    let module_graph = module_graph_loader.get_graph();
-
-    let ts_compiler = &global_state.ts_compiler;
-    let file_fetcher = &global_state.file_fetcher;
-    let out = file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
-      .expect("Source file should already be cached");
-    let local_filename = out.filename.to_string_lossy().to_string();
-    let compiled_filename = ts_compiler
-      .get_compiled_source_file(&out.url)
-      .ok()
-      .map(|file| file.filename.to_string_lossy().to_string());
-    let map_filename = ts_compiler
-      .get_source_map_file(&module_specifier)
-      .ok()
-      .map(|file| file.filename.to_string_lossy().to_string());
-    let file_type =
-      crate::media_type::enum_name_media_type(out.media_type).to_string();
-
-    let deps = FileInfoDepTree::new(&module_graph, &module_specifier);
-    let total_size = deps.total_size;
-    let dep_count = get_unique_dep_count(&module_graph) - 1;
-    let files = FileInfoDepFlatGraph::new(&module_graph);
-
-    let info = Self {
-      module: module_specifier.to_string(),
-      local: local_filename,
-      file_type,
-      compiled: compiled_filename,
-      map: map_filename,
-      dep_count,
-      deps,
-      total_size,
-      files,
-    };
-
-    Ok(info)
-  }
-}
-
-/// Counts the number of dependencies in the graph.
-///
-/// We are counting only the dependencies that are not http redirects to other files.
-fn get_unique_dep_count(graph: &ModuleGraph) -> usize {
-  graph.iter().fold(
-    0,
-    |acc, e| {
-      if e.1.redirect.is_none() {
-        acc + 1
-      } else {
-        acc
-      }
-    },
-  )
-}
-
-impl std::fmt::Display for ModuleDepInfo {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_fmt(format_args!("{} {}\n", colors::bold("local:"), self.local))?;
-    f.write_fmt(format_args!(
-      "{} {}\n",
-      colors::bold("type:"),
-      self.file_type
-    ))?;
+impl fmt::Display for ModuleGraphInfo {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    writeln!(
+      f,
+      "{} {}",
+      colors::bold("local:"),
+      self.local.to_string_lossy()
+    )?;
+    writeln!(f, "{} {}", colors::bold("type:"), self.file_type)?;
     if let Some(ref compiled) = self.compiled {
-      f.write_fmt(format_args!(
-        "{} {}\n",
+      writeln!(
+        f,
+        "{} {}",
         colors::bold("compiled:"),
-        compiled
-      ))?;
+        compiled.to_string_lossy()
+      )?;
     }
     if let Some(ref map) = self.map {
-      f.write_fmt(format_args!("{} {}\n", colors::bold("map:"), map))?;
+      writeln!(f, "{} {}", colors::bold("map:"), map.to_string_lossy())?;
     }
-
-    f.write_fmt(format_args!(
-      "{} {} unique {}\n",
+    writeln!(
+      f,
+      "{} {} unique {}",
       colors::bold("deps:"),
       self.dep_count,
       colors::gray(&format!(
         "(total {})",
-        human_size(self.deps.total_size.unwrap_or(0) as f64),
+        human_size(self.info.total_size.unwrap_or(0) as f64)
       ))
-    ))?;
-    f.write_fmt(format_args!(
-      "{} {}\n",
-      self.deps.name,
-      colors::gray(&format!("({})", human_size(self.deps.size as f64)))
-    ))?;
+    )?;
+    writeln!(f)?;
+    writeln!(
+      f,
+      "{} {}",
+      self.info.name,
+      colors::gray(&format!("({})", human_size(self.info.size as f64)))
+    )?;
 
-    for (idx, dep) in self.deps.deps.iter().enumerate() {
-      print_file_dep_info(&dep, "", idx == self.deps.deps.len() - 1, f)?;
+    let dep_count = self.info.deps.len();
+    for (idx, dep) in self.info.deps.iter().enumerate() {
+      dep.write_info(f, "", idx == dep_count - 1)?;
     }
 
     Ok(())
   }
 }
 
-/// A dependency tree of the basic module information.
-///
-/// Constructed from a `ModuleGraph` and `ModuleSpecifier` that
-/// acts as the root of the tree.
-#[derive(Serialize)]
+/// Represents a unique dependency within the graph of the the dependencies for
+/// a given module.
+#[derive(Debug, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct FileInfoDepTree {
-  name: String,
-  size: usize,
-  total_size: Option<usize>,
-  deps: Vec<FileInfoDepTree>,
+pub struct ModuleInfo {
+  pub deps: Vec<ModuleInfo>,
+  pub name: ModuleSpecifier,
+  pub size: usize,
+  pub total_size: Option<usize>,
 }
 
-impl FileInfoDepTree {
-  /// Create a `FileInfoDepTree` tree from a `ModuleGraph` and the root `ModuleSpecifier`.
-  pub fn new(
-    module_graph: &ModuleGraph,
-    root_specifier: &ModuleSpecifier,
-  ) -> Self {
-    let mut seen = HashSet::new();
-    let mut total_sizes = HashMap::new();
-
-    Self::visit_module(
-      &mut seen,
-      &mut total_sizes,
-      module_graph,
-      root_specifier,
-    )
+impl PartialOrd for ModuleInfo {
+  fn partial_cmp(&self, other: &ModuleInfo) -> Option<Ordering> {
+    Some(self.cmp(other))
   }
+}
 
-  /// Visit modules recursively.
-  ///
-  /// If currently visited module has not yet been seen it will be annotated with dependencies
-  /// and cumulative size of those deps.
-  fn visit_module(
-    seen: &mut HashSet<String>,
-    total_sizes: &mut HashMap<String, usize>,
-    graph: &ModuleGraph,
-    specifier: &ModuleSpecifier,
-  ) -> Self {
-    let name = specifier.to_string();
-    let never_seen = seen.insert(name.clone());
-    let file = get_resolved_file(&graph, &specifier);
-    let size = file.size();
-    let mut deps = vec![];
-    let mut total_size = None;
+impl Ord for ModuleInfo {
+  fn cmp(&self, other: &ModuleInfo) -> Ordering {
+    self.name.to_string().cmp(&other.name.to_string())
+  }
+}
 
-    if never_seen {
-      let mut seen_deps = HashSet::new();
-      deps = file
-        .imports
-        .iter()
-        .map(|import| &import.resolved_specifier)
-        .filter(|module_specifier| {
-          seen_deps.insert(module_specifier.as_str().to_string())
-        })
-        .map(|specifier| {
-          Self::visit_module(seen, total_sizes, graph, specifier)
-        })
-        .collect::<Vec<_>>();
+impl ModuleInfo {
+  pub fn write_info(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+    prefix: &str,
+    last: bool,
+  ) -> fmt::Result {
+    let sibling_connector = if last { '└' } else { '├' };
+    let child_connector = if self.deps.is_empty() { '─' } else { '┬' };
+    let totals = if self.total_size.is_some() {
+      colors::gray(&format!(" ({})", human_size(self.size as f64)))
+    } else {
+      colors::gray(" *")
+    };
 
-      total_size = if let Some(total_size) = total_sizes.get(&name) {
-        Some(total_size.to_owned())
-      } else {
-        let total: usize = deps
-          .iter()
-          .map(|dep| {
-            if let Some(total_size) = dep.total_size {
-              total_size
-            } else {
-              0
-            }
-          })
-          .sum();
-        let total = size + total;
+    writeln!(
+      f,
+      "{} {}{}",
+      colors::gray(&format!(
+        "{}{}─{}",
+        prefix, sibling_connector, child_connector
+      )),
+      self.name,
+      totals
+    )?;
 
-        total_sizes.insert(name.clone(), total);
+    let mut prefix = prefix.to_string();
+    if last {
+      prefix.push(' ');
+    } else {
+      prefix.push('│');
+    }
+    prefix.push(' ');
 
-        Some(total)
-      };
+    let dep_count = self.deps.len();
+    for (idx, dep) in self.deps.iter().enumerate() {
+      dep.write_info(f, &prefix, idx == dep_count - 1)?;
     }
 
-    Self {
-      name,
-      size,
-      total_size,
-      deps,
-    }
+    Ok(())
   }
 }
 
-/// Flat graph vertex with all shallow dependencies
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct FileInfoVertex {
-  size: usize,
-  deps: Vec<String>,
-}
+/// A flat map of dependencies for a given module graph.
+#[derive(Debug)]
+pub struct ModuleInfoMap(pub HashMap<ModuleSpecifier, ModuleInfoMapItem>);
 
-impl FileInfoVertex {
-  /// Creates new `FileInfoVertex` that is a single vertex dependency module
-  fn new(size: usize, deps: Vec<String>) -> Self {
-    Self { size, deps }
+impl ModuleInfoMap {
+  pub fn new(map: HashMap<ModuleSpecifier, ModuleInfoMapItem>) -> Self {
+    ModuleInfoMap(map)
   }
 }
 
-struct FileInfoDepFlatGraph(HashMap<String, FileInfoVertex>);
-
-impl FileInfoDepFlatGraph {
-  /// Creates new `FileInfoDepFlatGraph`, flat graph of a shallow module dependencies
-  ///
-  /// Each graph vertex represents unique dependency with its all shallow dependencies
-  fn new(module_graph: &ModuleGraph) -> Self {
-    let mut inner = HashMap::new();
-    module_graph
-      .iter()
-      .for_each(|(module_name, module_graph_file)| {
-        let size = module_graph_file.size();
-        let mut deps = Vec::new();
-        module_graph_file.imports.iter().for_each(|import| {
-          deps.push(import.resolved_specifier.to_string());
-        });
-        inner.insert(module_name.clone(), FileInfoVertex::new(size, deps));
-      });
-    Self(inner)
-  }
-}
-
-impl Serialize for FileInfoDepFlatGraph {
+impl Serialize for ModuleInfoMap {
   /// Serializes inner hash map which is ordered by the key
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
-    let ordered: BTreeMap<_, _> = self.0.iter().collect();
+    let ordered: BTreeMap<_, _> =
+      self.0.iter().map(|(k, v)| (k.to_string(), v)).collect();
     ordered.serialize(serializer)
   }
 }
 
-/// Returns a `ModuleGraphFile` associated to the provided `ModuleSpecifier`.
-///
-/// If the `specifier` is associated with a file that has a populated redirect field,
-/// it returns the file associated to the redirect, otherwise the file associated to `specifier`.
-fn get_resolved_file<'a>(
-  graph: &'a ModuleGraph,
-  specifier: &ModuleSpecifier,
-) -> &'a ModuleGraphFile {
-  // Note(kc): This code is dependent on how we are injecting a dummy ModuleGraphFile
-  // into the graph with a "redirect" property.
-  let result = graph.get(specifier.as_str()).unwrap();
-
-  if let Some(ref import) = result.redirect {
-    graph.get(import).unwrap()
-  } else {
-    result
-  }
+/// An entry in the `ModuleInfoMap` the provides the size of the module and
+/// a vector of its dependencies, which should also be available as entries
+/// in the map.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleInfoMapItem {
+  pub deps: Vec<ModuleSpecifier>,
+  pub size: usize,
 }
 
-/// Prints the `FileInfoDepTree` tree to stdout.
-fn print_file_dep_info(
-  info: &FileInfoDepTree,
-  prefix: &str,
-  is_last: bool,
-  formatter: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-  print_dep(prefix, is_last, info, formatter)?;
-
-  let prefix = &get_new_prefix(prefix, is_last);
-  let child_count = info.deps.len();
-  for (idx, dep) in info.deps.iter().enumerate() {
-    print_file_dep_info(dep, prefix, idx == child_count - 1, formatter)?;
-  }
-
-  Ok(())
-}
-
-/// Prints a single `FileInfoDepTree` to stdout.
-fn print_dep(
-  prefix: &str,
-  is_last: bool,
-  info: &FileInfoDepTree,
-  formatter: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-  let has_children = !info.deps.is_empty();
-
-  formatter.write_fmt(format_args!(
-    "{} {}{}\n",
-    colors::gray(&format!(
-      "{}{}─{}",
-      prefix,
-      get_sibling_connector(is_last),
-      get_child_connector(has_children),
-    ))
-    .to_string(),
-    info.name,
-    get_formatted_totals(info)
-  ))
-}
-
-/// Gets the formatted totals for the provided `FileInfoDepTree`.
-///
-/// If the total size is reported as 0 then an empty string is returned.
-fn get_formatted_totals(info: &FileInfoDepTree) -> String {
-  if let Some(_total_size) = info.total_size {
-    colors::gray(&format!(" ({})", human_size(info.size as f64),)).to_string()
-  } else {
-    // This dependency has already been displayed somewhere else in the tree.
-    colors::gray(" *").to_string()
-  }
-}
-
-/// Gets the sibling portion of the tree branch.
-fn get_sibling_connector(is_last: bool) -> char {
-  if is_last {
-    '└'
-  } else {
-    '├'
-  }
-}
-
-/// Gets the child connector for the branch.
-fn get_child_connector(has_children: bool) -> char {
-  if has_children {
-    '┬'
-  } else {
-    '─'
-  }
-}
-
-/// Creates a new prefix for a dependency tree item.
-fn get_new_prefix(prefix: &str, is_last: bool) -> String {
-  let mut prefix = prefix.to_string();
-  if is_last {
-    prefix.push(' ');
-  } else {
-    prefix.push('│');
-  }
-
-  prefix.push(' ');
-  prefix
-}
-
-pub fn human_size(bytse: f64) -> String {
-  let negative = if bytse.is_sign_positive() { "" } else { "-" };
-  let bytse = bytse.abs();
+/// A function that converts a float to a string the represents a human
+/// readable version of that number.
+pub fn human_size(size: f64) -> String {
+  let negative = if size.is_sign_positive() { "" } else { "-" };
+  let size = size.abs();
   let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  if bytse < 1_f64 {
-    return format!("{}{}{}", negative, bytse, "B");
+  if size < 1_f64 {
+    return format!("{}{}{}", negative, size, "B");
   }
   let delimiter = 1024_f64;
   let exponent = std::cmp::min(
-    (bytse.ln() / delimiter.ln()).floor() as i32,
+    (size.ln() / delimiter.ln()).floor() as i32,
     (units.len() - 1) as i32,
   );
-  let pretty_bytes = format!("{:.2}", bytse / delimiter.powi(exponent))
+  let pretty_bytes = format!("{:.2}", size / delimiter.powi(exponent))
     .parse::<f64>()
     .unwrap()
     * 1_f64;
@@ -409,10 +202,7 @@ pub fn human_size(bytse: f64) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::ast::Location;
-  use crate::media_type::MediaType;
-  use crate::module_graph::ImportDescriptor;
-  use deno_core::url::Url;
+  use deno_core::serde_json::json;
 
   #[test]
   fn human_size_test() {
@@ -427,105 +217,89 @@ mod test {
     assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16YB");
   }
 
-  #[test]
-  fn get_new_prefix_adds_spaces_if_is_last() {
-    let prefix = get_new_prefix("", true);
-
-    assert_eq!(prefix, "  ".to_string());
-  }
-
-  #[test]
-  fn get_new_prefix_adds_a_vertical_bar_if_not_is_last() {
-    let prefix = get_new_prefix("", false);
-
-    assert_eq!(prefix, "│ ".to_string());
-  }
-
-  fn create_mock_file(
-    name: &str,
-    imports: Vec<ModuleSpecifier>,
-    redirect: Option<ModuleSpecifier>,
-  ) -> (ModuleGraphFile, ModuleSpecifier) {
-    let spec =
-      ModuleSpecifier::from(Url::parse(&format!("http://{}", name)).unwrap());
-    let file = ModuleGraphFile {
-      filename: "name".to_string(),
-      imports: imports
-        .iter()
-        .map(|import| ImportDescriptor {
-          specifier: import.to_string(),
-          resolved_specifier: import.clone(),
-          resolved_type_directive: None,
-          type_directive: None,
-          location: Location {
-            col: 0,
-            filename: "".to_string(),
-            line: 0,
-          },
-        })
-        .collect(),
-      lib_directives: vec![],
-      media_type: MediaType::TypeScript,
-      redirect: redirect.map(|x| x.to_string()),
-      referenced_files: vec![],
-      source_code: "".to_string(),
-      specifier: spec.to_string(),
-      type_headers: vec![],
-      types_directives: vec![],
-      version_hash: "".to_string(),
-      url: "".to_string(),
+  fn get_fixture() -> ModuleGraphInfo {
+    let spec_c =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a/b/c.ts")
+        .unwrap();
+    let spec_d =
+      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a/b/c.ts")
+        .unwrap();
+    let deps = vec![ModuleInfo {
+      deps: Vec::new(),
+      name: spec_d.clone(),
+      size: 12345,
+      total_size: None,
+    }];
+    let info = ModuleInfo {
+      deps,
+      name: spec_c.clone(),
+      size: 12345,
+      total_size: Some(12345),
     };
+    let mut items = HashMap::new();
+    items.insert(
+      spec_c,
+      ModuleInfoMapItem {
+        deps: vec![spec_d.clone()],
+        size: 12345,
+      },
+    );
+    items.insert(
+      spec_d,
+      ModuleInfoMapItem {
+        deps: Vec::new(),
+        size: 12345,
+      },
+    );
+    let files = ModuleInfoMap(items);
 
-    (file, spec)
+    ModuleGraphInfo {
+      compiled: Some(PathBuf::from("/a/b/c.js")),
+      dep_count: 99,
+      file_type: MediaType::TypeScript,
+      files,
+      info,
+      local: PathBuf::from("/a/b/c.ts"),
+      map: None,
+      module: ModuleSpecifier::resolve_url_or_path(
+        "https://deno.land/x/a/b/c.ts",
+      )
+      .unwrap(),
+      total_size: 999999,
+    }
   }
 
   #[test]
-  fn get_resolved_file_test() {
-    let (test_file_redirect, redirect) =
-      create_mock_file("test_redirect", vec![], None);
-    let (test_file, original) =
-      create_mock_file("test", vec![], Some(redirect.clone()));
-
-    let mut graph = ModuleGraph::new();
-    graph.insert(original.to_string(), test_file);
-    graph.insert(redirect.to_string(), test_file_redirect);
-
-    let file = get_resolved_file(&graph, &original);
-
-    assert_eq!(file.specifier, redirect.to_string());
+  fn test_module_graph_info_display() {
+    let fixture = get_fixture();
+    let actual = fixture.to_string();
+    assert!(actual.contains(" /a/b/c.ts"));
+    assert!(actual.contains(" 99 unique"));
+    assert!(actual.contains("(12.06KB)"));
+    assert!(actual.contains("\n\nhttps://deno.land/x/a/b/c.ts"));
   }
 
   #[test]
-  fn dependency_count_no_redirects() {
-    let (a, aspec) = create_mock_file("a", vec![], None);
-    let (b, bspec) = create_mock_file("b", vec![aspec.clone()], None);
-    let (c, cspec) = create_mock_file("c", vec![bspec.clone()], None);
-
-    let mut graph = ModuleGraph::new();
-
-    graph.insert(aspec.to_string(), a);
-    graph.insert(bspec.to_string(), b);
-    graph.insert(cspec.to_string(), c);
-
-    let count = get_unique_dep_count(&graph);
-
-    assert_eq!(graph.len(), count);
-  }
-
-  #[test]
-  fn dependency_count_with_redirects() {
-    let (a, aspec) = create_mock_file("a", vec![], None);
-    let (b, bspec) = create_mock_file("b", vec![], Some(aspec.clone()));
-    let (c, cspec) = create_mock_file("c", vec![bspec.clone()], None);
-
-    let mut graph = ModuleGraph::new();
-
-    graph.insert(aspec.to_string(), a);
-    graph.insert(bspec.to_string(), b);
-    graph.insert(cspec.to_string(), c);
-
-    let count = get_unique_dep_count(&graph);
-
-    assert_eq!(graph.len() - 1, count);
+  fn test_module_graph_info_json() {
+    let fixture = get_fixture();
+    let actual = json!(fixture);
+    assert_eq!(
+      actual,
+      json!({
+        "compiled": "/a/b/c.js",
+        "depCount": 99,
+        "fileType": "TypeScript",
+        "files": {
+          "https://deno.land/x/a/b/c.ts":{
+            "deps": [],
+            "size": 12345
+          }
+        },
+        "local": "/a/b/c.ts",
+        "map": null,
+        "module": "https://deno.land/x/a/b/c.ts",
+        "totalSize": 999999
+      })
+    );
   }
 }

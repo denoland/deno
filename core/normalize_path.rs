@@ -4,7 +4,7 @@ use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
-/// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
+/// Normalize all intermediate components of the path (ie. remove "./" and "../" components).
 /// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
 ///
 /// Taken from Cargo

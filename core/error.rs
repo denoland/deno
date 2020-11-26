@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+pub use anyhow::anyhow;
+pub use anyhow::bail;
+pub use anyhow::Context;
 use rusty_v8 as v8;
 use std::borrow::Cow;
 use std::convert::TryFrom;
@@ -51,7 +54,7 @@ pub fn bad_resource_id() -> AnyError {
 }
 
 pub fn not_supported() -> AnyError {
-  custom_error("NotSupported", "The operation is supported")
+  custom_error("NotSupported", "The operation is not supported")
 }
 
 pub fn resource_unavailable() -> AnyError {
@@ -174,14 +177,24 @@ impl JsError {
 
       // Get the message by formatting error.name and error.message.
       let name = get_property(scope, exception, "name")
+        .filter(|v| !v.is_undefined())
         .and_then(|m| m.to_string(scope))
         .map(|s| s.to_rust_string_lossy(scope))
-        .unwrap_or_else(|| "undefined".to_string());
+        .unwrap_or_else(|| "Error".to_string());
       let message_prop = get_property(scope, exception, "message")
+        .filter(|v| !v.is_undefined())
         .and_then(|m| m.to_string(scope))
         .map(|s| s.to_rust_string_lossy(scope))
-        .unwrap_or_else(|| "undefined".to_string());
-      let message = format!("Uncaught {}: {}", name, message_prop);
+        .unwrap_or_else(|| "".to_string());
+      let message = if name != "" && message_prop != "" {
+        format!("Uncaught {}: {}", name, message_prop)
+      } else if name != "" {
+        format!("Uncaught {}", name)
+      } else if message_prop != "" {
+        format!("Uncaught {}", message_prop)
+      } else {
+        "Uncaught".to_string()
+      };
 
       // Access error.stack to ensure that prepareStackTrace() has been called.
       // This should populate error.__callSiteEvals.
@@ -351,11 +364,11 @@ impl Display for JsError {
     if let Some(stack) = &self.stack {
       let stack_lines = stack.lines();
       if stack_lines.count() > 1 {
-        return writeln!(f, "{}", stack);
+        return write!(f, "{}", stack);
       }
     }
 
-    writeln!(f, "{}", self.message)?;
+    write!(f, "{}", self.message)?;
     if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {
         let source_loc = format_source_loc(
@@ -363,7 +376,7 @@ impl Display for JsError {
           self.line_number.unwrap(),
           self.start_column.unwrap(),
         );
-        writeln!(f, "    at {}", source_loc)?;
+        write!(f, "\n    at {}", source_loc)?;
       }
     }
     Ok(())

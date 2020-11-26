@@ -1,7 +1,7 @@
 [WILDCARD]Unsupported compiler options in "[WILDCARD]config.tsconfig.json".
   The following options were ignored:
     module, target
-error: TS2532 [ERROR]: Object is possibly 'undefined'.
-if (map.get("bar").foo) {
-    ~~~~~~~~~~~~~~
-    at [WILDCARD]tests/config.ts:3:5
+error: TS1219 [ERROR]: Experimental support for decorators is a feature that is subject to change in a future release. Set the 'experimentalDecorators' option in your 'tsconfig' or 'jsconfig' to remove this warning.
+  a() {
+  ^
+    at file:///[WILDCARD]cli/tests/config.ts:[WILDCARD]

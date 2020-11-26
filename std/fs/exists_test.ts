@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertStringContains } from "../testing/asserts.ts";
+import { assertEquals, assertStringIncludes } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 
@@ -113,7 +113,7 @@ for (const s of scenes) {
   let title = `test ${s.async ? "exists" : "existsSync"}("testdata/${s.file}")`;
   title += ` ${s.read ? "with" : "without"} --allow-read`;
   Deno.test(`[fs] existsPermission ${title}`, async function (): Promise<void> {
-    const args = [Deno.execPath(), "run"];
+    const args = [Deno.execPath(), "run", "--quiet"];
 
     if (s.read) {
       args.push("--allow-read");
@@ -130,7 +130,7 @@ for (const s of scenes) {
 
     const output = await p.output();
     p.close();
-    assertStringContains(new TextDecoder().decode(output), s.output);
+    assertStringIncludes(new TextDecoder().decode(output), s.output);
   });
   // done
 }

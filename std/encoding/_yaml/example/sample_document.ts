@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
 
 import { parse } from "../../yaml.ts";
 
@@ -7,7 +6,7 @@ import { parse } from "../../yaml.ts";
   const yml = Deno.readFileSync(`${Deno.cwd()}/example/sample_document.yml`);
 
   const document = new TextDecoder().decode(yml);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const obj = parse(document) as Record<string, any>;
   console.log(obj);
 

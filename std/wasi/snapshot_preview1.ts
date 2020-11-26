@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { resolve } from "../path/mod.ts";
+import { relative, resolve } from "../path/mod.ts";
 
 const CLOCKID_REALTIME = 0;
 const CLOCKID_MONOTONIC = 1;
@@ -83,7 +83,7 @@ const _ERRNO_STALE = 72;
 const ERRNO_TIMEDOUT = 73;
 const _ERRNO_TXTBSY = 74;
 const _ERRNO_XDEV = 75;
-const _ERRNO_NOTCAPABLE = 76;
+const ERRNO_NOTCAPABLE = 76;
 
 const RIGHTS_FD_DATASYNC = 0x0000000000000001n;
 const RIGHTS_FD_READ = 0x0000000000000002n;
@@ -270,7 +270,6 @@ export interface ContextOptions {
   args?: string[];
   env?: { [key: string]: string | undefined };
   preopens?: { [key: string]: string };
-  memory?: WebAssembly.Memory;
 }
 
 export default class Context {
@@ -285,7 +284,7 @@ export default class Context {
   constructor(options: ContextOptions) {
     this.args = options.args ? options.args : [];
     this.env = options.env ? options.env : {};
-    this.memory = options.memory!;
+    this.memory = null!;
 
     this.fds = [
       {
@@ -1201,9 +1200,33 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const textDecoder = new TextDecoder();
+        const pathData = new Uint8Array(
+          this.memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const resolvedPath = resolve(entry.path!, textDecoder.decode(pathData));
+
+        if (relative(entry.path, resolvedPath).startsWith("..")) {
+          return ERRNO_NOTCAPABLE;
+        }
+
+        let path;
+        if (
+          (dirflags & LOOKUPFLAGS_SYMLINK_FOLLOW) == LOOKUPFLAGS_SYMLINK_FOLLOW
+        ) {
+          try {
+            path = Deno.realPathSync(resolvedPath);
+            if (relative(entry.path, path).startsWith("..")) {
+              return ERRNO_NOTCAPABLE;
+            }
+          } catch (_err) {
+            path = resolvedPath;
+          }
+        } else {
+          path = resolvedPath;
+        }
 
         if ((oflags & OFLAGS_DIRECTORY) !== 0) {
           // XXX (caspervonb) this isn't ideal as we can't get a rid for the
@@ -1529,5 +1552,40 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
     };
+  }
+
+  /**
+   * Attempt to begin execution of instance as a command by invoking its
+   * _start() export.
+   *
+   * If the instance does not contain a _start() export, or if the instance
+   * contains an _initialize export an error will be thrown.
+   *
+   * The instance must also have a WebAssembly.Memory export named "memory"
+   * which will be used as the address space, if it does not an error will be
+   * thrown.
+   */
+  start(instance: WebAssembly.Instance) {
+    const { _start, _initialize, memory } = instance.exports;
+
+    if (!(memory instanceof WebAssembly.Memory)) {
+      throw new TypeError("WebAsembly.instance must provide a memory export");
+    }
+
+    this.memory = memory;
+
+    if (typeof _initialize == "function") {
+      throw new TypeError(
+        "WebAsembly.instance export _initialize must not be a function",
+      );
+    }
+
+    if (typeof _start != "function") {
+      throw new TypeError(
+        "WebAssembly.Instance export _start must be a function",
+      );
+    }
+
+    _start();
   }
 }

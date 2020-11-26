@@ -31,8 +31,10 @@ pub enum Op {
   NotFound,
 }
 
+/// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
   pub resource_table: crate::ResourceTable,
+  pub resource_table_2: crate::resources2::ResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: crate::runtime::GetErrorClassFn,
   gotham_state: GothamState,
@@ -44,10 +46,11 @@ impl Default for OpState {
   //   pub(crate) fn new() -> OpState
   fn default() -> OpState {
     OpState {
-      resource_table: crate::ResourceTable::default(),
+      resource_table: Default::default(),
+      resource_table_2: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
-      gotham_state: GothamState::default(),
+      gotham_state: Default::default(),
     }
   }
 }
@@ -151,6 +154,29 @@ fn op_table() {
   )
 }
 
+/// Creates an op that passes data synchronously using JSON.
+///
+/// The provided function `op_fn` has the following parameters:
+/// * `&mut OpState`: the op state, can be used to read/write resources in the runtime from an op.
+/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `&mut [ZeroCopyBuf]`: raw bytes passed along, usually not needed if the JSON value is used.
+///
+/// `op_fn` returns a JSON value, which is directly returned to JavaScript.
+///
+/// When registering an op like this...
+/// ```ignore
+/// let mut runtime = JsRuntime::new(...);
+/// runtime.register_op("hello", deno_core::json_op_sync(Self::hello_op));
+/// ```
+///
+/// ...it can be invoked from JS using the provided name, for example:
+/// ```js
+/// Deno.core.ops();
+/// let result = Deno.core.jsonOpSync("function_name", args);
+/// ```
+///
+/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// A more complete example is available in the examples directory.
 pub fn json_op_sync<F>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
@@ -166,6 +192,30 @@ where
   })
 }
 
+/// Creates an op that passes data asynchronously using JSON.
+///
+/// The provided function `op_fn` has the following parameters:
+/// * `Rc<RefCell<OpState>`: the op state, can be used to read/write resources in the runtime from an op.
+/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `BufVec`: raw bytes passed along, usually not needed if the JSON value is used.
+///
+/// `op_fn` returns a future, whose output is a JSON value. This value will be asynchronously
+/// returned to JavaScript.
+///
+/// When registering an op like this...
+/// ```ignore
+/// let mut runtime = JsRuntime::new(...);
+/// runtime.register_op("hello", deno_core::json_op_async(Self::hello_op));
+/// ```
+///
+/// ...it can be invoked from JS using the provided name, for example:
+/// ```js
+/// Deno.core.ops();
+/// let future = Deno.core.jsonOpAsync("function_name", args);
+/// ```
+///
+/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// A more complete example is available in the examples directory.
 pub fn json_op_async<F, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
@@ -221,7 +271,7 @@ fn json_serialize_op_result(
 }
 
 /// Return map of resources with id as key
-/// and string representaion as value.
+/// and string representation as value.
 ///
 /// This op must be wrapped in `json_op_sync`.
 pub fn op_resources(

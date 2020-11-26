@@ -104,10 +104,21 @@ unitTest(function textDecoderASCII(): void {
 unitTest(function textDecoderErrorEncoding(): void {
   let didThrow = false;
   try {
-    new TextDecoder("foo");
+    new TextDecoder("Foo");
   } catch (e) {
     didThrow = true;
-    assertEquals(e.message, "The encoding label provided ('foo') is invalid.");
+    assertEquals(e.message, "The encoding label provided ('Foo') is invalid.");
+  }
+  assert(didThrow);
+});
+
+unitTest(function textDecoderHandlesNotFoundInternalDecoder() {
+  let didThrow = false;
+  try {
+    new TextDecoder("gbk");
+  } catch (e) {
+    didThrow = true;
+    assert(e instanceof RangeError);
   }
   assert(didThrow);
 });
@@ -198,4 +209,18 @@ unitTest(function toStringShouldBeWebCompatibility(): void {
 
   const decoder = new TextDecoder();
   assertEquals(decoder.toString(), "[object TextDecoder]");
+});
+unitTest(function textEncoderShouldCoerceToString(): void {
+  const encoder = new TextEncoder();
+  const fixutreText = "text";
+  const fixture = {
+    toString() {
+      return fixutreText;
+    },
+  };
+
+  const bytes = encoder.encode(fixture as unknown as string);
+  const decoder = new TextDecoder();
+  const decoded = decoder.decode(bytes);
+  assertEquals(decoded, fixutreText);
 });
