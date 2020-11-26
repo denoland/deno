@@ -6,15 +6,18 @@ use crate::signal::kill;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::AsyncMutFuture;
+use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::process::Command;
@@ -62,7 +65,19 @@ struct RunArgs {
 }
 
 struct ChildResource {
-  child: tokio::process::Child,
+  child: AsyncRefCell<tokio::process::Child>,
+}
+
+impl Resource for ChildResource {
+  fn name(&self) -> Cow<str> {
+    "child".into()
+  }
+}
+
+impl ChildResource {
+  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<tokio::process::Child> {
+    RcRef::map(self, |r| &r.child).borrow_mut()
+  }
 }
 
 fn op_run(
@@ -155,8 +170,10 @@ fn op_run(
     None => None,
   };
 
-  let child_resource = ChildResource { child };
-  let child_rid = state.resource_table.add("child", Box::new(child_resource));
+  let child_resource = ChildResource {
+    child: AsyncRefCell::new(child),
+  };
+  let child_rid = state.resource_table_2.add(child_resource);
 
   Ok(json!({
     "rid": child_rid,
@@ -186,17 +203,13 @@ async fn op_run_status(
     s.borrow::<Permissions>().check_run()?;
   }
 
-  let run_status = poll_fn(|cx| {
-    let mut state = state.borrow_mut();
-    let child_resource = state
-      .resource_table
-      .get_mut::<ChildResource>(rid)
-      .ok_or_else(bad_resource_id)?;
-    let child = &mut child_resource.child;
-    child.poll_unpin(cx).map_err(AnyError::from)
-  })
-  .await?;
-
+  let resource = state
+    .borrow_mut()
+    .resource_table_2
+    .get::<ChildResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+  let mut child = resource.borrow_mut().await;
+  let run_status = (&mut *child).await.map_err(AnyError::from)?;
   let code = run_status.code();
 
   #[cfg(unix)]
