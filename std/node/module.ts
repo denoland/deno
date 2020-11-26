@@ -26,9 +26,10 @@ import * as nodeEvents from "./events.ts";
 import * as nodeFS from "./fs.ts";
 import * as nodeOs from "./os.ts";
 import * as nodePath from "./path.ts";
-import * as nodeTimers from "./timers.ts";
 import * as nodeQueryString from "./querystring.ts";
+import * as nodeStream from "./stream.ts";
 import * as nodeStringDecoder from "./string_decoder.ts";
+import * as nodeTimers from "./timers.ts";
 import * as nodeUtil from "./util.ts";
 
 import * as path from "../path/mod.ts";
@@ -602,6 +603,10 @@ nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
 nativeModulePolyfill.set(
   "querystring",
   createNativeModule("querystring", nodeQueryString),
+);
+nativeModulePolyfill.set(
+  "stream",
+  createNativeModule("string_decoder", nodeStream),
 );
 nativeModulePolyfill.set(
   "string_decoder",
