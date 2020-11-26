@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::worker::WebWorkerHandle;
-use crate::worker::WorkerEvent;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WorkerEvent;
 use deno_core::futures::channel::mpsc;
 use deno_core::serde_json::json;
 

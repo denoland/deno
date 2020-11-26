@@ -21,6 +21,7 @@ mod signal;
 mod text_encoding;
 mod tokio_util;
 mod version;
+mod web_worker;
 mod worker;
 
 #[cfg(feature = "tools")]
