@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertNotEquals,
   assertThrows,
+  unitTest,
 } from "./test_util.ts";
 
 function delay(seconds: number): Promise<void> {
@@ -17,7 +17,7 @@ function delay(seconds: number): Promise<void> {
 
 function readableStreamToArray<R>(
   readable: { getReader(): ReadableStreamDefaultReader<R> },
-  reader?: ReadableStreamDefaultReader<R>
+  reader?: ReadableStreamDefaultReader<R>,
 ): Promise<R[]> {
   if (reader === undefined) {
     reader = readable.getReader();
@@ -58,21 +58,21 @@ unitTest(function transformStreamIntstancesHaveProperProperties() {
   assertEquals(
     typeof writableStream.get,
     "function",
-    "writable should have a getter"
+    "writable should have a getter",
   );
   assertEquals(
     writableStream.set,
     undefined,
-    "writable should not have a setter"
+    "writable should not have a setter",
   );
   assert(writableStream.configurable, "writable should be configurable");
   assert(
     ts.writable instanceof WritableStream,
-    "writable is an instance of WritableStream"
+    "writable is an instance of WritableStream",
   );
   assert(
     WritableStream.prototype.getWriter.call(ts.writable),
-    "writable should pass WritableStream brand check"
+    "writable should pass WritableStream brand check",
   );
 
   const readableStream = Object.getOwnPropertyDescriptor(proto, "readable");
@@ -81,22 +81,22 @@ unitTest(function transformStreamIntstancesHaveProperProperties() {
   assertEquals(
     typeof readableStream.get,
     "function",
-    "readable should have a getter"
+    "readable should have a getter",
   );
   assertEquals(
     readableStream.set,
     undefined,
-    "readable should not have a setter"
+    "readable should not have a setter",
   );
   assert(readableStream.configurable, "readable should be configurable");
   assert(
     ts.readable instanceof ReadableStream,
-    "readable is an instance of ReadableStream"
+    "readable is an instance of ReadableStream",
   );
   assertNotEquals(
     ReadableStream.prototype.getReader.call(ts.readable),
     undefined,
-    "readable should pass ReadableStream brand check"
+    "readable should pass ReadableStream brand check",
   );
 });
 
@@ -115,14 +115,14 @@ unitTest(async function transformStreamReadableCanReadOutOfWritable() {
   assertEquals(
     writer.desiredSize,
     0,
-    "writer.desiredSize should be 0 after write()"
+    "writer.desiredSize should be 0 after write()",
   );
 
   const result = await ts.readable.getReader().read();
   assertEquals(
     result.value,
     "a",
-    "result from reading the readable is the same as was written to writable"
+    "result from reading the readable is the same as was written to writable",
   );
   assert(!result.done, "stream should not be done");
 
@@ -148,7 +148,7 @@ unitTest(async function transformStreamCanReadWhatIsWritten() {
   assertEquals(
     result.value,
     "A",
-    "result from reading the readable is the transformation of what was written to writable"
+    "result from reading the readable is the transformation of what was written to writable",
   );
   assert(!result.done, "stream should not be done");
 });
@@ -174,7 +174,7 @@ unitTest(async function transformStreamCanReadBothChunks() {
   assertEquals(
     result1.value,
     "A",
-    "the first chunk read is the transformation of the single chunk written"
+    "the first chunk read is the transformation of the single chunk written",
   );
   assert(!result1.done, "stream should not be done");
 
@@ -182,7 +182,7 @@ unitTest(async function transformStreamCanReadBothChunks() {
   assertEquals(
     result2.value,
     "A",
-    "the second chunk read is also the transformation of the single chunk written"
+    "the second chunk read is also the transformation of the single chunk written",
   );
   assert(!result2.done, "stream should not be done");
 });
@@ -205,7 +205,7 @@ unitTest(async function transformStreamCanReadWhatIsWritten() {
   assertEquals(
     result.value,
     "A",
-    "result from reading the readable is the transformation of what was written to writable"
+    "result from reading the readable is the transformation of what was written to writable",
   );
   assert(!result.done, "stream should not be done");
 });
@@ -216,7 +216,7 @@ unitTest(async function transformStreamAsyncReadMultipleChunks() {
   const ts = new TransformStream({
     transform(
       chunk: string,
-      controller: TransformStreamDefaultController
+      controller: TransformStreamDefaultController,
     ): Promise<void> {
       delay(0).then(() => controller.enqueue(chunk.toUpperCase()));
       doSecondEnqueue = (): void => controller.enqueue(chunk.toUpperCase());
@@ -235,7 +235,7 @@ unitTest(async function transformStreamAsyncReadMultipleChunks() {
   assertEquals(
     result1.value,
     "A",
-    "the first chunk read is the transformation of the single chunk written"
+    "the first chunk read is the transformation of the single chunk written",
   );
   assert(!result1.done, "stream should not be done");
   doSecondEnqueue!();
@@ -244,7 +244,7 @@ unitTest(async function transformStreamAsyncReadMultipleChunks() {
   assertEquals(
     result2.value,
     "A",
-    "the second chunk read is also the transformation of the single chunk written"
+    "the second chunk read is also the transformation of the single chunk written",
   );
   assert(!result2.done, "stream should not be done");
   returnFromTransform!();
@@ -257,7 +257,7 @@ unitTest(function transformStreamClosingWriteClosesRead() {
   writer.close();
 
   return Promise.all([writer.closed, ts.readable.getReader().closed]).then(
-    undefined
+    undefined,
   );
 });
 
@@ -273,7 +273,7 @@ unitTest(async function transformStreamCloseWaitAwaitsTransforms() {
       },
     },
     undefined,
-    { highWaterMark: 1 }
+    { highWaterMark: 1 },
   );
 
   const writer = ts.writable.getWriter();
@@ -318,7 +318,7 @@ unitTest(async function transformStreamCloseWriteAfterSyncEnqueues() {
   assertEquals(
     chunks,
     ["x", "y"],
-    "both enqueued chunks can be read from the readable"
+    "both enqueued chunks can be read from the readable",
   );
 });
 
@@ -347,7 +347,7 @@ unitTest(async function transformStreamWritableCloseAsyncAfterAsyncEnqueues() {
   assertEquals(
     chunks,
     ["x", "y"],
-    "both enqueued chunks can be read from the readable"
+    "both enqueued chunks can be read from the readable",
   );
 });
 
@@ -382,7 +382,7 @@ unitTest(async function transformStreamTransformerMethodsCalledAsMethods() {
   assertEquals(
     chunks,
     ["start-suffix", "a-suffix", "flushed-suffix"],
-    "all enqueued chunks have suffixes"
+    "all enqueued chunks have suffixes",
   );
 });
 
@@ -415,7 +415,7 @@ unitTest(async function transformStreamCallTransformSync() {
       },
     },
     undefined,
-    { highWaterMark: Infinity }
+    { highWaterMark: Infinity },
   );
   // transform() is only called synchronously when there is no backpressure and
   // all microtasks have run.
@@ -432,7 +432,7 @@ unitTest(function transformStreamCloseWriteCloesesReadWithNoChunks() {
   writer.close();
 
   return Promise.all([writer.closed, ts.readable.getReader().closed]).then(
-    undefined
+    undefined,
   );
 });
 
@@ -459,7 +459,7 @@ unitTest(function transformStreamEnqueueThrowsAfterReadableCancel() {
     () => controller.enqueue(undefined),
     TypeError,
     undefined,
-    "enqueue should throw"
+    "enqueue should throw",
   );
   return cancelPromise;
 });
@@ -506,21 +506,21 @@ unitTest(async function transformStreamStartCalledOnce() {
 
 unitTest(function transformStreamReadableTypeThrows() {
   assertThrows(
-    // eslint-disable-next-line
+    // deno-lint-ignore no-explicit-any
     () => new TransformStream({ readableType: "bytes" as any }),
     RangeError,
     undefined,
-    "constructor should throw"
+    "constructor should throw",
   );
 });
 
 unitTest(function transformStreamWirtableTypeThrows() {
   assertThrows(
-    // eslint-disable-next-line
+    // deno-lint-ignore no-explicit-any
     () => new TransformStream({ writableType: "bytes" as any }),
     RangeError,
     undefined,
-    "constructor should throw"
+    "constructor should throw",
   );
 });
 
@@ -532,31 +532,31 @@ unitTest(function transformStreamSubclassable() {
   }
   assert(
     Object.getPrototypeOf(Subclass.prototype) === TransformStream.prototype,
-    "Subclass.prototype's prototype should be TransformStream.prototype"
+    "Subclass.prototype's prototype should be TransformStream.prototype",
   );
   assert(
     Object.getPrototypeOf(Subclass) === TransformStream,
-    "Subclass's prototype should be TransformStream"
+    "Subclass's prototype should be TransformStream",
   );
   const sub = new Subclass();
   assert(
     sub instanceof TransformStream,
-    "Subclass object should be an instance of TransformStream"
+    "Subclass object should be an instance of TransformStream",
   );
   assert(
     sub instanceof Subclass,
-    "Subclass object should be an instance of Subclass"
+    "Subclass object should be an instance of Subclass",
   );
   const readableGetter = Object.getOwnPropertyDescriptor(
     TransformStream.prototype,
-    "readable"
+    "readable",
   )!.get;
   assert(
     readableGetter!.call(sub) === sub.readable,
-    "Subclass object should pass brand check"
+    "Subclass object should pass brand check",
   );
   assert(
     sub.extraFunction(),
-    "extraFunction() should be present on Subclass object"
+    "extraFunction() should be present on Subclass object",
   );
 });

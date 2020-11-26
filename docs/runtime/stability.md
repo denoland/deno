@@ -15,7 +15,7 @@ Passing this flag does a few things:
 
 - It enables the use of unstable APIs during runtime.
 - It adds the
-  [`lib.deno.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/js/lib.deno.unstable.d.ts)
+  [`lib.deno.unstable.d.ts`](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/dts/lib.deno.unstable.d.ts)
   file to the list of TypeScript definitions that are used for type checking.
   This includes the output of `deno types`.
 

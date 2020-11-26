@@ -2,26 +2,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
-  readLines,
-  permissionCombinations,
-  Permissions,
-  registerUnitTests,
+  colors,
   fmtPerms,
   parseArgs,
+  permissionCombinations,
+  Permissions,
+  readLines,
+  REGISTERED_UNIT_TESTS,
+  registerUnitTests,
   reportToConn,
 } from "./test_util.ts";
 
-// @ts-expect-error
+// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const internalObj = Deno[Deno.internal];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const reportToConsole = internalObj.reportToConsole as (message: any) => void;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const runTests = internalObj.runTests as (options: any) => Promise<any>;
 
 interface PermissionSetTestResult {
   perms: Permissions;
   passed: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   endMessage: any;
   permsStr: string;
 }
@@ -40,7 +42,7 @@ const PERMISSIONS: Deno.PermissionName[] = [
  * Take a list of permissions and revoke missing permissions.
  */
 async function dropWorkerPermissions(
-  requiredPermissions: Deno.PermissionName[]
+  requiredPermissions: Deno.PermissionName[],
 ): Promise<void> {
   const permsToDrop = PERMISSIONS.filter((p): boolean => {
     return !requiredPermissions.includes(p);
@@ -54,7 +56,7 @@ async function dropWorkerPermissions(
 async function workerRunnerMain(
   addrStr: string,
   permsStr: string,
-  filter?: string
+  filter?: string,
 ): Promise<void> {
   const [hostname, port] = addrStr.split(":");
   const addr = { hostname, port: Number(port) };
@@ -82,7 +84,7 @@ function spawnWorkerRunner(
   verbose: boolean,
   addr: string,
   perms: Permissions,
-  filter?: string
+  filter?: string,
 ): Deno.Process {
   // run subsequent tests using same deno executable
   const permStr = Object.keys(perms)
@@ -124,7 +126,7 @@ async function runTestsForPermissionSet(
   addrStr: string,
   verbose: boolean,
   perms: Permissions,
-  filter?: string
+  filter?: string,
 ): Promise<PermissionSetTestResult> {
   const permsFmt = fmtPerms(perms);
   console.log(`Running tests for: ${permsFmt}`);
@@ -133,12 +135,12 @@ async function runTestsForPermissionSet(
   const conn = await listener.accept();
 
   let expectedPassedTests;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   let endMessage: any;
 
   try {
     for await (const line of readLines(conn)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       const message = JSON.parse(line) as any;
       reportToConsole(message);
       if (message.start != null) {
@@ -163,7 +165,7 @@ async function runTestsForPermissionSet(
   const workerStatus = await workerProcess.status();
   if (!workerStatus.success) {
     throw new Error(
-      `Worker runner exited with status code: ${workerStatus.code}`
+      `Worker runner exited with status code: ${workerStatus.code}`,
     );
   }
 
@@ -181,11 +183,11 @@ async function runTestsForPermissionSet(
 
 async function masterRunnerMain(
   verbose: boolean,
-  filter?: string
+  filter?: string,
 ): Promise<void> {
   console.log(
     "Discovered permission combinations for tests:",
-    permissionCombinations.size
+    permissionCombinations.size,
   );
 
   for (const perms of permissionCombinations.values()) {
@@ -203,7 +205,7 @@ async function masterRunnerMain(
       addrStr,
       verbose,
       perms,
-      filter
+      filter,
     );
     testResults.add(result);
   }
@@ -225,6 +227,13 @@ async function masterRunnerMain(
   }
 
   console.log("Unit tests passed");
+
+  if (REGISTERED_UNIT_TESTS.find(({ only }) => only)) {
+    console.error(
+      `\n${colors.red("FAILED")} because the "only" option was used`,
+    );
+    Deno.exit(1);
+  }
 }
 
 const HELP = `Unit test runner

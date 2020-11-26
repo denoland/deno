@@ -46,15 +46,3 @@ export const CHAR_EQUAL = 61; /* = */
 // Digits
 export const CHAR_0 = 48; /* 0 */
 export const CHAR_9 = 57; /* 9 */
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const navigator = (globalThis as any).navigator;
-
-let isWindows = false;
-if (globalThis.Deno != null) {
-  isWindows = Deno.build.os == "windows";
-} else if (navigator?.appVersion != null) {
-  isWindows = navigator.appVersion.includes("Win");
-}
-
-export { isWindows };

@@ -1,19 +1,18 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Based on https://github.com/golang/go/blob/master/src/net/textproto/reader_test.go
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "./mod.ts";
 import { StringReader } from "../io/readers.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
-const { test } = Deno;
 
 function reader(s: string): TextProtoReader {
   return new TextProtoReader(new BufReader(new StringReader(s)));
 }
 
-test({
+Deno.test({
   ignore: true,
   name: "[textproto] Reader : DotBytes",
   fn(): Promise<void> {
@@ -23,13 +22,13 @@ test({
   },
 });
 
-test("[textproto] ReadEmpty", async () => {
+Deno.test("[textproto] ReadEmpty", async () => {
   const r = reader("");
   const m = await r.readMIMEHeader();
   assertEquals(m, null);
 });
 
-test("[textproto] Reader", async () => {
+Deno.test("[textproto] Reader", async () => {
   const r = reader("line1\nline2\n");
   let s = await r.readLine();
   assertEquals(s, "line1");
@@ -41,7 +40,7 @@ test("[textproto] Reader", async () => {
   assert(s === null);
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header",
   async fn(): Promise<void> {
     const input =
@@ -55,7 +54,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Single",
   async fn(): Promise<void> {
     const input = "Foo: bar\n\n";
@@ -66,7 +65,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header No Key",
   async fn(): Promise<void> {
     const input = ": bar\ntest-1: 1\n\n";
@@ -77,7 +76,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : Large MIME Header",
   async fn(): Promise<void> {
     const data: string[] = [];
@@ -95,11 +94,10 @@ test({
 
 // Test that we don't read MIME headers seen in the wild,
 // with spaces before colons, and spaces in keys.
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Non compliant",
   async fn(): Promise<void> {
-    const input =
-      "Foo: bar\r\n" +
+    const input = "Foo: bar\r\n" +
       "Content-Language: en\r\n" +
       "SID : 0\r\n" +
       "Audio Mode : None\r\n" +
@@ -119,7 +117,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Malformed",
   async fn(): Promise<void> {
     const input = [
@@ -142,12 +140,10 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Trim Continued",
   async fn(): Promise<void> {
-    const input =
-      "" + // for code formatting purpose.
-      "a:\n" +
+    const input = "a:\n" +
       " 0 \r\n" +
       "b:1 \t\r\n" +
       "c: 2\r\n" +
@@ -164,7 +160,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] #409 issue : multipart form boundary",
   async fn(): Promise<void> {
     const input = [
@@ -181,13 +177,13 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] #4521 issue",
   async fn() {
     const input = "abcdefghijklmnopqrstuvwxyz";
     const bufSize = 25;
     const tp = new TextProtoReader(
-      new BufReader(new StringReader(input), bufSize)
+      new BufReader(new StringReader(input), bufSize),
     );
     const line = await tp.readLine();
     assertEquals(line, input);

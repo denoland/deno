@@ -10,14 +10,14 @@
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
 
 export interface ResolvableMethods<T> {
-  resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolve: (value: T | PromiseLike<T>) => void;
+  // deno-lint-ignore no-explicit-any
   reject: (reason?: any) => void;
 }
 
 export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 
-export function createResolvable<T>(): Resolvable<T> {
+export function createResolvable<T = void>(): Resolvable<T> {
   let methods: ResolvableMethods<T>;
   const promise = new Promise<T>((resolve, reject): void => {
     methods = { resolve, reject };
@@ -32,13 +32,14 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
-    const jsWorker = new Worker("../tests/subdir/test_worker.js", {
-      type: "module",
-    });
-    const tsWorker = new Worker("../tests/subdir/test_worker.ts", {
-      type: "module",
-      name: "tsWorker",
-    });
+    const jsWorker = new Worker(
+      new URL("subdir/test_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
+    const tsWorker = new Worker(
+      new URL("subdir/test_worker.ts", import.meta.url).href,
+      { type: "module", name: "tsWorker" },
+    );
 
     tsWorker.onmessage = (e): void => {
       assertEquals(e.data, "Hello World");
@@ -67,10 +68,10 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
-    const nestedWorker = new Worker("../tests/subdir/nested_worker.js", {
-      type: "module",
-      name: "nested",
-    });
+    const nestedWorker = new Worker(
+      new URL("subdir/nested_worker.js", import.meta.url).href,
+      { type: "module", name: "nested" },
+    );
 
     nestedWorker.onmessage = (e): void => {
       assert(e.data.type !== "error");
@@ -87,11 +88,12 @@ Deno.test({
   name: "worker throws when executing",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
-    const throwingWorker = new Worker("../tests/subdir/throwing_worker.js", {
-      type: "module",
-    });
+    const throwingWorker = new Worker(
+      new URL("subdir/throwing_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     throwingWorker.onerror = (e: any): void => {
       e.preventDefault();
       assert(/Uncaught Error: Thrown error/.test(e.message));
@@ -104,15 +106,34 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker globals",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const w = new Worker(
+      new URL("subdir/worker_globals.ts", import.meta.url).href,
+      { type: "module" },
+    );
+    w.onmessage = (e): void => {
+      assertEquals(e.data, "true, true, true");
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
   name: "worker fetch API",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
-    const fetchingWorker = new Worker("../tests/subdir/fetching_worker.js", {
-      type: "module",
-    });
+    const fetchingWorker = new Worker(
+      new URL("subdir/fetching_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     fetchingWorker.onerror = (e: any): void => {
       e.preventDefault();
       promise.reject(e.message);
@@ -134,9 +155,10 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = createResolvable();
 
-    const busyWorker = new Worker("../tests/subdir/busy_worker.js", {
-      type: "module",
-    });
+    const busyWorker = new Worker(
+      new URL("subdir/busy_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
 
     let testResult = 0;
 
@@ -166,9 +188,10 @@ Deno.test({
     // https://github.com/denoland/deno/issues/4080
     const promise = createResolvable();
 
-    const racyWorker = new Worker("../tests/subdir/racy_worker.js", {
-      type: "module",
-    });
+    const racyWorker = new Worker(
+      new URL("subdir/racy_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
 
     racyWorker.onmessage = (e): void => {
       assertEquals(e.data.buf.length, 999999);
@@ -193,9 +216,10 @@ Deno.test({
     const promise1 = createResolvable();
     const promise2 = createResolvable();
 
-    const worker = new Worker("../tests/subdir/event_worker.js", {
-      type: "module",
-    });
+    const worker = new Worker(
+      new URL("subdir/event_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
 
     worker.onmessage = (_e: Event): void => {
       messageHandlersCalled++;
@@ -236,9 +260,10 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise1 = createResolvable();
 
-    const worker = new Worker("../tests/subdir/event_worker_scope.js", {
-      type: "module",
-    });
+    const worker = new Worker(
+      new URL("subdir/event_worker_scope.js", import.meta.url).href,
+      { type: "module" },
+    );
 
     worker.onmessage = (e: MessageEvent): void => {
       const { messageHandlersCalled, errorHandlersCalled } = e.data;
@@ -264,13 +289,14 @@ Deno.test({
     const promise = createResolvable();
     const promise2 = createResolvable();
 
-    const regularWorker = new Worker("../tests/subdir/non_deno_worker.js", {
-      type: "module",
-    });
-    const denoWorker = new Worker("../tests/subdir/deno_worker.ts", {
-      type: "module",
-      deno: true,
-    });
+    const regularWorker = new Worker(
+      new URL("subdir/non_deno_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
+    const denoWorker = new Worker(
+      new URL("subdir/deno_worker.ts", import.meta.url).href,
+      { type: "module", deno: true },
+    );
 
     regularWorker.onmessage = (e): void => {
       assertEquals(e.data, "Hello World");
@@ -295,14 +321,39 @@ Deno.test({
   name: "worker with crypto in scope",
   fn: async function (): Promise<void> {
     const promise = createResolvable();
-    const w = new Worker("../tests/subdir/worker_crypto.js", {
-      type: "module",
-    });
+    const w = new Worker(
+      new URL("subdir/worker_crypto.js", import.meta.url).href,
+      { type: "module" },
+    );
     w.onmessage = (e): void => {
       assertEquals(e.data, true);
       promise.resolve();
     };
     w.postMessage(null);
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "Worker event handler order",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const w = new Worker(
+      new URL("subdir/test_worker.ts", import.meta.url).href,
+      { type: "module", name: "tsWorker" },
+    );
+    const arr: number[] = [];
+    w.addEventListener("message", () => arr.push(1));
+    w.onmessage = (e): void => {
+      arr.push(2);
+    };
+    w.addEventListener("message", () => arr.push(3));
+    w.addEventListener("message", () => {
+      assertEquals(arr, [1, 2, 3]);
+      promise.resolve();
+    });
+    w.postMessage("Hello World");
     await promise;
     w.terminate();
   },

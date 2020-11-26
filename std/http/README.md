@@ -1,7 +1,7 @@
 # http
 
 ```typescript
-import { serve } from "https://deno.land/std/http/server.ts";
+import { serve } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 const server = serve({ port: 8000 });
 console.log("http://localhost:8000/");
 for await (const req of server) {
@@ -11,11 +11,11 @@ for await (const req of server) {
 
 ### File Server
 
-A small program for serving local files over HTTP
+A small program for serving local files over HTTP.
 
 ```sh
 deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
-> HTTP server listening on http://0.0.0.0:4500/
+> HTTP server listening on http://0.0.0.0:4507/
 ```
 
 ## Cookie
@@ -23,8 +23,8 @@ deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
 Helper to manipulate `Cookie` through `ServerRequest` and `Response`.
 
 ```ts
-import { ServerRequest } from "https://deno.land/std/http/server.ts";
-import { getCookies } from "https://deno.land/std/http/cookie.ts";
+import { ServerRequest } from "https://deno.land/std@$STD_VERSION/http/server.ts";
+import { getCookies } from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
 
 let request = new ServerRequest();
 request.headers = new Headers();
@@ -35,11 +35,14 @@ console.log("cookies:", cookies);
 // cookies: { full: "of", tasty: "chocolate" }
 ```
 
-To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`
+To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`:
 
 ```ts
-import { Response } from "https://deno.land/std/http/server.ts";
-import { Cookie, setCookie } from "https://deno.land/std/http/cookie.ts";
+import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
+import {
+  Cookie,
+  setCookie,
+} from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
 
 let response: Response = {};
 const cookie: Cookie = { name: "Space", value: "Cat" };
@@ -54,11 +57,11 @@ Deleting a `Cookie` will set its expiration date before now. Forcing the browser
 to delete it.
 
 ```ts
-import { Response } from "https://deno.land/std/http/server.ts";
-import { delCookie } from "https://deno.land/std/http/cookie.ts";
+import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
+import { deleteCookie } from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
 
 let response: Response = {};
-delCookie(response, "deno");
+deleteCookie(response, "deno");
 
 const cookieHeader = response.headers.get("set-cookie");
 console.log("Set-Cookie:", cookieHeader);

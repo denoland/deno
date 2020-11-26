@@ -1,9 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
+  assertNotEquals,
+  assertThrows,
+  assertThrowsAsync,
   createResolvable,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
@@ -11,6 +14,7 @@ unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, 3500);
+  assertNotEquals(listener.rid, 0);
   listener.close();
 });
 
@@ -30,7 +34,7 @@ unitTest(
     assertEquals(socket.addr.hostname, "127.0.0.1");
     assertEquals(socket.addr.port, 3500);
     socket.close();
-  }
+  },
 );
 
 unitTest(
@@ -44,7 +48,7 @@ unitTest(
     assert(socket.addr.transport === "unix");
     assertEquals(socket.addr.path, filePath);
     socket.close();
-  }
+  },
 );
 
 unitTest(
@@ -58,7 +62,7 @@ unitTest(
     assert(socket.addr.transport === "unixpacket");
     assertEquals(socket.addr.path, filePath);
     socket.close();
-  }
+  },
 );
 
 unitTest(
@@ -69,16 +73,14 @@ unitTest(
     const listener = Deno.listen({ port: 4501 });
     const p = listener.accept();
     listener.close();
-    let err;
-    try {
-      await p;
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Error);
-    assertEquals(err.message, "Listener has been closed");
-  }
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await p;
+      },
+      Deno.errors.BadResource,
+      "Listener has been closed",
+    );
+  },
 );
 
 unitTest(
@@ -91,16 +93,14 @@ unitTest(
     });
     const p = listener.accept();
     listener.close();
-    let err;
-    try {
-      await p;
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Error);
-    assertEquals(err.message, "Listener has been closed");
-  }
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await p;
+      },
+      Deno.errors.BadResource,
+      "Listener has been closed",
+    );
+  },
 );
 
 unitTest(
@@ -123,7 +123,7 @@ unitTest(
     listener.close();
     await Promise.all([p, p1]);
     assertEquals(acceptErrCount, 1);
-  }
+  },
 );
 
 // TODO(jsouto): Enable when tokio updates mio to v0.7!
@@ -148,7 +148,7 @@ unitTest(
     listener.close();
     await [p, p1];
     assertEquals(acceptErrCount, 1);
-  }
+  },
 );
 
 unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
@@ -163,7 +163,7 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
       assertEquals(conn.localAddr.port, 3500);
       await conn.write(new Uint8Array([1, 2, 3]));
       conn.close();
-    }
+    },
   );
 
   const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
@@ -200,7 +200,7 @@ unitTest(
         assertEquals(conn.localAddr.path, filePath);
         await conn.write(new Uint8Array([1, 2, 3]));
         conn.close();
-      }
+      },
     );
     const conn = await Deno.connect({ path: filePath, transport: "unix" });
     assert(conn.remoteAddr.transport === "unix");
@@ -221,7 +221,7 @@ unitTest(
 
     listener.close();
     conn.close();
-  }
+  },
 );
 
 unitTest(
@@ -238,7 +238,9 @@ unitTest(
     assertEquals(bob.addr.hostname, "127.0.0.1");
 
     const sent = new Uint8Array([1, 2, 3]);
-    await alice.send(sent, bob.addr);
+    const byteLength = await alice.send(sent, bob.addr);
+
+    assertEquals(byteLength, 3);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "udp");
@@ -249,7 +251,22 @@ unitTest(
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
-  }
+  },
+);
+
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { net: true } },
+  async function netUdpBorrowMutError(): Promise<void> {
+    const socket = Deno.listenDatagram({
+      port: 4501,
+      transport: "udp",
+    });
+    // Panic happened on second send: BorrowMutError
+    const a = socket.send(new Uint8Array(), socket.addr);
+    const b = socket.send(new Uint8Array(), socket.addr);
+    await Promise.all([a, b]);
+    socket.close();
+  },
 );
 
 unitTest(
@@ -271,7 +288,8 @@ unitTest(
     assertEquals(bob.addr.path, filePath);
 
     const sent = new Uint8Array([1, 2, 3]);
-    await alice.send(sent, bob.addr);
+    const byteLength = await alice.send(sent, bob.addr);
+    assertEquals(byteLength, 3);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "unixpacket");
@@ -282,7 +300,7 @@ unitTest(
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
-  }
+  },
 );
 
 unitTest(
@@ -309,7 +327,7 @@ unitTest(
     const listener = Deno.listen(addr);
     iterate(listener);
 
-    await new Promise((resolve: () => void, _) => {
+    await new Promise<void>((resolve) => {
       setTimeout(resolve, 100);
     });
     const conn1 = await Deno.connect(addr);
@@ -318,7 +336,7 @@ unitTest(
     conn2.close();
 
     await promise;
-  }
+  },
 );
 
 unitTest(
@@ -331,7 +349,7 @@ unitTest(
 
     const nextAfterClosing = listener[Symbol.asyncIterator]().next();
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
-  }
+  },
 );
 
 unitTest(
@@ -344,7 +362,7 @@ unitTest(
 
     const nextAfterClosing = socket[Symbol.asyncIterator]().next();
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
-  }
+  },
 );
 
 unitTest(
@@ -358,7 +376,7 @@ unitTest(
 
     const nextAfterClosing = socket[Symbol.asyncIterator]().next();
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
-  }
+  },
 );
 
 unitTest(
@@ -375,7 +393,7 @@ unitTest(
 
     const nextAfterClosing = socket[Symbol.asyncIterator]().next();
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
-  }
+  },
 );
 
 unitTest(
@@ -410,7 +428,7 @@ unitTest(
 
     listener.close();
     conn.close();
-  }
+  },
 );
 
 unitTest(
@@ -438,18 +456,13 @@ unitTest(
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
     // Check write should be closed
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       await conn.write(new Uint8Array([1, 2, 3]));
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.BrokenPipe);
+    }, Deno.errors.BrokenPipe);
     closeDeferred.resolve();
     listener.close();
     conn.close();
-  }
+  },
 );
 
 unitTest(
@@ -468,19 +481,14 @@ unitTest(
     });
     const conn = await Deno.connect(addr);
     conn.closeWrite(); // closing write
-    let err;
-    try {
+    assertThrows(() => {
       // Duplicated close should throw error
       conn.closeWrite();
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.NotConnected);
+    }, Deno.errors.NotConnected);
     closeDeferred.resolve();
     listener.close();
     conn.close();
-  }
+  },
 );
 
 unitTest(
@@ -523,5 +531,16 @@ unitTest(
     acceptedConn!.close();
     listener.close();
     await resolvable;
-  }
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  function netExplicitUndefinedHostname() {
+    const listener = Deno.listen({ hostname: undefined, port: 8080 });
+    assertEquals((listener.addr as Deno.NetAddr).hostname, "0.0.0.0");
+    listener.close();
+  },
 );

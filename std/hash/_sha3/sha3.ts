@@ -3,9 +3,8 @@
 import { Sponge } from "./sponge.ts";
 import { keccakf } from "./keccakf.ts";
 
-/* eslint-disable @typescript-eslint/camelcase, @typescript-eslint/class-name-casing */
-
 /** Sha3-224 hash */
+// deno-lint-ignore camelcase
 export class Sha3_224 extends Sponge {
   constructor() {
     super({
@@ -18,6 +17,7 @@ export class Sha3_224 extends Sponge {
 }
 
 /** Sha3-256 hash */
+// deno-lint-ignore camelcase
 export class Sha3_256 extends Sponge {
   constructor() {
     super({
@@ -30,6 +30,7 @@ export class Sha3_256 extends Sponge {
 }
 
 /** Sha3-384 hash */
+// deno-lint-ignore camelcase
 export class Sha3_384 extends Sponge {
   constructor() {
     super({
@@ -42,6 +43,7 @@ export class Sha3_384 extends Sponge {
 }
 
 /** Sha3-512 hash */
+// deno-lint-ignore camelcase
 export class Sha3_512 extends Sponge {
   constructor() {
     super({

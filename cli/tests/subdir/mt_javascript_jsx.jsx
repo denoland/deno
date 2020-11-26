@@ -1,5 +1,5 @@
 const React = {
-  createElement() {}
-}
+  createElement() {},
+};
 const temp = <div></div>;
 export const loaded = true;

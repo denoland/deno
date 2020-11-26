@@ -1,16 +1,15 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, DenoStdInternalError } from "./assert.ts";
 import { assertThrows } from "../testing/asserts.ts";
 
-const { test } = Deno;
-
-test({
+Deno.test({
   name: "assert valid scenario",
   fn(): void {
     assert(true);
   },
 });
 
-test({
+Deno.test({
   name: "assert invalid scenario, no message",
   fn(): void {
     assertThrows(() => {
@@ -18,7 +17,7 @@ test({
     }, DenoStdInternalError);
   },
 });
-test({
+Deno.test({
   name: "assert invalid scenario, with message",
   fn(): void {
     assertThrows(
@@ -26,7 +25,7 @@ test({
         assert(false, "Oops! Should be true");
       },
       DenoStdInternalError,
-      "Oops! Should be true"
+      "Oops! Should be true",
     );
   },
 });

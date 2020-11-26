@@ -1,13 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
-import { ServerRequest, Response } from "./server.ts";
 import { assert } from "../_util/assert.ts";
 import { toIMF } from "../datetime/mod.ts";
 
-export interface Cookies {
-  [key: string]: string;
-}
+export type Cookies = Record<string, string>;
 
 export interface Cookie {
   /** Name of the cookie. */
@@ -35,11 +32,14 @@ export interface Cookie {
 
 export type SameSite = "Strict" | "Lax" | "None";
 
+const FIELD_CONTENT_REGEXP = /^(?=[\x20-\x7E]*$)[^()@<>,;:\\"\[\]?={}\s]+$/;
+
 function toString(cookie: Cookie): string {
   if (!cookie.name) {
     return "";
   }
   const out: string[] = [];
+  validateCookieName(cookie.name);
   out.push(`${cookie.name}=${cookie.value}`);
 
   // Fallback for invalid Set-Cookie
@@ -70,6 +70,7 @@ function toString(cookie: Cookie): string {
     out.push(`SameSite=${cookie.sameSite}`);
   }
   if (cookie.path) {
+    validatePath(cookie.path);
     out.push(`Path=${cookie.path}`);
   }
   if (cookie.expires) {
@@ -83,10 +84,41 @@ function toString(cookie: Cookie): string {
 }
 
 /**
- * Parse the cookies of the Server Request
- * @param req Server Request
+ * Validate Cookie Name.
+ * @param name Cookie name.
  */
-export function getCookies(req: ServerRequest): Cookies {
+function validateCookieName(name: string | undefined | null): void {
+  if (name && !FIELD_CONTENT_REGEXP.test(name)) {
+    throw new TypeError(`Invalid cookie name: "${name}".`);
+  }
+}
+
+/**
+ * Validate Path Value.
+ * @see https://tools.ietf.org/html/rfc6265#section-4.1.2.4
+ * @param path Path value.
+ */
+function validatePath(path: string | null): void {
+  if (path == null) {
+    return;
+  }
+  for (let i = 0; i < path.length; i++) {
+    const c = path.charAt(i);
+    if (
+      c < String.fromCharCode(0x20) || c > String.fromCharCode(0x7E) || c == ";"
+    ) {
+      throw new Error(
+        path + ": Invalid cookie path char '" + c + "'",
+      );
+    }
+  }
+}
+
+/**
+ * Parse the cookies of the Server Request
+ * @param req An object which has a `headers` property
+ */
+export function getCookies(req: { headers: Headers }): Cookies {
   const cookie = req.headers.get("Cookie");
   if (cookie != null) {
     const out: Cookies = {};
@@ -104,14 +136,17 @@ export function getCookies(req: ServerRequest): Cookies {
 
 /**
  * Set the cookie header properly in the Response
- * @param res Server Response
+ * @param res An object which has a headers property
  * @param cookie Cookie to set
+ *
  * Example:
  *
- *     setCookie(response, { name: 'deno', value: 'runtime',
- *        httpOnly: true, secure: true, maxAge: 2, domain: "deno.land" });
+ * ```ts
+ * setCookie(response, { name: 'deno', value: 'runtime',
+ *   httpOnly: true, secure: true, maxAge: 2, domain: "deno.land" });
+ * ```
  */
-export function setCookie(res: Response, cookie: Cookie): void {
+export function setCookie(res: { headers?: Headers }, cookie: Cookie): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
@@ -132,7 +167,7 @@ export function setCookie(res: Response, cookie: Cookie): void {
  *
  *     deleteCookie(res,'foo');
  */
-export function deleteCookie(res: Response, name: string): void {
+export function deleteCookie(res: { headers?: Headers }, name: string): void {
   setCookie(res, {
     name: name,
     value: "",

@@ -1,10 +1,10 @@
 {
   "http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
-  "http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
-  "http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts": "54cc82ff3c3b0387df57c7bb8eda4dcd36cbbf499ea483b04ff22c5365d34744",
-  "http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
-  "http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts": "42f66736fea7365ff17d5aa9b9655e8551eb81f360dcfb6b77acdd5c9f699e82",
-  "http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts": "ee0b46f757b5f78681a4eead44820c2349daef7a5903fe3c624f29dbc98772e1",
   "http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
-  "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts": "c320ab0a259760e5c78b9ea840af3cc29697109594a3a5b5cea47128102b3e9d"
+  "http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
+  "http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
+  "http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
+  "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
+  "http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
+  "http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18"
 }

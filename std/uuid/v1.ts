@@ -1,12 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { bytesToUuid } from "./_common.ts";
 
 const UUID_RE = new RegExp(
   "^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-  "i"
+  "i",
 );
 
+/**
+ * Validates the UUID v1
+ * @param id UUID value
+ */
 export function validate(id: string): boolean {
   return UUID_RE.test(id);
 }
@@ -26,10 +29,16 @@ type V1Options = {
   rng?: () => number[];
 };
 
+/**
+ * Generates a RFC4122 v1 UUID (time-based)
+ * @param options Can use RFC time sequence values as overwrites
+ * @param buf Can allow the UUID to be written in byte-form starting at the offset
+ * @param offset Index to start writing on the UUID bytes in buffer
+ */
 export function generate(
   options?: V1Options | null,
   buf?: number[],
-  offset?: number
+  offset?: number,
 ): string | number[] {
   let i = (buf && offset) || 0;
   const b = buf || [];
@@ -39,9 +48,8 @@ export function generate(
   let clockseq = options.clockseq !== undefined ? options.clockseq : _clockseq;
 
   if (node == null || clockseq == null) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const seedBytes: any =
-      options.random ||
+    // deno-lint-ignore no-explicit-any
+    const seedBytes: any = options.random ||
       options.rng ||
       crypto.getRandomValues(new Uint8Array(16));
     if (node == null) {
@@ -58,8 +66,9 @@ export function generate(
       clockseq = _clockseq = ((seedBytes[6] << 8) | seedBytes[7]) & 0x3fff;
     }
   }
-  let msecs =
-    options.msecs !== undefined ? options.msecs : new Date().getTime();
+  let msecs = options.msecs !== undefined
+    ? options.msecs
+    : new Date().getTime();
 
   let nsecs = options.nsecs !== undefined ? options.nsecs : _lastNSecs + 1;
 

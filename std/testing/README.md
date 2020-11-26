@@ -16,12 +16,17 @@ pretty-printed diff of failing assertion.
   `expected` are not equal.
 - `assertNotEquals()` - Uses the `equal` comparison and throws if the `actual`
   and `expected` are equal.
-- `assertStrictEq()` - Compares `actual` and `expected` strictly, therefore for
-  non-primitives the values must reference the same instance.
-- `assertStrContains()` - Make an assertion that `actual` contains `expected`.
+- `assertStrictEquals()` - Compares `actual` and `expected` strictly, therefore
+  for non-primitives the values must reference the same instance.
+- `assertStringIncludes()` - Make an assertion that `actual` includes
+  `expected`.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
-- `assertArrayContains()` - Make an assertion that `actual` array contains the
+- `assertNotMatch()` - Make an assertion that `actual` not match RegExp
+  `expected`.
+- `assertArrayIncludes()` - Make an assertion that `actual` array includes the
   `expected` values.
+- `assertObjectMatch()` - Make an assertion that `actual` object match
+  `expected` subset object
 - `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,
   this function does. Also compares any errors thrown to an optional expected
   `Error` class and checks that the error `.message` includes an optional
@@ -31,13 +36,13 @@ pretty-printed diff of failing assertion.
   function will throw asynchronously. Also compares any errors thrown to an
   optional expected `Error` class and checks that the error `.message` includes
   an optional string.
-- `unimplemented()` - Use this to stub out methods that will throw when invoked
-- `unreachable()` - Used to assert unreachable code
+- `unimplemented()` - Use this to stub out methods that will throw when invoked.
+- `unreachable()` - Used to assert unreachable code.
 
 Basic usage:
 
 ```ts
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test({
   name: "testing example",
@@ -57,20 +62,20 @@ Deno.test("example", function (): void {
 });
 ```
 
-Using `assertStrictEq()`:
+Using `assertStrictEquals()`:
 
 ```ts
 Deno.test("isStrictlyEqual", function (): void {
   const a = {};
   const b = a;
-  assertStrictEq(a, b);
+  assertStrictEquals(a, b);
 });
 
 // This test fails
 Deno.test("isNotStrictlyEqual", function (): void {
   const a = {};
   const b = {};
-  assertStrictEq(a, b);
+  assertStrictEquals(a, b);
 });
 ```
 
@@ -89,11 +94,11 @@ Deno.test("doesThrow", function (): void {
       throw new TypeError("hello world!");
     },
     TypeError,
-    "hello"
+    "hello",
   );
 });
 
-// This test will not pass
+// This test will not pass.
 Deno.test("fails", function (): void {
   assertThrows((): void => {
     console.log("Hello world");
@@ -108,7 +113,7 @@ Deno.test("doesThrow", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       throw new TypeError("hello world!");
-    }
+    },
   );
   await assertThrowsAsync(async (): Promise<void> => {
     throw new TypeError("hello world!");
@@ -118,21 +123,21 @@ Deno.test("doesThrow", async function (): Promise<void> {
       throw new TypeError("hello world!");
     },
     TypeError,
-    "hello"
+    "hello",
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
       return Promise.reject(new Error());
-    }
+    },
   );
 });
 
-// This test will not pass
+// This test will not pass.
 Deno.test("fails", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       console.log("Hello world");
-    }
+    },
   );
 });
 ```
@@ -153,7 +158,10 @@ After that simply calling `runBenchmarks()` will benchmark all registered
 benchmarks and log the results in the commandline.
 
 ```ts
-import { runBenchmarks, bench } from "https://deno.land/std/testing/bench.ts";
+import {
+  bench,
+  runBenchmarks,
+} from "https://deno.land/std@$STD_VERSION/testing/bench.ts";
 
 bench(function forIncrementX1e9(b): void {
   b.start();
@@ -196,7 +204,7 @@ runBenchmarks()
     console.log(results);
   })
   .catch((error: Error) => {
-    // ... errors if benchmark was badly constructed
+    // ... errors if benchmark was badly constructed.
   });
 ```
 
@@ -210,10 +218,10 @@ commandline.
 
 ```ts
 runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
-  // initial progress data
+  // initial progress data.
   if (p.state === ProgressState.BenchmarkingStart) {
     console.log(
-      `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`
+      `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`,
     );
   }
   // ...
@@ -226,7 +234,7 @@ runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
 
 Registers a benchmark that will be run once `runBenchmarks` is called.
 
-##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void): Promise<BenchmarkRunResult>`
+##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void | Promise<void>): Promise<BenchmarkRunResult>`
 
 Runs all registered benchmarks serially. Filtering can be applied by setting
 `BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular

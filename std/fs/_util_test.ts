@@ -2,11 +2,12 @@
 
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
-import { isSubdir, getFileInfoType, PathType } from "./_util.ts";
+import { getFileInfoType, isSubdir, PathType } from "./_util.ts";
 import { ensureFileSync } from "./ensure_file.ts";
 import { ensureDirSync } from "./ensure_dir.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("_isSubdir", function (): void {
   const pairs = [
@@ -28,7 +29,7 @@ Deno.test("_isSubdir", function (): void {
     assertEquals(
       isSubdir(src, dest, sep),
       expected,
-      `'${src}' should ${expected ? "" : "not"} be parent dir of '${dest}'`
+      `'${src}' should ${expected ? "" : "not"} be parent dir of '${dest}'`,
     );
   });
 });

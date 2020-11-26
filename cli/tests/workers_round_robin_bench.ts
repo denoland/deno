@@ -6,14 +6,14 @@ const workerCount = 4;
 const cmdsPerWorker = 400;
 
 export interface ResolvableMethods<T> {
-  resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolve: (value: T | PromiseLike<T>) => void;
+  // deno-lint-ignore no-explicit-any
   reject: (reason?: any) => void;
 }
 
 export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 
-export function createResolvable<T>(): Resolvable<T> {
+export function createResolvable<T = void>(): Resolvable<T> {
   let methods: ResolvableMethods<T>;
   const promise = new Promise<T>((resolve, reject): void => {
     methods = { resolve, reject };
@@ -25,7 +25,7 @@ export function createResolvable<T>(): Resolvable<T> {
 
 function handleAsyncMsgFromWorker(
   promiseTable: Map<number, Resolvable<string>>,
-  msg: { cmdId: number; data: string }
+  msg: { cmdId: number; data: string },
 ): void {
   const promise = promiseTable.get(msg.cmdId);
   if (promise === null) {
@@ -37,8 +37,11 @@ function handleAsyncMsgFromWorker(
 async function main(): Promise<void> {
   const workers: Array<[Map<number, Resolvable<string>>, Worker]> = [];
   for (let i = 1; i <= workerCount; ++i) {
-    const worker = new Worker("./subdir/bench_worker.ts", { type: "module" });
-    const promise = createResolvable<void>();
+    const worker = new Worker(
+      new URL("subdir/bench_worker.ts", import.meta.url).href,
+      { type: "module" },
+    );
+    const promise = createResolvable();
     worker.onmessage = (e): void => {
       if (e.data.cmdId === 0) promise.resolve();
     };
@@ -65,7 +68,7 @@ async function main(): Promise<void> {
     }
   }
   for (const [, worker] of workers) {
-    const promise = createResolvable<void>();
+    const promise = createResolvable();
     worker.onmessage = (e): void => {
       if (e.data.cmdId === 3) promise.resolve();
     };

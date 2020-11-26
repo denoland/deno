@@ -24,7 +24,7 @@
     await import("./subdir/indirect_throws.js");
   } catch (err) {
     console.log(
-      "Caught error thrown indirectly by dynamically imported module."
+      "Caught error thrown indirectly by dynamically imported module.",
     );
     console.log(err);
   }

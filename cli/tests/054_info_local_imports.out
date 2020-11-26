@@ -1,9 +1,8 @@
 local: [WILDCARD]005_more_imports.ts
 type: TypeScript
-compiled: [WILDCARD]005_more_imports.ts.js
-map: [WILDCARD]005_more_imports.ts.js.map
-deps:
-file://[WILDCARD]/005_more_imports.ts
-  └─┬ file://[WILDCARD]/subdir/mod1.ts
-    └─┬ file://[WILDCARD]/subdir/subdir2/mod2.ts
-      └── file://[WILDCARD]/subdir/print_hello.ts
+deps: 3 unique (total [WILDCARD])
+
+file://[WILDCARD]/005_more_imports.ts ([WILDCARD])
+└─┬ file://[WILDCARD]/subdir/mod1.ts ([WILDCARD])
+  └─┬ file://[WILDCARD]/subdir/subdir2/mod2.ts ([WILDCARD])
+    └── file://[WILDCARD]/subdir/print_hello.ts ([WILDCARD])

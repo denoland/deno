@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { assertThrowsAsync } from "../../../std/testing/asserts.ts";
 
 unitTest(function streamPipeLocks() {
@@ -72,7 +72,7 @@ unitTest(async function streamPipeLotsOfChunks() {
         written.push("closed");
       },
     },
-    new CountQueuingStrategy({ highWaterMark: CHUNKS })
+    new CountQueuingStrategy({ highWaterMark: CHUNKS }),
   );
 
   await rs.pipeTo(ws);
@@ -101,7 +101,7 @@ for (const preventAbort of [true, false]) {
         throw new Error("pipeTo promise should be rejected");
       },
       (value) =>
-        assertEquals(value, undefined, "rejection value should be undefined")
+        assertEquals(value, undefined, "rejection value should be undefined"),
     );
   });
 }
@@ -125,7 +125,7 @@ for (const preventCancel of [true, false]) {
         throw new Error("pipeTo promise should be rejected");
       },
       (value) =>
-        assertEquals(value, undefined, "rejection value should be undefined")
+        assertEquals(value, undefined, "rejection value should be undefined"),
     );
   });
 }

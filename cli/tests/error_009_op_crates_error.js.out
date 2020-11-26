@@ -1,0 +1,3 @@
+[WILDCARD]error: Uncaught TypeError: Event requires at least 1 argument, but only 0 present[WILDCARD]
+    at new Event (deno:op_crates/web/[WILDCARD])
+    at [WILDCARD]

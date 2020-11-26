@@ -20,10 +20,6 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-const { test } = Deno;
 import { assert, assertStrictEquals } from "../../testing/asserts.ts";
 import { callbackify } from "./_util_callbackify.ts";
 
@@ -62,7 +58,7 @@ class TestQueue {
         if (this.#queueSize === 0) {
           assert(
             this.#resolve,
-            "Test setup error; async queue is missing #resolve"
+            "Test setup error; async queue is missing #resolve",
           );
           this.#resolve();
         }
@@ -78,159 +74,182 @@ class TestQueue {
   }
 }
 
-test("callbackify passes the resolution value as the second argument to the callback", async () => {
-  const testQueue = new TestQueue();
+Deno.test(
+  "callbackify passes the resolution value as the second argument to the callback",
+  async () => {
+    const testQueue = new TestQueue();
 
-  for (const value of values) {
-    // eslint-disable-next-line require-await
-    async function asyncFn(): Promise<typeof value> {
-      return value;
-    }
-    const cbAsyncFn = callbackify(asyncFn);
-    testQueue.enqueue((done) => {
-      cbAsyncFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(err, null);
-        assertStrictEquals(ret, value);
-        done();
-      });
-    });
-
-    function promiseFn(): Promise<typeof value> {
-      return Promise.resolve(value);
-    }
-    const cbPromiseFn = callbackify(promiseFn);
-    testQueue.enqueue((done) => {
-      cbPromiseFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(err, null);
-        assertStrictEquals(ret, value);
-        done();
-      });
-    });
-
-    function thenableFn(): PromiseLike<any> {
-      return {
-        then(onfulfilled): PromiseLike<any> {
-          assert(onfulfilled);
-          onfulfilled(value);
-          return this;
-        },
+    for (const value of values) {
+      // deno-lint-ignore require-await
+      const asyncFn = async (): Promise<typeof value> => {
+        return value;
       };
-    }
-    const cbThenableFn = callbackify(thenableFn);
-    testQueue.enqueue((done) => {
-      cbThenableFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(err, null);
-        assertStrictEquals(ret, value);
-        done();
+      const cbAsyncFn = callbackify(asyncFn);
+      testQueue.enqueue((done) => {
+        cbAsyncFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(err, null);
+          assertStrictEquals(ret, value);
+          done();
+        });
       });
-    });
-  }
 
-  await testQueue.waitForCompletion();
-});
-
-test("callbackify passes the rejection value as the first argument to the callback", async () => {
-  const testQueue = new TestQueue();
-
-  for (const value of values) {
-    // eslint-disable-next-line require-await
-    async function asyncFn(): Promise<never> {
-      return Promise.reject(value);
-    }
-    const cbAsyncFn = callbackify(asyncFn);
-    assertStrictEquals(cbAsyncFn.length, 1);
-    assertStrictEquals(cbAsyncFn.name, "asyncFnCallbackified");
-    testQueue.enqueue((done) => {
-      cbAsyncFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(ret, undefined);
-        if (err instanceof Error) {
-          if ("reason" in err) {
-            assert(!value);
-            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            assertStrictEquals((err as any).reason, value);
-          } else {
-            assertStrictEquals(String(value).endsWith(err.message), true);
-          }
-        } else {
-          assertStrictEquals(err, value);
-        }
-        done();
-      });
-    });
-
-    function promiseFn(): Promise<never> {
-      return Promise.reject(value);
-    }
-    const obj = {};
-    Object.defineProperty(promiseFn, "name", {
-      value: obj,
-      writable: false,
-      enumerable: false,
-      configurable: true,
-    });
-
-    const cbPromiseFn = callbackify(promiseFn);
-    assertStrictEquals(promiseFn.name, obj);
-    testQueue.enqueue((done) => {
-      cbPromiseFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(ret, undefined);
-        if (err instanceof Error) {
-          if ("reason" in err) {
-            assert(!value);
-            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            assertStrictEquals((err as any).reason, value);
-          } else {
-            assertStrictEquals(String(value).endsWith(err.message), true);
-          }
-        } else {
-          assertStrictEquals(err, value);
-        }
-        done();
-      });
-    });
-
-    function thenableFn(): PromiseLike<never> {
-      return {
-        then(onfulfilled, onrejected): PromiseLike<never> {
-          assert(onrejected);
-          onrejected(value);
-          return this;
-        },
+      const promiseFn = (): Promise<typeof value> => {
+        return Promise.resolve(value);
       };
+      const cbPromiseFn = callbackify(promiseFn);
+      testQueue.enqueue((done) => {
+        cbPromiseFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(err, null);
+          assertStrictEquals(ret, value);
+          done();
+        });
+      });
+
+      // deno-lint-ignore no-explicit-any
+      const thenableFn = (): PromiseLike<any> => {
+        return {
+          // deno-lint-ignore no-explicit-any
+          then(onfulfilled): PromiseLike<any> {
+            assert(onfulfilled);
+            onfulfilled(value);
+            return this;
+          },
+        };
+      };
+      const cbThenableFn = callbackify(thenableFn);
+      testQueue.enqueue((done) => {
+        cbThenableFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(err, null);
+          assertStrictEquals(ret, value);
+          done();
+        });
+      });
     }
 
-    const cbThenableFn = callbackify(thenableFn);
-    testQueue.enqueue((done) => {
-      cbThenableFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(ret, undefined);
-        if (err instanceof Error) {
-          if ("reason" in err) {
-            assert(!value);
-            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            assertStrictEquals((err as any).reason, value);
+    await testQueue.waitForCompletion();
+  },
+);
+
+Deno.test(
+  "callbackify passes the rejection value as the first argument to the callback",
+  async () => {
+    const testQueue = new TestQueue();
+
+    for (const value of values) {
+      // deno-lint-ignore require-await
+      const asyncFn = async (): Promise<never> => {
+        return Promise.reject(value);
+      };
+      const cbAsyncFn = callbackify(asyncFn);
+      assertStrictEquals(cbAsyncFn.length, 1);
+      assertStrictEquals(cbAsyncFn.name, "asyncFnCallbackified");
+      testQueue.enqueue((done) => {
+        cbAsyncFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(ret, undefined);
+          if (err instanceof Error) {
+            if ("reason" in err) {
+              assert(!value);
+              assertStrictEquals(
+                // deno-lint-ignore no-explicit-any
+                (err as any).code,
+                "ERR_FALSY_VALUE_REJECTION",
+              );
+              // deno-lint-ignore no-explicit-any
+              assertStrictEquals((err as any).reason, value);
+            } else {
+              assertStrictEquals(String(value).endsWith(err.message), true);
+            }
           } else {
-            assertStrictEquals(String(value).endsWith(err.message), true);
+            assertStrictEquals(err, value);
           }
-        } else {
-          assertStrictEquals(err, value);
-        }
-        done();
+          done();
+        });
       });
-    });
-  }
 
-  await testQueue.waitForCompletion();
-});
+      const promiseFn = (): Promise<never> => {
+        return Promise.reject(value);
+      };
+      const obj = {};
+      Object.defineProperty(promiseFn, "name", {
+        value: obj,
+        writable: false,
+        enumerable: false,
+        configurable: true,
+      });
 
-test("callbackify passes arguments to the original", async () => {
+      const cbPromiseFn = callbackify(promiseFn);
+      assertStrictEquals(promiseFn.name, obj);
+      testQueue.enqueue((done) => {
+        cbPromiseFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(ret, undefined);
+          if (err instanceof Error) {
+            if ("reason" in err) {
+              assert(!value);
+              assertStrictEquals(
+                // deno-lint-ignore no-explicit-any
+                (err as any).code,
+                "ERR_FALSY_VALUE_REJECTION",
+              );
+              // deno-lint-ignore no-explicit-any
+              assertStrictEquals((err as any).reason, value);
+            } else {
+              assertStrictEquals(String(value).endsWith(err.message), true);
+            }
+          } else {
+            assertStrictEquals(err, value);
+          }
+          done();
+        });
+      });
+
+      const thenableFn = (): PromiseLike<never> => {
+        return {
+          then(onfulfilled, onrejected): PromiseLike<never> {
+            assert(onrejected);
+            onrejected(value);
+            return this;
+          },
+        };
+      };
+
+      const cbThenableFn = callbackify(thenableFn);
+      testQueue.enqueue((done) => {
+        cbThenableFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(ret, undefined);
+          if (err instanceof Error) {
+            if ("reason" in err) {
+              assert(!value);
+              assertStrictEquals(
+                // deno-lint-ignore no-explicit-any
+                (err as any).code,
+                "ERR_FALSY_VALUE_REJECTION",
+              );
+              // deno-lint-ignore no-explicit-any
+              assertStrictEquals((err as any).reason, value);
+            } else {
+              assertStrictEquals(String(value).endsWith(err.message), true);
+            }
+          } else {
+            assertStrictEquals(err, value);
+          }
+          done();
+        });
+      });
+    }
+
+    await testQueue.waitForCompletion();
+  },
+);
+
+Deno.test("callbackify passes arguments to the original", async () => {
   const testQueue = new TestQueue();
 
   for (const value of values) {
-    // eslint-disable-next-line require-await
-    async function asyncFn<T>(arg: T): Promise<T> {
+    // deno-lint-ignore require-await
+    const asyncFn = async (arg: typeof value): Promise<typeof value> => {
       assertStrictEquals(arg, value);
       return arg;
-    }
+    };
 
     const cbAsyncFn = callbackify(asyncFn);
     assertStrictEquals(cbAsyncFn.length, 2);
@@ -244,10 +263,10 @@ test("callbackify passes arguments to the original", async () => {
       });
     });
 
-    function promiseFn<T>(arg: T): Promise<T> {
+    const promiseFn = <T>(arg: typeof value): Promise<typeof value> => {
       assertStrictEquals(arg, value);
       return Promise.resolve(arg);
-    }
+    };
     const obj = {};
     Object.defineProperty(promiseFn, "length", {
       value: obj,
@@ -270,7 +289,7 @@ test("callbackify passes arguments to the original", async () => {
   await testQueue.waitForCompletion();
 });
 
-test("callbackify preserves the `this` binding", async () => {
+Deno.test("callbackify preserves the `this` binding", async () => {
   const testQueue = new TestQueue();
 
   for (const value of values) {
@@ -285,7 +304,7 @@ test("callbackify preserves the `this` binding", async () => {
       cbSyncFunction.call(objectWithSyncFunction, value, function (
         this: unknown,
         err: unknown,
-        ret: unknown
+        ret: unknown,
       ) {
         assertStrictEquals(err, null);
         assertStrictEquals(ret, value);
@@ -295,7 +314,7 @@ test("callbackify preserves the `this` binding", async () => {
     });
 
     const objectWithAsyncFunction = {
-      // eslint-disable-next-line require-await
+      // deno-lint-ignore require-await
       async fn(this: unknown, arg: typeof value): Promise<typeof value> {
         assertStrictEquals(this, objectWithAsyncFunction);
         return arg;
@@ -306,7 +325,7 @@ test("callbackify preserves the `this` binding", async () => {
       cbAsyncFunction.call(objectWithAsyncFunction, value, function (
         this: unknown,
         err: unknown,
-        ret: unknown
+        ret: unknown,
       ) {
         assertStrictEquals(err, null);
         assertStrictEquals(ret, value);
@@ -319,46 +338,53 @@ test("callbackify preserves the `this` binding", async () => {
   await testQueue.waitForCompletion();
 });
 
-test("callbackify throws with non-function inputs", () => {
+Deno.test("callbackify throws with non-function inputs", () => {
   ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
     try {
+      // deno-lint-ignore no-explicit-any
       callbackify(value as any);
       throw Error("We should never reach this error");
     } catch (err) {
       assert(err instanceof TypeError);
+      // deno-lint-ignore no-explicit-any
       assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
       assertStrictEquals(err.name, "TypeError");
       assertStrictEquals(
         err.message,
-        'The "original" argument must be of type function.'
+        'The "original" argument must be of type function.',
       );
     }
   });
 });
 
-test("callbackify returns a function that throws if the last argument is not a function", () => {
-  // eslint-disable-next-line require-await
-  async function asyncFn(): Promise<number> {
-    return 42;
-  }
-
-  const cb = callbackify(asyncFn) as any;
-  const args: unknown[] = [];
-
-  ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
-    args.push(value);
-
-    try {
-      cb(...args);
-      throw Error("We should never reach this error");
-    } catch (err) {
-      assert(err instanceof TypeError);
-      assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
-      assertStrictEquals(err.name, "TypeError");
-      assertStrictEquals(
-        err.message,
-        "The last argument must be of type function."
-      );
+Deno.test(
+  "callbackify returns a function that throws if the last argument is not a function",
+  () => {
+    // deno-lint-ignore require-await
+    async function asyncFn(): Promise<number> {
+      return 42;
     }
-  });
-});
+
+    // deno-lint-ignore no-explicit-any
+    const cb = callbackify(asyncFn) as any;
+    const args: unknown[] = [];
+
+    ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
+      args.push(value);
+
+      try {
+        cb(...args);
+        throw Error("We should never reach this error");
+      } catch (err) {
+        assert(err instanceof TypeError);
+        // deno-lint-ignore no-explicit-any
+        assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+        assertStrictEquals(err.name, "TypeError");
+        assertStrictEquals(
+          err.message,
+          "The last argument must be of type function.",
+        );
+      }
+    });
+  },
+);

@@ -1,17 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::CoreIsolate;
-use crate::EsIsolate;
-use crate::JSError;
+use crate::error::AnyError;
+use crate::runtime::JsRuntimeState;
+use crate::JsRuntime;
+use crate::Op;
+use crate::OpId;
+use crate::OpTable;
 use crate::ZeroCopyBuf;
-
+use futures::future::FutureExt;
 use rusty_v8 as v8;
-use v8::MapFnTo;
-
 use std::cell::Cell;
 use std::convert::TryFrom;
+use std::io::{stdout, Write};
 use std::option::Option;
 use url::Url;
+use v8::MapFnTo;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -32,9 +35,6 @@ lazy_static! {
         function: eval_context.map_fn_to()
       },
       v8::ExternalReference {
-        function: format_error.map_fn_to()
-      },
-      v8::ExternalReference {
         getter: shared_getter.map_fn_to()
       },
       v8::ExternalReference {
@@ -47,13 +47,16 @@ lazy_static! {
         function: decode.map_fn_to()
       },
       v8::ExternalReference {
-        function: get_promise_details.map_fn_to(),
-      }
+        function: get_promise_details.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: get_proxy_details.map_fn_to()
+      },
     ]);
 }
 
 pub fn script_origin<'a>(
-  s: &mut impl v8::ToLocal<'a>,
+  s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
   let resource_line_offset = v8::Integer::new(s, 0);
@@ -78,7 +81,7 @@ pub fn script_origin<'a>(
 }
 
 pub fn module_origin<'a>(
-  s: &mut impl v8::ToLocal<'a>,
+  s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
   let resource_line_offset = v8::Integer::new(s, 0);
@@ -103,127 +106,99 @@ pub fn module_origin<'a>(
 }
 
 pub fn initialize_context<'s>(
-  scope: &mut impl v8::ToLocal<'s>,
+  scope: &mut v8::HandleScope<'s, ()>,
 ) -> v8::Local<'s, v8::Context> {
-  let mut hs = v8::EscapableHandleScope::new(scope);
-  let scope = hs.enter();
+  let scope = &mut v8::EscapableHandleScope::new(scope);
 
   let context = v8::Context::new(scope);
   let global = context.global(scope);
 
-  let mut cs = v8::ContextScope::new(scope, context);
-  let scope = cs.enter();
+  let scope = &mut v8::ContextScope::new(scope, context);
 
+  let deno_key = v8::String::new(scope, "Deno").unwrap();
   let deno_val = v8::Object::new(scope);
-  global.set(
-    context,
-    v8::String::new(scope, "Deno").unwrap().into(),
-    deno_val.into(),
-  );
+  global.set(scope, deno_key.into(), deno_val.into());
 
-  let mut core_val = v8::Object::new(scope);
-  deno_val.set(
-    context,
-    v8::String::new(scope, "core").unwrap().into(),
-    core_val.into(),
-  );
+  let core_key = v8::String::new(scope, "core").unwrap();
+  let core_val = v8::Object::new(scope);
+  deno_val.set(scope, core_key.into(), core_val.into());
 
-  let mut print_tmpl = v8::FunctionTemplate::new(scope, print);
-  let print_val = print_tmpl.get_function(scope, context).unwrap();
-  core_val.set(
-    context,
-    v8::String::new(scope, "print").unwrap().into(),
-    print_val.into(),
-  );
+  let print_key = v8::String::new(scope, "print").unwrap();
+  let print_tmpl = v8::FunctionTemplate::new(scope, print);
+  let print_val = print_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, print_key.into(), print_val.into());
 
-  let mut recv_tmpl = v8::FunctionTemplate::new(scope, recv);
-  let recv_val = recv_tmpl.get_function(scope, context).unwrap();
-  core_val.set(
-    context,
-    v8::String::new(scope, "recv").unwrap().into(),
-    recv_val.into(),
-  );
+  let recv_key = v8::String::new(scope, "recv").unwrap();
+  let recv_tmpl = v8::FunctionTemplate::new(scope, recv);
+  let recv_val = recv_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, recv_key.into(), recv_val.into());
 
-  let mut send_tmpl = v8::FunctionTemplate::new(scope, send);
-  let send_val = send_tmpl.get_function(scope, context).unwrap();
-  core_val.set(
-    context,
-    v8::String::new(scope, "send").unwrap().into(),
-    send_val.into(),
-  );
+  let send_key = v8::String::new(scope, "send").unwrap();
+  let send_tmpl = v8::FunctionTemplate::new(scope, send);
+  let send_val = send_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, send_key.into(), send_val.into());
 
-  let mut set_macrotask_callback_tmpl =
+  let set_macrotask_callback_key =
+    v8::String::new(scope, "setMacrotaskCallback").unwrap();
+  let set_macrotask_callback_tmpl =
     v8::FunctionTemplate::new(scope, set_macrotask_callback);
-  let set_macrotask_callback_val = set_macrotask_callback_tmpl
-    .get_function(scope, context)
-    .unwrap();
+  let set_macrotask_callback_val =
+    set_macrotask_callback_tmpl.get_function(scope).unwrap();
   core_val.set(
-    context,
-    v8::String::new(scope, "setMacrotaskCallback")
-      .unwrap()
-      .into(),
+    scope,
+    set_macrotask_callback_key.into(),
     set_macrotask_callback_val.into(),
   );
 
-  let mut eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
-  let eval_context_val =
-    eval_context_tmpl.get_function(scope, context).unwrap();
-  core_val.set(
-    context,
-    v8::String::new(scope, "evalContext").unwrap().into(),
-    eval_context_val.into(),
-  );
+  let eval_context_key = v8::String::new(scope, "evalContext").unwrap();
+  let eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
+  let eval_context_val = eval_context_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, eval_context_key.into(), eval_context_val.into());
 
-  let mut format_error_tmpl = v8::FunctionTemplate::new(scope, format_error);
-  let format_error_val =
-    format_error_tmpl.get_function(scope, context).unwrap();
-  core_val.set(
-    context,
-    v8::String::new(scope, "formatError").unwrap().into(),
-    format_error_val.into(),
-  );
+  let encode_key = v8::String::new(scope, "encode").unwrap();
+  let encode_tmpl = v8::FunctionTemplate::new(scope, encode);
+  let encode_val = encode_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, encode_key.into(), encode_val.into());
 
-  let mut encode_tmpl = v8::FunctionTemplate::new(scope, encode);
-  let encode_val = encode_tmpl.get_function(scope, context).unwrap();
-  core_val.set(
-    context,
-    v8::String::new(scope, "encode").unwrap().into(),
-    encode_val.into(),
-  );
+  let decode_key = v8::String::new(scope, "decode").unwrap();
+  let decode_tmpl = v8::FunctionTemplate::new(scope, decode);
+  let decode_val = decode_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, decode_key.into(), decode_val.into());
 
-  let mut decode_tmpl = v8::FunctionTemplate::new(scope, decode);
-  let decode_val = decode_tmpl.get_function(scope, context).unwrap();
-  core_val.set(
-    context,
-    v8::String::new(scope, "decode").unwrap().into(),
-    decode_val.into(),
-  );
-
-  let mut get_promise_details_tmpl =
+  let get_promise_details_key =
+    v8::String::new(scope, "getPromiseDetails").unwrap();
+  let get_promise_details_tmpl =
     v8::FunctionTemplate::new(scope, get_promise_details);
-  let get_promise_details_val = get_promise_details_tmpl
-    .get_function(scope, context)
-    .unwrap();
+  let get_promise_details_val =
+    get_promise_details_tmpl.get_function(scope).unwrap();
   core_val.set(
-    context,
-    v8::String::new(scope, "getPromiseDetails").unwrap().into(),
+    scope,
+    get_promise_details_key.into(),
     get_promise_details_val.into(),
   );
 
-  core_val.set_accessor(
-    context,
-    v8::String::new(scope, "shared").unwrap().into(),
-    shared_getter,
+  let get_proxy_details_key =
+    v8::String::new(scope, "getProxyDetails").unwrap();
+  let get_proxy_details_tmpl =
+    v8::FunctionTemplate::new(scope, get_proxy_details);
+  let get_proxy_details_val =
+    get_proxy_details_tmpl.get_function(scope).unwrap();
+  core_val.set(
+    scope,
+    get_proxy_details_key.into(),
+    get_proxy_details_val.into(),
   );
 
+  let shared_key = v8::String::new(scope, "shared").unwrap();
+  core_val.set_accessor(scope, shared_key.into(), shared_getter);
+
   // Direct bindings on `window`.
-  let mut queue_microtask_tmpl =
-    v8::FunctionTemplate::new(scope, queue_microtask);
-  let queue_microtask_val =
-    queue_microtask_tmpl.get_function(scope, context).unwrap();
+  let queue_microtask_key = v8::String::new(scope, "queueMicrotask").unwrap();
+  let queue_microtask_tmpl = v8::FunctionTemplate::new(scope, queue_microtask);
+  let queue_microtask_val = queue_microtask_tmpl.get_function(scope).unwrap();
   global.set(
-    context,
-    v8::String::new(scope, "queueMicrotask").unwrap().into(),
+    scope,
+    queue_microtask_key.into(),
     queue_microtask_val.into(),
   );
 
@@ -231,7 +206,7 @@ pub fn initialize_context<'s>(
 }
 
 pub fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut impl v8::ToLocal<'sc>,
+  scope: &mut v8::HandleScope<'sc>,
   buf: Box<[u8]>,
 ) -> v8::Local<'sc, v8::Uint8Array> {
   assert!(!buf.is_empty());
@@ -248,9 +223,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   referrer: v8::Local<v8::ScriptOrModule>,
   specifier: v8::Local<v8::String>,
 ) -> *mut v8::Promise {
-  let mut cbs = v8::CallbackScope::new_escapable(context);
-  let mut hs = v8::EscapableHandleScope::new(cbs.enter());
-  let scope = hs.enter();
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
@@ -269,19 +242,17 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let host_defined_options = referrer.get_host_defined_options();
   assert_eq!(host_defined_options.length(), 0);
 
-  let resolver = v8::PromiseResolver::new(scope, context).unwrap();
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  let mut resolver_handle = v8::Global::new();
-  resolver_handle.set(scope, resolver);
-
+  let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = EsIsolate::state(scope.isolate());
+    let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
   }
 
-  &mut *scope.escape(promise)
+  &*promise as *const _ as *mut _
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(
@@ -289,59 +260,44 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   module: v8::Local<v8::Module>,
   meta: v8::Local<v8::Object>,
 ) {
-  let mut cbs = v8::CallbackScope::new(context);
-  let mut hs = v8::HandleScope::new(cbs.enter());
-  let scope = hs.enter();
-  let state_rc = EsIsolate::state(scope.isolate());
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+  let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
 
-  let id = module.get_identity_hash();
-  assert_ne!(id, 0);
+  let module_global = v8::Global::new(scope, module);
+  let info = state
+    .modules
+    .get_info(&module_global)
+    .expect("Module not found");
 
-  let info = state.modules.get_info(id).expect("Module not found");
+  let url_key = v8::String::new(scope, "url").unwrap();
+  let url_val = v8::String::new(scope, &info.name).unwrap();
+  meta.create_data_property(scope, url_key.into(), url_val.into());
 
-  meta.create_data_property(
-    context,
-    v8::String::new(scope, "url").unwrap().into(),
-    v8::String::new(scope, &info.name).unwrap().into(),
-  );
-  meta.create_data_property(
-    context,
-    v8::String::new(scope, "main").unwrap().into(),
-    v8::Boolean::new(scope, info.main).into(),
-  );
+  let main_key = v8::String::new(scope, "main").unwrap();
+  let main_val = v8::Boolean::new(scope, info.main);
+  meta.create_data_property(scope, main_key.into(), main_val.into());
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
-  let mut cbs = v8::CallbackScope::new(&message);
-  let mut hs = v8::HandleScope::new(cbs.enter());
-  let scope = hs.enter();
+  let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let state_rc = CoreIsolate::state(scope.isolate());
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  let context = state.global_context.get(scope).unwrap();
-  let mut cs = v8::ContextScope::new(scope, context);
-  let scope = cs.enter();
-
   let promise = message.get_promise();
-  let promise_id = promise.get_identity_hash();
+  let promise_global = v8::Global::new(scope, promise);
 
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
-      let error = message.get_value();
-      let mut error_global = v8::Global::<v8::Value>::new();
-      error_global.set(scope, error);
+      let error = message.get_value().unwrap();
+      let error_global = v8::Global::new(scope, error);
       state
         .pending_promise_exceptions
-        .insert(promise_id, error_global);
+        .insert(promise_global, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
-      if let Some(mut handle) =
-        state.pending_promise_exceptions.remove(&promise_id)
-      {
-        handle.reset(scope);
-      }
+      state.pending_promise_exceptions.remove(&promise_global);
     }
     v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
     v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
@@ -374,7 +330,7 @@ pub(crate) unsafe fn get_backing_store_slice_mut(
 }
 
 fn print(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
@@ -384,9 +340,6 @@ fn print(
   let obj = args.get(0);
   let is_err_arg = args.get(1);
 
-  let mut hs = v8::HandleScope::new(scope);
-  let scope = hs.enter();
-
   let mut is_err = false;
   if arg_len == 2 {
     let int_val = is_err_arg
@@ -394,70 +347,64 @@ fn print(
       .expect("Unable to convert to integer");
     is_err = int_val != 0;
   };
-  let mut try_catch = v8::TryCatch::new(scope);
-  let _tc = try_catch.enter();
-  let str_ = match obj.to_string(scope) {
+  let tc_scope = &mut v8::TryCatch::new(scope);
+  let str_ = match obj.to_string(tc_scope) {
     Some(s) => s,
-    None => v8::String::new(scope, "").unwrap(),
+    None => v8::String::new(tc_scope, "").unwrap(),
   };
   if is_err {
-    eprint!("{}", str_.to_rust_string_lossy(scope));
+    eprint!("{}", str_.to_rust_string_lossy(tc_scope));
+    stdout().flush().unwrap();
   } else {
-    print!("{}", str_.to_rust_string_lossy(scope));
+    print!("{}", str_.to_rust_string_lossy(tc_scope));
+    stdout().flush().unwrap();
   }
 }
 
 fn recv(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope.isolate());
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  if !state.js_recv_cb.is_empty() {
-    let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
-    scope.isolate().throw_exception(msg.into());
-    return;
-  }
+  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
 
-  let recv_fn = v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  state.js_recv_cb.set(scope, recv_fn);
+  let slot = match &mut state.js_recv_cb {
+    slot @ None => slot,
+    _ => return throw_type_error(scope, "Deno.core.recv() already called"),
+  };
+
+  slot.replace(v8::Global::new(scope, cb));
 }
 
-fn send(
-  scope: v8::FunctionCallbackScope,
+fn send<'s>(
+  scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
-    Ok(op_id) => op_id.value() as u32,
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow_mut();
+
+  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map_err(AnyError::from)
+    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
+  {
+    Ok(op_id) => op_id,
     Err(err) => {
       let msg = format!("invalid op id: {}", err);
       let msg = v8::String::new(scope, &msg).unwrap();
-      scope.isolate().throw_exception(msg.into());
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
       return;
     }
   };
 
-  let control_backing_store: v8::SharedRef<v8::BackingStore>;
-  let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
-    Ok(view) => unsafe {
-      control_backing_store = view.buffer(scope).unwrap().get_backing_store();
-      get_backing_store_slice(
-        &control_backing_store,
-        view.byte_offset(),
-        view.byte_length(),
-      )
-    },
-    Err(_) => &[],
-  };
-
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let mut state = state_rc.borrow_mut();
-  assert!(!state.global_context.is_empty());
-
-  let mut buf_iter = (2..args.length()).map(|idx| {
+  let buf_iter = (1..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
       .map(|view| ZeroCopyBuf::new(scope, view))
       .map_err(|err| {
@@ -467,88 +414,77 @@ fn send(
       })
   });
 
-  let mut buf_one: ZeroCopyBuf;
-  let mut buf_vec: Vec<ZeroCopyBuf>;
-
-  // Collect all ArrayBufferView's
-  let buf_iter_result = match buf_iter.len() {
-    0 => Ok(&mut [][..]),
-    1 => match buf_iter.next().unwrap() {
-      Ok(buf) => {
-        buf_one = buf;
-        Ok(std::slice::from_mut(&mut buf_one))
-      }
-      Err(err) => Err(err),
-    },
-    _ => match buf_iter.collect::<Result<Vec<_>, _>>() {
-      Ok(v) => {
-        buf_vec = v;
-        Ok(&mut buf_vec[..])
-      }
-      Err(err) => Err(err),
-    },
-  };
-
-  // If response is empty then it's either async op or exception was thrown
-  let maybe_response = match buf_iter_result {
-    Ok(bufs) => state.dispatch_op(scope, op_id, control, bufs),
+  let bufs = match buf_iter.collect::<Result<_, _>>() {
+    Ok(bufs) => bufs,
     Err(exc) => {
-      scope.isolate().throw_exception(exc);
+      scope.throw_exception(exc);
       return;
     }
   };
 
-  if let Some(response) = maybe_response {
-    // Synchronous response.
-    // Note op_id is not passed back in the case of synchronous response.
-    let (_op_id, buf) = response;
-
-    if !buf.is_empty() {
-      let ui8 = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ui8.into());
+  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
+  assert_eq!(state.shared.size(), 0);
+  match op {
+    Op::Sync(buf) if !buf.is_empty() => {
+      rv.set(boxed_slice_to_uint8array(scope, buf).into());
+    }
+    Op::Sync(_) => {}
+    Op::Async(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::AsyncUnref(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_unref_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::NotFound => {
+      let msg = format!("Unknown op id: {}", op_id);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
     }
   }
 }
 
 fn set_macrotask_callback(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope.isolate());
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  if !state.js_macrotask_cb.is_empty() {
-    let msg =
-      v8::String::new(scope, "Deno.core.setMacrotaskCallback already called.")
-        .unwrap();
-    scope.isolate().throw_exception(msg.into());
-    return;
-  }
+  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
 
-  let macrotask_cb_fn =
-    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  state.js_macrotask_cb.set(scope, macrotask_cb_fn);
+  let slot = match &mut state.js_macrotask_cb {
+    slot @ None => slot,
+    _ => {
+      return throw_type_error(
+        scope,
+        "Deno.core.setMacrotaskCallback() already called",
+      );
+    }
+  };
+
+  slot.replace(v8::Global::new(scope, cb));
 }
 
 fn eval_context(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let context = {
-    let state = state_rc.borrow();
-    assert!(!state.global_context.is_empty());
-    state.global_context.get(scope).unwrap()
-  };
-
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
-      scope.isolate().throw_exception(exception);
+      scope.throw_exception(exception);
       return;
     }
   };
@@ -566,125 +502,103 @@ fn eval_context(
        isCompileError: boolean,
      }
   */
-  let mut try_catch = v8::TryCatch::new(scope);
-  let tc = try_catch.enter();
+  let tc_scope = &mut v8::TryCatch::new(scope);
   let name =
-    v8::String::new(scope, url.as_ref().map_or("<unknown>", Url::as_str))
+    v8::String::new(tc_scope, url.as_ref().map_or("<unknown>", Url::as_str))
       .unwrap();
-  let origin = script_origin(scope, name);
-  let maybe_script = v8::Script::compile(scope, context, source, Some(&origin));
+  let origin = script_origin(tc_scope, name);
+  let maybe_script = v8::Script::compile(tc_scope, source, Some(&origin));
 
   if maybe_script.is_none() {
-    assert!(tc.has_caught());
-    let exception = tc.exception(scope).unwrap();
+    assert!(tc_scope.has_caught());
+    let exception = tc_scope.exception().unwrap();
 
-    output.set(
-      context,
-      v8::Integer::new(scope, 0).into(),
-      v8::null(scope).into(),
-    );
+    let js_zero = v8::Integer::new(tc_scope, 0);
+    let js_null = v8::null(tc_scope);
+    output.set(tc_scope, js_zero.into(), js_null.into());
 
-    let errinfo_obj = v8::Object::new(scope);
+    let errinfo_obj = v8::Object::new(tc_scope);
+
+    let is_compile_error_key =
+      v8::String::new(tc_scope, "isCompileError").unwrap();
+    let is_compile_error_val = v8::Boolean::new(tc_scope, true);
     errinfo_obj.set(
-      context,
-      v8::String::new(scope, "isCompileError").unwrap().into(),
-      v8::Boolean::new(scope, true).into(),
+      tc_scope,
+      is_compile_error_key.into(),
+      is_compile_error_val.into(),
     );
 
+    let is_native_error_key =
+      v8::String::new(tc_scope, "isNativeError").unwrap();
+    let is_native_error_val =
+      v8::Boolean::new(tc_scope, exception.is_native_error());
     errinfo_obj.set(
-      context,
-      v8::String::new(scope, "isNativeError").unwrap().into(),
-      v8::Boolean::new(scope, exception.is_native_error()).into(),
+      tc_scope,
+      is_native_error_key.into(),
+      is_native_error_val.into(),
     );
 
-    errinfo_obj.set(
-      context,
-      v8::String::new(scope, "thrown").unwrap().into(),
-      exception,
-    );
+    let thrown_key = v8::String::new(tc_scope, "thrown").unwrap();
+    errinfo_obj.set(tc_scope, thrown_key.into(), exception);
 
-    output.set(
-      context,
-      v8::Integer::new(scope, 1).into(),
-      errinfo_obj.into(),
-    );
+    let js_one = v8::Integer::new(tc_scope, 1);
+    output.set(tc_scope, js_one.into(), errinfo_obj.into());
 
     rv.set(output.into());
     return;
   }
 
-  let result = maybe_script.unwrap().run(scope, context);
+  let result = maybe_script.unwrap().run(tc_scope);
 
   if result.is_none() {
-    assert!(tc.has_caught());
-    let exception = tc.exception(scope).unwrap();
+    assert!(tc_scope.has_caught());
+    let exception = tc_scope.exception().unwrap();
 
-    output.set(
-      context,
-      v8::Integer::new(scope, 0).into(),
-      v8::null(scope).into(),
-    );
+    let js_zero = v8::Integer::new(tc_scope, 0);
+    let js_null = v8::null(tc_scope);
+    output.set(tc_scope, js_zero.into(), js_null.into());
 
-    let errinfo_obj = v8::Object::new(scope);
+    let errinfo_obj = v8::Object::new(tc_scope);
+
+    let is_compile_error_key =
+      v8::String::new(tc_scope, "isCompileError").unwrap();
+    let is_compile_error_val = v8::Boolean::new(tc_scope, false);
     errinfo_obj.set(
-      context,
-      v8::String::new(scope, "isCompileError").unwrap().into(),
-      v8::Boolean::new(scope, false).into(),
+      tc_scope,
+      is_compile_error_key.into(),
+      is_compile_error_val.into(),
     );
 
-    let is_native_error = if exception.is_native_error() {
-      v8::Boolean::new(scope, true)
-    } else {
-      v8::Boolean::new(scope, false)
-    };
-
+    let is_native_error_key =
+      v8::String::new(tc_scope, "isNativeError").unwrap();
+    let is_native_error_val =
+      v8::Boolean::new(tc_scope, exception.is_native_error());
     errinfo_obj.set(
-      context,
-      v8::String::new(scope, "isNativeError").unwrap().into(),
-      is_native_error.into(),
+      tc_scope,
+      is_native_error_key.into(),
+      is_native_error_val.into(),
     );
 
-    errinfo_obj.set(
-      context,
-      v8::String::new(scope, "thrown").unwrap().into(),
-      exception,
-    );
+    let thrown_key = v8::String::new(tc_scope, "thrown").unwrap();
+    errinfo_obj.set(tc_scope, thrown_key.into(), exception);
 
-    output.set(
-      context,
-      v8::Integer::new(scope, 1).into(),
-      errinfo_obj.into(),
-    );
+    let js_one = v8::Integer::new(tc_scope, 1);
+    output.set(tc_scope, js_one.into(), errinfo_obj.into());
 
     rv.set(output.into());
     return;
   }
 
-  output.set(context, v8::Integer::new(scope, 0).into(), result.unwrap());
-  output.set(
-    context,
-    v8::Integer::new(scope, 1).into(),
-    v8::null(scope).into(),
-  );
+  let js_zero = v8::Integer::new(tc_scope, 0);
+  let js_one = v8::Integer::new(tc_scope, 1);
+  let js_null = v8::null(tc_scope);
+  output.set(tc_scope, js_zero.into(), result.unwrap());
+  output.set(tc_scope, js_one.into(), js_null.into());
   rv.set(output.into());
 }
 
-fn format_error(
-  scope: v8::FunctionCallbackScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let e = JSError::from_v8_exception(scope, args.get(0));
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let state = state_rc.borrow();
-  let e = (state.js_error_create_fn)(e);
-  let e = e.to_string();
-  let e = v8::String::new(scope, &e).unwrap();
-  rv.set(e.into())
-}
-
 fn encode(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
@@ -693,7 +607,7 @@ fn encode(
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
-      scope.isolate().throw_exception(exception);
+      scope.throw_exception(exception);
       return;
     }
   };
@@ -717,7 +631,7 @@ fn encode(
 }
 
 fn decode(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
@@ -726,7 +640,7 @@ fn decode(
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
-      scope.isolate().throw_exception(exception);
+      scope.throw_exception(exception);
       return;
     }
   };
@@ -740,119 +654,126 @@ fn decode(
     )
   };
 
-  let text_str =
-    v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal).unwrap();
-  rv.set(text_str.into())
+  // If `String::new_from_utf8()` returns `None`, this means that the
+  // length of the decoded string would be longer than what V8 can
+  // handle. In this case we return `RangeError`.
+  //
+  // For more details see:
+  // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
+  // - https://github.com/denoland/deno/issues/6649
+  // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
+  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+    Some(text) => rv.set(text.into()),
+    None => {
+      let msg = v8::String::new(scope, "string too long").unwrap();
+      let exception = v8::Exception::range_error(scope, msg);
+      scope.throw_exception(exception);
+    }
+  };
 }
 
 fn queue_microtask(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
   match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(f) => scope.isolate().enqueue_microtask(f),
+    Ok(f) => scope.enqueue_microtask(f),
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
-      scope.isolate().throw_exception(exception);
+      scope.throw_exception(exception);
     }
   };
 }
 
 fn shared_getter(
-  scope: v8::PropertyCallbackScope,
+  scope: &mut v8::HandleScope,
   _name: v8::Local<v8::Name>,
   _args: v8::PropertyCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope.isolate());
+  let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
+  let JsRuntimeState {
+    shared_ab, shared, ..
+  } = &mut *state;
 
   // Lazily initialize the persistent external ArrayBuffer.
-  if state.shared_ab.is_empty() {
-    let ab = v8::SharedArrayBuffer::with_backing_store(
-      scope,
-      state.shared.get_backing_store(),
-    );
-    state.shared_ab.set(scope, ab);
-  }
-
-  let shared_ab = state.shared_ab.get(scope).unwrap();
-  rv.set(shared_ab.into());
+  let shared_ab = match shared_ab {
+    Some(ref ab) => v8::Local::new(scope, ab),
+    slot @ None => {
+      let ab = v8::SharedArrayBuffer::with_backing_store(
+        scope,
+        shared.get_backing_store(),
+      );
+      slot.replace(v8::Global::new(scope, ab));
+      ab
+    }
+  };
+  rv.set(shared_ab.into())
 }
 
+// Called by V8 during `Isolate::mod_instantiate`.
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
   referrer: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Module>> {
-  let mut scope = v8::CallbackScope::new_escapable(context);
-  let mut scope = v8::EscapableHandleScope::new(scope.enter());
-  let scope = scope.enter();
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let state_rc = EsIsolate::state(scope.isolate());
-  let mut state = state_rc.borrow_mut();
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
 
-  let referrer_id = referrer.get_identity_hash();
-  let referrer_name = state
+  let referrer_global = v8::Global::new(scope, referrer);
+  let referrer_info = state
     .modules
-    .get_info(referrer_id)
-    .expect("ModuleInfo not found")
-    .name
-    .to_string();
-  let len_ = referrer.get_module_requests_length();
+    .get_info(&referrer_global)
+    .expect("ModuleInfo not found");
+  let referrer_name = referrer_info.name.to_string();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  for i in 0..len_ {
-    let req = referrer.get_module_request(i);
-    let req_str = req.to_rust_string_lossy(scope);
+  let resolved_specifier = state
+    .loader
+    .resolve(
+      state.op_state.clone(),
+      &specifier_str,
+      &referrer_name,
+      false,
+    )
+    .expect("Module should have been already resolved");
 
-    if req_str == specifier_str {
-      let id = state.module_resolve_cb(&req_str, referrer_id);
-      let maybe_info = state.modules.get_info(id);
-
-      if maybe_info.is_none() {
-        let msg = format!(
-          "Cannot resolve module \"{}\" from \"{}\"",
-          req_str, referrer_name
-        );
-        let msg = v8::String::new(scope, &msg).unwrap();
-        scope.isolate().throw_exception(msg.into());
-        break;
-      }
-
-      return maybe_info
-        .and_then(|i| i.handle.get(scope))
-        .map(|m| scope.escape(m));
+  if let Some(id) = state.modules.get_id(resolved_specifier.as_str()) {
+    if let Some(handle) = state.modules.get_handle(id) {
+      return Some(v8::Local::new(scope, handle));
     }
   }
 
+  let msg = format!(
+    r#"Cannot resolve module "{}" from "{}""#,
+    specifier_str, referrer_name
+  );
+  throw_type_error(scope, msg);
   None
 }
 
 // Returns promise details or throw TypeError, if argument passed isn't a Promise.
-// Promise details is a two elements array.
+// Promise details is a js_two elements array.
 // promise_details = [State, Result]
 // State = enum { Pending = 0, Fulfilled = 1, Rejected = 2}
 // Result = PromiseResult<T> | PromiseError
 fn get_promise_details(
-  scope: v8::FunctionCallbackScope,
+  scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let state = state_rc.borrow();
-  assert!(!state.global_context.is_empty());
-  let context = state.global_context.get(scope).unwrap();
-
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
-      scope.isolate().throw_exception(exception);
+      scope.throw_exception(exception);
       return;
     }
   };
@@ -861,38 +782,79 @@ fn get_promise_details(
 
   match promise.state() {
     v8::PromiseState::Pending => {
-      promise_details.set(
-        context,
-        v8::Integer::new(scope, 0).into(),
-        v8::Integer::new(scope, 0).into(),
-      );
+      let js_zero = v8::Integer::new(scope, 0);
+      promise_details.set(scope, js_zero.into(), js_zero.into());
       rv.set(promise_details.into());
     }
     v8::PromiseState::Fulfilled => {
-      promise_details.set(
-        context,
-        v8::Integer::new(scope, 0).into(),
-        v8::Integer::new(scope, 1).into(),
-      );
-      promise_details.set(
-        context,
-        v8::Integer::new(scope, 1).into(),
-        promise.result(scope),
-      );
+      let js_zero = v8::Integer::new(scope, 0);
+      let js_one = v8::Integer::new(scope, 1);
+      let promise_result = promise.result(scope);
+      promise_details.set(scope, js_zero.into(), js_one.into());
+      promise_details.set(scope, js_one.into(), promise_result);
       rv.set(promise_details.into());
     }
     v8::PromiseState::Rejected => {
-      promise_details.set(
-        context,
-        v8::Integer::new(scope, 0).into(),
-        v8::Integer::new(scope, 2).into(),
-      );
-      promise_details.set(
-        context,
-        v8::Integer::new(scope, 1).into(),
-        promise.result(scope),
-      );
+      let js_zero = v8::Integer::new(scope, 0);
+      let js_one = v8::Integer::new(scope, 1);
+      let js_two = v8::Integer::new(scope, 2);
+      let promise_result = promise.result(scope);
+      promise_details.set(scope, js_zero.into(), js_two.into());
+      promise_details.set(scope, js_one.into(), promise_result);
       rv.set(promise_details.into());
     }
   }
+}
+
+// Based on https://github.com/nodejs/node/blob/1e470510ff74391d7d4ec382909ea8960d2d2fbc/src/node_util.cc
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+fn get_proxy_details(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  // Return undefined if it's not a proxy.
+  let proxy = match v8::Local::<v8::Proxy>::try_from(args.get(0)) {
+    Ok(val) => val,
+    Err(_) => {
+      return;
+    }
+  };
+
+  let proxy_details = v8::Array::new(scope, 2);
+  let js_zero = v8::Integer::new(scope, 0);
+  let js_one = v8::Integer::new(scope, 1);
+  let target = proxy.get_target(scope);
+  let handler = proxy.get_handler(scope);
+  proxy_details.set(scope, js_zero.into(), target);
+  proxy_details.set(scope, js_one.into(), handler);
+  rv.set(proxy_details.into());
+}
+
+fn throw_type_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  message: impl AsRef<str>,
+) {
+  let message = v8::String::new(scope, message.as_ref()).unwrap();
+  let exception = v8::Exception::type_error(scope, message);
+  scope.throw_exception(exception);
 }

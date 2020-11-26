@@ -1,9 +1,27 @@
-Object.defineProperty(globalThis, Symbol.toStringTag, {
-  value: "global",
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/// <reference path="./global.d.ts" />
+import { process as processModule } from "./process.ts";
+import { Buffer as bufferModule } from "./_buffer.ts";
+
+Object.defineProperty(globalThis, "global", {
+  value: globalThis,
   writable: false,
   enumerable: false,
   configurable: true,
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any)["global"] = globalThis;
+Object.defineProperty(globalThis, "process", {
+  value: processModule,
+  enumerable: false,
+  writable: true,
+  configurable: true,
+});
+
+Object.defineProperty(globalThis, "Buffer", {
+  value: bufferModule,
+  enumerable: false,
+  writable: true,
+  configurable: true,
+});
+
+export {};

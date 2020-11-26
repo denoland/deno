@@ -1,13 +1,24 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::bindings;
 use rusty_v8 as v8;
+use smallvec::SmallVec;
 use std::ops::Deref;
 use std::ops::DerefMut;
+
+pub type BufVec = SmallVec<[ZeroCopyBuf; 2]>;
 
 /// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
 /// but the existence of a ZeroCopyBuf inhibits this until it is dropped. It
-/// behaves much like an Arc<[u8]>, although a ZeroCopyBuf currently can't be
-/// cloned.
+/// behaves much like an Arc<[u8]>.
+///
+/// # Cloning
+/// Cloning a ZeroCopyBuf does not clone the contents of the buffer,
+/// it creates a new reference to that buffer.
+///
+/// To actually clone the contents of the buffer do
+/// `let copy = Vec::from(&*zero_copy_buf);`
 #[derive(Clone)]
 pub struct ZeroCopyBuf {
   backing_store: v8::SharedRef<v8::BackingStore>,
@@ -19,7 +30,7 @@ unsafe impl Send for ZeroCopyBuf {}
 
 impl ZeroCopyBuf {
   pub fn new<'s>(
-    scope: &mut impl v8::ToLocal<'s>,
+    scope: &mut v8::HandleScope<'s>,
     view: v8::Local<v8::ArrayBufferView>,
   ) -> Self {
     let backing_store = view.buffer(scope).unwrap().get_backing_store();

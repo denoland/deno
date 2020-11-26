@@ -1,0 +1,7 @@
+timeout loop 0
+timeout loop 1
+timeout loop 2
+timeout loop 3
+timeout loop 4
+timeout loop 5
+error: Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.

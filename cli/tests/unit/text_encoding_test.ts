@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function btoaSuccess(): void {
   const text = "hello world";
@@ -52,18 +52,13 @@ unitTest(function atobThrows2(): void {
 
 unitTest(function btoaFailed(): void {
   const text = "你好";
-  let err;
-  try {
+  assertThrows(() => {
     btoa(text);
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assert(err instanceof TypeError);
+  }, TypeError);
 });
 
 unitTest(function textDecoder2(): void {
-  // prettier-ignore
+  // deno-fmt-ignore
   const fixture = new Uint8Array([
     0xf0, 0x9d, 0x93, 0xbd,
     0xf0, 0x9d, 0x93, 0xae,
@@ -75,7 +70,7 @@ unitTest(function textDecoder2(): void {
 });
 
 unitTest(function textDecoderIgnoreBOM(): void {
-  // prettier-ignore
+  // deno-fmt-ignore
   const fixture = new Uint8Array([
     0xef, 0xbb, 0xbf,
     0xf0, 0x9d, 0x93, 0xbd,
@@ -88,7 +83,7 @@ unitTest(function textDecoderIgnoreBOM(): void {
 });
 
 unitTest(function textDecoderNotBOM(): void {
-  // prettier-ignore
+  // deno-fmt-ignore
   const fixture = new Uint8Array([
     0xef, 0xbb, 0x89,
     0xf0, 0x9d, 0x93, 0xbd,
@@ -109,10 +104,21 @@ unitTest(function textDecoderASCII(): void {
 unitTest(function textDecoderErrorEncoding(): void {
   let didThrow = false;
   try {
-    new TextDecoder("foo");
+    new TextDecoder("Foo");
   } catch (e) {
     didThrow = true;
-    assertEquals(e.message, "The encoding label provided ('foo') is invalid.");
+    assertEquals(e.message, "The encoding label provided ('Foo') is invalid.");
+  }
+  assert(didThrow);
+});
+
+unitTest(function textDecoderHandlesNotFoundInternalDecoder() {
+  let didThrow = false;
+  try {
+    new TextDecoder("gbk");
+  } catch (e) {
+    didThrow = true;
+    assert(e instanceof RangeError);
   }
   assert(didThrow);
 });
@@ -120,7 +126,7 @@ unitTest(function textDecoderErrorEncoding(): void {
 unitTest(function textEncoder(): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(encoder.encode(fixture)), [
     0xf0, 0x9d, 0x93, 0xbd,
     0xf0, 0x9d, 0x93, 0xae,
@@ -136,7 +142,7 @@ unitTest(function textEncodeInto(): void {
   const result = encoder.encodeInto(fixture, bytes);
   assertEquals(result.read, 4);
   assertEquals(result.written, 4);
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(bytes), [
     0x74, 0x65, 0x78, 0x74, 0x00,
   ]);
@@ -149,7 +155,7 @@ unitTest(function textEncodeInto2(): void {
   const result = encoder.encodeInto(fixture, bytes);
   assertEquals(result.read, 8);
   assertEquals(result.written, 16);
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(bytes), [
     0xf0, 0x9d, 0x93, 0xbd,
     0xf0, 0x9d, 0x93, 0xae,
@@ -165,7 +171,7 @@ unitTest(function textEncodeInto3(): void {
   const result = encoder.encodeInto(fixture, bytes);
   assertEquals(result.read, 2);
   assertEquals(result.written, 4);
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(bytes), [
     0xf0, 0x9d, 0x93, 0xbd, 0x00,
   ]);
@@ -203,4 +209,18 @@ unitTest(function toStringShouldBeWebCompatibility(): void {
 
   const decoder = new TextDecoder();
   assertEquals(decoder.toString(), "[object TextDecoder]");
+});
+unitTest(function textEncoderShouldCoerceToString(): void {
+  const encoder = new TextEncoder();
+  const fixutreText = "text";
+  const fixture = {
+    toString() {
+      return fixutreText;
+    },
+  };
+
+  const bytes = encoder.encode(fixture as unknown as string);
+  const decoder = new TextDecoder();
+  const decoded = decoder.decode(bytes);
+  assertEquals(decoded, fixutreText);
 });

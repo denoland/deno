@@ -42,14 +42,14 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
 
 - currently contains little in the way of checking for correctness. Conceivably,
   there will be a 'strict' form, e.g. that ensures only Number-ish arguments are
-  passed to %f flags
+  passed to %f flags.
 
 - assembles output using string concatenation instead of utilizing buffers or
   other optimizations. It would be nice to have printf / sprintf / fprintf (etc)
   all in one.
 
 - float formatting is handled by toString() and to `toExponential` along with a
-  mess of Regexp. Would be nice to use fancy match
+  mess of Regexp. Would be nice to use fancy match.
 
 - some flags that are potentially applicable ( POSIX long and unsigned modifiers
   are not likely useful) are missing, namely %q (print quoted), %U (unicode
@@ -70,7 +70,7 @@ list. E.g.:
 
     Hello %s!
 
-applied to the arguments "World" yields "Hello World!"
+applied to the arguments "World" yields "Hello World!".
 
 The meaning of the format string is modelled after [POSIX][1] format strings as
 well as well as [Golang format strings][2]. Both contain elements specific to
@@ -126,11 +126,11 @@ In general, 'width' describes the minimum length of the output, while
 Numerical values for width and precision can be substituted for the `*` char, in
 which case the values are obtained from the next args, e.g.:
 
-    sprintf ("%*.*f", 9,8,456.0)
+    sprintf("%*.*f", 9, 8, 456.0)
 
-is equivalent to
+is equivalent to:
 
-    sprintf ("%9.9f", 456.0)
+    sprintf("%9.8f", 456.0)
 
 ## Flags
 
@@ -156,7 +156,7 @@ directive:
 The default format used by `%v` is the result of calling `toString()` on the
 relevant argument. If the `#` flags is used, the result of calling `inspect()`
 is interpolated. In this case, the precision, if set is passed to `inspect()` as
-the 'depth' config parameter
+the 'depth' config parameter.
 
 ## Positional arguments
 

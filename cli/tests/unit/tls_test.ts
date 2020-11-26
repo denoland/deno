@@ -2,45 +2,36 @@
 import {
   assert,
   assertEquals,
+  assertThrows,
+  assertThrowsAsync,
   createResolvable,
   unitTest,
 } from "./test_util.ts";
-import { BufWriter, BufReader } from "../../../std/io/bufio.ts";
+import { BufReader, BufWriter } from "../../../std/io/bufio.ts";
 import { TextProtoReader } from "../../../std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 unitTest(async function connectTLSNoPerm(): Promise<void> {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.connectTls({ hostname: "github.com", port: 443 });
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.connectTls({
       hostname: "github.com",
       port: 443,
       certFile: "cli/tests/tls/RootCA.crt",
     });
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
   { perms: { read: true, net: true } },
   function listenTLSNonExistentCertKeyFiles(): void {
-    let err;
     const options = {
       hostname: "localhost",
       port: 3500,
@@ -48,42 +39,31 @@ unitTest(
       keyFile: "cli/tests/tls/localhost.key",
     };
 
-    try {
+    assertThrows(() => {
       Deno.listenTls({
         ...options,
         certFile: "./non/existent/file",
       });
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Deno.errors.NotFound);
+    }, Deno.errors.NotFound);
 
-    try {
+    assertThrows(() => {
       Deno.listenTls({
         ...options,
         keyFile: "./non/existent/file",
       });
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Deno.errors.NotFound);
-  }
+    }, Deno.errors.NotFound);
+  },
 );
 
 unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.listenTls({
       hostname: "localhost",
       port: 3500,
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key",
     });
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -91,7 +71,6 @@ unitTest(
     perms: { read: true, write: true, net: true },
   },
   function listenTLSEmptyKeyFile(): void {
-    let err;
     const options = {
       hostname: "localhost",
       port: 3500,
@@ -105,22 +84,18 @@ unitTest(
       mode: 0o666,
     });
 
-    try {
+    assertThrows(() => {
       Deno.listenTls({
         ...options,
         keyFile: keyFilename,
       });
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Error);
-  }
+    }, Error);
+  },
 );
 
 unitTest(
   { perms: { read: true, write: true, net: true } },
   function listenTLSEmptyCertFile(): void {
-    let err;
     const options = {
       hostname: "localhost",
       port: 3500,
@@ -134,16 +109,13 @@ unitTest(
       mode: 0o666,
     });
 
-    try {
+    assertThrows(() => {
       Deno.listenTls({
         ...options,
         certFile: certFilename,
       });
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Error);
-  }
+    }, Error);
+  },
 );
 
 unitTest(
@@ -161,7 +133,7 @@ unitTest(
     });
 
     const response = encoder.encode(
-      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
     );
 
     listener.accept().then(
@@ -174,7 +146,7 @@ unitTest(
           conn.close();
           resolvable.resolve();
         }, 0);
-      }
+      },
     );
 
     const conn = await Deno.connectTls({
@@ -207,7 +179,7 @@ unitTest(
     conn.close();
     listener.close();
     await resolvable;
-  }
+  },
 );
 
 unitTest(
@@ -258,5 +230,5 @@ unitTest(
     }
 
     conn.close();
-  }
+  },
 );

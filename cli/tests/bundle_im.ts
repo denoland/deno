@@ -1,4 +1,4 @@
-import { returnsFoo, printHello2 } from "mod2";
+import { printHello2, returnsFoo } from "mod2";
 
 export function returnsHi(): string {
   return "Hi";

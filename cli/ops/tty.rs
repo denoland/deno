@@ -1,16 +1,27 @@
-use super::dispatch_json::JsonOp;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use super::io::std_file_resource;
-use super::io::{StreamResource, StreamResourceHolder};
-use crate::op_error::OpError;
-use crate::state::State;
-use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
+use super::io::StreamResource;
+use super::io::StreamResourceHolder;
+use deno_core::error::bad_resource_id;
+use deno_core::error::last_os_error;
+use deno_core::error::resource_unavailable;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
+use serde::Serialize;
+
+#[cfg(unix)]
+use deno_core::error::not_supported;
 #[cfg(unix)]
 use nix::sys::termios;
-use serde_derive::Deserialize;
-use serde_json::Value;
 
+#[cfg(windows)]
+use deno_core::error::custom_error;
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
@@ -19,25 +30,27 @@ use winapi::um::wincon;
 const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
   | wincon::ENABLE_ECHO_INPUT
   | wincon::ENABLE_PROCESSED_INPUT;
+
 #[cfg(windows)]
 fn get_windows_handle(
   f: &std::fs::File,
-) -> Result<std::os::windows::io::RawHandle, OpError> {
+) -> Result<std::os::windows::io::RawHandle, AnyError> {
   use std::os::windows::io::AsRawHandle;
   use winapi::um::handleapi;
 
   let handle = f.as_raw_handle();
   if handle == handleapi::INVALID_HANDLE_VALUE {
-    return Err(OpError::from(std::io::Error::last_os_error()));
+    return Err(last_os_error());
   } else if handle.is_null() {
-    return Err(OpError::other("null handle".to_owned()));
+    return Err(custom_error("ReferenceError", "null handle"));
   }
   Ok(handle)
 }
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_set_raw", s.stateful_json_op2(op_set_raw));
-  i.register_op("op_isatty", s.stateful_json_op2(op_isatty));
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_set_raw", op_set_raw);
+  super::reg_json_sync(rt, "op_isatty", op_isatty);
+  super::reg_json_sync(rt, "op_console_size", op_console_size);
 }
 
 #[derive(Deserialize)]
@@ -46,13 +59,13 @@ struct SetRawArgs {
   mode: bool,
 }
 
-pub fn op_set_raw(
-  isolate_state: &mut CoreIsolateState,
-  state: &State,
+fn op_set_raw(
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  state.check_unstable("Deno.setRaw");
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.setRaw");
+
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let is_raw = args.mode;
@@ -68,16 +81,15 @@ pub fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let mut resource_table = isolate_state.resource_table.borrow_mut();
-    let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
+    let resource_holder =
+      state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
-      return Err(OpError::bad_resource_id());
+      return Err(bad_resource_id());
     }
     let resource_holder = resource_holder.unwrap();
 
     // For now, only stdin.
     let handle = match &mut resource_holder.resource {
-      StreamResource::Stdin(_, _) => std::io::stdin().as_raw_handle(),
       StreamResource::FsFile(ref mut option_file_metadata) => {
         if let Some((tokio_file, metadata)) = option_file_metadata.take() {
           match tokio_file.try_into_std() {
@@ -96,28 +108,28 @@ pub fn op_set_raw(
               // some operation is in-flight.
               resource_holder.resource =
                 StreamResource::FsFile(Some((tokio_file, metadata)));
-              return Err(OpError::resource_unavailable());
+              return Err(resource_unavailable());
             }
           }
         } else {
-          return Err(OpError::resource_unavailable());
+          return Err(resource_unavailable());
         }
       }
       _ => {
-        return Err(OpError::bad_resource_id());
+        return Err(bad_resource_id());
       }
     };
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(OpError::from(std::io::Error::last_os_error()));
+      return Err(last_os_error());
     } else if handle.is_null() {
-      return Err(OpError::other("null handle".to_owned()));
+      return Err(custom_error("ReferenceError", "null handle"));
     }
     let mut original_mode: DWORD = 0;
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
       == FALSE
     {
-      return Err(OpError::from(std::io::Error::last_os_error()));
+      return Err(last_os_error());
     }
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK
@@ -125,41 +137,36 @@ pub fn op_set_raw(
       original_mode | RAW_MODE_MASK
     };
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(OpError::from(std::io::Error::last_os_error()));
+      return Err(last_os_error());
     }
 
-    Ok(JsonOp::Sync(json!({})))
+    Ok(json!({}))
   }
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
 
-    let mut resource_table = isolate_state.resource_table.borrow_mut();
-    let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
+    let resource_holder =
+      state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
-      return Err(OpError::bad_resource_id());
+      return Err(bad_resource_id());
     }
 
     if is_raw {
       let (raw_fd, maybe_tty_mode) =
         match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
-          StreamResource::FsFile(None) => {
-            return Err(OpError::resource_unavailable())
-          }
+          StreamResource::FsFile(None) => return Err(resource_unavailable()),
           _ => {
-            return Err(OpError::other("Not supported".to_owned()));
+            return Err(not_supported());
           }
         };
 
       if maybe_tty_mode.is_some() {
         // Already raw. Skip.
-        return Ok(JsonOp::Sync(json!({})));
+        return Ok(json!({}));
       }
 
       let original_mode = termios::tcgetattr(raw_fd)?;
@@ -182,22 +189,19 @@ pub fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-      Ok(JsonOp::Sync(json!({})))
+      Ok(json!({}))
     } else {
       // Try restore saved mode.
       let (raw_fd, maybe_tty_mode) =
         match &mut resource_holder.unwrap().resource {
-          StreamResource::Stdin(_, ref mut metadata) => {
-            (std::io::stdin().as_raw_fd(), &mut metadata.mode)
-          }
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
           StreamResource::FsFile(None) => {
-            return Err(OpError::resource_unavailable());
+            return Err(resource_unavailable());
           }
           _ => {
-            return Err(OpError::bad_resource_id());
+            return Err(bad_resource_id());
           }
         };
 
@@ -205,7 +209,7 @@ pub fn op_set_raw(
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
       }
 
-      Ok(JsonOp::Sync(json!({})))
+      Ok(json!({}))
     }
   }
 }
@@ -215,38 +219,106 @@ struct IsattyArgs {
   rid: u32,
 }
 
-pub fn op_isatty(
-  isolate_state: &mut CoreIsolateState,
-  _state: &State,
+fn op_isatty(
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, AnyError> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
-  let isatty: bool =
-    std_file_resource(&mut resource_table, rid as u32, move |r| match r {
-      Ok(std_file) => {
-        #[cfg(windows)]
-        {
-          use winapi::um::consoleapi;
+  let isatty: bool = std_file_resource(state, rid as u32, move |r| match r {
+    Ok(std_file) => {
+      #[cfg(windows)]
+      {
+        use winapi::um::consoleapi;
 
-          let handle = get_windows_handle(&std_file)?;
-          let mut test_mode: DWORD = 0;
-          // If I cannot get mode out of console, it is not a console.
-          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
-        }
-        #[cfg(unix)]
-        {
-          use std::os::unix::io::AsRawFd;
-          let raw_fd = std_file.as_raw_fd();
-          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+        let handle = get_windows_handle(&std_file)?;
+        let mut test_mode: DWORD = 0;
+        // If I cannot get mode out of console, it is not a console.
+        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
+      }
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        let raw_fd = std_file.as_raw_fd();
+        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      }
+    }
+    Err(StreamResource::FsFile(_)) => unreachable!(),
+    _ => Ok(false),
+  })?;
+  Ok(json!(isatty))
+}
+
+#[derive(Deserialize)]
+struct ConsoleSizeArgs {
+  rid: u32,
+}
+
+#[derive(Serialize)]
+struct ConsoleSize {
+  columns: u32,
+  rows: u32,
+}
+
+fn op_console_size(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.consoleSize");
+
+  let args: ConsoleSizeArgs = serde_json::from_value(args)?;
+  let rid = args.rid;
+
+  let size = std_file_resource(state, rid as u32, move |r| match r {
+    Ok(std_file) => {
+      #[cfg(windows)]
+      {
+        use std::os::windows::io::AsRawHandle;
+        let handle = std_file.as_raw_handle();
+
+        unsafe {
+          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+            std::mem::zeroed();
+
+          if winapi::um::wincon::GetConsoleScreenBufferInfo(
+            handle,
+            &mut bufinfo,
+          ) == 0
+          {
+            return Err(last_os_error());
+          }
+
+          Ok(ConsoleSize {
+            columns: bufinfo.dwSize.X as u32,
+            rows: bufinfo.dwSize.Y as u32,
+          })
         }
       }
-      Err(StreamResource::FsFile(_)) => unreachable!(),
-      Err(StreamResource::Stdin(_, _)) => Ok(atty::is(atty::Stream::Stdin)),
-      _ => Ok(false),
-    })?;
-  Ok(JsonOp::Sync(json!(isatty)))
+
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+
+        let fd = std_file.as_raw_fd();
+        unsafe {
+          let mut size: libc::winsize = std::mem::zeroed();
+          if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+            return Err(last_os_error());
+          }
+
+          // TODO (caspervonb) return a tuple instead
+          Ok(ConsoleSize {
+            columns: size.ws_col as u32,
+            rows: size.ws_row as u32,
+          })
+        }
+      }
+    }
+    Err(_) => Err(bad_resource_id()),
+  })?;
+
+  Ok(json!(size))
 }

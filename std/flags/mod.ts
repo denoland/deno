@@ -6,7 +6,7 @@ export interface Args {
   /** Contains all the arguments that didn't have an option associated with
    * them. */
   _: Array<string | number>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   [key: string]: any;
 }
 
@@ -15,11 +15,10 @@ export interface ArgParsingOptions {
    * the result `['--']` with everything after the `--`. Here's an example:
    *
    *      // $ deno run example.ts -- a arg1
-   *      const { args } = Deno;
    *      import { parse } from "https://deno.land/std/flags/mod.ts";
-   *      console.dir(parse(args, { "--": false }));
+   *      console.dir(parse(Deno.args, { "--": false }));
    *      // output: { _: [ "a", "arg1" ] }
-   *      console.dir(parse(args, { "--": true }));
+   *      console.dir(parse(Deno.args, { "--": true }));
    *      // output: { _: [], --: [ "a", "arg1" ] }
    *
    * Defaults to `false`.
@@ -105,7 +104,7 @@ export function parse(
     stopEarly = false,
     string = [],
     unknown = (i: string): unknown => i,
-  }: ArgParsingOptions = {}
+  }: ArgParsingOptions = {},
 ): Args {
   const flags: Flags = {
     bools: {},
@@ -192,7 +191,7 @@ export function parse(
   function setArg(
     key: string,
     val: unknown,
-    arg: string | undefined = undefined
+    arg: string | undefined = undefined,
   ): void {
     if (arg && flags.unknownFn && !argDefined(key, arg)) {
       if (flags.unknownFn(arg, key, val) === false) return;
@@ -211,7 +210,7 @@ export function parse(
 
   function aliasIsBoolean(key: string): boolean {
     return getForce(aliases, key).some(
-      (x) => typeof get(flags.bools, x) === "boolean"
+      (x) => typeof get(flags.bools, x) === "boolean",
     );
   }
 
@@ -278,7 +277,7 @@ export function parse(
         }
 
         if (/[A-Za-z]/.test(letters[j]) && /=/.test(next)) {
-          setArg(letters[j], next.split("=")[1], arg);
+          setArg(letters[j], next.split(/=(.+)/)[1], arg);
           broken = true;
           break;
         }

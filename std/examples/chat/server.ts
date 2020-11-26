@@ -1,9 +1,10 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { listenAndServe } from "../../http/server.ts";
 import {
-  acceptWebSocket,
   acceptable,
-  WebSocket,
+  acceptWebSocket,
   isWebSocketCloseEvent,
+  WebSocket,
 } from "../../ws/mod.ts";
 import { fromFileUrl } from "../../path/mod.ts";
 

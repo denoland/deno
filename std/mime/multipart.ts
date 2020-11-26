@@ -1,15 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-const { Buffer, copy, remove } = Deno;
-const { min, max } = Math;
-type Closer = Deno.Closer;
-type Reader = Deno.Reader;
-type Writer = Deno.Writer;
 import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
-import { tempFile } from "../io/util.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { assert } from "../_util/assert.ts";
@@ -33,7 +26,7 @@ export interface FormFile {
 }
 
 /** Type guard for FormFile */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 export function isFormFile(x: any): x is FormFile {
   return hasOwnProperty(x, "filename") && hasOwnProperty(x, "type");
 }
@@ -41,7 +34,7 @@ export function isFormFile(x: any): x is FormFile {
 function randomBoundary(): string {
   let boundary = "--------------------------";
   for (let i = 0; i < 24; i++) {
-    boundary += Math.floor(Math.random() * 10).toString(16);
+    boundary += Math.floor(Math.random() * 16).toString(16);
   }
   return boundary;
 }
@@ -65,7 +58,7 @@ function randomBoundary(): string {
 export function matchAfterPrefix(
   buf: Uint8Array,
   prefix: Uint8Array,
-  eof: boolean
+  eof: boolean,
 ): -1 | 0 | 1 {
   if (buf.length === prefix.length) {
     return eof ? 1 : 0;
@@ -104,7 +97,7 @@ export function scanUntilBoundary(
   dashBoundary: Uint8Array,
   newLineDashBoundary: Uint8Array,
   total: number,
-  eof: boolean
+  eof: boolean,
 ): number | null {
   if (total === 0) {
     // At beginning of body, allow dashBoundary.
@@ -150,7 +143,7 @@ export function scanUntilBoundary(
   return buf.length;
 }
 
-class PartReader implements Reader, Closer {
+class PartReader implements Deno.Reader, Deno.Closer {
   n: number | null = 0;
   total = 0;
 
@@ -163,7 +156,7 @@ class PartReader implements Reader, Closer {
     // or we find a reason to stop (boundary or EOF).
     let peekLength = 1;
     while (this.n === 0) {
-      peekLength = max(peekLength, br.buffered());
+      peekLength = Math.max(peekLength, br.buffered());
       const peekBuf = await br.peek(peekLength);
       if (peekBuf === null) {
         throw new Deno.errors.UnexpectedEof();
@@ -174,7 +167,7 @@ class PartReader implements Reader, Closer {
         this.mr.dashBoundary,
         this.mr.newLineDashBoundary,
         this.total,
-        eof
+        eof,
       );
       if (this.n === 0) {
         // Force buffered I/O to read more into buffer.
@@ -187,7 +180,7 @@ class PartReader implements Reader, Closer {
       return null;
     }
 
-    const nread = min(p.length, this.n);
+    const nread = Math.min(p.length, this.n);
     const buf = p.subarray(0, nread);
     const r = await br.readFull(buf);
     assert(r === buf);
@@ -272,7 +265,7 @@ export class MultipartReader {
   readonly dashBoundary = encoder.encode(`--${this.boundary}`);
   readonly bufReader: BufReader;
 
-  constructor(reader: Reader, private boundary: string) {
+  constructor(reader: Deno.Reader, private boundary: string) {
     this.bufReader = new BufReader(reader);
   }
 
@@ -287,7 +280,7 @@ export class MultipartReader {
     const fileMap = new Map<string, FormFile | FormFile[]>();
     const valueMap = new Map<string, string>();
     let maxValueBytes = maxMemory + (10 << 20);
-    const buf = new Buffer(new Uint8Array(maxValueBytes));
+    const buf = new Deno.Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
       const p = await this.nextPart();
       if (p === null) {
@@ -316,12 +309,16 @@ export class MultipartReader {
       if (n > maxMemory) {
         // too big, write to disk and flush buffer
         const ext = extname(p.fileName);
-        const { file, filepath } = await tempFile(".", {
+        const filepath = await Deno.makeTempFile({
+          dir: ".",
           prefix: "multipart-",
-          postfix: ext,
+          suffix: ext,
         });
+
+        const file = await Deno.open(filepath, { write: true });
+
         try {
-          const size = await copy(new MultiReader(buf, p), file);
+          const size = await Deno.copy(new MultiReader(buf, p), file);
 
           file.close();
           formFile = {
@@ -331,7 +328,7 @@ export class MultipartReader {
             size,
           };
         } catch (e) {
-          await remove(filepath);
+          await Deno.remove(filepath);
           throw e;
         }
       } else {
@@ -423,7 +420,7 @@ export class MultipartReader {
 
 function multipatFormData(
   fileMap: Map<string, FormFile | FormFile[]>,
-  valueMap: Map<string, string>
+  valueMap: Map<string, string>,
 ): MultipartFormData {
   function file(key: string): FormFile | FormFile[] | undefined {
     return fileMap.get(key);
@@ -465,16 +462,16 @@ function multipatFormData(
   };
 }
 
-class PartWriter implements Writer {
+class PartWriter implements Deno.Writer {
   closed = false;
   private readonly partHeader: string;
   private headersWritten = false;
 
   constructor(
-    private writer: Writer,
+    private writer: Deno.Writer,
     readonly boundary: string,
     public headers: Headers,
-    isFirstBoundary: boolean
+    isFirstBoundary: boolean,
   ) {
     let buf = "";
     if (isFirstBoundary) {
@@ -531,7 +528,7 @@ export class MultipartWriter {
   private bufWriter: BufWriter;
   private isClosed = false;
 
-  constructor(private readonly writer: Writer, boundary?: string) {
+  constructor(private readonly writer: Deno.Writer, boundary?: string) {
     if (boundary !== void 0) {
       this._boundary = checkBoundary(boundary);
     } else {
@@ -544,7 +541,7 @@ export class MultipartWriter {
     return `multipart/form-data; boundary=${this.boundary}`;
   }
 
-  private createPart(headers: Headers): Writer {
+  private createPart(headers: Headers): Deno.Writer {
     if (this.isClosed) {
       throw new Error("multipart: writer is closed");
     }
@@ -555,23 +552,23 @@ export class MultipartWriter {
       this.writer,
       this.boundary,
       headers,
-      !this.lastPart
+      !this.lastPart,
     );
     this.lastPart = part;
     return part;
   }
 
-  createFormFile(field: string, filename: string): Writer {
+  createFormFile(field: string, filename: string): Deno.Writer {
     const h = new Headers();
     h.set(
       "Content-Disposition",
-      `form-data; name="${field}"; filename="${filename}"`
+      `form-data; name="${field}"; filename="${filename}"`,
     );
     h.set("Content-Type", "application/octet-stream");
     return this.createPart(h);
   }
 
-  createFormField(field: string): Writer {
+  createFormField(field: string): Deno.Writer {
     const h = new Headers();
     h.set("Content-Disposition", `form-data; name="${field}"`);
     h.set("Content-Type", "application/octet-stream");
@@ -586,10 +583,10 @@ export class MultipartWriter {
   async writeFile(
     field: string,
     filename: string,
-    file: Reader
+    file: Deno.Reader,
   ): Promise<void> {
     const f = await this.createFormFile(field, filename);
-    await copy(file, f);
+    await Deno.copy(file, f);
   }
 
   private flush(): Promise<void> {

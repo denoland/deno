@@ -1,4 +1,5 @@
-use deno_core::plugin_api::Buf;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::plugin_api::Interface;
 use deno_core::plugin_api::Op;
 use deno_core::plugin_api::ZeroCopyBuf;
@@ -12,33 +13,29 @@ pub fn deno_plugin_init(interface: &mut dyn Interface) {
 
 fn op_test_sync(
   _interface: &mut dyn Interface,
-  data: &[u8],
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
-  let data_str = std::str::from_utf8(&data[..]).unwrap();
-  let zero_copy = zero_copy.to_vec();
   if !zero_copy.is_empty() {
-    println!("Hello from plugin. data: {}", data_str);
+    println!("Hello from plugin.");
   }
+  let zero_copy = zero_copy.to_vec();
   for (idx, buf) in zero_copy.iter().enumerate() {
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
     println!("zero_copy[{}]: {}", idx, buf_str);
   }
   let result = b"test";
-  let result_box: Buf = Box::new(*result);
+  let result_box: Box<[u8]> = Box::new(*result);
   Op::Sync(result_box)
 }
 
 fn op_test_async(
   _interface: &mut dyn Interface,
-  data: &[u8],
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
-  let zero_copy = zero_copy.to_vec();
   if !zero_copy.is_empty() {
-    let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
-    println!("Hello from plugin. data: {}", data_str);
+    println!("Hello from plugin.");
   }
+  let zero_copy = zero_copy.to_vec();
   let fut = async move {
     for (idx, buf) in zero_copy.iter().enumerate() {
       let buf_str = std::str::from_utf8(&buf[..]).unwrap();
@@ -51,7 +48,7 @@ fn op_test_async(
     });
     assert!(rx.await.is_ok());
     let result = b"test";
-    let result_box: Buf = Box::new(*result);
+    let result_box: Box<[u8]> = Box::new(*result);
     result_box
   };
 

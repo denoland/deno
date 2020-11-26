@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { MuxAsyncIterator } from "../async/mux_async_iterator.ts";
 
 export type Disposable = { dispose: () => void };
@@ -27,7 +28,7 @@ export function signal(
 
   if (signos.length < 1) {
     throw new Error(
-      "No signals are given. You need to specify at least one signal to create a signal stream."
+      "No signals are given. You need to specify at least one signal to create a signal stream.",
     );
   }
 

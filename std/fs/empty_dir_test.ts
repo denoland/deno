@@ -2,14 +2,15 @@
 import {
   assert,
   assertEquals,
-  assertStringContains,
+  assertStringIncludes,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("emptyDirIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_1");
@@ -71,14 +72,14 @@ Deno.test("emptyDirIfItExist", async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testNestDir);
-      }
+      },
     );
 
     // test file have been removed
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testDirFile);
-      }
+      },
     );
   } finally {
     // remote test dir
@@ -199,12 +200,11 @@ for (const s of scenes) {
 
       await Deno.writeFile(
         path.join(testfolder, "child.txt"),
-        new TextEncoder().encode("hello world")
+        new TextEncoder().encode("hello world"),
       );
 
       try {
-        // TODO(lucacasonato): remove unstable when stabilized
-        const args = [Deno.execPath(), "run", "--unstable"];
+        const args = [Deno.execPath(), "run", "--quiet"];
 
         if (s.read) {
           args.push("--allow-read");
@@ -215,7 +215,10 @@ for (const s of scenes) {
         }
 
         args.push(
-          path.join(testdataDir, s.async ? "empty_dir.ts" : "empty_dir_sync.ts")
+          path.join(
+            testdataDir,
+            s.async ? "empty_dir.ts" : "empty_dir_sync.ts",
+          ),
         );
         args.push("testfolder");
 
@@ -228,7 +231,7 @@ for (const s of scenes) {
         assert(p.stdout);
         const output = await p.output();
         p.close();
-        assertStringContains(new TextDecoder().decode(output), s.output);
+        assertStringIncludes(new TextDecoder().decode(output), s.output);
       } catch (err) {
         await Deno.remove(testfolder, { recursive: true });
         throw err;

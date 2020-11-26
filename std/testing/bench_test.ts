@@ -1,32 +1,32 @@
-const { test } = Deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   bench,
-  runBenchmarks,
   BenchmarkRunError,
-  clearBenchmarks,
   BenchmarkRunProgress,
+  clearBenchmarks,
   ProgressState,
+  runBenchmarks,
 } from "./bench.ts";
 import {
-  assertEquals,
   assert,
+  assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "./asserts.ts";
 
-test({
+Deno.test({
   name: "benching",
 
   fn: async function (): Promise<void> {
-    bench(function forIncrementX1e9(b): void {
+    bench(function forIncrementX1e3(b): void {
       b.start();
-      for (let i = 0; i < 1e9; i++);
+      for (let i = 0; i < 1e3; i++);
       b.stop();
     });
 
-    bench(function forDecrementX1e9(b): void {
+    bench(function forDecrementX1e3(b): void {
       b.start();
-      for (let i = 1e9; i > 0; i--);
+      for (let i = 1e3; i > 0; i--);
       b.stop();
     });
 
@@ -47,8 +47,8 @@ test({
           async (denoland: string): Promise<void> => {
             const r = await fetch(denoland);
             await r.text();
-          }
-        )
+          },
+        ),
       );
       b.stop();
     });
@@ -74,7 +74,7 @@ test({
     assertEquals(benchResult.results.length, 5);
 
     const resultWithSingleRunsFiltered = benchResult.results.filter(
-      ({ name }) => name === "forDecrementX1e9"
+      ({ name }) => name === "forDecrementX1e3",
     );
     assertEquals(resultWithSingleRunsFiltered.length, 1);
 
@@ -86,7 +86,7 @@ test({
     assertEquals(resultWithSingleRuns.measuredRunsMs.length, 1);
 
     const resultWithMultipleRunsFiltered = benchResult.results.filter(
-      ({ name }) => name === "runs100ForIncrementX1e6"
+      ({ name }) => name === "runs100ForIncrementX1e6",
     );
     assertEquals(resultWithMultipleRunsFiltered.length, 1);
 
@@ -101,7 +101,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Bench without name should throw",
   fn() {
     assertThrows(
@@ -109,12 +109,12 @@ test({
         bench(() => {});
       },
       Error,
-      "The benchmark function must not be anonymous"
+      "The benchmark function must not be anonymous",
     );
   },
 });
 
-test({
+Deno.test({
   name: "Bench without stop should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
@@ -126,12 +126,12 @@ test({
         await runBenchmarks({ only: /benchWithoutStop/, silent: true });
       },
       BenchmarkRunError,
-      "The benchmark timer's stop method must be called"
+      "The benchmark timer's stop method must be called",
     );
   },
 });
 
-test({
+Deno.test({
   name: "Bench without start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
@@ -143,12 +143,12 @@ test({
         await runBenchmarks({ only: /benchWithoutStart/, silent: true });
       },
       BenchmarkRunError,
-      "The benchmark timer's start method must be called"
+      "The benchmark timer's start method must be called",
     );
   },
 });
 
-test({
+Deno.test({
   name: "Bench with stop before start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
@@ -161,12 +161,12 @@ test({
         await runBenchmarks({ only: /benchStopBeforeStart/, silent: true });
       },
       BenchmarkRunError,
-      "The benchmark timer's start method must be called before its stop method"
+      "The benchmark timer's start method must be called before its stop method",
     );
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks should clear all candidates",
   fn: async function (): Promise<void> {
     dummyBench("test");
@@ -179,7 +179,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks with only as option",
   fn: async function (): Promise<void> {
     // to reset candidates
@@ -197,7 +197,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks with skip as option",
   fn: async function (): Promise<void> {
     // to reset candidates
@@ -215,7 +215,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks with only and skip as option",
   fn: async function (): Promise<void> {
     // to reset candidates
@@ -236,7 +236,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "progressCallback of runBenchmarks",
   fn: async function (): Promise<void> {
     clearBenchmarks();
@@ -250,12 +250,13 @@ test({
       { skip: /skip/, silent: true },
       (progress) => {
         progressCallbacks.push(progress);
-      }
+      },
     );
 
     let pc = 0;
     // Assert initial progress before running
     let progress = progressCallbacks[pc++];
+    assert(progress.queued);
     assertEquals(progress.state, ProgressState.BenchmarkingStart);
     assertEquals(progress.filtered, 1);
     assertEquals(progress.queued.length, 2);
@@ -266,6 +267,7 @@ test({
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchStart);
     assertEquals(progress.filtered, 1);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 1);
     assert(!!progress.queued.find(({ name }) => name == "multiple"));
     assertEquals(progress.running, {
@@ -278,6 +280,7 @@ test({
     // Assert running result of bench "single"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 1);
     assertEquals(progress.running!.measuredRunsMs.length, 1);
     assertEquals(progress.results.length, 0);
@@ -285,6 +288,7 @@ test({
     // Assert result of bench "single"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 1);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 1);
@@ -293,6 +297,7 @@ test({
     // Assert start of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchStart);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running, {
       name: "multiple",
@@ -304,6 +309,7 @@ test({
     // Assert first result of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running!.measuredRunsMs.length, 1);
     assertEquals(progress.results.length, 1);
@@ -311,6 +317,7 @@ test({
     // Assert second result of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running!.measuredRunsMs.length, 2);
     assertEquals(progress.results.length, 1);
@@ -318,12 +325,13 @@ test({
     // Assert finish of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 2);
     assert(!!progress.results.find(({ name }) => name == "single"));
     const resultOfMultiple = progress.results.filter(
-      ({ name }) => name == "multiple"
+      ({ name }) => name == "multiple",
     );
     assertEquals(resultOfMultiple.length, 1);
     assert(!!resultOfMultiple[0].measuredRunsMs);
@@ -335,6 +343,27 @@ test({
     assertEquals(progress.state, ProgressState.BenchmarkingEnd);
     delete progress.state;
     assertEquals(progress, benchingResults);
+  },
+});
+
+Deno.test({
+  name: "async progressCallback",
+  fn: async function (): Promise<void> {
+    clearBenchmarks();
+    dummyBench("single");
+
+    const asyncCallbacks = [];
+
+    await runBenchmarks({ silent: true }, (progress) => {
+      return new Promise((resolve) => {
+        queueMicrotask(() => {
+          asyncCallbacks.push(progress);
+          resolve();
+        });
+      });
+    });
+
+    assertEquals(asyncCallbacks.length, 5);
   },
 });
 

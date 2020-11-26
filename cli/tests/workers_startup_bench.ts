@@ -4,8 +4,11 @@ const workerCount = 50;
 async function bench(): Promise<void> {
   const workers: Worker[] = [];
   for (let i = 1; i <= workerCount; ++i) {
-    const worker = new Worker("./subdir/bench_worker.ts", { type: "module" });
-    const promise = new Promise((resolve): void => {
+    const worker = new Worker(
+      new URL("subdir/bench_worker.ts", import.meta.url).href,
+      { type: "module" },
+    );
+    const promise = new Promise<void>((resolve): void => {
       worker.onmessage = (e): void => {
         if (e.data.cmdId === 0) resolve();
       };
@@ -16,7 +19,7 @@ async function bench(): Promise<void> {
   }
   console.log("Done creating workers closing workers!");
   for (const worker of workers) {
-    const promise = new Promise((resolve): void => {
+    const promise = new Promise<void>((resolve): void => {
       worker.onmessage = (e): void => {
         if (e.data.cmdId === 3) resolve();
       };

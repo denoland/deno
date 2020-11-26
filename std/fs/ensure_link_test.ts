@@ -8,7 +8,8 @@ import {
 import * as path from "../path/mod.ts";
 import { ensureLink, ensureLinkSync } from "./ensure_link.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("ensureLinkIfItNotExist", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "ensure_link_1");
@@ -19,7 +20,7 @@ Deno.test("ensureLinkIfItNotExist", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await ensureLink(testFile, linkFile);
-    }
+    },
   );
 
   await Deno.remove(destDir, { recursive: true });
@@ -59,10 +60,10 @@ Deno.test("ensureLinkIfItExist", async function (): Promise<void> {
   await Deno.writeFile(testFile, new TextEncoder().encode("123"));
 
   const testFileContent1 = new TextDecoder().decode(
-    await Deno.readFile(testFile)
+    await Deno.readFile(testFile),
   );
   const linkFileContent1 = new TextDecoder().decode(
-    await Deno.readFile(testFile)
+    await Deno.readFile(testFile),
   );
 
   assertEquals(testFileContent1, "123");
@@ -72,10 +73,10 @@ Deno.test("ensureLinkIfItExist", async function (): Promise<void> {
   await Deno.writeFile(testFile, new TextEncoder().encode("abc"));
 
   const testFileContent2 = new TextDecoder().decode(
-    await Deno.readFile(testFile)
+    await Deno.readFile(testFile),
   );
   const linkFileContent2 = new TextDecoder().decode(
-    await Deno.readFile(testFile)
+    await Deno.readFile(testFile),
   );
 
   assertEquals(testFileContent2, "abc");
@@ -107,10 +108,10 @@ Deno.test("ensureLinkSyncIfItExist", function (): void {
   Deno.writeFileSync(testFile, new TextEncoder().encode("123"));
 
   const testFileContent1 = new TextDecoder().decode(
-    Deno.readFileSync(testFile)
+    Deno.readFileSync(testFile),
   );
   const linkFileContent1 = new TextDecoder().decode(
-    Deno.readFileSync(testFile)
+    Deno.readFileSync(testFile),
   );
 
   assertEquals(testFileContent1, "123");
@@ -120,10 +121,10 @@ Deno.test("ensureLinkSyncIfItExist", function (): void {
   Deno.writeFileSync(testFile, new TextEncoder().encode("abc"));
 
   const testFileContent2 = new TextDecoder().decode(
-    Deno.readFileSync(testFile)
+    Deno.readFileSync(testFile),
   );
   const linkFileContent2 = new TextDecoder().decode(
-    Deno.readFileSync(testFile)
+    Deno.readFileSync(testFile),
   );
 
   assertEquals(testFileContent2, "abc");
@@ -143,7 +144,7 @@ Deno.test("ensureLinkDirectoryIfItExist", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await ensureLink(testDir, linkDir);
-    }
+    },
     // "Operation not permitted (os error 1)" // throw an local matching test
     // "Access is denied. (os error 5)" // throw in CI
   );
@@ -162,7 +163,7 @@ Deno.test("ensureLinkSyncDirectoryIfItExist", function (): void {
   assertThrows(
     (): void => {
       ensureLinkSync(testDir, linkDir);
-    }
+    },
     // "Operation not permitted (os error 1)" // throw an local matching test
     // "Access is denied. (os error 5)" // throw in CI
   );

@@ -10,7 +10,8 @@ import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("moveDirectoryIfSrcNotExists", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_1");
@@ -19,7 +20,7 @@ Deno.test("moveDirectoryIfSrcNotExists", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await move(srcDir, destDir);
-    }
+    },
   );
 });
 
@@ -36,7 +37,7 @@ Deno.test("moveDirectoryIfDestNotExists", async function (): Promise<void> {
       throw new Error("should not throw error");
     },
     Error,
-    "should not throw error"
+    "should not throw error",
   );
 
   await Deno.remove(destDir);
@@ -57,11 +58,11 @@ Deno.test(
         throw new Error("should not throw error");
       },
       Error,
-      "should not throw error"
+      "should not throw error",
     );
 
     await Deno.remove(destDir);
-  }
+  },
 );
 
 Deno.test("moveFileIfSrcNotExists", async function (): Promise<void> {
@@ -72,7 +73,7 @@ Deno.test("moveFileIfSrcNotExists", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await move(srcFile, destFile);
-    }
+    },
   );
 });
 
@@ -103,7 +104,7 @@ Deno.test("moveFileIfDestExists", async function (): Promise<void> {
       await move(srcFile, destFile);
     },
     Error,
-    "dest already exists"
+    "dest already exists",
   );
 
   // move again with overwrite
@@ -113,7 +114,7 @@ Deno.test("moveFileIfDestExists", async function (): Promise<void> {
       throw new Error("should not throw error");
     },
     Error,
-    "should not throw error"
+    "should not throw error",
   );
 
   assertEquals(await exists(srcFile), false);
@@ -144,7 +145,7 @@ Deno.test("moveDirectory", async function (): Promise<void> {
   assertEquals(await exists(destFile), true);
 
   const destFileContent = new TextDecoder().decode(
-    await Deno.readFile(destFile)
+    await Deno.readFile(destFile),
   );
   assertEquals(destFileContent, "src");
 
@@ -179,12 +180,12 @@ Deno.test(
     assertEquals(await exists(destFile), true);
 
     const destFileContent = new TextDecoder().decode(
-      await Deno.readFile(destFile)
+      await Deno.readFile(destFile),
     );
     assertEquals(destFileContent, "src");
 
     await Deno.remove(destDir, { recursive: true });
-  }
+  },
 );
 
 Deno.test("moveIntoSubDir", async function (): Promise<void> {
@@ -198,7 +199,7 @@ Deno.test("moveIntoSubDir", async function (): Promise<void> {
       await move(srcDir, destDir);
     },
     Error,
-    `Cannot move '${srcDir}' to a subdirectory of itself, '${destDir}'.`
+    `Cannot move '${srcDir}' to a subdirectory of itself, '${destDir}'.`,
   );
   await Deno.remove(srcDir, { recursive: true });
 });
@@ -225,7 +226,7 @@ Deno.test("moveSyncDirectoryIfDestNotExists", function (): void {
       throw new Error("should not throw error");
     },
     Error,
-    "should not throw error"
+    "should not throw error",
   );
 
   Deno.removeSync(destDir);
@@ -244,7 +245,7 @@ Deno.test("moveSyncDirectoryIfDestNotExistsAndOverwrite", function (): void {
       throw new Error("should not throw error");
     },
     Error,
-    "should not throw error"
+    "should not throw error",
   );
 
   Deno.removeSync(destDir);
@@ -286,7 +287,7 @@ Deno.test("moveSyncFileIfDestExists", function (): void {
       moveSync(srcFile, destFile);
     },
     Error,
-    "dest already exists"
+    "dest already exists",
   );
 
   // move again with overwrite
@@ -296,7 +297,7 @@ Deno.test("moveSyncFileIfDestExists", function (): void {
       throw new Error("should not throw error");
     },
     Error,
-    "should not throw error"
+    "should not throw error",
   );
 
   assertEquals(existsSync(srcFile), false);
@@ -368,7 +369,7 @@ Deno.test("moveSyncIntoSubDir", function (): void {
       moveSync(srcDir, destDir);
     },
     Error,
-    `Cannot move '${srcDir}' to a subdirectory of itself, '${destDir}'.`
+    `Cannot move '${srcDir}' to a subdirectory of itself, '${destDir}'.`,
   );
   Deno.removeSync(srcDir, { recursive: true });
 });

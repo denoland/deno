@@ -8,9 +8,11 @@
       "installation": "Installation",
       "setup_your_environment": "Setup your environment",
       "first_steps": "First steps",
+      "command_line_interface": "Command line interface",
       "permissions": "Permissions",
       "typescript": "Using TypeScript",
-      "webassembly": "Using WebAssembly"
+      "webassembly": "Using WebAssembly",
+      "debugging_your_code": "Debugging your code"
     }
   },
   "runtime": {
@@ -18,7 +20,9 @@
     "children": {
       "stability": "Stability",
       "program_lifecycle": "Program lifecycle",
+      "permission_apis": "Permission APIs",
       "compiler_apis": "Compiler APIs",
+      "web_platform_apis": "Web Platform APIs",
       "workers": "Workers"
     }
   },
@@ -34,18 +38,40 @@
   "standard_library": {
     "name": "Standard library"
   },
+  "examples": {
+    "name": "Examples",
+    "children": {
+      "hello_world": "Hello world",
+      "import_export": "Import and export modules",
+      "manage_dependencies": "Manage dependencies",
+      "fetch_data": "Fetch data",
+      "read_write_files": "Read and write files",
+      "unix_cat": "Unix cat program",
+      "http_server": "HTTP web server",
+      "file_server": "File server",
+      "tcp_echo": "TCP echo server",
+      "subprocess": "Creating a subprocess",
+      "os_signals": "OS Signals",
+      "file_system_events": "File system events",
+      "module_metadata": "Module metadata"
+    }
+  },
   "testing": {
-    "name": "Testing"
+    "name": "Testing",
+    "children": {
+      "assertions": "Assertions"
+    }
   },
   "tools": {
     "name": "Tools",
     "children": {
-      "debugger": "Debugger",
       "script_installer": "Script installer",
       "formatter": "Formatter",
+      "repl": "Read-eval-print-loop",
       "bundler": "Bundler",
       "documentation_generator": "Documentation generator",
-      "dependency_inspector": "Dependency inspector"
+      "dependency_inspector": "Dependency inspector",
+      "linter": "Linter"
     }
   },
   "embedding_deno": {
@@ -58,19 +84,6 @@
       "development_tools": "Development tools",
       "style_guide": "Style guide",
       "architecture": "Architecture"
-    }
-  },
-  "examples": {
-    "name": "Examples",
-    "children": {
-      "unix_cat": "Unix cat program",
-      "file_server": "File server",
-      "tcp_echo": "TCP echo server",
-      "subprocess": "Creating a subprocess",
-      "permissions": "Inspecting and revoking permissions",
-      "os_signals": "OS Signals",
-      "file_system_events": "File system events",
-      "testing_if_main": "Checking if file is main"
     }
   }
 }

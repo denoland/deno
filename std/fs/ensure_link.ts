@@ -17,7 +17,7 @@ export async function ensureLink(src: string, dest: string): Promise<void> {
     const destFilePathType = getFileInfoType(destStatInfo);
     if (destFilePathType !== "file") {
       throw new Error(
-        `Ensure path exists, expected 'file', got '${destFilePathType}'`
+        `Ensure path exists, expected 'file', got '${destFilePathType}'`,
       );
     }
     return;
@@ -41,7 +41,7 @@ export function ensureLinkSync(src: string, dest: string): void {
     const destFilePathType = getFileInfoType(destStatInfo);
     if (destFilePathType !== "file") {
       throw new Error(
-        `Ensure path exists, expected 'file', got '${destFilePathType}'`
+        `Ensure path exists, expected 'file', got '${destFilePathType}'`,
       );
     }
     return;

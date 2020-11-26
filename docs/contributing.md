@@ -2,16 +2,19 @@
 
 - Read the [style guide](./contributing/style_guide.md).
 
-- Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+- Please don't make [the benchmarks](https://deno.land/benchmarks) worse.
 
-- Ask for help in the [community chat room](https://discord.gg/TGMHGv6).
+- Ask for help in the [community chat room](https://discord.gg/deno).
 
 - If you are going to work on an issue, mention so in the issue comments
   _before_ you start working on the issue.
 
+- If you are going to work on a new feature, create an issue and discuss with
+  other contributors _before_ you start working on the feature.
+
 - Please be professional in the forums. We follow
   [Rust's code of conduct](https://www.rust-lang.org/policies/code-of-conduct)
-  (CoC) Have a problem? Email ry@tinyclouds.org.
+  (CoC). Have a problem? Email ry@tinyclouds.org.
 
 ## Development
 
@@ -22,11 +25,25 @@ Instructions on how to build from source can be found
 
 Before submitting, please make sure the following is done:
 
-1. That there is a related issue and it is referenced in the PR text.
-2. There are tests that cover the changes.
-3. Ensure `cargo test` passes.
-4. Format your code with `tools/format.py`
-5. Make sure `./tools/lint.py` passes.
+1. Give the PR a descriptive title.
+
+Examples of good PR title:
+
+- fix(std/http): Fix race condition in server
+- docs(console): Update docstrings
+- feat(doc): Handle nested re-exports
+
+Examples of bad PR title:
+
+- fix #7123
+- update docs
+- fix bugs
+
+2. Ensure there is a related issue and it is referenced in the PR text.
+3. Ensure there are tests that cover the changes.
+4. Ensure `cargo test` passes.
+5. Ensure `./tools/format.js` passes without changing files.
+6. Ensure `./tools/lint.js` passes.
 
 ## Changes to `third_party`
 
@@ -69,4 +86,4 @@ and are denoted by a leading `/**` before terminating with a `*/`. For example:
 export const FOO = "foo";
 ```
 
-Find more at https://jsdoc.app/
+Find more at: https://jsdoc.app/

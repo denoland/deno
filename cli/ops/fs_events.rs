@@ -1,33 +1,38 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
-use crate::state::State;
-use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
-use deno_core::ErrBox;
+
+use crate::permissions::Permissions;
+use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::BufVec;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
-use futures::future::FutureExt;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
+use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_fs_events_open", s.stateful_json_op2(op_fs_events_open));
-  i.register_op("op_fs_events_poll", s.stateful_json_op2(op_fs_events_poll));
+pub fn init(rt: &mut deno_core::JsRuntime) {
+  super::reg_json_sync(rt, "op_fs_events_open", op_fs_events_open);
+  super::reg_json_async(rt, "op_fs_events_poll", op_fs_events_poll);
 }
 
 struct FsEventsResource {
   #[allow(unused)]
   watcher: RecommendedWatcher,
-  receiver: mpsc::Receiver<Result<FsEvent, ErrBox>>,
+  receiver: mpsc::Receiver<Result<FsEvent, AnyError>>,
 }
 
 /// Represents a file system event.
@@ -62,69 +67,67 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
-pub fn op_fs_events_open(
-  isolate_state: &mut CoreIsolateState,
-  state: &State,
+fn op_fs_events_open(
+  state: &mut OpState,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, AnyError> {
   #[derive(Deserialize)]
   struct OpenArgs {
     recursive: bool,
     paths: Vec<String>,
   }
   let args: OpenArgs = serde_json::from_value(args)?;
-  let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
+  let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
+      let res2 = res.map(FsEvent::from).map_err(AnyError::from);
       let mut sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
-    })
-    .map_err(ErrBox::from)?;
+    })?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    state.check_read(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
+    state
+      .borrow::<Permissions>()
+      .check_read(&PathBuf::from(path))?;
+    watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
-  let rid = resource_table.add("fsEvents", Box::new(resource));
-  Ok(JsonOp::Sync(json!(rid)))
+  let rid = state.resource_table.add("fsEvents", Box::new(resource));
+  Ok(json!(rid))
 }
 
-pub fn op_fs_events_poll(
-  isolate_state: &mut CoreIsolateState,
-  _state: &State,
+async fn op_fs_events_poll(
+  state: Rc<RefCell<OpState>>,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+  _zero_copy: BufVec,
+) -> Result<Value, AnyError> {
   #[derive(Deserialize)]
   struct PollArgs {
     rid: u32,
   }
   let PollArgs { rid } = serde_json::from_value(args)?;
-  let resource_table = isolate_state.resource_table.clone();
-  let f = poll_fn(move |cx| {
-    let mut resource_table = resource_table.borrow_mut();
-    let watcher = resource_table
+  poll_fn(move |cx| {
+    let mut state = state.borrow_mut();
+    let watcher = state
+      .resource_table
       .get_mut::<FsEventsResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(bad_resource_id)?;
     watcher
       .receiver
       .poll_recv(cx)
       .map(|maybe_result| match maybe_result {
         Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
-        Some(Err(err)) => Err(OpError::from(err)),
+        Some(Err(err)) => Err(err),
         None => Ok(json!({ "done": true })),
       })
-  });
-  Ok(JsonOp::Async(f.boxed_local()))
+  })
+  .await
 }

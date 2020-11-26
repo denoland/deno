@@ -1,17 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import {
   assert,
   assertEquals,
-  assertThrowsAsync,
   assertNotEquals,
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import {
-  LogLevels,
-  LogLevelNames,
-  getLevelName,
   getLevelByName,
+  getLevelName,
   LevelName,
+  LogLevelNames,
+  LogLevels,
 } from "./levels.ts";
 import { BaseHandler, FileHandler, RotatingFileHandler } from "./handlers.ts";
 import { LogRecord } from "./logger.ts";
@@ -27,7 +26,7 @@ class TestHandler extends BaseHandler {
   }
 }
 
-test("simpleHandler", function (): void {
+Deno.test("simpleHandler", function (): void {
   const cases = new Map<number, string[]>([
     [
       LogLevels.DEBUG,
@@ -63,7 +62,12 @@ test("simpleHandler", function (): void {
     for (const levelName of LogLevelNames) {
       const level = getLevelByName(levelName as LevelName);
       handler.handle(
-        new LogRecord(`${levelName.toLowerCase()}-test`, [], level)
+        new LogRecord({
+          msg: `${levelName.toLowerCase()}-test`,
+          args: [],
+          level: level,
+          loggerName: "default",
+        }),
       );
     }
 
@@ -73,28 +77,59 @@ test("simpleHandler", function (): void {
   }
 });
 
-test("testFormatterAsString", function (): void {
+Deno.test("testFormatterAsString", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: "test {levelName} {msg}",
   });
 
-  handler.handle(new LogRecord("Hello, world!", [], LogLevels.DEBUG));
+  handler.handle(
+    new LogRecord({
+      msg: "Hello, world!",
+      args: [],
+      level: LogLevels.DEBUG,
+      loggerName: "default",
+    }),
+  );
 
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
 
-test("testFormatterAsFunction", function (): void {
+Deno.test("testFormatterWithEmptyMsg", function () {
+  const handler = new TestHandler("DEBUG", {
+    formatter: "test {levelName} {msg}",
+  });
+
+  handler.handle(
+    new LogRecord({
+      msg: "",
+      args: [],
+      level: LogLevels.DEBUG,
+      loggerName: "default",
+    }),
+  );
+
+  assertEquals(handler.messages, ["test DEBUG "]);
+});
+
+Deno.test("testFormatterAsFunction", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: (logRecord): string =>
       `fn formatter ${logRecord.levelName} ${logRecord.msg}`,
   });
 
-  handler.handle(new LogRecord("Hello, world!", [], LogLevels.ERROR));
+  handler.handle(
+    new LogRecord({
+      msg: "Hello, world!",
+      args: [],
+      level: LogLevels.ERROR,
+      loggerName: "default",
+    }),
+  );
 
   assertEquals(handler.messages, ["fn formatter ERROR Hello, world!"]);
 });
 
-test({
+Deno.test({
   name: "FileHandler with mode 'w' will wipe clean existing log file",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {
@@ -103,12 +138,26 @@ test({
     });
 
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("Hello World", [], LogLevels.WARNING));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "Hello World",
+        args: [],
+        level: LogLevels.WARNING,
+        loggerName: "default",
+      }),
+    );
     await fileHandler.destroy();
     const firstFileSize = (await Deno.stat(LOG_FILE)).size;
 
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("Hello World", [], LogLevels.WARNING));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "Hello World",
+        args: [],
+        level: LogLevels.WARNING,
+        loggerName: "default",
+      }),
+    );
     await fileHandler.destroy();
     const secondFileSize = (await Deno.stat(LOG_FILE)).size;
 
@@ -117,7 +166,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "FileHandler with mode 'x' will throw if log file already exists",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {
@@ -136,22 +185,22 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "RotatingFileHandler with mode 'w' will wipe clean existing log file and remove others",
   async fn() {
     Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("hello world"));
     Deno.writeFileSync(
       LOG_FILE + ".1",
-      new TextEncoder().encode("hello world")
+      new TextEncoder().encode("hello world"),
     );
     Deno.writeFileSync(
       LOG_FILE + ".2",
-      new TextEncoder().encode("hello world")
+      new TextEncoder().encode("hello world"),
     );
     Deno.writeFileSync(
       LOG_FILE + ".3",
-      new TextEncoder().encode("hello world")
+      new TextEncoder().encode("hello world"),
     );
 
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -172,13 +221,13 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "RotatingFileHandler with mode 'x' will throw if any log file already exists",
   async fn() {
     Deno.writeFileSync(
       LOG_FILE + ".3",
-      new TextEncoder().encode("hello world")
+      new TextEncoder().encode("hello world"),
     );
     const fileHandler = new RotatingFileHandler("WARNING", {
       filename: LOG_FILE,
@@ -191,7 +240,7 @@ test({
         await fileHandler.setup();
       },
       Deno.errors.AlreadyExists,
-      "Backup log file " + LOG_FILE + ".3 already exists"
+      "Backup log file " + LOG_FILE + ".3 already exists",
     );
 
     fileHandler.destroy();
@@ -200,7 +249,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler with first rollover, monitor step by step",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -211,13 +260,34 @@ test({
     });
     await fileHandler.setup();
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    ); // 'ERROR AAA\n' = 10 bytes
     fileHandler.flush();
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    );
     fileHandler.flush();
     assertEquals((await Deno.stat(LOG_FILE)).size, 20);
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    );
     fileHandler.flush();
     // Rollover occurred. Log file now has 1 record, rollover file has the original 2
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
@@ -229,7 +299,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler with first rollover, check all at once",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -240,9 +310,30 @@ test({
     });
     await fileHandler.setup();
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    ); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    );
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    );
 
     await fileHandler.destroy();
 
@@ -254,21 +345,21 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler with all backups rollover",
   async fn() {
     Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("original log file"));
     Deno.writeFileSync(
       LOG_FILE + ".1",
-      new TextEncoder().encode("original log.1 file")
+      new TextEncoder().encode("original log.1 file"),
     );
     Deno.writeFileSync(
       LOG_FILE + ".2",
-      new TextEncoder().encode("original log.2 file")
+      new TextEncoder().encode("original log.2 file"),
     );
     Deno.writeFileSync(
       LOG_FILE + ".3",
-      new TextEncoder().encode("original log.3 file")
+      new TextEncoder().encode("original log.3 file"),
     );
 
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -278,22 +369,29 @@ test({
       mode: "a",
     });
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    ); // 'ERROR AAA\n' = 10 bytes
     await fileHandler.destroy();
 
     const decoder = new TextDecoder();
     assertEquals(decoder.decode(Deno.readFileSync(LOG_FILE)), "ERROR AAA\n");
     assertEquals(
       decoder.decode(Deno.readFileSync(LOG_FILE + ".1")),
-      "original log file"
+      "original log file",
     );
     assertEquals(
       decoder.decode(Deno.readFileSync(LOG_FILE + ".2")),
-      "original log.1 file"
+      "original log.1 file",
     );
     assertEquals(
       decoder.decode(Deno.readFileSync(LOG_FILE + ".3")),
-      "original log.2 file"
+      "original log.2 file",
     );
     assert(!existsSync(LOG_FILE + ".4"));
 
@@ -304,7 +402,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler maxBytes cannot be less than 1",
   async fn() {
     await assertThrowsAsync(
@@ -318,12 +416,12 @@ test({
         await fileHandler.setup();
       },
       Error,
-      "maxBytes cannot be less than 1"
+      "maxBytes cannot be less than 1",
     );
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler maxBackupCount cannot be less than 1",
   async fn() {
     await assertThrowsAsync(
@@ -337,12 +435,12 @@ test({
         await fileHandler.setup();
       },
       Error,
-      "maxBackupCount cannot be less than 1"
+      "maxBackupCount cannot be less than 1",
     );
   },
 });
 
-test({
+Deno.test({
   name: "Window unload flushes buffer",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {
@@ -350,7 +448,14 @@ test({
       mode: "w",
     });
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    ); // 'ERROR AAA\n' = 10 bytes
 
     assertEquals((await Deno.stat(LOG_FILE)).size, 0);
     dispatchEvent(new Event("unload"));
@@ -360,7 +465,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler: rotate on byte length, not msg length",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -394,7 +499,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "FileHandler: Critical logs trigger immediate flush",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {
@@ -403,13 +508,27 @@ test({
     });
     await fileHandler.setup();
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      }),
+    );
 
     // ERROR won't trigger immediate flush
     const fileSize = (await Deno.stat(LOG_FILE)).size;
     assertEquals(fileSize, 0);
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.CRITICAL));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.CRITICAL,
+        loggerName: "default",
+      }),
+    );
 
     // CRITICAL will trigger immediate flush
     const fileSize2 = (await Deno.stat(LOG_FILE)).size;

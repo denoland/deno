@@ -1,13 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::colors;
 use crate::flags::Flags;
-use crate::fs::resolve_from_cwd;
-use crate::op_error::OpError;
-use serde::de;
+use crate::fs_util::resolve_from_cwd;
+use deno_core::error::custom_error;
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
+use deno_core::url;
+use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt;
+use std::hash::Hash;
 #[cfg(not(test))]
 use std::io;
 use std::path::{Path, PathBuf};
@@ -17,154 +22,65 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::Mutex;
-use url::Url;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
 /// Tri-state value for storing permission state
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Deserialize)]
 pub enum PermissionState {
-  Allow = 0,
-  Ask = 1,
-  Deny = 2,
+  Granted = 0,
+  Prompt = 1,
+  Denied = 2,
 }
 
 impl PermissionState {
-  /// Checks the permission state and returns the result.
-  pub fn check(self, msg: &str, flag_name: &str) -> Result<(), OpError> {
-    if self == PermissionState::Allow {
+  /// Check the permission state.
+  fn check(self, msg: &str, flag_name: &str) -> Result<(), AnyError> {
+    if self == PermissionState::Granted {
       log_perm_access(msg);
       return Ok(());
     }
-    let m = format!("{}, run again with the {} flag", msg, flag_name);
-    Err(OpError::permission_denied(m))
-  }
-  pub fn is_allow(self) -> bool {
-    self == PermissionState::Allow
-  }
-  /// If the state is "Allow" walk it back to the default "Ask"
-  /// Don't do anything if state is "Deny"
-  pub fn revoke(&mut self) {
-    if *self == PermissionState::Allow {
-      *self = PermissionState::Ask;
-    }
-  }
-  /// Requests the permission.
-  pub fn request(&mut self, msg: &str) -> PermissionState {
-    if *self != PermissionState::Ask {
-      return *self;
-    }
-    if permission_prompt(msg) {
-      *self = PermissionState::Allow;
-    } else {
-      *self = PermissionState::Deny;
-    }
-    *self
-  }
-
-  pub fn fork(self, value: bool) -> Result<PermissionState, OpError> {
-    if value && self == PermissionState::Deny {
-      Err(OpError::permission_denied(
-        "Arguments escalate parent permissions.".to_string(),
-      ))
-    } else if value {
-      Ok(PermissionState::Allow)
-    } else {
-      Ok(PermissionState::Deny)
-    }
-  }
-}
-
-impl From<usize> for PermissionState {
-  fn from(val: usize) -> Self {
-    match val {
-      0 => PermissionState::Allow,
-      1 => PermissionState::Ask,
-      2 => PermissionState::Deny,
-      _ => unreachable!(),
-    }
-  }
-}
-
-impl From<bool> for PermissionState {
-  fn from(val: bool) -> Self {
-    if val {
-      PermissionState::Allow
-    } else {
-      PermissionState::Ask
-    }
+    let message = format!("{}, run again with the {} flag", msg, flag_name);
+    Err(custom_error("PermissionDenied", message))
   }
 }
 
 impl fmt::Display for PermissionState {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      PermissionState::Allow => f.pad("granted"),
-      PermissionState::Ask => f.pad("prompt"),
-      PermissionState::Deny => f.pad("denied"),
+      PermissionState::Granted => f.pad("granted"),
+      PermissionState::Prompt => f.pad("prompt"),
+      PermissionState::Denied => f.pad("denied"),
     }
   }
 }
 
 impl Default for PermissionState {
   fn default() -> Self {
-    PermissionState::Ask
+    PermissionState::Prompt
   }
 }
 
-struct BoolPermVisitor;
-
-fn deserialize_permission_state<'de, D>(
-  d: D,
-) -> Result<PermissionState, D::Error>
-where
-  D: de::Deserializer<'de>,
-{
-  impl<'de> de::Visitor<'de> for BoolPermVisitor {
-    type Value = PermissionState;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-      formatter.write_str("a boolean value")
-    }
-
-    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
-    where
-      E: de::Error,
-    {
-      if value {
-        Ok(PermissionState::Allow)
-      } else {
-        Ok(PermissionState::Deny)
-      }
-    }
-  }
-  d.deserialize_bool(BoolPermVisitor)
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct UnaryPermission<T: Eq + Hash> {
+  pub global_state: PermissionState,
+  pub granted_list: HashSet<T>,
+  pub denied_list: HashSet<T>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct Permissions {
-  // Keep in sync with cli/js/permissions.ts
-  #[serde(deserialize_with = "deserialize_permission_state")]
-  pub allow_read: PermissionState,
-  pub read_whitelist: HashSet<PathBuf>,
-  #[serde(deserialize_with = "deserialize_permission_state")]
-  pub allow_write: PermissionState,
-  pub write_whitelist: HashSet<PathBuf>,
-  #[serde(deserialize_with = "deserialize_permission_state")]
-  pub allow_net: PermissionState,
-  pub net_whitelist: HashSet<String>,
-  #[serde(deserialize_with = "deserialize_permission_state")]
-  pub allow_env: PermissionState,
-  #[serde(deserialize_with = "deserialize_permission_state")]
-  pub allow_run: PermissionState,
-  #[serde(deserialize_with = "deserialize_permission_state")]
-  pub allow_plugin: PermissionState,
-  #[serde(deserialize_with = "deserialize_permission_state")]
-  pub allow_hrtime: PermissionState,
+  pub read: UnaryPermission<PathBuf>,
+  pub write: UnaryPermission<PathBuf>,
+  pub net: UnaryPermission<String>,
+  pub env: PermissionState,
+  pub run: PermissionState,
+  pub plugin: PermissionState,
+  pub hrtime: PermissionState,
 }
 
-fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> HashSet<PathBuf> {
-  whitelist
+fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
+  allowlist
     .iter()
     .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
     .collect()
@@ -172,17 +88,33 @@ fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> HashSet<PathBuf> {
 
 impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
+    fn state_from_flag_bool(flag: bool) -> PermissionState {
+      if flag {
+        PermissionState::Granted
+      } else {
+        PermissionState::Prompt
+      }
+    }
     Self {
-      allow_read: PermissionState::from(flags.allow_read),
-      read_whitelist: resolve_fs_whitelist(&flags.read_whitelist),
-      allow_write: PermissionState::from(flags.allow_write),
-      write_whitelist: resolve_fs_whitelist(&flags.write_whitelist),
-      allow_net: PermissionState::from(flags.allow_net),
-      net_whitelist: flags.net_whitelist.iter().cloned().collect(),
-      allow_env: PermissionState::from(flags.allow_env),
-      allow_run: PermissionState::from(flags.allow_run),
-      allow_plugin: PermissionState::from(flags.allow_plugin),
-      allow_hrtime: PermissionState::from(flags.allow_hrtime),
+      read: UnaryPermission::<PathBuf> {
+        global_state: state_from_flag_bool(flags.allow_read),
+        granted_list: resolve_fs_allowlist(&flags.read_allowlist),
+        ..Default::default()
+      },
+      write: UnaryPermission::<PathBuf> {
+        global_state: state_from_flag_bool(flags.allow_write),
+        granted_list: resolve_fs_allowlist(&flags.write_allowlist),
+        ..Default::default()
+      },
+      net: UnaryPermission::<String> {
+        global_state: state_from_flag_bool(flags.allow_net),
+        granted_list: flags.net_allowlist.iter().cloned().collect(),
+        ..Default::default()
+      },
+      env: state_from_flag_bool(flags.allow_env),
+      run: state_from_flag_bool(flags.allow_run),
+      plugin: state_from_flag_bool(flags.allow_plugin),
+      hrtime: state_from_flag_bool(flags.allow_hrtime),
     }
   }
 
@@ -194,7 +126,7 @@ impl Permissions {
       path.to_path_buf()
     } else {
       match self
-        .get_state_read(&Some(&current_dir().unwrap()))
+        .query_read(&Some(&current_dir().unwrap()))
         .check("", "")
       {
         Ok(_) => resolved_path.clone(),
@@ -206,33 +138,363 @@ impl Permissions {
 
   pub fn allow_all() -> Self {
     Self {
-      allow_read: PermissionState::from(true),
-      allow_write: PermissionState::from(true),
-      allow_net: PermissionState::from(true),
-      allow_env: PermissionState::from(true),
-      allow_run: PermissionState::from(true),
-      allow_plugin: PermissionState::from(true),
-      allow_hrtime: PermissionState::from(true),
-      ..Default::default()
+      read: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      write: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      net: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      env: PermissionState::Granted,
+      run: PermissionState::Granted,
+      plugin: PermissionState::Granted,
+      hrtime: PermissionState::Granted,
     }
   }
 
-  pub fn check_run(&self) -> Result<(), OpError> {
-    self
-      .allow_run
-      .check("access to run a subprocess", "--allow-run")
-  }
-
-  fn get_state_read(&self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.read_whitelist)) {
-      return PermissionState::Allow;
+  pub fn query_read(&self, path: &Option<&Path>) -> PermissionState {
+    let path = path.map(|p| resolve_from_cwd(p).unwrap());
+    if self.read.global_state == PermissionState::Denied
+      && match path.as_ref() {
+        None => true,
+        Some(path) => check_path_blocklist(path, &self.read.denied_list),
+      }
+    {
+      return PermissionState::Denied;
     }
-    self.allow_read
+    if self.read.global_state == PermissionState::Granted
+      || match path.as_ref() {
+        None => false,
+        Some(path) => check_path_allowlist(path, &self.read.granted_list),
+      }
+    {
+      return PermissionState::Granted;
+    }
+    PermissionState::Prompt
   }
 
-  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
+  pub fn query_write(&self, path: &Option<&Path>) -> PermissionState {
+    let path = path.map(|p| resolve_from_cwd(p).unwrap());
+    if self.write.global_state == PermissionState::Denied
+      && match path.as_ref() {
+        None => true,
+        Some(path) => check_path_blocklist(path, &self.write.denied_list),
+      }
+    {
+      return PermissionState::Denied;
+    }
+    if self.write.global_state == PermissionState::Granted
+      || match path.as_ref() {
+        None => false,
+        Some(path) => check_path_allowlist(path, &self.write.granted_list),
+      }
+    {
+      return PermissionState::Granted;
+    }
+    PermissionState::Prompt
+  }
+
+  pub fn query_net(&self, host: &str, port: Option<u16>) -> PermissionState {
+    if self.net.global_state == PermissionState::Denied
+      || check_host_and_port_list(host, port, &self.net.denied_list)
+    {
+      return PermissionState::Denied;
+    }
+    if self.net.global_state == PermissionState::Granted
+      || check_host_and_port_list(host, port, &self.net.granted_list)
+    {
+      return PermissionState::Granted;
+    }
+    PermissionState::Prompt
+  }
+
+  pub fn query_net_url(
+    &self,
+    url: &Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    if url.is_none() {
+      return Ok(self.net.global_state);
+    }
+    let url: &str = url.unwrap();
+    // If url is invalid, then throw a TypeError.
+    let parsed = url::Url::parse(url)?;
+    // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
+    // Note that host:port combos are parsed as scheme:path
+    if parsed.host().is_none() {
+      return Err(custom_error(
+        "URIError",
+        "invalid urlormat: <scheme>://<host>[:port][/subpath]",
+      ));
+    }
+    Ok(self.query_net(
+      &parsed.host().unwrap().to_string(),
+      parsed.port_or_known_default(),
+    ))
+  }
+
+  pub fn query_env(&self) -> PermissionState {
+    self.env
+  }
+
+  pub fn query_run(&self) -> PermissionState {
+    self.run
+  }
+
+  pub fn query_plugin(&self) -> PermissionState {
+    self.plugin
+  }
+
+  pub fn query_hrtime(&self) -> PermissionState {
+    self.hrtime
+  }
+
+  pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let (resolved_path, display_path) = self.resolved_and_display_path(path);
+      let state = self.query_read(&Some(&resolved_path));
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!(
+          "Deno requests read access to \"{}\"",
+          display_path.display()
+        )) {
+          self
+            .read
+            .granted_list
+            .retain(|path| !path.starts_with(&resolved_path));
+          self.read.granted_list.insert(resolved_path);
+          return PermissionState::Granted;
+        } else {
+          self
+            .read
+            .denied_list
+            .retain(|path| !resolved_path.starts_with(path));
+          self.read.denied_list.insert(resolved_path);
+          self.read.global_state = PermissionState::Denied;
+          return PermissionState::Denied;
+        }
+      }
+      state
+    } else {
+      let state = self.query_read(&None);
+      if state == PermissionState::Prompt {
+        if permission_prompt("Deno requests read access") {
+          self.read.granted_list.clear();
+          self.read.global_state = PermissionState::Granted;
+          return PermissionState::Granted;
+        } else {
+          self.read.global_state = PermissionState::Denied;
+          return PermissionState::Denied;
+        }
+      }
+      state
+    }
+  }
+
+  pub fn request_write(&mut self, path: &Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let (resolved_path, display_path) = self.resolved_and_display_path(path);
+      let state = self.query_write(&Some(&resolved_path));
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!(
+          "Deno requests write access to \"{}\"",
+          display_path.display()
+        )) {
+          self
+            .write
+            .granted_list
+            .retain(|path| !path.starts_with(&resolved_path));
+          self.write.granted_list.insert(resolved_path);
+          return PermissionState::Granted;
+        } else {
+          self
+            .write
+            .denied_list
+            .retain(|path| !resolved_path.starts_with(path));
+          self.write.denied_list.insert(resolved_path);
+          self.write.global_state = PermissionState::Denied;
+          return PermissionState::Denied;
+        }
+      }
+      state
+    } else {
+      let state = self.query_write(&None);
+      if state == PermissionState::Prompt {
+        if permission_prompt("Deno requests write access") {
+          self.write.granted_list.clear();
+          self.write.global_state = PermissionState::Granted;
+          return PermissionState::Granted;
+        } else {
+          self.write.global_state = PermissionState::Denied;
+          return PermissionState::Denied;
+        }
+      }
+      state
+    }
+  }
+
+  pub fn request_net(
+    &mut self,
+    url: &Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    if let Some(url) = url {
+      let state = self.query_net_url(&Some(url))?;
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!(
+          "Deno requests network access to \"{}\"",
+          url
+        )) {
+          self.net.granted_list.insert(url.to_string());
+          return Ok(PermissionState::Granted);
+        } else {
+          self.net.denied_list.insert(url.to_string());
+          self.net.global_state = PermissionState::Denied;
+          return Ok(PermissionState::Denied);
+        }
+      }
+      Ok(state)
+    } else {
+      let state = self.query_net_url(&None)?;
+      if state == PermissionState::Prompt {
+        if permission_prompt("Deno requests network access") {
+          self.net.granted_list.clear();
+          self.net.global_state = PermissionState::Granted;
+          return Ok(PermissionState::Granted);
+        } else {
+          self.net.global_state = PermissionState::Denied;
+          return Ok(PermissionState::Denied);
+        }
+      }
+      Ok(state)
+    }
+  }
+
+  pub fn request_env(&mut self) -> PermissionState {
+    if self.env == PermissionState::Prompt {
+      if permission_prompt("Deno requests access to environment variables") {
+        self.env = PermissionState::Granted;
+      } else {
+        self.env = PermissionState::Denied;
+      }
+    }
+    self.env
+  }
+
+  pub fn request_run(&mut self) -> PermissionState {
+    if self.run == PermissionState::Prompt {
+      if permission_prompt("Deno requests to access to run a subprocess") {
+        self.run = PermissionState::Granted;
+      } else {
+        self.run = PermissionState::Denied;
+      }
+    }
+    self.run
+  }
+
+  pub fn request_plugin(&mut self) -> PermissionState {
+    if self.plugin == PermissionState::Prompt {
+      if permission_prompt("Deno requests to open plugins") {
+        self.plugin = PermissionState::Granted;
+      } else {
+        self.plugin = PermissionState::Denied;
+      }
+    }
+    self.plugin
+  }
+
+  pub fn request_hrtime(&mut self) -> PermissionState {
+    if self.hrtime == PermissionState::Prompt {
+      if permission_prompt("Deno requests access to high precision time") {
+        self.hrtime = PermissionState::Granted;
+      } else {
+        self.hrtime = PermissionState::Denied;
+      }
+    }
+    self.hrtime
+  }
+
+  pub fn revoke_read(&mut self, path: &Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let path = resolve_from_cwd(path).unwrap();
+      self
+        .read
+        .granted_list
+        .retain(|path_| !path_.starts_with(&path));
+    } else {
+      self.read.granted_list.clear();
+      if self.read.global_state == PermissionState::Granted {
+        self.read.global_state = PermissionState::Prompt;
+      }
+    }
+    self.query_read(path)
+  }
+
+  pub fn revoke_write(&mut self, path: &Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let path = resolve_from_cwd(path).unwrap();
+      self
+        .write
+        .granted_list
+        .retain(|path_| !path_.starts_with(&path));
+    } else {
+      self.write.granted_list.clear();
+      if self.write.global_state == PermissionState::Granted {
+        self.write.global_state = PermissionState::Prompt;
+      }
+    }
+    self.query_write(path)
+  }
+
+  pub fn revoke_net(
+    &mut self,
+    url: &Option<&str>,
+  ) -> Result<PermissionState, AnyError> {
+    if let Some(url) = url {
+      self.net.granted_list.remove(*url);
+    } else {
+      self.net.granted_list.clear();
+      if self.net.global_state == PermissionState::Granted {
+        self.net.global_state = PermissionState::Prompt;
+      }
+    }
+    self.query_net_url(url)
+  }
+
+  pub fn revoke_env(&mut self) -> PermissionState {
+    if self.env == PermissionState::Granted {
+      self.env = PermissionState::Prompt;
+    }
+    self.env
+  }
+
+  pub fn revoke_run(&mut self) -> PermissionState {
+    if self.run == PermissionState::Granted {
+      self.run = PermissionState::Prompt;
+    }
+    self.run
+  }
+
+  pub fn revoke_plugin(&mut self) -> PermissionState {
+    if self.plugin == PermissionState::Granted {
+      self.plugin = PermissionState::Prompt;
+    }
+    self.plugin
+  }
+
+  pub fn revoke_hrtime(&mut self) -> PermissionState {
+    if self.hrtime == PermissionState::Granted {
+      self.hrtime = PermissionState::Prompt;
+    }
+    self.hrtime
+  }
+
+  pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
-    self.get_state_read(&Some(&resolved_path)).check(
+    self.query_read(&Some(&resolved_path)).check(
       &format!("read access to \"{}\"", display_path.display()),
       "--allow-read",
     )
@@ -244,217 +506,82 @@ impl Permissions {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
     self
-      .get_state_read(&Some(&resolved_path))
+      .query_read(&Some(&resolved_path))
       .check(&format!("read access to <{}>", display), "--allow-read")
   }
 
-  fn get_state_write(&self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.write_whitelist)) {
-      return PermissionState::Allow;
-    }
-    self.allow_write
-  }
-
-  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
-    self.get_state_write(&Some(&resolved_path)).check(
+    self.query_write(&Some(&resolved_path)).check(
       &format!("write access to \"{}\"", display_path.display()),
       "--allow-write",
     )
   }
 
-  fn get_state_net(&self, host: &str, port: Option<u16>) -> PermissionState {
-    if check_host_and_port_whitelist(host, port, &self.net_whitelist) {
-      return PermissionState::Allow;
-    }
-    self.allow_net
-  }
-
-  fn get_state_net_url(
-    &self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, OpError> {
-    if url.is_none() {
-      return Ok(self.allow_net);
-    }
-    let url: &str = url.unwrap();
-    // If url is invalid, then throw a TypeError.
-    let parsed = Url::parse(url).map_err(OpError::from)?;
-    Ok(
-      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
-    )
-  }
-
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
-    self.get_state_net(hostname, Some(port)).check(
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), AnyError> {
+    self.query_net(hostname, Some(port)).check(
       &format!("network access to \"{}:{}\"", hostname, port),
       "--allow-net",
     )
   }
 
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
-    let host = url
-      .host_str()
-      .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    let host = url.host_str().ok_or_else(|| uri_error("missing host"))?;
     self
-      .get_state_net(host, url.port())
+      .query_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
-  pub fn check_env(&self) -> Result<(), OpError> {
+  /// A helper function that determines if the module specifier is a local or
+  /// remote, and performs a read or net check for the specifier.
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let url = specifier.as_url();
+    if url.scheme() == "file" {
+      let path = url.to_file_path().unwrap();
+      self.check_read(&path)
+    } else {
+      self.check_net_url(url)
+    }
+  }
+
+  pub fn check_env(&self) -> Result<(), AnyError> {
     self
-      .allow_env
+      .env
       .check("access to environment variables", "--allow-env")
   }
 
-  pub fn check_plugin(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_run(&self) -> Result<(), AnyError> {
+    self.run.check("access to run a subprocess", "--allow-run")
+  }
+
+  pub fn check_plugin(&self, path: &Path) -> Result<(), AnyError> {
     let (_, display_path) = self.resolved_and_display_path(path);
-    self.allow_plugin.check(
+    self.plugin.check(
       &format!("access to open a plugin: {}", display_path.display()),
       "--allow-plugin",
     )
   }
 
-  pub fn request_run(&mut self) -> PermissionState {
+  pub fn check_hrtime(&self) -> Result<(), AnyError> {
     self
-      .allow_run
-      .request("Deno requests to access to run a subprocess")
+      .hrtime
+      .check("access to high precision time", "--allow-hrtime")
+  }
+}
+
+impl deno_fetch::FetchPermissions for Permissions {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    Permissions::check_net_url(self, url)
   }
 
-  pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
-    let paths = path.map(|p| self.resolved_and_display_path(p));
-    if let Some((p, _)) = paths.as_ref() {
-      if check_path_white_list(&p, &self.read_whitelist) {
-        return PermissionState::Allow;
-      }
-    };
-    self.allow_read.request(&match paths {
-      None => "Deno requests read access".to_string(),
-      Some((_, display_path)) => format!(
-        "Deno requests read access to \"{}\"",
-        display_path.display()
-      ),
-    })
-  }
-
-  pub fn request_write(&mut self, path: &Option<&Path>) -> PermissionState {
-    let paths = path.map(|p| self.resolved_and_display_path(p));
-    if let Some((p, _)) = paths.as_ref() {
-      if check_path_white_list(&p, &self.write_whitelist) {
-        return PermissionState::Allow;
-      }
-    };
-    self.allow_write.request(&match paths {
-      None => "Deno requests write access".to_string(),
-      Some((_, display_path)) => format!(
-        "Deno requests write access to \"{}\"",
-        display_path.display()
-      ),
-    })
-  }
-
-  pub fn request_net(
-    &mut self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, OpError> {
-    if self.get_state_net_url(url)? == PermissionState::Ask {
-      return Ok(self.allow_net.request(&match url {
-        None => "Deno requests network access".to_string(),
-        Some(url) => format!("Deno requests network access to \"{}\"", url),
-      }));
-    };
-    self.get_state_net_url(url)
-  }
-
-  pub fn request_env(&mut self) -> PermissionState {
-    self
-      .allow_env
-      .request("Deno requests to access to environment variables")
-  }
-
-  pub fn request_hrtime(&mut self) -> PermissionState {
-    self
-      .allow_hrtime
-      .request("Deno requests to access to high precision time")
-  }
-
-  pub fn request_plugin(&mut self) -> PermissionState {
-    self.allow_plugin.request("Deno requests to open plugins")
-  }
-
-  pub fn get_permission_state(
-    &self,
-    name: &str,
-    url: &Option<&str>,
-    path: &Option<&Path>,
-  ) -> Result<PermissionState, OpError> {
-    let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    let path = path.as_deref();
-    match name {
-      "run" => Ok(self.allow_run),
-      "read" => Ok(self.get_state_read(&path)),
-      "write" => Ok(self.get_state_write(&path)),
-      "net" => self.get_state_net_url(url),
-      "env" => Ok(self.allow_env),
-      "plugin" => Ok(self.allow_plugin),
-      "hrtime" => Ok(self.allow_hrtime),
-      n => Err(OpError::other(format!("No such permission name: {}", n))),
-    }
-  }
-
-  #[allow(clippy::too_many_arguments)]
-  pub fn fork(
-    &self,
-    allow_read: bool,
-    read_whitelist: HashSet<PathBuf>,
-    allow_write: bool,
-    write_whitelist: HashSet<PathBuf>,
-    allow_net: bool,
-    net_whitelist: HashSet<String>,
-    allow_env: bool,
-    allow_run: bool,
-    allow_plugin: bool,
-    allow_hrtime: bool,
-  ) -> Result<Permissions, OpError> {
-    let allow_read = self.allow_read.fork(allow_read)?;
-    let allow_write = self.allow_write.fork(allow_write)?;
-    let allow_net = self.allow_net.fork(allow_net)?;
-    let allow_env = self.allow_env.fork(allow_env)?;
-    let allow_run = self.allow_run.fork(allow_run)?;
-    let allow_plugin = self.allow_plugin.fork(allow_plugin)?;
-    let allow_hrtime = self.allow_hrtime.fork(allow_hrtime)?;
-    if !(read_whitelist.is_subset(&self.read_whitelist)) {
-      Err(OpError::permission_denied(format!(
-        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `read_whitelist`",
-        self.read_whitelist
-      )))
-    } else if !(write_whitelist.is_subset(&self.write_whitelist)) {
-      Err(OpError::permission_denied(format!(
-        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `write_whitelist`",
-        self.write_whitelist
-      )))
-    } else if !(net_whitelist.is_subset(&self.net_whitelist)) {
-      Err(OpError::permission_denied(format!(
-        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `net_whitelist`",
-        self.net_whitelist
-      )))
-    } else {
-      Ok(Permissions {
-        allow_read,
-        read_whitelist,
-        allow_write,
-        write_whitelist,
-        allow_net,
-        net_whitelist,
-        allow_env,
-        allow_run,
-        allow_plugin,
-        allow_hrtime,
-      })
-    }
+  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+    Permissions::check_read(self, p)
   }
 }
 
@@ -470,7 +597,7 @@ fn permission_prompt(message: &str) -> bool {
     PERMISSION_EMOJI, message
   );
   // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{}", colors::bold(msg));
+  eprint!("{}", colors::bold(&msg));
   loop {
     let mut input = String::new();
     let stdin = io::stdin();
@@ -486,7 +613,7 @@ fn permission_prompt(message: &str) -> bool {
         // If we don't get a recognized option try again.
         let msg_again =
           format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
-        eprint!("{}", colors::bold(msg_again));
+        eprint!("{}", colors::bold(&msg_again));
       }
     };
   }
@@ -516,36 +643,42 @@ fn permission_prompt(_message: &str) -> bool {
 fn log_perm_access(message: &str) {
   debug!(
     "{}",
-    colors::bold(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
+    colors::bold(&format!("{}️  Granted {}", PERMISSION_EMOJI, message))
   );
 }
 
-fn check_path_white_list(path: &Path, white_list: &HashSet<PathBuf>) -> bool {
-  let mut path_buf = PathBuf::from(path);
-  loop {
-    if white_list.contains(&path_buf) {
+fn check_path_allowlist(path: &Path, allowlist: &HashSet<PathBuf>) -> bool {
+  for path_ in allowlist {
+    if path.starts_with(path_) {
       return true;
-    }
-    if !path_buf.pop() {
-      break;
     }
   }
   false
 }
 
-fn check_host_and_port_whitelist(
+fn check_path_blocklist(path: &Path, blocklist: &HashSet<PathBuf>) -> bool {
+  for path_ in blocklist {
+    if path_.starts_with(path) {
+      return true;
+    }
+  }
+  false
+}
+
+fn check_host_and_port_list(
   host: &str,
   port: Option<u16>,
-  whitelist: &HashSet<String>,
+  allowlist: &HashSet<String>,
 ) -> bool {
-  whitelist.contains(host)
+  allowlist.contains(host)
     || (port.is_some()
-      && whitelist.contains(&format!("{}:{}", host, port.unwrap())))
+      && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::serde_json;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -554,15 +687,15 @@ mod tests {
 
   #[test]
   fn check_paths() {
-    let whitelist = vec![
+    let allowlist = vec![
       PathBuf::from("/a/specific/dir/name"),
       PathBuf::from("/a/specific"),
       PathBuf::from("/b/c"),
     ];
 
     let perms = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist.clone(),
-      write_whitelist: whitelist,
+      read_allowlist: allowlist.clone(),
+      write_allowlist: allowlist,
       ..Default::default()
     });
 
@@ -616,12 +749,13 @@ mod tests {
   #[test]
   fn test_check_net() {
     let perms = Permissions::from_flags(&Flags {
-      net_whitelist: svec![
+      net_allowlist: svec![
         "localhost",
         "deno.land",
         "github.com:3000",
         "127.0.0.1",
-        "172.16.0.2:8000"
+        "172.16.0.2:8000",
+        "www.github.com:443"
       ],
       ..Default::default()
     });
@@ -684,6 +818,8 @@ mod tests {
       ("https://172.16.0.2:6000", false),
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
+      // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress
+      ("https://www.github.com:443/robots.txt", true),
     ];
 
     for (url_str, is_ok) in url_tests.iter() {
@@ -697,228 +833,98 @@ mod tests {
   }
 
   #[test]
-  fn test_permissions_request_run() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = Permissions::from_flags(&Flags {
+  fn check_specifiers() {
+    let read_allowlist = if cfg!(target_os = "windows") {
+      vec![PathBuf::from("C:\\a")]
+    } else {
+      vec![PathBuf::from("/a")]
+    };
+    let perms = Permissions::from_flags(&Flags {
+      read_allowlist,
+      net_allowlist: svec!["localhost"],
       ..Default::default()
     });
-    set_prompt_result(true);
-    assert_eq!(perms0.request_run(), PermissionState::Allow);
 
-    let mut perms1 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(perms1.request_run(), PermissionState::Deny);
-    drop(guard);
-  }
+    let mut fixtures = vec![
+      (
+        ModuleSpecifier::resolve_url_or_path("http://localhost:4545/mod.ts")
+          .unwrap(),
+        true,
+      ),
+      (
+        ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
+          .unwrap(),
+        false,
+      ),
+    ];
 
-  #[test]
-  fn test_permissions_request_read() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let whitelist = vec![PathBuf::from("/foo/bar")];
-    let mut perms0 = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist.clone(),
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    // If the whitelist contains the path, then the result is `allow`
-    // regardless of prompt result
-    assert_eq!(
-      perms0.request_read(&Some(Path::new("/foo/bar"))),
-      PermissionState::Allow
-    );
+    if cfg!(target_os = "windows") {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///C:/b/mod.ts").unwrap(),
+        false,
+      ));
+    } else {
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///a/mod.ts").unwrap(),
+        true,
+      ));
+      fixtures.push((
+        ModuleSpecifier::resolve_url_or_path("file:///b/mod.ts").unwrap(),
+        false,
+      ));
+    }
 
-    let mut perms1 = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist.clone(),
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(
-      perms1.request_read(&Some(Path::new("/foo/baz"))),
-      PermissionState::Allow
-    );
-
-    let mut perms2 = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist,
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(
-      perms2.request_read(&Some(Path::new("/foo/baz"))),
-      PermissionState::Deny
-    );
-    drop(guard);
-  }
-
-  #[test]
-  fn test_permissions_request_write() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let whitelist = vec![PathBuf::from("/foo/bar")];
-    let mut perms0 = Permissions::from_flags(&Flags {
-      write_whitelist: whitelist.clone(),
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    // If the whitelist contains the path, then the result is `allow`
-    // regardless of prompt result
-    assert_eq!(
-      perms0.request_write(&Some(Path::new("/foo/bar"))),
-      PermissionState::Allow
-    );
-
-    let mut perms1 = Permissions::from_flags(&Flags {
-      write_whitelist: whitelist.clone(),
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(
-      perms1.request_write(&Some(Path::new("/foo/baz"))),
-      PermissionState::Allow
-    );
-
-    let mut perms2 = Permissions::from_flags(&Flags {
-      write_whitelist: whitelist,
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(
-      perms2.request_write(&Some(Path::new("/foo/baz"))),
-      PermissionState::Deny
-    );
-    drop(guard);
-  }
-
-  #[test]
-  fn test_permission_request_net() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let whitelist = svec!["localhost:8080"];
-
-    let mut perms0 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist.clone(),
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    // If the url matches the whitelist item, then the result is `allow`
-    // regardless of prompt result
-    assert_eq!(
-      perms0
-        .request_net(&Some("http://localhost:8080/"))
-        .expect("Testing expect"),
-      PermissionState::Allow
-    );
-
-    let mut perms1 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist.clone(),
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(
-      perms1
-        .request_net(&Some("http://deno.land/"))
-        .expect("Testing expect"),
-      PermissionState::Allow
-    );
-
-    let mut perms2 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist.clone(),
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(
-      perms2
-        .request_net(&Some("http://deno.land/"))
-        .expect("Testing expect"),
-      PermissionState::Deny
-    );
-
-    let mut perms3 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist,
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert!(perms3.request_net(&Some(":")).is_err());
-    drop(guard);
-  }
-
-  #[test]
-  fn test_permissions_request_env() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(perms0.request_env(), PermissionState::Allow);
-
-    let mut perms1 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(perms1.request_env(), PermissionState::Deny);
-    drop(guard);
-  }
-
-  #[test]
-  fn test_permissions_request_plugin() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(perms0.request_plugin(), PermissionState::Allow);
-
-    let mut perms1 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(perms1.request_plugin(), PermissionState::Deny);
-    drop(guard);
-  }
-
-  #[test]
-  fn test_permissions_request_hrtime() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(perms0.request_hrtime(), PermissionState::Allow);
-
-    let mut perms1 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(false);
-    assert_eq!(perms1.request_hrtime(), PermissionState::Deny);
-    drop(guard);
+    for (specifier, expected) in fixtures {
+      assert_eq!(perms.check_specifier(&specifier).is_ok(), expected);
+    }
   }
 
   #[test]
   fn test_deserialize_perms() {
     let json_perms = r#"
     {
-      "allow_read": true,
-      "read_whitelist": [],
-      "allow_write": true,
-      "write_whitelist": [],
-      "allow_net": true,
-      "net_whitelist": [],
-      "allow_env": true,
-      "allow_run": true,
-      "allow_plugin": true,
-      "allow_hrtime": true
+      "read": {
+        "global_state": "Granted",
+        "granted_list": [],
+        "denied_list": []
+      },
+      "write": {
+        "global_state": "Granted",
+        "granted_list": [],
+        "denied_list": []
+      },
+      "net": {
+        "global_state": "Granted",
+        "granted_list": [],
+        "denied_list": []
+      },
+      "env": "Granted",
+      "run": "Granted",
+      "plugin": "Granted",
+      "hrtime": "Granted"
     }
     "#;
     let perms0 = Permissions {
-      allow_read: PermissionState::Allow,
-      allow_write: PermissionState::Allow,
-      allow_net: PermissionState::Allow,
-      allow_hrtime: PermissionState::Allow,
-      allow_env: PermissionState::Allow,
-      allow_plugin: PermissionState::Allow,
-      allow_run: PermissionState::Allow,
-      read_whitelist: HashSet::new(),
-      write_whitelist: HashSet::new(),
-      net_whitelist: HashSet::new(),
+      read: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      write: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      net: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      env: PermissionState::Granted,
+      run: PermissionState::Granted,
+      hrtime: PermissionState::Granted,
+      plugin: PermissionState::Granted,
     };
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
@@ -926,69 +932,164 @@ mod tests {
   }
 
   #[test]
-  fn test_fork() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let perms0 = Permissions::from_flags(&Flags {
-      ..Default::default()
-    });
-    set_prompt_result(true);
-    assert_eq!(
-      perms0
-        .fork(
-          true,
-          HashSet::new(),
-          true,
-          HashSet::new(),
-          true,
-          HashSet::new(),
-          true,
-          true,
-          false,
-          false,
-        )
-        .expect("Testing expect"),
-      Permissions {
-        allow_read: PermissionState::Allow,
-        read_whitelist: HashSet::new(),
-        allow_write: PermissionState::Allow,
-        write_whitelist: HashSet::new(),
-        allow_net: PermissionState::Allow,
-        net_whitelist: HashSet::new(),
-        allow_env: PermissionState::Allow,
-        allow_run: PermissionState::Allow,
-        allow_plugin: PermissionState::Deny,
-        allow_hrtime: PermissionState::Deny,
-      }
-    );
-    set_prompt_result(false);
-    assert_eq!(
-      perms0
-        .fork(
-          true,
-          HashSet::new(),
-          true,
-          HashSet::new(),
-          true,
-          HashSet::new(),
-          true,
-          true,
-          false,
-          false,
-        )
-        .expect("Testing expect"),
-      Permissions {
-        allow_read: PermissionState::Allow,
-        read_whitelist: HashSet::new(),
-        allow_write: PermissionState::Allow,
-        write_whitelist: HashSet::new(),
-        allow_net: PermissionState::Allow,
-        net_whitelist: HashSet::new(),
-        allow_env: PermissionState::Allow,
-        allow_run: PermissionState::Allow,
-        allow_plugin: PermissionState::Deny,
-        allow_hrtime: PermissionState::Deny,
-      }
-    );
-    drop(guard);
+  fn test_query() {
+    let perms1 = Permissions {
+      read: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      write: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      net: UnaryPermission {
+        global_state: PermissionState::Granted,
+        ..Default::default()
+      },
+      env: PermissionState::Granted,
+      run: PermissionState::Granted,
+      plugin: PermissionState::Granted,
+      hrtime: PermissionState::Granted,
+    };
+    let perms2 = Permissions {
+      read: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        ..Default::default()
+      },
+      write: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        ..Default::default()
+      },
+      net: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        granted_list: ["127.0.0.1:8000".to_string()].iter().cloned().collect(),
+        ..Default::default()
+      },
+      env: PermissionState::Prompt,
+      run: PermissionState::Prompt,
+      plugin: PermissionState::Prompt,
+      hrtime: PermissionState::Prompt,
+    };
+    #[rustfmt::skip]
+    {
+      assert_eq!(perms1.query_read(&None), PermissionState::Granted);
+      assert_eq!(perms1.query_read(&Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.query_read(&None), PermissionState::Prompt);
+      assert_eq!(perms2.query_read(&Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.query_read(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms1.query_write(&None), PermissionState::Granted);
+      assert_eq!(perms1.query_write(&Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.query_write(&None), PermissionState::Prompt);
+      assert_eq!(perms2.query_write(&Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.query_write(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms1.query_net_url(&None).unwrap(), PermissionState::Granted);
+      assert_eq!(perms1.query_net_url(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
+      assert_eq!(perms2.query_net_url(&None).unwrap(), PermissionState::Prompt);
+      assert_eq!(perms2.query_net_url(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
+      assert_eq!(perms1.query_env(), PermissionState::Granted);
+      assert_eq!(perms2.query_env(), PermissionState::Prompt);
+      assert_eq!(perms1.query_run(), PermissionState::Granted);
+      assert_eq!(perms2.query_run(), PermissionState::Prompt);
+      assert_eq!(perms1.query_plugin(), PermissionState::Granted);
+      assert_eq!(perms2.query_plugin(), PermissionState::Prompt);
+      assert_eq!(perms1.query_hrtime(), PermissionState::Granted);
+      assert_eq!(perms2.query_hrtime(), PermissionState::Prompt);
+    };
+  }
+
+  #[test]
+  fn test_request() {
+    let mut perms = Permissions {
+      read: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Default::default()
+      },
+      write: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Default::default()
+      },
+      net: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Default::default()
+      },
+      env: PermissionState::Prompt,
+      run: PermissionState::Prompt,
+      plugin: PermissionState::Prompt,
+      hrtime: PermissionState::Prompt,
+    };
+    #[rustfmt::skip]
+    {
+      let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+      set_prompt_result(true);
+      assert_eq!(perms.request_read(&Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms.query_read(&None), PermissionState::Prompt);
+      set_prompt_result(false);
+      assert_eq!(perms.request_read(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      set_prompt_result(false);
+      assert_eq!(perms.request_write(&Some(&Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.query_write(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      set_prompt_result(true);
+      assert_eq!(perms.request_write(&None), PermissionState::Denied);
+      set_prompt_result(true);
+      assert_eq!(perms.request_net(&None).unwrap(), PermissionState::Granted);
+      set_prompt_result(false);
+      assert_eq!(perms.request_net(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
+      set_prompt_result(true);
+      assert_eq!(perms.request_env(), PermissionState::Granted);
+      set_prompt_result(false);
+      assert_eq!(perms.request_env(), PermissionState::Granted);
+      set_prompt_result(false);
+      assert_eq!(perms.request_run(), PermissionState::Denied);
+      set_prompt_result(true);
+      assert_eq!(perms.request_run(), PermissionState::Denied);
+      set_prompt_result(true);
+      assert_eq!(perms.request_plugin(), PermissionState::Granted);
+      set_prompt_result(false);
+      assert_eq!(perms.request_plugin(), PermissionState::Granted);
+      set_prompt_result(false);
+      assert_eq!(perms.request_hrtime(), PermissionState::Denied);
+      set_prompt_result(true);
+      assert_eq!(perms.request_hrtime(), PermissionState::Denied);
+    };
+  }
+
+  #[test]
+  fn test_revoke() {
+    let mut perms = Permissions {
+      read: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        ..Default::default()
+      },
+      write: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        ..Default::default()
+      },
+      net: UnaryPermission {
+        global_state: PermissionState::Denied,
+        ..Default::default()
+      },
+      env: PermissionState::Granted,
+      run: PermissionState::Granted,
+      plugin: PermissionState::Prompt,
+      hrtime: PermissionState::Denied,
+    };
+    #[rustfmt::skip]
+    {
+      assert_eq!(perms.revoke_read(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.revoke_read(&Some(&Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.query_read(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.revoke_write(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.revoke_write(&None), PermissionState::Prompt);
+      assert_eq!(perms.query_write(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.revoke_net(&None).unwrap(), PermissionState::Denied);
+      assert_eq!(perms.revoke_env(), PermissionState::Prompt);
+      assert_eq!(perms.revoke_run(), PermissionState::Prompt);
+      assert_eq!(perms.revoke_plugin(), PermissionState::Prompt);
+      assert_eq!(perms.revoke_hrtime(), PermissionState::Denied);
+    };
   }
 }

@@ -14,8 +14,9 @@ It's built on V8, Rust, and Tokio.
 - Has built-in utilities like a dependency inspector (`deno info`) and a code
   formatter (`deno fmt`).
 - Has
-  [a set of reviewed (audited) standard modules](https://github.com/denoland/deno/tree/master/std)
-  that are guaranteed to work with Deno.
+  [a set of reviewed (audited) standard
+  modules](https://github.com/denoland/deno/tree/master/std) that are guaranteed
+  to work with Deno.
 - Scripts can be bundled into a single JavaScript file.
 
 ## Philosophy
@@ -35,7 +36,7 @@ have been historically written with bash or python.
 ## Goals
 
 - Only ship a single executable (`deno`).
-- Provide Secure Defaults
+- Provide Secure Defaults.
   - Unless specifically allowed, scripts can't access files, the environment, or
     the network.
 - Browser compatible: The subset of Deno programs which are written completely
@@ -44,12 +45,12 @@ have been historically written with bash or python.
 - Provide built-in tooling like unit testing, code formatting, and linting to
   improve developer experience.
 - Does not leak V8 concepts into user land.
-- Be able to serve HTTP efficiently
+- Be able to serve HTTP efficiently.
 
 ## Comparison to Node.js
 
-- Deno does not use `npm`
-  - It uses modules referenced as URLs or file paths
+- Deno does not use `npm`.
+  - It uses modules referenced as URLs or file paths.
 - Deno does not use `package.json` in its module resolution algorithm.
 - All async actions in Deno return a promise. Thus Deno provides different APIs
   than Node.
@@ -59,7 +60,7 @@ have been historically written with bash or python.
   imported via URLs:
 
   ```javascript
-  import * as log from "https://deno.land/std/log/mod.ts";
+  import * as log from "https://deno.land/std@$STD_VERSION/log/mod.ts";
   ```
 
 ## Other key behaviors
@@ -69,16 +70,3 @@ have been historically written with bash or python.
   airplane.)
 - Modules/files loaded from remote URLs are intended to be immutable and
   cacheable.
-
-## Logos
-
-These Deno logos, like the Deno software, are distributed under the MIT license
-(public domain and free for use)
-
-- [A hand drawn one by @ry](https://deno.land/images/deno_logo.png)
-
-- [An animated one by @hashrock](https://github.com/denolib/animated-deno-logo/)
-
-- [A high resolution SVG one by @kevinkassimo](https://github.com/denolib/high-res-deno-logo)
-
-- [A pixelated animation one by @tanakaworld](https://deno.land/images/deno_logo_4.gif)

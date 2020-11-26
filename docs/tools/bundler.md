@@ -4,10 +4,11 @@
 dependencies of the specified input. For example:
 
 ```
-> deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
-Bundling "colors.bundle.js"
-Emitting bundle to "colors.bundle.js"
-9.2 kB emitted.
+> deno bundle https://deno.land/std@$STD_VERSION/examples/colors.ts colors.bundle.js
+Bundle https://deno.land/std@$STD_VERSION/examples/colors.ts
+Download https://deno.land/std@$STD_VERSION/examples/colors.ts
+Download https://deno.land/std@$STD_VERSION/fmt/colors.ts
+Emit "colors.bundle.js" (9.83KB)
 ```
 
 If you omit the out file, the bundle will be sent to `stdout`.
@@ -31,7 +32,7 @@ export const bar = "bar";
 It could be imported like this:
 
 ```ts
-import { foo, bar } from "./lib.bundle.js";
+import { bar, foo } from "./lib.bundle.js";
 ```
 
 Bundles can also be loaded in the web browser. The bundle is a self-contained ES

@@ -42,30 +42,30 @@ type Callback<ResultT> =
   | ((err: null, result: ResultT) => void);
 
 function callbackify<ResultT>(
-  fn: () => PromiseLike<ResultT>
+  fn: () => PromiseLike<ResultT>,
 ): (callback: Callback<ResultT>) => void;
 function callbackify<ArgT, ResultT>(
-  fn: (arg: ArgT) => PromiseLike<ResultT>
+  fn: (arg: ArgT) => PromiseLike<ResultT>,
 ): (arg: ArgT, callback: Callback<ResultT>) => void;
 function callbackify<Arg1T, Arg2T, ResultT>(
-  fn: (arg1: Arg1T, arg2: Arg2T) => PromiseLike<ResultT>
+  fn: (arg1: Arg1T, arg2: Arg2T) => PromiseLike<ResultT>,
 ): (arg1: Arg1T, arg2: Arg2T, callback: Callback<ResultT>) => void;
 function callbackify<Arg1T, Arg2T, Arg3T, ResultT>(
-  fn: (arg1: Arg1T, arg2: Arg2T, arg3: Arg3T) => PromiseLike<ResultT>
+  fn: (arg1: Arg1T, arg2: Arg2T, arg3: Arg3T) => PromiseLike<ResultT>,
 ): (arg1: Arg1T, arg2: Arg2T, arg3: Arg3T, callback: Callback<ResultT>) => void;
 function callbackify<Arg1T, Arg2T, Arg3T, Arg4T, ResultT>(
   fn: (
     arg1: Arg1T,
     arg2: Arg2T,
     arg3: Arg3T,
-    arg4: Arg4T
-  ) => PromiseLike<ResultT>
+    arg4: Arg4T,
+  ) => PromiseLike<ResultT>,
 ): (
   arg1: Arg1T,
   arg2: Arg2T,
   arg3: Arg3T,
   arg4: Arg4T,
-  callback: Callback<ResultT>
+  callback: Callback<ResultT>,
 ) => void;
 function callbackify<Arg1T, Arg2T, Arg3T, Arg4T, Arg5T, ResultT>(
   fn: (
@@ -73,18 +73,18 @@ function callbackify<Arg1T, Arg2T, Arg3T, Arg4T, Arg5T, ResultT>(
     arg2: Arg2T,
     arg3: Arg3T,
     arg4: Arg4T,
-    arg5: Arg5T
-  ) => PromiseLike<ResultT>
+    arg5: Arg5T,
+  ) => PromiseLike<ResultT>,
 ): (
   arg1: Arg1T,
   arg2: Arg2T,
   arg3: Arg3T,
   arg4: Arg4T,
   arg5: Arg5T,
-  callback: Callback<ResultT>
+  callback: Callback<ResultT>,
 ) => void;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function callbackify(original: any): any {
   if (typeof original !== "function") {
     throw new NodeInvalidArgTypeError('"original"');
@@ -105,7 +105,7 @@ function callbackify(original: any): any {
       (rej: unknown) => {
         rej = rej || new NodeFalsyValueRejectionError(rej);
         queueMicrotask(cb.bind(this, rej));
-      }
+      },
     );
   };
 

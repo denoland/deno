@@ -1,66 +1,83 @@
 # std/hash
 
-## MD5
+## Usage
 
-**Uses:**
+### Creating new hash instance
 
-```ts
-import { Md5 } from "https://deno.land/std/hash/md5.ts";
-
-const md5 = new Md5();
-const md5Instance = md5.update("中文"); // return instance of `Md5`
-console.log(md5Instance instanceof Md5); // true
-console.log(md5Instance.toString()); // a7bac2239fcdcb3a067903d8077c4a07
-```
-
-Calling `update` method, It will update internal state based on the input
-provided. Once you call `md5Instance.toString()`, it will return the
-`hash string`. You can provide format as `hash` or `base64`. The default format
-is `hex`.
-
-**sample:**
+You can create a new Hasher instance by calling `createHash` defined in mod.ts.
 
 ```ts
-console.log(md5Instance.toString("base64")); // MNgWOD+FHGO3Fff/HDCY2w==
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
+
+const hash = createHash("md5");
+// ...
 ```
 
-## SHA1
+### Using hash instance
 
-**Uses:**
-
-Creating `sha1` hash is simple. You can use `Sha1` class instance and update the
-digest. Calling `hex` method will return the sha1 in hex value. You can also use
-`toString` method.
+You can use `update` method to feed data into your hash instance. Call `digest`
+method to retrive final hash value in ArrayBuffer.
 
 ```ts
-import { Sha1 } from "https://deno.land/std/hash/sha1.ts";
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
 
-const sha1 = new Sha1().update("中文");
-console.log(sha1.hex()); // 7be2d2d20c106eee0836c9bc2b939890a78e8fb3
-console.log(sha1.toString()); // same as above
+const hash = createHash("md5");
+hash.update("Your data here");
+const final = hash.digest(); // returns ArrayBuffer.
 ```
 
-## Sha256 and HmacSha256
-
-**Uses:**
-
-Creating `Sha256` hash is simple. You can use `Sha256` class instance and update
-the digest. Calling the `hex` method will return the sha256 in `hex` value. You
-can also use the `toString` method.
-
-**Note:** For `HmacSha256`, you can pass the secret `key` while creating an
-instance of the object.
+Please note that `digest` invalidates the hash instance's internal state.
+Calling `digest` more than once will throw an Error.
 
 ```ts
-import { Sha256, HmacSha256 } from "https://deno.land/std/hash/sha256.ts";
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
 
-const sha256 = new Sha256().update("中文");
-console.log(sha256.hex());
-console.log(sha256.toString()); // Same as above
-
-const key = "Hi There";
-const hmac = new HmacSha256(key).update("中文");
-
-console.log(hmac.hex());
-console.log(hmac.toString()); // Same as above
+const hash = createHash("md5");
+hash.update("Your data here");
+const final1 = hash.digest(); // returns ArrayBuffer.
+const final2 = hash.digest(); // throws Error.
 ```
+
+If you need final hash in string formats, call `toString` method with output
+format.
+
+Supported formats are `hex` and `base64` and default format is `hex`.
+
+```ts
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
+
+const hash = createHash("md5");
+hash.update("Your data here");
+const hashInHex = hash.toString(); // returns 5fe084ee423ff7e0c7709e9437cee89d
+```
+
+```ts
+import { createHash } from "https://deno.land/std@$STD_VERSION/hash/mod.ts";
+
+const hash = createHash("md5");
+hash.update("Your data here");
+const hashInBase64 = hash.toString("base64"); // returns X+CE7kI/9+DHcJ6UN87onQ==
+```
+
+### Supported algorithms
+
+Following algorithms are supported.
+
+- md2
+- md4
+- md5
+- ripemd160
+- ripemd320
+- sha1
+- sha224
+- sha256
+- sha384
+- sha512
+- sha3-224
+- sha3-256
+- sha3-384
+- sha3-512
+- keccak224
+- keccak256
+- keccak384
+- keccak512

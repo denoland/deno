@@ -235,13 +235,14 @@ export class Md5 {
     switch (format) {
       case "hex":
         return hex.encodeToString(new Uint8Array(hash));
-      case "base64":
+      case "base64": {
         const data = new Uint8Array(hash);
         let dataString = "";
         for (let i = 0; i < data.length; ++i) {
           dataString += String.fromCharCode(data[i]);
         }
-        return window.btoa(dataString);
+        return btoa(dataString);
+      }
       default:
         throw new Error("md5: invalid format");
     }

@@ -1,16 +1,23 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
-use crate::http_util::HttpBody;
-use crate::op_error::OpError;
-use crate::state::State;
-use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
-use deno_core::ResourceTable;
-use deno_core::ZeroCopyBuf;
-use futures::future::poll_fn;
-use futures::future::FutureExt;
-use futures::ready;
+use crate::metrics::metrics_op;
+use deno_core::error::bad_resource_id;
+use deno_core::error::resource_unavailable;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::ready;
+use deno_core::BufVec;
+use deno_core::JsRuntime;
+use deno_core::OpState;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
@@ -25,9 +32,6 @@ use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
-#[cfg(windows)]
-extern crate winapi;
-
 lazy_static! {
   /// Due to portability issues on Windows handle to stdout is created from raw
   /// file descriptor.  The caveat of that approach is fact that when this
@@ -37,58 +41,86 @@ lazy_static! {
   /// resource table is dropped storing reference to that handle, the handle
   /// itself won't be closed (so Deno.core.print) will still work.
   // TODO(ry) It should be possible to close stdout.
-  static ref STDOUT_HANDLE: std::fs::File = {
+  static ref STDIN_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+    let stdin = unsafe { Some(std::fs::File::from_raw_fd(0)) };
+    #[cfg(windows)]
+    let stdin = unsafe {
+      let handle = winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_INPUT_HANDLE,
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
+    };
+    stdin
+  };
+  static ref STDOUT_HANDLE: Option<std::fs::File> = {
+    #[cfg(not(windows))]
+    let stdout = unsafe { Some(std::fs::File::from_raw_fd(1)) };
     #[cfg(windows)]
     let stdout = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_OUTPUT_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stdout
   };
-  static ref STDERR_HANDLE: std::fs::File = {
+  static ref STDERR_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stderr = unsafe { std::fs::File::from_raw_fd(2) };
+    let stderr = unsafe { Some(std::fs::File::from_raw_fd(2)) };
     #[cfg(windows)]
     let stderr = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_ERROR_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stderr
   };
 }
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_read", s.stateful_minimal_op2(op_read));
-  i.register_op("op_write", s.stateful_minimal_op2(op_write));
+pub fn init(rt: &mut JsRuntime) {
+  rt.register_op("op_read", metrics_op(minimal_op(op_read)));
+  rt.register_op("op_write", metrics_op(minimal_op(op_write)));
 }
 
 pub fn get_stdio() -> (
-  StreamResourceHolder,
-  StreamResourceHolder,
-  StreamResourceHolder,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
 ) {
-  let stdin = StreamResourceHolder::new(StreamResource::Stdin(
-    tokio::io::stdin(),
-    TTYMetadata::default(),
-  ));
-  let stdout = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stdout = STDOUT_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stdout), FileMetadata::default())
-  })));
-  let stderr = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stderr = STDERR_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stderr), FileMetadata::default())
-  })));
+  let stdin = get_stdio_stream(&STDIN_HANDLE);
+  let stdout = get_stdio_stream(&STDOUT_HANDLE);
+  let stderr = get_stdio_stream(&STDERR_HANDLE);
 
   (stdin, stdout, stderr)
 }
 
-fn no_buffer_specified() -> OpError {
-  OpError::type_error("no buffer specified".to_string())
+fn get_stdio_stream(
+  handle: &Option<std::fs::File>,
+) -> Option<StreamResourceHolder> {
+  match handle {
+    None => None,
+    Some(file_handle) => match file_handle.try_clone() {
+      Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(
+        Some((tokio::fs::File::from_std(clone), FileMetadata::default())),
+      ))),
+      Err(_e) => None,
+    },
+  }
+}
+
+fn no_buffer_specified() -> AnyError {
+  type_error("no buffer specified")
 }
 
 #[cfg(unix)]
@@ -130,7 +162,7 @@ impl Drop for StreamResourceHolder {
 }
 
 impl StreamResourceHolder {
-  pub fn track_task(&mut self, cx: &Context) -> Result<usize, OpError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<usize, AnyError> {
     let waker = futures::task::AtomicWaker::new();
     waker.register(cx.waker());
     // Its OK if it overflows
@@ -151,14 +183,12 @@ impl StreamResourceHolder {
 }
 
 pub enum StreamResource {
-  Stdin(tokio::io::Stdin, TTYMetadata),
   FsFile(Option<(tokio::fs::File, FileMetadata)>),
   TcpStream(Option<tokio::net::TcpStream>),
   #[cfg(not(windows))]
   UnixStream(tokio::net::UnixStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-  HttpBody(Box<HttpBody>),
   ChildStdin(tokio::process::ChildStdin),
   ChildStdout(tokio::process::ChildStdout),
   ChildStderr(tokio::process::ChildStderr),
@@ -171,13 +201,13 @@ impl<T: AsyncRead + Unpin> UnpinAsyncRead for T {}
 impl<T: AsyncWrite + Unpin> UnpinAsyncWrite for T {}
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
-/// but uses an `OpError` error instead of `std::io:Error`
+/// but uses an `AnyError` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
   fn poll_read(
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, OpError>>;
+  ) -> Poll<Result<usize, AnyError>>;
 }
 
 impl DenoAsyncRead for StreamResource {
@@ -185,12 +215,11 @@ impl DenoAsyncRead for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, OpError>> {
+  ) -> Poll<Result<usize, AnyError>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncRead = match self {
       FsFile(Some((f, _))) => f,
-      FsFile(None) => return Poll::Ready(Err(OpError::resource_unavailable())),
-      Stdin(f, _) => f,
+      FsFile(None) => return Poll::Ready(Err(resource_unavailable())),
       TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
       UnixStream(f) => f,
@@ -198,8 +227,7 @@ impl DenoAsyncRead for StreamResource {
       ServerTlsStream(f) => f,
       ChildStdout(f) => f,
       ChildStderr(f) => f,
-      HttpBody(f) => f,
-      _ => return Err(OpError::bad_resource_id()).into(),
+      _ => return Err(bad_resource_id()).into(),
     };
     let v = ready!(Pin::new(f).poll_read(cx, buf))?;
     Ok(v).into()
@@ -207,11 +235,10 @@ impl DenoAsyncRead for StreamResource {
 }
 
 pub fn op_read(
-  isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  state: Rc<RefCell<OpState>>,
   is_sync: bool,
   rid: i32,
-  zero_copy: &mut [ZeroCopyBuf],
+  mut zero_copy: BufVec,
 ) -> MinimalOp {
   debug!("read rid={}", rid);
   match zero_copy.len() {
@@ -219,39 +246,33 @@ pub fn op_read(
     1 => {}
     _ => panic!("Invalid number of arguments"),
   }
-  let resource_table = isolate_state.resource_table.clone();
 
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Read;
           std_file
             .read(&mut zero_copy[0])
             .map(|n: usize| n as i32)
-            .map_err(OpError::from)
+            .map_err(AnyError::from)
         }
-        Err(_) => Err(OpError::type_error(
-          "sync read not allowed on this resource".to_string(),
-        )),
+        Err(_) => Err(type_error("sync read not allowed on this resource")),
       })
     })
   } else {
     let mut zero_copy = zero_copy[0].clone();
     MinimalOp::Async(
       poll_fn(move |cx| {
-        let mut resource_table = resource_table.borrow_mut();
-        let resource_holder = resource_table
+        let mut state = state.borrow_mut();
+        let resource_holder = state
+          .resource_table
           .get_mut::<StreamResourceHolder>(rid as u32)
-          .ok_or_else(OpError::bad_resource_id)?;
+          .ok_or_else(bad_resource_id)?;
 
         let mut task_tracker_id: Option<usize> = None;
-        let nread = match resource_holder
-          .resource
-          .poll_read(cx, &mut zero_copy)
-          .map_err(OpError::from)
+        let nread = match resource_holder.resource.poll_read(cx, &mut zero_copy)
         {
           Poll::Ready(t) => {
             if let Some(id) = task_tracker_id {
@@ -272,17 +293,17 @@ pub fn op_read(
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
-/// but uses an `OpError` error instead of `std::io:Error`
+/// but uses an `AnyError` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
   fn poll_write(
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, OpError>>;
+  ) -> Poll<Result<usize, AnyError>>;
 
-  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
+  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), AnyError>>;
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), AnyError>>;
 }
 
 impl DenoAsyncWrite for StreamResource {
@@ -290,7 +311,7 @@ impl DenoAsyncWrite for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, OpError>> {
+  ) -> Poll<Result<usize, AnyError>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
@@ -301,14 +322,14 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => f,
       ServerTlsStream(f) => f,
       ChildStdin(f) => f,
-      _ => return Err(OpError::bad_resource_id()).into(),
+      _ => return Err(bad_resource_id()).into(),
     };
 
     let v = ready!(Pin::new(f).poll_write(cx, buf))?;
     Ok(v).into()
   }
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>> {
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), AnyError>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
@@ -319,24 +340,23 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => f,
       ServerTlsStream(f) => f,
       ChildStdin(f) => f,
-      _ => return Err(OpError::bad_resource_id()).into(),
+      _ => return Err(bad_resource_id()).into(),
     };
 
     ready!(Pin::new(f).poll_flush(cx))?;
     Ok(()).into()
   }
 
-  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), OpError>> {
+  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), AnyError>> {
     unimplemented!()
   }
 }
 
 pub fn op_write(
-  isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  state: Rc<RefCell<OpState>>,
   is_sync: bool,
   rid: i32,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: BufVec,
 ) -> MinimalOp {
   debug!("write rid={}", rid);
   match zero_copy.len() {
@@ -348,30 +368,27 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = isolate_state.resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
           std_file
             .write(&zero_copy[0])
             .map(|nwritten: usize| nwritten as i32)
-            .map_err(OpError::from)
+            .map_err(AnyError::from)
         }
-        Err(_) => Err(OpError::type_error(
-          "sync read not allowed on this resource".to_string(),
-        )),
+        Err(_) => Err(type_error("sync read not allowed on this resource")),
       })
     })
   } else {
     let zero_copy = zero_copy[0].clone();
-    let resource_table = isolate_state.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {
-          let mut resource_table = resource_table.borrow_mut();
-          let resource_holder = resource_table
+          let mut state = state.borrow_mut();
+          let resource_holder = state
+            .resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(OpError::bad_resource_id)?;
+            .ok_or_else(bad_resource_id)?;
           resource_holder.resource.poll_write(cx, &zero_copy)
         })
         .await?;
@@ -381,10 +398,11 @@ pub fn op_write(
         // Figure out why it's needed and preferably remove it.
         // https://github.com/denoland/deno/issues/3565
         poll_fn(|cx| {
-          let mut resource_table = resource_table.borrow_mut();
-          let resource_holder = resource_table
+          let mut state = state.borrow_mut();
+          let resource_holder = state
+            .resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(OpError::bad_resource_id)?;
+            .ok_or_else(bad_resource_id)?;
           resource_holder.resource.poll_flush(cx)
         })
         .await?;
@@ -404,17 +422,17 @@ pub fn op_write(
 ///
 /// Returns ErrorKind::Busy if the resource is being used by another op.
 pub fn std_file_resource<F, T>(
-  resource_table: &mut ResourceTable,
+  state: &mut OpState,
   rid: u32,
   mut f: F,
-) -> Result<T, OpError>
+) -> Result<T, AnyError>
 where
   F: FnMut(
     Result<&mut std::fs::File, &mut StreamResource>,
-  ) -> Result<T, OpError>,
+  ) -> Result<T, AnyError>,
 {
   // First we look up the rid in the resource table.
-  let mut r = resource_table.get_mut::<StreamResourceHolder>(rid);
+  let mut r = state.resource_table.get_mut::<StreamResourceHolder>(rid);
   if let Some(ref mut resource_holder) = r {
     // Sync write only works for FsFile. It doesn't make sense to do this
     // for non-blocking sockets. So we error out if not FsFile.
@@ -440,16 +458,16 @@ where
               // some operation is in-flight.
               resource_holder.resource =
                 StreamResource::FsFile(Some((tokio_file, metadata)));
-              Err(OpError::resource_unavailable())
+              Err(resource_unavailable())
             }
           }
         } else {
-          Err(OpError::resource_unavailable())
+          Err(resource_unavailable())
         }
       }
       _ => f(Err(&mut resource_holder.resource)),
     }
   } else {
-    Err(OpError::bad_resource_id())
+    Err(bad_resource_id())
   }
 }

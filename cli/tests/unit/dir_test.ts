@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function dirCwdNotNull(): void {
   assert(Deno.cwd() != null);
@@ -18,7 +18,7 @@ unitTest(
       assertEquals(current, path);
     }
     Deno.chdir(initialdir);
-  }
+  },
 );
 
 unitTest({ perms: { read: true, write: true } }, function dirCwdError(): void {
@@ -44,7 +44,7 @@ unitTest({ perms: { read: false } }, function dirCwdPermError(): void {
       Deno.cwd();
     },
     Deno.errors.PermissionDenied,
-    "read access to <CWD>, run again with the --allow-read flag"
+    "read access to <CWD>, run again with the --allow-read flag",
   );
 });
 
@@ -55,5 +55,5 @@ unitTest(
     assertThrows(() => {
       Deno.chdir(path);
     }, Deno.errors.NotFound);
-  }
+  },
 );

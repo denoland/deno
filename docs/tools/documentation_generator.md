@@ -1,9 +1,7 @@
 ## Documentation Generator
 
 `deno doc` followed by a list of one or more source files will print the JSDoc
-documentation for each of the module's **exported** members. Currently, only
-exports in the style `export <declaration>` and `export ... from ...` are are
-supported.
+documentation for each of the module's **exported** members.
 
 For example, given a file `add.ts` with the contents:
 
@@ -29,5 +27,5 @@ function add(x: number, y: number): number
 
 Use the `--json` flag to output the documentation in JSON format. This JSON
 format is consumed by the
-[deno doc website](https://github.com/denoland/doc_website) and used to generate
-module documentation.
+[deno doc website](https://github.com/denoland/doc_website) and is used to
+generate module documentation.

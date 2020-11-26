@@ -7,15 +7,21 @@ Workers can be used to run code on multiple threads. Each instance of `Worker`
 is run on a separate thread, dedicated only to that worker.
 
 Currently Deno supports only `module` type workers; thus it's essential to pass
-`type: "module"` option when creating a new worker:
+the `type: "module"` option when creating a new worker.
+
+Relative module specifiers are
+[not supported](https://github.com/denoland/deno/issues/5216) at the moment. You
+can instead use the `URL` contructor and `import.meta.url` to easily create a
+specifier for some nearby script.
 
 ```ts
 // Good
-new Worker("./worker.js", { type: "module" });
+new Worker(new URL("worker.js", import.meta.url).href, { type: "module" });
 
 // Bad
-new Worker("./worker.js");
-new Worker("./worker.js", { type: "classic" });
+new Worker(new URL("worker.js", import.meta.url).href);
+new Worker(new URL("worker.js", import.meta.url).href, { type: "classic" });
+new Worker("./worker.js", { type: "module" });
 ```
 
 ### Permissions
@@ -28,7 +34,7 @@ For workers using local modules; `--allow-read` permission is required:
 **main.ts**
 
 ```ts
-new Worker("./worker.ts", { type: "module" });
+new Worker(new URL("worker.ts", import.meta.url).href, { type: "module" });
 ```
 
 **worker.ts**
@@ -81,7 +87,10 @@ To add the `Deno` namespace pass `deno: true` option when creating new worker:
 **main.js**
 
 ```ts
-const worker = new Worker("./worker.js", { type: "module", deno: true });
+const worker = new Worker(new URL("worker.js", import.meta.url).href, {
+  type: "module",
+  deno: true,
+});
 worker.postMessage({ filename: "./log.txt" });
 ```
 

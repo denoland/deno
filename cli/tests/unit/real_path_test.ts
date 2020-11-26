@@ -1,20 +1,26 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import {
+  assert,
+  assertMatch,
+  assertThrows,
+  assertThrowsAsync,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
-  const incompletePath = "cli/tests/fixture.json";
-  const realPath = Deno.realPathSync(incompletePath);
+  const relative = "cli/tests/fixture.json";
+  const realPath = Deno.realPathSync(relative);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
+    assert(realPath.endsWith(relative));
   } else {
-    assert(/^[A-Z]/.test(realPath));
+    assertMatch(realPath, /^[A-Z]:\\/);
+    assert(realPath.endsWith(relative.replace(/\//g, "\\")));
   }
-  assert(realPath.endsWith(incompletePath));
 });
 
 unitTest(
   {
-    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   function realPathSyncSymlink(): void {
@@ -23,50 +29,45 @@ unitTest(
     const symlink = testDir + "/symln";
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
-    const targetPath = Deno.realPathSync(symlink);
-    assert(targetPath.startsWith("/"));
-    assert(targetPath.endsWith("/target"));
-  }
+    const realPath = Deno.realPathSync(symlink);
+    if (Deno.build.os !== "windows") {
+      assert(realPath.startsWith("/"));
+      assert(realPath.endsWith("/target"));
+    } else {
+      assertMatch(realPath, /^[A-Z]:\\/);
+      assert(realPath.endsWith("\\target"));
+    }
+  },
 );
 
 unitTest({ perms: { read: false } }, function realPathSyncPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.realPathSync("some_file");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function realPathSyncNotFound(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.realPathSync("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
   void
 > {
-  const incompletePath = "cli/tests/fixture.json";
-  const realPath = await Deno.realPath(incompletePath);
+  const relativePath = "cli/tests/fixture.json";
+  const realPath = await Deno.realPath(relativePath);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
+    assert(realPath.endsWith(relativePath));
   } else {
-    assert(/^[A-Z]/.test(realPath));
+    assertMatch(realPath, /^[A-Z]:\\/);
+    assert(realPath.endsWith(relativePath.replace(/\//g, "\\")));
   }
-  assert(realPath.endsWith(incompletePath));
 });
 
 unitTest(
   {
-    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   async function realPathSymlink(): Promise<void> {
@@ -75,34 +76,29 @@ unitTest(
     const symlink = testDir + "/symln";
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
-    const targetPath = await Deno.realPath(symlink);
-    assert(targetPath.startsWith("/"));
-    assert(targetPath.endsWith("/target"));
-  }
+    const realPath = await Deno.realPath(symlink);
+    if (Deno.build.os !== "windows") {
+      assert(realPath.startsWith("/"));
+      assert(realPath.endsWith("/target"));
+    } else {
+      assertMatch(realPath, /^[A-Z]:\\/);
+      assert(realPath.endsWith("\\target"));
+    }
+  },
 );
 
 unitTest({ perms: { read: false } }, async function realPathPerm(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.realPath("some_file");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, async function realPathNotFound(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.realPath("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
+  }, Deno.errors.NotFound);
 });
