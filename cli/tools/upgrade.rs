@@ -43,12 +43,14 @@ pub async fn upgrade_command(
         let mut passed_hash = passed_version.clone();
         passed_hash.truncate(7);
         crate::version::GIT_COMMIT_HASH == passed_hash
-      } else {
+      } else if !crate::version::is_canary() {
         crate::version::deno() == passed_version
+      } else {
+        false
       };
 
       if !force && output.is_none() && current_is_passed {
-        println!("Version {} is already installed", passed_version);
+        println!("Version {} is already installed", crate::version::deno());
         return Ok(());
       } else {
         passed_version
@@ -65,7 +67,7 @@ pub async fn upgrade_command(
         let mut latest_hash = latest_version.clone();
         latest_hash.truncate(7);
         crate::version::GIT_COMMIT_HASH == latest_hash
-      } else {
+      } else if !crate::version::is_canary() {
         let current = semver_parse(&*crate::version::deno()).unwrap();
         let latest = match semver_parse(&latest_version) {
           Ok(v) => v,
@@ -75,6 +77,8 @@ pub async fn upgrade_command(
           }
         };
         current >= latest
+      } else {
+        false
       };
 
       if !force && output.is_none() && current_is_most_recent {

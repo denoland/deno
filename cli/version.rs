@@ -10,6 +10,10 @@ pub fn deno() -> String {
   })
 }
 
+pub fn is_canary() -> bool {
+  option_env!("DENO_CANARY").is_some()
+}
+
 pub fn v8() -> &'static str {
   deno_core::v8_version()
 }
