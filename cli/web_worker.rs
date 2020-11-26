@@ -28,6 +28,8 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+#[cfg(not(feature = "tools"))]
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -120,6 +122,7 @@ fn create_channels(
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.
 pub struct WebWorker {
+  #[cfg(feature = "tools")]
   inspector: Option<Box<DenoInspector>>,
   // Following fields are pub because they are accessed
   // when creating a new WebWorker instance.
@@ -145,10 +148,11 @@ impl WebWorker {
     let module_loader = CliModuleLoader::new_for_worker();
 
     #[cfg(not(feature = "tools"))]
-    let module_loader = FsModuleLoader::new();
+    let module_loader = Rc::new(FsModuleLoader);
 
     let global_state_ = program_state.clone();
 
+    #[cfg(feature = "tools")]
     let js_error_create_fn = Box::new(move |core_js_error| {
       let source_mapped_error =
         apply_source_map(&core_js_error, global_state_.clone());
@@ -158,11 +162,13 @@ impl WebWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn: Some(js_error_create_fn),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      #[cfg(feature = "tools")]
+      js_error_create_fn: Some(js_error_create_fn),
       ..Default::default()
     });
 
+    #[cfg(feature = "tools")]
     let inspector =
       if let Some(inspector_server) = &program_state.maybe_inspector_server {
         Some(DenoInspector::new(
@@ -181,6 +187,7 @@ impl WebWorker {
       create_channels(isolate_handle, terminate_tx);
 
     let mut worker = Self {
+      #[cfg(feature = "tools")]
       inspector,
       internal_channels,
       js_runtime,
@@ -217,6 +224,7 @@ impl WebWorker {
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
+      #[cfg(feature = "tools")]
       ops::errors::init(js_runtime);
       ops::io::init(js_runtime);
       ops::websocket::init(js_runtime);
@@ -230,6 +238,7 @@ impl WebWorker {
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
         ops::crypto::init(js_runtime, program_state.flags.seed);
+        #[cfg(feature = "tools")]
         ops::runtime_compiler::init(js_runtime);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
@@ -274,6 +283,7 @@ impl WebWorker {
     if !self.event_loop_idle {
       let poll_result = {
         // We always poll the inspector if it exists.
+        #[cfg(feature = "tools")]
         let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
         self.waker.register(cx.waker());
         self.js_runtime.poll_event_loop(cx)
@@ -346,6 +356,7 @@ impl WebWorker {
   }
 }
 
+#[cfg(feature = "tools")]
 impl Drop for WebWorker {
   fn drop(&mut self) {
     // The Isolate object must outlive the Inspector object, but this is

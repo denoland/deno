@@ -27,6 +27,8 @@ use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+#[cfg(not(feature = "tools"))]
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -57,7 +59,7 @@ impl MainWorker {
       CliModuleLoader::new(program_state.maybe_import_map.clone());
 
     #[cfg(not(feature = "tools"))]
-    let module_loader = FsModuleLoader::new();
+    let module_loader = Rc::new(FsModuleLoader);
 
     #[cfg(feature = "tools")]
     let global_state_ = program_state.clone();
@@ -72,11 +74,9 @@ impl MainWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(js::deno_isolate_init()),
+      get_error_class_fn: Some(&crate::errors::get_error_class_name),
       #[cfg(feature = "tools")]
       js_error_create_fn: Some(js_error_create_fn),
-      #[cfg(not(feature = "tools"))]
-      js_error_create_fn: None,
-      get_error_class_fn: Some(&crate::errors::get_error_class_name),
       ..Default::default()
     });
 
@@ -207,6 +207,7 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
+  #[cfg(feature = "tools")]
   pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
     let inspector = self.inspector.as_mut().unwrap();
 
@@ -218,6 +219,7 @@ impl MainWorker {
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
     // We always poll the inspector if it exists.
+    #[cfg(feature = "tools")]
     let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
     self.js_runtime.poll_event_loop(cx)
   }
@@ -227,6 +229,7 @@ impl MainWorker {
   }
 }
 
+#[cfg(feature = "tools")]
 impl Drop for MainWorker {
   fn drop(&mut self) {
     // The Isolate object must outlive the Inspector object, but this is

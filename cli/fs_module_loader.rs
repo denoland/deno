@@ -38,7 +38,7 @@ impl ModuleLoader for FsModuleLoader {
         let dynamic_permissions = state.borrow::<Permissions>().clone();
         dynamic_permissions.check_specifier(&module_specifier)?;
       }
-      let path = module_specifier.as_url().to_file_path()?;
+      let path = module_specifier.as_url().to_file_path().unwrap();
       let content = std::fs::read_to_string(path)?;
       let module = deno_core::ModuleSource {
         code: content,
