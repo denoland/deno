@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
 use crate::colors;
 use crate::inspector::InspectorSession;
+use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
 use crate::worker::Worker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use regex::Captures;
-use regex::Regex;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -20,6 +20,7 @@ use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
+use std::ops::Range;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
 use std::sync::mpsc::Receiver;
@@ -27,6 +28,12 @@ use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
+use swc_atoms::js_word;
+use swc_common::comments::{Comment, CommentKind, SingleThreadedComments};
+use swc_common::input::StringInput;
+use swc_common::{BytePos, Span};
+use swc_ecmascript::parser::lexer::Lexer;
+use swc_ecmascript::parser::token::{Token, Word};
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -133,55 +140,51 @@ impl Validator for Helper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    let mut stack: Vec<char> = Vec::new();
-    let mut literal: Option<char> = None;
-    let mut escape: bool = false;
+    let lexer = Lexer::new(
+      ast::get_syntax(&MediaType::JavaScript),
+      ast::TARGET,
+      StringInput::new(
+        ctx.input(),
+        BytePos(0),
+        BytePos(ctx.input().len() as u32),
+      ),
+      None,
+    );
 
-    for c in ctx.input().chars() {
-      if escape {
-        escape = false;
-        continue;
-      }
+    let mut stack: Vec<Token> = Vec::new();
+    let mut in_template = false;
 
-      if c == '\\' {
-        escape = true;
-        continue;
-      }
-
-      if let Some(v) = literal {
-        if c == v {
-          literal = None
+    for item in lexer {
+      match item.token {
+        Token::BackQuote => in_template = !in_template,
+        Token::LParen
+        | Token::LBracket
+        | Token::LBrace
+        | Token::DollarLBrace => stack.push(item.token),
+        Token::RParen | Token::RBracket | Token::RBrace => {
+          match (stack.pop(), item.token) {
+            (Some(Token::LParen), Token::RParen)
+            | (Some(Token::LBracket), Token::RBracket)
+            | (Some(Token::LBrace), Token::RBrace)
+            | (Some(Token::DollarLBrace), Token::RBrace) => {}
+            (Some(left), _) => {
+              return Ok(ValidationResult::Invalid(Some(format!(
+                "Mismatched pairs: {:?} is not properly closed",
+                left
+              ))))
+            }
+            (None, _) => {
+              // While technically invalid when unpaired, it should be V8's task to output error instead.
+              // Thus marked as valid with no info.
+              return Ok(ValidationResult::Valid(None));
+            }
+          }
         }
-
-        continue;
-      } else {
-        literal = match c {
-          '`' | '"' | '/' | '\'' => Some(c),
-          _ => None,
-        };
-      }
-
-      match c {
-        '(' | '[' | '{' => stack.push(c),
-        ')' | ']' | '}' => match (stack.pop(), c) {
-          (Some('('), ')') | (Some('['), ']') | (Some('{'), '}') => {}
-          (Some(left), _) => {
-            return Ok(ValidationResult::Invalid(Some(format!(
-              "Mismatched pairs: {:?} is not properly closed",
-              left
-            ))))
-          }
-          (None, _) => {
-            // While technically invalid when unpaired, it should be V8's task to output error instead.
-            // Thus marked as valid with no info.
-            return Ok(ValidationResult::Valid(None));
-          }
-        },
         _ => {}
       }
     }
 
-    if !stack.is_empty() || literal == Some('`') {
+    if !stack.is_empty() || in_template {
       return Ok(ValidationResult::Incomplete);
     }
 
@@ -211,71 +214,98 @@ impl Highlighter for Helper {
   }
 }
 
-struct LineHighlighter {
-  regex: Regex,
-}
+struct LineHighlighter;
 
 impl LineHighlighter {
   fn new() -> Self {
-    let regex = Regex::new(
-      r#"(?x)
-      (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
-      (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
-      (?P<regexp>/(?:(?:\\/|[^\n/]))*?/[gimsuy]*) |
-      (?P<number>\b\d+(?:\.\d+)?(?:e[+-]?\d+)*n?\b) |
-      (?P<infinity>\b(?:Infinity|NaN)\b) |
-      (?P<hexnumber>\b0x[a-fA-F0-9]+\b) |
-      (?P<octalnumber>\b0o[0-7]+\b) |
-      (?P<binarynumber>\b0b[01]+\b) |
-      (?P<boolean>\b(?:true|false)\b) |
-      (?P<null>\b(?:null)\b) |
-      (?P<undefined>\b(?:undefined)\b) |
-      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch|this)\b) |
-      "#,
-      )
-      .unwrap();
-
-    Self { regex }
+    Self
   }
+}
+
+fn flatten_comments(
+  comments: SingleThreadedComments,
+) -> impl Iterator<Item = Comment> {
+  let (leading, trailing) = comments.take_all();
+  let mut comments = (*leading).clone().into_inner();
+  comments.extend((*trailing).clone().into_inner());
+  comments.into_iter().flat_map(|el| el.1)
 }
 
 impl Highlighter for LineHighlighter {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
-    self
-      .regex
-      .replace_all(&line.to_string(), |caps: &Captures<'_>| {
-        if let Some(cap) = caps.name("comment") {
-          colors::gray(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("string") {
-          colors::green(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("regexp") {
-          colors::red(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("number") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("boolean") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("null") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("undefined") {
-          colors::gray(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("keyword") {
-          colors::cyan(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("infinity") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("classes") {
-          colors::green_bold(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("hexnumber") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("octalnumber") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("binarynumber") {
-          colors::yellow(cap.as_str()).to_string()
-        } else {
-          caps[0].to_string()
-        }
-      })
-      .to_string()
-      .into()
+    let comments = SingleThreadedComments::default();
+    let lexer = Lexer::new(
+      ast::get_syntax(&MediaType::JavaScript),
+      ast::TARGET,
+      StringInput::new(line, BytePos(0), BytePos(line.len() as u32)),
+      Some(&comments),
+    );
+
+    let mut out_line = String::from(line.clone());
+
+    // Adding color adds more bytes to the string,
+    // so an offset is needed to stop spans falling out of sync.
+    let mut offset = 0;
+
+    enum ItemKind {
+      Token(Token),
+      Comment(CommentKind),
+    }
+
+    struct Item {
+      span: Range<usize>,
+      kind: ItemKind,
+    }
+
+    fn span_to_range(span: Span) -> Range<usize> {
+      span.lo.0 as usize..span.hi.0 as usize
+    }
+
+    let mut items: Vec<Item> = Vec::new();
+    items.extend(lexer.map(|token| Item {
+      span: span_to_range(token.span),
+      kind: ItemKind::Token(token.token),
+    }));
+    items.extend(flatten_comments(comments).map(|comment| Item {
+      span: span_to_range(comment.span),
+      kind: ItemKind::Comment(comment.kind),
+    }));
+    items.sort_by_key(|item| item.span.start);
+
+    for item in items {
+      let before_len = out_line.len();
+      out_line.replace_range(
+        item.span.start + offset..item.span.end + offset,
+        &match item.kind {
+          ItemKind::Token(token) => match token {
+            Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
+              colors::green(&line[item.span]).to_string()
+            }
+            Token::Regex(_, _) => colors::red(&line[item.span]).to_string(),
+            Token::Num(_) => colors::yellow(&line[item.span]).to_string(),
+            Token::Word(word) => match word {
+              Word::True | Word::False | Word::Null => {
+                colors::yellow(&line[item.span]).to_string()
+              }
+              Word::Keyword(_) => colors::cyan(&line[item.span]).to_string(),
+              Word::Ident(js_word!("undefined")) => {
+                colors::gray(&line[item.span]).to_string()
+              }
+              Word::Ident(js_word!("Infinity"))
+              | Word::Ident(js_word!("NaN")) => {
+                colors::yellow(&line[item.span]).to_string()
+              }
+              _ => line[item.span].to_string(),
+            },
+            _ => line[item.span].to_string(),
+          },
+          ItemKind::Comment(_) => colors::gray(&line[item.span]).to_string(),
+        },
+      );
+      offset += out_line.len() - before_len;
+    }
+
+    out_line.into()
   }
 }
 

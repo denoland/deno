@@ -467,6 +467,7 @@ dependencies = [
  "serde",
  "shell-escape",
  "sourcemap",
+ "swc_atoms",
  "swc_bundler",
  "swc_common",
  "swc_ecmascript",

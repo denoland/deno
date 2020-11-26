@@ -45,7 +45,7 @@ use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
 
-static TARGET: JscTarget = JscTarget::Es2020;
+pub(crate) static TARGET: JscTarget = JscTarget::Es2020;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Location {
