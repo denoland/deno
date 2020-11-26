@@ -597,3 +597,5 @@ export class Buffer extends Uint8Array {
     return offset + 4;
   }
 }
+
+export default { Buffer };

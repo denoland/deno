@@ -144,3 +144,24 @@ export const TextDecoder = _TextDecoder;
 /** The global TextEncoder */
 export type TextEncoder = import("./_utils.ts")._TextEncoder;
 export const TextEncoder = _TextEncoder;
+
+export default {
+  inspect,
+  isArray,
+  isBoolean,
+  isNull,
+  isNullOrUndefined,
+  isNumber,
+  isString,
+  isSymbol,
+  isUndefined,
+  isObject,
+  isError,
+  isFunction,
+  isRegExp,
+  isPrimitive,
+  getSystemErrorName,
+  deprecate,
+  TextDecoder,
+  TextEncoder,
+};

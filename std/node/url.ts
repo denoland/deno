@@ -137,3 +137,9 @@ export function pathToFileURL(filepath: string): URL {
   outURL.pathname = resolved;
   return outURL;
 }
+
+export default {
+  fileURLToPath,
+  pathToFileURL,
+  URL,
+};

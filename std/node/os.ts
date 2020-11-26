@@ -222,3 +222,25 @@ export const constants = {
 };
 
 export const EOL = Deno.build.os == "windows" ? fsEOL.CRLF : fsEOL.LF;
+
+export default {
+  arch,
+  cpus,
+  endianness,
+  freemem,
+  getPriority,
+  homedir,
+  hostname,
+  loadavg,
+  networkInterfaces,
+  platform,
+  release,
+  setPriority,
+  tmpdir,
+  totalmem,
+  type,
+  uptime,
+  userInfo,
+  constants,
+  EOL,
+};

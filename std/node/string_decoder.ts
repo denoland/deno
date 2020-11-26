@@ -309,3 +309,5 @@ export class StringDecoder {
     this.write = decoder.write;
   }
 }
+
+export default { StringDecoder };
