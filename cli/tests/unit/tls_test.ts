@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
-  createResolvable,
+  deferred,
   unitTest,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../std/io/bufio.ts";
@@ -121,7 +121,7 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function dialAndListenTLS(): Promise<void> {
-    const resolvable = createResolvable();
+    const resolvable = deferred();
     const hostname = "localhost";
     const port = 3500;
 
