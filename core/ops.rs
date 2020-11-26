@@ -310,6 +310,6 @@ pub fn op_close(
       .close(rid as u32)
       .ok_or_else(bad_resource_id)?;
   }
-  
+
   Ok(json!({}))
 }
