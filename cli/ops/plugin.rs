@@ -14,6 +14,8 @@ use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
 use deno_core::OpState;
+use std::borrow::Cow;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use serde::Deserialize;
@@ -54,11 +56,11 @@ pub fn op_open_plugin(
   let deno_plugin_init;
   {
     rid = state
-      .resource_table
-      .add("plugin", Box::new(plugin_resource));
+      .resource_table_2
+      .add(plugin_resource);
     deno_plugin_init = *unsafe {
       state
-        .resource_table
+        .resource_table_2
         .get::<PluginResource>(rid)
         .unwrap()
         .lib
@@ -75,6 +77,12 @@ pub fn op_open_plugin(
 
 struct PluginResource {
   lib: Rc<Library>,
+}
+
+impl Resource for PluginResource {
+  fn name(&self) -> Cow<str> {
+    "plugin".into()
+  }
 }
 
 impl PluginResource {
