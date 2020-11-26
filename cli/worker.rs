@@ -39,8 +39,10 @@ use std::task::Poll;
 /// All `WebWorker`s created during program execution
 /// are descendants of this worker.
 pub struct MainWorker {
+  #[cfg(feature = "tools")]
   inspector: Option<Box<DenoInspector>>,
   js_runtime: JsRuntime,
+  #[cfg(feature = "tools")]
   should_break_on_first_statement: bool,
 }
 
@@ -91,12 +93,15 @@ impl MainWorker {
         None
       };
 
+    #[cfg(feature = "tools")]
     let should_break_on_first_statement =
       inspector.is_some() && program_state.flags.inspect_brk.is_some();
 
     let mut worker = Self {
+      #[cfg(feature = "tools")]
       inspector,
       js_runtime,
+      #[cfg(feature = "tools")]
       should_break_on_first_statement,
     };
 
@@ -186,6 +191,7 @@ impl MainWorker {
     self.js_runtime.mod_evaluate(id).await
   }
 
+  #[cfg(feature = "tools")]
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
@@ -195,6 +201,9 @@ impl MainWorker {
         .wait_for_session_and_break_on_next_statement()
     }
   }
+
+  #[cfg(not(feature = "tools"))]
+  fn wait_for_inspector_session(&mut self) {}
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
