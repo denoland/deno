@@ -474,6 +474,19 @@ fn fmt_test() {
   assert_eq!(expected, actual);
 }
 
+// Helper function to skip watcher output that contains "Restarting"
+// phrase.
+fn skip_restarting_line(
+  mut stderr_lines: impl Iterator<Item = String>,
+) -> String {
+  loop {
+    let msg = stderr_lines.next().unwrap();
+    if !msg.contains("Restarting") {
+      return msg;
+    }
+  }
+}
+
 #[test]
 fn fmt_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
@@ -495,13 +508,13 @@ fn fmt_watch_test() {
     .spawn()
     .expect("Failed to spawn script");
   let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
+  let stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  assert!(stderr_lines.next().unwrap().contains("badly_formatted.js"));
+  assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
