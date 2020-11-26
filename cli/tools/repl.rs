@@ -241,7 +241,7 @@ impl Highlighter for LineHighlighter {
       Some(&comments),
     );
 
-    let mut out_line = String::from(line).clone();
+    let mut out_line = String::from(line);
 
     // Adding color adds more bytes to the string,
     // so an offset is needed to stop spans falling out of sync.
