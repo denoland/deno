@@ -248,7 +248,6 @@ pub async fn op_ws_close(
     .ok_or_else(bad_resource_id)?;
   let mut ws_stream = resource.borrow_mut().await;
   ws_stream.send(msg).await?;
-  ws_stream.close(None).await?;
   Ok(json!({}))
 }
 
