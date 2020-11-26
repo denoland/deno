@@ -15,6 +15,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncMut;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -62,9 +63,11 @@ async fn accept_tcp(
     .resource_table_2
     .get::<TcpListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
-  let mut listener = resource.borrow_mut().await;
+  eprintln!("accept before try borrow");
+  let mut listener = resource.try_borrow_mut().ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+  eprintln!("accept after try borrow");
   let (tcp_stream, _socket_addr) = (&mut *listener).accept().await?;
-
+  eprintln!("accept after accept");
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -371,8 +374,8 @@ impl Resource for TcpListenerResource {
 }
 
 impl TcpListenerResource {
-  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<TcpListener> {
-    RcRef::map(self, |r| &r.listener).borrow_mut()
+  fn try_borrow_mut(self: Rc<Self>) -> Option<AsyncMut<TcpListener>> {
+    RcRef::map(self, |r| &r.listener).try_borrow_mut()
   }
 }
 

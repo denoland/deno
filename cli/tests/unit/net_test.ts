@@ -117,11 +117,16 @@ unitTest(
         throw new Error("Unexpected error message");
       }
     };
+    console.log("before accept");
     const p = listener.accept().catch(checkErr);
     const p1 = listener.accept().catch(checkErr);
+    console.log("before race");
     await Promise.race([p, p1]);
+    console.log("after race");
     listener.close();
+    console.log("after close");
     await Promise.all([p, p1]);
+    console.log("after all");
     assertEquals(acceptErrCount, 1);
   },
 );
