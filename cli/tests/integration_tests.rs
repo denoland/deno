@@ -476,7 +476,9 @@ fn fmt_test() {
 
 // Helper function to skip watcher output that contains "Restarting"
 // phrase.
-fn skip_restarting_line(mut stderr_lines: impl Iterator<Item=String>) -> String {
+fn skip_restarting_line(
+  mut stderr_lines: impl Iterator<Item = String>,
+) -> String {
   loop {
     let msg = stderr_lines.next().unwrap();
     if !msg.contains("Restarting") {
