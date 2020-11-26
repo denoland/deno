@@ -33,6 +33,10 @@
 
       this.#url = wsURL.href;
 
+      core.jsonOpSync("op_ws_check_permission", {
+        url: this.#url,
+      });
+
       if (protocols && typeof protocols === "string") {
         protocols = [protocols];
       }

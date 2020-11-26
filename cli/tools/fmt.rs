@@ -9,11 +9,13 @@
 
 use crate::colors;
 use crate::diff::diff;
+use crate::file_watcher;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::futures::FutureExt;
 use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
@@ -28,25 +30,37 @@ use std::sync::{Arc, Mutex};
 const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
-///
-/// First argument and ignore supports globs, and if it is `None`
-/// then the current directory is recursively walked.
 pub async fn format(
   args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   check: bool,
-  exclude: Vec<PathBuf>,
+  watch: bool,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return format_stdin(check);
-  }
-  // collect the files that are to be formatted
-  let target_files = collect_files(args, exclude, is_supported_ext)?;
-  let config = get_config();
-  if check {
-    check_source_files(config, target_files).await
+  let target_file_resolver = || {
+    // collect the files that are to be formatted
+    collect_files(&args, &ignore, is_supported_ext)
+  };
+
+  let operation = |paths: Vec<PathBuf>| {
+    let config = get_config();
+    async move {
+      if check {
+        check_source_files(config, paths).await?;
+      } else {
+        format_source_files(config, paths).await?;
+      }
+      Ok(())
+    }
+    .boxed_local()
+  };
+
+  if watch {
+    file_watcher::watch_func(target_file_resolver, operation, "Fmt").await?;
   } else {
-    format_source_files(config, target_files).await
+    operation(target_file_resolver()?).await?;
   }
+
+  Ok(())
 }
 
 async fn check_source_files(
@@ -166,7 +180,7 @@ async fn format_source_files(
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--check` flag.
-fn format_stdin(check: bool) -> Result<(), AnyError> {
+pub fn format_stdin(check: bool) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
