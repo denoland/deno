@@ -171,10 +171,7 @@ fn no_color() {
   assert_eq!("noColor false", util::strip_ansi_codes(stdout_str));
 }
 
-// TODO re-enable on MacOS
-// https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
-#[cfg(not(target_os = "macos"))]
 #[test]
 pub fn test_raw_tty() {
   use std::io::{Read, Write};
