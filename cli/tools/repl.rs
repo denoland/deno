@@ -226,7 +226,9 @@ impl Highlighter for LineHighlighter {
               colors::green(&line[span]).to_string()
             }
             Token::Regex(_, _) => colors::red(&line[span]).to_string(),
-            Token::Num(_) => colors::yellow(&line[span]).to_string(),
+            Token::Num(_) | Token::BigInt(_) => {
+              colors::yellow(&line[span]).to_string()
+            }
             Token::Word(word) => match word {
               Word::True | Word::False | Word::Null => {
                 colors::yellow(&line[span]).to_string()
