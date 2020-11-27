@@ -2451,6 +2451,7 @@ itest!(lock_write_fetch {
     "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
   output: "lock_write_fetch.ts.out",
   exit_code: 0,
+  http_server: true,
 });
 
 itest!(lock_check_ok {
