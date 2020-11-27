@@ -177,18 +177,12 @@ pub fn test_raw_tty() {
   use std::io::{Read, Write};
   use util::pty::fork::*;
 
-  // let (mut rpipe, mut wpipe) = os_pipe::pipe().unwrap();
-  // let (mut rpipe_, mut wpipe_) = os_pipe::pipe().unwrap();
-
   let deno_exe = util::deno_exe_path();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let root_path = util::root_path();
   let fork = Fork::from_ptmx().unwrap();
 
   if let Ok(mut master) = fork.is_parent() {
     let mut obytes: [u8; 100] = [0; 100];
-
-    // assert_eq!(1, rpipe.read(&mut obytes).unwrap());
-    // wpipe_.write_all(b"c").unwrap();
 
     println!("read S");
     let mut nread = master.read(&mut obytes).unwrap();
@@ -219,7 +213,6 @@ pub fn test_raw_tty() {
   } else {
     use nix::sys::termios;
     use std::os::unix::io::AsRawFd;
-    use std::process::*;
 
     // Turn off echo such that parent is reading works properly.
     let stdin_fd = std::io::stdin().as_raw_fd();
@@ -227,25 +220,16 @@ pub fn test_raw_tty() {
     t.local_flags.remove(termios::LocalFlags::ECHO);
     termios::tcsetattr(stdin_fd, termios::SetArg::TCSANOW, &t).unwrap();
 
-    let mut child = Command::new(deno_exe)
-      .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::root_path())
+    std::env::set_current_dir(root_path).unwrap();
+    let err = exec::Command::new(deno_exe)
       .arg("run")
       .arg("--unstable")
       .arg("--quiet")
       .arg("--no-check")
       .arg("cli/tests/raw_mode.ts")
-      .spawn()
-      .unwrap();
-
-    // wpipe.write_all(b"c").unwrap();
-    // let mut obytes: [u8; 100] = [0; 100];
-    // assert_eq!(1, rpipe_.read(&mut obytes).unwrap());
-
-    let status = child.wait().unwrap();
-    assert!(status.success());
-    // Exit the forked child process so the tests don't continue running.
-    std::process::exit(0);
+      .exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
