@@ -1451,8 +1451,7 @@ fn run_watch_fail() {
 fn repl_test_pty_multiline() {
   use std::io::Read;
   use util::pty::fork::*;
-
-  let tests_path = util::tests_path();
+  let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     master.write_all(b"(\n1 + 2\n)\n").unwrap();
@@ -1485,14 +1484,10 @@ fn repl_test_pty_multiline() {
 
     fork.wait().unwrap();
   } else {
-    util::deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .arg("repl")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
@@ -1501,8 +1496,7 @@ fn repl_test_pty_multiline() {
 fn repl_test_pty_unpaired_braces() {
   use std::io::Read;
   use util::pty::fork::*;
-
-  let tests_path = util::tests_path();
+  let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     master.write_all(b")\n").unwrap();
@@ -1519,14 +1513,10 @@ fn repl_test_pty_unpaired_braces() {
 
     fork.wait().unwrap();
   } else {
-    util::deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .arg("repl")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
