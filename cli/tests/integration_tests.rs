@@ -178,10 +178,14 @@ pub fn test_raw_tty() {
   use util::pty::fork::*;
   let deno_exe = util::deno_exe_path();
   let deno_dir = TempDir::new().expect("tempdir fail");
+  let (mut pipe_read, mut pipe_write) = os_pipe::pipe().unwrap();
   let fork = Fork::from_ptmx().unwrap();
 
   if let Ok(mut master) = fork.is_parent() {
     let mut obytes: [u8; 100] = [0; 100];
+
+    assert_eq!(1, pipe_read.read(&mut obytes).unwrap());
+
     let mut nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
     master.write_all(b"a").unwrap();
@@ -217,6 +221,7 @@ pub fn test_raw_tty() {
       .stderr(Stdio::null())
       .spawn()
       .expect("Failed to spawn script");
+    pipe_write.write_all(b"x").unwrap();
     child.wait().unwrap();
   }
 }
