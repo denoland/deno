@@ -31,6 +31,8 @@ use crate::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
@@ -38,8 +40,6 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
-use serde::Deserialize;
-use serde::Deserializer;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::collections::{BTreeSet, HashMap};
@@ -230,8 +230,8 @@ fn get_version(source: &str, version: &str, config: &[u8]) -> String {
 
 /// A logical representation of a module within a graph.
 #[derive(Debug, Clone)]
-struct Module {
-  dependencies: DependencyMap,
+pub struct Module {
+  pub dependencies: DependencyMap,
   is_dirty: bool,
   is_parsed: bool,
   maybe_emit: Option<Emit>,

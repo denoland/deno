@@ -1,0 +1,416 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+mod analysis;
+mod capabilities;
+mod config;
+mod diagnostics;
+mod dispatch;
+mod handlers;
+mod lsp_extensions;
+mod memory_cache;
+mod state;
+mod task_pool;
+mod text;
+mod tsc;
+mod utils;
+
+use config::Config;
+use diagnostics::DiagnosticSource;
+use dispatch::NotificationDispatcher;
+use dispatch::RequestDispatcher;
+use state::DocumentData;
+use state::Event;
+use state::ServerState;
+use state::Status;
+use state::Task;
+use text::apply_content_changes;
+
+use crate::tsc_config::TsConfig;
+
+use crossbeam_channel::Receiver;
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::ModuleSpecifier;
+use lsp_server::Connection;
+use lsp_server::ErrorCode;
+use lsp_server::Message;
+use lsp_server::Notification;
+use lsp_server::Request;
+use lsp_server::RequestId;
+use lsp_server::Response;
+use lsp_types::Diagnostic;
+use lsp_types::InitializeParams;
+use lsp_types::InitializeResult;
+use lsp_types::ServerInfo;
+use std::env;
+use std::fmt;
+use std::time::Instant;
+
+#[derive(Debug)]
+struct ServerError {
+  code: i32,
+  message: String,
+}
+
+impl ServerError {
+  #[allow(unused)]
+  fn new(code: i32, message: String) -> Self {
+    ServerError { code, message }
+  }
+}
+
+impl fmt::Display for ServerError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(
+      f,
+      "Language server request failed with {}. ({})",
+      self.code, self.message
+    )
+  }
+}
+
+impl std::error::Error for ServerError {}
+
+pub fn start() -> Result<(), AnyError> {
+  info!("Starting Deno language server...");
+
+  let (connection, io_threads) = Connection::stdio();
+  let (initialize_id, initialize_params) = connection.initialize_start()?;
+  let initialize_params: InitializeParams =
+    serde_json::from_value(initialize_params)?;
+
+  let capabilities =
+    capabilities::server_capabilities(&initialize_params.capabilities);
+
+  let version = format!(
+    "{} ({}, {})",
+    crate::version::deno(),
+    env!("PROFILE"),
+    env!("TARGET")
+  );
+
+  info!("  version: {}", version);
+
+  let initialize_result = InitializeResult {
+    capabilities,
+    server_info: Some(ServerInfo {
+      name: "deno-language-server".to_string(),
+      version: Some(version),
+    }),
+  };
+  let initialize_result = serde_json::to_value(initialize_result)?;
+
+  connection.initialize_finish(initialize_id, initialize_result)?;
+
+  if let Some(client_info) = initialize_params.client_info {
+    info!(
+      "Connected to \"{}\" {}",
+      client_info.name,
+      client_info.version.unwrap_or_default()
+    );
+  }
+
+  let mut config = Config::default();
+  if let Some(value) = initialize_params.initialization_options {
+    config.update(value)?;
+  }
+  config.update_capabilities(&initialize_params.capabilities);
+
+  let mut server_state = state::ServerState::new(connection.sender, config);
+  let state = server_state.snapshot();
+
+  // TODO(@kitsonk) need to make this configurable, respect unstable
+  let ts_config = TsConfig::new(json!({
+    "allowJs": true,
+    "experimentalDecorators": true,
+    "isolatedModules": true,
+    "lib": ["deno.ns", "deno.window"],
+    "module": "esnext",
+    "noEmit": true,
+    "strict": true,
+    "target": "esnext",
+  }));
+  tsc::request(
+    &mut server_state.ts_runtime,
+    &state,
+    tsc::RequestMethod::Configure(ts_config),
+  )?;
+
+  // listen for events and run the main loop
+  server_state.run(connection.receiver)?;
+
+  io_threads.join()?;
+  info!("Stop language server");
+  Ok(())
+}
+
+impl ServerState {
+  fn handle_event(&mut self, event: Event) -> Result<(), AnyError> {
+    let received = Instant::now();
+    debug!("handle_event({:?})", event);
+    let tasks_len = self.tasks.handle.len();
+    if tasks_len > 0 {
+      debug!("  tasks length: {}", tasks_len);
+    }
+
+    match event {
+      Event::Message(message) => match message {
+        Message::Request(request) => self.on_request(request, received)?,
+        Message::Notification(notification) => {
+          self.on_notification(notification)?
+        }
+        Message::Response(response) => self.complete_request(response),
+      },
+      Event::Task(mut task) => loop {
+        match task {
+          Task::Response(response) => self.respond(response),
+          Task::Diagnostics((source, diagnostics_per_file)) => {
+            for (file_id, version, diagnostics) in diagnostics_per_file {
+              self.diagnostics.set(
+                file_id,
+                source.clone(),
+                version,
+                diagnostics,
+              );
+            }
+          }
+        }
+
+        task = match self.tasks.receiver.try_recv() {
+          Ok(task) => task,
+          Err(_) => break,
+        };
+      },
+    }
+
+    // process server sent notifications, like diagnostics
+    // TODO(@kitsonk) currently all of these refresh all open documents, though
+    // in a lot of cases, like linting, we would only care about the files
+    // themselves that have changed
+    if self.process_changes() {
+      debug!("process changes");
+      let state = self.snapshot();
+      self.tasks.handle.spawn(move || {
+        let diagnostics = diagnostics::generate_linting_diagnostics(&state);
+        Task::Diagnostics((DiagnosticSource::Lint, diagnostics))
+      });
+      // TODO(@kitsonk) isolates do not have Send to be safely sent between
+      // threads, so I am not sure this is the best way to handle queuing up of
+      // getting the diagnostics from the isolate.
+      let state = self.snapshot();
+      let diagnostics =
+        diagnostics::generate_ts_diagnostics(&state, &mut self.ts_runtime)?;
+      self.tasks.handle.spawn(move || {
+        Task::Diagnostics((DiagnosticSource::TypeScript, diagnostics))
+      });
+    }
+
+    // process any changes to the diagnostics
+    if let Some(diagnostic_changes) = self.diagnostics.take_changes() {
+      debug!("diagnostics have changed");
+      let state = self.snapshot();
+      for file_id in diagnostic_changes {
+        let file_cache = state.file_cache.read().unwrap();
+        // TODO(@kitsonk) not totally happy with the way we collect and store
+        // different types of diagnostics and offer them up to the client, we
+        // do need to send "empty" vectors though when a particular feature is
+        // disabled, otherwise the client will not clear down previous
+        // diagnostics
+        let mut diagnostics: Vec<Diagnostic> = if state.config.settings.lint {
+          self
+            .diagnostics
+            .diagnostics_for(file_id, DiagnosticSource::Lint)
+            .cloned()
+            .collect()
+        } else {
+          vec![]
+        };
+        if state.config.settings.enable {
+          diagnostics.extend(
+            self
+              .diagnostics
+              .diagnostics_for(file_id, DiagnosticSource::TypeScript)
+              .cloned(),
+          );
+        }
+        let specifier = file_cache.get_specifier(file_id);
+        let uri = specifier.as_url().clone();
+        let version = if let Some(doc_data) = self.doc_data.get(specifier) {
+          doc_data.version
+        } else {
+          None
+        };
+        self.send_notification::<lsp_types::notification::PublishDiagnostics>(
+          lsp_types::PublishDiagnosticsParams {
+            uri,
+            diagnostics,
+            version,
+          },
+        );
+      }
+    }
+
+    Ok(())
+  }
+
+  fn on_notification(
+    &mut self,
+    notification: Notification,
+  ) -> Result<(), AnyError> {
+    NotificationDispatcher {
+      notification: Some(notification),
+      server_state: self,
+    }
+    // TODO(@kitsonk) this is just stubbed out and we don't currently actually
+    // cancel in progress work, though most of our work isn't long running
+    .on::<lsp_types::notification::Cancel>(|state, params| {
+      let id: RequestId = match params.id {
+        lsp_types::NumberOrString::Number(id) => id.into(),
+        lsp_types::NumberOrString::String(id) => id.into(),
+      };
+      state.cancel(id);
+      Ok(())
+    })?
+    .on::<lsp_types::notification::DidOpenTextDocument>(|state, params| {
+      let specifier = ModuleSpecifier::from(params.text_document.uri);
+      if state
+        .doc_data
+        .insert(
+          specifier.clone(),
+          DocumentData::new(params.text_document.version),
+        )
+        .is_some()
+      {
+        error!("duplicate DidOpenTextDocument: {}", specifier);
+      }
+      state
+        .file_cache
+        .write()
+        .unwrap()
+        .set_contents(specifier, Some(params.text_document.text.into_bytes()));
+
+      Ok(())
+    })?
+    .on::<lsp_types::notification::DidChangeTextDocument>(|state, params| {
+      let specifier = ModuleSpecifier::from(params.text_document.uri);
+      let mut file_cache = state.file_cache.write().unwrap();
+      let file_id = file_cache.lookup(&specifier).unwrap();
+      let mut content = file_cache.get_contents(file_id)?;
+      apply_content_changes(&mut content, params.content_changes);
+      let doc_data = state.doc_data.get_mut(&specifier).unwrap();
+      doc_data.version = params.text_document.version.into();
+      file_cache.set_contents(specifier, Some(content.into_bytes()));
+
+      Ok(())
+    })?
+    .on::<lsp_types::notification::DidCloseTextDocument>(|state, params| {
+      let specifier = ModuleSpecifier::from(params.text_document.uri);
+      if state.doc_data.remove(&specifier).is_none() {
+        error!("orphaned document: {}", specifier);
+      }
+      // TODO(@kitsonk) should we do garbage collection on the diagnostics?
+
+      Ok(())
+    })?
+    .on::<lsp_types::notification::DidSaveTextDocument>(|_state, _params| {
+      // nothing to do yet... cleanup things?
+
+      Ok(())
+    })?
+    .on::<lsp_types::notification::DidChangeConfiguration>(|state, _params| {
+      state.send_request::<lsp_types::request::WorkspaceConfiguration>(
+        lsp_types::ConfigurationParams {
+          items: vec![lsp_types::ConfigurationItem {
+            scope_uri: None,
+            section: Some("deno".to_string()),
+          }],
+        },
+        |state, response| {
+          let Response { error, result, .. } = response;
+
+          match (error, result) {
+            (Some(err), _) => {
+              error!("failed to fetch the extension settings: {:?}", err);
+            }
+            (None, Some(config)) => {
+              if let Some(config) = config.get(0) {
+                if let Err(err) = state.config.update(config.clone()) {
+                  error!("failed to update settings: {}", err);
+                }
+              }
+            }
+            (None, None) => {
+              error!("received empty extension settings from the client");
+            }
+          }
+        },
+      );
+
+      Ok(())
+    })?
+    .finish();
+
+    Ok(())
+  }
+
+  fn on_request(
+    &mut self,
+    request: Request,
+    received: Instant,
+  ) -> Result<(), AnyError> {
+    self.register_request(&request, received);
+
+    if self.shutdown_requested {
+      self.respond(Response::new_err(
+        request.id,
+        ErrorCode::InvalidRequest as i32,
+        "Shutdown already requested".to_string(),
+      ));
+      return Ok(());
+    }
+
+    if self.status == Status::Loading && request.method != "shutdown" {
+      self.respond(Response::new_err(
+        request.id,
+        ErrorCode::ContentModified as i32,
+        "Deno Language Server is still loading...".to_string(),
+      ));
+      return Ok(());
+    }
+
+    RequestDispatcher {
+      request: Some(request),
+      server_state: self,
+    }
+    .on_sync::<lsp_types::request::Shutdown>(|s, ()| {
+      s.shutdown_requested = true;
+      Ok(())
+    })?
+    .on::<lsp_types::request::Formatting>(handlers::handle_formatting)
+    .on::<lsp_types::request::HoverRequest>(handlers::handle_hover)
+    .on::<lsp_extensions::VirtualTextDocument>(
+      handlers::handle_virtual_text_document,
+    )
+    .finish();
+
+    Ok(())
+  }
+
+  /// Start consuming events from the provided receiver channel.
+  pub fn run(mut self, inbox: Receiver<Message>) -> Result<(), AnyError> {
+    // currently we don't need to do any other loading or tasks, so as soon as
+    // we run we are "ready"
+    self.transition(Status::Ready);
+
+    while let Some(event) = self.next_event(&inbox) {
+      self.handle_event(event)?
+    }
+
+    Err(custom_error(
+      "ClientError",
+      "Client exited without proper shutdown sequence.",
+    ))
+  }
+}
