@@ -183,32 +183,17 @@ pub fn test_raw_tty() {
 
   if let Ok(mut master) = fork.is_parent() {
     let mut obytes: [u8; 100] = [0; 100];
-
-    println!("read S");
     let mut nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
-
-    println!("write a");
     master.write_all(b"a").unwrap();
-
-    println!("read A");
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
-
-    println!("write b");
     master.write_all(b"b").unwrap();
-
-    println!("read B");
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "B");
-
-    println!("write c");
     master.write_all(b"c").unwrap();
-
-    println!("read C");
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
-
     fork.wait().unwrap();
   } else {
     use nix::sys::termios;
