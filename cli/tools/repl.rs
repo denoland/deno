@@ -28,7 +28,6 @@ use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
-use swc_atoms::js_word;
 use swc_common::comments::{Comment, CommentKind, SingleThreadedComments};
 use swc_common::input::StringInput;
 use swc_common::{BytePos, Span};
@@ -288,14 +287,15 @@ impl Highlighter for LineHighlighter {
                 colors::yellow(&line[item.span]).to_string()
               }
               Word::Keyword(_) => colors::cyan(&line[item.span]).to_string(),
-              Word::Ident(js_word!("undefined")) => {
-                colors::gray(&line[item.span]).to_string()
+              Word::Ident(ident) => {
+                if ident == *"undefined" {
+                  colors::gray(&line[item.span]).to_string()
+                } else if ident == *"Infinity" || ident == *"NaN" {
+                  colors::yellow(&line[item.span]).to_string()
+                } else {
+                  line[item.span].to_string()
+                }
               }
-              Word::Ident(js_word!("Infinity"))
-              | Word::Ident(js_word!("NaN")) => {
-                colors::yellow(&line[item.span]).to_string()
-              }
-              _ => line[item.span].to_string(),
             },
             _ => line[item.span].to_string(),
           },
