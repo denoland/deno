@@ -501,13 +501,13 @@ impl JsRuntime {
       let poll_imports = self.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
 
-      self.evaluate_dyn_imports()?;
+      self.evaluate_dyn_imports();
 
       self.check_promise_exceptions()?;
     }
 
     // Top level module
-    self.evaluate_pending_module()?;
+    self.evaluate_pending_module();
 
     let state = state_rc.borrow();
     let has_pending_ops = !state.pending_ops.is_empty();
@@ -814,7 +814,7 @@ impl JsRuntime {
     }
 
     if status == v8::ModuleStatus::Evaluated {
-      self.dyn_import_done(load_id, id)?;
+      self.dyn_import_done(load_id, id);
     }
 
     Ok(())
@@ -828,7 +828,7 @@ impl JsRuntime {
   fn mod_evaluate_inner(
     &mut self,
     id: ModuleId,
-  ) -> Result<mpsc::Receiver<Result<(), AnyError>>, AnyError> {
+  ) -> mpsc::Receiver<Result<(), AnyError>> {
     self.shared_init();
 
     let state_rc = Self::state(self.v8_isolate());
@@ -894,11 +894,11 @@ impl JsRuntime {
       }
     }
 
-    Ok(receiver)
+    receiver
   }
 
   pub async fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
-    let mut receiver = self.mod_evaluate_inner(id)?;
+    let mut receiver = self.mod_evaluate_inner(id);
 
     poll_fn(|cx| {
       if let Poll::Ready(result) = receiver.poll_next_unpin(cx) {
@@ -911,11 +911,7 @@ impl JsRuntime {
     .await
   }
 
-  fn dyn_import_error(
-    &mut self,
-    id: ModuleLoadId,
-    err: AnyError,
-  ) -> Result<(), AnyError> {
+  fn dyn_import_error(&mut self, id: ModuleLoadId, err: AnyError) {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
@@ -939,14 +935,9 @@ impl JsRuntime {
 
     resolver.reject(scope, exception).unwrap();
     scope.perform_microtask_checkpoint();
-    Ok(())
   }
 
-  fn dyn_import_done(
-    &mut self,
-    id: ModuleLoadId,
-    mod_id: ModuleId,
-  ) -> Result<(), AnyError> {
+  fn dyn_import_done(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
@@ -974,7 +965,6 @@ impl JsRuntime {
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
     scope.perform_microtask_checkpoint();
-    Ok(())
   }
 
   fn prepare_dyn_imports(
@@ -1007,7 +997,7 @@ impl JsRuntime {
               state.pending_dyn_imports.push(load.into_future());
             }
             Err(err) => {
-              self.dyn_import_error(dyn_import_id, err)?;
+              self.dyn_import_error(dyn_import_id, err);
             }
           }
         }
@@ -1053,14 +1043,14 @@ impl JsRuntime {
                     let state = state_rc.borrow_mut();
                     state.pending_dyn_imports.push(load.into_future());
                   }
-                  Err(err) => self.dyn_import_error(dyn_import_id, err)?,
+                  Err(err) => self.dyn_import_error(dyn_import_id, err),
                 }
               }
               Err(err) => {
                 // A non-javascript error occurred; this could be due to a an invalid
                 // module specifier, or a problem with the source map, or a failure
                 // to fetch the module source code.
-                self.dyn_import_error(dyn_import_id, err)?
+                self.dyn_import_error(dyn_import_id, err)
               }
             }
           } else {
@@ -1088,7 +1078,7 @@ impl JsRuntime {
   /// Thus during turn of event loop we need to check if V8 has
   /// resolved or rejected the promise. If the promise is still pending
   /// then another turn of event loop must be performed.
-  fn evaluate_pending_module(&mut self) -> Result<(), AnyError> {
+  fn evaluate_pending_module(&mut self) {
     let state_rc = Self::state(self.v8_isolate());
 
     let context = self.global_context();
@@ -1126,11 +1116,9 @@ impl JsRuntime {
         }
       }
     };
-
-    Ok(())
   }
 
-  fn evaluate_dyn_imports(&mut self) -> Result<(), AnyError> {
+  fn evaluate_dyn_imports(&mut self) {
     let state_rc = Self::state(self.v8_isolate());
 
     loop {
@@ -1180,18 +1168,16 @@ impl JsRuntime {
       if let Some(result) = maybe_result {
         match result {
           Ok((dyn_import_id, module_id)) => {
-            self.dyn_import_done(dyn_import_id, module_id)?;
+            self.dyn_import_done(dyn_import_id, module_id);
           }
           Err((dyn_import_id, err1)) => {
-            self.dyn_import_error(dyn_import_id, err1)?;
+            self.dyn_import_error(dyn_import_id, err1);
           }
         }
       } else {
         break;
       }
     }
-
-    Ok(())
   }
 
   fn register_during_load(
@@ -2264,7 +2250,7 @@ pub mod tests {
     runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    runtime.mod_evaluate_inner(mod_a).unwrap();
+    runtime.mod_evaluate_inner(mod_a);
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 

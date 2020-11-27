@@ -24,6 +24,7 @@ pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
   super::reg_json_sync(rt, "op_metrics", op_metrics);
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_start(
   state: &mut OpState,
   _args: Value,
@@ -62,6 +63,7 @@ fn op_main_module(
   Ok(json!(&main))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_metrics(
   state: &mut OpState,
   _args: Value,

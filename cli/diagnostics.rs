@@ -165,10 +165,10 @@ impl Serialize for DiagnosticCategory {
     S: Serializer,
   {
     let value = match self {
-      DiagnosticCategory::Warning => 0 as i32,
-      DiagnosticCategory::Error => 1 as i32,
-      DiagnosticCategory::Suggestion => 2 as i32,
-      DiagnosticCategory::Message => 3 as i32,
+      DiagnosticCategory::Warning => 0_i32,
+      DiagnosticCategory::Error => 1_i32,
+      DiagnosticCategory::Suggestion => 2_i32,
+      DiagnosticCategory::Message => 3_i32,
     };
     Serialize::serialize(&value, serializer)
   }

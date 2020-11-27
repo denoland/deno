@@ -81,6 +81,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_global_timer_stop(
   state: &mut OpState,
   _args: Value,
@@ -137,6 +138,7 @@ async fn op_global_timer(
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
+#[allow(clippy::unnecessary_wraps)]
 fn op_now(
   state: &mut OpState,
   _args: Value,
