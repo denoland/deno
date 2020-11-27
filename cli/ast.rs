@@ -8,11 +8,13 @@ use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
 use std::fmt;
+use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
 use swc_common::chain;
 use swc_common::comments::Comment;
+use swc_common::comments::CommentKind;
 use swc_common::comments::SingleThreadedComments;
 use swc_common::errors::Diagnostic;
 use swc_common::errors::DiagnosticBuilder;
@@ -32,6 +34,7 @@ use swc_ecmascript::codegen::Node;
 use swc_ecmascript::dep_graph::analyze_dependencies;
 use swc_ecmascript::dep_graph::DependencyDescriptor;
 use swc_ecmascript::parser::lexer::Lexer;
+use swc_ecmascript::parser::token::Token;
 use swc_ecmascript::parser::EsConfig;
 use swc_ecmascript::parser::JscTarget;
 use swc_ecmascript::parser::StringInput;
@@ -405,6 +408,69 @@ pub fn parse(
     source_map: Rc::new(source_map),
     comments,
   })
+}
+
+pub enum TokenOrComment {
+  Token(Token),
+  Comment { kind: CommentKind, text: String },
+}
+
+pub struct LexedItem {
+  pub span: Span,
+  pub inner: TokenOrComment,
+}
+
+impl LexedItem {
+  pub fn span_as_range(&self) -> Range<usize> {
+    self.span.lo.0 as usize..self.span.hi.0 as usize
+  }
+}
+
+fn flatten_comments(
+  comments: SingleThreadedComments,
+) -> impl Iterator<Item = Comment> {
+  let (leading, trailing) = comments.take_all();
+  let mut comments = (*leading).clone().into_inner();
+  comments.extend((*trailing).clone().into_inner());
+  comments.into_iter().flat_map(|el| el.1)
+}
+
+pub fn lex(
+  specifier: &str,
+  source: &str,
+  media_type: &MediaType,
+) -> Vec<LexedItem> {
+  let source_map = SourceMap::default();
+  let source_file = source_map.new_source_file(
+    FileName::Custom(specifier.to_string()),
+    source.to_string(),
+  );
+  let comments = SingleThreadedComments::default();
+  let lexer = Lexer::new(
+    get_syntax(media_type),
+    TARGET,
+    StringInput::from(source_file.as_ref()),
+    Some(&comments),
+  );
+
+  let mut tokens: Vec<LexedItem> = lexer
+    .map(|token| LexedItem {
+      span: token.span,
+      inner: TokenOrComment::Token(token.token),
+    })
+    .collect();
+
+  tokens.extend(flatten_comments(comments).map(|comment| LexedItem {
+    span: comment.span,
+    inner: TokenOrComment::Comment {
+      kind: comment.kind,
+      text: comment.text,
+    },
+  }));
+
+  tokens.sort_by_key(|item| item.span.lo.0);
+
+  tokens
 }
 
 /// A low level function which transpiles a source module into an swc
