@@ -7,7 +7,6 @@ use crate::inspector::InspectorSession;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
-use crate::worker::Worker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -258,7 +257,7 @@ impl Highlighter for LineHighlighter {
 }
 
 async fn post_message_and_poll(
-  worker: &mut Worker,
+  worker: &mut MainWorker,
   session: &mut InspectorSession,
   method: &str,
   params: Option<Value>,
@@ -283,7 +282,7 @@ async fn post_message_and_poll(
 }
 
 async fn read_line_and_poll(
-  worker: &mut Worker,
+  worker: &mut MainWorker,
   session: &mut InspectorSession,
   message_rx: &Receiver<(String, Option<Value>)>,
   response_tx: &Sender<Result<Value, AnyError>>,
@@ -403,7 +402,7 @@ pub async fn run(
 
   let history_file = program_state.dir.root.join("deno_history.txt");
 
-  post_message_and_poll(&mut *worker, &mut session, "Runtime.enable", None)
+  post_message_and_poll(&mut worker, &mut session, "Runtime.enable", None)
     .await?;
 
   // Enabling the runtime domain will always send trigger one executionContextCreated for each
@@ -445,14 +444,14 @@ pub async fn run(
     .load_history(history_file.to_str().unwrap())
     .unwrap_or(());
 
-  println!("Deno {}", crate::version::DENO);
+  println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d or close()");
 
   inject_prelude(&mut worker, &mut session, context_id).await?;
 
   while !is_closing(&mut worker, &mut session, context_id).await? {
     let line = read_line_and_poll(
-      &mut *worker,
+      &mut worker,
       &mut session,
       &message_rx,
       &response_tx,
@@ -473,7 +472,7 @@ pub async fn run(
         };
 
         let evaluate_response = post_message_and_poll(
-          &mut *worker,
+          &mut worker,
           &mut session,
           "Runtime.evaluate",
           Some(json!({
@@ -491,7 +490,7 @@ pub async fn run(
             && wrapped_line != line
           {
             post_message_and_poll(
-              &mut *worker,
+              &mut worker,
               &mut session,
               "Runtime.evaluate",
               Some(json!({
@@ -511,7 +510,7 @@ pub async fn run(
 
         if evaluate_exception_details.is_some() {
           post_message_and_poll(
-                    &mut *worker,
+                    &mut worker,
                     &mut session,
                     "Runtime.callFunctionOn",
                     Some(json!({
@@ -524,7 +523,7 @@ pub async fn run(
                   ).await?;
         } else {
           post_message_and_poll(
-                    &mut *worker,
+                    &mut worker,
                     &mut session,
                     "Runtime.callFunctionOn",
                     Some(json!({
@@ -542,7 +541,7 @@ pub async fn run(
         // Deno.inspectArgs.
         let inspect_response =
           post_message_and_poll(
-            &mut *worker,
+            &mut worker,
             &mut session,
             "Runtime.callFunctionOn",
             Some(json!({

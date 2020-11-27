@@ -16,6 +16,7 @@ export {
   fail,
   unreachable,
 } from "../../../std/testing/asserts.ts";
+export { deferred } from "../../../std/async/deferred.ts";
 export { readLines } from "../../../std/io/bufio.ts";
 export { parse as parseArgs } from "../../../std/flags/mod.ts";
 
@@ -185,24 +186,6 @@ export function unitTest(
   };
 
   REGISTERED_UNIT_TESTS.push(unitTestDefinition);
-}
-
-export interface ResolvableMethods<T> {
-  resolve: (value: T | PromiseLike<T>) => void;
-  // deno-lint-ignore no-explicit-any
-  reject: (reason?: any) => void;
-}
-
-export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
-
-export function createResolvable<T = void>(): Resolvable<T> {
-  let methods: ResolvableMethods<T>;
-  const promise = new Promise<T>((resolve, reject): void => {
-    methods = { resolve, reject };
-  });
-  // TypeScript doesn't know that the Promise callback occurs synchronously
-  // therefore use of not null assertion (`!`)
-  return Object.assign(promise, methods!) as Resolvable<T>;
 }
 
 const encoder = new TextEncoder();

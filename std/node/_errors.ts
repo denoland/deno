@@ -1232,7 +1232,7 @@ export class ERR_INVALID_BUFFER_SIZE extends NodeRangeError {
   }
 }
 export class ERR_INVALID_CALLBACK extends NodeTypeError {
-  constructor(object: { [key: string]: unknown }) {
+  constructor(object: unknown) {
     super(
       "ERR_INVALID_CALLBACK",
       `Callback must be a function. Received ${JSON.stringify(object)}`,
