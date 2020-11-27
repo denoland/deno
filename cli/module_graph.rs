@@ -1568,7 +1568,6 @@ impl GraphBuilder {
 
   /// Request a module to be fetched from the handler and queue up its future
   /// to be awaited to be resolved.
-  #[allow(clippy::unnecessary_wraps)]
   fn fetch(
     &mut self,
     specifier: &ModuleSpecifier,
