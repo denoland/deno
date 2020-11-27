@@ -3273,6 +3273,11 @@ itest!(ignore_require {
   exit_code: 0,
 });
 
+itest!(local_sources_not_cached_in_memory {
+  args: "run --allow-read --allow-write no_mem_cache.js",
+  output: "no_mem_cache.js.out",
+});
+
 #[test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;

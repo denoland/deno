@@ -901,9 +901,13 @@ impl JsRuntime {
     let mut receiver = self.mod_evaluate_inner(id)?;
 
     poll_fn(|cx| {
-      if let Poll::Ready(result) = receiver.poll_next_unpin(cx) {
-        debug!("received module evaluate");
-        return Poll::Ready(result.unwrap());
+      if let Poll::Ready(maybe_result) = receiver.poll_next_unpin(cx) {
+        debug!("received module evaluate {:#?}", maybe_result);
+        // If `None` is returned it means that runtime was destroyed before
+        // evaluation was complete. This can happen in Web Worker when `self.close()`
+        // is called at top level.
+        let result = maybe_result.unwrap_or(Ok(()));
+        return Poll::Ready(result);
       }
       let _r = self.poll_event_loop(cx)?;
       Poll::Pending
