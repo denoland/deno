@@ -176,27 +176,46 @@ fn no_color() {
 pub fn test_raw_tty() {
   use std::io::{Read, Write};
   use util::pty::fork::*;
+
+  // let (mut rpipe, mut wpipe) = os_pipe::pipe().unwrap();
+  // let (mut rpipe_, mut wpipe_) = os_pipe::pipe().unwrap();
+
   let deno_exe = util::deno_exe_path();
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let (mut pipe_read, mut pipe_write) = os_pipe::pipe().unwrap();
   let fork = Fork::from_ptmx().unwrap();
 
   if let Ok(mut master) = fork.is_parent() {
     let mut obytes: [u8; 100] = [0; 100];
 
-    assert_eq!(1, pipe_read.read(&mut obytes).unwrap());
+    // assert_eq!(1, rpipe.read(&mut obytes).unwrap());
+    // wpipe_.write_all(b"c").unwrap();
 
+    println!("read S");
     let mut nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
+
+    println!("write a");
     master.write_all(b"a").unwrap();
+
+    println!("read A");
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
+
+    println!("write b");
     master.write_all(b"b").unwrap();
+
+    println!("read B");
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "B");
+
+    println!("write c");
     master.write_all(b"c").unwrap();
+
+    println!("read C");
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
+
+    fork.wait().unwrap();
   } else {
     use nix::sys::termios;
     use std::os::unix::io::AsRawFd;
@@ -213,16 +232,20 @@ pub fn test_raw_tty() {
       .current_dir(util::root_path())
       .arg("run")
       .arg("--unstable")
+      .arg("--quiet")
+      .arg("--no-check")
       .arg("cli/tests/raw_mode.ts")
-      .stdin(Stdio::inherit())
-      .stdout(Stdio::inherit())
-      // Warning: errors may be swallowed. Try to comment stderr null if
-      // experiencing problems.
-      .stderr(Stdio::null())
       .spawn()
-      .expect("Failed to spawn script");
-    pipe_write.write_all(b"x").unwrap();
-    child.wait().unwrap();
+      .unwrap();
+
+    // wpipe.write_all(b"c").unwrap();
+    // let mut obytes: [u8; 100] = [0; 100];
+    // assert_eq!(1, rpipe_.read(&mut obytes).unwrap());
+
+    let status = child.wait().unwrap();
+    assert!(status.success());
+    // Exit the forked child process so the tests don't continue running.
+    std::process::exit(0);
   }
 }
 
