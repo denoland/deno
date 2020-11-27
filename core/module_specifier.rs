@@ -16,7 +16,6 @@ pub enum ModuleResolutionError {
   InvalidPath(PathBuf),
   ImportPrefixMissing(String, Option<String>),
 }
-use std::cmp::Ordering;
 use ModuleResolutionError::*;
 
 impl Error for ModuleResolutionError {
@@ -49,7 +48,9 @@ impl fmt::Display for ModuleResolutionError {
   }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq, serde::Serialize)]
+#[derive(
+  Debug, Clone, Eq, Hash, PartialEq, serde::Serialize, Ord, PartialOrd,
+)]
 /// Resolved module specifier
 pub struct ModuleSpecifier(Url);
 
@@ -205,18 +206,6 @@ impl From<Url> for ModuleSpecifier {
 impl PartialEq<String> for ModuleSpecifier {
   fn eq(&self, other: &String) -> bool {
     &self.to_string() == other
-  }
-}
-
-impl Ord for ModuleSpecifier {
-  fn cmp(&self, other: &Self) -> Ordering {
-    self.0.cmp(&other.0)
-  }
-}
-
-impl PartialOrd for ModuleSpecifier {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
   }
 }
 
