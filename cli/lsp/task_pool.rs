@@ -3,6 +3,8 @@
 use crossbeam_channel::Sender;
 use threadpool::ThreadPool;
 
+// TODO(@kitsonk) replace with `tokio-threadpool`?
+
 pub struct TaskPool<T> {
   sender: Sender<T>,
   inner: ThreadPool,

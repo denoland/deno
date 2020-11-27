@@ -78,3 +78,38 @@ pub fn references_to_diagnostics(
     })
     .collect()
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_as_lsp_range() {
+    let fixture = deno_lint::diagnostic::Range {
+      start: deno_lint::diagnostic::Position {
+        line: 1,
+        col: 2,
+        byte_pos: 23,
+      },
+      end: deno_lint::diagnostic::Position {
+        line: 2,
+        col: 0,
+        byte_pos: 33,
+      },
+    };
+    let actual = as_lsp_range(&fixture);
+    assert_eq!(
+      actual,
+      lsp_types::Range {
+        start: lsp_types::Position {
+          line: 0,
+          character: 2,
+        },
+        end: lsp_types::Position {
+          line: 1,
+          character: 0,
+        },
+      }
+    );
+  }
+}

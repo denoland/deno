@@ -8,6 +8,9 @@ use serde::de::DeserializeOwned;
 use std::error::Error;
 use std::fmt;
 
+// TODO(@kitsonk) support actually supporting cancellation requests from the
+// client.
+
 pub struct Canceled {
   _private: (),
 }

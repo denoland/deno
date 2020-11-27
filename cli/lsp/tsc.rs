@@ -185,7 +185,6 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!(true))
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn script_names(state: &mut State, _args: Value) -> Result<Value, AnyError> {
   let script_names: Vec<&ModuleSpecifier> =
     state.server_state.doc_data.keys().collect();
@@ -211,6 +210,9 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!(None::<String>))
 }
 
+/// Create and setup a JsRuntime based on a snapshot. It is expected that the
+/// supplied snapshot is an isolate that contains the TypeScript language
+/// server.
 pub fn start(snapshot: Snapshot, debug: bool) -> Result<JsRuntime, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(snapshot),

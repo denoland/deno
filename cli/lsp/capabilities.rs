@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+///!
+///! Provides information about what capabilities that are supported by the
+///! language server, which helps determine what messages are sent from the
+///! client.
+///!
 use lsp_types::ClientCapabilities;
 // use lsp_types::HoverProviderCapability;
 use lsp_types::OneOf;

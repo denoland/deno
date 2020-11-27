@@ -9,6 +9,17 @@ use std::ops::Bound;
 use std::ops::Range;
 use std::ops::RangeBounds;
 
+// TODO(@kitson) in general all of these text handling routines don't handle
+// JavaScript encoding in the same way and likely cause issues when trying to
+// arbitrate between chars and Unicode graphemes.  There be dragons.
+
+/// Generate a character position for the start of each line.  For example:
+///
+/// ```rust
+/// let actual = index_lines("a\nb\n");
+/// assert_eq!(actual, vec![0, 2, 4]);
+/// ```
+///
 pub fn index_lines(text: &str) -> Vec<u32> {
   let mut indexes = vec![0_u32];
   for (i, c) in text.chars().enumerate() {
@@ -58,6 +69,7 @@ fn to_position(line_index: &[u32], char_pos: u32) -> lsp_types::Position {
   }
 }
 
+/// Apply a vector of document changes to the supplied string.
 pub fn apply_content_changes(
   content: &mut String,
   content_changes: Vec<lsp_types::TextDocumentContentChangeEvent>,
