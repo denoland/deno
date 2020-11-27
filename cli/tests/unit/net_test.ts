@@ -68,7 +68,7 @@ unitTest(
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { read: true } },
   function netUnixListenWritePermission(): void {
-    try {
+    assertThrows(() => {
       const filePath = Deno.makeTempFileSync();
       const socket = Deno.listen({
         path: filePath,
@@ -77,17 +77,14 @@ unitTest(
       assert(socket.addr.transport === "unix");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    } catch (e) {
-      assert(!!e);
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
+    }, Deno.errors.PermissionDenied);
   },
 );
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { read: true } },
   function netUnixPacketListenWritePermission(): void {
-    try {
+    assertThrows(() => {
       const filePath = Deno.makeTempFileSync();
       const socket = Deno.listenDatagram({
         path: filePath,
@@ -96,10 +93,7 @@ unitTest(
       assert(socket.addr.transport === "unixpacket");
       assertEquals(socket.addr.path, filePath);
       socket.close();
-    } catch (e) {
-      assert(!!e);
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
+    }, Deno.errors.PermissionDenied);
   },
 );
 
