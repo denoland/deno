@@ -460,14 +460,12 @@ pub fn lex(
     })
     .collect();
 
-  tokens.extend(flatten_comments(comments).map(|comment| {
-    LexedItem {
-      span: comment.span,
-      inner: TokenOrComment::Comment {
-        kind: comment.kind,
-        text: comment.text,
-      },
-    }
+  tokens.extend(flatten_comments(comments).map(|comment| LexedItem {
+    span: comment.span,
+    inner: TokenOrComment::Comment {
+      kind: comment.kind,
+      text: comment.text,
+    },
   }));
 
   tokens.sort_by_key(|item| item.span.lo.0);
