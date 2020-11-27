@@ -130,6 +130,43 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
+/// Module loader used when creating a runtime that supports
+/// module loading from filesystem.
+pub struct FsModuleLoader;
+
+impl ModuleLoader for FsModuleLoader {
+  fn resolve(
+    &self,
+    _op_state: Rc<RefCell<OpState>>,
+    specifier: &str,
+    referrer: &str,
+    _is_main: bool,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    Ok(ModuleSpecifier::resolve_import(specifier, referrer)?)
+  }
+
+  fn load(
+    &self,
+    _op_state: Rc<RefCell<OpState>>,
+    module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<ModuleSpecifier>,
+    _is_dynamic: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    let module_specifier = module_specifier.clone();
+    async move {
+      let path = module_specifier.as_url().to_file_path().unwrap();
+      let content = std::fs::read_to_string(path)?;
+      let module = ModuleSource {
+        code: content,
+        module_url_specified: module_specifier.to_string(),
+        module_url_found: module_specifier.to_string(),
+      };
+      Ok(module)
+    }
+    .boxed_local()
+  }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 enum Kind {
   Main,
