@@ -130,8 +130,11 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
-/// Module loader used when creating a runtime that supports
-/// module loading from filesystem.
+/// Basic file system module loader.
+///
+/// Note that this loader will **block** event loop
+/// when loading file as it uses synchronous FS API
+/// from standard library.
 pub struct FsModuleLoader;
 
 impl ModuleLoader for FsModuleLoader {
@@ -154,10 +157,15 @@ impl ModuleLoader for FsModuleLoader {
   ) -> Pin<Box<ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     async move {
-      let path = module_specifier.as_url().to_file_path().unwrap();
-      let content = std::fs::read_to_string(path)?;
+      let path = module_specifier.as_url().to_file_path().map_err(|_| {
+        generic_error(format!(
+          "Provided module specifier \"{}\" is not a file URL.",
+          module_specifier
+        ))
+      })?;
+      let code = std::fs::read_to_string(path)?;
       let module = ModuleSource {
-        code: content,
+        code,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
       };
