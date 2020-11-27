@@ -102,31 +102,32 @@ function is as follows:
 
   `DataItem: Record<string, unknown> | unknown[]`
 
-      ```ts
-      const data = [
-        {
-          name: "Deno",
-          repo: { org: "denoland", name: "deno" },
-          runsOn: ["Rust", "TypeScript"],
-        },
-      ];
-      ```
+  ```ts
+  const data = [
+    {
+      name: "Deno",
+      repo: { org: "denoland", name: "deno" },
+      runsOn: ["Rust", "TypeScript"],
+    },
+  ];
+  ```
 
 - **`columns`** is a list of instructions for how to target and transform the
   data for each column of output. This is also where you can provide an explicit
   header name for the column.
 
   `Column`:
+
   - The most essential aspect of a column is accessing the property holding the
     data for that column on each object in the data array. If that member is at
     the top level, `Column` can simply be a property accessor, which is either a
     `string` (if it's a plain object) or a `number` (if it's an array).
 
-        ```ts
-        const columns = [
-          "name",
-        ];
-        ```
+    ```ts
+    const columns = [
+      "name",
+    ];
+    ```
 
     Each property accessor will be used as the header for the column:
 
@@ -138,12 +139,12 @@ function is as follows:
     objects/arrays), then a simple property accessor won't work, so an array of
     them will be required.
 
-        ```ts
-        const columns = [
-          ["repo", "name"],
-          ["repo", "org"],
-        ];
-        ```
+    ```ts
+    const columns = [
+      ["repo", "name"],
+      ["repo", "org"],
+    ];
+    ```
 
     When using arrays of property accessors, the header names inherit the value
     of the last accessor in each array:
@@ -158,27 +159,29 @@ function is as follows:
 
     - **`fn?: (value: any) => string | Promise<string>`** is an optional
       function to transform the targeted data into the desired format
+
     - **`header?: string`** is the optional value to use for the column header
       name
+
     - **`prop: PropertyAccessor | PropertyAccessor[]`** is the property accessor
       (`string` or `number`) or array of property accessors used to access the
       data on each object
 
-          ```ts
-          const columns = [
-            "name",
-            {
-              prop: ["runsOn", 0],
-              header: "language 1",
-              fn: (str: string) => str.toLowerCase(),
-            },
-            {
-              prop: ["runsOn", 1],
-              header: "language 2",
-              fn: (str: string) => str.toLowerCase(),
-            },
-          ];
-          ```
+    ```ts
+    const columns = [
+      "name",
+      {
+        prop: ["runsOn", 0],
+        header: "language 1",
+        fn: (str: string) => str.toLowerCase(),
+      },
+      {
+        prop: ["runsOn", 1],
+        header: "language 2",
+        fn: (str: string) => str.toLowerCase(),
+      },
+    ];
+    ```
 
     | name | language 1 | language 2 |
     | :--: | :--------: | :--------: |
