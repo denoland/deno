@@ -1331,6 +1331,17 @@ fn info_with_compiled_source() {
   assert_eq!(output.stderr, b"");
 }
 
+// Helper function to skip watcher output that doesn't contain
+// "Process finished" phrase.
+fn wait_for_process_finished(stderr_lines: &mut impl Iterator<Item = String>) {
+  loop {
+    let msg = stderr_lines.next().unwrap();
+    if msg.contains("Process finished") {
+      break;
+    }
+  }
+}
+
 #[test]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
@@ -1358,7 +1369,7 @@ fn run_watch() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1371,7 +1382,7 @@ fn run_watch() {
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -1385,7 +1396,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   std::fs::write(&another_file, "export const foo = 42;")
@@ -1393,7 +1404,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1401,7 +1412,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Then restore the file
   std::fs::write(
@@ -1412,7 +1423,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   child.kill().unwrap();
   drop(t);
