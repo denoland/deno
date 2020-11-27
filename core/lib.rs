@@ -5,6 +5,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+mod async_cell;
 mod bindings;
 pub mod error;
 mod flags;
@@ -15,6 +16,7 @@ mod normalize_path;
 mod ops;
 pub mod plugin_api;
 mod resources;
+mod resources2;
 mod runtime;
 mod shared_queue;
 mod zero_copy_buf;
@@ -26,6 +28,12 @@ pub use serde;
 pub use serde_json;
 pub use url;
 
+pub use crate::async_cell::AsyncMut;
+pub use crate::async_cell::AsyncMutFuture;
+pub use crate::async_cell::AsyncRef;
+pub use crate::async_cell::AsyncRefCell;
+pub use crate::async_cell::AsyncRefFuture;
+pub use crate::async_cell::RcRef;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
@@ -47,6 +55,9 @@ pub use crate::ops::OpId;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::resources::ResourceTable;
+pub use crate::resources2::Resource;
+pub use crate::resources2::ResourceId;
+pub use crate::resources2::ResourceTable2;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;

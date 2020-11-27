@@ -6,6 +6,32 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.5.4 / 2020.11.23
+
+- feat(unstable): Add deno test --no-run (#8093)
+- feat(unstable): Support --watch flag for bundle and fmt subcommands (#8276)
+- fix: Support "deno run --v8-flags=--help" without script (#8110)
+- fix(tsc): Allow non-standard extensions on imports (#8464)
+- refactor: Improve Deno.version type declaration (#8391)
+- refactor: Rename --failfast to --fail-fast for test subcommand (#8456)
+- upgrade: rusty_v8 0.13.0, v8 8.8.278.2 (#8446)
+
+Changes in std version 0.79.0:
+
+- feat(std/hash): Add HmacSha1 (#8418)
+- feat(std/http): Check if cookie property is valid (#7189)
+- feat(std/http): Validate cookie path value (#8457)
+- feat(std/io): ReadableStream from AsyncIterator & WritableStream from Writer
+  (#8378)
+- feat(std/log): Log error stack (#8401)
+- feat(std/node): Add os.totalmem, os.freemem (#8317)
+- feat(std/node): Add ReadableStream, WritableStream, errors support (#7569)
+- feat(std/node): Add util.deprecate (#8407)
+- feat(std/node): Add process.nextTick (#8386)
+- fix(std/http): Fix error handling in the request iterator (#8365)
+- fix(std/node) Fix event extendability (#8409)
+- fix(std/node): Correct typings for global, globalThis, window (#8363)
+
 ### 1.5.3 / 2020.11.16
 
 - feat(unstable): support deno lint --rules --json (#8384)

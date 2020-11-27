@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.5.3"
+version = "1.5.4"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,10 +20,10 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_crypto = { path = "../op_crates/crypto", version = "0.2.0" }
-deno_core = { path = "../core", version = "0.68.0" }
-deno_web = { path = "../op_crates/web", version = "0.19.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.11.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
+deno_core = { path = "../core", version = "0.69.0" }
+deno_web = { path = "../op_crates/web", version = "0.20.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
 regex = "1.3.9"
 serde = { version = "1.0.116", features = ["derive"] }
 
@@ -32,12 +32,12 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_crypto = { path = "../op_crates/crypto", version = "0.2.0" }
-deno_core = { path = "../core", version = "0.68.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
+deno_core = { path = "../core", version = "0.69.0" }
 deno_doc = "0.1.16"
 deno_lint = "0.2.11"
-deno_web = { path = "../op_crates/web", version = "0.19.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.11.0" }
+deno_web = { path = "../op_crates/web", version = "0.20.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
