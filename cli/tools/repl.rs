@@ -1,14 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
+use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::inspector::InspectorSession;
+use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use regex::Captures;
-use regex::Regex;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -26,6 +27,7 @@ use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
+use swc_ecmascript::parser::token::{Token, Word};
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -132,55 +134,42 @@ impl Validator for Helper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    let mut stack: Vec<char> = Vec::new();
-    let mut literal: Option<char> = None;
-    let mut escape: bool = false;
+    let mut stack: Vec<Token> = Vec::new();
+    let mut in_template = false;
 
-    for c in ctx.input().chars() {
-      if escape {
-        escape = false;
-        continue;
-      }
-
-      if c == '\\' {
-        escape = true;
-        continue;
-      }
-
-      if let Some(v) = literal {
-        if c == v {
-          literal = None
+    for item in ast::lex("", ctx.input(), &MediaType::JavaScript) {
+      if let TokenOrComment::Token(token) = item.inner {
+        match token {
+          Token::BackQuote => in_template = !in_template,
+          Token::LParen
+          | Token::LBracket
+          | Token::LBrace
+          | Token::DollarLBrace => stack.push(token),
+          Token::RParen | Token::RBracket | Token::RBrace => {
+            match (stack.pop(), token) {
+              (Some(Token::LParen), Token::RParen)
+              | (Some(Token::LBracket), Token::RBracket)
+              | (Some(Token::LBrace), Token::RBrace)
+              | (Some(Token::DollarLBrace), Token::RBrace) => {}
+              (Some(left), _) => {
+                return Ok(ValidationResult::Invalid(Some(format!(
+                  "Mismatched pairs: {:?} is not properly closed",
+                  left
+                ))))
+              }
+              (None, _) => {
+                // While technically invalid when unpaired, it should be V8's task to output error instead.
+                // Thus marked as valid with no info.
+                return Ok(ValidationResult::Valid(None));
+              }
+            }
+          }
+          _ => {}
         }
-
-        continue;
-      } else {
-        literal = match c {
-          '`' | '"' | '/' | '\'' => Some(c),
-          _ => None,
-        };
-      }
-
-      match c {
-        '(' | '[' | '{' => stack.push(c),
-        ')' | ']' | '}' => match (stack.pop(), c) {
-          (Some('('), ')') | (Some('['), ']') | (Some('{'), '}') => {}
-          (Some(left), _) => {
-            return Ok(ValidationResult::Invalid(Some(format!(
-              "Mismatched pairs: {:?} is not properly closed",
-              left
-            ))))
-          }
-          (None, _) => {
-            // While technically invalid when unpaired, it should be V8's task to output error instead.
-            // Thus marked as valid with no info.
-            return Ok(ValidationResult::Valid(None));
-          }
-        },
-        _ => {}
       }
     }
 
-    if !stack.is_empty() || literal == Some('`') {
+    if !stack.is_empty() || in_template {
       return Ok(ValidationResult::Incomplete);
     }
 
@@ -210,71 +199,60 @@ impl Highlighter for Helper {
   }
 }
 
-struct LineHighlighter {
-  regex: Regex,
-}
+struct LineHighlighter;
 
 impl LineHighlighter {
   fn new() -> Self {
-    let regex = Regex::new(
-      r#"(?x)
-      (?P<comment>(?:/\*[\s\S]*?\*/|//[^\n]*)) |
-      (?P<string>(?:"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)) |
-      (?P<regexp>/(?:(?:\\/|[^\n/]))*?/[gimsuy]*) |
-      (?P<number>\b\d+(?:\.\d+)?(?:e[+-]?\d+)*n?\b) |
-      (?P<infinity>\b(?:Infinity|NaN)\b) |
-      (?P<hexnumber>\b0x[a-fA-F0-9]+\b) |
-      (?P<octalnumber>\b0o[0-7]+\b) |
-      (?P<binarynumber>\b0b[01]+\b) |
-      (?P<boolean>\b(?:true|false)\b) |
-      (?P<null>\b(?:null)\b) |
-      (?P<undefined>\b(?:undefined)\b) |
-      (?P<keyword>\b(?:await|async|var|let|for|if|else|in|of|class|const|function|yield|return|with|case|break|switch|import|export|new|while|do|throw|catch|this)\b) |
-      "#,
-      )
-      .unwrap();
-
-    Self { regex }
+    Self
   }
 }
 
 impl Highlighter for LineHighlighter {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
-    self
-      .regex
-      .replace_all(&line.to_string(), |caps: &Captures<'_>| {
-        if let Some(cap) = caps.name("comment") {
-          colors::gray(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("string") {
-          colors::green(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("regexp") {
-          colors::red(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("number") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("boolean") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("null") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("undefined") {
-          colors::gray(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("keyword") {
-          colors::cyan(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("infinity") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("classes") {
-          colors::green_bold(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("hexnumber") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("octalnumber") {
-          colors::yellow(cap.as_str()).to_string()
-        } else if let Some(cap) = caps.name("binarynumber") {
-          colors::yellow(cap.as_str()).to_string()
-        } else {
-          caps[0].to_string()
-        }
-      })
-      .to_string()
-      .into()
+    let mut out_line = String::from(line);
+
+    for item in ast::lex("", line, &MediaType::JavaScript) {
+      // Adding color adds more bytes to the string,
+      // so an offset is needed to stop spans falling out of sync.
+      let offset = out_line.len() - line.len();
+      let span = item.span_as_range();
+
+      out_line.replace_range(
+        span.start + offset..span.end + offset,
+        &match item.inner {
+          TokenOrComment::Token(token) => match token {
+            Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
+              colors::green(&line[span]).to_string()
+            }
+            Token::Regex(_, _) => colors::red(&line[span]).to_string(),
+            Token::Num(_) | Token::BigInt(_) => {
+              colors::yellow(&line[span]).to_string()
+            }
+            Token::Word(word) => match word {
+              Word::True | Word::False | Word::Null => {
+                colors::yellow(&line[span]).to_string()
+              }
+              Word::Keyword(_) => colors::cyan(&line[span]).to_string(),
+              Word::Ident(ident) => {
+                if ident == *"undefined" {
+                  colors::gray(&line[span]).to_string()
+                } else if ident == *"Infinity" || ident == *"NaN" {
+                  colors::yellow(&line[span]).to_string()
+                } else {
+                  line[span].to_string()
+                }
+              }
+            },
+            _ => line[span].to_string(),
+          },
+          TokenOrComment::Comment { .. } => {
+            colors::gray(&line[span]).to_string()
+          }
+        },
+      );
+    }
+
+    out_line.into()
   }
 }
 

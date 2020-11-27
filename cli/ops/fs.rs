@@ -358,7 +358,7 @@ fn op_fstat_sync(
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
   })?;
-  Ok(get_stat_json(metadata).unwrap())
+  Ok(get_stat_json(metadata))
 }
 
 async fn op_fstat_async(
@@ -377,7 +377,7 @@ async fn op_fstat_async(
         Err(type_error("cannot stat this type of resource".to_string()))
       }
     })?;
-  Ok(get_stat_json(metadata).unwrap())
+  Ok(get_stat_json(metadata))
 }
 
 #[derive(Deserialize)]
@@ -818,7 +818,7 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Value {
 }
 
 #[inline(always)]
-fn get_stat_json(metadata: std::fs::Metadata) -> Result<Value, AnyError> {
+fn get_stat_json(metadata: std::fs::Metadata) -> Value {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member:ident) => {{
@@ -857,7 +857,7 @@ fn get_stat_json(metadata: std::fs::Metadata) -> Result<Value, AnyError> {
     "blksize": usm!(blksize),
     "blocks": usm!(blocks),
   });
-  Ok(json_val)
+  json_val
 }
 
 #[derive(Deserialize)]
@@ -882,7 +882,7 @@ fn op_stat_sync(
   } else {
     std::fs::metadata(&path)?
   };
-  get_stat_json(metadata)
+  Ok(get_stat_json(metadata))
 }
 
 async fn op_stat_async(
@@ -906,7 +906,7 @@ async fn op_stat_async(
     } else {
       std::fs::metadata(&path)?
     };
-    get_stat_json(metadata)
+    Ok(get_stat_json(metadata))
   })
   .await
   .unwrap()
