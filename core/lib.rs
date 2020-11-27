@@ -40,6 +40,7 @@ pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoadId;
 pub use crate::modules::ModuleLoader;
+pub use crate::modules::FsModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::RecursiveModuleLoad;
