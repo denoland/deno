@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::inspector::InspectorSession;
 use crate::media_type::MediaType;
@@ -20,7 +21,6 @@ use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
-use std::ops::Range;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
 use std::sync::mpsc::Receiver;
@@ -28,10 +28,6 @@ use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
-use swc_common::comments::{Comment, CommentKind, SingleThreadedComments};
-use swc_common::input::StringInput;
-use swc_common::{BytePos, Span};
-use swc_ecmascript::parser::lexer::Lexer;
 use swc_ecmascript::parser::token::{Token, Word};
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
@@ -139,47 +135,38 @@ impl Validator for Helper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    let lexer = Lexer::new(
-      ast::get_syntax(&MediaType::JavaScript),
-      ast::TARGET,
-      StringInput::new(
-        ctx.input(),
-        BytePos(0),
-        BytePos(ctx.input().len() as u32),
-      ),
-      None,
-    );
-
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
 
-    for item in lexer {
-      match item.token {
-        Token::BackQuote => in_template = !in_template,
-        Token::LParen
-        | Token::LBracket
-        | Token::LBrace
-        | Token::DollarLBrace => stack.push(item.token),
-        Token::RParen | Token::RBracket | Token::RBrace => {
-          match (stack.pop(), item.token) {
-            (Some(Token::LParen), Token::RParen)
-            | (Some(Token::LBracket), Token::RBracket)
-            | (Some(Token::LBrace), Token::RBrace)
-            | (Some(Token::DollarLBrace), Token::RBrace) => {}
-            (Some(left), _) => {
-              return Ok(ValidationResult::Invalid(Some(format!(
-                "Mismatched pairs: {:?} is not properly closed",
-                left
-              ))))
-            }
-            (None, _) => {
-              // While technically invalid when unpaired, it should be V8's task to output error instead.
-              // Thus marked as valid with no info.
-              return Ok(ValidationResult::Valid(None));
+    for item in ast::lex("", ctx.input(), &MediaType::JavaScript) {
+      if let TokenOrComment::Token(token) = item.inner {
+        match token {
+          Token::BackQuote => in_template = !in_template,
+          Token::LParen
+          | Token::LBracket
+          | Token::LBrace
+          | Token::DollarLBrace => stack.push(token),
+          Token::RParen | Token::RBracket | Token::RBrace => {
+            match (stack.pop(), token) {
+              (Some(Token::LParen), Token::RParen)
+              | (Some(Token::LBracket), Token::RBracket)
+              | (Some(Token::LBrace), Token::RBrace)
+              | (Some(Token::DollarLBrace), Token::RBrace) => {}
+              (Some(left), _) => {
+                return Ok(ValidationResult::Invalid(Some(format!(
+                  "Mismatched pairs: {:?} is not properly closed",
+                  left
+                ))))
+              }
+              (None, _) => {
+                // While technically invalid when unpaired, it should be V8's task to output error instead.
+                // Thus marked as valid with no info.
+                return Ok(ValidationResult::Valid(None));
+              }
             }
           }
+          _ => {}
         }
-        _ => {}
       }
     }
 
@@ -221,88 +208,47 @@ impl LineHighlighter {
   }
 }
 
-fn flatten_comments(
-  comments: SingleThreadedComments,
-) -> impl Iterator<Item = Comment> {
-  let (leading, trailing) = comments.take_all();
-  let mut comments = (*leading).clone().into_inner();
-  comments.extend((*trailing).clone().into_inner());
-  comments.into_iter().flat_map(|el| el.1)
-}
-
 impl Highlighter for LineHighlighter {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
-    let comments = SingleThreadedComments::default();
-    let lexer = Lexer::new(
-      ast::get_syntax(&MediaType::JavaScript),
-      ast::TARGET,
-      StringInput::new(line, BytePos(0), BytePos(line.len() as u32)),
-      Some(&comments),
-    );
-
     let mut out_line = String::from(line);
 
-    // Adding color adds more bytes to the string,
-    // so an offset is needed to stop spans falling out of sync.
-    let mut offset = 0;
+    for item in ast::lex("", line, &MediaType::JavaScript) {
+      // Adding color adds more bytes to the string,
+      // so an offset is needed to stop spans falling out of sync.
+      let offset = out_line.len() - line.len();
+      let span = item.span_as_range();
 
-    enum ItemKind {
-      Token(Token),
-      Comment(CommentKind),
-    }
-
-    struct Item {
-      span: Range<usize>,
-      kind: ItemKind,
-    }
-
-    fn span_to_range(span: Span) -> Range<usize> {
-      span.lo.0 as usize..span.hi.0 as usize
-    }
-
-    let mut items: Vec<Item> = Vec::new();
-    items.extend(lexer.map(|token| Item {
-      span: span_to_range(token.span),
-      kind: ItemKind::Token(token.token),
-    }));
-    items.extend(flatten_comments(comments).map(|comment| Item {
-      span: span_to_range(comment.span),
-      kind: ItemKind::Comment(comment.kind),
-    }));
-    items.sort_by_key(|item| item.span.start);
-
-    for item in items {
-      let before_len = out_line.len();
       out_line.replace_range(
-        item.span.start + offset..item.span.end + offset,
-        &match item.kind {
-          ItemKind::Token(token) => match token {
+        span.start + offset..span.end + offset,
+        &match item.inner {
+          TokenOrComment::Token(token) => match token {
             Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
-              colors::green(&line[item.span]).to_string()
+              colors::green(&line[span]).to_string()
             }
-            Token::Regex(_, _) => colors::red(&line[item.span]).to_string(),
-            Token::Num(_) => colors::yellow(&line[item.span]).to_string(),
+            Token::Regex(_, _) => colors::red(&line[span]).to_string(),
+            Token::Num(_) => colors::yellow(&line[span]).to_string(),
             Token::Word(word) => match word {
               Word::True | Word::False | Word::Null => {
-                colors::yellow(&line[item.span]).to_string()
+                colors::yellow(&line[span]).to_string()
               }
-              Word::Keyword(_) => colors::cyan(&line[item.span]).to_string(),
+              Word::Keyword(_) => colors::cyan(&line[span]).to_string(),
               Word::Ident(ident) => {
                 if ident == *"undefined" {
-                  colors::gray(&line[item.span]).to_string()
+                  colors::gray(&line[span]).to_string()
                 } else if ident == *"Infinity" || ident == *"NaN" {
-                  colors::yellow(&line[item.span]).to_string()
+                  colors::yellow(&line[span]).to_string()
                 } else {
-                  line[item.span].to_string()
+                  line[span].to_string()
                 }
               }
             },
-            _ => line[item.span].to_string(),
+            _ => line[span].to_string(),
           },
-          ItemKind::Comment(_) => colors::gray(&line[item.span]).to_string(),
+          TokenOrComment::Comment { .. } => {
+            colors::gray(&line[span]).to_string()
+          }
         },
       );
-      offset += out_line.len() - before_len;
     }
 
     out_line.into()
