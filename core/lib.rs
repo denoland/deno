@@ -37,6 +37,7 @@ pub use crate::async_cell::RcRef;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
+pub use crate::modules::FsModuleLoader;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoadId;
 pub use crate::modules::ModuleLoader;
