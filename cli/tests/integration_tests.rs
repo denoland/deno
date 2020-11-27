@@ -569,16 +569,13 @@ fn upgrade_in_tmpdir() {
     .arg("upgrade")
     .arg("--force")
     .arg("--out")
-    .arg(&new_exe_path)
+    .arg(new_exe_path)
     .spawn()
     .unwrap()
     .wait()
     .unwrap();
   assert!(status.success());
-  let _mtime2 = std::fs::metadata(&new_exe_path)
-    .unwrap()
-    .modified()
-    .unwrap();
+  let _mtime2 = std::fs::metadata(&new_exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
 }
 
@@ -621,25 +618,18 @@ fn upgrade_with_version_in_tmpdir() {
     .arg("--version")
     .arg("0.42.0")
     .arg("--out")
-    .arg(&new_exe_path)
+    .arg(new_exe_path)
     .spawn()
     .unwrap()
     .wait()
     .unwrap();
   assert!(status.success());
   let upgraded_deno_version = String::from_utf8(
-    Command::new(&new_exe_path)
-      .arg("-V")
-      .output()
-      .unwrap()
-      .stdout,
+    Command::new(&new_exe_path).arg("-V").output().unwrap().stdout,
   )
   .unwrap();
   assert!(upgraded_deno_version.contains("0.42.0"));
-  let _mtime2 = std::fs::metadata(&new_exe_path)
-    .unwrap()
-    .modified()
-    .unwrap();
+  let _mtime2 = std::fs::metadata(&new_exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
 }
 
@@ -658,25 +648,18 @@ fn upgrade_with_canary_in_tmpdir() {
     .arg("--version")
     .arg("e6685f0f01b8a11a5eaff020f5babcfde76b3038")
     .arg("--out")
-    .arg(&new_exe_path)
+    .arg(new_exe_path)
     .spawn()
     .unwrap()
     .wait()
     .unwrap();
   assert!(status.success());
   let upgraded_deno_version = String::from_utf8(
-    Command::new(&new_exe_path)
-      .arg("-V")
-      .output()
-      .unwrap()
-      .stdout,
+    Command::new(&new_exe_path).arg("-V").output().unwrap().stdout,
   )
   .unwrap();
   assert!(upgraded_deno_version.contains("e6685f0"));
-  let _mtime2 = std::fs::metadata(&new_exe_path)
-    .unwrap()
-    .modified()
-    .unwrap();
+  let _mtime2 = std::fs::metadata(&new_exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
 }
 
