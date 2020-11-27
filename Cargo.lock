@@ -2350,9 +2350,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "string_cache"
-version = "0.8.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ddb1139b5353f96e429e1a5e19fbaf663bddedaa06d1dbd49f82e352601209a"
+checksum = "2940c75beb4e3bf3a494cef919a747a2cb81e52571e212bfbd185074add7208a"
 dependencies = [
  "lazy_static",
  "new_debug_unreachable",
