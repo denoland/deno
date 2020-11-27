@@ -164,11 +164,11 @@ jobs:
 
       - name: Test release
         if: matrix.kind == 'test_release'
-        run: cargo test --release --locked --all-targets -- --test-threads=1
+        run: cargo test --release --locked --all-targets
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: cargo test --locked --all-targets -- --test-threads=1
+        run: cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
