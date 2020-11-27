@@ -1267,18 +1267,20 @@ fn bundle_js_watch() {
   drop(t);
 }
 
-/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+/// Confirm that the watcher continues to work even if module resolution fails at the first attempt
 #[test]
-fn bundle_watch_fail() {
+fn bundle_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
     .expect("error writing file");
+  let target_file = t.path().join("target.js");
 
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
     .arg(&file_to_watch)
+    .arg(&target_file)
     .arg("--watch")
     .arg("--unstable")
     .env("NO_COLOR", "1")
@@ -1294,7 +1296,11 @@ fn bundle_watch_fail() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(!deno.wait().unwrap().success());
+  assert!(stderr_lines.next().unwrap().contains("Bundle failed!"));
+  // the target file hasn't been created yet
+  assert!(!target_file.is_file());
+  // Make sure the Deno's process is still alive
+  assert!(deno.try_wait().unwrap().is_none());
 
   drop(t);
 }
@@ -1418,9 +1424,9 @@ fn run_watch() {
   drop(t);
 }
 
-/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+/// Confirm that the watcher continues to work even if module resolution fails at the first attempt
 #[test]
-fn run_watch_fail() {
+fn run_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1429,9 +1435,9 @@ fn run_watch_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg(&file_to_watch)
     .arg("--watch")
     .arg("--unstable")
+    .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -1444,7 +1450,9 @@ fn run_watch_fail() {
 
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(!child.wait().unwrap().success());
+  assert!(stderr_lines.next().unwrap().contains("Process failed!"));
+  // Make sure the Deno's process is still alive
+  assert!(child.try_wait().unwrap().is_none());
 
   drop(t);
 }

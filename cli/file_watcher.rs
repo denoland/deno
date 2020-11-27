@@ -22,7 +22,7 @@ use tokio::time::{delay_for, Delay};
 
 const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
 
-type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
+type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 struct Debounce {
   delay: Delay,
@@ -63,7 +63,7 @@ impl Stream for Debounce {
   }
 }
 
-async fn error_handler(watch_future: FileWatcherFuture<()>) {
+async fn error_handler(watch_future: FileWatcherFuture<Result<(), AnyError>>) {
   let result = watch_future.await;
   if let Err(err) = result {
     let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
@@ -94,7 +94,7 @@ pub async fn watch_func<F, G>(
 ) -> Result<(), AnyError>
 where
   F: Fn() -> Result<Vec<PathBuf>, AnyError>,
-  G: Fn(Vec<PathBuf>) -> FileWatcherFuture<()>,
+  G: Fn(Vec<PathBuf>) -> FileWatcherFuture<Result<(), AnyError>>,
 {
   let mut debounce = Debounce::new();
 
@@ -129,6 +129,17 @@ where
   }
 }
 
+pub enum ModuleResolutionResult<T> {
+  Success {
+    paths_to_watch: Vec<PathBuf>,
+    module_info: T,
+  },
+  Fail {
+    source_path: PathBuf,
+    error: AnyError,
+  },
+}
+
 /// This function adds watcher functionality to subcommands like `run` or `bundle`.
 /// The difference from [`watch_func`] is that this does depend on [`ModuleGraph`].
 ///
@@ -154,51 +165,63 @@ pub async fn watch_func_with_module_resolution<F, G, T>(
   job_name: &str,
 ) -> Result<(), AnyError>
 where
-  F: Fn() -> FileWatcherFuture<(Vec<PathBuf>, T)>,
-  G: Fn(T) -> FileWatcherFuture<()>,
+  F: Fn() -> FileWatcherFuture<ModuleResolutionResult<T>>,
+  G: Fn(T) -> FileWatcherFuture<Result<(), AnyError>>,
   T: Clone,
 {
   let mut debounce = Debounce::new();
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.
-  let mut paths = None;
+  let mut paths;
   let mut module = None;
 
   loop {
     match module_resolver().await {
-      Ok((next_paths, next_module)) => {
-        paths = Some(next_paths);
-        module = Some(next_module);
+      ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info,
+      } => {
+        paths = paths_to_watch;
+        module = Some(module_info);
       }
-      Err(e) => {
-        // If at least one of `paths` and `module` is `None`, the watcher cannot decide which files
-        // should be watched. So return the error immediately without watching anything.
-        if paths.is_none() || module.is_none() {
-          return Err(e);
+      ModuleResolutionResult::Fail { source_path, error } => {
+        paths = vec![source_path];
+        if module.is_none() {
+          eprintln!("{}: {}", colors::red_bold("error"), error);
         }
       }
     }
-    // These `unwrap`s never cause panic since `None` is already checked above.
-    let cur_paths = paths.clone().unwrap();
-    let cur_module = module.clone().unwrap();
+    let _watcher = new_watcher(&paths, &debounce)?;
 
-    let _watcher = new_watcher(&cur_paths, &debounce)?;
-    let func = error_handler(operation(cur_module));
-    let mut is_file_changed = false;
-    select! {
-      _ = debounce.next() => {
-        is_file_changed = true;
+    if let Some(module) = &module {
+      let func = error_handler(operation(module.clone()));
+      let mut is_file_changed = false;
+      select! {
+        _ = debounce.next() => {
+          is_file_changed = true;
+          info!(
+            "{} File change detected! Restarting!",
+            colors::intense_blue("Watcher"),
+          );
+        },
+        _ = func => {},
+      };
+
+      if !is_file_changed {
+        info!(
+          "{} {} finished! Restarting on file change...",
+          colors::intense_blue("Watcher"),
+          job_name,
+        );
+        debounce.next().await;
         info!(
           "{} File change detected! Restarting!",
           colors::intense_blue("Watcher"),
         );
-      },
-      _ = func => {},
-    };
-
-    if !is_file_changed {
+      }
+    } else {
       info!(
-        "{} {} finished! Restarting on file change...",
+        "{} {} failed! Restarting on file change...",
         colors::intense_blue("Watcher"),
         job_name,
       );
