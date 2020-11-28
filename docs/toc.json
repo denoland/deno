@@ -22,6 +22,7 @@
       "program_lifecycle": "Program lifecycle",
       "permission_apis": "Permission APIs",
       "compiler_apis": "Compiler APIs",
+      "web_platform_apis": "Web Platform APIs",
       "workers": "Workers"
     }
   },

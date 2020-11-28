@@ -114,7 +114,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: Cell<bool>,
   //pub(crate) op_table: OpTable,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  loader: Rc<dyn ModuleLoader>,
+  pub loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
@@ -169,6 +169,10 @@ pub struct RuntimeOptions {
   /// the caller to wrap the JsError into an error. By default this callback
   /// is set to `JsError::create()`.
   pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+
+  /// Allows to map error type to a string "class" used to represent
+  /// error in JavaScript.
+  pub get_error_class_fn: Option<GetErrorClassFn>,
 
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
@@ -254,7 +258,11 @@ impl JsRuntime {
     let js_error_create_fn = options
       .js_error_create_fn
       .unwrap_or_else(|| Box::new(JsError::create));
-    let op_state = OpState::default();
+    let mut op_state = OpState::default();
+
+    if let Some(get_error_class_fn) = options.get_error_class_fn {
+      op_state.get_error_class_fn = get_error_class_fn;
+    }
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
@@ -493,13 +501,13 @@ impl JsRuntime {
       let poll_imports = self.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
 
-      self.evaluate_dyn_imports()?;
+      self.evaluate_dyn_imports();
 
       self.check_promise_exceptions()?;
     }
 
     // Top level module
-    self.evaluate_pending_module()?;
+    self.evaluate_pending_module();
 
     let state = state_rc.borrow();
     let has_pending_ops = !state.pending_ops.is_empty();
@@ -564,20 +572,6 @@ where
 }
 
 impl JsRuntimeState {
-  // Called by V8 during `Isolate::mod_instantiate`.
-  pub fn module_resolve_cb(
-    &mut self,
-    specifier: &str,
-    referrer_id: ModuleId,
-  ) -> ModuleId {
-    let referrer = self.modules.get_name(referrer_id).unwrap();
-    let specifier = self
-      .loader
-      .resolve(self.op_state.clone(), specifier, referrer, false)
-      .expect("Module should have been already resolved");
-    self.modules.get_id(specifier.as_str()).unwrap_or(0)
-  }
-
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
@@ -679,7 +673,6 @@ impl JsRuntime {
     }
 
     let module = maybe_module.unwrap();
-    let id = module.get_identity_hash();
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     for i in 0..module.get_module_requests_length() {
@@ -695,8 +688,7 @@ impl JsRuntime {
       import_specifiers.push(module_specifier);
     }
 
-    state_rc.borrow_mut().modules.register(
-      id,
+    let id = state_rc.borrow_mut().modules.register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),
@@ -718,13 +710,12 @@ impl JsRuntime {
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let state = state_rc.borrow();
-    let module = match state.modules.get_info(id) {
-      Some(info) => v8::Local::new(tc_scope, &info.handle),
-      None if id == 0 => return Ok(()),
-      _ => panic!("module id {} not found in module table", id),
-    };
-    drop(state);
+    let module = state_rc
+      .borrow()
+      .modules
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
+      .expect("ModuleInfo not found");
 
     if module.get_status() == v8::ModuleStatus::Errored {
       exception_to_err_result(tc_scope, module.get_exception(), false)?
@@ -760,10 +751,8 @@ impl JsRuntime {
     let module_handle = state_rc
       .borrow()
       .modules
-      .get_info(id)
-      .expect("ModuleInfo not found")
-      .handle
-      .clone();
+      .get_handle(id)
+      .expect("ModuleInfo not found");
 
     let status = {
       let scope =
@@ -825,7 +814,7 @@ impl JsRuntime {
     }
 
     if status == v8::ModuleStatus::Evaluated {
-      self.dyn_import_done(load_id, id)?;
+      self.dyn_import_done(load_id, id);
     }
 
     Ok(())
@@ -839,7 +828,7 @@ impl JsRuntime {
   fn mod_evaluate_inner(
     &mut self,
     id: ModuleId,
-  ) -> Result<mpsc::Receiver<Result<(), AnyError>>, AnyError> {
+  ) -> mpsc::Receiver<Result<(), AnyError>> {
     self.shared_init();
 
     let state_rc = Self::state(self.v8_isolate());
@@ -850,8 +839,8 @@ impl JsRuntime {
     let module = state_rc
       .borrow()
       .modules
-      .get_info(id)
-      .map(|info| v8::Local::new(scope, &info.handle))
+      .get_handle(id)
+      .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
 
@@ -905,16 +894,20 @@ impl JsRuntime {
       }
     }
 
-    Ok(receiver)
+    receiver
   }
 
   pub async fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
-    let mut receiver = self.mod_evaluate_inner(id)?;
+    let mut receiver = self.mod_evaluate_inner(id);
 
     poll_fn(|cx| {
-      if let Poll::Ready(result) = receiver.poll_next_unpin(cx) {
-        debug!("received module evaluate");
-        return Poll::Ready(result.unwrap());
+      if let Poll::Ready(maybe_result) = receiver.poll_next_unpin(cx) {
+        debug!("received module evaluate {:#?}", maybe_result);
+        // If `None` is returned it means that runtime was destroyed before
+        // evaluation was complete. This can happen in Web Worker when `self.close()`
+        // is called at top level.
+        let result = maybe_result.unwrap_or(Ok(()));
+        return Poll::Ready(result);
       }
       let _r = self.poll_event_loop(cx)?;
       Poll::Pending
@@ -922,11 +915,7 @@ impl JsRuntime {
     .await
   }
 
-  fn dyn_import_error(
-    &mut self,
-    id: ModuleLoadId,
-    err: AnyError,
-  ) -> Result<(), AnyError> {
+  fn dyn_import_error(&mut self, id: ModuleLoadId, err: AnyError) {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
@@ -950,19 +939,13 @@ impl JsRuntime {
 
     resolver.reject(scope, exception).unwrap();
     scope.perform_microtask_checkpoint();
-    Ok(())
   }
 
-  fn dyn_import_done(
-    &mut self,
-    id: ModuleLoadId,
-    mod_id: ModuleId,
-  ) -> Result<(), AnyError> {
+  fn dyn_import_done(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
-    assert!(mod_id != 0);
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
     let resolver_handle = state_rc
@@ -976,8 +959,8 @@ impl JsRuntime {
       let state = state_rc.borrow();
       state
         .modules
-        .get_info(mod_id)
-        .map(|info| v8::Local::new(scope, &info.handle))
+        .get_handle(mod_id)
+        .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found")
     };
     // Resolution success
@@ -986,7 +969,6 @@ impl JsRuntime {
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
     scope.perform_microtask_checkpoint();
-    Ok(())
   }
 
   fn prepare_dyn_imports(
@@ -1019,7 +1001,7 @@ impl JsRuntime {
               state.pending_dyn_imports.push(load.into_future());
             }
             Err(err) => {
-              self.dyn_import_error(dyn_import_id, err)?;
+              self.dyn_import_error(dyn_import_id, err);
             }
           }
         }
@@ -1065,14 +1047,14 @@ impl JsRuntime {
                     let state = state_rc.borrow_mut();
                     state.pending_dyn_imports.push(load.into_future());
                   }
-                  Err(err) => self.dyn_import_error(dyn_import_id, err)?,
+                  Err(err) => self.dyn_import_error(dyn_import_id, err),
                 }
               }
               Err(err) => {
                 // A non-javascript error occurred; this could be due to a an invalid
                 // module specifier, or a problem with the source map, or a failure
                 // to fetch the module source code.
-                self.dyn_import_error(dyn_import_id, err)?
+                self.dyn_import_error(dyn_import_id, err)
               }
             }
           } else {
@@ -1100,7 +1082,7 @@ impl JsRuntime {
   /// Thus during turn of event loop we need to check if V8 has
   /// resolved or rejected the promise. If the promise is still pending
   /// then another turn of event loop must be performed.
-  fn evaluate_pending_module(&mut self) -> Result<(), AnyError> {
+  fn evaluate_pending_module(&mut self) {
     let state_rc = Self::state(self.v8_isolate());
 
     let context = self.global_context();
@@ -1138,11 +1120,9 @@ impl JsRuntime {
         }
       }
     };
-
-    Ok(())
   }
 
-  fn evaluate_dyn_imports(&mut self) -> Result<(), AnyError> {
+  fn evaluate_dyn_imports(&mut self) {
     let state_rc = Self::state(self.v8_isolate());
 
     loop {
@@ -1192,18 +1172,16 @@ impl JsRuntime {
       if let Some(result) = maybe_result {
         match result {
           Ok((dyn_import_id, module_id)) => {
-            self.dyn_import_done(dyn_import_id, module_id)?;
+            self.dyn_import_done(dyn_import_id, module_id);
           }
           Err((dyn_import_id, err1)) => {
-            self.dyn_import_error(dyn_import_id, err1)?;
+            self.dyn_import_error(dyn_import_id, err1);
           }
         }
       } else {
         break;
       }
     }
-
-    Ok(())
   }
 
   fn register_during_load(
@@ -2276,7 +2254,7 @@ pub mod tests {
     runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    runtime.mod_evaluate_inner(mod_a).unwrap();
+    runtime.mod_evaluate_inner(mod_a);
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 

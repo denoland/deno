@@ -264,10 +264,11 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
 
-  let id = module.get_identity_hash();
-  assert_ne!(id, 0);
-
-  let info = state.modules.get_info(id).expect("Module not found");
+  let module_global = v8::Global::new(scope, module);
+  let info = state
+    .modules
+    .get_info(&module_global)
+    .expect("Module not found");
 
   let url_key = v8::String::new(scope, "url").unwrap();
   let url_val = v8::String::new(scope, &info.name).unwrap();
@@ -334,7 +335,7 @@ fn print(
   _rv: v8::ReturnValue,
 ) {
   let arg_len = args.length();
-  assert!(arg_len >= 0 && arg_len <= 2);
+  assert!((0..=2).contains(&arg_len));
 
   let obj = args.get(0);
   let is_err_arg = args.get(1);
@@ -713,6 +714,7 @@ fn shared_getter(
   rv.set(shared_ab.into())
 }
 
+// Called by V8 during `Isolate::mod_instantiate`.
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
@@ -721,39 +723,38 @@ pub fn module_resolve_callback<'s>(
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
   let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let state = state_rc.borrow();
 
-  let referrer_id = referrer.get_identity_hash();
-  let referrer_name = state
+  let referrer_global = v8::Global::new(scope, referrer);
+  let referrer_info = state
     .modules
-    .get_info(referrer_id)
-    .expect("ModuleInfo not found")
-    .name
-    .to_string();
-  let len_ = referrer.get_module_requests_length();
+    .get_info(&referrer_global)
+    .expect("ModuleInfo not found");
+  let referrer_name = referrer_info.name.to_string();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  for i in 0..len_ {
-    let req = referrer.get_module_request(i);
-    let req_str = req.to_rust_string_lossy(scope);
+  let resolved_specifier = state
+    .loader
+    .resolve(
+      state.op_state.clone(),
+      &specifier_str,
+      &referrer_name,
+      false,
+    )
+    .expect("Module should have been already resolved");
 
-    if req_str == specifier_str {
-      let id = state.module_resolve_cb(&req_str, referrer_id);
-      match state.modules.get_info(id) {
-        Some(info) => return Some(v8::Local::new(scope, &info.handle)),
-        None => {
-          let msg = format!(
-            r#"Cannot resolve module "{}" from "{}""#,
-            req_str, referrer_name
-          );
-          throw_type_error(scope, msg);
-          return None;
-        }
-      }
+  if let Some(id) = state.modules.get_id(resolved_specifier.as_str()) {
+    if let Some(handle) = state.modules.get_handle(id) {
+      return Some(v8::Local::new(scope, handle));
     }
   }
 
+  let msg = format!(
+    r#"Cannot resolve module "{}" from "{}""#,
+    specifier_str, referrer_name
+  );
+  throw_type_error(scope, msg);
   None
 }
 
@@ -849,10 +850,7 @@ fn get_proxy_details(
   rv.set(proxy_details.into());
 }
 
-fn throw_type_error<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  message: impl AsRef<str>,
-) {
+fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);

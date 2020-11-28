@@ -5,9 +5,9 @@ use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::tokio_util::create_basic_runtime;
-use crate::worker::WebWorker;
-use crate::worker::WebWorkerHandle;
-use crate::worker::WorkerEvent;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WorkerEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -294,46 +294,38 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
   match event {
     WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
     WorkerEvent::TerminalError(error) => match error.downcast::<JsError>() {
-      Ok(js_error) => {
-        json!({
-          "type": "terminalError",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        })
-      }
-      Err(error) => {
-        json!({
-          "type": "terminalError",
-          "error": {
-            "message": error.to_string(),
-          }
-        })
-      }
+      Ok(js_error) => json!({
+        "type": "terminalError",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
+        "type": "terminalError",
+        "error": {
+          "message": error.to_string(),
+        }
+      }),
     },
     WorkerEvent::Error(error) => match error.downcast::<JsError>() {
-      Ok(js_error) => {
-        json!({
-          "type": "error",
-          "error": {
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }
-        })
-      }
-      Err(error) => {
-        json!({
-          "type": "error",
-          "error": {
-            "message": error.to_string(),
-          }
-        })
-      }
+      Ok(js_error) => json!({
+        "type": "error",
+        "error": {
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }
+      }),
+      Err(error) => json!({
+        "type": "error",
+        "error": {
+          "message": error.to_string(),
+        }
+      }),
     },
   }
 }
