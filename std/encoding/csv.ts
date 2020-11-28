@@ -9,6 +9,15 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import { StringReader } from "../io/readers.ts";
 import { assert } from "../_util/assert.ts";
 
+export { NEWLINE, stringify, StringifyError } from "./csv_stringify.ts";
+
+export type {
+  Column,
+  ColumnDetails,
+  DataItem,
+  StringifyOptions,
+} from "./csv_stringify.ts";
+
 const INVALID_RUNE = ["\r", "\n", '"'];
 
 export const ERR_BARE_QUOTE = 'bare " in non-quoted-field';

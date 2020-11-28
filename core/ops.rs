@@ -34,6 +34,7 @@ pub enum Op {
 /// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
   pub resource_table: crate::ResourceTable,
+  pub resource_table_2: crate::resources2::ResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: crate::runtime::GetErrorClassFn,
   gotham_state: GothamState,
@@ -45,10 +46,11 @@ impl Default for OpState {
   //   pub(crate) fn new() -> OpState
   fn default() -> OpState {
     OpState {
-      resource_table: crate::ResourceTable::default(),
+      resource_table: Default::default(),
+      resource_table_2: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
-      gotham_state: GothamState::default(),
+      gotham_state: Default::default(),
     }
   }
 }

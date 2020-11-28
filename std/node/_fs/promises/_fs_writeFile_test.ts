@@ -6,7 +6,7 @@ import {
   assertThrowsAsync,
 } from "../../../testing/asserts.ts";
 import { writeFile } from "./_fs_writeFile.ts";
-import type { TextEncodings } from "../_fs_common.ts";
+import type { TextEncodings } from "../../_utils.ts";
 
 const decoder = new TextDecoder("utf-8");
 
