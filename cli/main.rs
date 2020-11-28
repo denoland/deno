@@ -94,8 +94,10 @@ use std::pin::Pin;
 
 #[cfg(feature = "tools")]
 use {
-  crate::file_fetcher::File, crate::file_fetcher::FileFetcher,
-  crate::import_map::ImportMap, crate::media_type::MediaType,
+  crate::file_fetcher::File,
+  crate::file_fetcher::FileFetcher,
+  crate::file_watcher::ModuleResolutionResult, crate::import_map::ImportMap,
+  crate::media_type::MediaType,
   crate::specifier_handler::FetchHandler, deno_core::serde_json,
   deno_core::serde_json::json, deno_doc as doc,
   deno_doc::parser::DocFileLoader, program_state::exit_unstable,
@@ -338,10 +340,11 @@ async fn bundle_command(
 
   let module_resolver = || {
     let flags = flags.clone();
-    let source_file = source_file.clone();
+    let source_file1 = source_file.clone();
+    let source_file2 = source_file.clone();
     async move {
       let module_specifier =
-        ModuleSpecifier::resolve_url_or_path(&source_file)?;
+        ModuleSpecifier::resolve_url_or_path(&source_file1)?;
 
       debug!(">>>>> bundle START");
       let program_state = ProgramState::new(flags.clone())?;
@@ -404,6 +407,16 @@ async fn bundle_command(
 
       Ok((paths_to_watch, module_graph))
     }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_graph)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info: module_graph,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(source_file2),
+        error: e,
+      },
+    })
     .boxed_local()
   };
 
@@ -454,7 +467,10 @@ async fn bundle_command(
     )
     .await?;
   } else {
-    let (_, module_graph) = module_resolver().await?;
+    let module_graph = match module_resolver().await {
+      ModuleResolutionResult::Fail { error, .. } => return Err(error),
+      ModuleResolutionResult::Success { module_info, .. } => module_info,
+    };
     operation(module_graph).await?;
   }
 
@@ -648,10 +664,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 #[cfg(feature = "tools")]
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let module_resolver = || {
-    let script = script.clone();
+    let script1 = script.clone();
+    let script2 = script.clone();
     let flags = flags.clone();
     async move {
-      let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
+      let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
       let program_state = ProgramState::new(flags)?;
       let handler = Rc::new(RefCell::new(FetchHandler::new(
         &program_state,
@@ -679,6 +696,16 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
       Ok((paths_to_watch, main_module))
     }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_info)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(script2),
+        error: e,
+      },
+    })
     .boxed_local()
   };
 
