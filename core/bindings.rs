@@ -335,7 +335,7 @@ fn print(
   _rv: v8::ReturnValue,
 ) {
   let arg_len = args.length();
-  assert!(arg_len >= 0 && arg_len <= 2);
+  assert!((0..=2).contains(&arg_len));
 
   let obj = args.get(0);
   let is_err_arg = args.get(1);
@@ -850,10 +850,7 @@ fn get_proxy_details(
   rv.set(proxy_details.into());
 }
 
-fn throw_type_error<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  message: impl AsRef<str>,
-) {
+fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);

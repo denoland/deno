@@ -176,8 +176,9 @@ fn no_color() {
 pub fn test_raw_tty() {
   use std::io::{Read, Write};
   use util::pty::fork::*;
+
   let deno_exe = util::deno_exe_path();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let root_path = util::root_path();
   let fork = Fork::from_ptmx().unwrap();
 
   if let Ok(mut master) = fork.is_parent() {
@@ -193,10 +194,10 @@ pub fn test_raw_tty() {
     master.write_all(b"c").unwrap();
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
+    fork.wait().unwrap();
   } else {
     use nix::sys::termios;
     use std::os::unix::io::AsRawFd;
-    use std::process::*;
 
     // Turn off echo such that parent is reading works properly.
     let stdin_fd = std::io::stdin().as_raw_fd();
@@ -204,20 +205,16 @@ pub fn test_raw_tty() {
     t.local_flags.remove(termios::LocalFlags::ECHO);
     termios::tcsetattr(stdin_fd, termios::SetArg::TCSANOW, &t).unwrap();
 
-    let mut child = Command::new(deno_exe)
-      .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::root_path())
+    std::env::set_current_dir(root_path).unwrap();
+    let err = exec::Command::new(deno_exe)
       .arg("run")
       .arg("--unstable")
+      .arg("--quiet")
+      .arg("--no-check")
       .arg("cli/tests/raw_mode.ts")
-      .stdin(Stdio::inherit())
-      .stdout(Stdio::inherit())
-      // Warning: errors may be swallowed. Try to comment stderr null if
-      // experiencing problems.
-      .stderr(Stdio::null())
-      .spawn()
-      .expect("Failed to spawn script");
-    child.wait().unwrap();
+      .exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
@@ -1337,6 +1334,17 @@ fn info_with_compiled_source() {
   assert_eq!(output.stderr, b"");
 }
 
+// Helper function to skip watcher output that doesn't contain
+// "Process finished" phrase.
+fn wait_for_process_finished(stderr_lines: &mut impl Iterator<Item = String>) {
+  loop {
+    let msg = stderr_lines.next().unwrap();
+    if msg.contains("Process finished") {
+      break;
+    }
+  }
+}
+
 #[test]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
@@ -1364,7 +1372,7 @@ fn run_watch() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1377,7 +1385,7 @@ fn run_watch() {
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -1391,7 +1399,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   std::fs::write(&another_file, "export const foo = 42;")
@@ -1399,7 +1407,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1407,7 +1415,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   // Then restore the file
   std::fs::write(
@@ -1418,7 +1426,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished(&mut stderr_lines);
 
   child.kill().unwrap();
   drop(t);
@@ -1462,8 +1470,7 @@ fn run_watch_not_exit() {
 fn repl_test_pty_multiline() {
   use std::io::Read;
   use util::pty::fork::*;
-
-  let tests_path = util::tests_path();
+  let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     master.write_all(b"(\n1 + 2\n)\n").unwrap();
@@ -1496,14 +1503,10 @@ fn repl_test_pty_multiline() {
 
     fork.wait().unwrap();
   } else {
-    util::deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .arg("repl")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
@@ -1512,8 +1515,7 @@ fn repl_test_pty_multiline() {
 fn repl_test_pty_unpaired_braces() {
   use std::io::Read;
   use util::pty::fork::*;
-
-  let tests_path = util::tests_path();
+  let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     master.write_all(b")\n").unwrap();
@@ -1530,14 +1532,10 @@ fn repl_test_pty_unpaired_braces() {
 
     fork.wait().unwrap();
   } else {
-    util::deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .arg("repl")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
@@ -2444,6 +2442,11 @@ itest!(_075_import_local_query_hash {
   output: "075_import_local_query_hash.ts.out",
 });
 
+itest!(_076_info_json_deps_order {
+  args: "info --unstable --json 076_info_json_deps_order.ts",
+  output: "076_info_json_deps_order.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -3279,6 +3282,11 @@ itest!(ignore_require {
   args: "cache --reload --no-check ignore_require.js",
   output_str: Some(""),
   exit_code: 0,
+});
+
+itest!(local_sources_not_cached_in_memory {
+  args: "run --allow-read --allow-write no_mem_cache.js",
+  output: "no_mem_cache.js.out",
 });
 
 #[test]
