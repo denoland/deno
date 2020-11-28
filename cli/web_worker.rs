@@ -19,6 +19,7 @@ use crate::source_maps::apply_source_map;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
+#[cfg(feature = "tools")]
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
@@ -150,6 +151,7 @@ impl WebWorker {
     #[cfg(not(feature = "tools"))]
     let module_loader = Rc::new(FsModuleLoader);
 
+    #[cfg(feature = "tools")]
     let global_state_ = program_state.clone();
 
     #[cfg(feature = "tools")]

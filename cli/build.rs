@@ -264,7 +264,6 @@ fn main() {
     env::var("DENO_CANARY").unwrap_or_default()
   );
 
-  let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
@@ -277,6 +276,7 @@ fn main() {
   {
     let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
     let js_files = get_js_files("tsc");
+    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
   }
 

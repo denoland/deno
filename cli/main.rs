@@ -166,6 +166,8 @@ fn get_subcommand(
 fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  use deno_core::error::generic_error;
+
   match flags.clone().subcommand {
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     _ => async { Err(generic_error("Toolchain not compiled")) }.boxed_local(),

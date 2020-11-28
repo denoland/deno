@@ -76,24 +76,21 @@ pub mod fs_module_loader;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::worker::MainWorker;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::Future;
-use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use flags::Flags;
-use std::io::Read;
-use std::io::Write;
-use std::pin::Pin;
 
 #[cfg(feature = "tools")]
 use {
   crate::file_fetcher::File, crate::file_fetcher::FileFetcher,
   crate::file_watcher::ModuleResolutionResult, crate::import_map::ImportMap,
   crate::media_type::MediaType, crate::specifier_handler::FetchHandler,
-  deno_core::serde_json, deno_core::serde_json::json, deno_doc as doc,
+  deno_core::error::generic_error, deno_core::futures::future::Future,
+  deno_core::futures::future::FutureExt, deno_core::serde_json,
+  deno_core::serde_json::json, deno_doc as doc,
   deno_doc::parser::DocFileLoader, program_state::exit_unstable,
-  std::cell::RefCell, std::path::PathBuf, std::rc::Rc, std::sync::Arc,
+  std::cell::RefCell, std::io::Read, std::io::Write, std::path::PathBuf,
+  std::pin::Pin, std::rc::Rc, std::sync::Arc,
 };
 
 #[cfg(feature = "tools")]

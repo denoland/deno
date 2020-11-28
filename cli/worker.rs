@@ -20,6 +20,7 @@ use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
+#[cfg(feature = "tools")]
 use deno_core::futures::future::FutureExt;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
@@ -71,6 +72,7 @@ impl MainWorker {
       PrettyJsError::create(source_mapped_error)
     });
 
+    #[allow(unused_mut)]
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(js::deno_isolate_init()),

@@ -18,12 +18,8 @@ use crate::lockfile::Lockfile;
 #[cfg(feature = "tools")]
 use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
-use std::env;
-use std::path::PathBuf;
+
 use std::sync::Arc;
-use std::sync::Mutex;
 
 #[cfg(feature = "tools")]
 use {
@@ -31,7 +27,8 @@ use {
   crate::module_graph::GraphBuilder, crate::module_graph::TranspileOptions,
   crate::module_graph::TypeLib, crate::permissions::Permissions,
   crate::specifier_handler::FetchHandler, deno_core::error::generic_error,
-  std::cell::RefCell, std::rc::Rc,
+  deno_core::url::Url, deno_core::ModuleSpecifier, std::cell::RefCell,
+  std::env, std::path::PathBuf, std::rc::Rc, std::sync::Mutex,
 };
 
 pub fn exit_unstable(api_name: &str) {
