@@ -2583,7 +2583,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        seed: Some(250 as u64),
+        seed: Some(250_u64),
         v8_flags: Some(svec!["--random-seed=250"]),
         ..Flags::default()
       }
@@ -2606,7 +2606,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        seed: Some(250 as u64),
+        seed: Some(250_u64),
         v8_flags: Some(svec!["--expose-gc", "--random-seed=250"]),
         ..Flags::default()
       }
