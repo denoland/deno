@@ -135,8 +135,8 @@ impl DiagnosticBuffer {
 #[derive(Debug, Clone)]
 pub struct ErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
 
-impl ErrorBuffer {
-  pub fn new() -> Self {
+impl Default for ErrorBuffer {
+  fn default() -> Self {
     Self(Arc::new(RwLock::new(Vec::new())))
   }
 }
@@ -373,7 +373,7 @@ pub fn parse(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
   );
-  let error_buffer = ErrorBuffer::new();
+  let error_buffer = ErrorBuffer::default();
   let syntax = get_syntax(media_type);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
@@ -484,7 +484,7 @@ pub fn transpile_module(
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
   // TODO(@kitsonk) DRY-up with ::parse()
-  let error_buffer = ErrorBuffer::new();
+  let error_buffer = ErrorBuffer::default();
   let handler = Handler::with_emitter_and_flags(
     Box::new(error_buffer.clone()),
     HandlerFlags {
