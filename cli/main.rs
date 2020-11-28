@@ -94,12 +94,10 @@ use std::pin::Pin;
 
 #[cfg(feature = "tools")]
 use {
-  crate::file_fetcher::File,
-  crate::file_fetcher::FileFetcher,
+  crate::file_fetcher::File, crate::file_fetcher::FileFetcher,
   crate::file_watcher::ModuleResolutionResult, crate::import_map::ImportMap,
-  crate::media_type::MediaType,
-  crate::specifier_handler::FetchHandler, deno_core::serde_json,
-  deno_core::serde_json::json, deno_doc as doc,
+  crate::media_type::MediaType, crate::specifier_handler::FetchHandler,
+  deno_core::serde_json, deno_core::serde_json::json, deno_doc as doc,
   deno_doc::parser::DocFileLoader, program_state::exit_unstable,
   std::cell::RefCell, std::path::PathBuf, std::rc::Rc, std::sync::Arc,
 };
