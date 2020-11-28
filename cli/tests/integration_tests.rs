@@ -176,8 +176,9 @@ fn no_color() {
 pub fn test_raw_tty() {
   use std::io::{Read, Write};
   use util::pty::fork::*;
+
   let deno_exe = util::deno_exe_path();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let root_path = util::root_path();
   let fork = Fork::from_ptmx().unwrap();
 
   if let Ok(mut master) = fork.is_parent() {
@@ -193,10 +194,10 @@ pub fn test_raw_tty() {
     master.write_all(b"c").unwrap();
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
+    fork.wait().unwrap();
   } else {
     use nix::sys::termios;
     use std::os::unix::io::AsRawFd;
-    use std::process::*;
 
     // Turn off echo such that parent is reading works properly.
     let stdin_fd = std::io::stdin().as_raw_fd();
@@ -204,20 +205,16 @@ pub fn test_raw_tty() {
     t.local_flags.remove(termios::LocalFlags::ECHO);
     termios::tcsetattr(stdin_fd, termios::SetArg::TCSANOW, &t).unwrap();
 
-    let mut child = Command::new(deno_exe)
-      .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::root_path())
+    std::env::set_current_dir(root_path).unwrap();
+    let err = exec::Command::new(deno_exe)
       .arg("run")
       .arg("--unstable")
+      .arg("--quiet")
+      .arg("--no-check")
       .arg("cli/tests/raw_mode.ts")
-      .stdin(Stdio::inherit())
-      .stdout(Stdio::inherit())
-      // Warning: errors may be swallowed. Try to comment stderr null if
-      // experiencing problems.
-      .stderr(Stdio::null())
-      .spawn()
-      .expect("Failed to spawn script");
-    child.wait().unwrap();
+      .exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
@@ -529,6 +526,9 @@ fn fmt_watch_test() {
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
 
   child.kill().unwrap();
   drop(t);
@@ -1234,7 +1234,7 @@ fn bundle_js_watch() {
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+  wait_for_process_finished("Bundle", &mut stderr_lines);
 
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
@@ -1247,7 +1247,7 @@ fn bundle_js_watch() {
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+  wait_for_process_finished("Bundle", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1261,24 +1261,29 @@ fn bundle_js_watch() {
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+  wait_for_process_finished("Bundle", &mut stderr_lines);
+
+  // the watcher process is still alive
+  assert!(deno.try_wait().unwrap().is_none());
 
   deno.kill().unwrap();
   drop(t);
 }
 
-/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-fn bundle_watch_fail() {
+fn bundle_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
     .expect("error writing file");
+  let target_file = t.path().join("target.js");
 
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
     .arg(&file_to_watch)
+    .arg(&target_file)
     .arg("--watch")
     .arg("--unstable")
     .env("NO_COLOR", "1")
@@ -1294,7 +1299,26 @@ fn bundle_watch_fail() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(!deno.wait().unwrap().success());
+  assert!(stderr_lines.next().unwrap().contains("Bundle failed!"));
+  // the target file hasn't been created yet
+  assert!(!target_file.is_file());
+
+  // Make sure the watcher actually restarts and works fine with the proper syntax
+  std::fs::write(&file_to_watch, "console.log(42);")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("target.js"));
+  wait_for_process_finished("Bundle", &mut stderr_lines);
+  // bundled file is created
+  assert!(target_file.is_file());
+
+  // the watcher process is still alive
+  assert!(deno.try_wait().unwrap().is_none());
 
   drop(t);
 }
@@ -1331,6 +1355,21 @@ fn info_with_compiled_source() {
   assert_eq!(output.stderr, b"");
 }
 
+/// Helper function to skip watcher output that doesn't contain
+/// "{job_name} finished" phrase.
+fn wait_for_process_finished(
+  job_name: &str,
+  stderr_lines: &mut impl Iterator<Item = String>,
+) {
+  let phrase = format!("{} finished", job_name);
+  loop {
+    let msg = stderr_lines.next().unwrap();
+    if msg.contains(&phrase) {
+      break;
+    }
+  }
+}
+
 #[test]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
@@ -1358,7 +1397,7 @@ fn run_watch() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished("Process", &mut stderr_lines);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -1371,7 +1410,7 @@ fn run_watch() {
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished("Process", &mut stderr_lines);
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -1385,7 +1424,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished("Process", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   std::fs::write(&another_file, "export const foo = 42;")
@@ -1393,7 +1432,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished("Process", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1401,7 +1440,7 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished("Process", &mut stderr_lines);
 
   // Then restore the file
   std::fs::write(
@@ -1412,15 +1451,18 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
 
   child.kill().unwrap();
   drop(t);
 }
 
-/// Confirm that the watcher exits immediately if module resolution fails at the first attempt
+/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-fn run_watch_fail() {
+fn run_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1429,22 +1471,36 @@ fn run_watch_fail() {
   let mut child = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg(&file_to_watch)
     .arg("--watch")
     .arg("--unstable")
+    .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .expect("failed to spawn script");
 
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
   let stderr = child.stderr.as_mut().unwrap();
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(!child.wait().unwrap().success());
+  assert!(stderr_lines.next().unwrap().contains("Process failed!"));
+
+  // Make sure the watcher actually restarts and works fine with the proper syntax
+  std::fs::write(&file_to_watch, "console.log(42);")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
 
   drop(t);
 }
@@ -1454,8 +1510,7 @@ fn run_watch_fail() {
 fn repl_test_pty_multiline() {
   use std::io::Read;
   use util::pty::fork::*;
-
-  let tests_path = util::tests_path();
+  let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     master.write_all(b"(\n1 + 2\n)\n").unwrap();
@@ -1488,14 +1543,10 @@ fn repl_test_pty_multiline() {
 
     fork.wait().unwrap();
   } else {
-    util::deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .arg("repl")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
@@ -1504,8 +1555,7 @@ fn repl_test_pty_multiline() {
 fn repl_test_pty_unpaired_braces() {
   use std::io::Read;
   use util::pty::fork::*;
-
-  let tests_path = util::tests_path();
+  let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     master.write_all(b")\n").unwrap();
@@ -1522,14 +1572,10 @@ fn repl_test_pty_unpaired_braces() {
 
     fork.wait().unwrap();
   } else {
-    util::deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .arg("repl")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
@@ -2436,6 +2482,11 @@ itest!(_075_import_local_query_hash {
   output: "075_import_local_query_hash.ts.out",
 });
 
+itest!(_076_info_json_deps_order {
+  args: "info --unstable --json 076_info_json_deps_order.ts",
+  output: "076_info_json_deps_order.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -3271,6 +3322,11 @@ itest!(ignore_require {
   args: "cache --reload --no-check ignore_require.js",
   output_str: Some(""),
   exit_code: 0,
+});
+
+itest!(local_sources_not_cached_in_memory {
+  args: "run --allow-read --allow-write no_mem_cache.js",
+  output: "no_mem_cache.js.out",
 });
 
 #[test]

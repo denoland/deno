@@ -341,3 +341,19 @@ Deno.test({
     w.terminate();
   },
 });
+
+Deno.test({
+  name: "Worker immediate close",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const w = new Worker(
+      new URL("./immediately_close_worker.js", import.meta.url).href,
+      { type: "module" },
+    );
+    setTimeout(() => {
+      promise.resolve();
+    }, 1000);
+    await promise;
+    w.terminate();
+  },
+});

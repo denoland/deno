@@ -66,6 +66,38 @@ unitTest(
 );
 
 unitTest(
+  { ignore: Deno.build.os === "windows", perms: { read: true } },
+  function netUnixListenWritePermission(): void {
+    assertThrows(() => {
+      const filePath = Deno.makeTempFileSync();
+      const socket = Deno.listen({
+        path: filePath,
+        transport: "unix",
+      });
+      assert(socket.addr.transport === "unix");
+      assertEquals(socket.addr.path, filePath);
+      socket.close();
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { read: true } },
+  function netUnixPacketListenWritePermission(): void {
+    assertThrows(() => {
+      const filePath = Deno.makeTempFileSync();
+      const socket = Deno.listenDatagram({
+        path: filePath,
+        transport: "unixpacket",
+      });
+      assert(socket.addr.transport === "unixpacket");
+      assertEquals(socket.addr.path, filePath);
+      socket.close();
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
   {
     perms: { net: true },
   },
