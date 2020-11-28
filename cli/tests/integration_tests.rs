@@ -2434,6 +2434,11 @@ itest!(_075_import_local_query_hash {
   output: "075_import_local_query_hash.ts.out",
 });
 
+itest!(_076_info_json_deps_order {
+  args: "info --unstable --json 076_info_json_deps_order.ts",
+  output: "076_info_json_deps_order.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

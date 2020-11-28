@@ -41,8 +41,8 @@ use regex::Regex;
 use serde::Deserialize;
 use serde::Deserializer;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -1098,7 +1098,7 @@ impl Graph {
       .modules
       .iter()
       .map(|(specifier, module)| {
-        let mut deps = HashSet::new();
+        let mut deps = BTreeSet::new();
         for (_, dep) in module.dependencies.iter() {
           if let Some(code_dep) = &dep.maybe_code {
             deps.insert(code_dep.clone());
