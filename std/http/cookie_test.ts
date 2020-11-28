@@ -97,7 +97,7 @@ Deno.test({
           );
         },
         Error,
-        "RFC2616 cookie value",
+        "RFC2616 cookie 'Space'",
       );
     });
   },
