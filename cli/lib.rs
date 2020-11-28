@@ -5,6 +5,9 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+// Re-exports
+pub use deno_core;
+
 pub mod colors;
 pub mod errors;
 pub mod flags;
@@ -729,6 +732,23 @@ pub async fn run_with_watch(
   .await
 }
 
+pub async fn run_from_url(
+  flags: Flags,
+  script: String,
+) -> Result<(), AnyError> {
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
+  let program_state = ProgramState::new(flags.clone())?;
+  let permissions = Permissions::from_flags(&flags);
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
+  debug!("main_module {}", main_module);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.run_event_loop().await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  Ok(())
+}
+
 pub async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   // Read script content from stdin
   #[cfg(feature = "tools")]
@@ -743,17 +763,7 @@ pub async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
     unimplemented!()
   }
 
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let program_state = ProgramState::new(flags.clone())?;
-  let permissions = Permissions::from_flags(&flags);
-  let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
-  debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  Ok(())
+  run_from_url(flags, script).await
 }
 
 #[cfg(feature = "tools")]

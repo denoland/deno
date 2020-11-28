@@ -160,7 +160,9 @@ delete Object.prototype.__proto__;
     version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
     build.setBuildInfo(s.target);
     util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
+    if (s.mapStackTrace) {
+      errorStack.setPrepareStackTrace(Error);
+    }
     return s;
   }
 

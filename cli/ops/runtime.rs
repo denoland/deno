@@ -31,6 +31,8 @@ fn op_start(
 ) -> Result<Value, AnyError> {
   let gs = &super::program_state(state);
 
+  let map_stack_trace = cfg!(feature = "tools");
+
   Ok(json!({
     "args": gs.flags.argv.clone(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
@@ -43,6 +45,7 @@ fn op_start(
     "unstableFlag": gs.flags.unstable,
     "v8Version": version::v8(),
     "versionFlag": gs.flags.version,
+    "mapStackTrace": map_stack_trace
   }))
 }
 
