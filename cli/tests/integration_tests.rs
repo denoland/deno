@@ -527,6 +527,9 @@ fn fmt_watch_test() {
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
 
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
   child.kill().unwrap();
   drop(t);
 }
@@ -1260,11 +1263,14 @@ fn bundle_js_watch() {
   assert!(file.is_file());
   assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
 
+  // the watcher process is still alive
+  assert!(deno.try_wait().unwrap().is_none());
+
   deno.kill().unwrap();
   drop(t);
 }
 
-/// Confirm that the watcher continues to work even if module resolution fails at the first attempt
+/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
 fn bundle_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
@@ -1296,7 +1302,22 @@ fn bundle_watch_not_exit() {
   assert!(stderr_lines.next().unwrap().contains("Bundle failed!"));
   // the target file hasn't been created yet
   assert!(!target_file.is_file());
-  // Make sure the Deno's process is still alive
+
+  // Make sure the watcher actually restarts and works fine with the proper syntax
+  std::fs::write(&file_to_watch, "console.log(42);")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("target.js"));
+  assert!(stderr_lines.next().unwrap().contains("Bundle finished!"));
+  // bundled file is created
+  assert!(target_file.is_file());
+
+  // the watcher process is still alive
   assert!(deno.try_wait().unwrap().is_none());
 
   drop(t);
@@ -1428,11 +1449,14 @@ fn run_watch() {
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished(&mut stderr_lines);
 
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
   child.kill().unwrap();
   drop(t);
 }
 
-/// Confirm that the watcher continues to work even if module resolution fails at the first attempt
+/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
 fn run_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
@@ -1452,6 +1476,9 @@ fn run_watch_not_exit() {
     .spawn()
     .expect("failed to spawn script");
 
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
   let stderr = child.stderr.as_mut().unwrap();
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
@@ -1459,7 +1486,16 @@ fn run_watch_not_exit() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("error:"));
   assert!(stderr_lines.next().unwrap().contains("Process failed!"));
-  // Make sure the Deno's process is still alive
+
+  // Make sure the watcher actually restarts and works fine with the proper syntax
+  std::fs::write(&file_to_watch, "console.log(42);")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  wait_for_process_finished(&mut stderr_lines);
+
+  // the watcher process is still alive
   assert!(child.try_wait().unwrap().is_none());
 
   drop(t);
