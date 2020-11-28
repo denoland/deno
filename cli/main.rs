@@ -49,7 +49,6 @@ mod web_worker;
 mod worker;
 
 use crate::file_fetcher::File;
-use crate::file_fetcher::FileFetcher;
 use crate::file_watcher::ModuleResolutionResult;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
