@@ -66,6 +66,7 @@ function createSign(diffType: DiffType): string {
   }
 }
 
+/** Build assertions into pretty form. */
 function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   const messages: string[] = [];
   messages.push("");
@@ -86,6 +87,7 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
+/** Returns true if the collection is Keyed, otherwise false. */
 function isKeyedCollection(x: unknown): x is Set<unknown> {
   return [Symbol.iterator, "size"].every((k) => k in (x as Set<unknown>));
 }
