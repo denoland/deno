@@ -196,9 +196,8 @@ fn ts_json_to_diagnostics(
               &d.related_information,
             ),
             tags: match d.code {
-              // 6133 is unused variable, which with this tag gets displayed
-              // faded out
-              6133 => Some(vec![lsp_types::DiagnosticTag::Unnecessary]),
+              // These are codes that indicate the variable is unused.
+              6133 | 6196 => Some(vec![lsp_types::DiagnosticTag::Unnecessary]),
               _ => None,
             },
             data: None,
