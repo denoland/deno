@@ -17,6 +17,7 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -120,5 +121,39 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  Ok(())
+}
+
+/// This functions creates a standalone deno binary by appending a bundle
+/// and magic trailer to the currently executing binary.
+pub async fn create_standalone_binary(
+  mut source_code: Vec<u8>,
+  out_file: String,
+) -> Result<(), AnyError> {
+  let original_binary_path = std::env::current_exe()?;
+  let mut original_bin = tokio::fs::read(original_binary_path).await?;
+
+  let mut magic_trailer = b"D3N0".to_vec();
+  magic_trailer.write_all(&original_bin.len().to_be_bytes())?;
+
+  let mut final_bin =
+    Vec::with_capacity(original_bin.len() + source_code.len() + 12);
+  final_bin.append(&mut original_bin);
+  final_bin.append(&mut source_code);
+  final_bin.append(&mut magic_trailer);
+
+  let out_file = if cfg!(windows) && !out_file.ends_with(".exe") {
+    format!("{}.exe", out_file)
+  } else {
+    out_file
+  };
+  tokio::fs::write(&out_file, final_bin).await?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o777);
+    tokio::fs::set_permissions(out_file, perms).await?;
+  }
+
   Ok(())
 }
