@@ -952,13 +952,14 @@ fn get_subcommand(
     DenoSubcommand::Upgrade {
       force,
       dry_run,
+      canary,
       version,
       output,
       ca_file,
-    } => {
-      tools::upgrade::upgrade_command(dry_run, force, version, output, ca_file)
-        .boxed_local()
-    }
+    } => tools::upgrade::upgrade_command(
+      dry_run, force, canary, version, output, ca_file,
+    )
+    .boxed_local(),
   }
 }
 
