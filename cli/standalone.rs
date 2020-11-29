@@ -21,7 +21,7 @@ use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
 
-const MAGIC_TRAILER: &[u8; 4] = b"D3N0";
+const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a stanalone
@@ -33,16 +33,16 @@ pub fn try_run_standalone_binary(args: Vec<String>) -> Result<(), AnyError> {
   let current_exe_path = current_exe()?;
 
   let mut current_exe = File::open(current_exe_path)?;
-  let magic_trailer_pos = current_exe.seek(SeekFrom::End(-12))?;
-  let mut magic_trailer = [0; 12];
-  current_exe.read_exact(&mut magic_trailer)?;
-  let (magic_trailer, bundle_pos) = magic_trailer.split_at(4);
+  let trailer_pos = current_exe.seek(SeekFrom::End(-16))?;
+  let mut trailer = [0; 16];
+  current_exe.read_exact(&mut trailer)?;
+  let (magic_trailer, bundle_pos_arr) = trailer.split_at(8);
   if magic_trailer == MAGIC_TRAILER {
-    let bundle_pos_arr: &[u8; 8] = bundle_pos.try_into()?;
+    let bundle_pos_arr: &[u8; 8] = bundle_pos_arr.try_into()?;
     let bundle_pos = u64::from_be_bytes(*bundle_pos_arr);
     current_exe.seek(SeekFrom::Start(bundle_pos))?;
 
-    let bundle_len = magic_trailer_pos - bundle_pos;
+    let bundle_len = trailer_pos - bundle_pos;
     let mut bundle = String::new();
     current_exe.take(bundle_len).read_to_string(&mut bundle)?;
     // TODO: check amount of bytes read
@@ -133,14 +133,14 @@ pub async fn create_standalone_binary(
   let original_binary_path = std::env::current_exe()?;
   let mut original_bin = tokio::fs::read(original_binary_path).await?;
 
-  let mut magic_trailer = MAGIC_TRAILER.to_vec();
-  magic_trailer.write_all(&original_bin.len().to_be_bytes())?;
+  let mut trailer = MAGIC_TRAILER.to_vec();
+  trailer.write_all(&original_bin.len().to_be_bytes())?;
 
   let mut final_bin =
-    Vec::with_capacity(original_bin.len() + source_code.len() + 12);
+    Vec::with_capacity(original_bin.len() + source_code.len() + trailer.len());
   final_bin.append(&mut original_bin);
   final_bin.append(&mut source_code);
-  final_bin.append(&mut magic_trailer);
+  final_bin.append(&mut trailer);
 
   let out_file = if cfg!(windows) && !out_file.ends_with(".exe") {
     format!("{}.exe", out_file)
