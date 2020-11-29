@@ -233,7 +233,7 @@ async fn compile_command(
 
   let mut bundle = bundle_str.as_bytes().to_vec();
 
-  let mut magic_trailer = b"DENO".to_vec();
+  let mut magic_trailer = b"D3N0".to_vec();
   magic_trailer.write_all(&original_bin.len().to_be_bytes())?;
 
   let mut final_bin =
@@ -1079,7 +1079,10 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  standalone::standalone();
+  if let Err(err) = standalone::try_run_standalone_binary() {
+    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
+    std::process::exit(1);
+  }
 
   let flags = flags::flags_from_vec(args);
   if let Some(ref v8_flags) = flags.v8_flags {

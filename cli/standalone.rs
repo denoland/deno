@@ -19,42 +19,39 @@ use std::io::SeekFrom;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub fn standalone() {
-  let current_exe_path =
-    current_exe().expect("expect current exe path to be known");
+const MAGIC_TRAILER: &'static [u8; 4] = b"D3N0";
 
-  let mut current_exe = File::open(current_exe_path)
-    .expect("expected to be able to open current exe");
-  let magic_trailer_pos = current_exe
-    .seek(SeekFrom::End(-12))
-    .expect("expected to be able to seek to magic trailer in current exe");
+/// This function will try to run this binary as a standalone binary
+/// produced by `deno compile`. It determines if this is a stanalone
+/// binary by checking for the magic trailer string `D3N0` at EOF-12.
+/// After the magic trailer is a u64 pointer to the start of the JS
+/// file embedded in the binary. This file is read, and run. If no
+/// magic trailer is present, this function exits with Ok(()).
+pub fn try_run_standalone_binary() -> Result<(), AnyError> {
+  let current_exe_path = current_exe()?;
+
+  let mut current_exe = File::open(current_exe_path)?;
+  let magic_trailer_pos = current_exe.seek(SeekFrom::End(-12))?;
   let mut magic_trailer = [0; 12];
-  current_exe
-    .read_exact(&mut magic_trailer)
-    .expect("expected to be able to read magic trailer from current exe");
+  current_exe.read_exact(&mut magic_trailer)?;
   let (magic_trailer, bundle_pos) = magic_trailer.split_at(4);
-  if magic_trailer == b"DENO" {
-    let bundle_pos_arr: &[u8; 8] =
-      bundle_pos.try_into().expect("slice with incorrect length");
+  if magic_trailer == MAGIC_TRAILER {
+    let bundle_pos_arr: &[u8; 8] = bundle_pos.try_into()?;
     let bundle_pos = u64::from_be_bytes(*bundle_pos_arr);
-    current_exe
-      .seek(SeekFrom::Start(bundle_pos))
-      .expect("expected to be able to seek to bundle pos in current exe");
+    current_exe.seek(SeekFrom::Start(bundle_pos))?;
 
     let bundle_len = magic_trailer_pos - bundle_pos;
     let mut bundle = String::new();
-    current_exe
-      .take(bundle_len)
-      .read_to_string(&mut bundle)
-      .expect("expected to be able to read bundle from current exe");
+    current_exe.take(bundle_len).read_to_string(&mut bundle)?;
     // TODO: check amount of bytes read
 
-    let result = tokio_util::run_basic(run(bundle));
-    if let Err(err) = result {
+    if let Err(err) = tokio_util::run_basic(run(bundle)) {
       eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
       std::process::exit(1);
     }
     std::process::exit(0);
+  } else {
+    Ok(())
   }
 }
 
