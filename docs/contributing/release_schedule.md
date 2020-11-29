@@ -1,8 +1,7 @@
 ## Release Schedule
 
-A new minor release for the `deno` cli is released every 6 weeks. A new
-patch version is released weekly, except in the week before a new minor
-release.
+A new minor release for the `deno` cli is released every 6 weeks. A new patch
+version is released weekly, except in the week before a new minor release.
 
 The release dates for the upcoming minor releases are:
 
@@ -16,15 +15,14 @@ Stable releases can be found on the
 ### Canary channel
 
 In addition to the stable channel described above, canaries are released
-multiple times daily (for each commit on master). You can upgrade to the
-latest canary release by running:
+multiple times daily (for each commit on master). You can upgrade to the latest
+canary release by running:
 
 ```
 deno upgrade --canary
 ```
 
-To update to a specifc canary, pass the commit has in the `--version`
-option:
+To update to a specifc canary, pass the commit has in the `--version` option:
 
 ```
 deno upgrade --canary --version=973af61d8bb03c1709f61e456581d58386ed4952
