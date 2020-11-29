@@ -3179,4 +3179,49 @@ mod tests {
       }
     );
   }
+
+  #[test]
+  fn compile() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "compile",
+      "https://deno.land/std/examples/colors.ts",
+      "colors"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Compile {
+          source_file: "https://deno.land/std/examples/colors.ts".to_string(),
+          out_file: "colors".to_string()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn compile_with_flags() {
+    #[rustfmt::skip]
+    let r = flags_from_vec_safe(svec!["deno", "compile", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "https://deno.land/std/examples/colors.ts", "colors"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Compile {
+          source_file: "https://deno.land/std/examples/colors.ts".to_string(),
+          out_file: "colors".to_string()
+        },
+        unstable: true,
+        import_map_path: Some("import_map.json".to_string()),
+        no_remote: true,
+        config_path: Some("tsconfig.json".to_string()),
+        no_check: true,
+        reload: true,
+        lock: Some(PathBuf::from("lock.json")),
+        lock_write: true,
+        ca_file: Some("example.crt".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
 }
