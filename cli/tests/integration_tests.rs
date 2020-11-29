@@ -4498,7 +4498,7 @@ fn compile() {
 }
 
 #[test]
-fn compile_args() {
+fn standalone_args() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
@@ -4528,4 +4528,38 @@ fn compile_args() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stdout, b"foo\n--bar\n--unstable\n");
+}
+
+#[test]
+fn standalone_no_module_load() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("hello.exe")
+  } else {
+    dir.path().join("hello")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/standalone_import.ts")
+    .arg(&exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.stdout, b"start\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("Self-contained binaries don't support module loading"));
 }
