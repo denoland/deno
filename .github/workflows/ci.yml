@@ -162,11 +162,11 @@ jobs:
         if: matrix.kind == 'test_debug'
         run: cargo build --locked --all-targets
 
+      # TODO(lucacasonato): remove deno compile before landing
       - name: Test release
         if: matrix.kind == 'test_release'
         run: |
           cargo test --release --locked --all-targets
-        # TODO(lucacasonato): remove before landing
           ./target/release/deno compile https://deno.land/std/http/file_server.ts file_server
 
       - uses: actions/upload-artifact@v2
