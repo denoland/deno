@@ -4527,5 +4527,5 @@ fn compile_args() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, "foo\n--bar\n--unstable\n".as_bytes());
+  assert_eq!(output.stdout, b"foo\n--bar\n--unstable\n");
 }

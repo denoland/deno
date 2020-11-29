@@ -21,7 +21,7 @@ use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
 
-const MAGIC_TRAILER: &'static [u8; 4] = b"D3N0";
+const MAGIC_TRAILER: &[u8; 4] = b"D3N0";
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a stanalone
@@ -133,7 +133,7 @@ pub async fn create_standalone_binary(
   let original_binary_path = std::env::current_exe()?;
   let mut original_bin = tokio::fs::read(original_binary_path).await?;
 
-  let mut magic_trailer = b"D3N0".to_vec();
+  let mut magic_trailer = MAGIC_TRAILER.to_vec();
   magic_trailer.write_all(&original_bin.len().to_be_bytes())?;
 
   let mut final_bin =
