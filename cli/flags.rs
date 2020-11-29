@@ -22,6 +22,10 @@ pub enum DenoSubcommand {
     source_file: String,
     out_file: Option<PathBuf>,
   },
+  Compile {
+    source_file: String,
+    out_file: String,
+  },
   Completions {
     buf: Box<[u8]>,
   },
@@ -291,6 +295,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     doc_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("lint") {
     lint_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("compile") {
+    compile_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -340,6 +346,7 @@ If the flag is set, restrict these messages to errors.",
     )
     .subcommand(bundle_subcommand())
     .subcommand(cache_subcommand())
+    .subcommand(compile_subcommand())
     .subcommand(completions_subcommand())
     .subcommand(doc_subcommand())
     .subcommand(eval_subcommand())
@@ -404,6 +411,18 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     args,
     root,
     force,
+  };
+}
+
+fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  compile_args_parse(flags, matches);
+
+  let source_file = matches.value_of("source_file").unwrap().to_string();
+  let out_file = matches.value_of("out_file").unwrap().to_string();
+
+  flags.subcommand = DenoSubcommand::Compile {
+    source_file,
+    out_file,
   };
 }
 
@@ -787,6 +806,22 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno
 
 These must be added to the path manually if required.")
+}
+
+fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
+  compile_args(SubCommand::with_name("compile"))
+    .arg(
+      Arg::with_name("source_file")
+        .takes_value(true)
+        .required(true),
+    )
+    .arg(Arg::with_name("out_file").takes_value(true).required(true))
+    .about("Compile the script into a self contained executable")
+    .long_about(
+      "Compiles the given script into a self contained executable.
+  deno compile https://deno.land/std/http/file_server.ts file_server
+  deno compile https://deno.land/std/examples/colors.ts colors",
+    )
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
