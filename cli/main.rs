@@ -238,6 +238,11 @@ async fn compile_command(
   final_bin.append(&mut bundle);
   final_bin.append(&mut magic_trailer);
 
+  let out_file = if cfg!(windows) && !out_file.ends_with(".exe") {
+    format!("{}.exe", out_file)
+  } else {
+    out_file
+  };
   tokio::fs::write(out_file, final_bin).await?;
 
   Ok(())
