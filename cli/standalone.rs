@@ -27,7 +27,7 @@ const MAGIC_TRAILER: &'static [u8; 4] = b"D3N0";
 /// After the magic trailer is a u64 pointer to the start of the JS
 /// file embedded in the binary. This file is read, and run. If no
 /// magic trailer is present, this function exits with Ok(()).
-pub fn try_run_standalone_binary() -> Result<(), AnyError> {
+pub fn try_run_standalone_binary(args: Vec<String>) -> Result<(), AnyError> {
   let current_exe_path = current_exe()?;
 
   let mut current_exe = File::open(current_exe_path)?;
@@ -45,7 +45,7 @@ pub fn try_run_standalone_binary() -> Result<(), AnyError> {
     current_exe.take(bundle_len).read_to_string(&mut bundle)?;
     // TODO: check amount of bytes read
 
-    if let Err(err) = tokio_util::run_basic(run(bundle)) {
+    if let Err(err) = tokio_util::run_basic(run(bundle, args)) {
       eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
       std::process::exit(1);
     }
@@ -91,8 +91,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
   }
 }
 
-async fn run(source_code: String) -> Result<(), AnyError> {
-  let flags = Flags::default();
+async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
+  let mut flags = Flags::default();
+  flags.argv = args;
+  // TODO(lucacasonato): remove once you can specify this correctly through embedded metadata
+  flags.unstable = true;
   let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
   let program_state = ProgramState::new(flags.clone())?;
   let permissions = Permissions::allow_all();

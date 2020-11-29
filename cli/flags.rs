@@ -820,7 +820,9 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
     .long_about(
       "Compiles the given script into a self contained executable.
   deno compile --unstable https://deno.land/std/http/file_server.ts file_server
-  deno compile --unstable https://deno.land/std/examples/colors.ts colors",
+  deno compile --unstable https://deno.land/std/examples/colors.ts colors
+  
+Cross compiling binaries for different platforms is not currently possible.",
     )
 }
 

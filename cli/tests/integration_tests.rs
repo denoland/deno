@@ -4468,7 +4468,7 @@ fn fmt_ignore_unexplicit_files() {
 }
 
 #[test]
-fn deno_compile_test() {
+fn compile() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
     dir.path().join("./welcome.exe")
@@ -4494,4 +4494,36 @@ fn deno_compile_test() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stdout, "Welcome to Deno 🦕\n".as_bytes());
+}
+
+#[test]
+fn compile_args() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("./args.exe")
+  } else {
+    dir.path().join("./args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("./cli/tests/028_args.ts")
+    .arg(&exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .arg("foo")
+    .arg("--bar")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, "foo\n--bar\n--unstable\n".as_bytes());
 }
