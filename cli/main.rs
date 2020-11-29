@@ -243,8 +243,13 @@ async fn compile_command(
   } else {
     out_file
   };
-  tokio::fs::write(out_file, final_bin).await?;
-
+  tokio::fs::write(&out_file, final_bin).await?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o777);
+    tokio::fs::set_permissions(out_file, perms).await?;
+  }
   Ok(())
 }
 
