@@ -6,7 +6,7 @@ pub const TYPESCRIPT: &str = crate::js::TS_VERSION;
 pub fn deno() -> String {
   let semver = env!("CARGO_PKG_VERSION");
   option_env!("DENO_CANARY").map_or(semver.to_string(), |_| {
-    format!("{}-{}", semver, GIT_COMMIT_HASH)
+    format!("{}+{}", semver, GIT_COMMIT_HASH)
   })
 }
 
