@@ -7,6 +7,10 @@
     return core.jsonOpSync("op_loadavg");
   }
 
+  function uptime() {
+    return core.jsonOpSync("op_uptime");
+  }
+
   function hostname() {
     return core.jsonOpSync("op_hostname");
   }
@@ -62,5 +66,6 @@
     systemCpuInfo,
     hostname,
     loadavg,
+    uptime,
   };
 })(this);

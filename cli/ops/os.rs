@@ -14,6 +14,7 @@ use std::env;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_exit", op_exit);
+  super::reg_json_sync(rt, "op_uptime", op_uptime);
   super::reg_json_sync(rt, "op_env", op_env);
   super::reg_json_sync(rt, "op_exec_path", op_exec_path);
   super::reg_json_sync(rt, "op_set_env", op_set_env);
@@ -128,6 +129,22 @@ fn op_loadavg(
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(json!([loadavg.one, loadavg.five, loadavg.fifteen])),
     Err(_) => Ok(json!([0f64, 0f64, 0f64])),
+  }
+}
+
+fn op_uptime(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  super::check_unstable(state, "Deno.uptime");
+  state.borrow::<Permissions>().check_env()?;
+
+  match sys_info::boottime() {
+    Ok(uptime) => Ok(json!({
+      "uptime": uptime.tv_sec
+    })),
+    Err(_) => Ok(json!({})),
   }
 }
 

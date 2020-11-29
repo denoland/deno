@@ -81,6 +81,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "umask",
   "utime",
   "utimeSync",
+  "uptime",
 ];
 
 lazy_static! {
