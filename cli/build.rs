@@ -257,10 +257,9 @@ fn main() {
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
-  println!(
-    "cargo:rustc-env=DENO_CANARY={}",
-    env::var("DENO_CANARY").unwrap_or_default()
-  );
+  if let Ok(c) = env::var("DENO_CANARY") {
+    println!("cargo:rustc-env=DENO_CANARY={}", c);
+  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
