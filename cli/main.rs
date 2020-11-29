@@ -155,6 +155,10 @@ async fn compile_command(
   source_file: String,
   out_file: String,
 ) -> Result<(), AnyError> {
+  if !flags.unstable {
+    exit_unstable("compile");
+  }
+
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
