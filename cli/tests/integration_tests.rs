@@ -4471,13 +4471,14 @@ fn fmt_ignore_unexplicit_files() {
 fn compile() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
-    dir.path().join("./welcome.exe")
+    dir.path().join("welcome.exe")
   } else {
-    dir.path().join("./welcome")
+    dir.path().join("welcome")
   };
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
+    .arg("--unstable")
     .arg("./std/examples/welcome.ts")
     .arg(&exe)
     .stdout(std::process::Stdio::piped())
@@ -4500,13 +4501,14 @@ fn compile() {
 fn compile_args() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
-    dir.path().join("./args.exe")
+    dir.path().join("args.exe")
   } else {
-    dir.path().join("./args")
+    dir.path().join("args")
   };
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
+    .arg("--unstable")
     .arg("./cli/tests/028_args.ts")
     .arg(&exe)
     .stdout(std::process::Stdio::piped())

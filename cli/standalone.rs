@@ -4,6 +4,7 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::worker::MainWorker;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleLoader;
@@ -67,7 +68,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    assert_eq!(specifier, SPECIFIER);
+    if specifier != SPECIFIER {
+      return Err(type_error(
+        "Self-contained binaries don't support module loading",
+      ));
+    }
     Ok(ModuleSpecifier::resolve_url(specifier)?)
   }
 
@@ -81,6 +86,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let module_specifier = module_specifier.clone();
     let code = self.0.to_string();
     async move {
+      if module_specifier.to_string() != SPECIFIER {
+        return Err(type_error(
+          "Self-contained binaries don't support module loading",
+        ));
+      }
       Ok(deno_core::ModuleSource {
         code,
         module_url_specified: module_specifier.to_string(),
@@ -93,7 +103,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
 async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
   let mut flags = Flags::default();
-  flags.argv = args;
+  flags.argv = args[1..].to_vec();
   // TODO(lucacasonato): remove once you can specify this correctly through embedded metadata
   flags.unstable = true;
   let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
