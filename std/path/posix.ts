@@ -24,18 +24,6 @@ export function resolve(...pathSegments: string[]): string {
   let resolvedPath = "";
   let resolvedAbsolute = false;
 
-  for (let i = pathSegments.length - 1; i >= 0 && !resolvedAbsolute; i--) {
-    assertPath(pathSegments[i]);
-
-    // Skip empty entries
-    if (pathSegments[i].length === 0) {
-      continue;
-    }
-
-    resolvedPath = `${pathSegments[i]}/${resolvedPath}`;
-    resolvedAbsolute = pathSegments[i].charCodeAt(0) === CHAR_FORWARD_SLASH;
-  }
-  /*
   for (let i = pathSegments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
     let path: string;
 
@@ -57,7 +45,6 @@ export function resolve(...pathSegments: string[]): string {
     resolvedPath = `${path}/${resolvedPath}`;
     resolvedAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
   }
-  */
 
   // At this point the path should be resolved to a full absolute path, but
   // handle relative paths to be safe (might happen when process.cwd() fails)
@@ -139,8 +126,8 @@ export function relative(from: string, to: string): string {
 
   if (from === to) return "";
 
-  from = resolve(Deno.cwd(), from);
-  to = resolve(Deno.cwd(), to);
+  from = resolve(from);
+  to = resolve(to);
 
   if (from === to) return "";
 
