@@ -16,16 +16,16 @@ use swc_common::chain;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
 use swc_common::comments::SingleThreadedComments;
-use swc_common::errors::Diagnostic;
-use swc_common::errors::DiagnosticBuilder;
-use swc_common::errors::Emitter;
+// use swc_common::errors::Diagnostic;
+// use swc_common::errors::DiagnosticBuilder;
+// use swc_common::errors::Emitter;
+use std::io::Write;
 use swc_common::errors::EmitterWriter;
 use swc_common::errors::Handler;
 use swc_common::errors::HandlerFlags;
 use swc_common::FileName;
-use std::io::Write;
 use swc_common::Globals;
-use swc_common::Loc;
+// use swc_common::Loc;
 use swc_common::SourceFile;
 use swc_common::SourceMap;
 use swc_common::Span;
@@ -103,39 +103,15 @@ impl fmt::Display for DiagnosticBuffer {
 }
 
 impl DiagnosticBuffer {
-  pub fn from_error_buffer<F>(error_buffer: ErrorBuffer, get_loc: F) -> Self
-  where
-    F: Fn(Span) -> Loc,
-  {
+  pub fn from_error_buffer(error_buffer: ErrorBuffer) -> Self {
     let s = error_buffer.0.read().unwrap().clone();
-    let diagnostics = s
-      .iter()
-      .map(|d| {
-        let mut msg = d.message();
-
-        if let Some(span) = d.span.primary_span() {
-          let loc = get_loc(span);
-          let file_name = match &loc.file.name {
-            FileName::Custom(n) => n,
-            _ => unreachable!(),
-          };
-          msg = format!(
-            "{} at {}:{}:{}",
-            msg, file_name, loc.line, loc.col_display
-          );
-        }
-
-        msg
-      })
-      .collect::<Vec<String>>();
-
-    Self(diagnostics)
+    Self(s)
   }
 }
 
 /// A buffer for collecting errors from the AST parser.
 #[derive(Debug, Clone)]
-pub struct ErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
+pub struct ErrorBuffer(Arc<RwLock<Vec<String>>>);
 
 impl ErrorBuffer {
   pub fn new() -> Self {
@@ -146,19 +122,13 @@ impl ErrorBuffer {
 impl Write for ErrorBuffer {
   fn write(&mut self, d: &[u8]) -> std::io::Result<usize> {
     let len = d.len();
-    let diagnostic = String::from_utf8_lossy(d).into();
+    let diagnostic = String::from_utf8_lossy(d).to_string();
     self.0.write().unwrap().push(diagnostic);
     Ok(len)
   }
 
   fn flush(&mut self) -> std::io::Result<()> {
-      Ok(())
-  }
-}
-
-impl Emitter for ErrorBuffer {
-  fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().push((**db).clone());
+    Ok(())
   }
 }
 
@@ -410,14 +380,11 @@ pub fn parse(
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
 
-  let sm = &source_map;
   let module = parser.parse_module().map_err(move |err| {
     let mut diagnostic = err.into_diagnostic(&handler);
     diagnostic.emit();
 
-    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
-      sm.lookup_char_pos(span.lo)
-    })
+    DiagnosticBuffer::from_error_buffer(error_buffer)
   })?;
   let leading_comments =
     comments.with_leading(module.span.lo, |comments| comments.to_vec());
@@ -530,14 +497,11 @@ pub fn transpile_module(
     Some(&comments),
   );
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-  let sm = cm.clone();
   let module = parser.parse_module().map_err(move |err| {
     let mut diagnostic = err.into_diagnostic(&handler);
     diagnostic.emit();
 
-    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
-      sm.lookup_char_pos(span.lo)
-    })
+    DiagnosticBuffer::from_error_buffer(error_buffer)
   })?;
   // TODO(@kitsonk) DRY-up with ::transpile()
   let jsx_pass = react::react(
