@@ -1,6 +1,7 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 import { Buffer } from "../buffer.ts";
 import EventEmitter from "../events.ts";
+import type Readable from "./readable.ts";
 import type Writable from "./writable.ts";
 import { types } from "../util.ts";
 
@@ -12,7 +13,7 @@ class Stream extends EventEmitter {
   static _isUint8Array = types.isUint8Array;
   static _uint8ArrayToBuffer = (chunk: Uint8Array) => Buffer.from(chunk);
 
-  pipe(dest: Writable, options: { end: boolean }) {
+  pipe(dest: Readable | Writable, options?: { end?: boolean }) {
     // deno-lint-ignore no-this-alias
     const source = this;
 
@@ -31,7 +32,8 @@ class Stream extends EventEmitter {
       if (didOnEnd) return;
       didOnEnd = true;
 
-      dest.end();
+      // 'end' is only called on Writable streams
+      (dest as Writable).end();
     }
 
     function onclose() {
