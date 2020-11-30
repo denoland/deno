@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertThrows, assertThrowsAsync } from "../testing/asserts.ts";
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, "testdata");
+const testdataDir = resolvePath(moduleDir, "testdata");
 
 Deno.test("ensureFileIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_file_1");

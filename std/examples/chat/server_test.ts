@@ -3,9 +3,10 @@ import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { delay } from "../../async/delay.ts";
-import { dirname, fromFileUrl, resolve } from "../../path/mod.ts";
+import { dirname, fromFileUrl } from "../../path/mod.ts";
+import { resolvePath } from "../../fs/mod.ts";
 
-const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)));
+const moduleDir = resolvePath(dirname(fromFileUrl(import.meta.url)));
 
 async function startServer(): Promise<
   Deno.Process<Deno.RunOptions & { stdout: "piped" }>
@@ -17,6 +18,7 @@ async function startServer(): Promise<
       "--quiet",
       "--allow-net",
       "--allow-read",
+      "--unstable",
       "server.ts",
     ],
     cwd: moduleDir,

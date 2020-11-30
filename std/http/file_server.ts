@@ -7,6 +7,7 @@
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 import { extname, posix } from "../path/mod.ts";
+import { resolvePath } from "../fs/mod.ts";
 import {
   HTTPSOptions,
   listenAndServe,
@@ -49,7 +50,7 @@ export interface FileServerArgs {
 const encoder = new TextEncoder();
 
 const serverArgs = parse(Deno.args) as FileServerArgs;
-const target = posix.resolve(serverArgs._[0] ?? "");
+const target = resolvePath(serverArgs._[0] ?? "");
 
 const MEDIA_TYPES: Record<string, string> = {
   ".md": "text/markdown",

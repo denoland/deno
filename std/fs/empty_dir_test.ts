@@ -6,11 +6,12 @@ import {
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, "testdata");
+const testdataDir = resolvePath(moduleDir, "testdata");
 
 Deno.test("emptyDirIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_1");
@@ -204,7 +205,7 @@ for (const s of scenes) {
       );
 
       try {
-        const args = [Deno.execPath(), "run", "--quiet"];
+        const args = [Deno.execPath(), "run", "--quiet", "--unstable"];
 
         if (s.read) {
           args.push("--allow-read");

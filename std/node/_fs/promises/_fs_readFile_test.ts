@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { readFile } from "./_fs_readFile.ts";
+import { resolvePath } from "../../../fs/mod.ts";
 import * as path from "../../../path/mod.ts";
 import { assert, assertEquals } from "../../../testing/asserts.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testData = path.resolve(moduleDir, "..", "testdata", "hello.txt");
+const testData = resolvePath(moduleDir, "..", "testdata", "hello.txt");
 
 Deno.test("readFileSuccess", async function () {
   const data: Uint8Array = await readFile(testData);

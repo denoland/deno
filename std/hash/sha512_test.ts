@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { HmacSha512, Message, Sha512 } from "./sha512.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
+import { dirname, fromFileUrl, join } from "../path/mod.ts";
+import { resolvePath } from "../fs/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
-const testdataDir = resolve(moduleDir, "testdata");
+const testdataDir = resolvePath(moduleDir, "testdata");
 
 /** Handy function to convert an array/array buffer to a string of hex values. */
 function toHexString(value: number[] | ArrayBuffer): string {

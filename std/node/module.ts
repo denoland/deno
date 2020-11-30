@@ -32,6 +32,7 @@ import * as nodeStringDecoder from "./string_decoder.ts";
 import * as nodeTimers from "./timers.ts";
 import * as nodeUtil from "./util.ts";
 
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import { assert } from "../_util/assert.ts";
 import { fileURLToPath, pathToFileURL } from "./url.ts";
@@ -431,14 +432,14 @@ class Module {
   static _nodeModulePaths(from: string): string[] {
     if (isWindows) {
       // Guarantee that 'from' is absolute.
-      from = path.resolve(from);
+      from = resolvePath(from);
 
       // note: this approach *only* works when the path is guaranteed
       // to be absolute.  Doing a fully-edge-case-correct path.split
       // that works on both Windows and Posix is non-trivial.
 
       // return root node_modules when path is 'D:\\'.
-      // path.resolve will make sure from.length >=3 in Windows.
+      // fs.pathResolve will make sure from.length >=3 in Windows.
       if (
         from.charCodeAt(from.length - 1) === CHAR_BACKWARD_SLASH &&
         from.charCodeAt(from.length - 2) === CHAR_COLON
@@ -475,7 +476,7 @@ class Module {
     } else {
       // posix
       // Guarantee that 'from' is absolute.
-      from = path.resolve(from);
+      from = resolvePath(from);
       // Return early not only to avoid unnecessary work, but to *avoid* returning
       // an array of two items for a root: [ '//node_modules', '/node_modules' ]
       if (from === "/") return ["/node_modules"];
@@ -544,8 +545,8 @@ class Module {
     let paths = [];
 
     if (homeDir) {
-      paths.unshift(path.resolve(homeDir, ".node_libraries"));
-      paths.unshift(path.resolve(homeDir, ".node_modules"));
+      paths.unshift(resolvePath(homeDir, ".node_libraries"));
+      paths.unshift(resolvePath(homeDir, ".node_modules"));
     }
 
     if (nodePath) {
@@ -654,7 +655,7 @@ interface PackageInfo {
 }
 
 function readPackage(requestPath: string): PackageInfo | null {
-  const jsonPath = path.resolve(requestPath, "package.json");
+  const jsonPath = resolvePath(requestPath, "package.json");
 
   const existing = packageJsonCache.get(jsonPath);
   if (existing !== undefined) {
@@ -733,15 +734,15 @@ function tryPackage(
   const pkg = readPackageMain(requestPath);
 
   if (!pkg) {
-    return tryExtensions(path.resolve(requestPath, "index"), exts, isMain);
+    return tryExtensions(resolvePath(requestPath, "index"), exts, isMain);
   }
 
-  const filename = path.resolve(requestPath, pkg);
+  const filename = resolvePath(requestPath, pkg);
   let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
-    tryExtensions(path.resolve(filename, "index"), exts, isMain);
+    tryExtensions(resolvePath(filename, "index"), exts, isMain);
   if (actual === false) {
-    actual = tryExtensions(path.resolve(requestPath, "index"), exts, isMain);
+    actual = tryExtensions(resolvePath(requestPath, "index"), exts, isMain);
     if (!actual) {
       const err = new Error(
         `Cannot find module '${filename}'. ` +
@@ -773,7 +774,7 @@ function toRealPath(requestPath: string): string {
       break;
     }
   }
-  return path.resolve(requestPath);
+  return resolvePath(requestPath);
 }
 
 // Given a path, check if the file exists with any of the set extensions
@@ -839,7 +840,7 @@ function applyExports(basePath: string, expansion: string): string {
 
   let pkgExports = readPackageExports(basePath);
   if (pkgExports === undefined || pkgExports === null) {
-    return path.resolve(basePath, mappingKey);
+    return resolvePath(basePath, mappingKey);
   }
 
   if (isConditionalDotExportSugar(pkgExports, basePath)) {
@@ -908,14 +909,14 @@ function resolveExports(
   if (!absoluteRequest) {
     const [, name, expansion = ""] = request.match(EXPORTS_PATTERN) || [];
     if (!name) {
-      return path.resolve(nmPath, request);
+      return resolvePath(nmPath, request);
     }
 
-    const basePath = path.resolve(nmPath, name);
+    const basePath = resolvePath(nmPath, name);
     return applyExports(basePath, expansion);
   }
 
-  return path.resolve(nmPath, request);
+  return resolvePath(nmPath, request);
 }
 
 function resolveExportsTarget(

@@ -5,11 +5,12 @@ import {
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import { ensureLink, ensureLinkSync } from "./ensure_link.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, "testdata");
+const testdataDir = resolvePath(moduleDir, "testdata");
 
 Deno.test("ensureLinkIfItNotExist", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "ensure_link_1");

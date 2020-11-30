@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { getFileInfoType, isSubdir } from "./_util.ts";
@@ -243,8 +244,8 @@ export async function copy(
   dest: string,
   options: CopyOptions = {},
 ): Promise<void> {
-  src = path.resolve(src);
-  dest = path.resolve(dest);
+  src = resolvePath(src);
+  dest = resolvePath(dest);
 
   if (src === dest) {
     throw new Error("Source and destination cannot be the same.");
@@ -282,8 +283,8 @@ export function copySync(
   dest: string,
   options: CopyOptions = {},
 ): void {
-  src = path.resolve(src);
-  dest = path.resolve(dest);
+  src = resolvePath(src);
+  dest = resolvePath(dest);
 
   if (src === dest) {
     throw new Error("Source and destination cannot be the same.");

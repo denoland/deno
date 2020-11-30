@@ -22,7 +22,6 @@ export const {
   normalize,
   parse,
   relative,
-  resolve,
   sep,
   toFileUrl,
   toNamespacedPath,
