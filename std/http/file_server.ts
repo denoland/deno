@@ -7,7 +7,7 @@
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 import { extname, posix } from "../path/mod.ts";
-import { resolvePath } from "../fs/mod.ts";
+import { relativePath, resolvePath } from "../fs/mod.ts";
 import {
   HTTPSOptions,
   listenAndServe,
@@ -147,7 +147,7 @@ async function serveDir(
   req: ServerRequest,
   dirPath: string,
 ): Promise<Response> {
-  const dirUrl = `/${posix.relative(target, dirPath)}`;
+  const dirUrl = `/${relativePath(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
   for await (const entry of Deno.readDir(dirPath)) {
     const filePath = posix.join(dirPath, entry.name);

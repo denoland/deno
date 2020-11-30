@@ -21,7 +21,6 @@ export const {
   join,
   normalize,
   parse,
-  relative,
   sep,
   toFileUrl,
   toNamespacedPath,

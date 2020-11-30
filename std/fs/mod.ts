@@ -20,4 +20,5 @@ export * from "./walk.ts";
 export * from "./eol.ts";
 export const {
   resolvePath,
+  relativePath,
 } = path;

@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { relative } from "../path/mod.ts";
-import { resolvePath } from "../fs/mod.ts";
+import { relativePath, resolvePath } from "../fs/mod.ts";
 
 const CLOCKID_REALTIME = 0;
 const CLOCKID_MONOTONIC = 1;
@@ -1212,7 +1211,7 @@ export default class Context {
           textDecoder.decode(pathData),
         );
 
-        if (relative(entry.path, resolvedPath).startsWith("..")) {
+        if (relativePath(entry.path, resolvedPath).startsWith("..")) {
           return ERRNO_NOTCAPABLE;
         }
 
@@ -1222,7 +1221,7 @@ export default class Context {
         ) {
           try {
             path = Deno.realPathSync(resolvedPath);
-            if (relative(entry.path, path).startsWith("..")) {
+            if (relativePath(entry.path, path).startsWith("..")) {
               return ERRNO_NOTCAPABLE;
             }
           } catch (_err) {

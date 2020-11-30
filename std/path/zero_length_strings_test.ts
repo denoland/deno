@@ -29,11 +29,3 @@ Deno.test("isAbsoluteZeroLength", function () {
   assertEquals(path.posix.isAbsolute(""), false);
   if (path.win32) assertEquals(path.win32.isAbsolute(""), false);
 });
-
-Deno.test("relativeZeroLength", function () {
-  // relative, internally calls resolve. So, '' is actually the current
-  // directory
-  assertEquals(path.relative("", pwd), "");
-  assertEquals(path.relative(pwd, ""), "");
-  assertEquals(path.relative(pwd, pwd), "");
-});

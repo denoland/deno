@@ -5,13 +5,8 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../testing/asserts.ts";
-import {
-  fromFileUrl,
-  join,
-  joinGlobs,
-  normalize,
-  relative,
-} from "../path/mod.ts";
+import { fromFileUrl, join, joinGlobs, normalize } from "../path/mod.ts";
+import { relativePath } from "./mod.ts";
 import {
   expandGlob,
   ExpandGlobOptions,
@@ -37,7 +32,7 @@ async function expandGlobArray(
     assert(path.startsWith(root));
   }
   const relativePaths = paths.map(
-    (path: string): string => relative(root, path) || ".",
+    (path: string): string => relativePath(root, path) || ".",
   );
   relativePaths.sort();
   return relativePaths;

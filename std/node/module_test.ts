@@ -5,7 +5,7 @@ import {
   assertStringIncludes,
 } from "../testing/asserts.ts";
 
-import { resolvePath } from "../fs/mod.ts";
+import { relativePath, resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import { createRequire } from "./module.ts";
 
@@ -39,7 +39,7 @@ Deno.test("requireBuiltin", function () {
   assert("readFileSync" in fs);
   const { readFileSync, isNull, extname } = require("./tests/cjs/cjs_builtin");
 
-  const testData = path.relative(
+  const testData = relativePath(
     Deno.cwd(),
     path.join(testdataDir, "hello.txt"),
   );
