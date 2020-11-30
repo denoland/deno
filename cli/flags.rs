@@ -24,7 +24,7 @@ pub enum DenoSubcommand {
   },
   Compile {
     source_file: String,
-    out_file: String,
+    out_file: Option<String>,
   },
   Completions {
     buf: Box<[u8]>,
@@ -419,7 +419,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
-  let out_file = matches.value_of("out_file").unwrap().to_string();
+  let out_file = matches.value_of("out_file").map(|s| s.to_string());
 
   flags.subcommand = DenoSubcommand::Compile {
     source_file,
@@ -828,13 +828,21 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .required(true),
     )
-    .arg(Arg::with_name("out_file").takes_value(true).required(true))
+    .arg(Arg::with_name("out_file").takes_value(true))
     .about("Compile the script into a self contained executable")
     .long_about(
       "Compiles the given script into a self contained executable.
-  deno compile --unstable https://deno.land/std/http/file_server.ts file_server
-  deno compile --unstable https://deno.land/std/examples/colors.ts colors
+  deno compile --unstable https://deno.land/std/http/file_server.ts
+  deno compile --unstable https://deno.land/std/examples/colors.ts color_util
   
+The executable name is inferred by default:
+  - Attempt to take the file stem of the URL path. The above example would
+    become 'file_server'.
+  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+    and the path has no parent, take the file name of the parent path. Otherwise
+    settle with the generic name.
+  - If the resulting name has an '@...' suffix, strip it.
+
 Cross compiling binaries for different platforms is not currently possible.",
     )
 }
@@ -3243,15 +3251,14 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "compile",
-      "https://deno.land/std/examples/colors.ts",
-      "colors"
+      "https://deno.land/std/examples/colors.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
-          out_file: "colors".to_string()
+          out_file: None
         },
         ..Flags::default()
       }
@@ -3267,7 +3274,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Compile {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
-          out_file: "colors".to_string()
+          out_file: Some("colors".to_string())
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),

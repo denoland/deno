@@ -83,6 +83,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use tools::installer::infer_name_from_url;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -154,7 +155,7 @@ fn get_types(unstable: bool) -> String {
 async fn compile_command(
   flags: Flags,
   source_file: String,
-  out_file: String,
+  out_file: Option<String>,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
@@ -164,6 +165,15 @@ async fn compile_command(
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
+
+  let out_file =
+    out_file.or_else(|| infer_name_from_url(module_specifier.as_url()));
+  let out_file = match out_file {
+    Some(out_file) => out_file,
+    None => return Err(generic_error(
+      "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+    )),
+  };
 
   let module_graph = create_module_graph_and_maybe_check(
     module_specifier.clone(),
