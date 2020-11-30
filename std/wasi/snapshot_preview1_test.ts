@@ -64,7 +64,7 @@ for (const pathname of tests) {
     ignore: ignore.includes(pathname),
     fn: async function () {
       const prelude = await Deno.readTextFile(
-        path.resolve(rootdir, pathname.replace(/\.wasm$/, ".json")),
+        path.resolve(Deno.cwd(), rootdir, pathname.replace(/\.wasm$/, ".json")),
       );
       const options = JSON.parse(prelude);
 
@@ -91,11 +91,12 @@ for (const pathname of tests) {
             "--unstable",
             "--allow-all",
             path.resolve(
+              Deno.cwd(),
               rootdir,
               "snapshot_preview1_test_runner.ts",
             ),
             prelude,
-            path.resolve(rootdir, pathname),
+            path.resolve(Deno.cwd(), rootdir, pathname),
           ],
           stdin: "piped",
           stdout: "piped",
