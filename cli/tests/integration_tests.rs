@@ -98,7 +98,6 @@ fn eval_p() {
 }
 
 #[test]
-
 fn run_from_stdin() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
@@ -4528,4 +4527,101 @@ fn fmt_ignore_unexplicit_files() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stderr, b"Checked 0 file\n");
+}
+
+#[test]
+fn compile() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./std/examples/welcome.ts")
+    .arg(&exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, "Welcome to Deno 🦕\n".as_bytes());
+}
+
+#[test]
+fn standalone_args() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg(&exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .arg("foo")
+    .arg("--bar")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"foo\n--bar\n--unstable\n");
+}
+
+#[test]
+fn standalone_no_module_load() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("hello.exe")
+  } else {
+    dir.path().join("hello")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/standalone_import.ts")
+    .arg(&exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.stdout, b"start\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("Self-contained binaries don't support module loading"));
 }
