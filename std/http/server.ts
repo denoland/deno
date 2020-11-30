@@ -113,11 +113,58 @@ export class ServerRequest {
   }
 }
 
-export class Server implements AsyncIterable<ServerRequest> {
+export type ServerErrorEventListenerOrEventListenerObject =
+  | ServerErrorListener
+  | ServerErrorListenerObject;
+
+export interface ServerErrorListener {
+  (evt: ServerErrorEvent): void | Promise<void>;
+}
+
+export interface ServerErrorListenerObject {
+  handleEvent(evt: ServerErrorEvent): void | Promise<void>;
+}
+
+export interface ServerErrorEventInit extends ErrorEventInit {
+  server: Server;
+  origin: ServerErrorEvent["origin"];
+  connection?: Deno.Conn;
+}
+
+export class ServerErrorEvent extends ErrorEvent {
+  server: Server;
+  origin: "listener" | "request";
+  connection?: Deno.Conn;
+  constructor(init: ServerErrorEventInit) {
+    super("error", init);
+    this.server = init.server;
+    this.origin = init.origin;
+    this.connection = init.connection;
+  }
+}
+
+export class Server extends EventTarget
+  implements AsyncIterable<ServerRequest> {
   private closing = false;
   private connections: Deno.Conn[] = [];
 
-  constructor(public listener: Deno.Listener) {}
+  constructor(public listener: Deno.Listener) {
+    super();
+  }
+
+  addEventListener(
+    type: "error",
+    listener: ServerErrorEventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+
+  addEventListener(
+    type: "error",
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(type, listener, options);
+  }
 
   close(): void {
     this.closing = true;
@@ -140,15 +187,27 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const reader = new BufReader(conn);
     const writer = new BufWriter(conn);
+    let preventClosing = false;
 
     while (!this.closing) {
       let request: ServerRequest | null;
       try {
         request = await readRequest(conn, reader);
       } catch (error) {
+        const eventDefault = this.dispatchEvent(
+          new ServerErrorEvent({
+            error,
+            origin: "request",
+            server: this,
+            connection: conn,
+            cancelable: true,
+          }),
+        );
         if (
-          error instanceof Deno.errors.InvalidData ||
-          error instanceof Deno.errors.UnexpectedEof
+          eventDefault && (
+            error instanceof Deno.errors.InvalidData ||
+            error instanceof Deno.errors.UnexpectedEof
+          )
         ) {
           // An error was thrown while parsing request headers.
           // Try to send the "400 Bad Request" before closing the connection.
@@ -160,6 +219,9 @@ export class Server implements AsyncIterable<ServerRequest> {
           } catch (error) {
             // The connection is broken.
           }
+        }
+        if (!eventDefault) {
+          preventClosing = true;
         }
         break;
       }
@@ -191,10 +253,12 @@ export class Server implements AsyncIterable<ServerRequest> {
     }
 
     this.untrackConnection(conn);
-    try {
-      conn.close();
-    } catch (e) {
-      // might have been already closed
+    if (!preventClosing) {
+      try {
+        conn.close();
+      } catch (e) {
+        // might have been already closed
+      }
     }
   }
 
@@ -222,17 +286,21 @@ export class Server implements AsyncIterable<ServerRequest> {
     try {
       conn = await this.listener.accept();
     } catch (error) {
-      if (
-        // The listener is closed:
-        error instanceof Deno.errors.BadResource ||
-        // TLS handshake errors:
-        error instanceof Deno.errors.InvalidData ||
-        error instanceof Deno.errors.UnexpectedEof ||
-        error instanceof Deno.errors.ConnectionReset
-      ) {
-        return mux.add(this.acceptConnAndIterateHttpRequests(mux));
+      if (this.closing && error instanceof Deno.errors.BadResource) {
+        return;
       }
-      throw error;
+      const eventDefault = this.dispatchEvent(
+        new ServerErrorEvent({
+          error,
+          origin: "listener",
+          server: this,
+          cancelable: true,
+        }),
+      );
+      if (eventDefault) {
+        mux.add(this.acceptConnAndIterateHttpRequests(mux));
+      }
+      return;
     }
     this.trackConnection(conn);
     // Try to accept another connection and add it to the multiplexer.
