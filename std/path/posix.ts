@@ -35,6 +35,29 @@ export function resolve(...pathSegments: string[]): string {
     resolvedPath = `${pathSegments[i]}/${resolvedPath}`;
     resolvedAbsolute = pathSegments[i].charCodeAt(0) === CHAR_FORWARD_SLASH;
   }
+  /*
+  for (let i = pathSegments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+    let path: string;
+
+    if (i >= 0) path = pathSegments[i];
+    else {
+      if (globalThis.Deno == null) {
+        throw new TypeError("Resolved a relative path without a CWD.");
+      }
+      path = Deno.cwd();
+    }
+
+    assertPath(path);
+
+    // Skip empty entries
+    if (path.length === 0) {
+      continue;
+    }
+
+    resolvedPath = `${path}/${resolvedPath}`;
+    resolvedAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  }
+  */
 
   // At this point the path should be resolved to a full absolute path, but
   // handle relative paths to be safe (might happen when process.cwd() fails)
