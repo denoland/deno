@@ -510,6 +510,27 @@ export class DateTimeFormatter {
 
     return parts;
   }
+  
+  /** sort & filter dateTimeFormatPart */
+  sortDateTimeFormatPart(parts: DateTimeFormatPart[]): DateTimeFormatPart[] {
+    const result: DateTimeFormatPart[] = [];
+    const typeArray = [
+      "year",
+      "month",
+      "day",
+      "hour",
+      "minute",
+      "second",
+      "fractionalSecond",
+    ];
+    for (const type of typeArray) {
+      const current = parts.find((el) => el.type === type);
+      if (current) {
+        result.push(current);
+      }
+    }
+    return result;
+  }
 
   partsToDate(parts: DateTimeFormatPart[]): Date {
     const date = new Date();
@@ -566,6 +587,7 @@ export class DateTimeFormatter {
 
   parse(string: string): Date {
     const parts = this.parseToParts(string);
-    return this.partsToDate(parts);
+    const sortParts = this.sortDateTimeFormatPart(parts);
+    return this.partsToDate(sortParts);
   }
 }
