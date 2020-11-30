@@ -28,7 +28,8 @@ enum Day {
 export function parse(dateString: string, formatString: string): Date {
   const formatter = new DateTimeFormatter(formatString);
   const parts = formatter.parseToParts(dateString);
-  return formatter.partsToDate(parts);
+  const sortParts = formatter.sortDateTimeFormatPart(parts);
+  return formatter.partsToDate(sortParts);
 }
 
 /**

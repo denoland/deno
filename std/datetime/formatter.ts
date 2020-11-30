@@ -513,7 +513,7 @@ export class DateTimeFormatter {
 
   /** sort & filter dateTimeFormatPart */
   sortDateTimeFormatPart(parts: DateTimeFormatPart[]): DateTimeFormatPart[] {
-    const result: DateTimeFormatPart[] = [];
+    let result: DateTimeFormatPart[] = [];
     const typeArray = [
       "year",
       "month",
@@ -524,11 +524,12 @@ export class DateTimeFormatter {
       "fractionalSecond",
     ];
     for (const type of typeArray) {
-      const current = parts.find((el) => el.type === type);
-      if (current) {
-        result.push(current);
+      const current = parts.findIndex((el) => el.type === type);
+      if (current !== -1) {
+        result = result.concat(parts.splice(current, 1));
       }
     }
+    result = result.concat(parts);
     return result;
   }
 
