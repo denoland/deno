@@ -382,13 +382,16 @@ mod tests {
     let a = "abcde";
     let b = "ab(c)de";
     let actual = get_range_change(a, b);
-    assert_eq!(actual, json!({
-      "span" : {
-        "start": 2,
-        "length": 1,
-      },
-      "newLength": 3
-    }));
+    assert_eq!(
+      actual,
+      json!({
+        "span" : {
+          "start": 2,
+          "length": 1,
+        },
+        "newLength": 3
+      })
+    );
   }
 
   #[test]
