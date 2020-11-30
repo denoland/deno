@@ -19,9 +19,11 @@ use swc_common::comments::SingleThreadedComments;
 use swc_common::errors::Diagnostic;
 use swc_common::errors::DiagnosticBuilder;
 use swc_common::errors::Emitter;
+use swc_common::errors::EmitterWriter;
 use swc_common::errors::Handler;
 use swc_common::errors::HandlerFlags;
 use swc_common::FileName;
+use std::io::Write;
 use swc_common::Globals;
 use swc_common::Loc;
 use swc_common::SourceFile;
@@ -138,6 +140,19 @@ pub struct ErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
 impl ErrorBuffer {
   pub fn new() -> Self {
     Self(Arc::new(RwLock::new(Vec::new())))
+  }
+}
+
+impl Write for ErrorBuffer {
+  fn write(&mut self, d: &[u8]) -> std::io::Result<usize> {
+    let len = d.len();
+    let diagnostic = String::from_utf8_lossy(d).into();
+    self.0.write().unwrap().push(diagnostic);
+    Ok(len)
+  }
+
+  fn flush(&mut self) -> std::io::Result<()> {
+      Ok(())
   }
 }
 
@@ -368,7 +383,7 @@ pub fn parse(
   source: &str,
   media_type: &MediaType,
 ) -> Result<ParsedModule, AnyError> {
-  let source_map = SourceMap::default();
+  let source_map = Rc::new(SourceMap::default());
   let source_file = source_map.new_source_file(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
@@ -377,9 +392,14 @@ pub fn parse(
   let syntax = get_syntax(media_type);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
-
-  let handler = Handler::with_emitter_and_flags(
+  let emitter = EmitterWriter::new(
     Box::new(error_buffer.clone()),
+    Some(source_map.clone()),
+    false,
+    true,
+  );
+  let handler = Handler::with_emitter_and_flags(
+    Box::new(emitter),
     HandlerFlags {
       can_emit_warnings: true,
       dont_buffer_diagnostics: true,
@@ -405,7 +425,7 @@ pub fn parse(
   Ok(ParsedModule {
     leading_comments,
     module,
-    source_map: Rc::new(source_map),
+    source_map,
     comments,
   })
 }
@@ -485,8 +505,14 @@ pub fn transpile_module(
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
   // TODO(@kitsonk) DRY-up with ::parse()
   let error_buffer = ErrorBuffer::new();
-  let handler = Handler::with_emitter_and_flags(
+  let emitter = EmitterWriter::new(
     Box::new(error_buffer.clone()),
+    Some(cm.clone()),
+    false,
+    true,
+  );
+  let handler = Handler::with_emitter_and_flags(
+    Box::new(emitter),
     HandlerFlags {
       can_emit_warnings: true,
       dont_buffer_diagnostics: true,
