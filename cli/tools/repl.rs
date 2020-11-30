@@ -507,7 +507,7 @@ pub async fn run(
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
         if is_closing(&mut worker, &mut session, context_id).await? {
-            break
+          break;
         }
 
         let evaluate_result = evaluate_response.get("result").unwrap();
