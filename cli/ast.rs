@@ -91,27 +91,27 @@ impl std::fmt::Display for Location {
 
 /// A buffer for collecting diagnostic messages from the AST parser.
 #[derive(Debug)]
-pub struct DiagnosticBuffer(Vec<String>);
+pub struct DiagnosticBuffer(String);
 
 impl Error for DiagnosticBuffer {}
 
 impl fmt::Display for DiagnosticBuffer {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let s = self.0.join(",");
-    f.pad(&s)
+    f.pad(&self.0)
   }
 }
 
 impl DiagnosticBuffer {
   pub fn from_error_buffer(error_buffer: ErrorBuffer) -> Self {
-    let s = error_buffer.0.read().unwrap().clone();
+    let s =
+      String::from_utf8_lossy(&error_buffer.0.read().unwrap()).to_string();
     Self(s)
   }
 }
 
 /// A buffer for collecting errors from the AST parser.
 #[derive(Debug, Clone)]
-pub struct ErrorBuffer(Arc<RwLock<Vec<String>>>);
+pub struct ErrorBuffer(Arc<RwLock<Vec<u8>>>);
 
 impl ErrorBuffer {
   pub fn new() -> Self {
@@ -122,8 +122,7 @@ impl ErrorBuffer {
 impl Write for ErrorBuffer {
   fn write(&mut self, d: &[u8]) -> std::io::Result<usize> {
     let len = d.len();
-    let diagnostic = String::from_utf8_lossy(d).to_string();
-    self.0.write().unwrap().push(diagnostic);
+    self.0.write().unwrap().extend(d);
     Ok(len)
   }
 
