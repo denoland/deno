@@ -567,6 +567,80 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[http] request error event",
+  async fn(): Promise<void> {
+    const server = serve(":8124");
+    let eventTriggered = false;
+    server.addEventListener("error", (evt) => {
+      if (
+        evt.origin == "request" &&
+        evt.error instanceof Deno.errors.InvalidData
+      ) {
+        eventTriggered = true;
+        // Call `preventDefault` to avoid sending "400 Bad Request" and closing the connection
+        evt.preventDefault();
+        (async () => {
+          assert(!!evt.connection);
+          await Deno.writeAll(evt.connection, encode("bad!"));
+          evt.connection.close();
+        })();
+      } else {
+        throw new Error("Unexpected error event: " + Deno.inspect(evt));
+      }
+    });
+    const entry = server[Symbol.asyncIterator]().next();
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: 8124,
+    });
+    await Deno.writeAll(
+      conn,
+      encode("GET / HTTP/1.1\r\nmalformedHeader\r\n\r\n\r\n\r\n"),
+    );
+    const responseString = decode(await Deno.readAll(conn));
+    assertEquals(responseString, "bad!");
+    conn.close();
+    server.close();
+    assert((await entry).done);
+    assert(eventTriggered);
+  },
+});
+
+Deno.test({
+  name: "[http] listener error event",
+  async fn(): Promise<void> {
+    const badListener = new Proxy(Deno.listen({ port: 8124 }), {
+      get(target, p) {
+        if (p == "accept") {
+          return () => {
+            throw new Error("Failed to accept connection");
+          };
+        }
+        return target[p as keyof Deno.Listener];
+      },
+    });
+    const server = new Server(badListener);
+    let eventTriggered = false;
+    server.addEventListener("error", (evt) => {
+      if (
+        evt.origin == "listener" &&
+        evt.error.message == "Failed to accept connection"
+      ) {
+        // Call `preventDefault` to stop accepting connections
+        evt.preventDefault();
+        eventTriggered = true;
+      } else {
+        throw new Error("Unexpected error event: " + Deno.inspect(evt));
+      }
+    });
+    const entry = server[Symbol.asyncIterator]().next();
+    assert((await entry).done);
+    assert(eventTriggered);
+    server.close();
+  },
+});
+
+Deno.test({
   name: "[http] finalizing invalid chunked data closes connection",
   async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
