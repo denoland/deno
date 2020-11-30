@@ -5,7 +5,7 @@ import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, "testdata");
+const testdataDir = path.resolve(Deno.cwd(), moduleDir, "testdata");
 
 function parseFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {

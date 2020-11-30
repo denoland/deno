@@ -10,7 +10,7 @@ import type { TextEncodings } from "../_utils.ts";
 import * as path from "../../path/mod.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testDataDir = path.resolve(moduleDir, "testdata");
+const testDataDir = path.resolve(Deno.cwd(), moduleDir, "testdata");
 const decoder = new TextDecoder("utf-8");
 
 Deno.test("Callback must be a function error", function fn() {

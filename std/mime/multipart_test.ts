@@ -21,7 +21,7 @@ const dashBoundary = e.encode("--" + boundary);
 const nlDashBoundary = e.encode("\r\n--" + boundary);
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, "testdata");
+const testdataDir = path.resolve(Deno.cwd(), moduleDir, "testdata");
 
 Deno.test("multipartScanUntilBoundary1", function (): void {
   const data = `--${boundary}`;

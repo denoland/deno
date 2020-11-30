@@ -28,7 +28,7 @@ import { mockConn } from "./_mock_conn.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
-const testdataDir = resolve(moduleDir, "testdata");
+const testdataDir = resolve(Deno.cwd(), moduleDir, "testdata");
 
 interface ResponseTest {
   response: Response;
