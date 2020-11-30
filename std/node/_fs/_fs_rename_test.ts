@@ -8,7 +8,7 @@ Deno.test({
   async fn() {
     const file = Deno.makeTempFileSync();
     const newPath = join(parse(file).dir, `${parse(file).base}_renamed`);
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       rename(file, newPath, (err) => {
         if (err) reject(err);
         resolve();

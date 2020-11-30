@@ -47,6 +47,7 @@ fn get_asset(asset: &str) -> Option<&'static str> {
     "lib.webworker.importscripts.d.ts" => {
       inc!("lib.webworker.importscripts.d.ts")
     }
+    "lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
     _ => None,
   }
 }

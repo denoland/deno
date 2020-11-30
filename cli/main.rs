@@ -45,10 +45,12 @@ mod tools;
 mod tsc;
 mod tsc_config;
 mod version;
+mod web_worker;
 mod worker;
 
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
+use crate::file_watcher::ModuleResolutionResult;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -306,10 +308,11 @@ async fn bundle_command(
 
   let module_resolver = || {
     let flags = flags.clone();
-    let source_file = source_file.clone();
+    let source_file1 = source_file.clone();
+    let source_file2 = source_file.clone();
     async move {
       let module_specifier =
-        ModuleSpecifier::resolve_url_or_path(&source_file)?;
+        ModuleSpecifier::resolve_url_or_path(&source_file1)?;
 
       debug!(">>>>> bundle START");
       let program_state = ProgramState::new(flags.clone())?;
@@ -372,6 +375,16 @@ async fn bundle_command(
 
       Ok((paths_to_watch, module_graph))
     }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_graph)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info: module_graph,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(source_file2),
+        error: e,
+      },
+    })
     .boxed_local()
   };
 
@@ -422,7 +435,10 @@ async fn bundle_command(
     )
     .await?;
   } else {
-    let (_, module_graph) = module_resolver().await?;
+    let module_graph = match module_resolver().await {
+      ModuleResolutionResult::Fail { error, .. } => return Err(error),
+      ModuleResolutionResult::Success { module_info, .. } => module_info,
+    };
     operation(module_graph).await?;
   }
 
@@ -609,10 +625,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let module_resolver = || {
-    let script = script.clone();
+    let script1 = script.clone();
+    let script2 = script.clone();
     let flags = flags.clone();
     async move {
-      let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
+      let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
       let program_state = ProgramState::new(flags)?;
       let handler = Rc::new(RefCell::new(FetchHandler::new(
         &program_state,
@@ -640,6 +657,16 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
       Ok((paths_to_watch, main_module))
     }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_info)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(script2),
+        error: e,
+      },
+    })
     .boxed_local()
   };
 
@@ -792,37 +819,31 @@ async fn test_command(
   Ok(())
 }
 
-pub fn main() {
-  #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
-
-  let args: Vec<String> = env::args().collect();
-  let flags = flags::flags_from_vec(args);
-
-  if let Some(ref v8_flags) = flags.v8_flags {
-    let v8_flags_includes_help = v8_flags
-      .iter()
-      .any(|flag| flag == "-help" || flag == "--help");
-    let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(v8_flags.iter().cloned())
-      .collect::<Vec<_>>();
-    let unrecognized_v8_flags = v8_set_flags(v8_flags)
-      .into_iter()
-      .skip(1)
-      .collect::<Vec<_>>();
-    if !unrecognized_v8_flags.is_empty() {
-      for f in unrecognized_v8_flags {
-        eprintln!("error: V8 did not recognize flag '{}'", f);
-      }
-      eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
-      std::process::exit(1);
+fn init_v8_flags(v8_flags: &[String]) {
+  let v8_flags_includes_help = v8_flags
+    .iter()
+    .any(|flag| flag == "-help" || flag == "--help");
+  let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+    .chain(v8_flags.iter().cloned())
+    .collect::<Vec<_>>();
+  let unrecognized_v8_flags = v8_set_flags(v8_flags)
+    .into_iter()
+    .skip(1)
+    .collect::<Vec<_>>();
+  if !unrecognized_v8_flags.is_empty() {
+    for f in unrecognized_v8_flags {
+      eprintln!("error: V8 did not recognize flag '{}'", f);
     }
-    if v8_flags_includes_help {
-      std::process::exit(0);
-    }
+    eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
+    std::process::exit(1);
   }
+  if v8_flags_includes_help {
+    std::process::exit(0);
+  }
+}
 
-  let log_level = match flags.log_level {
+fn init_logger(maybe_level: Option<Level>) {
+  let log_level = match maybe_level {
     Some(level) => level,
     None => Level::Info, // Default log level
   };
@@ -853,8 +874,12 @@ pub fn main() {
     }
   })
   .init();
+}
 
-  let fut = match flags.clone().subcommand {
+fn get_subcommand(
+  flags: Flags,
+) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  match flags.clone().subcommand {
     DenoSubcommand::Bundle {
       source_file,
       out_file,
@@ -914,7 +939,7 @@ pub fn main() {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
     DenoSubcommand::Types => {
       let types = get_types(flags.unstable);
@@ -922,21 +947,36 @@ pub fn main() {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
     DenoSubcommand::Upgrade {
       force,
       dry_run,
+      canary,
       version,
       output,
       ca_file,
-    } => {
-      tools::upgrade::upgrade_command(dry_run, force, version, output, ca_file)
-        .boxed_local()
-    }
-  };
+    } => tools::upgrade::upgrade_command(
+      dry_run, force, canary, version, output, ca_file,
+    )
+    .boxed_local(),
+  }
+}
 
-  let result = tokio_util::run_basic(fut);
+pub fn main() {
+  #[cfg(windows)]
+  colors::enable_ansi(); // For Windows 10
+
+  let args: Vec<String> = env::args().collect();
+  let flags = flags::flags_from_vec(args);
+
+  if let Some(ref v8_flags) = flags.v8_flags {
+    init_v8_flags(v8_flags);
+  }
+  init_logger(flags.log_level);
+
+  let subcommand_future = get_subcommand(flags);
+  let result = tokio_util::run_basic(subcommand_future);
   if let Err(err) = result {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
