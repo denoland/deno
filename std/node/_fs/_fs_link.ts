@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
+import type { CallbackWithError } from "./_fs_common.ts";
 
 /**
  * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these

@@ -1,17 +1,17 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { Buffer } from "../buffer.ts";
-import PassThrough from "./passthrough.ts";
-import pipeline from "./pipeline.ts";
-import Readable from "./readable.ts";
-import Transform from "./transform.ts";
-import Writable from "./writable.ts";
-import { mustCall } from "../_utils.ts";
 import {
   assert,
   assertEquals,
   assertStrictEquals,
 } from "../../testing/asserts.ts";
 import type { NodeErrorAbstraction } from "../_errors.ts";
+import { mustCall } from "../_utils.ts";
+import { Buffer } from "../buffer.ts";
+import PassThrough from "./passthrough.ts";
+import pipeline from "./pipeline.ts";
+import Readable from "./readable.ts";
+import Transform from "./transform.ts";
+import Writable from "./writable.ts";
 
 Deno.test("Pipeline ends on stream finished", async () => {
   let finished = false;

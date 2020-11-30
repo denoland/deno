@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assert } from "../_util/assert.ts";
+import { isWindows } from "../_util/os.ts";
 import {
   GlobOptions,
   globToRegExp,
@@ -15,8 +17,6 @@ import {
   WalkEntry,
   walkSync,
 } from "./walk.ts";
-import { assert } from "../_util/assert.ts";
-import { isWindows } from "../_util/os.ts";
 
 export interface ExpandGlobOptions extends Omit<GlobOptions, "os"> {
   root?: string;

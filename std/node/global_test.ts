@@ -1,6 +1,6 @@
-import "./global.ts";
 import { assert, assertStrictEquals } from "../testing/asserts.ts";
 import { Buffer as BufferModule } from "./buffer.ts";
+import "./global.ts";
 import processModule from "./process.ts";
 
 // Definitions for this are quite delicate

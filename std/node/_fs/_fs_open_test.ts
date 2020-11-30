@@ -1,13 +1,13 @@
+import { existsSync } from "../../fs/mod.ts";
+import { join, parse } from "../../path/mod.ts";
 import {
   assert,
   assertEquals,
   assertThrows,
   fail,
 } from "../../testing/asserts.ts";
-import { open, openSync } from "./_fs_open.ts";
-import { join, parse } from "../../path/mod.ts";
-import { existsSync } from "../../fs/mod.ts";
 import { closeSync } from "./_fs_close.ts";
+import { open, openSync } from "./_fs_open.ts";
 
 const tempDir = parse(Deno.makeTempFileSync()).dir;
 

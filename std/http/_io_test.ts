@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { decode, encode } from "../encoding/utf8.ts";
+import { BufReader, ReadLineResult } from "../io/bufio.ts";
+import { StringReader } from "../io/readers.ts";
 import {
   assert,
   assertEquals,
@@ -14,11 +17,8 @@ import {
   writeResponse,
   writeTrailers,
 } from "./_io.ts";
-import { decode, encode } from "../encoding/utf8.ts";
-import { BufReader, ReadLineResult } from "../io/bufio.ts";
-import { Response, ServerRequest } from "./server.ts";
-import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./_mock_conn.ts";
+import { Response, ServerRequest } from "./server.ts";
 
 Deno.test("bodyReader", async () => {
   const text = "Hello, Deno";

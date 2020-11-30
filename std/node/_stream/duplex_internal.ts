@@ -1,4 +1,11 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
+import {
+  ERR_MULTIPLE_CALLBACK,
+  ERR_STREAM_PUSH_AFTER_EOF,
+  ERR_STREAM_UNSHIFT_AFTER_END_EVENT,
+} from "../_errors.ts";
+import { Buffer } from "../buffer.ts";
+import type Duplex from "./duplex.ts";
 import type { ReadableState } from "./readable.ts";
 import { addChunk, maybeReadMore, onEofChunk } from "./readable_internal.ts";
 import type Writable from "./writable.ts";
@@ -13,13 +20,6 @@ import {
   needFinish,
   prefinish,
 } from "./writable_internal.ts";
-import { Buffer } from "../buffer.ts";
-import type Duplex from "./duplex.ts";
-import {
-  ERR_MULTIPLE_CALLBACK,
-  ERR_STREAM_PUSH_AFTER_EOF,
-  ERR_STREAM_UNSHIFT_AFTER_END_EVENT,
-} from "../_errors.ts";
 
 export function endDuplex(stream: Duplex) {
   const state = stream._readableState;

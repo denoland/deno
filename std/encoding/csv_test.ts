@@ -4,6 +4,8 @@
 // https://github.com/golang/go/blob/master/LICENSE
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import { BufReader } from "../io/bufio.ts";
+import { StringReader } from "../io/readers.ts";
 import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import {
   ERR_BARE_QUOTE,
@@ -14,8 +16,6 @@ import {
   ParseError,
   readMatrix,
 } from "./csv.ts";
-import { StringReader } from "../io/readers.ts";
-import { BufReader } from "../io/bufio.ts";
 
 // Test cases for `readMatrix()`
 const testCases = [

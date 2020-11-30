@@ -1,9 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "../../../std/testing/asserts.ts";
 import * as colors from "../../../std/fmt/colors.ts";
+import { assert, assertEquals } from "../../../std/testing/asserts.ts";
 export { colors };
 import { resolve } from "../../../std/path/mod.ts";
+export { deferred } from "../../../std/async/deferred.ts";
+export { parse as parseArgs } from "../../../std/flags/mod.ts";
+export { readLines } from "../../../std/io/bufio.ts";
 export {
   assert,
   assertEquals,
@@ -16,9 +19,6 @@ export {
   fail,
   unreachable,
 } from "../../../std/testing/asserts.ts";
-export { deferred } from "../../../std/async/deferred.ts";
-export { readLines } from "../../../std/io/bufio.ts";
-export { parse as parseArgs } from "../../../std/flags/mod.ts";
 
 export interface Permissions {
   read: boolean;

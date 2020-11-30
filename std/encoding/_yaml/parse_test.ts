@@ -3,8 +3,8 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { parse, parseAll } from "./parse.ts";
 import { assertEquals } from "../../testing/asserts.ts";
+import { parse, parseAll } from "./parse.ts";
 
 Deno.test({
   name: "`parse` parses single document yaml string",

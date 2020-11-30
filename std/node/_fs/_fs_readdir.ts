@@ -1,6 +1,6 @@
-import { asyncIterableToCallback } from "./_fs_watch.ts";
-import Dirent from "./_fs_dirent.ts";
 import { fromFileUrl } from "../path.ts";
+import Dirent from "./_fs_dirent.ts";
+import { asyncIterableToCallback } from "./_fs_watch.ts";
 
 function toDirent(val: Deno.DirEntry): Dirent {
   return new Dirent(val);

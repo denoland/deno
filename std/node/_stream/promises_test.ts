@@ -1,14 +1,14 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { Buffer } from "../buffer.ts";
-import Readable from "./readable.ts";
-import Writable from "./writable.ts";
-import { pipeline } from "./promises.ts";
 import { deferred } from "../../async/mod.ts";
 import {
   assert,
   assertEquals,
   assertThrowsAsync,
 } from "../../testing/asserts.ts";
+import { Buffer } from "../buffer.ts";
+import { pipeline } from "./promises.ts";
+import Readable from "./readable.ts";
+import Writable from "./writable.ts";
 
 Deno.test("Promise pipeline works correctly", async () => {
   let pipelineExecuted = 0;

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { process as processModule } from "./process.ts";
 import { Buffer as bufferModule } from "./buffer.ts";
+import { process as processModule } from "./process.ts";
 
 // d.ts files allow us to declare Buffer as a value and as a type
 // type something = Buffer | something_else; is quite common

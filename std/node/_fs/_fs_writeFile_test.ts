@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import * as path from "../../path/mod.ts";
 import {
   assert,
   assertEquals,
   assertNotEquals,
   assertThrows,
 } from "../../testing/asserts.ts";
-import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
 import type { TextEncodings } from "../_utils.ts";
-import * as path from "../../path/mod.ts";
+import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testDataDir = path.resolve(moduleDir, "testdata");

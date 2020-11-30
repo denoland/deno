@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { Response, ServerRequest } from "./server.ts";
-import { deleteCookie, getCookies, setCookie } from "./cookie.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
+import { deleteCookie, getCookies, setCookie } from "./cookie.ts";
+import { Response, ServerRequest } from "./server.ts";
 
 Deno.test({
   name: "Cookie parser",

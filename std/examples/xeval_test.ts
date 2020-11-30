@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { xeval } from "./xeval.ts";
-import { StringReader } from "../io/readers.ts";
 import { decode, encode } from "../encoding/utf8.ts";
+import { StringReader } from "../io/readers.ts";
+import { dirname, fromFileUrl } from "../path/mod.ts";
 import {
   assert,
   assertEquals,
   assertStringIncludes,
 } from "../testing/asserts.ts";
-import { dirname, fromFileUrl } from "../path/mod.ts";
+import { xeval } from "./xeval.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
 

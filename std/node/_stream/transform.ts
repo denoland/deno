@@ -1,9 +1,9 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
+import { ERR_METHOD_NOT_IMPLEMENTED } from "../_errors.ts";
 import { Encodings } from "../_utils.ts";
 import Duplex from "./duplex.ts";
 import type { DuplexOptions } from "./duplex.ts";
 import type { writeV } from "./writable_internal.ts";
-import { ERR_METHOD_NOT_IMPLEMENTED } from "../_errors.ts";
 
 const kCallback = Symbol("kCallback");
 

@@ -1,17 +1,16 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { captureRejectionSymbol } from "../events.ts";
-import Stream from "./stream.ts";
-import type { Buffer } from "../buffer.ts";
-import BufferList from "./buffer_list.ts";
 import {
   ERR_INVALID_OPT_VALUE,
   ERR_METHOD_NOT_IMPLEMENTED,
 } from "../_errors.ts";
 import type { Encodings } from "../_utils.ts";
+import type { Buffer } from "../buffer.ts";
+import { captureRejectionSymbol } from "../events.ts";
 import { StringDecoder } from "../string_decoder.ts";
 import createReadableStreamAsyncIterator from "./async_iterator.ts";
+import BufferList from "./buffer_list.ts";
+import Duplex, { errorOrDestroy as errorOrDestroyDuplex } from "./duplex.ts";
 import streamFrom from "./from.ts";
-import { kDestroy, kPaused } from "./symbols.ts";
 import {
   _destroy,
   computeNewHighWaterMark,
@@ -27,9 +26,10 @@ import {
   resume,
   updateReadableListening,
 } from "./readable_internal.ts";
+import Stream from "./stream.ts";
+import { kDestroy, kPaused } from "./symbols.ts";
 import Writable from "./writable.ts";
 import { errorOrDestroy as errorOrDestroyWritable } from "./writable_internal.ts";
-import Duplex, { errorOrDestroy as errorOrDestroyDuplex } from "./duplex.ts";
 
 export interface ReadableOptions {
   autoDestroy?: boolean;

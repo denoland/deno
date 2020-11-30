@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { BufReader, BufWriter } from "../../../std/io/bufio.ts";
+import { TextProtoReader } from "../../../std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
@@ -7,8 +9,6 @@ import {
   deferred,
   unitTest,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "../../../std/io/bufio.ts";
-import { TextProtoReader } from "../../../std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

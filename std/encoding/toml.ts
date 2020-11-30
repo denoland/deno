@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { deepAssign } from "../_util/deep_assign.ts";
 import { assert } from "../_util/assert.ts";
+import { deepAssign } from "../_util/deep_assign.ts";
 
 class TOMLError extends Error {}
 

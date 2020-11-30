@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { BinaryEncodings, Encodings, TextEncodings } from "../_utils.ts";
+import { Buffer } from "../buffer.ts";
+import { fromFileUrl } from "../path.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
   getEncoding,
   TextOptionsArgument,
 } from "./_fs_common.ts";
-import { Buffer } from "../buffer.ts";
-import { fromFileUrl } from "../path.ts";
-import { BinaryEncodings, Encodings, TextEncodings } from "../_utils.ts";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(

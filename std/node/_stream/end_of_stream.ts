@@ -1,16 +1,16 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { once } from "../_utils.ts";
-import type Duplex from "./duplex.ts";
-import type Readable from "./readable.ts";
-import type Stream from "./stream.ts";
-import type { ReadableState } from "./readable.ts";
-import type Writable from "./writable.ts";
-import type { WritableState } from "./writable.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_STREAM_PREMATURE_CLOSE,
   NodeErrorAbstraction,
 } from "../_errors.ts";
+import { once } from "../_utils.ts";
+import type Duplex from "./duplex.ts";
+import type Readable from "./readable.ts";
+import type { ReadableState } from "./readable.ts";
+import type Stream from "./stream.ts";
+import type Writable from "./writable.ts";
+import type { WritableState } from "./writable.ts";
 
 export type StreamImplementations = Duplex | Readable | Stream | Writable;
 

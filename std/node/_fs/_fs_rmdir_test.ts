@@ -1,8 +1,8 @@
-import { assertEquals, fail } from "../../testing/asserts.ts";
-import { rmdir, rmdirSync } from "./_fs_rmdir.ts";
-import { closeSync } from "./_fs_close.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { join } from "../../path/mod.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
+import { closeSync } from "./_fs_close.ts";
+import { rmdir, rmdirSync } from "./_fs_rmdir.ts";
 
 Deno.test({
   name: "ASYNC: removing empty folder",

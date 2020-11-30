@@ -19,6 +19,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import { isWindows } from "../_util/os.ts";
 import {
   CHAR_BACKWARD_SLASH,
   CHAR_FORWARD_SLASH,
@@ -26,7 +27,6 @@ import {
   CHAR_LOWERCASE_Z,
 } from "../path/_constants.ts";
 import * as path from "./path.ts";
-import { isWindows } from "../_util/os.ts";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;

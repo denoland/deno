@@ -26,8 +26,8 @@ import {
   assertStrictEquals,
   assertThrowsAsync,
 } from "../../testing/asserts.ts";
-import { promisify } from "./_util_promisify.ts";
 import * as fs from "../fs.ts";
+import { promisify } from "./_util_promisify.ts";
 
 // deno-lint-ignore no-explicit-any
 type VoidFunction = (...args: any[]) => void;

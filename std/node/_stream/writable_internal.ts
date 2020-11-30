@@ -1,9 +1,9 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
+import { ERR_MULTIPLE_CALLBACK, ERR_STREAM_DESTROYED } from "../_errors.ts";
 import type Duplex from "./duplex.ts";
+import { kDestroy } from "./symbols.ts";
 import type Writable from "./writable.ts";
 import type { WritableState } from "./writable.ts";
-import { kDestroy } from "./symbols.ts";
-import { ERR_MULTIPLE_CALLBACK, ERR_STREAM_DESTROYED } from "../_errors.ts";
 
 export type writeV = (
   // deno-lint-ignore no-explicit-any

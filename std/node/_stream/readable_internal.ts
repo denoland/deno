@@ -1,15 +1,15 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { Buffer } from "../buffer.ts";
-import type Duplex from "./duplex.ts";
-import type EventEmitter from "../events.ts";
-import type Readable from "./readable.ts";
-import type Writable from "./writable.ts";
-import type { ReadableState } from "./readable.ts";
-import { kPaused } from "./symbols.ts";
 import {
   ERR_STREAM_PUSH_AFTER_EOF,
   ERR_STREAM_UNSHIFT_AFTER_END_EVENT,
 } from "../_errors.ts";
+import { Buffer } from "../buffer.ts";
+import type EventEmitter from "../events.ts";
+import type Duplex from "./duplex.ts";
+import type Readable from "./readable.ts";
+import type { ReadableState } from "./readable.ts";
+import { kPaused } from "./symbols.ts";
+import type Writable from "./writable.ts";
 
 export function _destroy(
   self: Readable,

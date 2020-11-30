@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
 import * as path from "../path/mod.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import { parse, stringify } from "./toml.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));

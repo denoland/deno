@@ -3,8 +3,8 @@
 /** This module is browser compatible. */
 
 import { isWindows } from "../_util/os.ts";
-import * as _win32 from "./win32.ts";
 import * as _posix from "./posix.ts";
+import * as _win32 from "./win32.ts";
 
 const path = isWindows ? _win32 : _posix;
 
@@ -28,7 +28,7 @@ export const {
   toNamespacedPath,
 } = path;
 
-export * from "./common.ts";
-export { SEP, SEP_PATTERN } from "./separator.ts";
 export * from "./_interface.ts";
+export * from "./common.ts";
 export * from "./glob.ts";
+export { SEP, SEP_PATTERN } from "./separator.ts";

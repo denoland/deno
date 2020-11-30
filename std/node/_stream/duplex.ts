@@ -1,17 +1,21 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { captureRejectionSymbol } from "../events.ts";
-import Readable, { ReadableState } from "./readable.ts";
-import Stream from "./stream.ts";
-import Writable, { WritableState } from "./writable.ts";
-import { Buffer } from "../buffer.ts";
 import {
   ERR_STREAM_ALREADY_FINISHED,
   ERR_STREAM_DESTROYED,
   ERR_UNKNOWN_ENCODING,
 } from "../_errors.ts";
 import type { Encodings } from "../_utils.ts";
+import { Buffer } from "../buffer.ts";
+import { captureRejectionSymbol } from "../events.ts";
 import createReadableStreamAsyncIterator from "./async_iterator.ts";
 import type { ReadableStreamAsyncIterator } from "./async_iterator.ts";
+import {
+  endDuplex,
+  finishMaybe,
+  onwrite,
+  readableAddChunk,
+} from "./duplex_internal.ts";
+import Readable, { ReadableState } from "./readable.ts";
 import {
   _destroy,
   computeNewHighWaterMark,
@@ -21,13 +25,9 @@ import {
   nReadingNextTick,
   updateReadableListening,
 } from "./readable_internal.ts";
+import Stream from "./stream.ts";
+import Writable, { WritableState } from "./writable.ts";
 import { kOnFinished, writeV } from "./writable_internal.ts";
-import {
-  endDuplex,
-  finishMaybe,
-  onwrite,
-  readableAddChunk,
-} from "./duplex_internal.ts";
 export { errorOrDestroy } from "./duplex_internal.ts";
 
 export interface DuplexOptions {

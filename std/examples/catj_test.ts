@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertStrictEquals } from "../testing/asserts.ts";
 import { dirname, fromFileUrl } from "../path/mod.ts";
+import { assertStrictEquals } from "../testing/asserts.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
 

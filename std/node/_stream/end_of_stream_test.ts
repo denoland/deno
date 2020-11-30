@@ -1,11 +1,11 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
+import { deferred, delay } from "../../async/mod.ts";
+import { assert, fail } from "../../testing/asserts.ts";
+import { mustCall } from "../_utils.ts";
 import finished from "./end_of_stream.ts";
 import Readable from "./readable.ts";
 import Transform from "./transform.ts";
 import Writable from "./writable.ts";
-import { mustCall } from "../_utils.ts";
-import { assert, fail } from "../../testing/asserts.ts";
-import { deferred, delay } from "../../async/mod.ts";
 
 Deno.test("Finished appends to Readable correctly", async () => {
   const rs = new Readable({

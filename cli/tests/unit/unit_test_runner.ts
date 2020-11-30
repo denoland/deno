@@ -1,6 +1,5 @@
 #!/usr/bin/env -S deno run --reload --allow-run
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import "./unit_tests.ts";
 import {
   colors,
   fmtPerms,
@@ -12,6 +11,7 @@ import {
   registerUnitTests,
   reportToConn,
 } from "./test_util.ts";
+import "./unit_tests.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const internalObj = Deno[Deno.internal];

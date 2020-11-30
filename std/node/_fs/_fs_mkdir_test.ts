@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "../../testing/asserts.ts";
-import { mkdir, mkdirSync } from "./_fs_mkdir.ts";
 import { existsSync } from "./_fs_exists.ts";
+import { mkdir, mkdirSync } from "./_fs_mkdir.ts";
 
 const tmpDir = "./tmpdir";
 

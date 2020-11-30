@@ -1,7 +1,4 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { Buffer } from "../buffer.ts";
-import Stream from "./stream.ts";
-import { captureRejectionSymbol } from "../events.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_OPT_VALUE,
@@ -13,6 +10,10 @@ import {
   ERR_STREAM_WRITE_AFTER_END,
   ERR_UNKNOWN_ENCODING,
 } from "../_errors.ts";
+import type { Encodings } from "../_utils.ts";
+import { Buffer } from "../buffer.ts";
+import { captureRejectionSymbol } from "../events.ts";
+import Stream from "./stream.ts";
 import type { AfterWriteTick, writeV } from "./writable_internal.ts";
 import {
   clearBuffer,
@@ -26,7 +27,6 @@ import {
   resetBuffer,
   writeOrBuffer,
 } from "./writable_internal.ts";
-import type { Encodings } from "../_utils.ts";
 
 type WritableEncodings = Encodings | "buffer";
 

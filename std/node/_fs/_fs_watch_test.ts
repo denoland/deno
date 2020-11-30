@@ -1,5 +1,5 @@
-import { watch } from "./_fs_watch.ts";
 import { assertEquals, fail } from "../../testing/asserts.ts";
+import { watch } from "./_fs_watch.ts";
 
 function wait(time: number) {
   return new Promise((resolve) => {

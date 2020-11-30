@@ -28,8 +28,8 @@ writer.close();
 
 ```ts
 import { Untar } from "https://deno.land/std@$STD_VERSION/archive/tar.ts";
-import { ensureFile } from "https://deno.land/std@$STD_VERSION/fs/ensure_file.ts";
 import { ensureDir } from "https://deno.land/std@$STD_VERSION/fs/ensure_dir.ts";
+import { ensureFile } from "https://deno.land/std@$STD_VERSION/fs/ensure_file.ts";
 
 const reader = await Deno.open("./out.tar", { read: true });
 const untar = new Untar(reader);

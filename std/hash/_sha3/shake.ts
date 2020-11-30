@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { Sponge } from "./sponge.ts";
 import { keccakf } from "./keccakf.ts";
+import { Sponge } from "./sponge.ts";
 
 /** Shake128 hash */
 export class Shake128 extends Sponge {

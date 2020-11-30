@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { isWindows } from "../_util/os.ts";
 import * as path from "../path/mod.ts";
+import { getFileInfoType } from "./_util.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
-import { getFileInfoType } from "./_util.ts";
-import { isWindows } from "../_util/os.ts";
 
 /**
  * Ensures that the link exists.

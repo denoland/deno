@@ -1,9 +1,9 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { Buffer } from "../buffer.ts";
-import Transform from "./transform.ts";
-import finished from "./end_of_stream.ts";
 import { deferred } from "../../async/mod.ts";
 import { assert, assertEquals } from "../../testing/asserts.ts";
+import { Buffer } from "../buffer.ts";
+import finished from "./end_of_stream.ts";
+import Transform from "./transform.ts";
 
 Deno.test("Transform stream finishes correctly", async () => {
   let finishedExecuted = 0;

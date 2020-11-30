@@ -1,10 +1,10 @@
 // Copyright the Browserify authors. MIT License.
 
-import { assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import { getFileInfoType, isSubdir, PathType } from "./_util.ts";
-import { ensureFileSync } from "./ensure_file.ts";
 import { ensureDirSync } from "./ensure_dir.ts";
+import { ensureFileSync } from "./ensure_file.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");

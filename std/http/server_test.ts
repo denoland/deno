@@ -5,7 +5,10 @@
 // Ported from
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
-import { TextProtoReader } from "../textproto/mod.ts";
+import { delay } from "../async/delay.ts";
+import { decode, encode } from "../encoding/utf8.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
+import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 import {
   assert,
   assertEquals,
@@ -13,6 +16,8 @@ import {
   assertStringIncludes,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
+import { TextProtoReader } from "../textproto/mod.ts";
+import { mockConn } from "./_mock_conn.ts";
 import {
   _parseAddrFromStr,
   Response,
@@ -21,11 +26,6 @@ import {
   ServerRequest,
   serveTLS,
 } from "./server.ts";
-import { BufReader, BufWriter } from "../io/bufio.ts";
-import { delay } from "../async/delay.ts";
-import { decode, encode } from "../encoding/utf8.ts";
-import { mockConn } from "./_mock_conn.ts";
-import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
 const testdataDir = resolve(moduleDir, "testdata");

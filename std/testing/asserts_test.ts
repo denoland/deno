@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { bold, gray, green, red, stripColor, yellow } from "../fmt/colors.ts";
 import {
   _format,
   assert,
@@ -20,7 +21,6 @@ import {
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { bold, gray, green, red, stripColor, yellow } from "../fmt/colors.ts";
 
 Deno.test("testingEqual", function (): void {
   assert(equal("world", "world"));

@@ -1,9 +1,9 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 import { Buffer } from "../buffer.ts";
 import EventEmitter from "../events.ts";
+import { types } from "../util.ts";
 import type Readable from "./readable.ts";
 import type Writable from "./writable.ts";
-import { types } from "../util.ts";
 
 class Stream extends EventEmitter {
   constructor() {

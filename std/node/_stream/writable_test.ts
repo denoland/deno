@@ -1,7 +1,4 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { Buffer } from "../buffer.ts";
-import finished from "./end_of_stream.ts";
-import Writable from "../_stream/writable.ts";
 import { deferred } from "../../async/mod.ts";
 import {
   assert,
@@ -9,6 +6,9 @@ import {
   assertStrictEquals,
   assertThrows,
 } from "../../testing/asserts.ts";
+import Writable from "../_stream/writable.ts";
+import { Buffer } from "../buffer.ts";
+import finished from "./end_of_stream.ts";
 
 Deno.test("Writable stream writes correctly", async () => {
   let callback: undefined | ((error?: Error | null | undefined) => void);

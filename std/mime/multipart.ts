@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assert } from "../_util/assert.ts";
+import { hasOwnProperty } from "../_util/has_own_property.ts";
 import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
+import { encoder } from "../encoding/utf8.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
-import { BufReader, BufWriter } from "../io/bufio.ts";
-import { encoder } from "../encoding/utf8.ts";
-import { assert } from "../_util/assert.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { hasOwnProperty } from "../_util/has_own_property.ts";
 
 /** FormFile object */
 export interface FormFile {

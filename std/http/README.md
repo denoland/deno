@@ -23,8 +23,8 @@ deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
 Helper to manipulate `Cookie` through `ServerRequest` and `Response`.
 
 ```ts
-import { ServerRequest } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import { getCookies } from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
+import { ServerRequest } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 
 let request = new ServerRequest();
 request.headers = new Headers();
@@ -38,11 +38,11 @@ console.log("cookies:", cookies);
 To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`:
 
 ```ts
-import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import {
   Cookie,
   setCookie,
 } from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
+import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 
 let response: Response = {};
 const cookie: Cookie = { name: "Space", value: "Cat" };
@@ -57,8 +57,8 @@ Deleting a `Cookie` will set its expiration date before now. Forcing the browser
 to delete it.
 
 ```ts
-import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import { deleteCookie } from "https://deno.land/std@$STD_VERSION/http/cookie.ts";
+import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 
 let response: Response = {};
 deleteCookie(response, "deno");

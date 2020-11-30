@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { decode } from "../encoding/utf8.ts";
 import { assertEquals } from "../testing/asserts.ts";
+import { copyN } from "./ioutil.ts";
 import { LimitedReader, MultiReader, StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
-import { copyN } from "./ioutil.ts";
-import { decode } from "../encoding/utf8.ts";
 
 Deno.test("ioStringReader", async function (): Promise<void> {
   const r = new StringReader("abcdef");

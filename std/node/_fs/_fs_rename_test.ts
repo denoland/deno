@@ -1,7 +1,7 @@
-import { assertEquals, fail } from "../../testing/asserts.ts";
-import { rename, renameSync } from "./_fs_rename.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { join, parse } from "../../path/mod.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
+import { rename, renameSync } from "./_fs_rename.ts";
 
 Deno.test({
   name: "ASYNC: renaming a file",

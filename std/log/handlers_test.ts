@@ -1,10 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { existsSync } from "../fs/exists.ts";
 import {
   assert,
   assertEquals,
   assertNotEquals,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
+import { BaseHandler, FileHandler, RotatingFileHandler } from "./handlers.ts";
 import {
   getLevelByName,
   getLevelName,
@@ -12,9 +14,7 @@ import {
   LogLevelNames,
   LogLevels,
 } from "./levels.ts";
-import { BaseHandler, FileHandler, RotatingFileHandler } from "./handlers.ts";
 import { LogRecord } from "./logger.ts";
-import { existsSync } from "../fs/exists.ts";
 
 const LOG_FILE = "./test_log.file";
 

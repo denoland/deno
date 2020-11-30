@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
-import { StringWriter } from "./writers.ts";
-import { StringReader } from "./readers.ts";
 import { copyN } from "./ioutil.ts";
+import { StringReader } from "./readers.ts";
+import { StringWriter } from "./writers.ts";
 
 Deno.test("ioStringWriter", async function (): Promise<void> {
   const w = new StringWriter("base");

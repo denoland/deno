@@ -5,7 +5,9 @@
   "lineWidth": 80,
   "indentWidth": 2,
   "typescript": {
-    "deno": true
+    "deno": true,
+    "statements.sortImportDeclarations": "caseInsensitive",
+    "statements.sortExportDeclarations": "caseInsensitive"
   },
   "markdown": {
     "textWrap": "always"
@@ -31,7 +33,7 @@
     "third_party"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.33.0.wasm",
+    "https://plugins.dprint.dev/typescript-0.34.0.wasm",
     "https://plugins.dprint.dev/json-0.7.2.wasm",
     "https://plugins.dprint.dev/markdown-0.4.2.wasm"
   ]

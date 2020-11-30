@@ -1,6 +1,6 @@
+import { join } from "../../path/mod.ts";
 import { assertEquals, assertNotEquals, fail } from "../../testing/asserts.ts";
 import { readdir, readdirSync } from "./_fs_readdir.ts";
-import { join } from "../../path/mod.ts";
 
 Deno.test({
   name: "ASYNC: reading empty directory",

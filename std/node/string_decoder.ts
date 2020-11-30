@@ -19,8 +19,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { Buffer } from "./buffer.ts";
 import { normalizeEncoding as castEncoding, notImplemented } from "./_utils.ts";
+import { Buffer } from "./buffer.ts";
 
 enum NotImplemented {
   "ascii",

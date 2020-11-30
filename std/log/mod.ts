@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { Logger } from "./logger.ts";
-import type { GenericFunction } from "./logger.ts";
+import { assert } from "../_util/assert.ts";
 import {
   BaseHandler,
   ConsoleHandler,
@@ -8,8 +7,9 @@ import {
   RotatingFileHandler,
   WriterHandler,
 } from "./handlers.ts";
-import { assert } from "../_util/assert.ts";
 import type { LevelName } from "./levels.ts";
+import { Logger } from "./logger.ts";
+import type { GenericFunction } from "./logger.ts";
 
 export { LogLevels } from "./levels.ts";
 export type { LevelName } from "./levels.ts";

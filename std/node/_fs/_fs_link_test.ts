@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, fail } from "../../testing/asserts.ts";
-import { link, linkSync } from "./_fs_link.ts";
 import { assert } from "../../testing/asserts.ts";
+import { link, linkSync } from "./_fs_link.ts";
 
 Deno.test({
   name: "ASYNC: hard linking files works as expected",

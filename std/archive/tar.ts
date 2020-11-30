@@ -26,9 +26,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-import { MultiReader } from "../io/readers.ts";
-import { PartialReadError } from "../io/bufio.ts";
 import { assert } from "../_util/assert.ts";
+import { PartialReadError } from "../io/bufio.ts";
+import { MultiReader } from "../io/readers.ts";
 
 type Reader = Deno.Reader;
 type Seeker = Deno.Seeker;

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { readlink, readlinkSync } from "./_fs_readlink.ts";
 import { assert, assertEquals } from "../../testing/asserts.ts";
 import * as path from "../path.ts";
+import { readlink, readlinkSync } from "./_fs_readlink.ts";
 
 const testDir = Deno.makeTempDirSync();
 const oldname = path.join(testDir, "oldname");

@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import * as path from "../path/mod.ts";
 import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import * as path from "../path/mod.ts";
-import { move, moveSync } from "./move.ts";
-import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
+import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 import { exists, existsSync } from "./exists.ts";
+import { move, moveSync } from "./move.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");

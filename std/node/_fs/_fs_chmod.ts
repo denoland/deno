@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
+import type { CallbackWithError } from "./_fs_common.ts";
 
 const allowedModes = /^[0-7]{3}/;
 

@@ -1,17 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { decode } from "../encoding/utf8.ts";
 import {
-  assert,
-  assertEquals,
-  assertStringIncludes,
-} from "../testing/asserts.ts";
-import {
   fromFileUrl,
   join,
   joinGlobs,
   normalize,
   relative,
 } from "../path/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "../testing/asserts.ts";
 import {
   expandGlob,
   ExpandGlobOptions,

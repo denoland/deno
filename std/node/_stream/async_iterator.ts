@@ -1,9 +1,9 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 import type { Buffer } from "../buffer.ts";
+import { destroyer } from "./destroy.ts";
 import finished from "./end_of_stream.ts";
 import Readable from "./readable.ts";
 import type Stream from "./stream.ts";
-import { destroyer } from "./destroy.ts";
 
 const kLastResolve = Symbol("lastResolve");
 const kLastReject = Symbol("lastReject");

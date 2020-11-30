@@ -1,11 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { StringWriter } from "../io/writers.ts";
+import * as path from "../path/mod.ts";
 import {
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import * as path from "../path/mod.ts";
 import {
   isFormFile,
   matchAfterPrefix,
@@ -13,7 +14,6 @@ import {
   MultipartWriter,
   scanUntilBoundary,
 } from "./multipart.ts";
-import { StringWriter } from "../io/writers.ts";
 
 const e = new TextEncoder();
 const boundary = "--abcde";

@@ -1,5 +1,5 @@
-import { BigIntStats, stat, Stats, statSync } from "./_fs_stat.ts";
 import { assertEquals, fail } from "../../testing/asserts.ts";
+import { BigIntStats, stat, Stats, statSync } from "./_fs_stat.ts";
 
 export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.dev, expected.dev);

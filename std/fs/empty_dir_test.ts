@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import * as path from "../path/mod.ts";
 import {
   assert,
   assertEquals,
@@ -6,7 +7,6 @@ import {
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));

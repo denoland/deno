@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /// <reference path="./global.d.ts" />
-import { process as processModule } from "./process.ts";
 import { Buffer as bufferModule } from "./buffer.ts";
+import { process as processModule } from "./process.ts";
 
 Object.defineProperty(globalThis, "global", {
   value: globalThis,

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { pooledMap } from "./pool.ts";
 import { assert } from "../testing/asserts.ts";
+import { pooledMap } from "./pool.ts";
 
 Deno.test("[async] pooledMap", async function (): Promise<void> {
   const start = new Date();

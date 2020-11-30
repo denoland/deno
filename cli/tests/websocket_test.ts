@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { deferred } from "../../std/async/deferred.ts";
 import {
   assert,
   assertEquals,
   assertThrows,
   fail,
 } from "../../std/testing/asserts.ts";
-import { deferred } from "../../std/async/deferred.ts";
 
 Deno.test("invalid scheme", () => {
   assertThrows(() => new WebSocket("foo://localhost:4242"));

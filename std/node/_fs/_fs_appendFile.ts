@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { Encodings, notImplemented } from "../_utils.ts";
+import { fromFileUrl } from "../path.ts";
 import {
   CallbackWithError,
   getOpenOptions,
   isFileOptions,
   WriteFileOptions,
 } from "./_fs_common.ts";
-import { Encodings, notImplemented } from "../_utils.ts";
-import { fromFileUrl } from "../path.ts";
 
 /**
  * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these

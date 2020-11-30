@@ -1,14 +1,15 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 /** This module is browser compatible. */
-import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import {
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
   CHAR_DOT,
   CHAR_QUESTION_MARK,
 } from "./_constants.ts";
+import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 
+import { assert } from "../_util/assert.ts";
 import {
   _format,
   assertPath,
@@ -16,7 +17,6 @@ import {
   isWindowsDeviceRoot,
   normalizeString,
 } from "./_util.ts";
-import { assert } from "../_util/assert.ts";
 
 export const sep = "\\";
 export const delimiter = ";";

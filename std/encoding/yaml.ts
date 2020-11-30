@@ -5,13 +5,13 @@
 
 export type { ParseOptions } from "./_yaml/parse.ts";
 export { parse, parseAll } from "./_yaml/parse.ts";
-export type { DumpOptions as StringifyOptions } from "./_yaml/stringify.ts";
-export { stringify } from "./_yaml/stringify.ts";
 export type { SchemaDefinition } from "./_yaml/schema.ts";
-export type { StyleVariant } from "./_yaml/type.ts";
 export {
   CORE_SCHEMA,
   DEFAULT_SCHEMA,
   FAILSAFE_SCHEMA,
   JSON_SCHEMA,
 } from "./_yaml/schema/mod.ts";
+export type { DumpOptions as StringifyOptions } from "./_yaml/stringify.ts";
+export { stringify } from "./_yaml/stringify.ts";
+export type { StyleVariant } from "./_yaml/type.ts";

@@ -1,9 +1,9 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import Readable from "./readable.ts";
-import Stream from "./stream.ts";
-import toReadableAsyncIterator from "./async_iterator.ts";
 import { deferred } from "../../async/mod.ts";
 import { assertEquals, assertThrowsAsync } from "../../testing/asserts.ts";
+import toReadableAsyncIterator from "./async_iterator.ts";
+import Readable from "./readable.ts";
+import Stream from "./stream.ts";
 
 Deno.test("Stream to async iterator", async () => {
   let destroyExecuted = 0;

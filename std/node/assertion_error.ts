@@ -29,8 +29,8 @@ function getConsoleWidth(): number {
   return (Deno as DenoUnstable).consoleSize?.(Deno.stderr.rid).columns ?? 80;
 }
 
-import { inspect } from "./util.ts";
 import { stripColor as removeColors } from "../fmt/colors.ts";
+import { inspect } from "./util.ts";
 
 // TODO(schwarzkopfb): we should implement Node's concept of "primordials"
 // Ref: https://github.com/denoland/deno/issues/6040#issuecomment-637305828

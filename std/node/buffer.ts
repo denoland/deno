@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as hex from "../encoding/hex.ts";
 import * as base64 from "../encoding/base64.ts";
+import * as hex from "../encoding/hex.ts";
 import { Encodings, normalizeEncoding, notImplemented } from "./_utils.ts";
 
 const notImplementedEncodings = [

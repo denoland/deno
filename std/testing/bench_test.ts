@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
+  assert,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./asserts.ts";
+import {
   bench,
   BenchmarkRunError,
   BenchmarkRunProgress,
@@ -7,12 +13,6 @@ import {
   ProgressState,
   runBenchmarks,
 } from "./bench.ts";
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-  assertThrowsAsync,
-} from "./asserts.ts";
 
 Deno.test({
   name: "benching",

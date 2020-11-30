@@ -1,14 +1,14 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
-import { Buffer } from "../buffer.ts";
-import Duplex from "./duplex.ts";
-import finished from "./end_of_stream.ts";
+import { deferred, delay } from "../../async/mod.ts";
 import {
   assert,
   assertEquals,
   assertStrictEquals,
   assertThrows,
 } from "../../testing/asserts.ts";
-import { deferred, delay } from "../../async/mod.ts";
+import { Buffer } from "../buffer.ts";
+import Duplex from "./duplex.ts";
+import finished from "./end_of_stream.ts";
 
 Deno.test("Duplex stream works normally", () => {
   const stream = new Duplex({ objectMode: true });

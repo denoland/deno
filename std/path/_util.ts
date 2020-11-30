@@ -2,7 +2,6 @@
 // Ported from https://github.com/browserify/path-browserify/
 /** This module is browser compatible. */
 
-import type { FormatInputPathObject } from "./_interface.ts";
 import {
   CHAR_BACKWARD_SLASH,
   CHAR_DOT,
@@ -12,6 +11,7 @@ import {
   CHAR_UPPERCASE_A,
   CHAR_UPPERCASE_Z,
 } from "./_constants.ts";
+import type { FormatInputPathObject } from "./_interface.ts";
 
 export function assertPath(path: string): void {
   if (typeof path !== "string") {

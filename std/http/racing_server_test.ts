@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { TextProtoReader } from "../textproto/mod.ts";
 import { dirname, fromFileUrl } from "../path/mod.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
+import { TextProtoReader } from "../textproto/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
 

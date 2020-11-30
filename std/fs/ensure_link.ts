@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
+import { getFileInfoType } from "./_util.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
-import { getFileInfoType } from "./_util.ts";
 
 /**
  * Ensures that the hard link exists.

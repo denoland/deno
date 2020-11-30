@@ -6,6 +6,8 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
+import { assert } from "../_util/assert.ts";
+import { parse } from "../flags/mod.ts";
 import { extname, posix } from "../path/mod.ts";
 import {
   HTTPSOptions,
@@ -14,8 +16,6 @@ import {
   Response,
   ServerRequest,
 } from "./server.ts";
-import { parse } from "../flags/mod.ts";
-import { assert } from "../_util/assert.ts";
 
 interface EntryInfo {
   mode: string;

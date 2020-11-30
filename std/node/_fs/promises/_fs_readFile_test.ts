@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { readFile } from "./_fs_readFile.ts";
 import * as path from "../../../path/mod.ts";
 import { assert, assertEquals } from "../../../testing/asserts.ts";
+import { readFile } from "./_fs_readFile.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "..", "testdata", "hello.txt");

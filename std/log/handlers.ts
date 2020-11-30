@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
-import type { LogRecord } from "./logger.ts";
 import { blue, bold, red, yellow } from "../fmt/colors.ts";
 import { exists, existsSync } from "../fs/exists.ts";
 import { BufWriterSync } from "../io/bufio.ts";
+import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
+import type { LogRecord } from "./logger.ts";
 
 const DEFAULT_FORMATTER = "{levelName} {msg}";
 type FormatterFunction = (logRecord: LogRecord) => string;

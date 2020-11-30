@@ -7,8 +7,8 @@
 // yet implemented. Once it gets implemented this file should be
 // again moved to `cli/js/` as an unit test file.
 
-import { assert, assertEquals } from "../../std/testing/asserts.ts";
 import { deferred } from "../../std/async/deferred.ts";
+import { assert, assertEquals } from "../../std/testing/asserts.ts";
 
 Deno.test({
   name: "worker terminate",

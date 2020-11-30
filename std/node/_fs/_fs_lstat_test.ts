@@ -1,7 +1,7 @@
-import { lstat, lstatSync } from "./_fs_lstat.ts";
 import { fail } from "../../testing/asserts.ts";
-import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
+import { lstat, lstatSync } from "./_fs_lstat.ts";
 import type { BigIntStats, Stats } from "./_fs_stat.ts";
+import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
 
 Deno.test({
   name: "ASYNC: get a file Stats (lstat)",

@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { encode } from "../encoding/utf8.ts";
-import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../_util/assert.ts";
 import { Deferred, deferred, MuxAsyncIterator } from "../async/mod.ts";
+import { encode } from "../encoding/utf8.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import {
   bodyReader,
   chunkedBodyReader,

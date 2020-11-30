@@ -8,13 +8,13 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
+import { stripColor } from "../../../std/fmt/colors.ts";
 import {
   assert,
   assertEquals,
   assertStringIncludes,
   unitTest,
 } from "./test_util.ts";
-import { stripColor } from "../../../std/fmt/colors.ts";
 
 const customInspect = Deno.customInspect;
 const {

@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import Context from "./snapshot_preview1.ts";
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import Context from "./snapshot_preview1.ts";
 
 const tests = [
   "testdata/std_env_args.wasm",
