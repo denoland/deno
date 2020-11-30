@@ -179,6 +179,8 @@ pub fn get_range_change(a: &str, b: &str) -> Value {
           end = a_pos;
           started = true;
           equal = 0;
+        } else {
+          end += equal;
         }
         new_length += i.chars().count() + equal;
         equal = 0;
@@ -376,6 +378,17 @@ mod tests {
         "newLength": 9
       })
     );
+
+    let a = "abcde";
+    let b = "ab(c)de";
+    let actual = get_range_change(a, b);
+    assert_eq!(actual, json!({
+      "span" : {
+        "start": 2,
+        "length": 1,
+      },
+      "newLength": 3
+    }));
   }
 
   #[test]
