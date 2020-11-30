@@ -99,6 +99,10 @@ fn get_subcommand(
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
+    DenoSubcommand::Compile {
+      source_file,
+      out_file,
+    } => compile_command(flags, source_file, out_file).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,
@@ -152,13 +156,14 @@ fn get_subcommand(
     DenoSubcommand::Upgrade {
       force,
       dry_run,
+      canary,
       version,
       output,
       ca_file,
-    } => {
-      tools::upgrade::upgrade_command(dry_run, force, version, output, ca_file)
-        .boxed_local()
-    }
+    } => tools::upgrade::upgrade_command(
+      dry_run, force, canary, version, output, ca_file,
+    )
+    .boxed_local(),
   }
 }
 
@@ -179,6 +184,11 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
+  if let Err(err) = deno::standalone::try_run_standalone_binary(args.clone()) {
+    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
+    std::process::exit(1);
+  }
+
   let flags = flags::flags_from_vec(args);
   if let Some(ref v8_flags) = flags.v8_flags {
     init_v8_flags(v8_flags);

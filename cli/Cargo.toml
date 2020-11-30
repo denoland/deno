@@ -42,8 +42,8 @@ winapi = "0.3.9"
 [dependencies]
 deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
 deno_core = { path = "../core", version = "0.69.0" }
-deno_doc = { version = "0.1.16", optional = true }
-deno_lint = { version = "0.2.11", optional = true }
+deno_doc = { version = "0.1.17", optional = true }
+deno_lint = { version = "0.2.12", optional = true }
 deno_web = { path = "../op_crates/web", version = "0.20.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
 
@@ -55,7 +55,7 @@ clap = "2.33.3"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.24"
-dprint-plugin-typescript = { version = "0.32.9", optional = true }
+dprint-plugin-typescript = { version = "0.35.0", optional = true }
 filetime = "0.2.12"
 http = "0.2.1"
 indexmap = "1.6.0"
@@ -74,8 +74,8 @@ shell-escape = "0.1.5"
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
 swc_bundler = { version = "=0.17.1", optional = true }
-swc_common = { version = "=0.10.5", features = ["sourcemap"], optional = true }
-swc_ecmascript = { version = "=0.14.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"], optional = true }
+swc_common = { version = "0.10.6", features = ["sourcemap"], optional = true }
+swc_ecmascript = { version = "0.14.4", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"], optional = true }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }

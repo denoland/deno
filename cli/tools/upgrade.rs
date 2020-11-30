@@ -21,6 +21,7 @@ const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
+  canary: bool,
   version: Option<String>,
   output: Option<PathBuf>,
   ca_file: Option<String>,
@@ -38,27 +39,49 @@ pub async fn upgrade_command(
 
   let install_version = match version {
     Some(passed_version) => {
-      if !force && output.is_none() && crate::version::deno() == passed_version
-      {
-        println!("Version {} is already installed", passed_version);
+      let current_is_passed = if canary {
+        let mut passed_hash = passed_version.clone();
+        passed_hash.truncate(7);
+        crate::version::GIT_COMMIT_HASH == passed_hash
+      } else if !crate::version::is_canary() {
+        crate::version::deno() == passed_version
+      } else {
+        false
+      };
+
+      if !force && output.is_none() && current_is_passed {
+        println!("Version {} is already installed", crate::version::deno());
         return Ok(());
       } else {
         passed_version
       }
     }
     None => {
-      let latest_version = get_latest_version(&client).await?;
-
-      let current = semver_parse(&*crate::version::deno()).unwrap();
-      let latest = match semver_parse(&latest_version) {
-        Ok(v) => v,
-        Err(_) => {
-          eprintln!("Invalid semver passed");
-          std::process::exit(1)
-        }
+      let latest_version = if canary {
+        get_latest_canary_version(&client).await?
+      } else {
+        get_latest_release_version(&client).await?
       };
 
-      if !force && output.is_none() && current >= latest {
+      let current_is_most_recent = if canary {
+        let mut latest_hash = latest_version.clone();
+        latest_hash.truncate(7);
+        crate::version::GIT_COMMIT_HASH == latest_hash
+      } else if !crate::version::is_canary() {
+        let current = semver_parse(&*crate::version::deno()).unwrap();
+        let latest = match semver_parse(&latest_version) {
+          Ok(v) => v,
+          Err(_) => {
+            eprintln!("Invalid semver passed");
+            std::process::exit(1)
+          }
+        };
+        current >= latest
+      } else {
+        false
+      };
+
+      if !force && output.is_none() && current_is_most_recent {
         println!(
           "Local deno version {} is the most recent release",
           crate::version::deno()
@@ -71,7 +94,19 @@ pub async fn upgrade_command(
     }
   };
 
-  let archive_data = download_package(client, &install_version).await?;
+  let download_url = if canary {
+    format!(
+      "https://dl.deno.land/canary/{}/{}",
+      install_version, *ARCHIVE_NAME
+    )
+  } else {
+    format!(
+      "{}/download/v{}/{}",
+      RELEASE_URL, install_version, *ARCHIVE_NAME
+    )
+  };
+
+  let archive_data = download_package(client, &*download_url).await?;
 
   println!("Deno is upgrading to version {}", &install_version);
 
@@ -79,7 +114,7 @@ pub async fn upgrade_command(
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
   fs::set_permissions(&new_exe_path, permissions)?;
-  check_exe(&new_exe_path, &install_version)?;
+  check_exe(&new_exe_path)?;
 
   if !dry_run {
     match output {
@@ -96,7 +131,9 @@ pub async fn upgrade_command(
   Ok(())
 }
 
-async fn get_latest_version(client: &Client) -> Result<String, AnyError> {
+async fn get_latest_release_version(
+  client: &Client,
+) -> Result<String, AnyError> {
   println!("Looking up latest version");
 
   let res = client
@@ -108,18 +145,27 @@ async fn get_latest_version(client: &Client) -> Result<String, AnyError> {
   Ok(version.replace("v", ""))
 }
 
+async fn get_latest_canary_version(
+  client: &Client,
+) -> Result<String, AnyError> {
+  println!("Looking up latest version");
+
+  let res = client
+    .get("https://dl.deno.land/canary-latest.txt")
+    .send()
+    .await?;
+  let version = res.text().await?.trim().to_string();
+
+  Ok(version)
+}
+
 async fn download_package(
   client: Client,
-  install_version: &str,
+  download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  let download_url = format!(
-    "{}/download/v{}/{}",
-    RELEASE_URL, install_version, *ARCHIVE_NAME
-  );
-
   println!("Checking {}", &download_url);
 
-  let res = client.get(&download_url).send().await?;
+  let res = client.get(download_url).send().await?;
 
   if res.status().is_success() {
     println!("Download has been found");
@@ -200,13 +246,11 @@ fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
   Ok(())
 }
 
-fn check_exe(exe_path: &Path, expected_version: &str) -> Result<(), AnyError> {
+fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()?;
-  let stdout = String::from_utf8(output.stdout)?;
   assert!(output.status.success());
-  assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())
 }
