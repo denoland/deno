@@ -81,6 +81,7 @@ pub enum DenoSubcommand {
   Upgrade {
     dry_run: bool,
     force: bool,
+    canary: bool,
     version: Option<String>,
     output: Option<PathBuf>,
     ca_file: Option<String>,
@@ -482,9 +483,19 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = true;
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
-  let code = matches.value_of("code").unwrap().to_string();
   let as_typescript = matches.is_present("ts");
   let print = matches.is_present("print");
+  let mut code: Vec<String> = matches
+    .values_of("code_arg")
+    .unwrap()
+    .map(String::from)
+    .collect();
+  assert!(!code.is_empty());
+  let code_args = code.split_off(1);
+  let code = code[0].to_string();
+  for v in code_args {
+    flags.argv.push(v);
+  }
   flags.subcommand = DenoSubcommand::Eval {
     print,
     code,
@@ -644,6 +655,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
+  let canary = matches.is_present("canary");
   let version = matches.value_of("version").map(|s| s.to_string());
   let output = if matches.is_present("output") {
     let install_root = matches.value_of("output").unwrap();
@@ -655,6 +667,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
+    canary,
     version,
     output,
     ca_file,
@@ -889,7 +902,13 @@ This command has implicit access to all permissions (--allow-all).",
         .takes_value(false)
         .multiple(false),
     )
-    .arg(Arg::with_name("code").takes_value(true).required(true))
+    .arg(
+      Arg::with_name("code_arg")
+        .multiple(true)
+        .help("Code arg")
+        .value_name("CODE_ARG")
+        .required(true),
+    )
 }
 
 fn info_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -987,6 +1006,11 @@ update to a different location, use the --output flag
         .long("force")
         .short("f")
         .help("Replace current exe even if not out-of-date"),
+    )
+    .arg(
+      Arg::with_name("canary")
+        .long("canary")
+        .help("Upgrade to canary builds"),
     )
     .arg(ca_file_arg())
 }
@@ -1626,6 +1650,7 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
+          canary: false,
           version: None,
           output: None,
           ca_file: None,
@@ -2220,6 +2245,36 @@ mod tests {
         v8_flags: Some(svec!["--help", "--random-seed=1"]),
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn eval_args() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "eval",
+      "console.log(Deno.args)",
+      "arg1",
+      "arg2"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Eval {
+          print: false,
+          code: "console.log(Deno.args)".to_string(),
+          as_typescript: false,
+        },
+        argv: svec!["arg1", "arg2"],
         allow_net: true,
         allow_env: true,
         allow_run: true,
@@ -3028,6 +3083,7 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: false,
           dry_run: false,
+          canary: false,
           version: None,
           output: None,
           ca_file: Some("example.crt".to_owned()),
