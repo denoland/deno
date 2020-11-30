@@ -914,7 +914,7 @@ fn ts_reload() {
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
-    .contains("\"host.writeFile(\\\"deno://002_hello.js\\\")\""));
+    .contains("host.writeFile(\"deno://002_hello.js\")"));
 }
 
 #[test]

@@ -40,6 +40,7 @@ use lsp_server::Notification;
 use lsp_server::Request;
 use lsp_server::RequestId;
 use lsp_server::Response;
+use lsp_types::notification::Notification as _;
 use lsp_types::Diagnostic;
 use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
@@ -405,6 +406,11 @@ impl ServerState {
     self.transition(Status::Ready);
 
     while let Some(event) = self.next_event(&inbox) {
+      if let Event::Message(Message::Notification(notification)) = &event {
+        if notification.method == lsp_types::notification::Exit::METHOD {
+          return Ok(());
+        }
+      }
       self.handle_event(event)?
     }
 
