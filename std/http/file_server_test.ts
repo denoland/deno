@@ -9,13 +9,14 @@ import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Response, ServerRequest } from "./server.ts";
 import { FileServerArgs, serveFile } from "./file_server.ts";
-import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
+import { dirname, fromFileUrl, join } from "../path/mod.ts";
+import { resolvePath } from "../fs/mod.ts";
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
 type FileServerCfg = Omit<FileServerArgs, "_"> & { target?: string };
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
-const testdataDir = resolve(moduleDir, "testdata");
+const testdataDir = resolvePath(moduleDir, "testdata");
 
 async function startFileServer({
   target = ".",
@@ -29,6 +30,7 @@ async function startFileServer({
       "--quiet",
       "--allow-read",
       "--allow-net",
+      "--unstable",
       "file_server.ts",
       target,
       "--cors",
@@ -55,6 +57,7 @@ async function startFileServerAsLibrary({}: FileServerCfg = {}): Promise<void> {
       "--quiet",
       "--allow-read",
       "--allow-net",
+      "--unstable",
       "testdata/file_server_as_library.ts",
     ],
     cwd: moduleDir,
@@ -310,6 +313,7 @@ Deno.test("printHelp", async function (): Promise<void> {
       // TODO(ry) It ought to be possible to get the help output without
       // --allow-read.
       "--allow-read",
+      "--unstable",
       "file_server.ts",
       "--help",
     ],
@@ -369,6 +373,7 @@ async function startTlsFileServer({
       "--quiet",
       "--allow-read",
       "--allow-net",
+      "--unstable",
       "file_server.ts",
       target,
       "--host",
@@ -425,6 +430,7 @@ Deno.test("partial TLS arguments fail", async function (): Promise<void> {
       "--quiet",
       "--allow-read",
       "--allow-net",
+      "--unstable",
       "file_server.ts",
       ".",
       "--host",

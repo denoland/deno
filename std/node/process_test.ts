@@ -2,6 +2,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import * as all from "./process.ts";
 import { argv, env } from "./process.ts";
@@ -41,7 +42,7 @@ Deno.test({
     const currentDir = Deno.cwd(); // to unchange current directory after this test
 
     const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-    process.chdir(path.resolve(moduleDir, ".."));
+    process.chdir(resolvePath(moduleDir, ".."));
 
     assert(process.cwd().match(/\Wstd$/));
     process.chdir("node");

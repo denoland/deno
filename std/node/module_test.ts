@@ -5,11 +5,12 @@ import {
   assertStringIncludes,
 } from "../testing/asserts.ts";
 
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import { createRequire } from "./module.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(moduleDir, path.join("_fs", "testdata"));
+const testdataDir = resolvePath(moduleDir, path.join("_fs", "testdata"));
 
 const require = createRequire(import.meta.url);
 

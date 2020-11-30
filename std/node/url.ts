@@ -25,7 +25,8 @@ import {
   CHAR_LOWERCASE_A,
   CHAR_LOWERCASE_Z,
 } from "../path/_constants.ts";
-import * as path from "./path.ts";
+import { resolvePath } from "../fs/mod.ts";
+import * as path from "../path/mod.ts";
 import { isWindows } from "../_util/os.ts";
 
 const forwardSlashRegEx = /\//g;
@@ -113,8 +114,8 @@ function getPathFromURLPosix(url: URL): string {
 
 /** Get fully resolved platform-specific File URL from the given file path */
 export function pathToFileURL(filepath: string): URL {
-  let resolved = path.resolve(Deno.cwd(), filepath);
-  // path.resolve strips trailing slashes so we must add them back
+  let resolved = resolvePath(filepath);
+  // fs.pathResolve strips trailing slashes so we must add them back
   const filePathLast = filepath.charCodeAt(filepath.length - 1);
   if (
     (filePathLast === CHAR_FORWARD_SLASH ||

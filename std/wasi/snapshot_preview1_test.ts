@@ -2,6 +2,7 @@
 import Context, { ExitStatus } from "./snapshot_preview1.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
+import { resolvePath } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 
 const tests = [
@@ -64,7 +65,7 @@ for (const pathname of tests) {
     ignore: ignore.includes(pathname),
     fn: async function () {
       const prelude = await Deno.readTextFile(
-        path.resolve(rootdir, pathname.replace(/\.wasm$/, ".json")),
+        resolvePath(rootdir, pathname.replace(/\.wasm$/, ".json")),
       );
       const options = JSON.parse(prelude);
 
@@ -91,9 +92,9 @@ for (const pathname of tests) {
             "--unstable",
             "--allow-all",
             "--no-check",
-            path.resolve(rootdir, "snapshot_preview1_test_runner.ts"),
+            resolvePath(rootdir, "snapshot_preview1_test_runner.ts"),
             prelude,
-            path.resolve(rootdir, pathname),
+            resolvePath(rootdir, pathname),
           ],
           stdin: "piped",
           stdout: "piped",

@@ -30,13 +30,6 @@ Deno.test("isAbsoluteZeroLength", function () {
   if (path.win32) assertEquals(path.win32.isAbsolute(""), false);
 });
 
-Deno.test("resolveZeroLength", function () {
-  // resolve, internally ignores all the zero-length strings and returns the
-  // current working directory
-  assertEquals(path.resolve(""), pwd);
-  assertEquals(path.resolve("", ""), pwd);
-});
-
 Deno.test("relativeZeroLength", function () {
   // relative, internally calls resolve. So, '' is actually the current
   // directory

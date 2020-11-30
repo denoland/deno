@@ -31,10 +31,19 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
+<<<<<<< HEAD
 deno_core = { path = "../core", version = "0.74.0" }
 deno_doc = "0.1.19"
 deno_lint = "0.2.14"
 deno_runtime = { path = "../runtime", version = "0.4.0" }
+=======
+deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
+deno_core = { path = "../core", version = "0.69.0" }
+deno_doc = "0.1.17"
+deno_lint = "0.2.12"
+deno_web = { path = "../op_crates/web", version = "0.20.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
+>>>>>>> Migrating path.resolve to fs.resolvePath
 
 atty = "0.2.14"
 base64 = "0.12.3"
@@ -43,7 +52,11 @@ clap = "2.33.3"
 dissimilar = "1.0.2"
 dprint-plugin-typescript = "0.36.0"
 encoding_rs = "0.8.24"
+<<<<<<< HEAD
 env_logger = "0.7.1"
+=======
+dprint-plugin-typescript = "0.35.0"
+>>>>>>> Migrating path.resolve to fs.resolvePath
 filetime = "0.2.12"
 http = "0.2.1"
 indexmap = "1.6.0"
@@ -62,9 +75,15 @@ semver-parser = "0.9.0"
 serde = { version = "1.0.116", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
+<<<<<<< HEAD
 swc_bundler = "0.18.0"
 swc_common = { version = "0.10.7", features = ["sourcemap"] }
 swc_ecmascript = { version = "0.16.0", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
+=======
+swc_bundler = "=0.17.1"
+swc_common = { version = "0.10.6", features = ["sourcemap"] }
+swc_ecmascript = { version = "0.14.4", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
+>>>>>>> Migrating path.resolve to fs.resolvePath
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }

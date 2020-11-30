@@ -11,12 +11,13 @@
  */
 import { assert, assertEquals } from "../testing/asserts.ts";
 
-import { dirname, fromFileUrl, resolve } from "../path/mod.ts";
+import { dirname, fromFileUrl } from "../path/mod.ts";
+import { resolvePath } from "../fs/mod.ts";
 import { Tar, Untar } from "./tar.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
-const testdataDir = resolve(moduleDir, "testdata");
-const filePath = resolve(testdataDir, "example.txt");
+const testdataDir = resolvePath(moduleDir, "testdata");
+const filePath = resolvePath(testdataDir, "example.txt");
 
 interface TestEntry {
   name: string;
@@ -201,7 +202,7 @@ Deno.test(
       },
     ];
 
-    const outputFile = resolve(testdataDir, "test.tar");
+    const outputFile = resolvePath(testdataDir, "test.tar");
 
     const tar = await createTar(entries);
     const file = await Deno.open(outputFile, { create: true, write: true });
@@ -236,7 +237,7 @@ Deno.test("untarAsyncIteratorFromFileReader", async function (): Promise<void> {
     },
   ];
 
-  const outputFile = resolve(testdataDir, "test.tar");
+  const outputFile = resolvePath(testdataDir, "test.tar");
 
   const tar = await createTar(entries);
   const file = await Deno.open(outputFile, { create: true, write: true });
@@ -312,7 +313,7 @@ Deno.test(
 );
 
 Deno.test("untarLinuxGeneratedTar", async function (): Promise<void> {
-  const filePath = resolve(testdataDir, "deno.tar");
+  const filePath = resolvePath(testdataDir, "deno.tar");
   const file = await Deno.open(filePath, { read: true });
 
   const expectedEntries = [
@@ -414,12 +415,12 @@ Deno.test("directoryEntryType", async function (): Promise<void> {
     type: "directory",
   });
 
-  const filePath = resolve(testdataDir);
+  const filePath = resolvePath(testdataDir);
   tar.append("archive/testdata/", {
     filePath,
   });
 
-  const outputFile = resolve(testdataDir, "directory_type_test.tar");
+  const outputFile = resolvePath(testdataDir, "directory_type_test.tar");
   const file = await Deno.open(outputFile, { create: true, write: true });
   await Deno.copy(tar.getReader(), file);
   await file.close();
