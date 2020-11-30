@@ -11,7 +11,7 @@ import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(Deno.cwd(), moduleDir, "testdata");
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("moveDirectoryIfSrcNotExists", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_1");

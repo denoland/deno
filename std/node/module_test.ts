@@ -9,11 +9,7 @@ import * as path from "../path/mod.ts";
 import { createRequire } from "./module.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-const testdataDir = path.resolve(
-  Deno.cwd(),
-  moduleDir,
-  path.join("_fs", "testdata"),
-);
+const testdataDir = path.resolve(moduleDir, path.join("_fs", "testdata"));
 
 const require = createRequire(import.meta.url);
 

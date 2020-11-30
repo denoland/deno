@@ -31,15 +31,16 @@ Deno.test("isAbsoluteZeroLength", function () {
 });
 
 Deno.test("resolveZeroLength", function () {
-  // resolve, internally ignores all the zero-length strings
-  assertEquals(path.resolve(""), ".");
-  assertEquals(path.resolve("", ""), ".");
+  // resolve, internally ignores all the zero-length strings and returns the
+  // current working directory
+  assertEquals(path.resolve(""), pwd);
+  assertEquals(path.resolve("", ""), pwd);
 });
 
 Deno.test("relativeZeroLength", function () {
   // relative, internally calls resolve. So, '' is actually the current
   // directory
-  assertEquals(path.relative(Deno.cwd(), pwd), "");
-  assertEquals(path.relative(pwd, Deno.cwd()), "");
+  assertEquals(path.relative("", pwd), "");
+  assertEquals(path.relative(pwd, ""), "");
   assertEquals(path.relative(pwd, pwd), "");
 });

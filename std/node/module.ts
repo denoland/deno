@@ -431,7 +431,7 @@ class Module {
   static _nodeModulePaths(from: string): string[] {
     if (isWindows) {
       // Guarantee that 'from' is absolute.
-      from = path.resolve(Deno.cwd(), from);
+      from = path.resolve(from);
 
       // note: this approach *only* works when the path is guaranteed
       // to be absolute.  Doing a fully-edge-case-correct path.split
@@ -475,7 +475,7 @@ class Module {
     } else {
       // posix
       // Guarantee that 'from' is absolute.
-      from = path.resolve(Deno.cwd(), from);
+      from = path.resolve(from);
       // Return early not only to avoid unnecessary work, but to *avoid* returning
       // an array of two items for a root: [ '//node_modules', '/node_modules' ]
       if (from === "/") return ["/node_modules"];
@@ -544,8 +544,8 @@ class Module {
     let paths = [];
 
     if (homeDir) {
-      paths.unshift(path.resolve(Deno.cwd(), homeDir, ".node_libraries"));
-      paths.unshift(path.resolve(Deno.cwd(), homeDir, ".node_modules"));
+      paths.unshift(path.resolve(homeDir, ".node_libraries"));
+      paths.unshift(path.resolve(homeDir, ".node_modules"));
     }
 
     if (nodePath) {
@@ -654,7 +654,7 @@ interface PackageInfo {
 }
 
 function readPackage(requestPath: string): PackageInfo | null {
-  const jsonPath = path.resolve(Deno.cwd(), requestPath, "package.json");
+  const jsonPath = path.resolve(requestPath, "package.json");
 
   const existing = packageJsonCache.get(jsonPath);
   if (existing !== undefined) {
@@ -733,23 +733,15 @@ function tryPackage(
   const pkg = readPackageMain(requestPath);
 
   if (!pkg) {
-    return tryExtensions(
-      path.resolve(Deno.cwd(), requestPath, "index"),
-      exts,
-      isMain,
-    );
+    return tryExtensions(path.resolve(requestPath, "index"), exts, isMain);
   }
 
-  const filename = path.resolve(Deno.cwd(), requestPath, pkg);
+  const filename = path.resolve(requestPath, pkg);
   let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
-    tryExtensions(path.resolve(Deno.cwd(), filename, "index"), exts, isMain);
+    tryExtensions(path.resolve(filename, "index"), exts, isMain);
   if (actual === false) {
-    actual = tryExtensions(
-      path.resolve(Deno.cwd(), requestPath, "index"),
-      exts,
-      isMain,
-    );
+    actual = tryExtensions(path.resolve(requestPath, "index"), exts, isMain);
     if (!actual) {
       const err = new Error(
         `Cannot find module '${filename}'. ` +
@@ -781,7 +773,7 @@ function toRealPath(requestPath: string): string {
       break;
     }
   }
-  return path.resolve(Deno.cwd(), requestPath);
+  return path.resolve(requestPath);
 }
 
 // Given a path, check if the file exists with any of the set extensions
@@ -847,7 +839,7 @@ function applyExports(basePath: string, expansion: string): string {
 
   let pkgExports = readPackageExports(basePath);
   if (pkgExports === undefined || pkgExports === null) {
-    return path.resolve(Deno.cwd(), basePath, mappingKey);
+    return path.resolve(basePath, mappingKey);
   }
 
   if (isConditionalDotExportSugar(pkgExports, basePath)) {
@@ -916,14 +908,14 @@ function resolveExports(
   if (!absoluteRequest) {
     const [, name, expansion = ""] = request.match(EXPORTS_PATTERN) || [];
     if (!name) {
-      return path.resolve(Deno.cwd(), nmPath, request);
+      return path.resolve(nmPath, request);
     }
 
-    const basePath = path.resolve(Deno.cwd(), nmPath, name);
+    const basePath = path.resolve(nmPath, name);
     return applyExports(basePath, expansion);
   }
 
-  return path.resolve(Deno.cwd(), nmPath, request);
+  return path.resolve(nmPath, request);
 }
 
 function resolveExportsTarget(
