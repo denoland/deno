@@ -7,7 +7,6 @@ use std::fs;
 use std::io::Read;
 use std::io::Write;
 use std::process::Stdio;
-use test_util;
 
 struct LspIntegrationTest {
   pub fixtures: Vec<&'static str>,
