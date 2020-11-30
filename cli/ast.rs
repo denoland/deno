@@ -244,6 +244,7 @@ pub struct ParsedModule {
   leading_comments: Vec<Comment>,
   module: Module,
   source_map: Rc<SourceMap>,
+  source_file: Rc<SourceFile>,
 }
 
 impl fmt::Debug for ParsedModule {
@@ -407,6 +408,7 @@ pub fn parse(
     module,
     source_map: Rc::new(source_map),
     comments,
+    source_file,
   })
 }
 
@@ -483,40 +485,11 @@ pub fn transpile_module(
   globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
-  // TODO(@kitsonk) DRY-up with ::parse()
-  let error_buffer = ErrorBuffer::new();
-  let handler = Handler::with_emitter_and_flags(
-    Box::new(error_buffer.clone()),
-    HandlerFlags {
-      can_emit_warnings: true,
-      dont_buffer_diagnostics: true,
-      ..HandlerFlags::default()
-    },
-  );
-  let comments = SingleThreadedComments::default();
-  let syntax = get_syntax(media_type);
-  let source_file =
-    cm.new_source_file(FileName::Custom(filename.to_string()), src.to_string());
-  let lexer = Lexer::new(
-    syntax,
-    TARGET,
-    StringInput::from(&*source_file),
-    Some(&comments),
-  );
-  let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-  let sm = cm.clone();
-  let module = parser.parse_module().map_err(move |err| {
-    let mut diagnostic = err.into_diagnostic(&handler);
-    diagnostic.emit();
+  let parsed_module = parse(filename, src, media_type)?;
 
-    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
-      sm.lookup_char_pos(span.lo)
-    })
-  })?;
-  // TODO(@kitsonk) DRY-up with ::transpile()
   let jsx_pass = react::react(
     cm,
-    Some(&comments),
+    Some(&parsed_module.comments),
     react::Options {
       pragma: emit_options.jsx_factory.clone(),
       pragma_frag: emit_options.jsx_fragment_factory.clone(),
@@ -534,8 +507,12 @@ pub fn transpile_module(
     }),
     helpers::inject_helpers(),
     typescript::strip(),
-    fixer(Some(&comments)),
+    fixer(Some(&parsed_module.comments)),
   );
+
+  let source_file = parsed_module.source_file.clone();
+  let module = parsed_module.module;
+
   let module = swc_common::GLOBALS.set(globals, || {
     helpers::HELPERS.set(&helpers::Helpers::new(false), || {
       module.fold_with(&mut passes)
