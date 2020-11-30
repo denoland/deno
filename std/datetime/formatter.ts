@@ -510,7 +510,7 @@ export class DateTimeFormatter {
 
     return parts;
   }
-  
+
   /** sort & filter dateTimeFormatPart */
   sortDateTimeFormatPart(parts: DateTimeFormatPart[]): DateTimeFormatPart[] {
     const result: DateTimeFormatPart[] = [];
