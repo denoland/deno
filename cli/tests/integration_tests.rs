@@ -218,6 +218,39 @@ pub fn test_raw_tty() {
   }
 }
 
+#[cfg(unix)]
+#[test]
+pub fn test_raw_tty_cbreak() {
+  use std::io::{Read, Write};
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let root_path = util::root_path();
+  let fork = Fork::from_ptmx().unwrap();
+
+  if let Ok(mut master) = fork.is_parent() {
+    let mut obytes: [u8; 100] = [0; 100];
+    let mut nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
+    master.write_all(&[3]).unwrap(); // send SIGINT
+    master.flush().unwrap();
+    nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
+    fork.wait().unwrap();
+  } else {
+    // Keep echo enabled such that 'C^' would be printed in non-raw mode.
+    std::env::set_current_dir(root_path).unwrap();
+    let err = exec::Command::new(deno_exe)
+      .arg("run")
+      .arg("--unstable")
+      .arg("--quiet")
+      .arg("--no-check")
+      .arg("cli/tests/raw_mode_cbreak.ts")
+      .exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
 #[test]
 fn test_pattern_match() {
   // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
