@@ -4509,6 +4509,7 @@ fn compile() {
     .arg("compile")
     .arg("--unstable")
     .arg("./std/examples/welcome.ts")
+    .arg(&exe)
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()

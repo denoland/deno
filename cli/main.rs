@@ -52,11 +52,16 @@ mod worker;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::file_watcher::ModuleResolutionResult;
+use crate::flags::DenoSubcommand;
+use crate::flags::Flags;
+use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
+use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::standalone::create_standalone_binary;
+use crate::tools::installer::infer_name_from_url;
 use crate::worker::MainWorker;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -68,12 +73,8 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
-use flags::DenoSubcommand;
-use flags::Flags;
-use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
-use program_state::exit_unstable;
 use std::cell::RefCell;
 use std::env;
 use std::io::Read;
@@ -83,7 +84,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use tools::installer::infer_name_from_url;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -194,7 +194,10 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str.as_bytes().to_vec(), out_file).await?;
+  create_standalone_binary(bundle_str.as_bytes().to_vec(), out_file.clone())
+    .await?;
+
+  info!("{} {}", colors::green("Emit"), out_file);
 
   Ok(())
 }
