@@ -885,7 +885,7 @@ export default class Context {
           const nameData = new TextEncoder().encode(entries[i].name);
 
           const entryInfo = Deno.statSync(
-            resolve(Deno.cwd(), entry.path!, entries[i].name),
+            resolve(entry.path!, entries[i].name),
           );
           const entryData = new Uint8Array(24 + nameData.byteLength);
           const entryView = new DataView(entryData.buffer);
@@ -1056,10 +1056,14 @@ export default class Context {
         const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
 <<<<<<< HEAD
+<<<<<<< HEAD
         const path = resolve(entry.path!, textDecoder.decode(data));
 =======
         const path = resolve(Deno.cwd(), entry.path!, text.decode(data));
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const path = resolve(entry.path!, text.decode(data));
+>>>>>>> fix revert conflict of std/node/_url.ts
 
         Deno.mkdirSync(path);
 
@@ -1085,10 +1089,14 @@ export default class Context {
         const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
 <<<<<<< HEAD
+<<<<<<< HEAD
         const path = resolve(entry.path!, textDecoder.decode(data));
 =======
         const path = resolve(Deno.cwd(), entry.path!, text.decode(data));
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const path = resolve(entry.path!, text.decode(data));
+>>>>>>> fix revert conflict of std/node/_url.ts
 
         const memoryView = new DataView(this.memory.buffer);
 
@@ -1183,10 +1191,14 @@ export default class Context {
         const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
 <<<<<<< HEAD
+<<<<<<< HEAD
         const path = resolve(entry.path!, textDecoder.decode(data));
 =======
         const path = resolve(Deno.cwd(), entry.path!, text.decode(data));
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const path = resolve(entry.path!, text.decode(data));
+>>>>>>> fix revert conflict of std/node/_url.ts
 
         if ((fstflags & FSTFLAGS_ATIM_NOW) == FSTFLAGS_ATIM_NOW) {
           atim = BigInt(Date.now()) * BigInt(1e6);
@@ -1227,6 +1239,7 @@ export default class Context {
           oldPathLength,
         );
 <<<<<<< HEAD
+<<<<<<< HEAD
         const oldPath = resolve(oldEntry.path!, textDecoder.decode(oldData));
 =======
         const oldPath = resolve(
@@ -1235,11 +1248,15 @@ export default class Context {
           text.decode(oldData),
         );
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const oldPath = resolve(oldEntry.path!, text.decode(oldData));
+>>>>>>> fix revert conflict of std/node/_url.ts
         const newData = new Uint8Array(
           this.memory.buffer,
           newPathOffset,
           newPathLength,
         );
+<<<<<<< HEAD
 <<<<<<< HEAD
         const newPath = resolve(newEntry.path!, textDecoder.decode(newData));
 =======
@@ -1249,6 +1266,9 @@ export default class Context {
           text.decode(newData),
         );
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const newPath = resolve(newEntry.path!, text.decode(newData));
+>>>>>>> fix revert conflict of std/node/_url.ts
 
         Deno.linkSync(oldPath, newPath);
 
@@ -1281,11 +1301,7 @@ export default class Context {
           pathOffset,
           pathLength,
         );
-        const resolvedPath = resolve(
-          Deno.cwd(),
-          entry.path!,
-          textDecoder.decode(pathData),
-        );
+        const resolvedPath = resolve(entry.path!, textDecoder.decode(pathData));
 
         if (relative(entry.path, resolvedPath).startsWith("..")) {
           return ERRNO_NOTCAPABLE;
@@ -1430,11 +1446,7 @@ export default class Context {
           pathOffset,
           pathLength,
         );
-        const path = resolve(
-          Deno.cwd(),
-          entry.path!,
-          new TextDecoder().decode(pathData),
-        );
+        const path = resolve(entry.path!, new TextDecoder().decode(pathData));
 
         const link = Deno.readLinkSync(path);
         const linkData = new TextEncoder().encode(link);
@@ -1462,7 +1474,7 @@ export default class Context {
 
         const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(Deno.cwd(), entry.path!, text.decode(data));
+        const path = resolve(entry.path!, text.decode(data));
 
         if (!Deno.statSync(path).isDirectory) {
           return ERRNO_NOTDIR;
@@ -1498,6 +1510,7 @@ export default class Context {
           oldPathLength,
         );
 <<<<<<< HEAD
+<<<<<<< HEAD
         const oldPath = resolve(oldEntry.path!, textDecoder.decode(oldData));
 =======
         const oldPath = resolve(
@@ -1506,11 +1519,15 @@ export default class Context {
           text.decode(oldData),
         );
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const oldPath = resolve(oldEntry.path!, text.decode(oldData));
+>>>>>>> fix revert conflict of std/node/_url.ts
         const newData = new Uint8Array(
           this.memory.buffer,
           newPathOffset,
           newPathLength,
         );
+<<<<<<< HEAD
 <<<<<<< HEAD
         const newPath = resolve(newEntry.path!, textDecoder.decode(newData));
 =======
@@ -1520,6 +1537,9 @@ export default class Context {
           text.decode(newData),
         );
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const newPath = resolve(newEntry.path!, text.decode(newData));
+>>>>>>> fix revert conflict of std/node/_url.ts
 
         Deno.renameSync(oldPath, newPath);
 
@@ -1555,10 +1575,14 @@ export default class Context {
           newPathLength,
         );
 <<<<<<< HEAD
+<<<<<<< HEAD
         const newPath = resolve(entry.path!, textDecoder.decode(newData));
 =======
         const newPath = resolve(Deno.cwd(), entry.path!, text.decode(newData));
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const newPath = resolve(entry.path!, text.decode(newData));
+>>>>>>> fix revert conflict of std/node/_url.ts
 
         Deno.symlinkSync(oldPath, newPath);
 
@@ -1582,10 +1606,14 @@ export default class Context {
         const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
 <<<<<<< HEAD
+<<<<<<< HEAD
         const path = resolve(entry.path!, textDecoder.decode(data));
 =======
         const path = resolve(Deno.cwd(), entry.path!, text.decode(data));
 >>>>>>> fix(std): Modified all code which depended on path.resolve due to change in interface
+=======
+        const path = resolve(entry.path!, text.decode(data));
+>>>>>>> fix revert conflict of std/node/_url.ts
 
         Deno.removeSync(path);
 

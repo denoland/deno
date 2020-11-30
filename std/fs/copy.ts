@@ -243,9 +243,8 @@ export async function copy(
   dest: string,
   options: CopyOptions = {},
 ): Promise<void> {
-  //resolve both paths so that they can be compared for equality
-  if (!path.isAbsolute(src)) src = path.resolve(Deno.cwd(), src);
-  if (!path.isAbsolute(dest)) dest = path.resolve(Deno.cwd(), dest);
+  src = path.resolve(src);
+  dest = path.resolve(dest);
 
   if (src === dest) {
     throw new Error("Source and destination cannot be the same.");
@@ -283,9 +282,8 @@ export function copySync(
   dest: string,
   options: CopyOptions = {},
 ): void {
-  //resolve both paths so that they can be compared for equality
-  if (!path.isAbsolute(src)) src = path.resolve(Deno.cwd(), src);
-  if (!path.isAbsolute(dest)) dest = path.resolve(Deno.cwd(), dest);
+  src = path.resolve(src);
+  dest = path.resolve(dest);
 
   if (src === dest) {
     throw new Error("Source and destination cannot be the same.");
