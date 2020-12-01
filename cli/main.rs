@@ -168,13 +168,9 @@ async fn compile_command(
 
   let output = output.or_else(|| {
     infer_name_from_url(module_specifier.as_url()).map(PathBuf::from)
-  });
-  let output = match output {
-    Some(output) => output,
-    None => return Err(generic_error(
-      "An executable name was not provided. One could not be inferred from the URL. Aborting.",
-    )),
-  };
+  }).ok_or_else(|| generic_error(
+    "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+  ))?;
 
   let module_graph = create_module_graph_and_maybe_check(
     module_specifier.clone(),

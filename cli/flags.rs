@@ -839,7 +839,7 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
     .long_about(
       "Compiles the given script into a self contained executable.
   deno compile --unstable https://deno.land/std/http/file_server.ts
-  deno compile --unstable --output color_util https://deno.land/std/examples/colors.ts
+  deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
