@@ -306,11 +306,12 @@ impl ParsedModule {
       helpers::inject_helpers(),
       typescript::strip(),
       fixer(Some(&self.comments)),
+      hygiene(),
     );
 
     let program = swc_common::GLOBALS.set(&Globals::new(), || {
       helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-        program.fold_with(&mut passes).fold_with(&mut hygiene())
+        program.fold_with(&mut passes)
       })
     });
 
