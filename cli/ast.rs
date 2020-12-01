@@ -352,24 +352,12 @@ impl ParsedModule {
   }
 }
 
-/// For a given specifier, source, and media type, parse the source of the
-/// module and return a representation which can be further processed.
-///
-/// # Arguments
-///
-/// - `specifier` - The module specifier for the module.
-/// - `source` - The source code for the module.
-/// - `media_type` - The media type for the module.
-///
-// NOTE(bartlomieju): `specifier` has `&str` type instead of
-// `&ModuleSpecifier` because runtime compiler APIs don't
-// require valid module specifiers
-pub fn parse(
+fn parse_with_source_map(
   specifier: &str,
   source: &str,
   media_type: &MediaType,
+  source_map: Rc<SourceMap>,
 ) -> Result<ParsedModule, AnyError> {
-  let source_map = SourceMap::default();
   let source_file = source_map.new_source_file(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
@@ -406,10 +394,31 @@ pub fn parse(
   Ok(ParsedModule {
     leading_comments,
     module,
-    source_map: Rc::new(source_map),
+    source_map,
     comments,
     source_file,
   })
+}
+
+/// For a given specifier, source, and media type, parse the source of the
+/// module and return a representation which can be further processed.
+///
+/// # Arguments
+///
+/// - `specifier` - The module specifier for the module.
+/// - `source` - The source code for the module.
+/// - `media_type` - The media type for the module.
+///
+// NOTE(bartlomieju): `specifier` has `&str` type instead of
+// `&ModuleSpecifier` because runtime compiler APIs don't
+// require valid module specifiers
+pub fn parse(
+  specifier: &str,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<ParsedModule, AnyError> {
+  let source_map = Rc::new(SourceMap::default());
+  parse_with_source_map(specifier, source, media_type, source_map)
 }
 
 pub enum TokenOrComment {
@@ -485,7 +494,8 @@ pub fn transpile_module(
   globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
-  let parsed_module = parse(filename, src, media_type)?;
+  let parsed_module =
+    parse_with_source_map(filename, src, media_type, cm.clone())?;
 
   let jsx_pass = react::react(
     cm,
