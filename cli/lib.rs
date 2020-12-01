@@ -376,6 +376,7 @@ pub async fn eval_command(
   Ok(())
 }
 
+#[cfg(feature = "tools")]
 async fn create_module_graph_and_maybe_check(
   module_specifier: ModuleSpecifier,
   program_state: Arc<ProgramState>,
@@ -423,6 +424,7 @@ async fn create_module_graph_and_maybe_check(
   Ok(module_graph)
 }
 
+#[cfg(feature = "tools")]
 fn bundle_module_graph(
   module_graph: module_graph::Graph,
   flags: Flags,
