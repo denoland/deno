@@ -932,7 +932,7 @@
 
       switch (typeof init) {
         default: {
-          throw TypeError(`Failed to execute 'fetch' on '${this[Symbol.toStringTag].toLowerCase()}': cannot convert to dictionary.`);
+          throw TypeError("Failed to construct 'Request': cannot convert to dictionary.");
         }
         case "undefined":
         case "object": {
