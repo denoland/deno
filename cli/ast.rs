@@ -46,6 +46,7 @@ use swc_ecmascript::transforms::pass::Optional;
 use swc_ecmascript::transforms::proposals;
 use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
+use swc_ecmascript::transforms::hygiene;
 use swc_ecmascript::visit::FoldWith;
 
 static TARGET: JscTarget = JscTarget::Es2020;
@@ -309,7 +310,9 @@ impl ParsedModule {
 
     let program = swc_common::GLOBALS.set(&Globals::new(), || {
       helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-        program.fold_with(&mut passes)
+        program
+          .fold_with(&mut passes)
+          .fold_with(&mut hygiene())
       })
     });
 
