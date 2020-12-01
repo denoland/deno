@@ -48,6 +48,13 @@ Deno.test({
 });
 
 Deno.test({
+  name: "type is a string",
+  fn() {
+    assertEquals(typeof os.type(), "string");
+  },
+});
+
+Deno.test({
   name: "getPriority(): PID must be a 32 bit integer",
   fn() {
     assertThrows(
