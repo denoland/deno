@@ -926,13 +926,11 @@
 
   class Request extends Body {
     constructor(input, init) {
-      if (arguments.length < 1) {
-        throw TypeError("Not enough arguments");
-      }
+      requiredArguments("Request", arguments.length, 1); // may need a specialization of requiredArguments for constructors
 
       switch (typeof init) {
         default: {
-          throw TypeError("Failed to construct 'Request': cannot convert to dictionary.");
+          throw new TypeError("Failed to construct 'Request': cannot convert to dictionary.");
         }
         case "undefined":
         case "object": {
@@ -949,12 +947,12 @@
         b = init.body;
       } else if (input instanceof Request && input._bodySource) {
         if (input.bodyUsed) {
-          throw TypeError(BodyUsedError);
+          throw new TypeError(BodyUsedError);
         }
         b = input._bodySource;
       } else if (typeof input === "object" && "body" in input && input.body) {
         if (input.bodyUsed) {
-          throw TypeError(BodyUsedError);
+          throw new TypeError(BodyUsedError);
         }
         b = input.body;
       } else {
@@ -987,7 +985,7 @@
 
       if (input instanceof Request) {
         if (input.bodyUsed) {
-          throw TypeError(BodyUsedError);
+          throw new TypeError(BodyUsedError);
         }
         this.method = input.method;
         this.url = input.url;
@@ -1015,7 +1013,7 @@
 
     clone() {
       if (this.bodyUsed) {
-        throw TypeError(BodyUsedError);
+        throw new TypeError(BodyUsedError);
       }
 
       const iterators = this.headers.entries();
@@ -1145,7 +1143,7 @@
 
     clone() {
       if (this.bodyUsed) {
-        throw TypeError(BodyUsedError);
+        throw new TypeError(BodyUsedError);
       }
 
       const iterators = this.headers.entries();
@@ -1200,6 +1198,8 @@
   }
 
   async function fetch(input, init) {
+    requiredArguments("fetch", arguments.length, 1);
+
     let url;
     let method = null;
     let headers = null;
@@ -1208,58 +1208,49 @@
     let redirected = false;
     let remRedirectCount = 20; // TODO: use a better way to handle
 
-
     try {
-      const request = new Request(input, init);
-      url = request.url;
-      // TODO
+      ({
+        method,
+        url,
+        headers,
+        body
+      }) = new Request(input, init);
     } catch(e) {
-      if (e instanceof TypeError && e.message.includes("dictionary")) {
-        throw TypeError(`Failed to execute 'fetch' on '${import.meta.main ? "Window" : "WorkerGlobalScope"}': cannot convert to dictionary.`);
-      }
+      // prefer WorkerGlobalScope over more specific scope, such as DedicatedWorkerGlobalScope, which is what the [Symbol.toStringTag] may yield
+      // may need refinement
+      const scope = self[Symbol.toStringTag] === "Window" ? "Window" : "WorkerGlobalScope";
+
+      throw new TypeError(`Failed to execute 'fetch' on '${scope}': cannot convert to dictionary.`);
     }
 
-    if (typeof input === "string" || input instanceof URL) {
-      url = typeof input === "string" ? input : input.href;
+    if (typeof input === "string" || input instanceof URL || input instanceof String) {
       if (init != null) {
-        method = init.method || null;
-        if (init.headers) {
-          headers = init.headers instanceof Headers
-            ? init.headers
-            : new Headers(init.headers);
-        } else {
-          headers = null;
-        }
-
         // ref: https://fetch.spec.whatwg.org/#body-mixin
         // Body should have been a mixin
         // but we are treating it as a separate class
-        if (init.body) {
-          if (!headers) {
-            headers = new Headers();
-          }
+        if (body) {
           let contentType = "";
-          if (typeof init.body === "string") {
-            body = new TextEncoder().encode(init.body);
+          if (typeof body === "string") {
+            body = new TextEncoder().encode(body);
             contentType = "text/plain;charset=UTF-8";
-          } else if (isTypedArray(init.body)) {
-            body = init.body;
+          } else if (isTypedArray(body)) {
+            // nop
           } else if (init.body instanceof ArrayBuffer) {
-            body = new Uint8Array(init.body);
+            body = new Uint8Array(body);
           } else if (init.body instanceof URLSearchParams) {
-            body = new TextEncoder().encode(init.body.toString());
+            body = new TextEncoder().encode(body.toString());
             contentType = "application/x-www-form-urlencoded;charset=UTF-8";
           } else if (init.body instanceof Blob) {
-            body = init.body[bytesSymbol];
-            contentType = init.body.type;
-          } else if (init.body instanceof FormData) {
+            body = body[bytesSymbol];
+            contentType = body.type;
+          } else if (body instanceof FormData) {
             let boundary;
             if (headers.has("content-type")) {
               const params = getHeaderValueParams("content-type");
               boundary = params.get("boundary");
             }
             const multipartBuilder = new MultipartBuilder(
-              init.body,
+              body,
               boundary,
             );
             body = multipartBuilder.getBody();
