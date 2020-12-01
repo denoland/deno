@@ -389,8 +389,8 @@ impl ServerState {
       s.shutdown_requested = true;
       Ok(())
     })?
+    .on_sync::<lsp_types::request::HoverRequest>(handlers::handle_hover)?
     .on::<lsp_types::request::Formatting>(handlers::handle_formatting)
-    .on::<lsp_types::request::HoverRequest>(handlers::handle_hover)
     .on::<lsp_extensions::VirtualTextDocument>(
       handlers::handle_virtual_text_document,
     )

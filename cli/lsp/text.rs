@@ -52,7 +52,7 @@ fn to_range(line_index: &[u32], range: lsp_types::Range) -> Range<usize> {
   Range { start, end }
 }
 
-fn to_position(line_index: &[u32], char_pos: u32) -> lsp_types::Position {
+pub fn to_position(line_index: &[u32], char_pos: u32) -> lsp_types::Position {
   let mut line = 0_usize;
   let mut line_start = 0_u32;
   for (pos, v) in line_index.iter().enumerate() {
@@ -66,6 +66,14 @@ fn to_position(line_index: &[u32], char_pos: u32) -> lsp_types::Position {
   lsp_types::Position {
     line: line as u32,
     character: char_pos - line_start,
+  }
+}
+
+pub fn to_char_pos(line_index: &[u32], position: lsp_types::Position) -> u32 {
+  if let Some(line_start) = line_index.get(position.line as usize) {
+    line_start + position.character
+  } else {
+    0_u32
   }
 }
 

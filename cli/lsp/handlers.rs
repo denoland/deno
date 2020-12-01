@@ -1,13 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::lsp_extensions;
+use super::state::ServerState;
 use super::state::ServerStateSnapshot;
 use super::text;
-
-use crate::module_graph::Module;
+use super::tsc;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
 use lsp_types::DocumentFormattingParams;
@@ -47,21 +48,35 @@ pub fn handle_formatting(
 }
 
 pub fn handle_hover(
-  state: ServerStateSnapshot,
+  state: &mut ServerState,
   params: HoverParams,
 ) -> Result<Option<Hover>, AnyError> {
   let specifier = ModuleSpecifier::from(
     params.text_document_position_params.text_document.uri,
   );
-  info!("hover specifier: {}", specifier);
-  let mut file_cache = state.file_cache.write().unwrap();
-  if let Some(cached_module) = file_cache.get_cached_module(specifier) {
-    let mut module = Module::new(cached_module, true, None);
-    module.parse()?;
-    info!("deps: {:?}", module.dependencies);
-  }
+  let file_cache = state.file_cache.read().unwrap();
+  let file_id = file_cache.lookup(&specifier).unwrap();
+  let file_text = file_cache.get_contents(file_id)?;
+  let line_index = text::index_lines(&file_text);
+  let server_state = state.snapshot();
+  let maybe_quick_info: Option<tsc::QuickInfo> =
+    serde_json::from_value(tsc::request(
+      &mut state.ts_runtime,
+      &server_state,
+      tsc::RequestMethod::GetQuickInfo((
+        specifier,
+        text::to_char_pos(
+          &line_index,
+          params.text_document_position_params.position,
+        ),
+      )),
+    )?)?;
 
-  Ok(None)
+  if let Some(quick_info) = maybe_quick_info {
+    Ok(Some(quick_info.to_hover(&line_index)))
+  } else {
+    Ok(None)
+  }
 }
 
 pub fn handle_virtual_text_document(

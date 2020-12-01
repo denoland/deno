@@ -455,7 +455,7 @@ delete Object.prototype.__proto__;
    * @param {number} id 
    * @param {any} data 
    */
-  function respond(id, data) {
+  function respond(id, data = null) {
     core.jsonOpSync("op_respond", { id, data });
   }
 
@@ -492,6 +492,15 @@ delete Object.prototype.__proto__;
           request.specifier,
         ).filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
         return respond(id, fromTypeScriptDiagnostic(diagnostics));
+      }
+      case "getQuickInfo": {
+        return respond(
+          id,
+          languageService.getQuickInfoAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
       }
       default:
         throw new TypeError(

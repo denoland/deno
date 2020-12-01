@@ -44,7 +44,8 @@ declare global {
     | ConfigureRequest
     | GetSyntacticDiagnosticsRequest
     | GetSemanticDiagnosticsRequest
-    | GetSuggestionDiagnosticsRequest;
+    | GetSuggestionDiagnosticsRequest
+    | GetQuickInfoRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -70,5 +71,11 @@ declare global {
   interface GetSuggestionDiagnosticsRequest extends BaseLanguageServerRequest {
     method: "getSuggestionDiagnostics";
     specifier: string;
+  }
+
+  interface GetQuickInfoRequest extends BaseLanguageServerRequest {
+    method: "getQuickInfo";
+    specifier: string;
+    position: number;
   }
 }

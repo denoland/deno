@@ -19,8 +19,279 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use regex::Captures;
+use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+
+fn display_parts_to_string(
+  maybe_parts: Option<Vec<SymbolDisplayPart>>,
+) -> Option<String> {
+  if let Some(parts) = maybe_parts {
+    Some(
+      parts
+        .into_iter()
+        .map(|p| p.text)
+        .collect::<Vec<String>>()
+        .join(""),
+    )
+  } else {
+    None
+  }
+}
+
+fn get_tag_body_text(tag: &JSDocTagInfo) -> Option<String> {
+  if let Some(text) = &tag.text {
+    match tag.name.as_str() {
+      "example" => {
+        let caption_regex =
+          Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
+        if caption_regex.is_match(text) {
+          Some(
+            caption_regex
+              .replace(text, |c: &Captures| {
+                format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
+              })
+              .to_string(),
+          )
+        } else {
+          Some(make_codeblock(text))
+        }
+      }
+      "author" => {
+        let email_match_regex =
+          Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
+        Some(
+          email_match_regex
+            .replace(text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
+            .to_string(),
+        )
+      }
+      "default" => Some(make_codeblock(text)),
+      _ => Some(replace_links(text)),
+    }
+  } else {
+    None
+  }
+}
+
+fn get_tag_documentation(tag: &JSDocTagInfo) -> String {
+  match tag.name.as_str() {
+    "augments" | "extends" | "param" | "template" => {
+      if let Some(text) = &tag.text {
+        let part_regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
+        let body: Vec<&str> = part_regex.split(&text).collect();
+        if body.len() == 3 {
+          info!("body {:?}", body);
+          let param = body[1];
+          let doc = body[2];
+          let label = format!("*@{}* `{}`", tag.name, param);
+          if doc.is_empty() {
+            return label;
+          }
+          if doc.contains("\n") {
+            return format!("{}  \n{}", label, replace_links(doc));
+          } else {
+            return format!("{} - {}", label, replace_links(doc));
+          }
+        }
+      }
+    }
+    _ => (),
+  }
+  let label = format!("*@{}*", tag.name);
+  let maybe_text = get_tag_body_text(tag);
+  if let Some(text) = maybe_text {
+    if text.contains("\n") {
+      format!("{}  \n{}", label, text)
+    } else {
+      format!("{} - {}", label, text)
+    }
+  } else {
+    label
+  }
+}
+
+fn make_codeblock(text: &str) -> String {
+  let codeblock_regex = Regex::new(r"^\s*[~`]{3}").unwrap();
+  if codeblock_regex.is_match(text) {
+    text.to_string()
+  } else {
+    format!("```\n{}\n```", text)
+  }
+}
+
+/// Replace JSDoc like links (`{@link http://example.com}`) with markdown links
+fn replace_links(text: &str) -> String {
+  let jsdoc_links_regex = Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap();
+  jsdoc_links_regex
+    .replace_all(text, |c: &Captures| match &c[1] {
+      "linkcode" => format!(
+        "[`{}`]({})",
+        if c.get(3).is_none() {
+          &c[2]
+        } else {
+          c[3].trim()
+        },
+        &c[2]
+      ),
+      _ => format!(
+        "[{}]({})",
+        if c.get(3).is_none() {
+          &c[2]
+        } else {
+          c[3].trim()
+        },
+        &c[2]
+      ),
+    })
+    .to_string()
+}
+
+#[derive(Debug, Deserialize)]
+pub enum ScriptElementKind {
+  #[serde(rename = "")]
+  Unknown,
+  #[serde(rename = "warning")]
+  Warning,
+  #[serde(rename = "keyword")]
+  Keyword,
+  #[serde(rename = "script")]
+  ScriptElement,
+  #[serde(rename = "module")]
+  ModuleElement,
+  #[serde(rename = "class")]
+  ClassElement,
+  #[serde(rename = "local class")]
+  LocalClassElement,
+  #[serde(rename = "interface")]
+  InterfaceElement,
+  #[serde(rename = "type")]
+  TypeElement,
+  #[serde(rename = "enum")]
+  EnumElement,
+  #[serde(rename = "enum member")]
+  EnumMemberElement,
+  #[serde(rename = "var")]
+  VariableElement,
+  #[serde(rename = "local var")]
+  LocalVariableElement,
+  #[serde(rename = "function")]
+  FunctionElement,
+  #[serde(rename = "local function")]
+  LocalFunctionElement,
+  #[serde(rename = "method")]
+  MemberFunctionElement,
+  #[serde(rename = "getter")]
+  MemberGetAccessorElement,
+  #[serde(rename = "setter")]
+  MemberSetAccessorElement,
+  #[serde(rename = "property")]
+  MemberVariableElement,
+  #[serde(rename = "constructor")]
+  ConstructorImplementationElement,
+  #[serde(rename = "call")]
+  CallSignatureElement,
+  #[serde(rename = "index")]
+  IndexSignatureElement,
+  #[serde(rename = "construct")]
+  ConstructSignatureElement,
+  #[serde(rename = "parameter")]
+  ParameterElement,
+  #[serde(rename = "type parameter")]
+  TypeParameterElement,
+  #[serde(rename = "primitive type")]
+  PrimitiveType,
+  #[serde(rename = "label")]
+  Label,
+  #[serde(rename = "alias")]
+  Alias,
+  #[serde(rename = "const")]
+  ConstElement,
+  #[serde(rename = "let")]
+  LetElement,
+  #[serde(rename = "directory")]
+  Directory,
+  #[serde(rename = "external module name")]
+  ExternalModuleName,
+  #[serde(rename = "JSX attribute")]
+  JsxAttribute,
+  #[serde(rename = "string")]
+  String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextSpan {
+  start: u32,
+  length: u32,
+}
+
+impl TextSpan {
+  pub fn to_range(self, line_index: &[u32]) -> lsp_types::Range {
+    lsp_types::Range {
+      start: text::to_position(line_index, self.start),
+      end: text::to_position(line_index, self.start + self.length),
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolDisplayPart {
+  text: String,
+  kind: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JSDocTagInfo {
+  name: String,
+  text: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickInfo {
+  kind: ScriptElementKind,
+  kind_modifiers: String,
+  text_span: TextSpan,
+  display_parts: Option<Vec<SymbolDisplayPart>>,
+  documentation: Option<Vec<SymbolDisplayPart>>,
+  tags: Option<Vec<JSDocTagInfo>>,
+}
+
+impl QuickInfo {
+  pub fn to_hover(self, line_index: &[u32]) -> lsp_types::Hover {
+    let mut contents = Vec::<lsp_types::MarkedString>::new();
+    if let Some(display_string) = display_parts_to_string(self.display_parts) {
+      contents.push(lsp_types::MarkedString::from_language_code(
+        "typescript".to_string(),
+        display_string,
+      ));
+    }
+    if let Some(documentation) = display_parts_to_string(self.documentation) {
+      contents.push(lsp_types::MarkedString::from_markdown(documentation));
+    }
+    if let Some(tags) = self.tags {
+      let tags_preview = tags
+        .iter()
+        .map(get_tag_documentation)
+        .collect::<Vec<String>>()
+        .join("  \n\n");
+      if !tags_preview.is_empty() {
+        contents.push(lsp_types::MarkedString::from_markdown(format!(
+          "\n\n{}",
+          tags_preview
+        )));
+      }
+    }
+    lsp_types::Hover {
+      contents: lsp_types::HoverContents::Array(contents),
+      range: Some(self.text_span.to_range(line_index)),
+    }
+  }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
@@ -251,6 +522,8 @@ pub enum RequestMethod {
   GetSuggestionDiagnostics(ModuleSpecifier),
   /// Return syntactic diagnostics for a given file.
   GetSyntacticDiagnostics(ModuleSpecifier),
+  /// Return quick info at position (hover information).
+  GetQuickInfo((ModuleSpecifier, u32)),
 }
 
 impl RequestMethod {
@@ -275,6 +548,12 @@ impl RequestMethod {
         "id": id,
         "method": "getSyntacticDiagnostics",
         "specifier": specifier,
+      }),
+      RequestMethod::GetQuickInfo((specifier, position)) => json!({
+        "id": id,
+        "method": "getQuickInfo",
+        "specifier": specifier,
+        "position": position,
       }),
     }
   }
@@ -363,6 +642,21 @@ mod tests {
       json!(true)
     );
     (runtime, server_state)
+  }
+
+  #[test]
+  fn test_replace_links() {
+    let actual = replace_links(r"test {@link http://deno.land/x/mod.ts} test");
+    assert_eq!(
+      actual,
+      r"test [http://deno.land/x/mod.ts](http://deno.land/x/mod.ts) test"
+    );
+    let actual =
+      replace_links(r"test {@link http://deno.land/x/mod.ts a link} test");
+    assert_eq!(actual, r"test [a link](http://deno.land/x/mod.ts) test");
+    let actual =
+      replace_links(r"test {@linkcode http://deno.land/x/mod.ts a link} test");
+    assert_eq!(actual, r"test [`a link`](http://deno.land/x/mod.ts) test");
   }
 
   #[test]

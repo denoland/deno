@@ -6,7 +6,7 @@
 ///! client.
 ///!
 use lsp_types::ClientCapabilities;
-// use lsp_types::HoverProviderCapability;
+use lsp_types::HoverProviderCapability;
 use lsp_types::OneOf;
 use lsp_types::SaveOptions;
 use lsp_types::ServerCapabilities;
@@ -27,8 +27,7 @@ pub fn server_capabilities(
         save: Some(SaveOptions::default().into()),
       },
     )),
-    // hover_provider: Some(HoverProviderCapability::Simple(true)),
-    hover_provider: None,
+    hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: None,
     signature_help_provider: None,
     declaration_provider: None,
@@ -36,7 +35,7 @@ pub fn server_capabilities(
     type_definition_provider: None,
     implementation_provider: None,
     references_provider: None,
-    document_highlight_provider: None,
+    document_highlight_provider: Some(OneOf::Left(true)),
     document_symbol_provider: None,
     workspace_symbol_provider: None,
     code_action_provider: None,

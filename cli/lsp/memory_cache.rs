@@ -1,8 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::media_type::MediaType;
-use crate::specifier_handler::CachedModule;
-
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
@@ -68,28 +65,6 @@ impl MemoryCache {
 
   fn get(&self, file_id: FileId) -> &Option<Vec<u8>> {
     &self.data[file_id.0 as usize]
-  }
-
-  pub fn get_cached_module(
-    &mut self,
-    specifier: ModuleSpecifier,
-  ) -> Option<CachedModule> {
-    if let Some(file_id) = self.lookup(&specifier) {
-      let source = self.get_contents(file_id).unwrap();
-      let media_type = MediaType::from(&specifier);
-      let is_remote = specifier.as_url().scheme() != "file";
-
-      Some(CachedModule {
-        source,
-        requested_specifier: specifier.clone(),
-        specifier,
-        media_type,
-        is_remote,
-        ..Default::default()
-      })
-    } else {
-      None
-    }
   }
 
   pub fn get_contents(&self, file_id: FileId) -> Result<String, AnyError> {
