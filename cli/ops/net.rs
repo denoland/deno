@@ -229,7 +229,7 @@ async fn op_datagram_send(
       let address_path = Path::new(&args.path);
       {
         let s = state.borrow();
-        s.borrow::<Permissions>().check_read(&address_path)?;
+        s.borrow::<Permissions>().check_write(&address_path)?;
       }
       let mut state = state.borrow_mut();
       let resource = state
@@ -308,6 +308,7 @@ async fn op_connect(
       {
         let state_ = state.borrow();
         state_.borrow::<Permissions>().check_read(&address_path)?;
+        state_.borrow::<Permissions>().check_write(&address_path)?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;

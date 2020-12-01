@@ -13,7 +13,7 @@ Deno.test({
     const tempFile: string = await Deno.makeTempFile();
     const originalUserId: number | null = (await Deno.lstat(tempFile)).uid;
     const originalGroupId: number | null = (await Deno.lstat(tempFile)).gid;
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       chown(tempFile, originalUserId!, originalGroupId!, (err) => {
         if (err) reject(err);
         else resolve();

@@ -1,4 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { deferred } from "../async/mod.ts";
+import { fail } from "../testing/asserts.ts";
+
+export type BinaryEncodings = "binary";
+
+export type TextEncodings =
+  | "ascii"
+  | "utf8"
+  | "utf-8"
+  | "utf16le"
+  | "ucs2"
+  | "ucs-2"
+  | "base64"
+  | "latin1"
+  | "hex";
+
+export type Encodings = BinaryEncodings | TextEncodings;
 
 export function notImplemented(msg?: string): never {
   const message = msg ? `Not implemented: ${msg}` : "Not implemented";
@@ -51,13 +68,15 @@ export function spliceOne(list: string[], index: number): void {
 // Return undefined if there is no match.
 // Move the "slow cases" to a separate function to make sure this function gets
 // inlined properly. That prioritizes the common case.
-export function normalizeEncoding(enc: string | null): string | undefined {
+export function normalizeEncoding(
+  enc: string | null,
+): TextEncodings | undefined {
   if (enc == null || enc === "utf8" || enc === "utf-8") return "utf8";
   return slowCases(enc);
 }
 
 // https://github.com/nodejs/node/blob/ba684805b6c0eded76e5cd89ee00328ac7a59365/lib/internal/util.js#L130
-function slowCases(enc: string): string | undefined {
+function slowCases(enc: string): TextEncodings | undefined {
   switch (enc.length) {
     case 4:
       if (enc === "UTF8") return "utf8";
@@ -135,11 +154,52 @@ export function validateIntegerRange(
 type OptionalSpread<T> = T extends undefined ? []
   : [T];
 
-export function once(callback: (...args: OptionalSpread<undefined>) => void) {
+export function once<T = undefined>(
+  callback: (...args: OptionalSpread<T>) => void,
+) {
   let called = false;
-  return function (this: unknown, ...args: OptionalSpread<undefined>) {
+  return function (this: unknown, ...args: OptionalSpread<T>) {
     if (called) return;
     called = true;
     callback.apply(this, args);
   };
+}
+
+/**
+ * @param {number} [expectedExecutions = 1]
+ * @param {number} [timeout = 1000] Milliseconds to wait before the promise is forcefully exited
+*/
+export function mustCall<T extends unknown[]>(
+  fn: ((...args: T) => void) = () => {},
+  expectedExecutions = 1,
+  timeout = 1000,
+): [Promise<void>, (...args: T) => void] {
+  if (expectedExecutions < 1) {
+    throw new Error("Expected executions can't be lower than 1");
+  }
+  let timesExecuted = 0;
+  const completed = deferred();
+
+  const abort = setTimeout(() => completed.reject(), timeout);
+
+  function callback(this: unknown, ...args: T) {
+    timesExecuted++;
+    if (timesExecuted === expectedExecutions) {
+      completed.resolve();
+    }
+    fn.apply(this, args);
+  }
+
+  const result = completed
+    .then(() => clearTimeout(abort))
+    .catch(() =>
+      fail(
+        `Async operation not completed: Expected ${expectedExecutions}, executed ${timesExecuted}`,
+      )
+    );
+
+  return [
+    result,
+    callback,
+  ];
 }
