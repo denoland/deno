@@ -930,8 +930,18 @@
         throw TypeError("Not enough arguments");
       }
 
-      if (!init) {
-        init = {};
+      switch (typeof init) {
+        default: {
+          throw TypeError(`Failed to execute 'fetch' on '${this[Symbol.toStringTag].toLowerCase()}': cannot convert to dictionary.`);
+        }
+        case "undefined":
+        case "object": {
+          // may be null
+          init ??= {};
+        }
+        case "function": {
+          break; // nop
+        }
       }
 
       let b;
