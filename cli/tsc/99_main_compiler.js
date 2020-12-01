@@ -502,6 +502,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getDocumentHighlights": {
+        return respond(
+          id,
+          languageService.getDocumentHighlights(
+            request.specifier,
+            request.position,
+            request.filesToSearch,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never

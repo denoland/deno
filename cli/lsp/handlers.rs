@@ -12,6 +12,8 @@ use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
 use lsp_types::DocumentFormattingParams;
+use lsp_types::DocumentHighlight;
+use lsp_types::DocumentHighlightParams;
 use lsp_types::Hover;
 use lsp_types::HoverParams;
 use lsp_types::TextEdit;
@@ -44,6 +46,46 @@ pub fn handle_formatting(
     Ok(None)
   } else {
     Ok(Some(text_edits))
+  }
+}
+
+pub fn handle_document_highlight(
+  state: &mut ServerState,
+  params: DocumentHighlightParams,
+) -> Result<Option<Vec<DocumentHighlight>>, AnyError> {
+  let specifier = ModuleSpecifier::from(
+    params.text_document_position_params.text_document.uri,
+  );
+  let file_cache = state.file_cache.read().unwrap();
+  let file_id = file_cache.lookup(&specifier).unwrap();
+  let file_text = file_cache.get_contents(file_id)?;
+  let line_index = text::index_lines(&file_text);
+  let server_state = state.snapshot();
+  let files_to_search = vec![specifier.clone()];
+  let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> =
+    serde_json::from_value(tsc::request(
+      &mut state.ts_runtime,
+      &server_state,
+      tsc::RequestMethod::GetDocumentHighlights((
+        specifier,
+        text::to_char_pos(
+          &line_index,
+          params.text_document_position_params.position,
+        ),
+        files_to_search,
+      )),
+    )?)?;
+
+  if let Some(document_highlights) = maybe_document_highlights {
+    Ok(Some(
+      document_highlights
+        .into_iter()
+        .map(|dh| dh.to_highlight(&line_index))
+        .flatten()
+        .collect(),
+    ))
+  } else {
+    Ok(None)
   }
 }
 

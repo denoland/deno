@@ -389,6 +389,9 @@ impl ServerState {
       s.shutdown_requested = true;
       Ok(())
     })?
+    .on_sync::<lsp_types::request::DocumentHighlightRequest>(
+      handlers::handle_document_highlight,
+    )?
     .on_sync::<lsp_types::request::HoverRequest>(handlers::handle_hover)?
     .on::<lsp_types::request::Formatting>(handlers::handle_formatting)
     .on::<lsp_extensions::VirtualTextDocument>(

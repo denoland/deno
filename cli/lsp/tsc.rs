@@ -293,6 +293,56 @@ impl QuickInfo {
   }
 }
 
+#[derive(Debug, Deserialize)]
+pub enum HighlightSpanKind {
+  #[serde(rename = "none")]
+  None,
+  #[serde(rename = "definition")]
+  Definition,
+  #[serde(rename = "reference")]
+  Reference,
+  #[serde(rename = "writtenReference")]
+  WrittenReference,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HighlightSpan {
+  file_name: Option<String>,
+  is_in_string: Option<bool>,
+  text_span: TextSpan,
+  context_span: Option<TextSpan>,
+  kind: HighlightSpanKind,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentHighlights {
+  file_name: String,
+  highlight_spans: Vec<HighlightSpan>,
+}
+
+impl DocumentHighlights {
+  pub fn to_highlight(
+    self,
+    line_index: &[u32],
+  ) -> Vec<lsp_types::DocumentHighlight> {
+    self
+      .highlight_spans
+      .into_iter()
+      .map(|hs| lsp_types::DocumentHighlight {
+        range: hs.text_span.to_range(line_index),
+        kind: match hs.kind {
+          HighlightSpanKind::WrittenReference => {
+            Some(lsp_types::DocumentHighlightKind::Write)
+          }
+          _ => Some(lsp_types::DocumentHighlightKind::Read),
+        },
+      })
+      .collect()
+  }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
   id: usize,
@@ -524,6 +574,8 @@ pub enum RequestMethod {
   GetSyntacticDiagnostics(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
+  /// Return document highlights at position.
+  GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
 }
 
 impl RequestMethod {
@@ -554,6 +606,17 @@ impl RequestMethod {
         "method": "getQuickInfo",
         "specifier": specifier,
         "position": position,
+      }),
+      RequestMethod::GetDocumentHighlights((
+        specifier,
+        position,
+        files_to_search,
+      )) => json!({
+        "id": id,
+        "method": "getDocumentHighlights",
+        "specifier": specifier,
+        "position": position,
+        "filesToSearch": files_to_search,
       }),
     }
   }

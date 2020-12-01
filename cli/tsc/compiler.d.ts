@@ -45,7 +45,8 @@ declare global {
     | GetSyntacticDiagnosticsRequest
     | GetSemanticDiagnosticsRequest
     | GetSuggestionDiagnosticsRequest
-    | GetQuickInfoRequest;
+    | GetQuickInfoRequest
+    | GetDocumentHighlights;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -77,5 +78,12 @@ declare global {
     method: "getQuickInfo";
     specifier: string;
     position: number;
+  }
+
+  interface GetDocumentHighlights extends BaseLanguageServerRequest {
+    method: "getDocumentHighlights";
+    specifier: string;
+    position: number;
+    filesToSearch: string[];
   }
 }
