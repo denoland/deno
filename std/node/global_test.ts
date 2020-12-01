@@ -63,9 +63,9 @@ Deno.test("setImmediate is correctly defined", () => {
 
 Deno.test("clearImmediate is correctly defined", () => {
   // deno-lint-ignore no-undef
-  assertStrictEquals(setImmediate, timers.setImmediate);
+  assertStrictEquals(clearImmediate, timers.clearImmediate);
   // deno-lint-ignore no-undef
-  assertStrictEquals(global.setImmediate, timers.setImmediate);
-  assertStrictEquals(globalThis.setImmediate, timers.setImmediate);
-  assertStrictEquals(window.setImmediate, timers.setImmediate);
+  assertStrictEquals(global.clearImmediate, timers.clearImmediate);
+  assertStrictEquals(globalThis.clearImmediate, timers.clearImmediate);
+  assertStrictEquals(window.clearImmediate, timers.clearImmediate);
 });
