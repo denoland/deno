@@ -168,16 +168,16 @@ impl Serialize for MediaType {
     S: Serializer,
   {
     let value = match self {
-      MediaType::JavaScript => 0 as i32,
-      MediaType::JSX => 1 as i32,
-      MediaType::TypeScript => 2 as i32,
-      MediaType::Dts => 3 as i32,
-      MediaType::TSX => 4 as i32,
-      MediaType::Json => 5 as i32,
-      MediaType::Wasm => 6 as i32,
-      MediaType::TsBuildInfo => 7 as i32,
-      MediaType::SourceMap => 8 as i32,
-      MediaType::Unknown => 9 as i32,
+      MediaType::JavaScript => 0_i32,
+      MediaType::JSX => 1_i32,
+      MediaType::TypeScript => 2_i32,
+      MediaType::Dts => 3_i32,
+      MediaType::TSX => 4_i32,
+      MediaType::Json => 5_i32,
+      MediaType::Wasm => 6_i32,
+      MediaType::TsBuildInfo => 7_i32,
+      MediaType::SourceMap => 8_i32,
+      MediaType::Unknown => 9_i32,
     };
     Serialize::serialize(&value, serializer)
   }

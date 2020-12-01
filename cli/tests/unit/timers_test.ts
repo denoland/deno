@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
-  createResolvable,
+  deferred,
   unitTest,
 } from "./test_util.ts";
 
@@ -12,7 +12,7 @@ function waitForMs(ms: number): Promise<number> {
 }
 
 unitTest(async function timeoutSuccess(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   let count = 0;
   setTimeout((): void => {
     count++;
@@ -24,7 +24,7 @@ unitTest(async function timeoutSuccess(): Promise<void> {
 });
 
 unitTest(async function timeoutArgs(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   const arg = 1;
   setTimeout(
     (a, b, c): void => {
@@ -79,7 +79,7 @@ unitTest(async function timeoutCancelMultiple(): Promise<void> {
 
 unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
   // Expect no panic
-  const promise = createResolvable();
+  const promise = deferred();
   let count = 0;
   const id = setTimeout((): void => {
     count++;
@@ -95,7 +95,7 @@ unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
 });
 
 unitTest(async function intervalSuccess(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   let count = 0;
   const id = setInterval((): void => {
     count++;
@@ -155,7 +155,7 @@ unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
 });
 
 unitTest(async function timeoutCallbackThis(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   const obj = {
     foo(): void {
       assertEquals(this, window);
@@ -182,7 +182,7 @@ unitTest(async function timeoutBindThis(): Promise<void> {
   ];
 
   for (const thisArg of thisCheckPassed) {
-    const resolvable = createResolvable();
+    const resolvable = deferred();
     let hasThrown = 0;
     try {
       setTimeout.call(thisArg, () => resolvable.resolve(), 1);
@@ -286,7 +286,7 @@ unitTest(async function timerMaxCpuBug(): Promise<void> {
 unitTest(async function timerBasicMicrotaskOrdering(): Promise<void> {
   let s = "";
   let count = 0;
-  const promise = createResolvable();
+  const promise = deferred();
   setTimeout(() => {
     Promise.resolve().then(() => {
       count++;
@@ -309,7 +309,7 @@ unitTest(async function timerBasicMicrotaskOrdering(): Promise<void> {
 
 unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
   let s = "";
-  const promise = createResolvable();
+  const promise = deferred();
   s += "0";
   setTimeout(() => {
     s += "4";
@@ -349,7 +349,7 @@ unitTest(function testQueueMicrotask() {
 
 unitTest(async function timerIgnoresDateOverride(): Promise<void> {
   const OriginalDate = Date;
-  const promise = createResolvable();
+  const promise = deferred();
   let hasThrown = 0;
   try {
     const overrideCalled: () => number = () => {

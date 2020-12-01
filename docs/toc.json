@@ -81,6 +81,7 @@
     "name": "Contributing",
     "children": {
       "building_from_source": "Building from source",
+      "release_schedule": "Release schedule",
       "development_tools": "Development tools",
       "style_guide": "Style guide",
       "architecture": "Architecture"

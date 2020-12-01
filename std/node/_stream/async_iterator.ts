@@ -1,8 +1,9 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 import type { Buffer } from "../buffer.ts";
-import finished from "./end-of-stream.ts";
+import finished from "./end_of_stream.ts";
 import Readable from "./readable.ts";
 import type Stream from "./stream.ts";
+import { destroyer } from "./destroy.ts";
 
 const kLastResolve = Symbol("lastResolve");
 const kLastReject = Symbol("lastReject");
@@ -32,24 +33,6 @@ function initIteratorSymbols(
     };
   }
   Object.defineProperties(o, properties);
-}
-
-// TODO(Soremwar)
-// Bring back once requests are implemented
-// function isRequest(stream: any) {
-//   return stream && stream.setHeader && typeof stream.abort === "function";
-// }
-
-//TODO(Soremwar)
-//Should be any implementation of stream
-// deno-lint-ignore no-explicit-any
-function destroyer(stream: any, err?: Error | null) {
-  // TODO(Soremwar)
-  // Bring back once requests are implemented
-  // if (isRequest(stream)) return stream.abort();
-  // if (isRequest(stream.req)) return stream.req.abort();
-  if (typeof stream.destroy === "function") return stream.destroy(err);
-  if (typeof stream.close === "function") return stream.close();
 }
 
 function createIterResult(
@@ -119,7 +102,7 @@ const AsyncIteratorPrototype = Object.getPrototypeOf(
   Object.getPrototypeOf(async function* () {}).prototype,
 );
 
-class ReadableStreamAsyncIterator
+export class ReadableStreamAsyncIterator
   implements AsyncIterableIterator<IterableItem> {
   [kEnded]: boolean;
   [kError]: Error | null = null;

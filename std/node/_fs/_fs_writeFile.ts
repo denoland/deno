@@ -1,12 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { notImplemented } from "../_utils.ts";
+import { Encodings, notImplemented } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
 import { Buffer } from "../buffer.ts";
-
 import {
   CallbackWithError,
   checkEncoding,
-  Encodings,
   getEncoding,
   getOpenOptions,
   isFileOptions,
