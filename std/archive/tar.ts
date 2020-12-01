@@ -316,7 +316,18 @@ export class Tar {
    *                 e.g., test.txt; use slash for directory separators
    * @param opts options
    */
-  async append(fn: string, opts: TarOptions): Promise<void> {
+  async append(fn: string, {
+    filePath,
+    reader,
+    fileMode,
+    mtime,
+    uid = 0,
+    gid = 0,
+    owner = "",
+    group = "",
+    contentSize,
+    type,
+  }: TarOptions = {}): Promise<void> {
     if (typeof fn !== "string") {
       throw new Error("file name not specified");
     }
@@ -347,42 +358,39 @@ export class Tar {
       }
     }
 
-    opts = opts || {};
-
     // set meta data
     let info: Deno.FileInfo | undefined;
-    if (opts.filePath) {
-      info = await Deno.stat(opts.filePath);
+    if (filePath) {
+      info = await Deno.stat(filePath);
       if (info.isDirectory) {
         info.size = 0;
-        opts.reader = new Deno.Buffer();
+        reader = new Deno.Buffer();
       }
     }
 
-    const mode = opts.fileMode || (info && info.mode) ||
-        parseInt("777", 8) & 0xfff,
-      mtime = Math.floor(
-        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000,
-      ),
-      uid = opts.uid || 0,
-      gid = opts.gid || 0;
-    if (typeof opts.owner === "string" && opts.owner.length >= 32) {
+    const mode = fileMode || (info && info.mode) ||
+      parseInt("777", 8) & 0xfff;
+    mtime = Math.floor(
+      mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000,
+    );
+    if (typeof owner === "string" && owner.length >= 32) {
       throw new Error(
         "ustar format does not allow owner name length >= 32 bytes",
       );
     }
-    if (typeof opts.group === "string" && opts.group.length >= 32) {
+    if (typeof group === "string" && group.length >= 32) {
       throw new Error(
         "ustar format does not allow group name length >= 32 bytes",
       );
     }
 
-    const fileSize = info?.size ?? opts.contentSize;
+    const fileSize = info?.size ?? contentSize;
     assert(fileSize != null, "fileSize must be set");
 
-    const type = opts.type
-      ? FileTypes[opts.type as keyof typeof FileTypes]
+    const fileType: number = type
+      ? FileTypes[type as keyof typeof FileTypes]
       : (info?.isDirectory ? FileTypes.directory : FileTypes.file);
+
     const tarData: TarDataWithSource = {
       fileName,
       fileNamePrefix,
@@ -392,12 +400,12 @@ export class Tar {
       fileSize: pad(fileSize, 11),
       mtime: pad(mtime, 11),
       checksum: "        ",
-      type: type.toString(),
+      type: fileType.toString(),
       ustar,
-      owner: opts.owner || "",
-      group: opts.group || "",
-      filePath: opts.filePath,
-      reader: opts.reader,
+      owner,
+      group,
+      filePath,
+      reader,
     };
 
     // calculate the checksum
