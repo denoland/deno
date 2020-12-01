@@ -370,7 +370,6 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true);
 
   let root = if matches.is_present("root") {
-    // TODO: v3 - bug, is None even though is present
     let install_root = matches.value_of("root").unwrap();
     Some(PathBuf::from(install_root))
   } else {
@@ -815,13 +814,13 @@ These must be added to the path manually if required.")
 }
 
 fn compile_subcommand<'a>() -> App<'a> {
-  compile_args(SubCommand::with_name("compile"))
+  compile_args(App::new("compile"))
     .arg(Arg::new("source_file").takes_value(true).required(true))
     .arg(
       Arg::new("output")
         .long("output")
-        .short("o")
-        .help("Output file (defaults to $PWD/<inferred-name>)")
+        .short('o')
+        .about("Output file (defaults to $PWD/<inferred-name>)")
         .takes_value(true)
     )
     .about("Compile the script into a self contained executable")
@@ -904,7 +903,7 @@ This command has implicit access to all permissions (--allow-all).",
     .arg(
       Arg::new("code_arg")
         .multiple(true)
-        .help("Code arg")
+        .about("Code arg")
         .value_name("CODE_ARG")
         .required(true),
     )
@@ -1009,7 +1008,7 @@ update to a different location, use the --output flag
     .arg(
       Arg::new("canary")
         .long("canary")
-        .help("Upgrade to canary builds"),
+        .about("Upgrade to canary builds"),
     )
     .arg(ca_file_arg())
 }
