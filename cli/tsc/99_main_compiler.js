@@ -298,17 +298,26 @@ delete Object.prototype.__proto__;
       debug(`host.resolveModuleNames()`);
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
-      /** @type {Array<[string, ts.Extension]>} */
+      /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = core.jsonOpSync("op_resolve", {
         specifiers,
         base,
       });
-      const r = resolved.map(([resolvedFileName, extension]) => ({
-        resolvedFileName,
-        extension,
-        isExternalLibraryImport: false,
-      }));
-      return r;
+      if (resolved) {
+        return resolved.map((item) => {
+          if (item) {
+            const [resolvedFileName, extension] = item;
+            return {
+              resolvedFileName,
+              extension,
+              isExternalLibraryImport: false,
+            };
+          }
+          return undefined;
+        });
+      } else {
+        return [];
+      }
     },
     createHash(data) {
       return core.jsonOpSync("op_create_hash", { data }).hash;

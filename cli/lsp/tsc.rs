@@ -479,22 +479,26 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
 
 fn resolve(_state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
-  let mut resolved = Vec::<(String, String)>::new();
+  let mut resolved = Vec::<Option<(String, String)>>::new();
   for specifier in &v.specifiers {
     if specifier.starts_with("asset:///") {
-      resolved.push((
+      resolved.push(Some((
         specifier.clone(),
         MediaType::from(specifier).as_ts_extension().to_string(),
-      ));
+      )));
     } else {
-      let resolved_specifier =
-        ModuleSpecifier::resolve_import(specifier, &v.base)?;
-      resolved.push((
-        resolved_specifier.to_string(),
-        MediaType::from(&resolved_specifier)
-          .as_ts_extension()
-          .to_string(),
-      ));
+      if let Ok(resolved_specifier) =
+        ModuleSpecifier::resolve_import(specifier, &v.base)
+      {
+        resolved.push(Some((
+          resolved_specifier.to_string(),
+          MediaType::from(&resolved_specifier)
+            .as_ts_extension()
+            .to_string(),
+        )));
+      } else {
+        resolved.push(None);
+      }
     }
   }
 
@@ -521,6 +525,7 @@ struct ScriptVersionArgs {
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
+  // println!("script_version: {}", specifier);
   let maybe_doc_data = state.server_state.doc_data.get(&specifier);
   if let Some(doc_data) = maybe_doc_data {
     if let Some(version) = doc_data.version {
@@ -832,6 +837,36 @@ mod tests {
       &mut runtime,
       &server_state,
       RequestMethod::GetSemanticDiagnostics(specifier),
+    );
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response, json!([]));
+  }
+
+  #[test]
+  fn test_bad_module_specifiers() {
+    let (mut runtime, server_state) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      vec![(
+        "file:///a.ts",
+        r#"
+        import { A } from ".";
+        "#,
+        1,
+      )],
+    );
+    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
+      .expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      &server_state,
+      RequestMethod::GetSyntacticDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
