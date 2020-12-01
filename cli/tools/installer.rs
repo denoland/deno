@@ -108,7 +108,7 @@ fn get_installer_root() -> Result<PathBuf, io::Error> {
   Ok(home_path)
 }
 
-fn infer_name_from_url(url: &Url) -> Option<String> {
+pub fn infer_name_from_url(url: &Url) -> Option<String> {
   let path = PathBuf::from(url.path());
   let mut stem = match path.file_stem() {
     Some(stem) => stem.to_string_lossy().to_string(),

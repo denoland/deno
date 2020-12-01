@@ -17,9 +17,11 @@ use deno_core::futures::future::FutureExt;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -45,6 +47,16 @@ impl MainWorker {
   ) -> Self {
     let module_loader =
       CliModuleLoader::new(program_state.maybe_import_map.clone());
+
+    Self::from_options(program_state, main_module, permissions, module_loader)
+  }
+
+  pub fn from_options(
+    program_state: &Arc<ProgramState>,
+    main_module: ModuleSpecifier,
+    permissions: Permissions,
+    module_loader: Rc<dyn ModuleLoader>,
+  ) -> Self {
     let global_state_ = program_state.clone();
 
     let js_error_create_fn = Box::new(move |core_js_error| {
