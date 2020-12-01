@@ -24,7 +24,7 @@ pub enum DenoSubcommand {
   },
   Compile {
     source_file: String,
-    out_file: Option<String>,
+    output: Option<PathBuf>,
   },
   Completions {
     buf: Box<[u8]>,
@@ -419,11 +419,11 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
-  let out_file = matches.value_of("out_file").map(|s| s.to_string());
+  let output = matches.value_of("output").map(PathBuf::from);
 
   flags.subcommand = DenoSubcommand::Compile {
     source_file,
-    out_file,
+    output,
   };
 }
 
@@ -828,13 +828,19 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .required(true),
     )
-    .arg(Arg::with_name("out_file").takes_value(true))
+    .arg(
+      Arg::with_name("output")
+        .long("output")
+        .short("o")
+        .help("Output file (defaults to $PWD/<inferred-name>)")
+        .takes_value(true)
+    )
     .about("Compile the script into a self contained executable")
     .long_about(
       "Compiles the given script into a self contained executable.
   deno compile --unstable https://deno.land/std/http/file_server.ts
-  deno compile --unstable https://deno.land/std/examples/colors.ts color_util
-  
+  deno compile --unstable --output color_util https://deno.land/std/examples/colors.ts
+
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
     become 'file_server'.
@@ -3258,7 +3264,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Compile {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
-          out_file: None
+          output: None
         },
         ..Flags::default()
       }
@@ -3268,13 +3274,13 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "compile", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "https://deno.land/std/examples/colors.ts", "colors"]);
+    let r = flags_from_vec_safe(svec!["deno", "compile", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--output", "colors", "https://deno.land/std/examples/colors.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
-          out_file: Some("colors".to_string())
+          output: Some(PathBuf::from("colors"))
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),

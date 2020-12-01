@@ -155,7 +155,7 @@ fn get_types(unstable: bool) -> String {
 async fn compile_command(
   flags: Flags,
   source_file: String,
-  out_file: Option<String>,
+  output: Option<PathBuf>,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
@@ -166,10 +166,11 @@ async fn compile_command(
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
 
-  let out_file =
-    out_file.or_else(|| infer_name_from_url(module_specifier.as_url()));
-  let out_file = match out_file {
-    Some(out_file) => out_file,
+  let output = output.or_else(|| {
+    infer_name_from_url(module_specifier.as_url()).map(PathBuf::from)
+  });
+  let output = match output {
+    Some(output) => output,
     None => return Err(generic_error(
       "An executable name was not provided. One could not be inferred from the URL. Aborting.",
     )),
@@ -194,10 +195,10 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str.as_bytes().to_vec(), out_file.clone())
+  create_standalone_binary(bundle_str.as_bytes().to_vec(), output.clone())
     .await?;
 
-  info!("{} {}", colors::green("Emit"), out_file);
+  info!("{} {}", colors::green("Emit"), output.display());
 
   Ok(())
 }
@@ -976,8 +977,8 @@ fn get_subcommand(
     }
     DenoSubcommand::Compile {
       source_file,
-      out_file,
-    } => compile_command(flags, source_file, out_file).boxed_local(),
+      output,
+    } => compile_command(flags, source_file, output).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

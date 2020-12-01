@@ -18,6 +18,7 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -128,7 +129,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
 /// and magic trailer to the currently executing binary.
 pub async fn create_standalone_binary(
   mut source_code: Vec<u8>,
-  out_file: String,
+  output: PathBuf,
 ) -> Result<(), AnyError> {
   let original_binary_path = std::env::current_exe()?;
   let mut original_bin = tokio::fs::read(original_binary_path).await?;
@@ -142,17 +143,18 @@ pub async fn create_standalone_binary(
   final_bin.append(&mut source_code);
   final_bin.append(&mut trailer);
 
-  let out_file = if cfg!(windows) && !out_file.ends_with(".exe") {
-    format!("{}.exe", out_file)
-  } else {
-    out_file
-  };
-  tokio::fs::write(&out_file, final_bin).await?;
+  let output =
+    if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
+      PathBuf::from(output.display().to_string() + ".exe")
+    } else {
+      output
+    };
+  tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o777);
-    tokio::fs::set_permissions(out_file, perms).await?;
+    tokio::fs::set_permissions(output, perms).await?;
   }
 
   Ok(())
