@@ -939,9 +939,7 @@
           // may be null
           init ??= {};
         }
-        case "function": {
-          break; // nop
-        }
+        case "function": // nop
       }
 
       let b;
@@ -1209,6 +1207,17 @@
     let clientRid = null;
     let redirected = false;
     let remRedirectCount = 20; // TODO: use a better way to handle
+
+
+    try {
+      const request = new Request(input, init);
+      url = request.url;
+      // TODO
+    } catch(e) {
+      if (e instanceof TypeError && e.message.includes("dictionary")) {
+        throw TypeError(`Failed to execute 'fetch' on '${import.meta.main ? "Window" : "WorkerGlobalScope"}': cannot convert to dictionary.`);
+      }
+    }
 
     if (typeof input === "string" || input instanceof URL) {
       url = typeof input === "string" ? input : input.href;
