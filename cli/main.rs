@@ -101,8 +101,8 @@ fn get_subcommand(
     }
     DenoSubcommand::Compile {
       source_file,
-      out_file,
-    } => compile_command(flags, source_file, out_file).boxed_local(),
+      output,
+    } => compile_command(flags, source_file, output).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,
