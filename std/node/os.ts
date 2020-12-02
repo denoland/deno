@@ -192,12 +192,12 @@ export function totalmem(): number {
 
 /** Returns operating system type (i.e. 'Windows_NT', 'Linux', 'Darwin') */
 export function type(): string {
-  let os_type: string = Deno.osType();
+  let osType: string = Deno.osType();
 
-  if (os_type == "Windows") {
+  if (osType == "Windows") {
      return "Windows_NT";
   } else {
-     return os_type;
+     return osType;
   }
 }
 
