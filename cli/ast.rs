@@ -42,6 +42,7 @@ use swc_ecmascript::parser::Syntax;
 use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::helpers;
+use swc_ecmascript::transforms::hygiene;
 use swc_ecmascript::transforms::pass::Optional;
 use swc_ecmascript::transforms::proposals;
 use swc_ecmascript::transforms::react;
@@ -305,6 +306,7 @@ impl ParsedModule {
       helpers::inject_helpers(),
       typescript::strip(),
       fixer(Some(&self.comments)),
+      hygiene(),
     );
 
     let program = swc_common::GLOBALS.set(&Globals::new(), || {
