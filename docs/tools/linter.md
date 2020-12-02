@@ -88,6 +88,8 @@ For more detail, run `deno lint --help`.
 - `use-isnan`
 - `valid-typeof`
 
+For more detail about each rule, visit [the deno_lint rule documentation](https://lint.deno.land).
+
 ### Ignore directives
 
 #### Files
