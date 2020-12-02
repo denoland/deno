@@ -24,6 +24,7 @@ For more detail, run `deno lint --help`.
 - `ban-ts-comment`
 - `ban-types`
 - `ban-untagged-ignore`
+- `camelcase`
 - `constructor-super`
 - `for-direction`
 - `getter-return`
@@ -80,9 +81,10 @@ For more detail, run `deno lint --help`.
 - `no-unused-labels`
 - `no-with`
 - `prefer-as-const`
+- `prefer-const`
 - `prefer-namespace-keyword`
+- `require-await`
 - `require-yield`
-- `triple-slash-reference`
 - `use-isnan`
 - `valid-typeof`
 
