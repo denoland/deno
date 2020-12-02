@@ -42,11 +42,11 @@ use swc_ecmascript::parser::Syntax;
 use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::helpers;
+use swc_ecmascript::transforms::hygiene;
 use swc_ecmascript::transforms::pass::Optional;
 use swc_ecmascript::transforms::proposals;
 use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
-use swc_ecmascript::transforms::hygiene;
 use swc_ecmascript::visit::FoldWith;
 
 static TARGET: JscTarget = JscTarget::Es2020;
