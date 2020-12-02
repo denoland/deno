@@ -117,6 +117,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     main_module.clone(),
     permissions,
     module_loader,
+    None,
   );
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;

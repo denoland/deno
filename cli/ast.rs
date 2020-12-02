@@ -244,6 +244,7 @@ pub struct ParsedModule {
   leading_comments: Vec<Comment>,
   module: Module,
   source_map: Rc<SourceMap>,
+  source_file: Rc<SourceFile>,
 }
 
 impl fmt::Debug for ParsedModule {
@@ -351,24 +352,12 @@ impl ParsedModule {
   }
 }
 
-/// For a given specifier, source, and media type, parse the source of the
-/// module and return a representation which can be further processed.
-///
-/// # Arguments
-///
-/// - `specifier` - The module specifier for the module.
-/// - `source` - The source code for the module.
-/// - `media_type` - The media type for the module.
-///
-// NOTE(bartlomieju): `specifier` has `&str` type instead of
-// `&ModuleSpecifier` because runtime compiler APIs don't
-// require valid module specifiers
-pub fn parse(
+fn parse_with_source_map(
   specifier: &str,
   source: &str,
   media_type: &MediaType,
+  source_map: Rc<SourceMap>,
 ) -> Result<ParsedModule, AnyError> {
-  let source_map = SourceMap::default();
   let source_file = source_map.new_source_file(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
@@ -405,9 +394,31 @@ pub fn parse(
   Ok(ParsedModule {
     leading_comments,
     module,
-    source_map: Rc::new(source_map),
+    source_map,
     comments,
+    source_file,
   })
+}
+
+/// For a given specifier, source, and media type, parse the source of the
+/// module and return a representation which can be further processed.
+///
+/// # Arguments
+///
+/// - `specifier` - The module specifier for the module.
+/// - `source` - The source code for the module.
+/// - `media_type` - The media type for the module.
+///
+// NOTE(bartlomieju): `specifier` has `&str` type instead of
+// `&ModuleSpecifier` because runtime compiler APIs don't
+// require valid module specifiers
+pub fn parse(
+  specifier: &str,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<ParsedModule, AnyError> {
+  let source_map = Rc::new(SourceMap::default());
+  parse_with_source_map(specifier, source, media_type, source_map)
 }
 
 pub enum TokenOrComment {
@@ -483,40 +494,12 @@ pub fn transpile_module(
   globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
-  // TODO(@kitsonk) DRY-up with ::parse()
-  let error_buffer = ErrorBuffer::default();
-  let handler = Handler::with_emitter_and_flags(
-    Box::new(error_buffer.clone()),
-    HandlerFlags {
-      can_emit_warnings: true,
-      dont_buffer_diagnostics: true,
-      ..HandlerFlags::default()
-    },
-  );
-  let comments = SingleThreadedComments::default();
-  let syntax = get_syntax(media_type);
-  let source_file =
-    cm.new_source_file(FileName::Custom(filename.to_string()), src.to_string());
-  let lexer = Lexer::new(
-    syntax,
-    TARGET,
-    StringInput::from(&*source_file),
-    Some(&comments),
-  );
-  let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-  let sm = cm.clone();
-  let module = parser.parse_module().map_err(move |err| {
-    let mut diagnostic = err.into_diagnostic(&handler);
-    diagnostic.emit();
+  let parsed_module =
+    parse_with_source_map(filename, src, media_type, cm.clone())?;
 
-    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
-      sm.lookup_char_pos(span.lo)
-    })
-  })?;
-  // TODO(@kitsonk) DRY-up with ::transpile()
   let jsx_pass = react::react(
     cm,
-    Some(&comments),
+    Some(&parsed_module.comments),
     react::Options {
       pragma: emit_options.jsx_factory.clone(),
       pragma_frag: emit_options.jsx_fragment_factory.clone(),
@@ -534,8 +517,12 @@ pub fn transpile_module(
     }),
     helpers::inject_helpers(),
     typescript::strip(),
-    fixer(Some(&comments)),
+    fixer(Some(&parsed_module.comments)),
   );
+
+  let source_file = parsed_module.source_file.clone();
+  let module = parsed_module.module;
+
   let module = swc_common::GLOBALS.set(globals, || {
     helpers::HELPERS.set(&helpers::Helpers::new(false), || {
       module.fold_with(&mut passes)
