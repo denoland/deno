@@ -9,7 +9,7 @@ import { readFile, readFileSync } from "./_fs/_fs_readFile.ts";
 import { readlink, readlinkSync } from "./_fs/_fs_readlink.ts";
 import { exists, existsSync } from "./_fs/_fs_exists.ts";
 import { mkdir, mkdirSync } from "./_fs/_fs_mkdir.ts";
-import { mkdtemp } from "./_fs/_fs_mkdtemp.ts";
+import { mkdtemp, mkdtempSync } from "./_fs/_fs_mkdtemp.ts";
 import { copyFile, copyFileSync } from "./_fs/_fs_copy.ts";
 import { writeFile, writeFileSync } from "./_fs/_fs_writeFile.ts";
 import { readdir, readdirSync } from "./_fs/_fs_readdir.ts";
@@ -45,6 +45,7 @@ export default {
   mkdir,
   mkdirSync,
   mkdtemp,
+  mkdtempSync,
   open,
   openSync,
   promises,
@@ -90,6 +91,7 @@ export {
   mkdir,
   mkdirSync,
   mkdtemp,
+  mkdtempSync,
   open,
   openSync,
   promises,

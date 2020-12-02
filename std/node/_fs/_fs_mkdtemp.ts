@@ -5,22 +5,32 @@ export type mkdtempCallback = (
   directory?: string,
 ) => void;
 
+export function mkdtemp(prefix: string, callback: mkdtempCallback): void;
+export function mkdtemp(
+  prefix: string,
+  options: { encoding: string } | string,
+  callback: mkdtempCallback,
+): void;
 // TODO - 'encoding' handling needs implementation in Deno.makeTempDir
 export function mkdtemp(
   prefix: string,
   optionsOrCallback: { encoding: string } | string | mkdtempCallback,
-  callback?: mkdtempCallback,
+  maybeCallback?: mkdtempCallback,
 ): void {
-  const callbackFn: mkdtempCallback | undefined =
-    optionsOrCallback instanceof Function ? optionsOrCallback : callback;
-  //const encoding: string | undefined =
-  //    optionsOrCallback instanceof Function ? undefined : optionsOrCallback?.encoding || optionsOrCallback;
+  const callback: mkdtempCallback | undefined =
+    optionsOrCallback instanceof Function ? optionsOrCallback : maybeCallback;
 
-  if (!callbackFn) {
-    throw new Error("No callback function supplied");
-  }
+  if (!callback) throw new Error("No callback function supplied");
 
   Deno.makeTempDir({ dir: prefix })
-    .then((directory) => callbackFn(undefined, directory))
-    .catch((error) => callbackFn(error));
+    .then((directory) => callback(undefined, directory))
+    .catch((error) => callback(error));
+}
+
+// TODO - 'encoding' handling needs implementation in Deno.makeTempDirSync
+export function mkdtempSync(
+  prefix: string,
+  options?: { encoding: string } | string,
+): string {
+  return Deno.makeTempDirSync({ dir: prefix });
 }
