@@ -8,9 +8,9 @@ function A() {
   ) {
     console.log("@A called");
     const fn = descriptor.value;
-    descriptor.value = function() {
+    descriptor.value = function () {
       console.log("fn() called from @A");
-      fn();  
+      fn();
     };
   };
 }
@@ -24,9 +24,9 @@ function B() {
   ) {
     console.log("@B called");
     const fn = descriptor.value;
-    descriptor.value = function() {
+    descriptor.value = function () {
       console.log("fn() called from @B");
-      fn();  
+      fn();
     };
   };
 }
