@@ -8,6 +8,7 @@ mod dispatch;
 mod handlers;
 mod lsp_extensions;
 mod memory_cache;
+mod sources;
 mod state;
 mod task_pool;
 mod text;
@@ -280,7 +281,14 @@ impl ServerState {
         .doc_data
         .insert(
           specifier.clone(),
-          DocumentData::new(params.text_document.version),
+          DocumentData::new(
+            params.text_document.version,
+            analysis::analyze_dependencies(
+              &specifier,
+              &params.text_document.text,
+              None,
+            ),
+          ),
         )
         .is_some()
       {
@@ -302,6 +310,15 @@ impl ServerState {
       apply_content_changes(&mut content, params.content_changes);
       let doc_data = state.doc_data.get_mut(&specifier).unwrap();
       doc_data.version = params.text_document.version.into();
+      // only overwrite dependencies if we actually return dependencies from the
+      // analysis, otherwise we can end up removing dependencies when we have a
+      // ast parse error
+      // TODO(@kitsonk) integrate the import map configuration
+      if let Some(dependencies) =
+        analysis::analyze_dependencies(&specifier, &content, None)
+      {
+        doc_data.dependencies = Some(dependencies);
+      }
       file_cache.set_contents(specifier, Some(content.into_bytes()));
 
       Ok(())

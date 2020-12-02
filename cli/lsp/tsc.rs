@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use super::analysis::ResolvedImport;
 use super::state::ServerStateSnapshot;
 use super::text;
 
@@ -82,7 +83,6 @@ fn get_tag_documentation(tag: &JSDocTagInfo) -> String {
         let part_regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
         let body: Vec<&str> = part_regex.split(&text).collect();
         if body.len() == 3 {
-          info!("body {:?}", body);
           let param = body[1];
           let doc = body[2];
           let label = format!("*@{}* `{}`", tag.name, param);
@@ -477,27 +477,44 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!(text::slice(content, v.start..v.end)))
 }
 
-fn resolve(_state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
-  for specifier in &v.specifiers {
-    if specifier.starts_with("asset:///") {
-      resolved.push(Some((
-        specifier.clone(),
-        MediaType::from(specifier).as_ts_extension().to_string(),
-      )));
-    } else {
-      if let Ok(resolved_specifier) =
-        ModuleSpecifier::resolve_import(specifier, &v.base)
-      {
-        resolved.push(Some((
-          resolved_specifier.to_string(),
-          MediaType::from(&resolved_specifier)
-            .as_ts_extension()
-            .to_string(),
-        )));
-      } else {
-        resolved.push(None);
+  let referrer = ModuleSpecifier::resolve_url(&v.base)?;
+  if let Some(doc_data) = state.server_state.doc_data.get(&referrer) {
+    if let Some(dependencies) = &doc_data.dependencies {
+      for specifier in &v.specifiers {
+        if specifier.starts_with("asset:///") {
+          resolved.push(Some((
+            specifier.clone(),
+            MediaType::from(specifier).as_ts_extension().to_string(),
+          )));
+        } else {
+          if let Some(dependency) = dependencies.get(specifier) {
+            let resolved_import =
+              if let Some(resolved_import) = &dependency.maybe_type {
+                resolved_import.clone()
+              } else if let Some(resolved_import) = &dependency.maybe_code {
+                resolved_import.clone()
+              } else {
+                ResolvedImport::Err("missing dependency".to_string())
+              };
+            if let ResolvedImport::Resolved(resolved_specifier) =
+              resolved_import
+            {
+              resolved.push(Some((
+                resolved_specifier.to_string(),
+                MediaType::from(&resolved_specifier)
+                  .as_ts_extension()
+                  .to_string(),
+              )));
+            } else {
+              resolved.push(None);
+            }
+          } else {
+            resolved.push(None);
+          }
+        }
       }
     }
   }
@@ -662,6 +679,7 @@ pub fn request(
 
 #[cfg(test)]
 mod tests {
+  use super::super::analysis;
   use super::super::memory_cache::MemoryCache;
   use super::super::state::DocumentData;
   use super::*;
@@ -678,6 +696,9 @@ mod tests {
         .expect("failed to create specifier");
       let data = DocumentData {
         version: Some(version),
+        dependencies: analysis::analyze_dependencies(
+          &specifier, &content, None,
+        ),
       };
       doc_data.insert(specifier.clone(), data);
       file_cache.set_contents(specifier, Some(content.as_bytes().to_vec()));
@@ -688,6 +709,7 @@ mod tests {
       diagnostics: Default::default(),
       doc_data,
       file_cache,
+      sources: Default::default(),
     }
   }
 

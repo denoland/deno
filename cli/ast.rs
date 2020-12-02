@@ -354,7 +354,7 @@ impl ParsedModule {
   }
 }
 
-fn parse_with_source_map(
+pub fn parse_with_source_map(
   specifier: &str,
   source: &str,
   media_type: &MediaType,

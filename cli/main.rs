@@ -28,7 +28,7 @@ mod info;
 mod inspector;
 mod js;
 mod lockfile;
-pub mod lsp;
+mod lsp;
 mod media_type;
 mod metrics;
 mod module_graph;

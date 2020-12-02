@@ -1,10 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use super::analysis::Dependency;
 use super::config::Config;
 use super::diagnostics::DiagnosticCollection;
 use super::diagnostics::DiagnosticSource;
 use super::diagnostics::DiagnosticVec;
 use super::memory_cache::MemoryCache;
+use super::sources::Sources;
 use super::task_pool::TaskPool;
 use super::tsc;
 use super::utils::notification_is;
@@ -100,12 +102,17 @@ pub enum Task {
 #[derive(Debug, Clone)]
 pub struct DocumentData {
   pub version: Option<i32>,
+  pub dependencies: Option<HashMap<String, Dependency>>,
 }
 
 impl DocumentData {
-  pub fn new(version: i32) -> Self {
+  pub fn new(
+    version: i32,
+    dependencies: Option<HashMap<String, Dependency>>,
+  ) -> Self {
     DocumentData {
       version: Some(version),
+      dependencies,
     }
   }
 }
@@ -117,6 +124,7 @@ pub struct ServerStateSnapshot {
   pub diagnostics: DiagnosticCollection,
   pub doc_data: HashMap<ModuleSpecifier, DocumentData>,
   pub file_cache: Arc<RwLock<MemoryCache>>,
+  pub sources: Arc<RwLock<Sources>>,
 }
 
 pub struct ServerState {
@@ -126,6 +134,7 @@ pub struct ServerState {
   pub file_cache: Arc<RwLock<MemoryCache>>,
   req_queue: ReqQueue,
   sender: Sender<Message>,
+  pub sources: Arc<RwLock<Sources>>,
   pub shutdown_requested: bool,
   pub status: Status,
   pub tasks: Handle<TaskPool<Task>, Receiver<Task>>,
@@ -149,6 +158,7 @@ impl ServerState {
       file_cache: Arc::new(RwLock::new(Default::default())),
       req_queue: Default::default(),
       sender,
+      sources: Arc::new(RwLock::new(Default::default())),
       shutdown_requested: false,
       status: Default::default(),
       tasks,
@@ -228,6 +238,7 @@ impl ServerState {
       diagnostics: self.diagnostics.clone(),
       doc_data: self.doc_data.clone(),
       file_cache: Arc::clone(&self.file_cache),
+      sources: Arc::clone(&self.sources),
     }
   }
 
