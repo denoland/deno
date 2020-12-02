@@ -89,7 +89,7 @@ fn get_tag_documentation(tag: &JSDocTagInfo) -> String {
           if doc.is_empty() {
             return label;
           }
-          if doc.contains("\n") {
+          if doc.contains('\n') {
             return format!("{}  \n{}", label, replace_links(doc));
           } else {
             return format!("{} - {}", label, replace_links(doc));
@@ -102,7 +102,7 @@ fn get_tag_documentation(tag: &JSDocTagInfo) -> String {
   let label = format!("*@{}*", tag.name);
   let maybe_text = get_tag_body_text(tag);
   if let Some(text) = maybe_text {
-    if text.contains("\n") {
+    if text.contains('\n') {
       format!("{}  \n{}", label, text)
     } else {
       format!("{} - {}", label, text)
@@ -228,7 +228,7 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
-  pub fn to_range(self, line_index: &[u32]) -> lsp_types::Range {
+  pub fn to_range(&self, line_index: &[u32]) -> lsp_types::Range {
     lsp_types::Range {
       start: text::to_position(line_index, self.start),
       end: text::to_position(line_index, self.start + self.length),
@@ -236,7 +236,7 @@ impl TextSpan {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolDisplayPart {
   text: String,
@@ -262,18 +262,22 @@ pub struct QuickInfo {
 }
 
 impl QuickInfo {
-  pub fn to_hover(self, line_index: &[u32]) -> lsp_types::Hover {
+  pub fn to_hover(&self, line_index: &[u32]) -> lsp_types::Hover {
     let mut contents = Vec::<lsp_types::MarkedString>::new();
-    if let Some(display_string) = display_parts_to_string(self.display_parts) {
+    if let Some(display_string) =
+      display_parts_to_string(self.display_parts.clone())
+    {
       contents.push(lsp_types::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
     }
-    if let Some(documentation) = display_parts_to_string(self.documentation) {
+    if let Some(documentation) =
+      display_parts_to_string(self.documentation.clone())
+    {
       contents.push(lsp_types::MarkedString::from_markdown(documentation));
     }
-    if let Some(tags) = self.tags {
+    if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
         .map(get_tag_documentation)
@@ -489,31 +493,28 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
             specifier.clone(),
             MediaType::from(specifier).as_ts_extension().to_string(),
           )));
-        } else {
-          if let Some(dependency) = dependencies.get(specifier) {
-            let resolved_import =
-              if let Some(resolved_import) = &dependency.maybe_type {
-                resolved_import.clone()
-              } else if let Some(resolved_import) = &dependency.maybe_code {
-                resolved_import.clone()
-              } else {
-                ResolvedImport::Err("missing dependency".to_string())
-              };
-            if let ResolvedImport::Resolved(resolved_specifier) =
-              resolved_import
-            {
-              resolved.push(Some((
-                resolved_specifier.to_string(),
-                MediaType::from(&resolved_specifier)
-                  .as_ts_extension()
-                  .to_string(),
-              )));
+        } else if let Some(dependency) = dependencies.get(specifier) {
+          let resolved_import =
+            if let Some(resolved_import) = &dependency.maybe_type {
+              resolved_import.clone()
+            } else if let Some(resolved_import) = &dependency.maybe_code {
+              resolved_import.clone()
             } else {
-              resolved.push(None);
-            }
+              ResolvedImport::Err("missing dependency".to_string())
+            };
+          if let ResolvedImport::Resolved(resolved_specifier) = resolved_import
+          {
+            resolved.push(Some((
+              resolved_specifier.to_string(),
+              MediaType::from(&resolved_specifier)
+                .as_ts_extension()
+                .to_string(),
+            )));
           } else {
             resolved.push(None);
           }
+        } else {
+          resolved.push(None);
         }
       }
     }
