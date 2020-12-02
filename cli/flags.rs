@@ -291,7 +291,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
 #[derive(Clap)]
 #[clap(
   name = "deno",
-  version = crate::version::DENO,
+  version = "1", // TODO: version
   long_version = LONG_VERSION.as_str(),
   max_term_width = 0,
   setting = AppSettings::UnifiedHelpMessage,
@@ -340,6 +340,30 @@ enum SubCommand {
   Upgrade(UpgradeSubcommand),
 }
 
+impl Default for SubCommand {
+  fn default() -> SubCommand {
+    SubCommand::Repl(ReplSubcommand {
+      runtime: RuntimeArgs {
+        inspect: None,
+        inspect_brk: None,
+        cached_only: false,
+        v8_flags: vec![],
+        seed: None,
+        compile: CompileArgs {
+          no_remote: false,
+          config: None,
+          no_check: false,
+          lock: None,
+          lock_write: false,
+          import_map: ImportMapArg { import_map: None },
+          reload: ReloadArg { reload: None },
+          ca_file: CAFileArg { cert: None },
+        },
+      },
+    })
+  }
+}
+
 /// Bundle module and dependencies into single file
 #[derive(Clap)]
 #[clap(long_about = "Output a single JavaScript file with all dependencies.
@@ -373,6 +397,30 @@ Future runs of this module will trigger no downloads or compilation unless
 struct CacheSubcommand {
   #[clap(min_values = 1)]
   file: Vec<String>,
+
+  #[clap(flatten)]
+  compile: CompileArgs,
+}
+
+/// Compiles the given script into a self contained executable.
+///
+///   deno compile --unstable https://deno.land/std/http/file_server.ts
+///   deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
+/// The executable name is inferred by default:
+///   - Attempt to take the file stem of the URL path. The above example would
+///     become 'file_server'.
+///   - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+///     and the path has no parent, take the file name of the parent path. Otherwise
+///     settle with the generic name.
+///   - If the resulting name has an '@...' suffix, strip it.
+/// Cross compiling binaries for different platforms is not currently possible.
+#[derive(Clap)]
+struct CompileSubcommand {
+  source_file: String,
+
+  /// Output file (defaults to $PWD/<inferred-name>)
+  #[clap(long, short, parse(from_os_str))]
+  output: Option<PathBuf>,
 
   #[clap(flatten)]
   compile: CompileArgs,
@@ -436,7 +484,7 @@ struct DocSubcommand {
   source_file: Option<String>,
 
   /// Dot separated path to symbol
-  #[clap(conflicts_with = "json")] // TODO: conflicts_with
+  #[clap(conflicts_with = "json")]
   filter: Option<String>,
 
   #[clap(flatten)]
@@ -466,7 +514,7 @@ struct EvalSubcommand {
 
   /// Code arg
   #[clap(multiple = true, value_name = "CODE_ARG")] // TODO: multiple
-  code_arg: String,
+  code_arg: Vec<String>,
 
   #[clap(flatten)]
   runtime: RuntimeArgs,
@@ -545,10 +593,27 @@ struct InfoSubcommand {
   import_map: ImportMapArg,
 
   #[clap(flatten)]
-  cert: CertArg,
+  ca_file: CAFileArg,
 
-  #[clap(flatten)]
-  reload: ReloadArg, // TODO requires "file"
+  // TODO: duplicate arg
+  /// Reload source code cache (recompile TypeScript)
+  ///
+  /// --reload
+  ///   Reload everything
+  /// --reload=https://deno.land/std
+  ///   Reload only standard modules
+  /// --reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
+  ///   Reloads specific modules
+  #[clap(
+    long,
+    short,
+    min_values = 0,
+    use_delimiter = true,
+    require_equals = true,
+    value_name = "CACHE_BLOCKLIST",
+    requires = "file"
+  )]
+  reload: Option<Vec<String>>,
 }
 
 /// Install script as an executable
@@ -581,7 +646,7 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required."
 )]
 struct InstallSubcommand {
-  #[clap(allow_hyphen_values = true)] // TODO: multiple
+  #[clap(allow_hyphen_values = true)]
   cmd: Vec<String>,
 
   /// Executable file name
@@ -589,7 +654,7 @@ struct InstallSubcommand {
   name: Option<String>,
 
   /// Installation root
-  #[clap(long, parse(from_os_str), multiple = false)] // TODO: multiple
+  #[clap(long, parse(from_os_str), multiple = false)]
   root: Option<PathBuf>,
 
   /// Forcefully overwrite existing installation
@@ -640,17 +705,17 @@ struct LintSubcommand {
     long,
     use_delimiter = true,
     require_equals = true,
-    parse(from_os_str)
+    parse(from_os_str),
+    requires = "unstable"
   )]
-  // TODO: requires unstable
-  ignore: Option<Vec<PathBuf>>,
+  ignore: Vec<PathBuf>, // TODO: can be empty
 
   /// Output lint result in JSON format
   #[clap(long)]
   json: bool,
 
   #[clap(parse(from_os_str), multiple = true)] // TODO: multiple
-  files: Option<Vec<PathBuf>>,
+  files: Vec<PathBuf>, // TODO: can be empty
 }
 
 /// Read Eval Print Loop
@@ -683,17 +748,35 @@ Deno allows specifying the filename '-' to read the file from stdin.
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -"
 )]
 struct RunSubcommand {
+  // TODO: duplicate arg
+  // NOTE: these defaults are provided
+  // so `deno run --v8-flags=--help` works
+  // without specifying file to run.
+  /// Script arg
+  #[clap(value_name = "SCRIPT_ARG", default_value_ifs = &[
+  ("v8-flags", Some("--help"), "_"),
+  ("v8-flags", Some("-help"), "_"),
+  ])]
+  script_arg: Vec<String>, // TODO: required
+
   #[clap(flatten)]
   runtime: RuntimeArgs,
 
   #[clap(flatten)]
   permissions: PermissionArgs,
 
-  #[clap(flatten)] // TODO: conflicts_with inspect
-  watch: WatchArg,
+  // TODO: duplicate arg
+  /// Watch for file changes and restart process automatically
+  #[clap(
+    long,
+    requires = "unstable",
+    conflicts_with = "inspect",
+    conflicts_with = "inspect-brk",
+    long_about = "Watch for file changes and restart process automatically.
+Only local files from entry point module graph are watched."
+  )]
+  watch: bool,
 
-  #[clap(flatten)] // TODO required
-  script: ScriptArg,
 }
 
 /// Run tests
@@ -712,8 +795,8 @@ Directory arguments are expanded to all contained files matching the glob
 )]
 struct TestSubcommand {
   /// Cache test modules, but don't run tests
-  #[clap(long)]
-  no_run: bool, // TODO: requires unstable
+  #[clap(long, requires = "unstable")]
+  no_run: bool,
 
   /// Stop on first error
   #[clap(long, alias = "failfast")]
@@ -728,20 +811,28 @@ struct TestSubcommand {
   filter: Option<String>,
 
   /// Collect coverage information
-  #[clap(long)]
-  coverage: bool, // TODO: requires unstable, conflicts_with("inspect"), conflicts_with("inspect-brk")
+  #[clap(long, requires = "unstable", conflicts_with = "inspect", conflicts_with = "inspect")]
+  coverage: bool,
 
   /// List of file names to run
   files: Vec<String>, // TODO: multiple
+
+  // TODO: duplicate arg
+  // NOTE: these defaults are provided
+  // so `deno run --v8-flags=--help` works
+  // without specifying file to run.
+  /// Script arg
+  #[clap(value_name = "SCRIPT_ARG", last = true, default_value_ifs = &[
+  ("v8-flags", Some("--help"), "_"),
+  ("v8-flags", Some("-help"), "_"),
+  ])]
+  script_arg: Vec<String>,
 
   #[clap(flatten)]
   runtime: RuntimeArgs,
 
   #[clap(flatten)]
   permissions: PermissionArgs,
-
-  #[clap(flatten)] // TODO last = true
-  script: ScriptArg,
 }
 
 /// Print runtime TypeScript declarations.
@@ -786,18 +877,19 @@ struct UpgradeSubcommand {
   canary: bool,
 
   #[clap(flatten)]
-  cert: CertArg,
+  ca_file: CAFileArg,
 }
 
 #[derive(Clap)]
-struct CompileArgs { // TODO: rename
+struct CompileArgs {
+  // TODO: rename
   /// Do not resolve remote modules
   #[clap(long)]
   no_remote: bool,
 
   /// Load tsconfig.json configuration file
   #[clap(long, short, value_name = "FILE")]
-  config: Option<String>, // TODO: could be PathBuf
+  config: Option<String>,
 
   /// Skip type checking modules
   #[clap(long)]
@@ -808,7 +900,7 @@ struct CompileArgs { // TODO: rename
   lock: Option<PathBuf>,
 
   /// Write lock file (use with --lock)
-  #[clap(long)] // TODO: requires lock
+  #[clap(long, requires = "lock")]
   lock_write: bool,
 
   #[clap(flatten)]
@@ -818,7 +910,7 @@ struct CompileArgs { // TODO: rename
   reload: ReloadArg,
 
   #[clap(flatten)]
-  cert: CertArg,
+  ca_file: CAFileArg,
 }
 
 #[derive(Clap)]
@@ -828,13 +920,14 @@ struct ImportMapArg {
     long,
     alias = "importmap",
     value_name = "FILE",
+    requires = "unstable",
     long_about = "UNSTABLE:
 Load import map file
 Docs: https://deno.land/manual/linking_to_external_code/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map"
   )]
-  import_map: Option<String>, // TODO: requires unstable, could be PathBuf
+  import_map: Option<String>,
 }
 
 #[derive(Clap)]
@@ -855,14 +948,14 @@ struct ReloadArg {
     require_equals = true,
     value_name = "CACHE_BLOCKLIST"
   )]
-  reload: Option<Vec<String>>, // TODO: requires unstable
+  reload: Option<Vec<String>>,
 }
 
-#[derive(Clap)]
-struct CertArg {
+#[derive(Clap, Clone)]
+struct CAFileArg {
   /// Load certificate authority from PEM encoded file
   #[clap(long, value_name = "FILE")]
-  cert: Option<String>, // TODO: could be PathBuf
+  cert: Option<String>,
 }
 
 #[derive(Clap)]
@@ -877,7 +970,6 @@ struct PermissionArgs {
 
   /// Allow network access
   #[clap(long, min_values = 0, use_delimiter = true, require_equals = true, validator = crate::flags_allow_net::validator)]
-  // TODO: validator crate::flags_allow_net::validator
   allow_net: Option<Vec<String>>,
 
   /// Allow environment access
@@ -911,7 +1003,7 @@ struct RuntimeArgs {
     // TODO max_values = 1,
     require_equals = true,
     validator = inspect_arg_validate,
-  )] // TODO: validator inspect_arg_validate, parse to SocketAddr
+  )] // TODO: parse to SocketAddr, set default
   inspect: Option<Option<String>>,
 
   /// activate inspector on host:port and break at start of user script
@@ -921,8 +1013,8 @@ struct RuntimeArgs {
     // TODO min_values = 0,
     // TODO max_values = 1,
     require_equals = true,
-    validator = inspect_arg_validate
-  )] // TODO: validator inspect_arg_validate, parse to SocketAddr
+    validator = inspect_arg_validate,
+  )] // TODO: parse to SocketAddr
   inspect_brk: Option<Option<String>>,
 
   /// Require that remote dependencies are already cached
@@ -931,7 +1023,7 @@ struct RuntimeArgs {
 
   /// Set V8 command line options (for help: --v8-flags=--help)
   #[clap(long, use_delimiter = true, require_equals = true)]
-  v8_flags: Option<Vec<String>>,
+  v8_flags: Vec<String>, // TODO: can be empty
 
   /// Seed Math.random()
   #[clap(long, value_name = "NUMBER", validator = |val: &str| match val.parse::<u64>() {
@@ -947,27 +1039,13 @@ struct RuntimeArgs {
 #[derive(Clap)]
 struct WatchArg {
   /// Watch for file changes and restart process automatically
-  // TODO: v3 - conflicting arg must be on subcommand
   #[clap(
     long,
+    requires = "unstable",
     long_about = "Watch for file changes and restart process automatically.
 Only local files from entry point module graph are watched."
   )]
-  // TODO: requires unstable, conflicts_with inspect, conflicts_with inspect-brk
   watch: bool,
-}
-
-#[derive(Clap)]
-struct ScriptArg {
-  // NOTE: these defaults are provided
-  // so `deno run --v8-flags=--help` works
-  // without specifying file to run.
-  /// Script arg
-  #[clap(value_name = "SCRIPT_ARG", default_value_ifs = &[
-    ("v8-flags", Some("--help"), "_"),
-    ("v8-flags", Some("-help"), "_"),
-  ])]
-  script_arg: Vec<String>,
 }
 
 fn bundle_parse(flags: &mut Flags, matches: BundleSubcommand) {
@@ -991,6 +1069,15 @@ fn cache_parse(flags: &mut Flags, matches: CacheSubcommand) {
   flags.subcommand = DenoSubcommand::Cache {
     files: matches.file,
   };
+}
+
+fn compile_parse(flags: &mut Flags, matches: CompileSubcommand) {
+  compile_args_parse(flags, matches.compile);
+
+  flags.subcommand = DenoSubcommand::Compile {
+    source_file: matches.source_file,
+    output: matches.output,
+  }
 }
 
 fn completions_parse(
@@ -1020,7 +1107,7 @@ fn completions_parse(
 
 fn doc_parse(flags: &mut Flags, matches: DocSubcommand) {
   import_map_arg_parse(flags, matches.import_map);
-  reload_arg_parse(flags, matches.reload);
+  reload_arg_parse(flags, matches.reload.reload);
 
   flags.subcommand = DenoSubcommand::Doc {
     source_file: matches.source_file,
@@ -1041,9 +1128,16 @@ fn eval_parse(flags: &mut Flags, matches: EvalSubcommand) {
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
 
+  let mut code = matches.code_arg;
+  let code_args = code.split_off(1);
+  let code = code[0].clone();
+  for v in code_args {
+    flags.argv.push(v);
+  }
+
   flags.subcommand = DenoSubcommand::Eval {
     print: matches.print,
-    code: matches.code,
+    code,
     as_typescript: matches.ts,
   }
 }
@@ -1061,7 +1155,7 @@ fn fmt_parse(flags: &mut Flags, matches: FmtSubcommand) {
 fn info_parse(flags: &mut Flags, matches: InfoSubcommand) {
   reload_arg_parse(flags, matches.reload);
   import_map_arg_parse(flags, matches.import_map);
-  cert_arg_parse(flags, matches.cert);
+  ca_file_arg_parse(flags, matches.ca_file);
 
   flags.subcommand = DenoSubcommand::Info {
     file: matches.file,
@@ -1111,19 +1205,17 @@ fn run_parse(flags: &mut Flags, matches: RunSubcommand) {
   runtime_args_parse(flags, matches.runtime);
   permission_args_parse(flags, matches.permissions);
 
-  flags.watch = matches.watch.watch;
+  flags.watch = matches.watch;
 
-  let script = matches.script.script_arg;
-  assert!(!script.is_empty()); // TODO
+  let mut script = matches.script_arg;
+  assert!(!script.is_empty());
   let script_args = script.split_off(1);
   let script = script[0].to_string();
   for v in script_args {
     flags.argv.push(v);
   }
 
-  flags.subcommand = DenoSubcommand::Run {
-    script: script_args[0].clone(),
-  };
+  flags.subcommand = DenoSubcommand::Run { script };
 }
 
 fn test_parse(flags: &mut Flags, matches: TestSubcommand, quiet: bool) {
@@ -1132,8 +1224,8 @@ fn test_parse(flags: &mut Flags, matches: TestSubcommand, quiet: bool) {
 
   flags.coverage = matches.coverage;
 
-  if !matches.script.script_arg.is_empty() {
-    flags.argv.extend_from_slice(&*matches.script.script_arg);
+  if !matches.script_arg.is_empty() {
+    flags.argv.extend_from_slice(&*matches.script_arg);
   }
 
   let include = if matches.files.is_empty() {
@@ -1157,21 +1249,22 @@ fn types_parse(flags: &mut Flags, _matches: TypesSubcommand) {
 }
 
 fn upgrade_parse(flags: &mut Flags, matches: UpgradeSubcommand) {
-  //cert_arg_parse(flags, matches.cert); TODO
+  ca_file_arg_parse(flags, matches.ca_file.clone());
 
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run: matches.dry_run,
     force: matches.force,
+    canary: matches.canary,
     version: matches.version,
     output: matches.output,
-    ca_file: matches.cert.cert, // TODO
+    ca_file: matches.ca_file.cert,
   };
 }
 
 fn compile_args_parse(flags: &mut Flags, matches: CompileArgs) {
   import_map_arg_parse(flags, matches.import_map);
-  reload_arg_parse(flags, matches.reload);
-  cert_arg_parse(flags, matches.cert);
+  reload_arg_parse(flags, matches.reload.reload);
+  ca_file_arg_parse(flags, matches.ca_file);
 
   flags.no_remote = matches.no_remote;
   flags.config_path = matches.config;
@@ -1259,12 +1352,12 @@ fn import_map_arg_parse(flags: &mut Flags, matches: ImportMapArg) {
   flags.import_map_path = matches.import_map;
 }
 
-fn cert_arg_parse(flags: &mut Flags, matches: CertArg) {
+fn ca_file_arg_parse(flags: &mut Flags, matches: CAFileArg) {
   flags.ca_file = matches.cert;
 }
 
-fn reload_arg_parse(flags: &mut Flags, matches: ReloadArg) {
-  if let Some(cache_bl) = matches.reload {
+fn reload_arg_parse(flags: &mut Flags, reload: Option<Vec<String>>) {
+  if let Some(cache_bl) = reload {
     if cache_bl.is_empty() {
       flags.reload = true;
     } else {
