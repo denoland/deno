@@ -2927,6 +2927,11 @@ itest!(no_check_decorators {
   output: "no_check_decorators.ts.out",
 });
 
+itest!(add_hygiene {
+  args: "run --quiet --reload --no-check add_hygiene.ts",
+  output: "add_hygiene.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
