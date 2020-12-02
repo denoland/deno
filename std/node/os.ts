@@ -195,9 +195,9 @@ export function type(): string {
   let osType: string = Deno.osType();
 
   if (osType == "Windows") {
-     return "Windows_NT";
+    return "Windows_NT";
   } else {
-     return osType;
+    return osType;
   }
 }
 
