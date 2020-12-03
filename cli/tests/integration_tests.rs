@@ -4675,3 +4675,55 @@ fn standalone_no_module_load() {
   assert!(util::strip_ansi_codes(&stderr_str)
     .contains("Self-contained binaries don't support module loading"));
 }
+
+#[test]
+fn detached_process() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--allow-run")
+    .arg("--allow-read")
+    .arg("--allow-write")
+    .arg("cli/tests/detached_process_spawner.ts")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(!output.stdout.is_empty());
+
+  let pid = std::str::from_utf8(&output.stdout).unwrap().trim();
+
+  #[cfg(unix)]
+  fn check_running(pid: &str, running: bool) {
+    util::run_collect(
+      &["kill", "-0", pid],
+      None,
+      None,
+      Some(&util::root_path().into_os_string().into_string().unwrap()),
+      running,
+    );
+  }
+
+  #[cfg(windows)]
+  fn check_running(pid: &str, running: bool) {
+    util::run_collect(
+      &["tasklist", "/fi", &format!("pid eq {}", pid)],
+      None,
+      None,
+      Some(&util::root_path().into_os_string().into_string().unwrap()),
+      running,
+    );
+  }
+
+  check_running(pid, true);
+
+  std::thread::sleep(std::time::Duration::from_secs(5));
+  check_running(pid, true);
+
+  // should be dead after 10 secs
+  std::thread::sleep(std::time::Duration::from_secs(15));
+  check_running(pid, false);
+}

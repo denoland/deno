@@ -52,6 +52,7 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
 struct RunArgs {
   cmd: Vec<String>,
   cwd: Option<String>,
+  detached: bool,
   env: Vec<(String, String)>,
   stdin: String,
   stdout: String,
@@ -76,6 +77,7 @@ fn op_run(
   let args = run_args.cmd;
   let env = run_args.env;
   let cwd = run_args.cwd;
+  let detached = run_args.detached;
 
   let mut c = Command::new(args.get(0).unwrap());
   (1..args.len()).for_each(|i| {
@@ -109,8 +111,29 @@ fn op_run(
     c.stderr(file);
   }
 
-  // We want to kill child when it's closed
-  c.kill_on_drop(true);
+  #[cfg(windows)]
+  {
+    if detached {
+      // Detach process on windows
+      c.creation_flags(
+        winapi::um::winbase::CREATE_NEW_PROCESS_GROUP
+          | winapi::um::winbase::DETACHED_PROCESS,
+      );
+    }
+  }
+
+  #[cfg(unix)]
+  unsafe {
+    if detached {
+      // Detach process on *nix
+      c.pre_exec(|| {
+        libc::setsid();
+        Ok(())
+      });
+    }
+  }
+
+  c.kill_on_drop(!detached);
 
   // Spawn the command.
   let mut child = c.spawn()?;

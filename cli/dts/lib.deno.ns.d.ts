@@ -1939,17 +1939,33 @@ declare namespace Deno {
       signal?: number;
     };
 
-  export interface RunOptions {
+  export type RunOptions = 
+    | RunOptionsAttached
+    | RunOptionsDetached;
+
+  interface RunOptionsCommon {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
     cmd: string[] | [URL, ...string[]];
     cwd?: string;
+    detached?: boolean;
     env?: {
       [key: string]: string;
     };
+  }
+
+  interface RunOptionsAttached extends RunOptionsCommon {
+    detached?: false,
     stdout?: "inherit" | "piped" | "null" | number;
     stderr?: "inherit" | "piped" | "null" | number;
     stdin?: "inherit" | "piped" | "null" | number;
+  }
+
+  interface RunOptionsDetached extends RunOptionsCommon {
+    detached?: true,
+    stdout?: "inherit" | "null" | number;
+    stderr?: "inherit" | "null" | number;
+    stdin?: "inherit" | "null" | number;
   }
 
   /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
@@ -1967,6 +1983,10 @@ declare namespace Deno {
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
    *
+   * Set `opt.detached` to true to run the child process in detached mode.
+   * This is equivalent to setting `DETACHED_PROCESS` flag in windows
+   * and calling `setsid()` before exec in unix
+   * 
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
    * they can be set to either an rid of open file or set to "inherit" "piped"
