@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { DateTimeFormatter } from "./formatter.ts";
+import { DateFormatter } from "./_format.ts";
 
 export const SECOND = 1e3;
 export const MINUTE = SECOND * 60;
@@ -26,7 +26,7 @@ enum Day {
  * @return Parsed date
  */
 export function parse(dateString: string, formatString: string): Date {
-  const formatter = new DateTimeFormatter(formatString);
+  const formatter = new DateFormatter(formatString);
   const parts = formatter.parseToParts(dateString);
   return formatter.partsToDate(parts);
 }
@@ -38,7 +38,7 @@ export function parse(dateString: string, formatString: string): Date {
  * @return formatted date string
  */
 export function format(date: Date, formatString: string): string {
-  const formatter = new DateTimeFormatter(formatString);
+  const formatter = new DateFormatter(formatString);
   return formatter.format(date);
 }
 
@@ -159,7 +159,7 @@ export type DifferenceOptions = {
  * example :
  *
  * ```typescript
- * datetime.difference(new Date("2020/1/1"),new Date("2020/2/2"),{ units : ["days","months"] })
+ * date.difference(new Date("2020/1/1"),new Date("2020/2/2"),{ units : ["days","months"] })
  * ```
  */
 export function difference(

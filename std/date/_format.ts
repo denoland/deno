@@ -6,14 +6,14 @@ import {
   TestFunction,
   TestResult,
   Tokenizer,
-} from "./tokenizer.ts";
+} from "./_tokenize.ts";
 
 function digits(value: string | number, count = 2): string {
   return String(value).padStart(count, "0");
 }
 
 // as declared as in namespace Intl
-type DateTimeFormatPartTypes =
+type DateFormatPartType =
   | "day"
   | "dayPeriod"
   // | "era"
@@ -27,8 +27,8 @@ type DateTimeFormatPartTypes =
   | "year"
   | "fractionalSecond";
 
-interface DateTimeFormatPart {
-  type: DateTimeFormatPartTypes;
+interface DateFormatPart {
+  type: DateFormatPartType;
   value: string;
 }
 
@@ -161,13 +161,13 @@ const defaultRules = [
 ];
 
 type FormatPart = {
-  type: DateTimeFormatPartTypes;
+  type: DateFormatPartType;
   value: string | number;
   hour12?: boolean;
 };
 type Format = FormatPart[];
 
-export class DateTimeFormatter {
+export class DateFormatter {
   #format: Format;
 
   constructor(formatString: string, rules: Rule[] = defaultRules) {
@@ -332,8 +332,8 @@ export class DateTimeFormatter {
     return string;
   }
 
-  parseToParts(string: string): DateTimeFormatPart[] {
-    const parts: DateTimeFormatPart[] = [];
+  parseToParts(string: string): DateFormatPart[] {
+    const parts: DateFormatPart[] = [];
 
     for (const token of this.#format) {
       const type = token.type;
@@ -504,14 +504,14 @@ export class DateTimeFormatter {
 
     if (string.length) {
       throw Error(
-        `datetime string was not fully parsed! ${string.slice(0, 25)}`,
+        `date string was not fully parsed! ${string.slice(0, 25)}`,
       );
     }
 
     return parts;
   }
 
-  partsToDate(parts: DateTimeFormatPart[]): Date {
+  partsToDate(parts: DateFormatPart[]): Date {
     const date = new Date();
     const utc = parts.find(
       (part) => part.type === "timeZoneName" && part.value === "UTC",
@@ -538,7 +538,7 @@ export class DateTimeFormatter {
         case "hour": {
           let value = Number(part.value);
           const dayPeriod = parts.find(
-            (part: DateTimeFormatPart) => part.type === "dayPeriod",
+            (part: DateFormatPart) => part.type === "dayPeriod",
           );
           if (dayPeriod?.value === "PM") value += 12;
           utc ? date.setUTCHours(value) : date.setHours(value);

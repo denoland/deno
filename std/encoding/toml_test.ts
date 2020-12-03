@@ -174,10 +174,10 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[TOML] Datetime",
+  name: "[TOML] Date",
   fn(): void {
     const expected = {
-      datetime: {
+      date: {
         odt1: new Date("1979-05-27T07:32:00Z"),
         odt2: new Date("1979-05-27T00:32:00-07:00"),
         odt3: new Date("1979-05-27T00:32:00.999999-07:00"),
@@ -187,7 +187,7 @@ Deno.test({
         lt2: "00:32:00.999999",
       },
     };
-    const actual = parseFile(path.join(testdataDir, "datetime.toml"));
+    const actual = parseFile(path.join(testdataDir, "date.toml"));
     assertEquals(actual, expected);
   },
 });

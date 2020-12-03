@@ -2,7 +2,7 @@
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
 import { assert } from "../_util/assert.ts";
-import { toIMF } from "../datetime/mod.ts";
+import { toIMF } from "../date/mod.ts";
 
 export type Cookies = Record<string, string>;
 

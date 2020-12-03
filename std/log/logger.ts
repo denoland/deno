@@ -16,7 +16,7 @@ export interface LogRecordOptions {
 export class LogRecord {
   readonly msg: string;
   #args: unknown[];
-  #datetime: Date;
+  #date: Date;
   readonly level: number;
   readonly levelName: string;
   readonly loggerName: string;
@@ -26,14 +26,14 @@ export class LogRecord {
     this.#args = [...options.args];
     this.level = options.level;
     this.loggerName = options.loggerName;
-    this.#datetime = new Date();
+    this.#date = new Date();
     this.levelName = getLevelName(options.level);
   }
   get args(): unknown[] {
     return [...this.#args];
   }
-  get datetime(): Date {
-    return new Date(this.#datetime.getTime());
+  get date(): Date {
+    return new Date(this.#date.getTime());
   }
 }
 

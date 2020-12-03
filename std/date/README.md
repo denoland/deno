@@ -1,4 +1,4 @@
-# datetime
+# date
 
 Simple helper to help parse date strings into `Date`, with additional functions.
 
@@ -39,7 +39,7 @@ are supported:
 Takes an input `string` and a `formatString` to parse to a `date`.
 
 ```ts
-import { parse } from 'https://deno.land/std@0.69.0/datetime/mod.ts'
+import { parse } from 'https://deno.land/std@$STD_VERSION/date/mod.ts'
 
 parse("20-01-2019", "dd-MM-yyyy") // output : new Date(2019, 0, 20)
 parse("2019-01-20", "yyyy-MM-dd") // output : new Date(2019, 0, 20)
@@ -56,7 +56,7 @@ parse("01-20-2019 16:34:23.123", "MM-dd-yyyy HH:mm:ss.SSS") // output : new Date
 Takes an input `date` and a `formatString` to format to a `string`.
 
 ```ts
-import { format } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { format } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 format(new Date(2019, 0, 20), "dd-MM-yyyy"); // output : "20-01-2019"
 format(new Date(2019, 0, 20), "yyyy-MM-dd"); // output : "2019-01-20"
@@ -73,7 +73,7 @@ format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd"); // output : "today: 2019-0
 Returns the number of the day in the year.
 
 ```ts
-import { dayOfYear } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { dayOfYear } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
 ```
@@ -83,7 +83,7 @@ dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
 Returns the ISO week number of the provided date (1-53).
 
 ```ts
-import { weekOfYear } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { weekOfYear } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 weekOfYear(new Date("2020-12-28T03:24:00")); // Returns 53
 ```
@@ -94,7 +94,7 @@ Formats the given date to IMF date time format. (Reference:
 https://tools.ietf.org/html/rfc7231#section-7.1.1.1 )
 
 ```js
-import { toIMF } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { toIMF } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 toIMF(new Date(0)); // => returns "Thu, 01 Jan 1970 00:00:00 GMT"
 ```
@@ -105,7 +105,7 @@ Returns true if the given date or year (in number) is a leap year. Returns false
 otherwise.
 
 ```js
-import { isLeap } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { isLeap } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 isLeap(new Date("1970-01-01")); // => returns false
 isLeap(new Date("1972-01-01")); // => returns true
@@ -123,7 +123,7 @@ Available units: "milliseconds", "seconds", "minutes", "hours", "days", "weeks",
 "months", "quarters", "years"
 
 ```js
-import { difference } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { difference } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 const date0 = new Date("2018-05-14");
 const date1 = new Date("2020-05-13");
@@ -150,7 +150,7 @@ difference(date0, date1);
 ### SECOND
 
 ```
-import { SECOND } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { SECOND } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 console.log(SECOND); // => 1000
 ```
@@ -158,7 +158,7 @@ console.log(SECOND); // => 1000
 ### MINUTE
 
 ```
-import { MINUTE } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { MINUTE } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 console.log(MINUTE); // => 60000 (60 * 1000)
 ```
@@ -166,7 +166,7 @@ console.log(MINUTE); // => 60000 (60 * 1000)
 ### HOUR
 
 ```
-import { HOUR } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { HOUR } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 console.log(HOUR); // => 3600000 (60 * 60 * 1000)
 ```
@@ -174,7 +174,7 @@ console.log(HOUR); // => 3600000 (60 * 60 * 1000)
 ### DAY
 
 ```
-import { DAY } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { DAY } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 console.log(DAY); // => 86400000 (24 * 60 * 60 * 1000)
 ```
@@ -182,7 +182,7 @@ console.log(DAY); // => 86400000 (24 * 60 * 60 * 1000)
 ### WEEK
 
 ```
-import { WEEK } from "https://deno.land/std@$STD_VERSION/datetime/mod.ts";
+import { WEEK } from "https://deno.land/std@$STD_VERSION/date/mod.ts";
 
 console.log(WEEK); // => 604800000 (7 * 24 * 60 * 60 * 1000)
 ```

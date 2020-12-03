@@ -76,7 +76,7 @@ well some meta data that can be later used when formatting a message.
 class LogRecord {
   readonly msg: string;
   readonly args: any[];
-  readonly datetime: Date;
+  readonly date: Date;
   readonly level: number;
   readonly levelName: string;
   readonly loggerName: string;
