@@ -15,11 +15,14 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::url::Url;
+use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -45,6 +48,7 @@ impl MainWorker {
   ) -> Self {
     let module_loader =
       CliModuleLoader::new(program_state.maybe_import_map.clone());
+
     let global_state_ = program_state.clone();
 
     let js_error_create_fn = Box::new(move |core_js_error| {
@@ -53,10 +57,30 @@ impl MainWorker {
       PrettyJsError::create(source_mapped_error)
     });
 
+    Self::from_options(
+      program_state,
+      main_module,
+      permissions,
+      module_loader,
+      Some(js_error_create_fn),
+    )
+  }
+
+  pub fn from_options(
+    program_state: &Arc<ProgramState>,
+    main_module: ModuleSpecifier,
+    permissions: Permissions,
+    module_loader: Rc<dyn ModuleLoader>,
+    js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+  ) -> Self {
+    // TODO(bartlomieju): this is hacky way to not apply source
+    // maps in JS
+    let apply_source_maps = js_error_create_fn.is_some();
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn: Some(js_error_create_fn),
+      js_error_create_fn,
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       ..Default::default()
     });
@@ -93,7 +117,7 @@ impl MainWorker {
         op_state.put::<Permissions>(permissions);
       }
 
-      ops::runtime::init(js_runtime, main_module);
+      ops::runtime::init(js_runtime, main_module, apply_source_maps);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime, None);
