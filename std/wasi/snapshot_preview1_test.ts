@@ -180,3 +180,45 @@ Deno.test("context_start", function () {
     "export _start must be a function",
   );
 });
+
+Deno.test("context_initialize", function () {
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.start({
+        exports: {
+          _initialize() {},
+        },
+      });
+    },
+    TypeError,
+    "must provide a memory export",
+  );
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.start({
+        exports: {
+          _start() {},
+          memory: new WebAssembly.Memory({ initial: 1 }),
+        },
+      });
+    },
+    TypeError,
+    "export _start must not be a function",
+  );
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.start({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+        },
+      });
+    },
+    TypeError,
+    "export _initialize must be a function",
+  );
+});

@@ -1588,4 +1588,31 @@ export default class Context {
 
     _start();
   }
+
+  /**
+   *
+   */
+  initialize(start: WebAssembly.Instance) {
+    const { _start, _initialize, memory } = instance.exports;
+
+    if (!(memory instanceof WebAssembly.Memory)) {
+      throw new TypeError("WebAsembly.instance must provide a memory export");
+    }
+
+    this.memory = memory;
+
+    if (typeof _start == "function") {
+      throw new TypeError(
+        "WebAssembly.Instance export _start must not be a function",
+      );
+    }
+
+    if (typeof _initialize != "function") {
+      throw new TypeError(
+        "WebAsembly.instance export _initialize must be a function",
+      );
+    }
+
+    _initialize();
+  }
 }
