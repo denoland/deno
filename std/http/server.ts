@@ -2,7 +2,7 @@
 import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../_util/assert.ts";
-import { Deferred, deferred, MuxAsyncIterator } from "../async/mod.ts";
+import { Deferred, MuxAsyncIterator } from "../async/mod.ts";
 import {
   bodyReader,
   chunkedBodyReader,
@@ -21,7 +21,7 @@ export class ServerRequest {
   conn!: Deno.Conn;
   r!: BufReader;
   w!: BufWriter;
-  done: Deferred<Error | undefined> = deferred();
+  done: Deferred<Error | undefined> = new Deferred();
 
   private _contentLength: number | undefined | null = undefined;
   /**
