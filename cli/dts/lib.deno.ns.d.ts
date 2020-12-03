@@ -1939,7 +1939,7 @@ declare namespace Deno {
       signal?: number;
     };
 
-  export type RunOptions = 
+  export type RunOptions =
     | RunOptionsAttached
     | RunOptionsDetached;
 
@@ -1955,14 +1955,14 @@ declare namespace Deno {
   }
 
   interface RunOptionsAttached extends RunOptionsCommon {
-    detached?: false,
+    detached?: false;
     stdout?: "inherit" | "piped" | "null" | number;
     stderr?: "inherit" | "piped" | "null" | number;
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
   interface RunOptionsDetached extends RunOptionsCommon {
-    detached?: true,
+    detached?: true;
     stdout?: "inherit" | "null" | number;
     stderr?: "inherit" | "null" | number;
     stdin?: "inherit" | "null" | number;
