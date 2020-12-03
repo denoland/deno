@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import Context from "./snapshot_preview1.ts";
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import Context, { ExitStatus } from "./snapshot_preview1.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 
@@ -179,4 +179,22 @@ Deno.test("context_start", function () {
     TypeError,
     "export _start must be a function",
   );
+
+  try {
+    const context = new Context({
+      exitOnReturn: false,
+    });
+    context.start({
+      exports: {
+        _start() {
+          const exit = context.exports["proc_exit"] as CallableFunction;
+          exit(0);
+        },
+        memory: new WebAssembly.Memory({ initial: 1 }),
+      },
+    });
+  } catch (err) {
+    assert(err instanceof ExitStatus);
+    assertEquals(err.code, 0);
+  }
 });

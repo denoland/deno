@@ -207,6 +207,10 @@ function syscall<T extends CallableFunction>(target: T) {
     try {
       return target(...args);
     } catch (err) {
+      if (err instanceof ExitStatus) {
+        throw err;
+      }
+
       switch (err.name) {
         case "NotFound":
           return ERRNO_NOENT;
@@ -266,15 +270,25 @@ interface FileDescriptor {
   entries?: Deno.DirEntry[];
 }
 
+export class ExitStatus {
+  code: number;
+
+  constructor(code: number) {
+    this.code = code;
+  }
+}
+
 export interface ContextOptions {
   args?: string[];
   env?: { [key: string]: string | undefined };
   preopens?: { [key: string]: string };
+  exitOnReturn?: boolean;
 }
 
 export default class Context {
   args: string[];
   env: { [key: string]: string | undefined };
+  exitOnReturn: boolean;
   memory: WebAssembly.Memory;
 
   fds: FileDescriptor[];
@@ -284,6 +298,7 @@ export default class Context {
   constructor(options: ContextOptions) {
     this.args = options.args ? options.args : [];
     this.env = options.env ? options.env : {};
+    this.exitOnReturn = options.exitOnReturn ?? true;
     this.memory = null!;
 
     this.fds = [
@@ -1497,7 +1512,11 @@ export default class Context {
       "proc_exit": syscall((
         rval: number,
       ): never => {
-        Deno.exit(rval);
+        if (this.exitOnReturn) {
+          Deno.exit(rval);
+        }
+
+        throw new ExitStatus(rval);
       }),
 
       "proc_raise": syscall((
