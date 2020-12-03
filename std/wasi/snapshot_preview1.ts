@@ -1588,4 +1588,37 @@ export default class Context {
 
     _start();
   }
+
+  /**
+   * Attempt to initialize instance as a reactor by invoking its _initialize() export.
+   *
+   * If instance contains a _start() export, then an exception is thrown.
+   *
+   * The instance must also have a WebAssembly.Memory export named "memory"
+   * which will be used as the address space, if it does not an error will be
+   * thrown.
+   */
+  initialize(instance: WebAssembly.Instance) {
+    const { _start, _initialize, memory } = instance.exports;
+
+    if (!(memory instanceof WebAssembly.Memory)) {
+      throw new TypeError("WebAsembly.instance must provide a memory export");
+    }
+
+    this.memory = memory;
+
+    if (typeof _start == "function") {
+      throw new TypeError(
+        "WebAssembly.Instance export _start must not be a function",
+      );
+    }
+
+    if (typeof _initialize != "function") {
+      throw new TypeError(
+        "WebAsembly.instance export _initialize must be a function",
+      );
+    }
+
+    _initialize();
+  }
 }
