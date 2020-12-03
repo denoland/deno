@@ -185,7 +185,7 @@ Deno.test("context_initialize", function () {
   assertThrows(
     () => {
       const context = new Context({});
-      context.start({
+      context.initialize({
         exports: {
           _initialize() {},
         },
@@ -198,7 +198,7 @@ Deno.test("context_initialize", function () {
   assertThrows(
     () => {
       const context = new Context({});
-      context.start({
+      context.initialize({
         exports: {
           _start() {},
           memory: new WebAssembly.Memory({ initial: 1 }),
@@ -212,7 +212,7 @@ Deno.test("context_initialize", function () {
   assertThrows(
     () => {
       const context = new Context({});
-      context.start({
+      context.initialize({
         exports: {
           memory: new WebAssembly.Memory({ initial: 1 }),
         },
