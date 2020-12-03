@@ -1598,7 +1598,7 @@ export default class Context {
    * which will be used as the address space, if it does not an error will be
    * thrown.
    */
-  initialize(start: WebAssembly.Instance) {
+  initialize(instance: WebAssembly.Instance) {
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {
