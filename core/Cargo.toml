@@ -24,6 +24,7 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
 smallvec = "1.4.2"
 url = { version = "2.1.1", features = ["serde"] }
+pin-project = "1.0.2"
 
 [[example]]
 name = "http_bench_bin_ops"

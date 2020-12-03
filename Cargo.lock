@@ -496,6 +496,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
+ "pin-project 1.0.2",
  "rusty_v8",
  "serde",
  "serde_json",

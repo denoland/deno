@@ -24,6 +24,8 @@ pub trait Resource: Any + 'static {
   fn name(&self) -> Cow<str> {
     type_name::<Self>().into()
   }
+
+  fn close(&mut self) {}
 }
 
 impl dyn Resource {
