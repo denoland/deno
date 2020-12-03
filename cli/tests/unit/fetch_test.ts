@@ -694,8 +694,8 @@ unitTest(
     assertEquals(response.status, 404);
     assertEquals(response.url, "http://localhost:4545/%C2%AE");
     await response.text();
-  }
-)
+  },
+);
 
 unitTest(
   {

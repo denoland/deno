@@ -290,15 +290,15 @@ pub async fn run_all_servers() {
     *res.status_mut() = StatusCode::FOUND;
     Box::new(res)
   });
-  let non_ascii_redirect = warp::path("non_ascii_redirect").map(|| -> Box<dyn Reply> {
-    let mut res = Response::new(Body::empty());
-    *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
-    res.headers_mut().insert(
-      "location",
-      HeaderValue::from_bytes(b"/\xc2\xae").unwrap(),
-    );
-    Box::new(res)
-  });
+  let non_ascii_redirect =
+    warp::path("non_ascii_redirect").map(|| -> Box<dyn Reply> {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
+      res
+        .headers_mut()
+        .insert("location", HeaderValue::from_bytes(b"/\xc2\xae").unwrap());
+      Box::new(res)
+    });
 
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
