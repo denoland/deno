@@ -15,6 +15,52 @@ import {
 export const sep = "/";
 export const delimiter = ":";
 
+// path.resolve([from ...], to)
+/**
+ * Resolves `pathSegments` into an absolute path.
+ * @param pathSegments an array of path segments
+ */
+export function resolve(...pathSegments: string[]): string {
+  let resolvedPath = "";
+  let resolvedAbsolute = false;
+
+  for (let i = pathSegments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+    let path: string;
+
+    if (resolvedAbsolute) break;
+    //if a path is resolved, ignore the rest of the arguments
+    else if (i >= 0) path = pathSegments[i];
+    else {
+      //If we reach i = -1 without resolving to an absolute path,
+      //we have a relative path.
+      throw new TypeError("Resolved a relative path without a CWD.");
+    }
+
+    assertPath(path);
+
+    // Skip empty entries
+    if (path.length === 0) {
+      continue;
+    }
+
+    resolvedPath = `${path}/${resolvedPath}`;
+    resolvedAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  }
+
+  // At this point the path should be resolved to a full absolute path
+  // Normalize the path
+  resolvedPath = normalizeString(
+    resolvedPath,
+    false,
+    "/",
+    isPosixPathSeparator,
+  );
+
+  //normalize string would remove the leading /
+  //It's required to place the / before returning
+  return `/${resolvedPath}`;
+}
+
 /**
  * Normalize the `path`, resolving `'..'` and `'.'` segments.
  * @param path to be normalized
