@@ -6,7 +6,7 @@ import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
 import { Sha1 } from "../hash/sha1.ts";
 import { writeResponse } from "../http/_io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { Deferred, deferred } from "../async/deferred.ts";
+import { Deferred } from "../async/deferred.ts";
 import { assert } from "../_util/assert.ts";
 import { concat } from "../bytes/mod.ts";
 
@@ -298,7 +298,7 @@ class WebSocketImpl implements WebSocket {
     if (this._isClosed) {
       throw new Deno.errors.ConnectionReset("Socket has already been closed");
     }
-    const d = deferred<void>();
+    const d = new Deferred<void>();
     this.sendQueue.push({ d, frame });
     if (this.sendQueue.length === 1) {
       this.dequeue();

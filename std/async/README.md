@@ -11,9 +11,9 @@ The following functions and class are exposed in `mod.ts`:
 Create a Promise with the `reject` and `resolve` functions.
 
 ```typescript
-import { deferred } from "https://deno.land/std/async/mod.ts";
+import { Deferred } from "https://deno.land/std/async/mod.ts";
 
-const p = deferred<number>();
+const p = new Deferred<number>();
 // ...
 p.resolve(42);
 ```

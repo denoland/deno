@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { Deferred, deferred } from "./deferred.ts";
+import { Deferred } from "./deferred.ts";
 
 interface TaggedYieldedValue<T> {
   iterator: AsyncIterableIterator<T>;
@@ -16,7 +16,7 @@ export class MuxAsyncIterator<T> implements AsyncIterable<T> {
   private yields: Array<TaggedYieldedValue<T>> = [];
   // deno-lint-ignore no-explicit-any
   private throws: any[] = [];
-  private signal: Deferred<void> = deferred();
+  private signal: Deferred<void> = new Deferred<void>();
 
   add(iterator: AsyncIterableIterator<T>): void {
     ++this.iteratorCount;
@@ -59,7 +59,7 @@ export class MuxAsyncIterator<T> implements AsyncIterable<T> {
       }
       // Clear the `yields` list and reset the `signal` promise.
       this.yields.length = 0;
-      this.signal = deferred();
+      this.signal = new Deferred();
     }
   }
 
