@@ -152,10 +152,6 @@ impl ServerState {
   fn handle_event(&mut self, event: Event) -> Result<(), AnyError> {
     let received = Instant::now();
     debug!("handle_event({:?})", event);
-    let tasks_len = self.tasks.handle.len();
-    if tasks_len > 0 {
-      debug!("  tasks length: {}", tasks_len);
-    }
 
     match event {
       Event::Message(message) => match message {

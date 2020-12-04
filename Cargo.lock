@@ -500,7 +500,6 @@ dependencies = [
  "tempfile",
  "termcolor",
  "test_util",
- "threadpool",
  "tokio 0.2.22",
  "tokio-rustls",
  "tokio-tungstenite",
@@ -2900,15 +2899,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d40c6d1b69745a6ec6fb1ca717914848da4b44ae29d9b3080cbee91d72a69b14"
 dependencies = [
  "lazy_static",
-]
-
-[[package]]
-name = "threadpool"
-version = "1.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d050e60b33d41c19108b32cea32164033a9013fe3b46cbd4457559bfbf77afaa"
-dependencies = [
- "num_cpus",
 ]
 
 [[package]]

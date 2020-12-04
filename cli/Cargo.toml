@@ -75,7 +75,6 @@ swc_ecmascript = { version = "0.14.4", features = ["codegen", "dep_graph", "pars
 sys-info = "0.7.0"
 tempfile = "3.1.0"
 termcolor = "1.1.0"
-threadpool = "1.8.1"
 tokio = { version = "0.2.22", features = ["full"] }
 tokio-rustls = "0.14.1"
 # Keep in-sync with warp.
