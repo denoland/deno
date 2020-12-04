@@ -6,14 +6,14 @@ bytes module is made to provide helpers to manipulation of bytes slice.
 
 All the following functions are exposed in `mod.ts`.
 
-## findIndex
+## indexOf
 
 Find first index of binary pattern from given binary array.
 
 ```typescript
-import { findIndex } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+import { indexOf } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
-findIndex(
+indexOf(
   new Uint8Array([1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 3]),
   new Uint8Array([0, 1, 2]),
 );
@@ -21,14 +21,14 @@ findIndex(
 // => returns 2
 ```
 
-## findLastIndex
+## lastIndexOf
 
 Find last index of binary pattern from given binary array.
 
 ```typescript
-import { findLastIndex } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+import { lastIndexOf } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
-findLastIndex(
+lastIndexOf(
   new Uint8Array([0, 1, 2, 0, 1, 2, 0, 1, 3]),
   new Uint8Array([0, 1, 2]),
 );
@@ -36,37 +36,37 @@ findLastIndex(
 // => returns 3
 ```
 
-## equal
+## equals
 
 Check whether given binary arrays are equal to each other.
 
 ```typescript
-import { equal } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+import { equals } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
-equal(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 3])); // returns true
-equal(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 4])); // returns false
+equals(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 3])); // returns true
+equals(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 4])); // returns false
 ```
 
-## hasPrefix
+## startsWith
 
 Check whether binary array has binary prefix.
 
 ```typescript
-import { hasPrefix } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+import { startsWith } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
-hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1])); // returns true
-hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns false
+startsWith(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1])); // returns true
+startsWith(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns false
 ```
 
-## hasSuffix
+## endsWith
 
 Check whether binary array ends with suffix.
 
 ```typescript
-import { hasSuffix } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+import { endsWith } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
-hasSuffix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1])); // returns false
-hasSuffix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns true
+endsWith(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1])); // returns false
+endsWith(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2])); // returns true
 ```
 
 ## repeat
@@ -81,12 +81,19 @@ repeat(new Uint8Array([1]), 3); // returns Uint8Array(3) [ 1, 1, 1 ]
 
 ## concat
 
-Concatenate two binary arrays and return new one.
+Concatenate multiple binary arrays and return new one.
 
 ```typescript
 import { concat } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 concat(new Uint8Array([1, 2]), new Uint8Array([3, 4])); // returns Uint8Array(4) [ 1, 2, 3, 4 ]
+
+concat(
+    new Uint8Array([1, 2]), 
+    new Uint8Array([3, 4]), 
+    new Uint8Array([5, 6]),
+    new Uint8Array([7, 8])
+); // => returns Uint8Array(6) [ 1, 2, 3, 4, 5, 6, 7, 8]
 ```
 
 ## contains
@@ -107,14 +114,14 @@ contains(
 ); // => returns false
 ```
 
-## copyBytes
+## copy
 
 Copy bytes from one binary array to another.
 
 ```typescript
-import { copyBytes } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
+import { copy } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
 const dst = new Uint8Array(4);
 const src = Uint8Array.of(1, 2, 3, 4);
-const len = copyBytes(src, dest); // returns len = 4
+const len = copy(src, dest); // returns len = 4
 ```
