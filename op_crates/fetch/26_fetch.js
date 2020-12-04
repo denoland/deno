@@ -926,7 +926,7 @@
 
   class Request extends Body {
     constructor(input, init) {
-      requiredArguments("Request", arguments.length, 1); // may need a specialization of requiredArguments for constructors
+      requiredArguments("Request", arguments.length, 1); // is there a specialization of `requiredArguments` for constructors?
 
       switch (typeof init) {
         default: {
@@ -937,6 +937,7 @@
         case "object": {
           // may be null
           init ??= {};
+          break;
         }
         case "function": // nop
       }
