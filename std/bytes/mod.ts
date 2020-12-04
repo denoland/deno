@@ -126,7 +126,7 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
  */
 export function concat(a: Uint8Array, ...buf: Uint8Array[]): Uint8Array {
   let totalLength = a.length;
-  for (let b of buf) {
+  for (const b of buf) {
     totalLength += b.length;
   }
 
@@ -134,7 +134,7 @@ export function concat(a: Uint8Array, ...buf: Uint8Array[]): Uint8Array {
   output.set(a, 0);
 
   let lastIndex = a.length;
-  for (let b of buf) {
+  for (const b of buf) {
     output.set(b, lastIndex);
     lastIndex += b.length;
   }
