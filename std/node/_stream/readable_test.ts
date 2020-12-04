@@ -2,7 +2,7 @@
 import { Buffer } from "../buffer.ts";
 import Readable from "../_stream/readable.ts";
 import { once } from "../events.ts";
-import { deferred } from "../../async/mod.ts";
+import { Deferred } from "../../async/mod.ts";
 import {
   assert,
   assertEquals,
@@ -166,11 +166,11 @@ Deno.test("Readable stream sets encoding correctly", () => {
 Deno.test("Readable stream holds up a big push", async () => {
   let readExecuted = 0;
   const readExecutedExpected = 3;
-  const readExpectedExecutions = deferred();
+  const readExpectedExecutions = new Deferred<void>();
 
   let endExecuted = 0;
   const endExecutedExpected = 1;
-  const endExpectedExecutions = deferred();
+  const endExpectedExecutions = new Deferred<void>();
 
   const str = "asdfasdfasdfasdfasdf";
 
@@ -319,7 +319,7 @@ Deno.test("Readable stream: 'data' event on non-object", async () => {
 Deno.test("Readable stream: 'readable' event is emitted but 'read' is not on highWaterMark length exceeded", async () => {
   let readableExecuted = 0;
   const readableExecutedExpected = 1;
-  const readableExpectedExecutions = deferred();
+  const readableExpectedExecutions = new Deferred<void>();
 
   const r = new Readable({
     highWaterMark: 3,
@@ -352,11 +352,11 @@ Deno.test("Readable stream: 'readable' event is emitted but 'read' is not on hig
 Deno.test("Readable stream: 'readable' and 'read' events are emitted on highWaterMark length not reached", async () => {
   let readableExecuted = 0;
   const readableExecutedExpected = 1;
-  const readableExpectedExecutions = deferred();
+  const readableExpectedExecutions = new Deferred<void>();
 
   let readExecuted = 0;
   const readExecutedExpected = 1;
-  const readExpectedExecutions = deferred();
+  const readExpectedExecutions = new Deferred<void>();
 
   const r = new Readable({
     highWaterMark: 3,
@@ -400,7 +400,7 @@ Deno.test("Readable stream: 'readable' and 'read' events are emitted on highWate
 Deno.test("Readable stream: 'readable' event is emitted but 'read' is not on highWaterMark length not reached and stream ended", async () => {
   let readableExecuted = 0;
   const readableExecutedExpected = 1;
-  const readableExpectedExecutions = deferred();
+  const readableExpectedExecutions = new Deferred<void>();
 
   const r = new Readable({
     highWaterMark: 30,
@@ -437,7 +437,7 @@ Deno.test("Readable stream: 'readable' event is emitted but 'read' is not on hig
 Deno.test("Readable stream: 'read' is emitted on empty string pushed in non-object mode", async () => {
   let endExecuted = 0;
   const endExecutedExpected = 1;
-  const endExpectedExecutions = deferred();
+  const endExpectedExecutions = new Deferred<void>();
 
   const underlyingData = ["", "x", "y", "", "z"];
   const expected = underlyingData.filter((data) => data);

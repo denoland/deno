@@ -2,13 +2,13 @@
 import Readable from "./readable.ts";
 import Stream from "./stream.ts";
 import toReadableAsyncIterator from "./async_iterator.ts";
-import { deferred } from "../../async/mod.ts";
+import { Deferred } from "../../async/mod.ts";
 import { assertEquals, assertThrowsAsync } from "../../testing/asserts.ts";
 
 Deno.test("Stream to async iterator", async () => {
   let destroyExecuted = 0;
   const destroyExecutedExpected = 1;
-  const destroyExpectedExecutions = deferred();
+  const destroyExpectedExecutions = new Deferred<void>();
 
   class AsyncIteratorStream extends Stream {
     constructor() {
@@ -52,11 +52,11 @@ Deno.test("Stream to async iterator", async () => {
 Deno.test("Stream to async iterator throws on 'error' emitted", async () => {
   let closeExecuted = 0;
   const closeExecutedExpected = 1;
-  const closeExpectedExecutions = deferred();
+  const closeExpectedExecutions = new Deferred<void>();
 
   let errorExecuted = 0;
   const errorExecutedExpected = 1;
-  const errorExpectedExecutions = deferred();
+  const errorExpectedExecutions = new Deferred<void>();
 
   class StreamImplementation extends Stream {
     close() {
@@ -207,7 +207,7 @@ Deno.test("Async iterator: 'next' is triggered by Readable push", async () => {
 Deno.test("Async iterator: 'close' called on forced iteration end", async () => {
   let closeExecuted = 0;
   const closeExecutedExpected = 1;
-  const closeExpectedExecutions = deferred();
+  const closeExpectedExecutions = new Deferred<void>();
 
   class IndestructibleReadable extends Readable {
     constructor() {

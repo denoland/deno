@@ -3,14 +3,14 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  deferred,
+  Deferred,
   unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { hrtime: false } }, async function performanceNow(): Promise<
   void
 > {
-  const resolvable = deferred();
+  const resolvable = new Deferred<void>();
   const start = performance.now();
   setTimeout((): void => {
     const end = performance.now();

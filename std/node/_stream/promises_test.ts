@@ -3,7 +3,7 @@ import { Buffer } from "../buffer.ts";
 import Readable from "./readable.ts";
 import Writable from "./writable.ts";
 import { pipeline } from "./promises.ts";
-import { deferred } from "../../async/mod.ts";
+import { Deferred } from "../../async/mod.ts";
 import {
   assert,
   assertEquals,
@@ -13,7 +13,7 @@ import {
 Deno.test("Promise pipeline works correctly", async () => {
   let pipelineExecuted = 0;
   const pipelineExecutedExpected = 1;
-  const pipelineExpectedExecutions = deferred();
+  const pipelineExpectedExecutions = new Deferred<void>();
 
   let finished = false;
   // deno-lint-ignore no-explicit-any

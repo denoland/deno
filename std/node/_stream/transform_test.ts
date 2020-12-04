@@ -2,13 +2,13 @@
 import { Buffer } from "../buffer.ts";
 import Transform from "./transform.ts";
 import finished from "./end_of_stream.ts";
-import { deferred } from "../../async/mod.ts";
+import { Deferred } from "../../async/mod.ts";
 import { assert, assertEquals } from "../../testing/asserts.ts";
 
 Deno.test("Transform stream finishes correctly", async () => {
   let finishedExecuted = 0;
   const finishedExecutedExpected = 1;
-  const finishedExecution = deferred();
+  const finishedExecution = new Deferred<void>();
 
   const tr = new Transform({
     transform(_data, _enc, cb) {

@@ -19,7 +19,7 @@
 // IN THE SOFTWARE.
 import { Readable, Transform, Writable } from "./stream.ts";
 import { Buffer } from "./buffer.ts";
-import { deferred } from "../async/mod.ts";
+import { Deferred } from "../async/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { mustCall } from "./_utils.ts";
 
@@ -29,11 +29,11 @@ Deno.test("Readable and Writable stream backpressure test", async () => {
 
   let rsExecuted = 0;
   const rsExecutedExpected = 11;
-  const rsExpectedExecutions = deferred();
+  const rsExpectedExecutions = new Deferred<void>();
 
   let wsExecuted = 0;
   const wsExecutedExpected = 410;
-  const wsExpectedExecutions = deferred();
+  const wsExpectedExecutions = new Deferred<void>();
 
   const rs = new Readable({
     read: function () {

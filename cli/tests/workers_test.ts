@@ -8,12 +8,12 @@
 // again moved to `cli/js/` as an unit test file.
 
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
-import { deferred } from "../../std/async/deferred.ts";
+import { Deferred } from "../../std/async/deferred.ts";
 
 Deno.test({
   name: "worker terminate",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
 
     const jsWorker = new Worker(
       new URL("subdir/test_worker.js", import.meta.url).href,
@@ -49,7 +49,7 @@ Deno.test({
 Deno.test({
   name: "worker nested",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
 
     const nestedWorker = new Worker(
       new URL("subdir/nested_worker.js", import.meta.url).href,
@@ -70,7 +70,7 @@ Deno.test({
 Deno.test({
   name: "worker throws when executing",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
     const throwingWorker = new Worker(
       new URL("subdir/throwing_worker.js", import.meta.url).href,
       { type: "module" },
@@ -91,7 +91,7 @@ Deno.test({
 Deno.test({
   name: "worker globals",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
     const w = new Worker(
       new URL("subdir/worker_globals.ts", import.meta.url).href,
       { type: "module" },
@@ -109,7 +109,7 @@ Deno.test({
 Deno.test({
   name: "worker fetch API",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
 
     const fetchingWorker = new Worker(
       new URL("subdir/fetching_worker.js", import.meta.url).href,
@@ -136,7 +136,7 @@ Deno.test({
 Deno.test({
   name: "worker terminate busy loop",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
 
     const busyWorker = new Worker(
       new URL("subdir/busy_worker.js", import.meta.url).href,
@@ -169,7 +169,7 @@ Deno.test({
   fn: async function (): Promise<void> {
     // See issue for details
     // https://github.com/denoland/deno/issues/4080
-    const promise = deferred();
+    const promise = new Deferred<void>();
 
     const racyWorker = new Worker(
       new URL("subdir/racy_worker.js", import.meta.url).href,
@@ -196,8 +196,8 @@ Deno.test({
     let messageHandlersCalled = 0;
     let errorHandlersCalled = 0;
 
-    const promise1 = deferred();
-    const promise2 = deferred();
+    const promise1 = new Deferred<void>();
+    const promise2 = new Deferred<void>();
 
     const worker = new Worker(
       new URL("subdir/event_worker.js", import.meta.url).href,
@@ -241,7 +241,7 @@ Deno.test({
 Deno.test({
   name: "worker scope is event listener",
   fn: async function (): Promise<void> {
-    const promise1 = deferred();
+    const promise1 = new Deferred<void>();
 
     const worker = new Worker(
       new URL("subdir/event_worker_scope.js", import.meta.url).href,
@@ -269,8 +269,8 @@ Deno.test({
 Deno.test({
   name: "worker with Deno namespace",
   fn: async function (): Promise<void> {
-    const promise = deferred();
-    const promise2 = deferred();
+    const promise = new Deferred<void>();
+    const promise2 = new Deferred<void>();
 
     const regularWorker = new Worker(
       new URL("subdir/non_deno_worker.js", import.meta.url).href,
@@ -303,7 +303,7 @@ Deno.test({
 Deno.test({
   name: "worker with crypto in scope",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
     const w = new Worker(
       new URL("subdir/worker_crypto.js", import.meta.url).href,
       { type: "module" },
@@ -321,7 +321,7 @@ Deno.test({
 Deno.test({
   name: "Worker event handler order",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
     const w = new Worker(
       new URL("subdir/test_worker.ts", import.meta.url).href,
       { type: "module", name: "tsWorker" },
@@ -345,7 +345,7 @@ Deno.test({
 Deno.test({
   name: "Worker immediate close",
   fn: async function (): Promise<void> {
-    const promise = deferred();
+    const promise = new Deferred<void>();
     const w = new Worker(
       new URL("./immediately_close_worker.js", import.meta.url).href,
       { type: "module" },

@@ -5,7 +5,7 @@ const data = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
 const workerCount = 4;
 const cmdsPerWorker = 400;
 
-import { Deferred, deferred } from "../../std/async/deferred.ts";
+import { Deferred } from "../../std/async/deferred.ts";
 
 function handleAsyncMsgFromWorker(
   promiseTable: Map<number, Deferred<string>>,
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
       new URL("subdir/bench_worker.ts", import.meta.url).href,
       { type: "module" },
     );
-    const promise = deferred();
+    const promise = new Deferred<void>();
     worker.onmessage = (e): void => {
       if (e.data.cmdId === 0) promise.resolve();
     };
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   for (const cmdId of Array(cmdsPerWorker).keys()) {
     const promises: Array<Promise<string>> = [];
     for (const [promiseTable, worker] of workers) {
-      const promise = deferred<string>();
+      const promise = new Deferred<string>();
       promiseTable.set(cmdId, promise);
       worker.postMessage({ cmdId: cmdId, action: 1, data });
       promises.push(promise);
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
     }
   }
   for (const [, worker] of workers) {
-    const promise = deferred();
+    const promise = new Deferred<void>();
     worker.onmessage = (e): void => {
       if (e.data.cmdId === 3) promise.resolve();
     };

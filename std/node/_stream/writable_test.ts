@@ -2,7 +2,7 @@
 import { Buffer } from "../buffer.ts";
 import finished from "./end_of_stream.ts";
 import Writable from "../_stream/writable.ts";
-import { deferred } from "../../async/mod.ts";
+import { Deferred } from "../../async/mod.ts";
 import {
   assert,
   assertEquals,
@@ -15,11 +15,11 @@ Deno.test("Writable stream writes correctly", async () => {
 
   let writeExecuted = 0;
   const writeExecutedExpected = 1;
-  const writeExpectedExecutions = deferred();
+  const writeExpectedExecutions = new Deferred<void>();
 
   let writevExecuted = 0;
   const writevExecutedExpected = 1;
-  const writevExpectedExecutions = deferred();
+  const writevExpectedExecutions = new Deferred<void>();
 
   const writable = new Writable({
     write: (chunk, encoding, cb) => {
@@ -68,7 +68,7 @@ Deno.test("Writable stream writes correctly", async () => {
 Deno.test("Writable stream writes Uint8Array in object mode", async () => {
   let writeExecuted = 0;
   const writeExecutedExpected = 1;
-  const writeExpectedExecutions = deferred();
+  const writeExpectedExecutions = new Deferred<void>();
 
   const ABC = new TextEncoder().encode("ABC");
 
@@ -101,7 +101,7 @@ Deno.test("Writable stream writes Uint8Array in object mode", async () => {
 Deno.test("Writable stream throws on unexpected close", async () => {
   let finishedExecuted = 0;
   const finishedExecutedExpected = 1;
-  const finishedExpectedExecutions = deferred();
+  const finishedExpectedExecutions = new Deferred<void>();
 
   const writable = new Writable({
     write: () => {},
@@ -129,7 +129,7 @@ Deno.test("Writable stream throws on unexpected close", async () => {
 Deno.test("Writable stream finishes correctly", async () => {
   let finishedExecuted = 0;
   const finishedExecutedExpected = 1;
-  const finishedExpectedExecutions = deferred();
+  const finishedExpectedExecutions = new Deferred<void>();
 
   const w = new Writable({
     write(_chunk, _encoding, cb) {
@@ -161,11 +161,11 @@ Deno.test("Writable stream finishes correctly", async () => {
 Deno.test("Writable stream finishes correctly after error", async () => {
   let errorExecuted = 0;
   const errorExecutedExpected = 1;
-  const errorExpectedExecutions = deferred();
+  const errorExpectedExecutions = new Deferred<void>();
 
   let finishedExecuted = 0;
   const finishedExecutedExpected = 1;
-  const finishedExpectedExecutions = deferred();
+  const finishedExpectedExecutions = new Deferred<void>();
 
   const w = new Writable({
     write(_chunk, _encoding, cb) {

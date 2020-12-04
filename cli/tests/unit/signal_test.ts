@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  deferred,
+  Deferred,
   unitTest,
 } from "./test_util.ts";
 
@@ -106,7 +106,7 @@ unitTest(
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true, net: true } },
   async function signalStreamTest(): Promise<void> {
-    const resolvable = deferred();
+    const resolvable = new Deferred<void>();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
@@ -137,7 +137,7 @@ unitTest(
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
   async function signalPromiseTest(): Promise<void> {
-    const resolvable = deferred();
+    const resolvable = new Deferred<void>();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 

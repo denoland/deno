@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { deferred } from "../async/mod.ts";
+import { Deferred } from "../async/mod.ts";
 import { fail } from "../testing/asserts.ts";
 
 export type BinaryEncodings = "binary";
@@ -178,7 +178,7 @@ export function mustCall<T extends unknown[]>(
     throw new Error("Expected executions can't be lower than 1");
   }
   let timesExecuted = 0;
-  const completed = deferred();
+  const completed = new Deferred<void>();
 
   const abort = setTimeout(() => completed.reject(), timeout);
 

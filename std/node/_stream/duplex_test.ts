@@ -8,7 +8,7 @@ import {
   assertStrictEquals,
   assertThrows,
 } from "../../testing/asserts.ts";
-import { deferred, delay } from "../../async/mod.ts";
+import { Deferred, delay } from "../../async/mod.ts";
 
 Deno.test("Duplex stream works normally", () => {
   const stream = new Duplex({ objectMode: true });
@@ -115,11 +115,11 @@ Deno.test("Duplex stream sets encoding correctly", () => {
 Deno.test("Duplex stream holds up a big push", async () => {
   let readExecuted = 0;
   const readExecutedExpected = 3;
-  const readExpectedExecutions = deferred();
+  const readExpectedExecutions = new Deferred<void>();
 
   let endExecuted = 0;
   const endExecutedExpected = 1;
-  const endExpectedExecutions = deferred();
+  const endExpectedExecutions = new Deferred<void>();
 
   const str = "asdfasdfasdfasdfasdf";
 
@@ -200,7 +200,7 @@ Deno.test("Duplex stream holds up a big push", async () => {
 Deno.test("Duplex stream: 'readable' event is emitted but 'read' is not on highWaterMark length exceeded", async () => {
   let readableExecuted = 0;
   const readableExecutedExpected = 1;
-  const readableExpectedExecutions = deferred();
+  const readableExpectedExecutions = new Deferred<void>();
 
   const r = new Duplex({
     highWaterMark: 3,
@@ -233,11 +233,11 @@ Deno.test("Duplex stream: 'readable' event is emitted but 'read' is not on highW
 Deno.test("Duplex stream: 'readable' and 'read' events are emitted on highWaterMark length not reached", async () => {
   let readableExecuted = 0;
   const readableExecutedExpected = 1;
-  const readableExpectedExecutions = deferred();
+  const readableExpectedExecutions = new Deferred<void>();
 
   let readExecuted = 0;
   const readExecutedExpected = 1;
-  const readExpectedExecutions = deferred();
+  const readExpectedExecutions = new Deferred<void>();
 
   const r = new Duplex({
     highWaterMark: 3,
@@ -281,7 +281,7 @@ Deno.test("Duplex stream: 'readable' and 'read' events are emitted on highWaterM
 Deno.test("Duplex stream: 'readable' event is emitted but 'read' is not on highWaterMark length not reached and stream ended", async () => {
   let readableExecuted = 0;
   const readableExecutedExpected = 1;
-  const readableExpectedExecutions = deferred();
+  const readableExpectedExecutions = new Deferred<void>();
 
   const r = new Duplex({
     highWaterMark: 30,
@@ -318,7 +318,7 @@ Deno.test("Duplex stream: 'readable' event is emitted but 'read' is not on highW
 Deno.test("Duplex stream: 'read' is emitted on empty string pushed in non-object mode", async () => {
   let endExecuted = 0;
   const endExecutedExpected = 1;
-  const endExpectedExecutions = deferred();
+  const endExpectedExecutions = new Deferred<void>();
 
   const underlyingData = ["", "x", "y", "", "z"];
   const expected = underlyingData.filter((data) => data);
@@ -374,11 +374,11 @@ Deno.test("Duplex stream writes correctly", async () => {
 
   let writeExecuted = 0;
   const writeExecutedExpected = 1;
-  const writeExpectedExecutions = deferred();
+  const writeExpectedExecutions = new Deferred<void>();
 
   let writevExecuted = 0;
   const writevExecutedExpected = 1;
-  const writevExpectedExecutions = deferred();
+  const writevExpectedExecutions = new Deferred<void>();
 
   const writable = new Duplex({
     write: (chunk, encoding, cb) => {
@@ -427,7 +427,7 @@ Deno.test("Duplex stream writes correctly", async () => {
 Deno.test("Duplex stream writes Uint8Array in object mode", async () => {
   let writeExecuted = 0;
   const writeExecutedExpected = 1;
-  const writeExpectedExecutions = deferred();
+  const writeExpectedExecutions = new Deferred<void>();
 
   const ABC = new TextEncoder().encode("ABC");
 
@@ -460,7 +460,7 @@ Deno.test("Duplex stream writes Uint8Array in object mode", async () => {
 Deno.test("Duplex stream throws on unexpected close", async () => {
   let finishedExecuted = 0;
   const finishedExecutedExpected = 1;
-  const finishedExpectedExecutions = deferred();
+  const finishedExpectedExecutions = new Deferred<void>();
 
   const writable = new Duplex({
     write: () => {},
@@ -488,11 +488,11 @@ Deno.test("Duplex stream throws on unexpected close", async () => {
 Deno.test("Duplex stream finishes correctly after error", async () => {
   let errorExecuted = 0;
   const errorExecutedExpected = 1;
-  const errorExpectedExecutions = deferred();
+  const errorExpectedExecutions = new Deferred<void>();
 
   let finishedExecuted = 0;
   const finishedExecutedExpected = 1;
-  const finishedExpectedExecutions = deferred();
+  const finishedExpectedExecutions = new Deferred<void>();
 
   const w = new Duplex({
     write(_chunk, _encoding, cb) {
@@ -538,9 +538,9 @@ Deno.test("Duplex stream fails on 'write' null value", () => {
 Deno.test("Duplex stream is destroyed correctly", async () => {
   let closeExecuted = 0;
   const closeExecutedExpected = 1;
-  const closeExpectedExecutions = deferred();
+  const closeExpectedExecutions = new Deferred<void>();
 
-  const unexpectedExecution = deferred();
+  const unexpectedExecution = new Deferred<void>();
 
   const duplex = new Duplex({
     write(_chunk, _enc, cb) {
@@ -583,9 +583,9 @@ Deno.test("Duplex stream is destroyed correctly", async () => {
 Deno.test("Duplex stream errors correctly on destroy", async () => {
   let errorExecuted = 0;
   const errorExecutedExpected = 1;
-  const errorExpectedExecutions = deferred();
+  const errorExpectedExecutions = new Deferred<void>();
 
-  const unexpectedExecution = deferred();
+  const unexpectedExecution = new Deferred<void>();
 
   const duplex = new Duplex({
     write(_chunk, _enc, cb) {
@@ -628,7 +628,7 @@ Deno.test("Duplex stream errors correctly on destroy", async () => {
 });
 
 Deno.test("Duplex stream doesn't finish on allowHalfOpen", async () => {
-  const unexpectedExecution = deferred();
+  const unexpectedExecution = new Deferred<void>();
 
   const duplex = new Duplex({
     read() {},
@@ -649,7 +649,7 @@ Deno.test("Duplex stream doesn't finish on allowHalfOpen", async () => {
 Deno.test("Duplex stream finishes when allowHalfOpen is disabled", async () => {
   let finishExecuted = 0;
   const finishExecutedExpected = 1;
-  const finishExpectedExecutions = deferred();
+  const finishExpectedExecutions = new Deferred<void>();
 
   const duplex = new Duplex({
     read() {},
@@ -677,7 +677,7 @@ Deno.test("Duplex stream finishes when allowHalfOpen is disabled", async () => {
 });
 
 Deno.test("Duplex stream doesn't finish when allowHalfOpen is disabled but stream ended", async () => {
-  const unexpectedExecution = deferred();
+  const unexpectedExecution = new Deferred<void>();
 
   const duplex = new Duplex({
     read() {},

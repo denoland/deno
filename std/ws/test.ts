@@ -23,7 +23,7 @@ import {
 import { decode, encode } from "../encoding/utf8.ts";
 import { delay } from "../async/delay.ts";
 import { serve } from "../http/server.ts";
-import { deferred } from "../async/deferred.ts";
+import { Deferred } from "../async/deferred.ts";
 
 Deno.test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
@@ -464,7 +464,7 @@ Deno.test("[ws] WebSocket should act as asyncIterator", async () => {
 });
 
 Deno.test("[ws] WebSocket protocol", async () => {
-  const promise = deferred();
+  const promise = new Deferred<void>();
   const server = serve({ port: 5839 });
 
   const ws = new WebSocket("ws://localhost:5839", ["foo", "bar"]);

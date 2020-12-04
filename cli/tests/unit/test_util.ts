@@ -16,7 +16,7 @@ export {
   fail,
   unreachable,
 } from "../../../std/testing/asserts.ts";
-export { deferred } from "../../../std/async/deferred.ts";
+export { Deferred } from "../../../std/async/deferred.ts";
 export { readLines } from "../../../std/io/bufio.ts";
 export { parse as parseArgs } from "../../../std/flags/mod.ts";
 

@@ -5,7 +5,7 @@ import Transform from "./transform.ts";
 import Writable from "./writable.ts";
 import { mustCall } from "../_utils.ts";
 import { assert, fail } from "../../testing/asserts.ts";
-import { deferred, delay } from "../../async/mod.ts";
+import { Deferred, delay } from "../../async/mod.ts";
 
 Deno.test("Finished appends to Readable correctly", async () => {
   const rs = new Readable({
@@ -75,7 +75,7 @@ Deno.test("Finished appends to Transform correctly", async () => {
 });
 
 Deno.test("The function returned by Finished clears the listeners", async () => {
-  const finishedExecution = deferred();
+  const finishedExecution = new Deferred<void>();
 
   const ws = new Writable({
     write(_data, _env, cb) {
