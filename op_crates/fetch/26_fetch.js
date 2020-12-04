@@ -933,6 +933,7 @@
           throw new TypeError("Failed to construct 'Request': cannot convert to dictionary.");
         }
         case "undefined":
+          /* falls through */
         case "object": {
           // may be null
           init ??= {};
