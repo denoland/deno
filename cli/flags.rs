@@ -1091,6 +1091,7 @@ Show documentation for runtime built-ins:
 
 fn language_server_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lsp")
+    .setting(AppSettings::Hidden)
     .about("Start the language server")
     .long_about(
       r#"Start the Deno language server which will take input
