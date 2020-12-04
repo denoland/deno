@@ -33,7 +33,7 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
-    format!("Deno/{}", version::deno()).parse().unwrap(),
+    format!("Deno/{}", *version::DENO).parse().unwrap(),
   );
   let mut builder = Client::builder()
     .redirect(Policy::none())

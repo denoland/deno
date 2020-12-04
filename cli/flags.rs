@@ -207,6 +207,7 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)";
 
+// TODO: short help?
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual
@@ -226,7 +227,7 @@ To evaluate code in the shell:
 lazy_static! {
   static ref LONG_VERSION: String = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
+    *crate::version::DENO,
     env!("PROFILE"),
     env!("TARGET"),
     crate::version::v8(),
@@ -316,12 +317,12 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
 #[derive(Clap, Debug, Clone)]
 #[clap(
   name = "deno",
-  version = "1", // TODO: version
+  version = crate::version::DENO.as_str(),
   long_version = LONG_VERSION.as_str(),
   max_term_width = 0,
-  setting = AppSettings::UnifiedHelpMessage,
-  setting = AppSettings::ColorNever,
-  setting = AppSettings::VersionlessSubcommands,
+  global_setting = AppSettings::UnifiedHelpMessage,
+  global_setting = AppSettings::ColorNever,
+  global_setting = AppSettings::VersionlessSubcommands,
   after_help = ENV_VARIABLES_HELP,
   long_about = DENO_HELP,
 )]
@@ -420,7 +421,7 @@ in the local cache, without running any code:
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.")]
 struct CacheSubcommand {
-  #[clap(min_values = 1)]
+  #[clap(required = true)]
   file: Vec<String>,
 
   #[clap(flatten)]
@@ -496,7 +497,7 @@ struct CompletionsSubcommand {
 ///     deno doc
 ///     deno doc --builtin Deno.Listener
 #[derive(Clap, Debug, Clone)]
-#[clap(setting = clap::AppSettings::AllowLeadingHyphen)] // TODO: check
+#[clap(setting = AppSettings::AllowLeadingHyphen)]
 struct DocSubcommand {
   /// Output documentation in JSON format
   #[clap(long)]
@@ -538,7 +539,7 @@ struct EvalSubcommand {
   print: bool,
 
   /// Code arg
-  #[clap(multiple = true, value_name = "CODE_ARG")] // TODO: multiple
+  #[clap(required = true, value_name = "CODE_ARG")]
   code_arg: Vec<String>,
 
   #[clap(flatten)]
@@ -1155,6 +1156,7 @@ fn eval_parse(flags: &mut Flags, matches: EvalSubcommand) {
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
 
+  // TODO
   let mut code = matches.code_arg;
   let code_args = code.split_off(1);
   let code = code[0].clone();

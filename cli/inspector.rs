@@ -201,7 +201,7 @@ async fn server(
 
   let json_version_route = warp::path!("json" / "version").map(|| {
     warp::reply::json(&json!({
-      "Browser": format!("Deno/{}", crate::version::deno()),
+      "Browser": format!("Deno/{}", *crate::version::DENO),
       "Protocol-Version": "1.3",
       "V8-Version": crate::version::v8(),
     }))

@@ -446,7 +446,7 @@ pub async fn run(
     .load_history(history_file.to_str().unwrap())
     .unwrap_or(());
 
-  println!("Deno {}", crate::version::deno());
+  println!("Deno {}", *crate::version::DENO);
   println!("exit using ctrl+d or close()");
 
   inject_prelude(&mut worker, &mut session, context_id).await?;
