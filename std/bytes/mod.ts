@@ -4,7 +4,7 @@
  * @param source source array
  * @param pat pattern to find in source array
  */
-export function findIndex(source: Uint8Array, pat: Uint8Array): number {
+export function indexOf(source: Uint8Array, pat: Uint8Array): number {
   const s = pat[0];
   for (let i = 0; i < source.length; i++) {
     if (source[i] !== s) continue;
@@ -29,7 +29,7 @@ export function findIndex(source: Uint8Array, pat: Uint8Array): number {
  * @param source source array
  * @param pat pattern to find in source array
  */
-export function findLastIndex(source: Uint8Array, pat: Uint8Array): number {
+export function lastIndexOf(source: Uint8Array, pat: Uint8Array): number {
   const e = pat[pat.length - 1];
   for (let i = source.length - 1; i >= 0; i--) {
     if (source[i] !== e) continue;
@@ -54,7 +54,7 @@ export function findLastIndex(source: Uint8Array, pat: Uint8Array): number {
  * @param source first array to check equality
  * @param match second array to check equality
  */
-export function equal(source: Uint8Array, match: Uint8Array): boolean {
+export function equals(source: Uint8Array, match: Uint8Array): boolean {
   if (source.length !== match.length) return false;
   for (let i = 0; i < match.length; i++) {
     if (source[i] !== match[i]) return false;
@@ -66,7 +66,7 @@ export function equal(source: Uint8Array, match: Uint8Array): boolean {
  * @param source srouce array
  * @param prefix prefix array to check in source
  */
-export function hasPrefix(source: Uint8Array, prefix: Uint8Array): boolean {
+export function startsWith(source: Uint8Array, prefix: Uint8Array): boolean {
   for (let i = 0, max = prefix.length; i < max; i++) {
     if (source[i] !== prefix[i]) return false;
   }
@@ -77,7 +77,7 @@ export function hasPrefix(source: Uint8Array, prefix: Uint8Array): boolean {
  * @param source source array
  * @param suffix suffix array to check in source
  */
-export function hasSuffix(source: Uint8Array, suffix: Uint8Array): boolean {
+export function endsWith(source: Uint8Array, suffix: Uint8Array): boolean {
   for (
     let srci = source.length - 1, sfxi = suffix.length - 1;
     sfxi >= 0;
@@ -98,36 +98,47 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
   }
 
   if (count < 0) {
-    throw new Error("bytes: negative repeat count");
+    throw new RangeError("bytes: negative repeat count");
   } else if ((origin.length * count) / count !== origin.length) {
-    throw new Error("bytes: repeat count causes overflow");
+    throw new RangeError("bytes: repeat count causes overflow");
   }
 
   const int = Math.floor(count);
 
   if (int !== count) {
-    throw new Error("bytes: repeat count must be an integer");
+    throw new TypeError("bytes: repeat count must be an integer");
   }
 
   const nb = new Uint8Array(origin.length * count);
 
-  let bp = copyBytes(origin, nb);
+  let bp = copy(origin, nb);
 
   for (; bp < nb.length; bp *= 2) {
-    copyBytes(nb.slice(0, bp), nb, bp);
+    copy(nb.slice(0, bp), nb, bp);
   }
 
   return nb;
 }
 
-/** Concatenate two binary arrays and return new one.
+/** Concatenate multiple binary arrays and return new one.
  * @param origin origin array to concatenate
  * @param b array to concatenate with origin
  */
-export function concat(origin: Uint8Array, b: Uint8Array): Uint8Array {
-  const output = new Uint8Array(origin.length + b.length);
-  output.set(origin, 0);
-  output.set(b, origin.length);
+export function concat(a: Uint8Array, ...buf: Uint8Array[]): Uint8Array {
+  let totalLength = a.length;
+  for (let b of buf) {
+    totalLength += b.length;
+  }
+
+  const output = new Uint8Array(totalLength);
+  output.set(a, 0);
+
+  let lastIndex = a.length;
+  for (let b of buf) {
+    output.set(b, lastIndex);
+    lastIndex += b.length;
+  }
+
   return output;
 }
 
@@ -136,7 +147,7 @@ export function concat(origin: Uint8Array, b: Uint8Array): Uint8Array {
  * @param pat patter array
  */
 export function contains(source: Uint8Array, pat: Uint8Array): boolean {
-  return findIndex(source, pat) != -1;
+  return indexOf(source, pat) != -1;
 }
 
 /**
@@ -148,7 +159,7 @@ export function contains(source: Uint8Array, pat: Uint8Array): boolean {
  * @param off Offset into `dst` at which to begin writing values from `src`.
  * @return number of bytes copied
  */
-export function copyBytes(src: Uint8Array, dst: Uint8Array, off = 0): number {
+export function copy(src: Uint8Array, dst: Uint8Array, off = 0): number {
   off = Math.max(0, Math.min(off, dst.byteLength));
   const dstBytesAvailable = dst.byteLength - off;
   if (src.byteLength > dstBytesAvailable) {
