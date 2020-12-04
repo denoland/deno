@@ -27,7 +27,7 @@ Object.defineProperty(globalThis, "Buffer", {
 
 Object.defineProperty(globalThis, "setImmediate", {
   value: timers.setImmediate,
-  enumerable: false,
+  enumerable: true,
   writable: true,
   configurable: true,
 });
