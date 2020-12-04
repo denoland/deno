@@ -4,6 +4,8 @@ use crate::ast;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::module_graph::parse_deno_types;
+use crate::module_graph::parse_ts_reference;
+use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
 use deno_core::error::AnyError;
@@ -97,7 +99,7 @@ pub enum ResolvedImport {
   Err(String),
 }
 
-fn resolve_import(
+pub fn resolve_import(
   specifier: &str,
   referrer: &ModuleSpecifier,
   maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
@@ -140,24 +142,57 @@ fn resolve_import(
   ResolvedImport::Resolved(specifier)
 }
 
+// TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
+// Module::parse() and should be refactored out to a common function.
 pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
   source: &str,
+  media_type: &MediaType,
   maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
-) -> Option<HashMap<String, Dependency>> {
-  let media_type = MediaType::from(specifier);
+) -> Option<(HashMap<String, Dependency>, Option<ResolvedImport>)> {
   let specifier_str = specifier.to_string();
   let source_map = Rc::new(swc_common::SourceMap::default());
+  let mut maybe_type = None;
   if let Ok(parsed_module) =
     ast::parse_with_source_map(&specifier_str, source, &media_type, source_map)
   {
-    let descriptors = parsed_module.analyze_dependencies();
     let mut dependencies = HashMap::<String, Dependency>::new();
+
+    // Parse leading comments for supported triple slash references.
+    for comment in parsed_module.get_leading_comments().iter() {
+      if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+        match ts_reference {
+          TypeScriptReference::Path(import) => {
+            let dep = dependencies.entry(import.clone()).or_default();
+            let resolved_import =
+              resolve_import(&import, specifier, maybe_import_map.clone());
+            dep.maybe_code = Some(resolved_import);
+          }
+          TypeScriptReference::Types(import) => {
+            let resolved_import =
+              resolve_import(&import, specifier, maybe_import_map.clone());
+            if media_type == &MediaType::JavaScript
+              || media_type == &MediaType::JSX
+            {
+              maybe_type = Some(resolved_import)
+            } else {
+              let dep = dependencies.entry(import).or_default();
+              dep.maybe_type = Some(resolved_import);
+            }
+          }
+        }
+      }
+    }
+
+    // Parse ES and type only imports
+    let descriptors = parsed_module.analyze_dependencies();
     for desc in descriptors.into_iter().filter(|desc| {
       desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
     }) {
       let resolved_import =
         resolve_import(&desc.specifier, specifier, maybe_import_map.clone());
+
+      // Check for `@deno-types` pragmas that effect the import
       let maybe_resolved_type_import =
         if let Some(comment) = desc.leading_comments.last() {
           if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
@@ -173,9 +208,7 @@ pub fn analyze_dependencies(
           None
         };
 
-      let dep = dependencies
-        .entry(desc.specifier.to_string())
-        .or_insert_with(|| Default::default());
+      let dep = dependencies.entry(desc.specifier.to_string()).or_default();
       dep.is_dynamic = desc.is_dynamic;
       match desc.kind {
         swc_ecmascript::dep_graph::DependencyKind::ExportType
@@ -189,7 +222,7 @@ pub fn analyze_dependencies(
       }
     }
 
-    Some(dependencies)
+    Some((dependencies, maybe_type))
   } else {
     None
   }
@@ -243,9 +276,11 @@ mod tests {
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
     import * as React from "https://cdn.skypack.dev/react";
     "#;
-    let actual = analyze_dependencies(&specifier, source, None);
+    let actual =
+      analyze_dependencies(&specifier, source, &MediaType::TypeScript, None);
     assert!(actual.is_some());
-    let actual = actual.unwrap();
+    let (actual, maybe_type) = actual.unwrap();
+    assert!(maybe_type.is_none());
     assert_eq!(actual.len(), 2);
     assert_eq!(
       actual.get("https://cdn.skypack.dev/react").cloned(),

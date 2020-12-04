@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::analysis::Dependency;
+use super::analysis;
 use super::config::Config;
 use super::diagnostics::DiagnosticCollection;
 use super::diagnostics::DiagnosticSource;
@@ -11,7 +11,10 @@ use super::task_pool::TaskPool;
 use super::tsc;
 use super::utils::notification_is;
 
+use crate::deno_dir;
+use crate::import_map::ImportMap;
 use crate::js;
+use crate::media_type::MediaType;
 
 use crossbeam_channel::select;
 use crossbeam_channel::unbounded;
@@ -24,8 +27,11 @@ use lsp_server::Notification;
 use lsp_server::Request;
 use lsp_server::RequestId;
 use lsp_server::Response;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::env;
 use std::fmt;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Instant;
@@ -101,19 +107,54 @@ pub enum Task {
 
 #[derive(Debug, Clone)]
 pub struct DocumentData {
+  pub dependencies: Option<HashMap<String, analysis::Dependency>>,
   pub version: Option<i32>,
-  pub dependencies: Option<HashMap<String, Dependency>>,
+  specifier: ModuleSpecifier,
 }
 
 impl DocumentData {
   pub fn new(
+    specifier: ModuleSpecifier,
     version: i32,
-    dependencies: Option<HashMap<String, Dependency>>,
+    source: &str,
+    maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
   ) -> Self {
-    DocumentData {
-      version: Some(version),
+    let dependencies = if let Some((dependencies, _)) =
+      analysis::analyze_dependencies(
+        &specifier,
+        source,
+        &MediaType::from(&specifier),
+        maybe_import_map,
+      ) {
+      Some(dependencies)
+    } else {
+      None
+    };
+    Self {
       dependencies,
+      version: Some(version),
+      specifier,
     }
+  }
+
+  pub fn update(
+    &mut self,
+    version: i32,
+    source: &str,
+    maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
+  ) {
+    self.dependencies = if let Some((dependencies, _)) =
+      analysis::analyze_dependencies(
+        &self.specifier,
+        source,
+        &MediaType::from(&self.specifier),
+        maybe_import_map,
+      ) {
+      Some(dependencies)
+    } else {
+      None
+    };
+    self.version = Some(version)
   }
 }
 
@@ -148,6 +189,11 @@ impl ServerState {
       let handle = TaskPool::new(sender);
       Handle { handle, receiver }
     };
+    let custom_root = env::var("DENO_DIR").map(String::into).ok();
+    let dir =
+      deno_dir::DenoDir::new(custom_root).expect("could not access DENO_DIR");
+    let location = dir.root.join("deps");
+    let sources = Sources::new(&location);
     let ts_runtime = tsc::start(js::compiler_isolate_init(), false)
       .expect("could not start tsc");
 
@@ -158,7 +204,7 @@ impl ServerState {
       file_cache: Arc::new(RwLock::new(Default::default())),
       req_queue: Default::default(),
       sender,
-      sources: Arc::new(RwLock::new(Default::default())),
+      sources: Arc::new(RwLock::new(sources)),
       shutdown_requested: false,
       status: Default::default(),
       tasks,

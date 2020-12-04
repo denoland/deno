@@ -182,14 +182,14 @@ impl swc_bundler::Load for BundleLoader<'_> {
 
 /// An enum which represents the parsed out values of references in source code.
 #[derive(Debug, Clone, Eq, PartialEq)]
-enum TypeScriptReference {
+pub enum TypeScriptReference {
   Path(String),
   Types(String),
 }
 
 /// Determine if a comment contains a triple slash reference and optionally
 /// return its kind and value.
-fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
+pub fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
   if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
     None
   } else if let Some(captures) = PATH_REFERENCE_RE.captures(comment) {

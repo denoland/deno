@@ -328,12 +328,12 @@ pub struct DocumentHighlights {
 
 impl DocumentHighlights {
   pub fn to_highlight(
-    self,
+    &self,
     line_index: &[u32],
   ) -> Vec<lsp_types::DocumentHighlight> {
     self
       .highlight_spans
-      .into_iter()
+      .iter()
       .map(|hs| lsp_types::DocumentHighlight {
         range: hs.text_span.to_range(line_index),
         kind: match hs.kind {
@@ -454,12 +454,18 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
 
 fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
-  cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
-  let content = state
-    .snapshots
-    .get(&(v.specifier.into(), v.version.into()))
-    .unwrap();
-  Ok(json!(content.chars().count()))
+  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
+  if state.server_state.doc_data.contains_key(&specifier) {
+    cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
+    let content = state
+      .snapshots
+      .get(&(v.specifier.into(), v.version.into()))
+      .unwrap();
+    Ok(json!(content.chars().count()))
+  } else {
+    let mut sources = state.server_state.sources.write().unwrap();
+    Ok(json!(sources.get_length(&specifier).unwrap()))
+  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -473,26 +479,39 @@ struct GetTextArgs {
 
 fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: GetTextArgs = serde_json::from_value(args)?;
-  cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
-  let content = state
-    .snapshots
-    .get(&(v.specifier.into(), v.version.into()))
-    .unwrap();
-  Ok(json!(text::slice(content, v.start..v.end)))
+  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
+  let content = if state.server_state.doc_data.contains_key(&specifier) {
+    cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
+    state
+      .snapshots
+      .get(&(v.specifier.into(), v.version.into()))
+      .unwrap()
+      .clone()
+  } else {
+    let mut sources = state.server_state.sources.write().unwrap();
+    sources.get_text(&specifier).unwrap()
+  };
+  Ok(json!(text::slice(&content, v.start..v.end)))
 }
 
 fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
+  let mut sources = if let Ok(sources) = state.server_state.sources.write() {
+    sources
+  } else {
+    return Err(custom_error("Deadlock", "deadlock locking sources"));
+  };
+
   if let Some(doc_data) = state.server_state.doc_data.get(&referrer) {
     if let Some(dependencies) = &doc_data.dependencies {
       for specifier in &v.specifiers {
         if specifier.starts_with("asset:///") {
           resolved.push(Some((
             specifier.clone(),
-            MediaType::from(specifier).as_ts_extension().to_string(),
-          )));
+            MediaType::from(specifier).as_ts_extension(),
+          )))
         } else if let Some(dependency) = dependencies.get(specifier) {
           let resolved_import =
             if let Some(resolved_import) = &dependency.maybe_type {
@@ -504,20 +523,41 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
             };
           if let ResolvedImport::Resolved(resolved_specifier) = resolved_import
           {
+            let media_type = if let Some(media_type) =
+              sources.get_media_type(&resolved_specifier)
+            {
+              media_type
+            } else {
+              MediaType::from(&resolved_specifier)
+            };
             resolved.push(Some((
               resolved_specifier.to_string(),
-              MediaType::from(&resolved_specifier)
-                .as_ts_extension()
-                .to_string(),
+              media_type.as_ts_extension(),
             )));
           } else {
             resolved.push(None);
           }
-        } else {
-          resolved.push(None);
         }
       }
     }
+  } else if sources.contains(&referrer) {
+    for specifier in &v.specifiers {
+      if let Some((resolved_specifier, media_type)) =
+        sources.resolve_import(specifier, &referrer)
+      {
+        resolved.push(Some((
+          resolved_specifier.to_string(),
+          media_type.as_ts_extension(),
+        )));
+      } else {
+        resolved.push(None);
+      }
+    }
+  } else {
+    return Err(custom_error(
+      "NotFound",
+      "the referring specifier is unexpectedly missing",
+    ));
   }
 
   Ok(json!(resolved))
@@ -543,11 +583,15 @@ struct ScriptVersionArgs {
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  // println!("script_version: {}", specifier);
   let maybe_doc_data = state.server_state.doc_data.get(&specifier);
   if let Some(doc_data) = maybe_doc_data {
     if let Some(version) = doc_data.version {
       return Ok(json!(version.to_string()));
+    }
+  } else {
+    let mut sources = state.server_state.sources.write().unwrap();
+    if let Some(version) = sources.get_script_version(&specifier) {
+      return Ok(json!(version));
     }
   }
 
@@ -680,7 +724,6 @@ pub fn request(
 
 #[cfg(test)]
 mod tests {
-  use super::super::analysis;
   use super::super::memory_cache::MemoryCache;
   use super::super::state::DocumentData;
   use super::*;
@@ -695,13 +738,10 @@ mod tests {
     for (specifier, content, version) in sources {
       let specifier = ModuleSpecifier::resolve_url(specifier)
         .expect("failed to create specifier");
-      let data = DocumentData {
-        version: Some(version),
-        dependencies: analysis::analyze_dependencies(
-          &specifier, &content, None,
-        ),
-      };
-      doc_data.insert(specifier.clone(), data);
+      doc_data.insert(
+        specifier.clone(),
+        DocumentData::new(specifier.clone(), version, content, None),
+      );
       file_cache.set_contents(specifier, Some(content.as_bytes().to_vec()));
     }
     let file_cache = Arc::new(RwLock::new(file_cache));

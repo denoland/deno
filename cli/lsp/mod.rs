@@ -282,12 +282,10 @@ impl ServerState {
         .insert(
           specifier.clone(),
           DocumentData::new(
+            specifier.clone(),
             params.text_document.version,
-            analysis::analyze_dependencies(
-              &specifier,
-              &params.text_document.text,
-              None,
-            ),
+            &params.text_document.text,
+            None,
           ),
         )
         .is_some()
@@ -309,16 +307,7 @@ impl ServerState {
       let mut content = file_cache.get_contents(file_id)?;
       apply_content_changes(&mut content, params.content_changes);
       let doc_data = state.doc_data.get_mut(&specifier).unwrap();
-      doc_data.version = params.text_document.version.into();
-      // only overwrite dependencies if we actually return dependencies from the
-      // analysis, otherwise we can end up removing dependencies when we have a
-      // ast parse error
-      // TODO(@kitsonk) integrate the import map configuration
-      if let Some(dependencies) =
-        analysis::analyze_dependencies(&specifier, &content, None)
-      {
-        doc_data.dependencies = Some(dependencies);
-      }
+      doc_data.update(params.text_document.version, &content, None);
       file_cache.set_contents(specifier, Some(content.into_bytes()));
 
       Ok(())
