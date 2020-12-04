@@ -1217,7 +1217,7 @@
         headers,
         body
       }) = new Request(input, init);
-    } catch(e) {
+    } catch {
       // prefer WorkerGlobalScope over more specific scope, such as DedicatedWorkerGlobalScope, which is what the [Symbol.toStringTag] may yield
       // may need refinement
       const scope = self[Symbol.toStringTag] === "Window" ? "Window" : "WorkerGlobalScope";
