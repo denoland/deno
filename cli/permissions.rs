@@ -2,7 +2,7 @@
 
 use crate::colors;
 use crate::flags::Flags;
-use crate::fs::resolve_from_cwd;
+use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -232,7 +232,7 @@ impl Permissions {
       ));
     }
     Ok(self.query_net(
-      &format!("{}", parsed.host().unwrap()),
+      &parsed.host().unwrap().to_string(),
       parsed.port_or_known_default(),
     ))
   }

@@ -1,25 +1,31 @@
-const lib = function() {
-    const a = function() {
-        const a1 = [];
-        return {
-            a: a1
-        };
-    }();
-    const b = function() {
-        const b1 = [];
-        return {
-            b: b1
-        };
-    }();
-    const c = function() {
-        const c1 = [];
-        return {
-            c: c1
-        };
-    }();
-    const mod = [];
+const mod = function() {
+    const a = [];
+    const a1 = a;
     return {
-        mod
+        a
     };
 }();
-console.log(lib);
+const a = mod;
+const mod1 = function() {
+    const b = [];
+    const b1 = b;
+    return {
+        b
+    };
+}();
+const b = mod1;
+const mod2 = function() {
+    const c = [];
+    const c1 = c;
+    return {
+        c
+    };
+}();
+const c = mod2;
+const mod3 = function() {
+    const mod4 = [];
+    return {
+        mod: mod4
+    };
+}();
+console.log(mod3);

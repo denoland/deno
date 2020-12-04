@@ -1,5 +1,5 @@
 console.log("hello");
-// eslint-disable-next-line require-await
+// deno-lint-ignore require-await
 const foo = async (): Promise<never> => {
   console.log("before error");
   throw Error("error");

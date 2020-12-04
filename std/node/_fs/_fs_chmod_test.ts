@@ -8,7 +8,7 @@ Deno.test({
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const originalFileMode: number | null = (await Deno.lstat(tempFile)).mode;
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       chmod(tempFile, 0o777, (err) => {
         if (err) reject(err);
         else resolve();

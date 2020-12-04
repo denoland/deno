@@ -9,12 +9,13 @@
 
 use crate::colors;
 use crate::diff::diff;
-use crate::fs::canonicalize_path;
-use crate::fs::files_in_subtree;
+use crate::file_watcher;
+use crate::fs_util::{collect_files, is_supported_ext};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::futures::FutureExt;
 use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
@@ -29,31 +30,37 @@ use std::sync::{Arc, Mutex};
 const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
-///
-/// First argument and ignore supports globs, and if it is `None`
-/// then the current directory is recursively walked.
 pub async fn format(
   args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   check: bool,
-  exclude: Vec<PathBuf>,
+  watch: bool,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return format_stdin(check);
-  }
-  // collect all files provided.
-  let mut target_files = collect_files(args)?;
-  if !exclude.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
-  }
-  let config = get_config();
-  if check {
-    check_source_files(config, target_files).await
+  let target_file_resolver = || {
+    // collect the files that are to be formatted
+    collect_files(&args, &ignore, is_supported_ext)
+  };
+
+  let operation = |paths: Vec<PathBuf>| {
+    let config = get_config();
+    async move {
+      if check {
+        check_source_files(config, paths).await?;
+      } else {
+        format_source_files(config, paths).await?;
+      }
+      Ok(())
+    }
+    .boxed_local()
+  };
+
+  if watch {
+    file_watcher::watch_func(target_file_resolver, operation, "Fmt").await?;
   } else {
-    format_source_files(config, target_files).await
+    operation(target_file_resolver()?).await?;
   }
+
+  Ok(())
 }
 
 async fn check_source_files(
@@ -78,24 +85,10 @@ async fn check_source_files(
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock().unwrap();
-            match diff(&file_text, &formatted_text) {
-              Ok(diff) => {
-                info!("");
-                info!(
-                  "{} {}:",
-                  colors::bold("from"),
-                  file_path.display().to_string()
-                );
-                info!("{}", diff);
-              }
-              Err(e) => {
-                eprintln!(
-                  "Error generating diff: {}",
-                  file_path.to_string_lossy()
-                );
-                eprintln!("   {}", e);
-              }
-            }
+            let diff = diff(&file_text, &formatted_text);
+            info!("");
+            info!("{} {}:", colors::bold("from"), file_path.display());
+            info!("{}", diff);
           }
         }
         Err(e) => {
@@ -187,7 +180,7 @@ async fn format_source_files(
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--check` flag.
-fn format_stdin(check: bool) -> Result<(), AnyError> {
+pub fn format_stdin(check: bool) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
@@ -218,42 +211,6 @@ fn files_str(len: usize) -> &'static str {
   } else {
     "files"
   }
-}
-
-fn is_supported(path: &Path) -> bool {
-  let lowercase_ext = path
-    .extension()
-    .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-  if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
-  } else {
-    false
-  }
-}
-
-pub fn collect_files(
-  files: Vec<PathBuf>,
-) -> Result<Vec<PathBuf>, std::io::Error> {
-  let mut target_files: Vec<PathBuf> = vec![];
-
-  if files.is_empty() {
-    target_files.extend(files_in_subtree(
-      canonicalize_path(&std::env::current_dir()?)?,
-      is_supported,
-    ));
-  } else {
-    for file in files {
-      if file.is_dir() {
-        target_files
-          .extend(files_in_subtree(canonicalize_path(&file)?, is_supported));
-      } else {
-        target_files.push(canonicalize_path(&file)?);
-      };
-    }
-  }
-
-  Ok(target_files)
 }
 
 fn get_config() -> dprint::configuration::Configuration {
@@ -337,21 +294,4 @@ where
   } else {
     Ok(())
   }
-}
-
-#[test]
-fn test_is_supported() {
-  assert!(!is_supported(Path::new("tests/subdir/redirects")));
-  assert!(!is_supported(Path::new("README.md")));
-  assert!(is_supported(Path::new("lib/typescript.d.ts")));
-  assert!(is_supported(Path::new("cli/tests/001_hello.js")));
-  assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
-  assert!(is_supported(Path::new("foo.jsx")));
-  assert!(is_supported(Path::new("foo.tsx")));
-  assert!(is_supported(Path::new("foo.TS")));
-  assert!(is_supported(Path::new("foo.TSX")));
-  assert!(is_supported(Path::new("foo.JS")));
-  assert!(is_supported(Path::new("foo.JSX")));
-  assert!(is_supported(Path::new("foo.mjs")));
-  assert!(!is_supported(Path::new("foo.mjsx")));
 }

@@ -31,7 +31,7 @@
       this.#abortAlgorithms.delete(algorithm);
     }
 
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
@@ -64,22 +64,36 @@
   }
 
   const handlerSymbol = Symbol("eventHandlers");
+
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return wrappedHandler.handler.call(this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+  // TODO(benjamingr) reuse this here and websocket where possible
   function defineEventHandler(emitter, name) {
     // HTML specification section 8.1.5.1
     Object.defineProperty(emitter, `on${name}`, {
       get() {
-        return this[handlerSymbol]?.get(name);
+        return this[handlerSymbol]?.get(name)?.handler;
       },
       set(value) {
-        const oldListener = this[handlerSymbol]?.get(name);
-        if (oldListener) {
-          this.removeEventListener(name, oldListener);
-        }
         if (!this[handlerSymbol]) {
           this[handlerSymbol] = new Map();
         }
-        this.addEventListener(name, value);
-        this[handlerSymbol].set(value);
+        let handlerWrapper = this[handlerSymbol]?.get(name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+        }
+        this[handlerSymbol].set(name, handlerWrapper);
       },
       configurable: true,
       enumerable: true,

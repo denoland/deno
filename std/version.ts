@@ -5,4 +5,4 @@
  * the cli's API is stable. In the future when std becomes stable, likely we
  * will match versions with cli as we have in the past.
  */
-export const VERSION = "0.76.0";
+export const VERSION = "0.79.0";

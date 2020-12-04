@@ -8,14 +8,13 @@
 //! the same functions as ops available in JS runtime.
 use crate::ast;
 use crate::colors;
-use crate::fmt::collect_files;
-use crate::fmt::run_parallelized;
 use crate::fmt_errors;
+use crate::fs_util::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
+use crate::tools::fmt::run_parallelized;
 use deno_core::error::{generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::linter::FileType;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
@@ -48,13 +47,7 @@ pub async fn lint_files(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return lint_stdin(json);
   }
-  let mut target_files = collect_files(args)?;
-  if !ignore.is_empty() {
-    // collect all files to be ignored
-    // and retain only files that should be linted.
-    let ignore_files = collect_files(ignore)?;
-    target_files.retain(|f| !ignore_files.contains(&f));
-  }
+  let target_files = collect_files(&args, &ignore, is_supported_ext)?;
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 
@@ -103,24 +96,36 @@ pub async fn lint_files(
   Ok(())
 }
 
-pub fn print_rules_list() {
+fn rule_to_json(rule: Box<dyn LintRule>) -> serde_json::Value {
+  serde_json::json!({
+    "code": rule.code(),
+    "tags": rule.tags(),
+    "docs": rule.docs(),
+  })
+}
+
+pub fn print_rules_list(json: bool) {
   let lint_rules = rules::get_recommended_rules();
 
-  // The rules should still be printed even if `--quiet` option is enabled,
-  // so use `println!` here instead of `info!`.
-  println!("Available rules:");
-  for rule in lint_rules {
-    println!(" - {}", rule.code());
+  if json {
+    let json_rules: Vec<serde_json::Value> =
+      lint_rules.into_iter().map(rule_to_json).collect();
+    let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
+    println!("{}", json_str);
+  } else {
+    // The rules should still be printed even if `--quiet` option is enabled,
+    // so use `println!` here instead of `info!`.
+    println!("Available rules:");
+    for rule in lint_rules {
+      println!(" - {}", rule.code());
+    }
   }
 }
 
 fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
-    .ignore_file_directives(vec!["deno-lint-ignore-file"])
-    .ignore_diagnostic_directives(vec![
-      "deno-lint-ignore",
-      "eslint-disable-next-line",
-    ])
+    .ignore_file_directive("deno-lint-ignore-file")
+    .ignore_diagnostic_directive("deno-lint-ignore")
     .lint_unused_ignore_directives(true)
     // TODO(bartlomieju): switch to true
     .lint_unknown_rules(false)
@@ -140,8 +145,7 @@ fn lint_file(
   let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics =
-    linter.lint(file_name, source_code.clone(), FileType::Module)?;
+  let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -167,14 +171,10 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
   match linter
-    .lint(
-      pseudo_file_name.to_string(),
-      source.clone(),
-      FileType::Module,
-    )
+    .lint(pseudo_file_name.to_string(), source.clone())
     .map_err(|e| e.into())
   {
-    Ok(diagnostics) => {
+    Ok((_, diagnostics)) => {
       for d in diagnostics {
         has_error = true;
         reporter.visit_diagnostic(&d, source.split('\n').collect());
@@ -285,9 +285,9 @@ pub fn format_diagnostic(
           colors::red(&"^".repeat(line_len - range.start.col))
         ));
       } else if range.end.line == i {
-        lines.push(format!("{}", colors::red(&"^".repeat(range.end.col))));
+        lines.push(colors::red(&"^".repeat(range.end.col)).to_string());
       } else if line_len != 0 {
-        lines.push(format!("{}", colors::red(&"^".repeat(line_len))));
+        lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
     }
   }

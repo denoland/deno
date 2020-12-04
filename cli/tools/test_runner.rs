@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs as deno_fs;
-use crate::installer::is_remote_url;
+use crate::fs_util;
+use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -42,9 +42,9 @@ pub fn prepare_test_modules_urls(
   let mut prepared = vec![];
 
   for path in include_paths {
-    let p = deno_fs::normalize_path(&root_path.join(path));
+    let p = fs_util::normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = crate::fs::files_in_subtree(p, is_supported);
+      let test_files = fs_util::collect_files(&[p], &[], is_supported).unwrap();
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())

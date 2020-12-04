@@ -172,7 +172,13 @@ function utf8End(this: Utf8Decoder, buf?: Buffer): string {
   return r;
 }
 
-function utf8Write(this: Utf8Decoder | Base64Decoder, buf: Buffer): string {
+function utf8Write(
+  this: Utf8Decoder | Base64Decoder,
+  buf: Buffer | string,
+): string {
+  if (typeof buf === "string") {
+    return buf;
+  }
   if (buf.length === 0) return "";
   let r;
   let i;
@@ -210,7 +216,13 @@ function base64End(this: Base64Decoder, buf?: Buffer): string {
   return r;
 }
 
-function simpleWrite(this: StringDecoderBase, buf: Buffer): string {
+function simpleWrite(
+  this: StringDecoderBase,
+  buf: Buffer | string,
+): string {
+  if (typeof buf === "string") {
+    return buf;
+  }
   return buf.toString(this.encoding);
 }
 
@@ -297,3 +309,5 @@ export class StringDecoder {
     this.write = decoder.write;
   }
 }
+
+export default { StringDecoder };

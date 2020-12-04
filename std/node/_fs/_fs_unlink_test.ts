@@ -6,7 +6,7 @@ Deno.test({
   name: "ASYNC: deleting a file",
   async fn() {
     const file = Deno.makeTempFileSync();
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       unlink(file, (err) => {
         if (err) reject(err);
         resolve();

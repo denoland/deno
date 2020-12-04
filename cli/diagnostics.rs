@@ -165,10 +165,10 @@ impl Serialize for DiagnosticCategory {
     S: Serializer,
   {
     let value = match self {
-      DiagnosticCategory::Warning => 0 as i32,
-      DiagnosticCategory::Error => 1 as i32,
-      DiagnosticCategory::Suggestion => 2 as i32,
-      DiagnosticCategory::Message => 3 as i32,
+      DiagnosticCategory::Warning => 0_i32,
+      DiagnosticCategory::Error => 1_i32,
+      DiagnosticCategory::Suggestion => 2_i32,
+      DiagnosticCategory::Message => 3_i32,
     };
     Serialize::serialize(&value, serializer)
   }
@@ -546,7 +546,7 @@ mod tests {
       }
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(
       strip_ansi_codes(&actual),
       "TS5023 [ERROR]: Unknown compiler option \'invalid\'."
@@ -573,7 +573,7 @@ mod tests {
       }
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1");
   }
 
@@ -614,7 +614,7 @@ mod tests {
       }
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10");
   }
 
@@ -655,7 +655,7 @@ mod tests {
       }
     ];
     let diagnostics: Diagnostic = serde_json::from_value(value).unwrap();
-    let actual = format!("{}", diagnostics);
+    let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2551 [ERROR]: Property \'ppid\' does not exist on type \'typeof Deno\'. \'Deno.ppid\' is an unstable API. Did you forget to run with the \'--unstable\' flag, or did you mean \'pid\'?\nconsole.log(Deno.ppid);\n                 ~~~~\n    at file:///cli/tests/unstable_ts2551.ts:1:18\n\n    \'pid\' is declared here.\n      export const pid: number;\n                   ~~~\n        at asset:///lib.deno.ns.d.ts:90:16");
   }
 }

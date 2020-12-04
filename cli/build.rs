@@ -20,6 +20,7 @@ fn create_snapshot(
 ) {
   deno_web::init(&mut js_runtime);
   deno_fetch::init(&mut js_runtime);
+  deno_crypto::init(&mut js_runtime);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -114,6 +115,7 @@ fn create_compiler_snapshot(
     "es2020",
     "es2020.intl",
     "es2020.promise",
+    "es2020.sharedmemory",
     "es2020.string",
     "es2020.symbol.wellknown",
     "esnext",
@@ -255,6 +257,9 @@ fn main() {
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
+  if let Ok(c) = env::var("DENO_CANARY") {
+    println!("cargo:rustc-env=DENO_CANARY={}", c);
+  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());

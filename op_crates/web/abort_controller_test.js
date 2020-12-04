@@ -95,11 +95,33 @@ function abortSignalEventOrder() {
   assertEquals(arr[1], 2);
   assertEquals(arr[2], 3);
 }
+
+function abortSignalEventOrderComplex() {
+  const arr = [];
+  const controller = new AbortController();
+  const { signal } = controller;
+  signal.addEventListener("abort", () => arr.push(1));
+  signal.onabort = () => {
+    throw new Error();
+  };
+  signal.addEventListener("abort", () => arr.push(3));
+  signal.onabort = () => arr.push(2);
+  controller.abort();
+  assertEquals(arr[0], 1);
+  assertEquals(arr[1], 2);
+  assertEquals(arr[2], 3);
+}
+
 function abortSignalHandlerLocation() {
   const controller = new AbortController();
   const { signal } = controller;
   const abortHandler = Object.getOwnPropertyDescriptor(signal, "onabort");
   assertEquals(abortHandler, undefined);
+}
+function abortSignalLength() {
+  const controller = new AbortController();
+  const { signal } = controller;
+  assertEquals(signal.constructor.length, 0);
 }
 function main() {
   basicAbortController();
@@ -109,7 +131,9 @@ function main() {
   controllerHasProperToString();
   abortSignalIllegalConstructor();
   abortSignalEventOrder();
+  abortSignalEventOrderComplex();
   abortSignalHandlerLocation();
+  abortSignalLength();
 }
 
 main();

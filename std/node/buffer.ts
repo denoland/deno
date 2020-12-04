@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as hex from "../encoding/hex.ts";
 import * as base64 from "../encoding/base64.ts";
-import { normalizeEncoding, notImplemented } from "./_utils.ts";
+import { Encodings, normalizeEncoding, notImplemented } from "./_utils.ts";
 
 const notImplementedEncodings = [
   "ascii",
@@ -11,7 +11,7 @@ const notImplementedEncodings = [
   "utf16le",
 ];
 
-function checkEncoding(encoding = "utf8", strict = true): string {
+function checkEncoding(encoding = "utf8", strict = true): Encodings {
   if (typeof encoding !== "string" || (strict && encoding === "")) {
     if (!strict) return "utf8";
     throw new TypeError(`Unkown encoding: ${encoding}`);
@@ -73,7 +73,7 @@ function base64ByteLength(str: string, bytes: number): number {
 /**
  * See also https://nodejs.org/api/buffer.html
  */
-export default class Buffer extends Uint8Array {
+export class Buffer extends Uint8Array {
   /**
    * Allocates a new Buffer of size bytes.
    */
@@ -93,14 +93,14 @@ export default class Buffer extends Uint8Array {
 
     let bufFill;
     if (typeof fill === "string") {
-      encoding = checkEncoding(encoding);
+      const clearEncoding = checkEncoding(encoding);
       if (
         typeof fill === "string" &&
         fill.length === 1 &&
-        encoding === "utf8"
+        clearEncoding === "utf8"
       ) {
         buf.fill(fill.charCodeAt(0));
-      } else bufFill = Buffer.from(fill, encoding);
+      } else bufFill = Buffer.from(fill, clearEncoding);
     } else if (typeof fill === "number") {
       buf.fill(fill);
     } else if (fill instanceof Uint8Array) {
@@ -598,4 +598,4 @@ export default class Buffer extends Uint8Array {
   }
 }
 
-export { Buffer };
+export default { Buffer };

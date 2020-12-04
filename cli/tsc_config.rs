@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs::canonicalize_path;
+use crate::fs_util::canonicalize_path;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -64,7 +64,7 @@ const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "importHelpers",
   "inlineSourceMap",
   "inlineSources",
-  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
+  "isolatedModules",
   "module",
   "noEmitHelpers",
   "noLib",

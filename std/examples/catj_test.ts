@@ -82,7 +82,14 @@ function catj(
   ...files: string[]
 ): Deno.Process<Deno.RunOptions & { stdin: "piped"; stdout: "piped" }> {
   return Deno.run({
-    cmd: [Deno.execPath(), "run", "--allow-read", "catj.ts", ...files],
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--quiet",
+      "--allow-read",
+      "catj.ts",
+      ...files,
+    ],
     cwd: moduleDir,
     stdin: "piped",
     stdout: "piped",

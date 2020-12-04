@@ -2,7 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::fs::canonicalize_path;
+use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
@@ -13,8 +13,8 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use rand::thread_rng;
-use rand::Rng;
+use deno_crypto::rand::thread_rng;
+use deno_crypto::rand::Rng;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;
@@ -358,7 +358,7 @@ fn op_fstat_sync(
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
   })?;
-  Ok(get_stat_json(metadata).unwrap())
+  Ok(get_stat_json(metadata))
 }
 
 async fn op_fstat_async(
@@ -377,7 +377,7 @@ async fn op_fstat_async(
         Err(type_error("cannot stat this type of resource".to_string()))
       }
     })?;
-  Ok(get_stat_json(metadata).unwrap())
+  Ok(get_stat_json(metadata))
 }
 
 #[derive(Deserialize)]
@@ -818,7 +818,7 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Value {
 }
 
 #[inline(always)]
-fn get_stat_json(metadata: std::fs::Metadata) -> Result<Value, AnyError> {
+fn get_stat_json(metadata: std::fs::Metadata) -> Value {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member:ident) => {{
@@ -857,7 +857,7 @@ fn get_stat_json(metadata: std::fs::Metadata) -> Result<Value, AnyError> {
     "blksize": usm!(blksize),
     "blocks": usm!(blocks),
   });
-  Ok(json_val)
+  json_val
 }
 
 #[derive(Deserialize)]
@@ -882,7 +882,7 @@ fn op_stat_sync(
   } else {
     std::fs::metadata(&path)?
   };
-  get_stat_json(metadata)
+  Ok(get_stat_json(metadata))
 }
 
 async fn op_stat_async(
@@ -906,7 +906,7 @@ async fn op_stat_async(
     } else {
       std::fs::metadata(&path)?
     };
-    get_stat_json(metadata)
+    Ok(get_stat_json(metadata))
   })
   .await
   .unwrap()

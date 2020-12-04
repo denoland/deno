@@ -154,3 +154,14 @@ export const decode = parse;
 export const encode = stringify;
 export const unescape = decodeURIComponent;
 export const escape = encodeURIComponent;
+
+export default {
+  parse,
+  encodeStr,
+  stringify,
+  hexTable,
+  decode,
+  encode,
+  unescape,
+  escape,
+};

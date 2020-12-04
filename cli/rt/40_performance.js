@@ -70,11 +70,11 @@
     }
 
     constructor(
-      name,
-      entryType,
-      startTime,
-      duration,
-      key,
+      name = null,
+      entryType = null,
+      startTime = null,
+      duration = null,
+      key = null,
     ) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
@@ -185,7 +185,7 @@
   }
 
   class Performance {
-    constructor(key) {
+    constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }

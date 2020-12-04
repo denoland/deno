@@ -34,9 +34,7 @@ impl Lockfile {
     if !self.write {
       return Ok(());
     }
-    // Will perform sort so output is deterministic
-    let map: BTreeMap<_, _> = self.map.iter().collect();
-    let j = json!(map);
+    let j = json!(&self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
     let mut f = std::fs::OpenOptions::new()
       .write(true)
@@ -192,9 +190,30 @@ mod tests {
       .read_to_string(&mut contents)
       .expect("Unable to read the file");
 
-    assert!(contents.contains(
-      "fedebba9bb82cce293196f54b21875b649e457f0eaf55556f1e318204947a28f"
-    )); // sha-256 hash of the source 'Here is some source code'
+    let contents_json =
+      serde_json::from_str::<serde_json::Value>(&contents).unwrap();
+    let object = contents_json.as_object().unwrap();
+
+    assert_eq!(
+      object
+        .get("https://deno.land/std@0.71.0/textproto/mod.ts")
+        .and_then(|v| v.as_str()),
+      // sha-256 hash of the source 'Here is some source code'
+      Some("fedebba9bb82cce293196f54b21875b649e457f0eaf55556f1e318204947a28f")
+    );
+
+    // confirm that keys are sorted alphabetically
+    let mut keys = object.keys().map(|k| k.as_str());
+    assert_eq!(
+      keys.next(),
+      Some("https://deno.land/std@0.71.0/async/delay.ts")
+    );
+    assert_eq!(keys.next(), Some("https://deno.land/std@0.71.0/io/util.ts"));
+    assert_eq!(
+      keys.next(),
+      Some("https://deno.land/std@0.71.0/textproto/mod.ts")
+    );
+    assert!(keys.next().is_none());
 
     teardown(temp_dir);
   }

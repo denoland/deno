@@ -183,10 +183,10 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
   for file in walkdir::WalkDir::new(target_dir) {
-    if file.is_err() {
-      continue;
-    }
-    let file = file.unwrap();
+    let file = match file {
+      Ok(file) => file,
+      Err(_) => continue,
+    };
     let filename = file.file_name().to_str().unwrap().to_string();
 
     if !BINARY_TARGET_FILES.contains(&filename.as_str()) {

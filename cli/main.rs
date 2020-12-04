@@ -10,7 +10,6 @@ extern crate log;
 mod ast;
 mod checksum;
 mod colors;
-mod coverage;
 mod deno_dir;
 mod diagnostics;
 mod diff;
@@ -20,18 +19,14 @@ mod file_fetcher;
 mod file_watcher;
 mod flags;
 mod flags_allow_net;
-mod fmt;
 mod fmt_errors;
-mod fs;
-mod global_timer;
+mod fs_util;
 mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
 mod inspector;
-mod installer;
 mod js;
-mod lint;
 mod lockfile;
 mod media_type;
 mod metrics;
@@ -40,29 +35,33 @@ mod module_loader;
 mod ops;
 mod permissions;
 mod program_state;
-mod repl;
 mod resolve_addr;
 mod signal;
 mod source_maps;
 mod specifier_handler;
-mod test_runner;
+mod standalone;
 mod text_encoding;
 mod tokio_util;
+mod tools;
 mod tsc;
 mod tsc_config;
-mod upgrade;
 mod version;
+mod web_worker;
 mod worker;
 
-use crate::coverage::CoverageCollector;
-use crate::coverage::PrettyCoverageReporter;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::fs as deno_fs;
+use crate::file_watcher::ModuleResolutionResult;
+use crate::flags::DenoSubcommand;
+use crate::flags::Flags;
+use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
+use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
+use crate::standalone::create_standalone_binary;
+use crate::tools::installer::infer_name_from_url;
 use crate::worker::MainWorker;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -70,17 +69,12 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
-use flags::DenoSubcommand;
-use flags::Flags;
-use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
-use program_state::exit_unstable;
 use std::cell::RefCell;
 use std::env;
 use std::io::Read;
@@ -90,7 +84,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use upgrade::upgrade_command;
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -159,6 +152,53 @@ fn get_types(unstable: bool) -> String {
   types
 }
 
+async fn compile_command(
+  flags: Flags,
+  source_file: String,
+  output: Option<PathBuf>,
+) -> Result<(), AnyError> {
+  if !flags.unstable {
+    exit_unstable("compile");
+  }
+
+  let debug = flags.log_level == Some(log::Level::Debug);
+
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let program_state = ProgramState::new(flags.clone())?;
+
+  let output = output.or_else(|| {
+    infer_name_from_url(module_specifier.as_url()).map(PathBuf::from)
+  }).ok_or_else(|| generic_error(
+    "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+  ))?;
+
+  let module_graph = create_module_graph_and_maybe_check(
+    module_specifier.clone(),
+    program_state.clone(),
+    debug,
+  )
+  .await?;
+
+  info!(
+    "{} {}",
+    colors::green("Bundle"),
+    module_specifier.to_string()
+  );
+  let bundle_str = bundle_module_graph(module_graph, flags, debug)?;
+
+  info!(
+    "{} {}",
+    colors::green("Compile"),
+    module_specifier.to_string()
+  );
+  create_standalone_binary(bundle_str.as_bytes().to_vec(), output.clone())
+    .await?;
+
+  info!("{} {}", colors::green("Emit"), output.display());
+
+  Ok(())
+}
+
 async fn info_command(
   flags: Flags,
   maybe_specifier: Option<String>,
@@ -188,7 +228,7 @@ async fn info_command(
     if json {
       write_json_to_stdout(&json!(info))?;
     } else {
-      write_to_stdout_ignore_sigpipe(format!("{}", info).as_bytes())?;
+      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())?;
     }
     Ok(())
   } else {
@@ -215,7 +255,7 @@ async fn install_command(
     MainWorker::new(&program_state, main_module.clone(), permissions);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
-  installer::install(flags, &module_url, args, name, root, force)
+  tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
 async fn lint_command(
@@ -230,11 +270,11 @@ async fn lint_command(
   }
 
   if list_rules {
-    lint::print_rules_list();
+    tools::lint::print_rules_list(json);
     return Ok(());
   }
 
-  lint::lint_files(files, ignore, json).await
+  tools::lint::lint_files(files, ignore, json).await
 }
 
 async fn cache_command(
@@ -309,22 +349,11 @@ async fn eval_command(
   Ok(())
 }
 
-async fn bundle_command(
-  flags: Flags,
-  source_file: String,
-  out_file: Option<PathBuf>,
-) -> Result<(), AnyError> {
-  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-
-  debug!(">>>>> bundle START");
-  let program_state = ProgramState::new(flags.clone())?;
-
-  info!(
-    "{} {}",
-    colors::green("Bundle"),
-    module_specifier.to_string()
-  );
-
+async fn create_module_graph_and_maybe_check(
+  module_specifier: ModuleSpecifier,
+  program_state: Arc<ProgramState>,
+  debug: bool,
+) -> Result<module_graph::Graph, AnyError> {
   let handler = Rc::new(RefCell::new(FetchHandler::new(
     &program_state,
     // when bundling, dynamic imports are only access for their type safety,
@@ -337,24 +366,23 @@ async fn bundle_command(
     program_state.lockfile.clone(),
   );
   builder.add(&module_specifier, false).await?;
-  let graph = builder.get_graph();
+  let module_graph = builder.get_graph();
 
-  let debug = flags.log_level == Some(log::Level::Debug);
-  if !flags.no_check {
+  if !program_state.flags.no_check {
     // TODO(@kitsonk) support bundling for workers
-    let lib = if flags.unstable {
+    let lib = if program_state.flags.unstable {
       module_graph::TypeLib::UnstableDenoWindow
     } else {
       module_graph::TypeLib::DenoWindow
     };
-    let graph = graph.clone();
-    let result_info = graph.check(module_graph::CheckOptions {
-      debug,
-      emit: false,
-      lib,
-      maybe_config_path: flags.config_path.clone(),
-      reload: flags.reload,
-    })?;
+    let result_info =
+      module_graph.clone().check(module_graph::CheckOptions {
+        debug,
+        emit: false,
+        lib,
+        maybe_config_path: program_state.flags.config_path.clone(),
+        reload: program_state.flags.reload,
+      })?;
 
     debug!("{}", result_info.stats);
     if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -365,33 +393,128 @@ async fn bundle_command(
     }
   }
 
-  let (output, stats, maybe_ignored_options) =
-    graph.bundle(module_graph::BundleOptions {
+  Ok(module_graph)
+}
+
+fn bundle_module_graph(
+  module_graph: module_graph::Graph,
+  flags: Flags,
+  debug: bool,
+) -> Result<String, AnyError> {
+  let (bundle, stats, maybe_ignored_options) =
+    module_graph.bundle(module_graph::BundleOptions {
       debug,
       maybe_config_path: flags.config_path,
     })?;
-
-  if flags.no_check && maybe_ignored_options.is_some() {
-    let ignored_options = maybe_ignored_options.unwrap();
-    eprintln!("{}", ignored_options);
+  match maybe_ignored_options {
+    Some(ignored_options) if flags.no_check => {
+      eprintln!("{}", ignored_options);
+    }
+    _ => {}
   }
   debug!("{}", stats);
+  Ok(bundle)
+}
 
-  debug!(">>>>> bundle END");
+async fn bundle_command(
+  flags: Flags,
+  source_file: String,
+  out_file: Option<PathBuf>,
+) -> Result<(), AnyError> {
+  let debug = flags.log_level == Some(log::Level::Debug);
 
-  if let Some(out_file_) = out_file.as_ref() {
-    let output_bytes = output.as_bytes();
-    let output_len = output_bytes.len();
-    deno_fs::write_file(out_file_, output_bytes, 0o644)?;
-    info!(
-      "{} {:?} ({})",
-      colors::green("Emit"),
-      out_file_,
-      colors::gray(&info::human_size(output_len as f64))
-    );
+  let module_resolver = || {
+    let flags = flags.clone();
+    let source_file1 = source_file.clone();
+    let source_file2 = source_file.clone();
+    async move {
+      let module_specifier =
+        ModuleSpecifier::resolve_url_or_path(&source_file1)?;
+
+      debug!(">>>>> bundle START");
+      let program_state = ProgramState::new(flags.clone())?;
+
+      info!(
+        "{} {}",
+        colors::green("Bundle"),
+        module_specifier.to_string()
+      );
+
+      let module_graph = create_module_graph_and_maybe_check(
+        module_specifier,
+        program_state.clone(),
+        debug,
+      )
+      .await?;
+
+      let mut paths_to_watch: Vec<PathBuf> = module_graph
+        .get_modules()
+        .iter()
+        .filter_map(|specifier| specifier.as_url().to_file_path().ok())
+        .collect();
+
+      if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
+        paths_to_watch
+          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      }
+
+      Ok((paths_to_watch, module_graph))
+    }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_graph)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info: module_graph,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(source_file2),
+        error: e,
+      },
+    })
+    .boxed_local()
+  };
+
+  let operation = |module_graph: module_graph::Graph| {
+    let flags = flags.clone();
+    let out_file = out_file.clone();
+    async move {
+      let output = bundle_module_graph(module_graph, flags, debug)?;
+
+      debug!(">>>>> bundle END");
+
+      if let Some(out_file) = out_file.as_ref() {
+        let output_bytes = output.as_bytes();
+        let output_len = output_bytes.len();
+        fs_util::write_file(out_file, output_bytes, 0o644)?;
+        info!(
+          "{} {:?} ({})",
+          colors::green("Emit"),
+          out_file,
+          colors::gray(&info::human_size(output_len as f64))
+        );
+      } else {
+        println!("{}", output);
+      }
+
+      Ok(())
+    }
+    .boxed_local()
+  };
+
+  if flags.watch {
+    file_watcher::watch_func_with_module_resolution(
+      module_resolver,
+      operation,
+      "Bundle",
+    )
+    .await?;
   } else {
-    println!("{}", output);
+    let module_graph = match module_resolver().await {
+      ModuleResolutionResult::Fail { error, .. } => return Err(error),
+      ModuleResolutionResult::Success { module_info, .. } => module_info,
+    };
+    operation(module_graph).await?;
   }
+
   Ok(())
 }
 
@@ -516,6 +639,20 @@ async fn doc_command(
   }
 }
 
+async fn format_command(
+  flags: Flags,
+  args: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+  check: bool,
+) -> Result<(), AnyError> {
+  if args.len() == 1 && args[0].to_string_lossy() == "-" {
+    return tools::fmt::format_stdin(check);
+  }
+
+  tools::fmt::format(args, ignore, check, flags.watch).await?;
+  Ok(())
+}
+
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
@@ -525,7 +662,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
     MainWorker::new(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
 
-  repl::run(&program_state, worker).await
+  tools::repl::run(&program_state, worker).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
@@ -560,43 +697,60 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 }
 
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let program_state = ProgramState::new(flags.clone())?;
-
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
-    &program_state,
-    Permissions::allow_all(),
-  )?));
-  let mut builder = module_graph::GraphBuilder::new(
-    handler,
-    program_state.maybe_import_map.clone(),
-    program_state.lockfile.clone(),
-  );
-  builder.add(&main_module, false).await?;
-  let module_graph = builder.get_graph();
-
-  // Find all local files in graph
-  let mut paths_to_watch: Vec<PathBuf> = module_graph
-    .get_modules()
-    .iter()
-    .filter(|specifier| specifier.as_url().scheme() == "file")
-    .map(|specifier| specifier.as_url().to_file_path().unwrap())
-    .collect();
-
-  if let Some(import_map) = program_state.flags.import_map_path.clone() {
-    paths_to_watch
-      .push(fs::resolve_from_cwd(std::path::Path::new(&import_map)).unwrap());
-  }
-
-  // FIXME(bartlomieju): new file watcher is created on after each restart
-  file_watcher::watch_func(&paths_to_watch, move || {
-    // FIXME(bartlomieju): ProgramState must be created on each restart - otherwise file fetcher
-    // will use cached source files
-    let gs = ProgramState::new(flags.clone()).unwrap();
-    let permissions = Permissions::from_flags(&flags);
-    let main_module = main_module.clone();
+  let module_resolver = || {
+    let script1 = script.clone();
+    let script2 = script.clone();
+    let flags = flags.clone();
     async move {
-      let mut worker = MainWorker::new(&gs, main_module.clone(), permissions);
+      let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
+      let program_state = ProgramState::new(flags)?;
+      let handler = Rc::new(RefCell::new(FetchHandler::new(
+        &program_state,
+        Permissions::allow_all(),
+      )?));
+      let mut builder = module_graph::GraphBuilder::new(
+        handler,
+        program_state.maybe_import_map.clone(),
+        program_state.lockfile.clone(),
+      );
+      builder.add(&main_module, false).await?;
+      let module_graph = builder.get_graph();
+
+      // Find all local files in graph
+      let mut paths_to_watch: Vec<PathBuf> = module_graph
+        .get_modules()
+        .iter()
+        .filter_map(|specifier| specifier.as_url().to_file_path().ok())
+        .collect();
+
+      if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
+        paths_to_watch
+          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      }
+
+      Ok((paths_to_watch, main_module))
+    }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_info)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(script2),
+        error: e,
+      },
+    })
+    .boxed_local()
+  };
+
+  let operation = |main_module: ModuleSpecifier| {
+    let flags = flags.clone();
+    let permissions = Permissions::from_flags(&flags);
+    async move {
+      let main_module = main_module.clone();
+      let program_state = ProgramState::new(flags)?;
+      let mut worker =
+        MainWorker::new(&program_state, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -605,7 +759,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       Ok(())
     }
     .boxed_local()
-  })
+  };
+
+  file_watcher::watch_func_with_module_resolution(
+    module_resolver,
+    operation,
+    "Process",
+  )
   .await
 }
 
@@ -635,6 +795,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
+  no_run: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
@@ -644,7 +805,8 @@ async fn test_command(
   let permissions = Permissions::from_flags(&flags);
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
+  let test_modules =
+    tools::test_runner::prepare_test_modules_urls(include, &cwd)?;
 
   if test_modules.is_empty() {
     println!("No matching test modules found");
@@ -653,35 +815,49 @@ async fn test_command(
     }
     return Ok(());
   }
-
-  let test_file_path = cwd.join("$deno$test.ts");
-  let test_file_url =
-    Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file = test_runner::render_test_file(
-    test_modules.clone(),
-    fail_fast,
-    quiet,
-    filter,
-  );
-  let main_module =
-    ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+  let main_module = ModuleSpecifier::resolve_path("$deno$test.ts")?;
   // Create a dummy source file.
   let source_file = File {
-    local: test_file_url.to_file_path().unwrap(),
+    local: main_module.as_url().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: test_file.clone(),
-    specifier: ModuleSpecifier::from(test_file_url.clone()),
+    source: tools::test_runner::render_test_file(
+      test_modules.clone(),
+      fail_fast,
+      quiet,
+      filter,
+    ),
+    specifier: main_module.clone(),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
   program_state.file_fetcher.insert_cached(source_file);
 
+  if no_run {
+    let lib = if flags.unstable {
+      module_graph::TypeLib::UnstableDenoWindow
+    } else {
+      module_graph::TypeLib::DenoWindow
+    };
+    program_state
+      .prepare_module_load(
+        main_module.clone(),
+        lib,
+        Permissions::allow_all(),
+        false,
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
+    return Ok(());
+  }
+
+  let mut worker =
+    MainWorker::new(&program_state, main_module.clone(), permissions);
+
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
-    let mut coverage_collector = CoverageCollector::new(session);
+    let mut coverage_collector =
+      tools::coverage::CoverageCollector::new(session);
     coverage_collector.start_collecting().await?;
 
     Some(coverage_collector)
@@ -700,10 +876,14 @@ async fn test_command(
     let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverages =
-      coverage::filter_script_coverages(coverages, test_file_url, test_modules);
+    let filtered_coverages = tools::coverage::filter_script_coverages(
+      coverages,
+      main_module.as_url().clone(),
+      test_modules,
+    );
 
-    let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
+    let mut coverage_reporter =
+      tools::coverage::PrettyCoverageReporter::new(quiet);
     for coverage in filtered_coverages {
       coverage_reporter.visit_coverage(&coverage);
     }
@@ -712,38 +892,31 @@ async fn test_command(
   Ok(())
 }
 
-pub fn main() {
-  #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
-
-  let args: Vec<String> = env::args().collect();
-  let flags = flags::flags_from_vec(args);
-
-  if let Some(ref v8_flags) = flags.v8_flags {
-    let v8_flags_includes_help = v8_flags
-      .iter()
-      .any(|flag| flag == "-help" || flag == "--help");
-    let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(v8_flags.iter().cloned())
-      .collect::<Vec<_>>();
-    let unrecognized_v8_flags = v8_set_flags(v8_flags)
-      .into_iter()
-      .skip(1)
-      .collect::<Vec<_>>();
-    if !unrecognized_v8_flags.is_empty() {
-      for f in unrecognized_v8_flags {
-        eprintln!("error: V8 did not recognize flag '{}'", f);
-      }
-      eprintln!();
-      eprintln!("For a list of V8 flags, use '--v8-flags=--help'");
-      std::process::exit(1);
+fn init_v8_flags(v8_flags: &[String]) {
+  let v8_flags_includes_help = v8_flags
+    .iter()
+    .any(|flag| flag == "-help" || flag == "--help");
+  let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+    .chain(v8_flags.iter().cloned())
+    .collect::<Vec<_>>();
+  let unrecognized_v8_flags = v8_set_flags(v8_flags)
+    .into_iter()
+    .skip(1)
+    .collect::<Vec<_>>();
+  if !unrecognized_v8_flags.is_empty() {
+    for f in unrecognized_v8_flags {
+      eprintln!("error: V8 did not recognize flag '{}'", f);
     }
-    if v8_flags_includes_help {
-      std::process::exit(0);
-    }
+    eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
+    std::process::exit(1);
   }
+  if v8_flags_includes_help {
+    std::process::exit(0);
+  }
+}
 
-  let log_level = match flags.log_level {
+fn init_logger(maybe_level: Option<Level>) {
+  let log_level = match maybe_level {
     Some(level) => level,
     None => Level::Info, // Default log level
   };
@@ -774,8 +947,12 @@ pub fn main() {
     }
   })
   .init();
+}
 
-  let fut = match flags.clone().subcommand {
+fn get_subcommand(
+  flags: Flags,
+) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  match flags.clone().subcommand {
     DenoSubcommand::Bundle {
       source_file,
       out_file,
@@ -794,11 +971,15 @@ pub fn main() {
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
+    DenoSubcommand::Compile {
+      source_file,
+      output,
+    } => compile_command(flags, source_file, output).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,
       ignore,
-    } => fmt::format(files, check, ignore).boxed_local(),
+    } => format_command(flags, files, ignore, check).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
@@ -820,19 +1001,22 @@ pub fn main() {
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
+      no_run,
       fail_fast,
       quiet,
       include,
       allow_none,
       filter,
-    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
-      .boxed_local(),
+    } => {
+      test_command(flags, include, no_run, fail_fast, quiet, allow_none, filter)
+        .boxed_local()
+    }
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
     DenoSubcommand::Types => {
       let types = get_types(flags.unstable);
@@ -840,23 +1024,42 @@ pub fn main() {
         eprintln!("{}", e);
         std::process::exit(1);
       }
-      return;
+      std::process::exit(0);
     }
     DenoSubcommand::Upgrade {
       force,
       dry_run,
+      canary,
       version,
       output,
       ca_file,
-    } => {
-      upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
-    }
-  };
+    } => tools::upgrade::upgrade_command(
+      dry_run, force, canary, version, output, ca_file,
+    )
+    .boxed_local(),
+  }
+}
 
-  let result = tokio_util::run_basic(fut);
+pub fn main() {
+  #[cfg(windows)]
+  colors::enable_ansi(); // For Windows 10
+
+  let args: Vec<String> = env::args().collect();
+  if let Err(err) = standalone::try_run_standalone_binary(args.clone()) {
+    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
+    std::process::exit(1);
+  }
+
+  let flags = flags::flags_from_vec(args);
+  if let Some(ref v8_flags) = flags.v8_flags {
+    init_v8_flags(v8_flags);
+  }
+  init_logger(flags.log_level);
+
+  let subcommand_future = get_subcommand(flags);
+  let result = tokio_util::run_basic(subcommand_future);
   if let Err(err) = result {
-    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
-    eprintln!("{}", msg);
+    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }
 }

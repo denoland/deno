@@ -26,8 +26,7 @@ import {
   CHAR_LOWERCASE_Z,
 } from "../path/_constants.ts";
 import * as path from "./path.ts";
-
-const isWindows = Deno.build.os === "windows";
+import { isWindows } from "../_util/os.ts";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
@@ -138,3 +137,9 @@ export function pathToFileURL(filepath: string): URL {
   outURL.pathname = resolved;
   return outURL;
 }
+
+export default {
+  fileURLToPath,
+  pathToFileURL,
+  URL,
+};
