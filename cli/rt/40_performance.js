@@ -43,7 +43,7 @@
   }
 
   function now() {
-    return opNow(0);
+    return opNow();
   }
 
   class PerformanceEntry {

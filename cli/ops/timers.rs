@@ -8,30 +8,30 @@
 //! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
+use super::dispatch_minimal::minimal_op;
+use super::dispatch_minimal::MinimalOp;
 use crate::metrics::metrics_op;
 use crate::permissions::Permissions;
-use deno_core::BufVec;
-use deno_core::error::AnyError;
 use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::OpState;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::BufVec;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use std::{cell::RefCell};
+use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
-use super::dispatch_minimal::minimal_op;
-use super::dispatch_minimal::MinimalOp;
 
 pub type StartTime = Instant;
 
@@ -158,7 +158,7 @@ fn op_now(
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
   let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
-  let reduced_time_precision = 2_000_000 as f64; // 2ms in nanoseconds
+  let reduced_time_precision = 2_000_000.0; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
@@ -167,7 +167,7 @@ fn op_now(
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
-  let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000 as f64);
+  let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0);
 
   (&mut zero_copy[0]).copy_from_slice(&result.to_be_bytes());
 
