@@ -471,7 +471,7 @@ function main(): void {
         evt.error,
       );
     } else {
-    console.error(evt.error);
+      console.error(evt.error);
     }
   });
   serveRequests();
