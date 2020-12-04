@@ -34,7 +34,7 @@ pub fn server_capabilities(
     definition_provider: None,
     type_definition_provider: None,
     implementation_provider: None,
-    references_provider: None,
+    references_provider: Some(OneOf::Left(true)),
     document_highlight_provider: Some(OneOf::Left(true)),
     document_symbol_provider: None,
     workspace_symbol_provider: None,

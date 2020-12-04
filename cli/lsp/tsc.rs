@@ -347,6 +347,35 @@ impl DocumentHighlights {
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceEntry {
+  text_span: TextSpan,
+  pub file_name: String,
+  original_text_span: Option<TextSpan>,
+  original_file_name: Option<String>,
+  context_span: Option<TextSpan>,
+  original_context_span: Option<TextSpan>,
+  is_write_access: bool,
+  pub is_definition: bool,
+  is_in_string: Option<bool>,
+}
+
+impl ReferenceEntry {
+  pub fn to_location(&self, line_index: &[u32]) -> lsp_types::Location {
+    let specifier_str = if self.file_name.starts_with("file://") {
+      self.file_name.clone()
+    } else {
+      format!("deno:///{}", self.file_name.replacen("://", "/", 1))
+    };
+    let specifier = ModuleSpecifier::resolve_url(&specifier_str).unwrap();
+    lsp_types::Location {
+      uri: specifier.as_url().clone(),
+      range: self.text_span.to_range(line_index),
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
   id: usize,
@@ -423,6 +452,7 @@ fn dispose(state: &mut State, args: Value) -> Result<Value, AnyError> {
 #[serde(rename_all = "camelCase")]
 struct GetChangeRangeArgs {
   specifier: String,
+  old_length: u32,
   old_version: String,
   version: String,
 }
@@ -432,20 +462,33 @@ struct GetChangeRangeArgs {
 fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: GetChangeRangeArgs = serde_json::from_value(args.clone())?;
   cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
-  if let (Some(a), Some(b)) = (
-    state
+  if let Some(current) = state
+    .snapshots
+    .get(&(v.specifier.clone().into(), v.version.into()))
+  {
+    if let Some(prev) = state
       .snapshots
-      .get(&(v.specifier.clone().into(), v.old_version.clone().into())),
-    state
-      .snapshots
-      .get(&(v.specifier.clone().into(), v.version.into())),
-  ) {
-    Ok(text::get_range_change(a, b))
+      .get(&(v.specifier.clone().into(), v.old_version.clone().into()))
+    {
+      Ok(text::get_range_change(prev, current))
+    } else {
+      // when a local file is opened up in the editor, the compiler might
+      // already have a snapshot of it in memory, and will request it, but we
+      // now are working off in memory versions of the document, and so need
+      // to tell tsc to reset the whole document
+      Ok(json!({
+        "span": {
+          "start": 0,
+          "length": v.old_length,
+        },
+        "newLength": current.chars().count(),
+      }))
+    }
   } else {
     Err(custom_error(
       "MissingSnapshot",
       format!(
-        "One of the snapshotted versions is missing.\n  Args: \"{}\"",
+        "The current snapshot version is missing.\n  Args: \"{}\"",
         args
       ),
     ))
@@ -643,6 +686,8 @@ pub enum RequestMethod {
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Return document highlights at position.
   GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
+  /// Get document references for a specific position.
+  GetReferences((ModuleSpecifier, u32)),
 }
 
 impl RequestMethod {
@@ -684,6 +729,12 @@ impl RequestMethod {
         "specifier": specifier,
         "position": position,
         "filesToSearch": files_to_search,
+      }),
+      RequestMethod::GetReferences((specifier, position)) => json!({
+        "id": id,
+        "method": "getReferences",
+        "specifier": specifier,
+        "position": position,
       }),
     }
   }
@@ -968,5 +1019,43 @@ mod tests {
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response, json!([]));
+  }
+
+  #[test]
+  fn test_partial_modules() {
+    let (mut runtime, server_state) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      vec![(
+        "file:///a.ts",
+        r#"
+        import {
+          Application,
+          Context,
+          Router,
+          Status,
+        } from "https://deno.land/x/oak@v6.3.2/mod.ts";
+        
+        import * as test from
+      "#,
+        1,
+      )],
+    );
+    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
+      .expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      &server_state,
+      RequestMethod::GetSyntacticDiagnostics(specifier),
+    );
+    println!("{:?}", result);
+    // assert!(result.is_ok());
+    // let response = result.unwrap();
+    // assert_eq!(response, json!([]));
   }
 }

@@ -399,6 +399,7 @@ impl ServerState {
       handlers::handle_document_highlight,
     )?
     .on_sync::<lsp_types::request::HoverRequest>(handlers::handle_hover)?
+    .on_sync::<lsp_types::request::References>(handlers::handle_references)?
     .on::<lsp_types::request::Formatting>(handlers::handle_formatting)
     .on::<lsp_extensions::VirtualTextDocument>(
       handlers::handle_virtual_text_document,

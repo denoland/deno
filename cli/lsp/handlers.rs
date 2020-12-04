@@ -16,6 +16,8 @@ use lsp_types::DocumentHighlight;
 use lsp_types::DocumentHighlightParams;
 use lsp_types::Hover;
 use lsp_types::HoverParams;
+use lsp_types::Location;
+use lsp_types::ReferenceParams;
 use lsp_types::TextEdit;
 use std::path::PathBuf;
 
@@ -121,6 +123,63 @@ pub fn handle_hover(
   }
 }
 
+pub fn handle_references(
+  state: &mut ServerState,
+  params: ReferenceParams,
+) -> Result<Option<Vec<Location>>, AnyError> {
+  let specifier =
+    ModuleSpecifier::from(params.text_document_position.text_document.uri);
+  let file_cache = state.file_cache.read().unwrap();
+  let file_id = file_cache.lookup(&specifier).unwrap();
+  let file_text = file_cache.get_contents(file_id)?;
+  let line_index = text::index_lines(&file_text);
+  let server_state = state.snapshot();
+  let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
+    serde_json::from_value(tsc::request(
+      &mut state.ts_runtime,
+      &server_state,
+      tsc::RequestMethod::GetReferences((
+        specifier.clone(),
+        text::to_char_pos(&line_index, params.text_document_position.position),
+      )),
+    )?)?;
+
+  if let Some(references) = maybe_references {
+    let mut results = Vec::new();
+    for reference in references {
+      if !params.context.include_declaration && reference.is_definition {
+        continue;
+      }
+      let mut sources = state.sources.write().unwrap();
+      let reference_specifier =
+        ModuleSpecifier::resolve_url(&reference.file_name).unwrap();
+      let line_index = if reference_specifier == specifier {
+        line_index.clone()
+      } else if let Some(file_id) = file_cache.lookup(&reference_specifier) {
+        let file_text = file_cache.get_contents(file_id)?;
+        text::index_lines(&file_text)
+      } else if let Some(line_index) =
+        sources.get_line_index(&reference_specifier)
+      {
+        line_index
+      } else {
+        return Err(custom_error(
+          "NotFound",
+          format!(
+            "A reference source was not found.  Reference: {}",
+            reference_specifier
+          ),
+        ));
+      };
+      results.push(reference.to_location(&line_index));
+    }
+
+    Ok(Some(results))
+  } else {
+    Ok(None)
+  }
+}
+
 pub fn handle_virtual_text_document(
   state: ServerStateSnapshot,
   params: lsp_extensions::VirtualTextDocumentParams,
@@ -147,8 +206,21 @@ pub fn handle_virtual_text_document(
       )
     }
     _ => {
-      info!("path: {}", path);
-      "".to_string()
+      let mut sources = state.sources.write().unwrap();
+      let specifier_str = path.replacen("/", "", 1).replacen("/", "://", 1);
+      // vscode percent encodes URLs, which causes problems when looking up the
+      // original URL.
+      let specifier_str =
+        percent_encoding::percent_decode_str(&specifier_str).decode_utf8()?;
+      let specifier = ModuleSpecifier::resolve_url(&specifier_str)?;
+      if let Some(text) = sources.get_text(&specifier) {
+        text
+      } else {
+        return Err(custom_error(
+          "NotFound",
+          format!("The cached sources was not found: {}", specifier),
+        ));
+      }
     }
   };
   Ok(contents)

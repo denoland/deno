@@ -484,6 +484,7 @@ dependencies = [
  "nix",
  "notify",
  "os_pipe",
+ "percent-encoding",
  "regex",
  "ring",
  "rustyline",

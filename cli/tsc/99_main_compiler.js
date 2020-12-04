@@ -194,12 +194,13 @@ delete Object.prototype.__proto__;
     getChangeRange(oldSnapshot) {
       const { specifier, version } = this;
       const { version: oldVersion } = oldSnapshot;
+      const oldLength = oldSnapshot.getLength();
       debug(
         `snapshot.getLength() specifier: ${specifier} oldVersion: ${oldVersion} version: ${version}`,
       );
       return core.jsonOpSync(
         "op_get_change_range",
-        { specifier, oldVersion, version },
+        { specifier, oldLength, oldVersion, version },
       );
     }
     dispose() {
@@ -304,7 +305,7 @@ delete Object.prototype.__proto__;
         base,
       });
       if (resolved) {
-        return resolved.map((item) => {
+        const result = resolved.map((item) => {
           if (item) {
             const [resolvedFileName, extension] = item;
             return {
@@ -315,8 +316,10 @@ delete Object.prototype.__proto__;
           }
           return undefined;
         });
+        result.length = specifiers.length;
+        return result;
       } else {
-        return [];
+        return new Array(specifiers.length);
       }
     },
     createHash(data) {
@@ -518,6 +521,15 @@ delete Object.prototype.__proto__;
             request.specifier,
             request.position,
             request.filesToSearch,
+          ),
+        );
+      }
+      case "getReferences": {
+        return respond(
+          id,
+          languageService.getReferencesAtPosition(
+            request.specifier,
+            request.position,
           ),
         );
       }

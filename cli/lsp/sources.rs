@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::text;
 
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
@@ -55,6 +56,18 @@ impl Sources {
     if let Some(specifier) = self.resolve_specifier(specifier) {
       if let Some(metadata) = self.get_metadata(&specifier) {
         return Some(metadata.source.chars().count());
+      }
+    }
+    None
+  }
+
+  pub fn get_line_index(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Vec<u32>> {
+    if let Some(specifier) = self.resolve_specifier(specifier) {
+      if let Some(metadata) = self.get_metadata(&specifier) {
+        return Some(text::index_lines(&metadata.source));
       }
     }
     None
