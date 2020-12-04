@@ -100,8 +100,8 @@ function clean(length: number): Uint8Array {
   return buffer;
 }
 
-function pad(num: number, bytes: number, base?: number): string {
-  const numString = num.toString(base || 8);
+function pad(num: number, bytes: number, base = 8): string {
+  const numString = num.toString(base);
   return "000000000000".substr(numString.length + 12 - bytes) + numString;
 }
 
