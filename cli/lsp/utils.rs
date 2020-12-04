@@ -3,6 +3,9 @@
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
+use deno_core::url::Position;
+use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use lsp_server::Notification;
 use serde::de::DeserializeOwned;
 use std::error::Error;
@@ -62,4 +65,37 @@ pub fn notification_is<N: lsp_types::notification::Notification>(
   notification: &Notification,
 ) -> bool {
   notification.method == N::METHOD
+}
+
+/// Normalize URLs from the client, where "virtual" `deno:///` URLs are
+/// converted into proper module specifiers.
+pub fn normalize_url(url: Url) -> ModuleSpecifier {
+  if url.scheme() == "deno" && url.path().starts_with("/http") {
+    let specifier_str = url[Position::BeforePath..]
+      .replacen("/", "", 1)
+      .replacen("/", "://", 1);
+    if let Ok(specifier) =
+      percent_encoding::percent_decode_str(&specifier_str).decode_utf8()
+    {
+      if let Ok(specifier) = ModuleSpecifier::resolve_url(&specifier) {
+        return specifier;
+      }
+    }
+  }
+  ModuleSpecifier::from(url)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_normalize_url() {
+    let fixture = Url::parse("deno:///https/deno.land/x/mod.ts").unwrap();
+    let actual = normalize_url(fixture);
+    assert_eq!(
+      actual,
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap()
+    );
+  }
 }

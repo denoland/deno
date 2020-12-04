@@ -5,6 +5,7 @@ use super::state::ServerState;
 use super::state::ServerStateSnapshot;
 use super::text;
 use super::tsc;
+use super::utils;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -25,7 +26,7 @@ pub fn handle_formatting(
   state: ServerStateSnapshot,
   params: DocumentFormattingParams,
 ) -> Result<Option<Vec<TextEdit>>, AnyError> {
-  let specifier = ModuleSpecifier::from(params.text_document.uri.clone());
+  let specifier = utils::normalize_url(params.text_document.uri.clone());
   let file_cache = state.file_cache.read().unwrap();
   let file_id = file_cache.lookup(&specifier).unwrap();
   let file_text = file_cache.get_contents(file_id)?;
@@ -55,7 +56,7 @@ pub fn handle_document_highlight(
   state: &mut ServerState,
   params: DocumentHighlightParams,
 ) -> Result<Option<Vec<DocumentHighlight>>, AnyError> {
-  let specifier = ModuleSpecifier::from(
+  let specifier = utils::normalize_url(
     params.text_document_position_params.text_document.uri,
   );
   let file_cache = state.file_cache.read().unwrap();
@@ -95,7 +96,7 @@ pub fn handle_hover(
   state: &mut ServerState,
   params: HoverParams,
 ) -> Result<Option<Hover>, AnyError> {
-  let specifier = ModuleSpecifier::from(
+  let specifier = utils::normalize_url(
     params.text_document_position_params.text_document.uri,
   );
   let file_cache = state.file_cache.read().unwrap();
@@ -128,7 +129,7 @@ pub fn handle_references(
   params: ReferenceParams,
 ) -> Result<Option<Vec<Location>>, AnyError> {
   let specifier =
-    ModuleSpecifier::from(params.text_document_position.text_document.uri);
+    utils::normalize_url(params.text_document_position.text_document.uri);
   let file_cache = state.file_cache.read().unwrap();
   let file_id = file_cache.lookup(&specifier).unwrap();
   let file_text = file_cache.get_contents(file_id)?;
@@ -184,17 +185,10 @@ pub fn handle_virtual_text_document(
   state: ServerStateSnapshot,
   params: lsp_extensions::VirtualTextDocumentParams,
 ) -> Result<String, AnyError> {
-  let specifier = ModuleSpecifier::from(params.text_document.uri);
+  let specifier = utils::normalize_url(params.text_document.uri);
   let url = specifier.as_url();
-  let scheme = url.scheme();
-  assert_eq!(
-    scheme, "deno",
-    "unexpected document scheme received: \"{}\"",
-    scheme
-  );
-  let path = url.path();
-  let contents = match path {
-    "/status.md" => {
+  let contents = match url.as_str() {
+    "deno:///status.md" => {
       let file_cache = state.file_cache.read().unwrap();
       format!(
         r#"# Deno Language Server Status
@@ -207,12 +201,6 @@ pub fn handle_virtual_text_document(
     }
     _ => {
       let mut sources = state.sources.write().unwrap();
-      let specifier_str = path.replacen("/", "", 1).replacen("/", "://", 1);
-      // vscode percent encodes URLs, which causes problems when looking up the
-      // original URL.
-      let specifier_str =
-        percent_encoding::percent_decode_str(&specifier_str).decode_utf8()?;
-      let specifier = ModuleSpecifier::resolve_url(&specifier_str)?;
       if let Some(text) = sources.get_text(&specifier) {
         text
       } else {
