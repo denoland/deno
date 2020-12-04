@@ -121,22 +121,19 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
 }
 
 /** Concatenate multiple binary arrays and return new one.
- * @param origin binary array to concatenate
- * @param buf binary arrays to concatenate with origin
+ * @param buf binary arrays to concatenate
  */
-export function concat(a: Uint8Array, ...buf: Uint8Array[]): Uint8Array {
-  let totalLength = a.length;
+export function concat(...buf: Uint8Array[]): Uint8Array {
+  let length = 0;
   for (const b of buf) {
-    totalLength += b.length;
+    length += b.length;
   }
 
-  const output = new Uint8Array(totalLength);
-  output.set(a, 0);
-
-  let lastIndex = a.length;
+  const output = new Uint8Array(length);
+  let index = 0;
   for (const b of buf) {
-    output.set(b, lastIndex);
-    lastIndex += b.length;
+    output.set(b, index);
+    index += b.length;
   }
 
   return output;
