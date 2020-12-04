@@ -346,7 +346,6 @@ struct Opt {
 }
 
 #[derive(Clap, Debug, Clone)]
-#[clap()]
 enum Subcommand {
   Bundle(BundleSubcommand),
   Cache(CacheSubcommand),
@@ -363,30 +362,6 @@ enum Subcommand {
   Test(TestSubcommand),
   Types(TypesSubcommand),
   Upgrade(UpgradeSubcommand),
-}
-
-impl Default for Subcommand {
-  fn default() -> Subcommand {
-    Subcommand::Repl(ReplSubcommand {
-      runtime: RuntimeArgs {
-        inspect: None,
-        inspect_brk: None,
-        cached_only: false,
-        v8_flags: vec![],
-        seed: None,
-        compilation: CompilationArgs {
-          no_remote: false,
-          config: None,
-          no_check: false,
-          lock: None,
-          lock_write: false,
-          import_map: ImportMapArg { import_map: None },
-          reload: ReloadArg { reload: None },
-          ca_file: CAFileArg { cert: None },
-        },
-      },
-    })
-  }
 }
 
 /// Bundle module and dependencies into single file
