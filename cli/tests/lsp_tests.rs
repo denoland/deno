@@ -25,10 +25,10 @@ impl LspIntegrationTest {
       .stdout(Stdio::piped())
       .stderr(Stdio::piped());
 
-    let mut process = command.spawn().expect("failed to execute deno");
+    let process = command.spawn().expect("failed to execute deno");
 
-    let mut stdin = process.stdin.take().unwrap();
     for fixture in &self.fixtures {
+      let mut stdin = process.stdin.as_ref().unwrap();
       let fixture_path = tests_dir.join(fixture);
       let content =
         fs::read_to_string(&fixture_path).expect("could not read fixture");
@@ -40,7 +40,6 @@ impl LspIntegrationTest {
       )
       .unwrap();
     }
-    drop(stdin);
 
     let mut so = String::new();
     process.stdout.unwrap().read_to_string(&mut so).unwrap();
@@ -64,5 +63,26 @@ fn test_lsp_startup_shutdown() {
   };
   let (response, out) = test.run();
   assert!(response.contains("deno-language-server"));
+  assert!(out.contains("Connected to \"test-harness\" 1.0.0"));
+}
+
+#[test]
+fn test_lsp_hover() {
+  // a straight forward integration tests starts up the lsp, opens a document
+  // which logs `Deno.args` to the console, and hovers over the `args` property
+  // to get the intellisense about it, which is a total end-to-end test that
+  // includes sending information in and out of the TypeScript compiler.
+  let test = LspIntegrationTest {
+    fixtures: vec![
+      "initialize_request.json",
+      "initialized_notification.json",
+      "did_open_notification.json",
+      "hover_request.json",
+      "shutdown_request.json",
+      "exit_notification.json",
+    ],
+  };
+  let (response, out) = test.run();
+  assert!(response.contains("const Deno.args: string[]"));
   assert!(out.contains("Connected to \"test-harness\" 1.0.0"));
 }
