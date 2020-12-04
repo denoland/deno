@@ -5,6 +5,7 @@ export type mkdtempCallback = (
   directory?: string,
 ) => void;
 
+// https://nodejs.org/dist/latest-v15.x/docs/api/fs.html#fs_fs_mkdtemp_prefix_options_callback
 export function mkdtemp(prefix: string, callback: mkdtempCallback): void;
 export function mkdtemp(
   prefix: string,
@@ -27,6 +28,7 @@ export function mkdtemp(
     .catch((error) => callback(error));
 }
 
+// https://nodejs.org/dist/latest-v15.x/docs/api/fs.html#fs_fs_mkdtempsync_prefix_options
 // TODO - 'encoding' handling needs implementation in Deno.makeTempDirSync
 export function mkdtempSync(
   prefix: string,
