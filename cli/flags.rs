@@ -864,11 +864,11 @@ struct TestSubcommand {
 }
 
 /// Print runtime TypeScript declarations.
-///
-///   deno types > lib.deno.d.ts
-///
-/// The declaration file could be saved and used for typing information.
 #[derive(Clap, Debug, Clone)]
+#[clap(long_about = "Print runtime TypeScript declarations.
+  deno types > lib.deno.d.ts
+
+The declaration file could be saved and used for typing information.")]
 struct TypesSubcommand {}
 
 /// Upgrade deno executable to given version
@@ -987,11 +987,21 @@ struct CAFileArg {
 #[derive(Clap, Debug, Clone)]
 struct PermissionArgs {
   /// Allow file system read access
-  #[clap(long, use_delimiter = true, require_equals = true, parse(from_os_str))]
+  #[clap(
+    long,
+    use_delimiter = true,
+    require_equals = true,
+    parse(from_os_str)
+  )]
   allow_read: Option<Vec<PathBuf>>,
 
   /// Allow file system write access
-  #[clap(long, use_delimiter = true, require_equals = true, parse(from_os_str))]
+  #[clap(
+    long,
+    use_delimiter = true,
+    require_equals = true,
+    parse(from_os_str)
+  )]
   allow_write: Option<Vec<PathBuf>>,
 
   /// Allow network access
@@ -1022,21 +1032,11 @@ struct PermissionArgs {
 #[derive(Clap, Debug, Clone)]
 struct RuntimeArgs {
   /// activate inspector on host:port (default: 127.0.0.1:9229)
-  #[clap(
-    long,
-    value_name = "HOST:PORT",
-    require_equals = true,
-    validator = inspect_arg_validate,
-  )] // TODO: parse to SocketAddr, set default
+  #[clap(long, value_name = "HOST:PORT", require_equals = true, validator = inspect_arg_validate)]
   inspect: Option<Option<String>>,
 
   /// activate inspector on host:port and break at start of user script
-  #[clap(
-    long,
-    value_name = "HOST:PORT",
-    require_equals = true,
-    validator = inspect_arg_validate,
-  )] // TODO: parse to SocketAddr, set default
+  #[clap(long, value_name = "HOST:PORT", require_equals = true, validator = inspect_arg_validate)]
   inspect_brk: Option<Option<String>>,
 
   /// Require that remote dependencies are already cached
