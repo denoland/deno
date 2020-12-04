@@ -34,7 +34,7 @@ Object.defineProperty(globalThis, "setImmediate", {
 
 Object.defineProperty(globalThis, "clearImmediate", {
   value: timers.clearImmediate,
-  enumerable: false,
+  enumerable: true,
   writable: true,
   configurable: true,
 });
