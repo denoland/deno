@@ -69,6 +69,7 @@
       "formatter": "Formatter",
       "repl": "Read-eval-print-loop",
       "bundler": "Bundler",
+      "compiler": "Compiling executables",
       "documentation_generator": "Documentation generator",
       "dependency_inspector": "Dependency inspector",
       "linter": "Linter"
