@@ -777,8 +777,7 @@ fn install_subcommand<'a>() -> App<'a> {
           Arg::new("root")
             .long("root")
             .about("Installation root")
-            .takes_value(true)
-            .multiple(false))
+            .takes_value(true))
         .arg(
           Arg::new("force")
             .long("force")
