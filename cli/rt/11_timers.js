@@ -3,6 +3,7 @@
 ((window) => {
   const assert = window.__bootstrap.util.assert;
   const core = window.Deno.core;
+  const { sendSync } = window.__bootstrap.dispatchMinimal;
 
   function opStopGlobalTimer() {
     core.jsonOpSync("op_global_timer_stop");
@@ -16,8 +17,10 @@
     await core.jsonOpAsync("op_global_timer");
   }
 
-  function opNow() {
-    return core.jsonOpSync("op_now");
+  const now = new Uint8Array;
+  function opNow(x) {
+    sendSync("op_now", x, now);
+    return now;
   }
 
   function sleepSync(millis = 0) {

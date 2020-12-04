@@ -8,17 +8,19 @@
 //! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
+use crate::metrics::metrics_op;
 use crate::permissions::Permissions;
+use deno_core::BufVec;
 use deno_core::error::AnyError;
+use deno_core::error::type_error;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
+use deno_core::OpState;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
-use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -28,6 +30,8 @@ use std::rc::Rc;
 use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
+use super::dispatch_minimal::minimal_op;
+use super::dispatch_minimal::MinimalOp;
 
 pub type StartTime = Instant;
 
@@ -77,7 +81,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
   super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
-  super::reg_json_sync(rt, "op_now", op_now);
+  rt.register_op("op_now", metrics_op(minimal_op(op_now)));
   super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 
@@ -138,26 +142,41 @@ async fn op_global_timer(
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 fn op_now(
-  state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let start_time = state.borrow::<StartTime>();
+  state: Rc<RefCell<OpState>>,
+  // Arguments are discarded
+  _sync: bool,
+  _x: i32,
+  zero_copy: BufVec,
+) -> MinimalOp {
+  match zero_copy.len() {
+    0 => return MinimalOp::Sync(Err(type_error("no buffer specified"))),
+    1 => {}
+    _ => panic!("Invalid number of arguments"),
+  }
+
+  let op_state = state.borrow();
+  let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
-  let mut subsec_nanos = start_time.elapsed().subsec_nanos();
-  let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
+  let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
+  let reduced_time_precision = 2_000_000 as f64; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if state.borrow::<Permissions>().check_hrtime().is_err() {
+  if op_state.borrow::<Permissions>().check_hrtime().is_err() {
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
-  Ok(json!({
-    "seconds": seconds,
-    "subsecNanos": subsec_nanos,
-  }))
+  let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000 as f64);
+  println!("{}", &result);
+
+  let mut x = Vec::from(&*zero_copy[0]);
+
+  println!("{}", x.len());
+  
+  x.clone_from_slice(&result.to_be_bytes());
+
+  MinimalOp::Sync(Ok(1))
 }
 
 #[derive(Deserialize)]
