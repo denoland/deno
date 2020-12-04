@@ -23,7 +23,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use std::cell::RefCell;
+use std::{cell::RefCell};
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -146,7 +146,7 @@ fn op_now(
   // Arguments are discarded
   _sync: bool,
   _x: i32,
-  zero_copy: BufVec,
+  mut zero_copy: BufVec,
 ) -> MinimalOp {
   match zero_copy.len() {
     0 => return MinimalOp::Sync(Err(type_error("no buffer specified"))),
@@ -168,15 +168,10 @@ fn op_now(
   }
 
   let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000 as f64);
-  println!("{}", &result);
 
-  let mut x = Vec::from(&*zero_copy[0]);
+  (&mut zero_copy[0]).copy_from_slice(&result.to_be_bytes());
 
-  println!("{}", x.len());
-  
-  x.clone_from_slice(&result.to_be_bytes());
-
-  MinimalOp::Sync(Ok(1))
+  MinimalOp::Sync(Ok(0))
 }
 
 #[derive(Deserialize)]

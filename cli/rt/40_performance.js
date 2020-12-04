@@ -43,8 +43,7 @@
   }
 
   function now() {
-    const a = opNow(0);
-    console.log(a);
+    return opNow(0);
   }
 
   class PerformanceEntry {
