@@ -269,7 +269,11 @@ export class SMTPClientImpl implements SMTPClient {
         try {
           await this.cmd(501, "*");
         } finally {
-          await this.quit();
+          try {
+            await this.quit();
+          } finally {
+            throw err;
+          }
         }
         break;
       }

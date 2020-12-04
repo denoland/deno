@@ -22,8 +22,9 @@ import { TextProtoConn } from "../textproto/conn.ts";
 async function assertFailsAsync(
   fn: () => Promise<void>,
   msg?: string,
-): Promise<void> {
-  await assertThrowsAsync(fn, Error, "", msg);
+): Promise<Error> {
+  const err = await assertThrowsAsync(fn, Error, "", msg);
+  return err;
 }
 
 Deno.test({
@@ -861,9 +862,52 @@ SendMail is working for me.
 });
 
 Deno.test({
-  ignore: true,
   name: "[smtp] auth failed",
-  fn: async () => {},
+  fn: async () => {
+    const server = `220 hello world
+250-mx.google.com at your service
+250 AUTH LOGIN PLAIN
+535-Invalid credentials
+535 please see www.example.com
+221 Goodbye
+`.split("\n").join("\r\n");
+    const client = `EHLO localhost
+AUTH PLAIN AHVzZXIAcGFzcw==
+*
+QUIT
+`.split("\n").join("\r\n");
+    const cmdbuf = new Deno.Buffer();
+    const bcmdbuf = BufWriter.create(cmdbuf);
+    const fakeConn = createFakeConn(
+      BufReader.create(new StringReader(server)),
+      bcmdbuf,
+    );
+    const c = await createSMTPClient(fakeConn, "fake.host");
+    try {
+      assert(c instanceof SMTPClientImpl);
+      c._isTLS = true;
+      c._serverName = "smtp.google.com";
+      const err = await assertFailsAsync(() =>
+        c.auth(plainAuth({
+          identity: "",
+          username: "user",
+          password: "pass",
+          host: "smtp.google.com",
+        }))
+      );
+      assert(err);
+      assertStrictEquals(
+        err.message,
+        "535 Invalid credentials\nplease see www.example.com",
+      );
+
+      await bcmdbuf.flush();
+      const actualCmds = await Deno.readAll(cmdbuf);
+      assertStrictEquals(decode(actualCmds), client);
+    } finally {
+      c.close();
+    }
+  },
 });
 
 Deno.test({
