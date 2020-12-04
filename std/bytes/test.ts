@@ -4,12 +4,12 @@ import {
   concat,
   contains,
   copy,
+  endsWith,
   equals,
   indexOf,
   lastIndexOf,
-  startsWith,
-  endsWith,
   repeat,
+  startsWith,
 } from "./mod.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { decode, encode } from "../encoding/utf8.ts";
