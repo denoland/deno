@@ -60,6 +60,7 @@ pub use crate::resources2::Resource;
 pub use crate::resources2::ResourceId;
 pub use crate::resources2::ResourceTable2;
 pub use crate::runtime::GetErrorClassFn;
+pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
