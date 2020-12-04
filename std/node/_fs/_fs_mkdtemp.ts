@@ -21,7 +21,7 @@ export function mkdtemp(
   const callback: mkdtempCallback | undefined =
     optionsOrCallback instanceof Function ? optionsOrCallback : maybeCallback;
   if (!callback) throw new Error("No callback function supplied");
-  
+
   const encoding: string | undefined = parseEncoding(optionsOrCallback);
   const path = tempDirPath(prefix);
 
@@ -47,8 +47,9 @@ function parseEncoding(
 ): string | undefined {
   let encoding: string | undefined;
   if (optionsOrCallback instanceof Function) encoding = undefined;
-  else if (optionsOrCallback instanceof Object) encoding = optionsOrCallback?.encoding;
-  else encoding = optionsOrCallback
+  else if (optionsOrCallback instanceof Object) {
+    encoding = optionsOrCallback?.encoding;
+  } else encoding = optionsOrCallback;
 
   if (encoding) {
     try {
@@ -76,7 +77,7 @@ function tempDirPath(prefix: string): string {
   let path: string;
   do {
     path = prefix + Math.random().toString(36).substring(2, 8);
-  } while (existsSync(path))
+  } while (existsSync(path));
 
   return path;
 }

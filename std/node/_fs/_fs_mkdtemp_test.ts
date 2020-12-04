@@ -5,7 +5,7 @@ import { existsSync } from "./_fs_exists.ts";
 import { env } from "../process.ts";
 import { isWindows } from "../../_util/os.ts";
 
-const prefix = isWindows ? env.TEMP+'\\' : env.TMPDIR+'/';
+const prefix = isWindows ? env.TEMP + "\\" : env.TMPDIR + "/";
 const doesNotExists = "/does/not/exists/";
 const options = { encoding: "ascii" };
 const badOptions = { encoding: "bogus" };
@@ -131,4 +131,3 @@ Deno.test({
     }
   },
 });
-
