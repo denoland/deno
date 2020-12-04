@@ -63,7 +63,7 @@ export function equals(source: Uint8Array, match: Uint8Array): boolean {
 }
 
 /** Check whether binary array starts with prefix.
- * @param source srouce array
+ * @param source source array
  * @param prefix prefix array to check in source
  */
 export function startsWith(source: Uint8Array, prefix: Uint8Array): boolean {
@@ -121,8 +121,8 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
 }
 
 /** Concatenate multiple binary arrays and return new one.
- * @param origin origin array to concatenate
- * @param b array to concatenate with origin
+ * @param origin binary array to concatenate
+ * @param buf binary arrays to concatenate with origin
  */
 export function concat(a: Uint8Array, ...buf: Uint8Array[]): Uint8Array {
   let totalLength = a.length;

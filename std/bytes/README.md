@@ -49,7 +49,7 @@ equals(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 4])); // returns f
 
 ## startsWith
 
-Check whether binary array has binary prefix.
+Check whether binary array starts with prefix.
 
 ```typescript
 import { startsWith } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
@@ -89,11 +89,11 @@ import { concat } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 concat(new Uint8Array([1, 2]), new Uint8Array([3, 4])); // returns Uint8Array(4) [ 1, 2, 3, 4 ]
 
 concat(
-    new Uint8Array([1, 2]), 
-    new Uint8Array([3, 4]), 
-    new Uint8Array([5, 6]),
-    new Uint8Array([7, 8])
-); // => returns Uint8Array(6) [ 1, 2, 3, 4, 5, 6, 7, 8]
+  new Uint8Array([1, 2]),
+  new Uint8Array([3, 4]),
+  new Uint8Array([5, 6]),
+  new Uint8Array([7, 8]),
+); // => returns Uint8Array(8) [ 1, 2, 3, 4, 5, 6, 7, 8 ]
 ```
 
 ## contains
