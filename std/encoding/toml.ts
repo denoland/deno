@@ -273,7 +273,7 @@ class Parser {
       case "[":
       case "{":
         return this._parseInlineTableOrArray(dataString);
-      default:
+      default: {
         // Strip a comment.
         const match = /#.*$/.exec(dataString);
         if (match) {
@@ -297,6 +297,7 @@ class Parser {
           default:
             return this._parseNumberOrDate(dataString);
         }
+      }
     }
   }
   _parseInlineTableOrArray(dataString: string): unknown {
@@ -376,6 +377,7 @@ class Parser {
               value += dataString[i];
               break;
           }
+          break;
         case quote:
           if (dataString[i - 1] !== "\\") {
             return value;
