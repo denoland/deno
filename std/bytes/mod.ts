@@ -51,13 +51,13 @@ export function lastIndexOf(source: Uint8Array, pat: Uint8Array): number {
 }
 
 /** Check whether binary arrays are equal to each other.
- * @param source first array to check equality
- * @param match second array to check equality
+ * @param a first array to check equality
+ * @param b second array to check equality
  */
-export function equals(source: Uint8Array, match: Uint8Array): boolean {
-  if (source.length !== match.length) return false;
-  for (let i = 0; i < match.length; i++) {
-    if (source[i] !== match[i]) return false;
+export function equals(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < b.length; i++) {
+    if (a[i] !== b[i]) return false;
   }
   return true;
 }
@@ -91,6 +91,7 @@ export function endsWith(source: Uint8Array, suffix: Uint8Array): boolean {
 /** Repeat bytes. returns a new byte slice consisting of `count` copies of `b`.
  * @param origin The origin bytes
  * @param count The count you want to repeat.
+ * @throws `RangeError` When count is negative
  */
 export function repeat(origin: Uint8Array, count: number): Uint8Array {
   if (count === 0) {
@@ -100,13 +101,13 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
   if (count < 0) {
     throw new RangeError("bytes: negative repeat count");
   } else if ((origin.length * count) / count !== origin.length) {
-    throw new RangeError("bytes: repeat count causes overflow");
+    throw new Error("bytes: repeat count causes overflow");
   }
 
   const int = Math.floor(count);
 
   if (int !== count) {
-    throw new TypeError("bytes: repeat count must be an integer");
+    throw new Error("bytes: repeat count must be an integer");
   }
 
   const nb = new Uint8Array(origin.length * count);
