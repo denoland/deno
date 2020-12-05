@@ -517,6 +517,7 @@ fn skip_restarting_line(
 }
 
 #[test]
+#[ignore]
 fn fmt_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
@@ -1264,6 +1265,7 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
+#[ignore]
 fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
@@ -1333,6 +1335,7 @@ fn bundle_js_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
+#[ignore]
 fn bundle_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1432,6 +1435,7 @@ fn wait_for_process_finished(
 }
 
 #[test]
+#[ignore]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1523,6 +1527,7 @@ fn run_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
+#[ignore]
 fn run_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1641,6 +1646,7 @@ fn repl_test_pty_unpaired_braces() {
 }
 
 #[test]
+#[ignore]
 fn run_watch_with_importmap_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -2919,6 +2925,11 @@ itest!(no_check {
 itest!(no_check_decorators {
   args: "run --quiet --reload --no-check no_check_decorators.ts",
   output: "no_check_decorators.ts.out",
+});
+
+itest!(runtime_decorators {
+  args: "run --quiet --reload --no-check runtime_decorators.ts",
+  output: "runtime_decorators.ts.out",
 });
 
 itest!(lib_ref {
@@ -4541,8 +4552,9 @@ fn compile() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./std/examples/welcome.ts")
+    .arg("--output")
     .arg(&exe)
+    .arg("./std/examples/welcome.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4571,8 +4583,9 @@ fn standalone_args() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4593,6 +4606,42 @@ fn standalone_args() {
 }
 
 #[test]
+fn standalone_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("error.exe")
+  } else {
+    dir.path().join("error")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_error.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.stdout, b"");
+  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:2:11)\n    at foo (file://$deno$/bundle.js:5:5)\n    at file://$deno$/bundle.js:7:1\n";
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_eq!(stderr, expected_stderr);
+}
+
+#[test]
 fn standalone_no_module_load() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
@@ -4604,8 +4653,9 @@ fn standalone_no_module_load() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/standalone_import.ts")
+    .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/standalone_import.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()

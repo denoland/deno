@@ -160,7 +160,12 @@ delete Object.prototype.__proto__;
     version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
     build.setBuildInfo(s.target);
     util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
+    // TODO(bartlomieju): a very crude way to disable
+    // source mapping of errors. This condition is true
+    // only for compiled standalone binaries.
+    if (s.applySourceMaps) {
+      errorStack.setPrepareStackTrace(Error);
+    }
     return s;
   }
 
