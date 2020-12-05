@@ -1269,7 +1269,7 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Asynchronously load specified module and all of it's dependencies
+  /// Asynchronously load specified module and all of its dependencies
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
   /// manually after load is finished.
