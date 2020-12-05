@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use clap::AppSettings;
+use clap::ArgSettings;
 use clap::Clap;
 use clap::IntoApp;
 use log::Level;
