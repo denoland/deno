@@ -1,12 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/** Find first index of binary pattern from a. If not found, then return -1
+/** Find first index of binary pattern from source. If not found, then return -1
  * @param source source array
  * @param pat pattern to find in source array
+ * @param start the index to start looking in the source
  */
-export function indexOf(source: Uint8Array, pat: Uint8Array): number {
+export function indexOf(
+  source: Uint8Array,
+  pat: Uint8Array,
+  start = 0,
+): number {
+  if (start < 0) {
+    start = 0;
+  } else if (start >= source.length) {
+    start = source.length - 1;
+  }
   const s = pat[0];
-  for (let i = 0; i < source.length; i++) {
+  for (let i = start; i < source.length; i++) {
     if (source[i] !== s) continue;
     const pin = i;
     let matched = 1;
@@ -25,13 +35,23 @@ export function indexOf(source: Uint8Array, pat: Uint8Array): number {
   return -1;
 }
 
-/** Find last index of binary pattern from a. If not found, then return -1.
+/** Find last index of binary pattern from source. If not found, then return -1.
  * @param source source array
  * @param pat pattern to find in source array
+ * @param start the index to start looking in the source
  */
-export function lastIndexOf(source: Uint8Array, pat: Uint8Array): number {
+export function lastIndexOf(
+  source: Uint8Array,
+  pat: Uint8Array,
+  start = source.length - 1,
+): number {
+  if (start < 0) {
+    start = 0;
+  } else if (start >= source.length) {
+    start = source.length - 1;
+  }
   const e = pat[pat.length - 1];
-  for (let i = source.length - 1; i >= 0; i--) {
+  for (let i = start; i >= 0; i--) {
     if (source[i] !== e) continue;
     const pin = i;
     let matched = 1;
