@@ -157,7 +157,7 @@ fn op_os_release(
 fn op_os_type(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut[ZeroCopyBuf],
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.osType");
   state.borrow::<Permissions>().check_env()?;
