@@ -706,5 +706,13 @@ export async function* readStringDelim(
 export async function* readLines(
   reader: Reader,
 ): AsyncIterableIterator<string> {
-  yield* readStringDelim(reader, "\n");
+  for await (let chunk of readStringDelim(reader, "\n")) {
+    // Finding a CR at the end of the line is evidence of a
+    // "\r\n" at the end of the line. The "\r" part should be
+    // removed too.
+    if (chunk.endsWith("\r")) {
+      chunk = chunk.slice(0, -1);
+    }
+    yield chunk;
+  }
 }
