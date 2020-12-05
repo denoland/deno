@@ -162,41 +162,6 @@ jobs:
         if: matrix.kind == 'test_debug'
         run: cargo build --locked --all-targets
 
-      - name: Test release
-        if: matrix.kind == 'test_release'
-        run: cargo test --release --locked --all-targets
-
-      - name: Test debug
-        if: matrix.kind == 'test_debug'
-        run: cargo test --locked --all-targets
-
-      - name: Run Benchmarks
-        if: matrix.kind == 'bench'
-        run: cargo bench
-
-      - name: Post Benchmarks
-        if: |
-          matrix.kind == 'bench' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
-        env:
-          DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
-        run: |
-          git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
-          cd gh-pages
-          git config user.email "propelml@gmail.com"
-          git config user.name "denobot"
-          git add .
-          git commit --message "Update benchmarks"
-          git push origin gh-pages
-
-      - name: Worker info
-        if: matrix.kind == 'bench'
-        run: |
-          cat /proc/cpuinfo
-          cat /proc/meminfo
-
       - name: Pre-release (linux)
         if: |
           startsWith(matrix.os, 'ubuntu') &&
@@ -245,6 +210,41 @@ jobs:
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           echo $(git rev-parse HEAD) > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
+      - name: Test release
+        if: matrix.kind == 'test_release'
+        run: cargo test --release --locked --all-targets
+
+      - name: Test debug
+        if: matrix.kind == 'test_debug'
+        run: cargo test --locked --all-targets
+
+      - name: Run Benchmarks
+        if: matrix.kind == 'bench'
+        run: cargo bench
+
+      - name: Post Benchmarks
+        if: |
+          matrix.kind == 'bench' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        env:
+          DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
+        run: |
+          git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
+          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
+          cd gh-pages
+          git config user.email "propelml@gmail.com"
+          git config user.name "denobot"
+          git add .
+          git commit --message "Update benchmarks"
+          git push origin gh-pages
+
+      - name: Worker info
+        if: matrix.kind == 'bench'
+        run: |
+          cat /proc/cpuinfo
+          cat /proc/meminfo
 
       - name: Release stable
         uses: softprops/action-gh-release@v1

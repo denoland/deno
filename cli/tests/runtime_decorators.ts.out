@@ -1,0 +1,7 @@
+@A evaluated
+@B evaluated
+@B called
+@A called
+fn() called from @A
+fn() called from @B
+C.test() called

@@ -238,6 +238,8 @@ impl Highlighter for LineHighlighter {
                   colors::gray(&line[span]).to_string()
                 } else if ident == *"Infinity" || ident == *"NaN" {
                   colors::yellow(&line[span]).to_string()
+                } else if ident == *"async" || ident == *"of" {
+                  colors::cyan(&line[span]).to_string()
                 } else {
                   line[span].to_string()
                 }
