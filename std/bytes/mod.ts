@@ -10,10 +10,11 @@ export function indexOf(
   pat: Uint8Array,
   start = 0,
 ): number {
+  if (start >= source.length) {
+    return -1;
+  }
   if (start < 0) {
     start = 0;
-  } else if (start >= source.length) {
-    start = source.length - 1;
   }
   const s = pat[0];
   for (let i = start; i < source.length; i++) {
@@ -46,8 +47,9 @@ export function lastIndexOf(
   start = source.length - 1,
 ): number {
   if (start < 0) {
-    start = 0;
-  } else if (start >= source.length) {
+    return -1;
+  }
+  if (start >= source.length) {
     start = source.length - 1;
   }
   const e = pat[pat.length - 1];

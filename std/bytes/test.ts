@@ -32,13 +32,27 @@ Deno.test("[bytes] indexOf3", () => {
   assertEquals(i, 0);
 });
 
-Deno.test("[bytes] indexOf with offset start index", () => {
+Deno.test("[bytes] indexOf4", () => {
+  const i = indexOf(new Uint8Array(), new Uint8Array([0, 1]));
+  assertEquals(i, -1);
+});
+
+Deno.test("[bytes] indexOf with start index", () => {
   const i = indexOf(
     new Uint8Array([0, 1, 2, 0, 1, 2]),
     new Uint8Array([0, 1]),
     1,
   );
   assertEquals(i, 3);
+});
+
+Deno.test("[bytes] indexOf with start index 2", () => {
+  const i = indexOf(
+    new Uint8Array([0, 1, 2, 0, 1, 2]),
+    new Uint8Array([0, 1]),
+    7,
+  );
+  assertEquals(i, -1);
 });
 
 Deno.test("[bytes] lastIndexOf1", () => {
@@ -54,6 +68,11 @@ Deno.test("[bytes] lastIndexOf2", () => {
   assertEquals(i, 0);
 });
 
+Deno.test("[bytes] lastIndexOf3", () => {
+  const i = lastIndexOf(new Uint8Array(), new Uint8Array([0, 1]));
+  assertEquals(i, -1);
+});
+
 Deno.test("[bytes] lastIndexOf with start index", () => {
   const i = lastIndexOf(
     new Uint8Array([0, 1, 2, 0, 1, 2]),
@@ -61,6 +80,15 @@ Deno.test("[bytes] lastIndexOf with start index", () => {
     2,
   );
   assertEquals(i, 0);
+});
+
+Deno.test("[bytes] lastIndexOf with start index 2", () => {
+  const i = lastIndexOf(
+    new Uint8Array([0, 1, 2, 0, 1, 2]),
+    new Uint8Array([0, 1]),
+    -1,
+  );
+  assertEquals(i, -1);
 });
 
 Deno.test("[bytes] equals", () => {
