@@ -195,7 +195,7 @@ impl WebWorker {
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module);
+      ops::runtime::init(js_runtime, main_module, true);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime, Some(sender));
