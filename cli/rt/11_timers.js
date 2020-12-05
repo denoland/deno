@@ -20,10 +20,7 @@
   const nowBytes = new Uint8Array(8);
   function opNow() {
     sendSync("op_now", 0, nowBytes);
-    return new DataView(
-      Uint8Array.from(nowBytes).buffer,
-    )
-      .getFloat64();
+    return new DataView(nowBytes.buffer).getFloat64();
   }
 
   function sleepSync(millis = 0) {

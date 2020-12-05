@@ -151,7 +151,7 @@ fn op_now(
   match zero_copy.len() {
     0 => return MinimalOp::Sync(Err(type_error("no buffer specified"))),
     1 => {}
-    _ => panic!("Invalid number of arguments"),
+    _ => return MinimalOp::Sync(Err(type_error("Invalid number of arguments"))),
   }
 
   let op_state = state.borrow();
