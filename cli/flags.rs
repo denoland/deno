@@ -752,7 +752,7 @@ struct RunSubcommand {
   // so `deno run --v8-flags=--help` works
   // without specifying file to run.
   /// Script arg
-  #[clap(required = true, value_name = "SCRIPT_ARG", default_value_ifs = &[
+  #[clap(required = true, value_name = "SCRIPT_ARG", setting = ArgSettings::AllowEmptyValues, default_value_ifs = &[
     ("v8-flags", Some("--help"), "_"),
     ("v8-flags", Some("-help"), "_"),
   ])]
@@ -825,7 +825,7 @@ struct TestSubcommand {
   // so `deno run --v8-flags=--help` works
   // without specifying file to run.
   /// Script arg
-  #[clap(value_name = "SCRIPT_ARG", last = true, default_value_ifs = &[
+  #[clap(value_name = "SCRIPT_ARG", last = true, setting = ArgSettings::AllowEmptyValues, default_value_ifs = &[
     ("v8-flags", Some("--help"), "_"),
     ("v8-flags", Some("-help"), "_"),
   ])]

@@ -436,12 +436,24 @@ Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   assertEquals(chunks_, ["Hello World", "Hello World 2", "Hello World 3"]);
 
   const linesData = new Deno.Buffer(enc.encode("0\n1\n2\n3\n4\n5\n6\n7\n8\n9"));
+  // consider data with windows newlines too
+  const linesDataWindows = new Deno.Buffer(
+    enc.encode("0\r\n1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n9"),
+  );
   const lines_ = [];
 
   for await (const l of readLines(linesData)) {
     lines_.push(l);
   }
 
+  assertEquals(lines_.length, 10);
+  assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+  // Now test for "windows" lines
+  lines_.length = 0;
+  for await (const l of readLines(linesDataWindows)) {
+    lines_.push(l);
+  }
   assertEquals(lines_.length, 10);
   assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 });
