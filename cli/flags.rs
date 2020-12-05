@@ -1278,6 +1278,7 @@ fn script_arg<'a>() -> Arg<'a> {
     ])
     .about("Script arg")
     .value_name("SCRIPT_ARG")
+    .setting(ArgSettings::AllowEmptyValues)
 }
 
 fn lock_arg<'a>() -> Arg<'a> {
