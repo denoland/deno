@@ -134,6 +134,7 @@ impl WebWorker {
     main_module: ModuleSpecifier,
     program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
+    worker_id: u32,
   ) -> Self {
     let module_loader = CliModuleLoader::new_for_worker();
     let global_state_ = program_state.clone();
@@ -173,7 +174,7 @@ impl WebWorker {
       inspector,
       internal_channels,
       js_runtime,
-      name,
+      name: name.clone(),
       waker: AtomicWaker::new(),
       event_loop_idle: false,
       terminate_rx,
@@ -223,8 +224,31 @@ impl WebWorker {
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
+
+        let op_state = js_runtime.op_state();
+        let mut op_state = op_state.borrow_mut();
+        let (stdin, stdout, stderr) = ops::io::get_stdio();
+        if let Some(stream) = stdin {
+          op_state.resource_table.add("stdin", Box::new(stream));
+        }
+        if let Some(stream) = stdout {
+          op_state.resource_table.add("stdout", Box::new(stream));
+        }
+        if let Some(stream) = stderr {
+          op_state.resource_table.add("stderr", Box::new(stream));
+        }
       }
     }
+
+    // Instead of using name for log we use `worker-${id}` because
+    // WebWorkers can have empty string as name.
+    let script = format!(
+      "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
+      name, worker.has_deno_namespace, worker_id
+    );
+    worker
+      .execute(&script)
+      .expect("Failed to execute worker bootstrap script");
 
     worker
   }
@@ -354,17 +378,14 @@ mod tests {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
     let program_state = ProgramState::mock(vec!["deno".to_string()], None);
-    let mut worker = WebWorker::new(
+    WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
       program_state,
       false,
-    );
-    worker
-      .execute("bootstrap.workerRuntime(\"TEST\", false)")
-      .unwrap();
-    worker
+      1,
+    )
   }
 
   #[tokio::test]

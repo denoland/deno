@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::tokio_util::create_basic_runtime;
@@ -76,48 +75,6 @@ pub struct WorkerThread {
 pub type WorkersTable = HashMap<u32, WorkerThread>;
 pub type WorkerId = u32;
 
-fn create_web_worker(
-  worker_id: u32,
-  name: String,
-  program_state: Arc<ProgramState>,
-  permissions: Permissions,
-  specifier: ModuleSpecifier,
-  has_deno_namespace: bool,
-) -> Result<WebWorker, AnyError> {
-  let mut worker = WebWorker::new(
-    name.clone(),
-    permissions,
-    specifier,
-    program_state,
-    has_deno_namespace,
-  );
-
-  if has_deno_namespace {
-    let state = worker.js_runtime.op_state();
-    let mut state = state.borrow_mut();
-    let (stdin, stdout, stderr) = get_stdio();
-    if let Some(stream) = stdin {
-      state.resource_table.add("stdin", Box::new(stream));
-    }
-    if let Some(stream) = stdout {
-      state.resource_table.add("stdout", Box::new(stream));
-    }
-    if let Some(stream) = stderr {
-      state.resource_table.add("stderr", Box::new(stream));
-    }
-  }
-
-  // Instead of using name for log we use `worker-${id}` because
-  // WebWorkers can have empty string as name.
-  let script = format!(
-    "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
-    name, worker.has_deno_namespace, worker_id
-  );
-  worker.execute(&script)?;
-
-  Ok(worker)
-}
-
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 fn run_worker_thread(
   worker_id: u32,
@@ -138,21 +95,15 @@ fn run_worker_thread(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let result = create_web_worker(
-      worker_id,
+    let mut worker = WebWorker::new(
       name,
-      program_state,
       permissions,
       specifier.clone(),
+      program_state,
       has_deno_namespace,
+      worker_id,
     );
 
-    if let Err(err) = result {
-      handle_sender.send(Err(err)).unwrap();
-      return Ok(());
-    }
-
-    let mut worker = result.unwrap();
     let name = worker.name.to_string();
     // Send thread safe handle to newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
