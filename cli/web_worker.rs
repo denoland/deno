@@ -78,7 +78,7 @@ impl WebWorkerHandle {
     // This function can be called multiple times by whomever holds
     // the handle. However only a single "termination" should occur so
     // we need a guard here.
-    let already_terminated = self.terminated.swap(true, Ordering::Relaxed);
+    let already_terminated = self.terminated.swap(true, Ordering::SeqCst);
 
     if !already_terminated {
       self.isolate_handle.terminate_execution();
@@ -276,7 +276,7 @@ impl WebWorker {
   }
 
   pub fn has_been_terminated(&self) -> bool {
-    self.handle.terminated.load(Ordering::Relaxed)
+    self.handle.terminated.load(Ordering::SeqCst)
   }
 
   pub fn poll_event_loop(
