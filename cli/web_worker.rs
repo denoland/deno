@@ -300,12 +300,7 @@ impl WebWorker {
           }
 
           if let Err(e) = r {
-            eprintln!(
-              "{}: Uncaught (in worker \"{}\") {}",
-              colors::red_bold("error"),
-              self.name.to_string(),
-              e.to_string().trim_start_matches("Uncaught "),
-            );
+            print_worker_error(e.to_string(), &self.name);
             let mut sender = self.internal_channels.sender.clone();
             sender
               .try_send(WorkerEvent::Error(e))
@@ -368,6 +363,15 @@ impl Drop for WebWorker {
   }
 }
 
+fn print_worker_error(error_str: String, name: &str) {
+  eprintln!(
+    "{}: Uncaught (in worker \"{}\") {}",
+    colors::red_bold("error"),
+    name,
+    error_str.trim_start_matches("Uncaught "),
+  );
+}
+
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 pub fn run_web_worker(
@@ -402,12 +406,7 @@ pub fn run_web_worker(
   }
 
   if let Err(e) = result {
-    eprintln!(
-      "{}: Uncaught (in worker \"{}\") {}",
-      colors::red_bold("error"),
-      name,
-      e.to_string().trim_start_matches("Uncaught "),
-    );
+    print_worker_error(e.to_string(), &name);
     sender
       .try_send(WorkerEvent::TerminalError(e))
       .expect("Failed to post message to host");
