@@ -68,8 +68,12 @@ pub fn init(
   );
 }
 
-pub type WorkersTable =
-  HashMap<u32, (JoinHandle<Result<(), AnyError>>, WebWorkerHandle)>;
+pub struct WorkerThread {
+  join_handle: JoinHandle<Result<(), AnyError>>,
+  worker_handle: WebWorkerHandle,
+}
+
+pub type WorkersTable = HashMap<u32, WorkerThread>;
 pub type WorkerId = u32;
 
 fn create_web_worker(
@@ -123,7 +127,7 @@ fn run_worker_thread(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
-) -> Result<(JoinHandle<Result<(), AnyError>>, WebWorkerHandle), AnyError> {
+) -> Result<WorkerThread, AnyError> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
 
@@ -209,7 +213,13 @@ fn run_worker_thread(
   })?;
 
   let worker_handle = handle_receiver.recv().unwrap()?;
-  Ok((join_handle, worker_handle))
+
+  let worker_thread = WorkerThread {
+    join_handle,
+    worker_handle,
+  };
+
+  Ok(worker_thread)
 }
 
 #[derive(Deserialize)]
@@ -249,7 +259,7 @@ fn op_create_worker(
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
   let program_state = super::program_state(state);
 
-  let (join_handle, worker_handle) = run_worker_thread(
+  let worker_thread = run_worker_thread(
     worker_id,
     worker_name,
     program_state,
@@ -262,7 +272,7 @@ fn op_create_worker(
   // safe handler returned from previous function call
   state
     .borrow_mut::<WorkersTable>()
-    .insert(worker_id, (join_handle, worker_handle));
+    .insert(worker_id, worker_thread);
 
   Ok(json!({ "id": worker_id }))
 }
@@ -279,12 +289,13 @@ fn op_host_terminate_worker(
 ) -> Result<Value, AnyError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let (join_handle, worker_handle) = state
+  let worker_thread = state
     .borrow_mut::<WorkersTable>()
     .remove(&id)
     .expect("No worker handle found");
-  worker_handle.terminate();
-  join_handle
+  worker_thread.worker_handle.terminate();
+  worker_thread
+    .join_handle
     .join()
     .expect("Panic in worker thread")
     .expect("Panic in worker event loop");
@@ -345,7 +356,7 @@ async fn op_host_get_message(
     let workers_table = s.borrow::<WorkersTable>();
     let maybe_handle = workers_table.get(&id);
     if let Some(handle) = maybe_handle {
-      handle.1.clone()
+      handle.worker_handle.clone()
     } else {
       // If handle was not found it means worker has already shutdown
       return Ok(json!({ "type": "close" }));
@@ -357,11 +368,12 @@ async fn op_host_get_message(
       // Terminal error means that worker should be removed from worker table.
       if let WorkerEvent::TerminalError(_) = &event {
         let mut s = state.borrow_mut();
-        if let Some((join_handle, mut worker_handle)) =
+        if let Some(mut worker_thread) =
           s.borrow_mut::<WorkersTable>().remove(&id)
         {
-          worker_handle.sender.close_channel();
-          join_handle
+          worker_thread.worker_handle.sender.close_channel();
+          worker_thread
+            .join_handle
             .join()
             .expect("Worker thread panicked")
             .expect("Panic in worker event loop");
@@ -375,9 +387,10 @@ async fn op_host_get_message(
       let workers = s.borrow_mut::<WorkersTable>();
       // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
       // already meaning that we won't find worker in table - in that case ignore.
-      if let Some((join_handle, mut worker_handle)) = workers.remove(&id) {
-        worker_handle.sender.close_channel();
-        join_handle
+      if let Some(mut worker_thread) = workers.remove(&id) {
+        worker_thread.worker_handle.sender.close_channel();
+        worker_thread
+          .join_handle
           .join()
           .expect("Worker thread panicked")
           .expect("Panic in worker event loop");
@@ -401,7 +414,7 @@ fn op_host_post_message(
 
   debug!("post message to worker {}", id);
   let workers = state.borrow::<WorkersTable>();
-  let worker_handle = workers[&id].1.clone();
+  let worker_handle = workers[&id].worker_handle.clone();
   worker_handle.post_message(msg)?;
   Ok(json!({}))
 }
