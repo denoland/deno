@@ -25,12 +25,13 @@ pub struct CliModuleLoader {
 }
 
 impl CliModuleLoader {
-  pub fn new(maybe_import_map: Option<ImportMap>, unstable: bool) -> Rc<Self> {
+  pub fn new(unstable: bool, maybe_import_map: Option<ImportMap>) -> Rc<Self> {
     let lib = if unstable {
       TypeLib::UnstableDenoWindow
     } else {
       TypeLib::DenoWindow
     };
+
     Rc::new(CliModuleLoader {
       import_map: maybe_import_map,
       lib,

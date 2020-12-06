@@ -47,8 +47,8 @@ impl MainWorker {
     permissions: Permissions,
   ) -> Self {
     let module_loader = CliModuleLoader::new(
-      program_state.maybe_import_map.clone(),
       program_state.flags.unstable,
+      program_state.maybe_import_map.clone(),
     );
 
     let global_state_ = program_state.clone();
