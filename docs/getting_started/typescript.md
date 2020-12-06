@@ -28,12 +28,12 @@ isolation without using information from imported modules. This maximizes
 potential for concurrency and incremental rebuilds. On the other hand, it cannot
 know if `export { Foo } from "./foo.ts"` should be preserved (in case `Foo` is a
 value) or removed (in case `Foo` is strictly a type) in the output JS. So Deno
-_without_ `--no-check` requires that all TS complies with
+requires that all TS complies with
 [`isolatedModules`](https://www.typescriptlang.org/tsconfig#isolatedModules)
 which forbids such code in the second case, instead requiring the
 [`export type`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-8.html#type-only-imports-and-exports)
-syntax, so the transpiler _with_ `--no-check` can always safely assume the first
-case.
+syntax, so the transpiler can always safely assume the first case for the above
+`export`.
 
 Another consequence of `isolatedModules` is that the type-directed `const enum`
 is treated like `enum`. The legacy `import =` and `export =` syntaxes are also
