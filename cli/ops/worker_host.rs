@@ -293,6 +293,22 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
   }
 }
 
+// Try to remove worker from workers table - NOTE: `Worker.terminate()`
+// might have been called already meaning that we won't find worker in
+// table - in that case ignore.
+fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
+  let mut s = state.borrow_mut();
+  let workers = s.borrow_mut::<WorkersTable>();
+  if let Some(mut worker_thread) = workers.remove(&id) {
+    worker_thread.worker_handle.sender.close_channel();
+    worker_thread
+      .join_handle
+      .join()
+      .expect("Worker thread panicked")
+      .expect("Panic in worker event loop");
+  }
+}
+
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
@@ -314,42 +330,18 @@ async fn op_host_get_message(
     }
   };
 
-  let response = match worker_handle.get_event().await? {
-    Some(event) => {
-      // Terminal error means that worker should be removed from worker table.
-      if let WorkerEvent::TerminalError(_) = &event {
-        let mut s = state.borrow_mut();
-        if let Some(mut worker_thread) =
-          s.borrow_mut::<WorkersTable>().remove(&id)
-        {
-          worker_thread.worker_handle.sender.close_channel();
-          worker_thread
-            .join_handle
-            .join()
-            .expect("Worker thread panicked")
-            .expect("Panic in worker event loop");
-        };
-      }
-      serialize_worker_event(event)
+  let maybe_event = worker_handle.get_event().await?;
+  if let Some(event) = maybe_event {
+    // Terminal error means that worker should be removed from worker table.
+    if let WorkerEvent::TerminalError(_) = &event {
+      try_remove_and_close(state, id);
     }
-    None => {
-      // Worker shuts down
-      let mut s = state.borrow_mut();
-      let workers = s.borrow_mut::<WorkersTable>();
-      // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
-      // already meaning that we won't find worker in table - in that case ignore.
-      if let Some(mut worker_thread) = workers.remove(&id) {
-        worker_thread.worker_handle.sender.close_channel();
-        worker_thread
-          .join_handle
-          .join()
-          .expect("Worker thread panicked")
-          .expect("Panic in worker event loop");
-      }
-      json!({ "type": "close" })
-    }
-  };
-  Ok(response)
+    return Ok(serialize_worker_event(event));
+  }
+
+  // If there was no event from worker it means it has already been closed.
+  try_remove_and_close(state, id);
+  Ok(json!({ "type": "close" }))
 }
 
 /// Post message to guest worker as host
