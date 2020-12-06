@@ -79,8 +79,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "systemCpuInfo",
   "transpileOnly",
   "umask",
-  "utime",
-  "utimeSync",
 ];
 
 lazy_static! {

@@ -87,6 +87,8 @@
     fsync: __bootstrap.fs.fsync,
     fdatasyncSync: __bootstrap.fs.fdatasyncSync,
     fdatasync: __bootstrap.fs.fdatasync,
+    utime: __bootstrap.fs.utime,
+    utimeSync: __bootstrap.fs.utimeSync,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -127,8 +129,6 @@
     linkSync: __bootstrap.fs.linkSync,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
-    utime: __bootstrap.fs.utime,
-    utimeSync: __bootstrap.fs.utimeSync,
     symlink: __bootstrap.fs.symlink,
     symlinkSync: __bootstrap.fs.symlinkSync,
     HttpClient: __bootstrap.fetch.HttpClient,

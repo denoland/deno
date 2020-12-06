@@ -676,6 +676,36 @@ declare namespace Deno {
     whence: SeekMode,
   ): Promise<number>;
 
+  /** Synchronously changes the access (`atime`) and modification (`mtime`) times
+   * of a file system object referenced by `path`. Given times are either in
+   * seconds (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * Deno.utimeSync("myfile.txt", 1556495550, new Date());
+   * ```
+   *
+   * Requires `allow-write` permission. */
+  export function utimeSync(
+    path: string,
+    atime: number | Date,
+    mtime: number | Date,
+  ): void;
+
+  /** Changes the access (`atime`) and modification (`mtime`) times of a file
+   * system object referenced by `path`. Given times are either in seconds
+   * (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * await Deno.utime("myfile.txt", 1556495550, new Date());
+   * ```
+   *
+   * Requires `allow-write` permission. */
+  export function utime(
+    path: string,
+    atime: number | Date,
+    mtime: number | Date,
+  ): Promise<void>;
+
   /**
    * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
    *  ```ts

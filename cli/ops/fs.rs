@@ -1653,8 +1653,6 @@ fn op_utime_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.utime");
-
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
@@ -1671,7 +1669,6 @@ async fn op_utime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let state = state.borrow();
-  super::check_unstable(&state, "Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
