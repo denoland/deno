@@ -667,52 +667,6 @@ declare class Worker extends EventTarget {
     options?: {
       type?: "classic" | "module";
       name?: string;
-      /** UNSTABLE: New API. Expect many changes; most likely this
-       * field will be made into an object for more granular
-       * configuration of worker thread (permissions, import map, etc.).
-       *
-       * Set to `true` to make `Deno` namespace and all of its methods
-       * available to worker thread.
-       *
-       * Currently worker inherits permissions from main thread (permissions
-       * given using `--allow-*` flags).
-       * Configurable permissions are on the roadmap to be implemented.
-       *
-       * Example:
-       *
-       * ```ts
-       * // mod.ts
-       * const worker = new Worker(
-       *   new URL("deno_worker.ts", import.meta.url).href,
-       *   { type: "module", deno: true }
-       * );
-       * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
-       *
-       * // deno_worker.ts
-       *
-       *
-       * self.onmessage = async function (e) {
-       *     const { cmd, fileName } = e.data;
-       *     if (cmd !== "readFile") {
-       *         throw new Error("Invalid command");
-       *     }
-       *     const buf = await Deno.readFile(fileName);
-       *     const fileContents = new TextDecoder().decode(buf);
-       *     console.log(fileContents);
-       * }
-       * ```
-       *
-       * // log.txt
-       * hello world
-       * hello world 2
-       *
-       * // run program
-       * $ deno run --allow-read mod.ts
-       * hello world
-       * hello world2
-       *
-       */
-      deno?: boolean;
     },
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;

@@ -77,17 +77,11 @@ fn create_web_worker(
   program_state: &Arc<ProgramState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  has_deno_namespace: bool,
 ) -> Result<WebWorker, AnyError> {
-  let mut worker = WebWorker::new(
-    name.clone(),
-    permissions,
-    specifier,
-    program_state.clone(),
-    has_deno_namespace,
-  );
+  let mut worker =
+    WebWorker::new(name.clone(), permissions, specifier, program_state.clone());
 
-  if has_deno_namespace {
+  {
     let state = worker.js_runtime.op_state();
     let mut state = state.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
@@ -105,8 +99,8 @@ fn create_web_worker(
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.
   let script = format!(
-    "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
-    name, worker.has_deno_namespace, worker_id
+    "bootstrap.workerRuntime(\"{}\", \"worker-{}\")",
+    name, worker_id
   );
   worker.execute(&script)?;
 
@@ -120,7 +114,6 @@ fn run_worker_thread(
   program_state: &Arc<ProgramState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  has_deno_namespace: bool,
   maybe_source_code: Option<String>,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), AnyError> {
   let program_state = program_state.clone();
@@ -140,7 +133,6 @@ fn run_worker_thread(
       &program_state,
       permissions,
       specifier.clone(),
-      has_deno_namespace,
     );
 
     if let Err(err) = result {
@@ -221,7 +213,6 @@ struct CreateWorkerArgs {
   specifier: String,
   has_source_code: bool,
   source_code: String,
-  use_deno_namespace: bool,
 }
 
 /// Create worker as the host
@@ -239,10 +230,6 @@ fn op_create_worker(
     None
   };
   let args_name = args.name;
-  let use_deno_namespace = args.use_deno_namespace;
-  if use_deno_namespace {
-    super::check_unstable(state, "Worker.deno");
-  }
   let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
   state.put::<WorkerId>(worker_id + 1);
@@ -257,7 +244,6 @@ fn op_create_worker(
     &cli_state,
     permissions,
     module_specifier,
-    use_deno_namespace,
     maybe_source_code,
   )?;
   // At this point all interactions with worker happen using thread

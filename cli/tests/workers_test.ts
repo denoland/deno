@@ -267,36 +267,20 @@ Deno.test({
 });
 
 Deno.test({
-  name: "worker with Deno namespace",
+  name: "worker with Deno API",
   fn: async function (): Promise<void> {
     const promise = deferred();
-    const promise2 = deferred();
-
-    const regularWorker = new Worker(
-      new URL("subdir/non_deno_worker.js", import.meta.url).href,
-      { type: "module" },
-    );
     const denoWorker = new Worker(
       new URL("subdir/deno_worker.ts", import.meta.url).href,
-      { type: "module", deno: true },
+      { type: "module" },
     );
-
-    regularWorker.onmessage = (e): void => {
-      assertEquals(e.data, "Hello World");
-      regularWorker.terminate();
-      promise.resolve();
-    };
-
     denoWorker.onmessage = (e): void => {
       assertEquals(e.data, "Hello World");
       denoWorker.terminate();
-      promise2.resolve();
+      promise.resolve();
     };
-
-    regularWorker.postMessage("Hello World");
-    await promise;
     denoWorker.postMessage("Hello World");
-    await promise2;
+    await promise;
   },
 });
 
