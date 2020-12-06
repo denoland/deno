@@ -135,8 +135,7 @@ impl WebWorker {
     program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
   ) -> Self {
-    let module_loader =
-      CliModuleLoader::new_for_worker(program_state.flags.unstable);
+    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
     let global_state_ = program_state.clone();
 
     let js_error_create_fn = Box::new(move |core_js_error| {
