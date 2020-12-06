@@ -26,18 +26,29 @@ pub struct CliModuleLoader {
 }
 
 impl CliModuleLoader {
-  pub fn new(maybe_import_map: Option<ImportMap>) -> Rc<Self> {
+  pub fn new(maybe_import_map: Option<ImportMap>, unstable: bool) -> Rc<Self> {
+    let lib = if unstable {
+      TypeLib::UnstableDenoWindow
+    } else {
+      TypeLib::DenoWindow
+    };
     Rc::new(CliModuleLoader {
       import_map: maybe_import_map,
-      lib: TypeLib::DenoWindow,
+      lib,
       is_main: true,
     })
   }
 
-  pub fn new_for_worker() -> Rc<Self> {
+  pub fn new_for_worker(unstable: bool) -> Rc<Self> {
+    let lib = if unstable {
+      TypeLib::UnstableDenoWorker
+    } else {
+      TypeLib::DenoWorker
+    };
+
     Rc::new(CliModuleLoader {
       import_map: None,
-      lib: TypeLib::DenoWorker,
+      lib,
       is_main: false,
     })
   }
@@ -123,15 +134,7 @@ impl ModuleLoader for CliModuleLoader {
     // The permissions that should be applied to any dynamically imported module
     let dynamic_permissions = state.borrow::<Permissions>().clone();
     let program_state = state.borrow::<Arc<ProgramState>>().clone();
-    let lib = if program_state.flags.unstable {
-      if self.lib == TypeLib::DenoWindow {
-        TypeLib::UnstableDenoWindow
-      } else {
-        TypeLib::UnstableDenoWorker
-      }
-    } else {
-      self.lib.clone()
-    };
+    let lib = self.lib.clone();
     drop(state);
 
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
