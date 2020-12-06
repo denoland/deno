@@ -98,7 +98,9 @@ impl ModuleLoader for CliModuleLoader {
     let module_url_specified = module_specifier.to_string();
     let program_state = self.program_state.clone();
 
-    // TODO(@kitsonk) this shouldn't be async
+    // NOTE: this block is async only because of `deno_core`
+    // interface requirements; module was already loaded
+    // when constructing module graph during call to `prepare_load`.
     let fut = async move {
       let compiled_module = program_state
         .fetch_compiled_module(module_specifier, maybe_referrer)?;
