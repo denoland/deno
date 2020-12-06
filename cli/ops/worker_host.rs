@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::permissions::Permissions;
-use crate::program_state::ProgramState;
-use crate::tokio_util::create_basic_runtime;
+use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
@@ -11,7 +9,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
-use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -24,7 +21,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::thread::JoinHandle;
 
 #[derive(Deserialize)]
@@ -75,104 +71,6 @@ pub struct WorkerThread {
 pub type WorkersTable = HashMap<u32, WorkerThread>;
 pub type WorkerId = u32;
 
-// TODO(bartlomieju): check if order of actions is aligned to Worker spec
-fn run_worker_thread(
-  worker_id: u32,
-  name: String,
-  program_state: Arc<ProgramState>,
-  permissions: Permissions,
-  specifier: ModuleSpecifier,
-  has_deno_namespace: bool,
-  maybe_source_code: Option<String>,
-) -> Result<WorkerThread, AnyError> {
-  let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
-
-  let builder =
-    std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
-  let join_handle = builder.spawn(move || {
-    // Any error inside this block is terminal:
-    // - JS worker is useless - meaning it throws an exception and can't do anything else,
-    //  all action done upon it should be noops
-    // - newly spawned thread exits
-    let mut worker = WebWorker::new(
-      name,
-      permissions,
-      specifier.clone(),
-      program_state,
-      has_deno_namespace,
-      worker_id,
-    );
-
-    let name = worker.name.to_string();
-    // Send thread safe handle to newly created worker to host thread
-    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
-    drop(handle_sender);
-
-    // At this point the only method of communication with host
-    // is using `worker.internal_channels`.
-    //
-    // Host can already push messages and interact with worker.
-    //
-    // Next steps:
-    // - create tokio runtime
-    // - load provided module or code
-    // - start driving worker's event loop
-
-    let mut rt = create_basic_runtime();
-
-    // TODO(bartlomieju): run following block using "select!"
-    // with terminate
-
-    // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code {
-      worker.execute(&source_code)
-    } else {
-      // TODO(bartlomieju): add "type": "classic", ie. ability to load
-      // script instead of module
-      let load_future = worker.execute_module(&specifier).boxed_local();
-
-      rt.block_on(load_future)
-    };
-
-    let mut sender = worker.internal_channels.sender.clone();
-
-    // If sender is closed it means that worker has already been closed from
-    // within using "globalThis.close()"
-    if sender.is_closed() {
-      return Ok(());
-    }
-
-    if let Err(e) = result {
-      eprintln!(
-        "{}: Uncaught (in worker \"{}\") {}",
-        colors::red_bold("error"),
-        name,
-        e.to_string().trim_start_matches("Uncaught "),
-      );
-      sender
-        .try_send(WorkerEvent::TerminalError(e))
-        .expect("Failed to post message to host");
-
-      // Failure to execute script is a terminal error, bye, bye.
-      return Ok(());
-    }
-
-    let result = rt.block_on(worker.run_event_loop());
-    debug!("Worker thread shuts down {}", &name);
-    result
-  })?;
-
-  let worker_handle = handle_receiver.recv().unwrap()?;
-
-  let worker_thread = WorkerThread {
-    join_handle,
-    worker_handle,
-  };
-
-  Ok(worker_thread)
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
@@ -210,17 +108,48 @@ fn op_create_worker(
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
   let program_state = super::program_state(state);
 
-  let worker_thread = run_worker_thread(
-    worker_id,
-    worker_name,
-    program_state,
-    permissions,
-    module_specifier,
-    use_deno_namespace,
-    maybe_source_code,
-  )?;
+  let (handle_sender, handle_receiver) =
+    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
+
+  // Setup new thread
+  let thread_builder =
+    std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
+
+  // Spawn it
+  let join_handle = thread_builder.spawn(move || {
+    // Any error inside this block is terminal:
+    // - JS worker is useless - meaning it throws an exception and can't do anything else,
+    //  all action done upon it should be noops
+    // - newly spawned thread exits
+    let worker = WebWorker::new(
+      worker_name,
+      permissions,
+      module_specifier.clone(),
+      program_state,
+      use_deno_namespace,
+      worker_id,
+    );
+
+    // Send thread safe handle to newly created worker to host thread
+    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+    drop(handle_sender);
+
+    // At this point the only method of communication with host
+    // is using `worker.internal_channels`.
+    //
+    // Host can already push messages and interact with worker.
+    run_web_worker(worker, module_specifier, maybe_source_code)
+  })?;
+
+  let worker_handle = handle_receiver.recv().unwrap()?;
+
+  let worker_thread = WorkerThread {
+    join_handle,
+    worker_handle,
+  };
+
   // At this point all interactions with worker happen using thread
-  // safe handler returned from previous function call
+  // safe handler returned from previous function calls
   state
     .borrow_mut::<WorkersTable>()
     .insert(worker_id, worker_thread);

@@ -10,6 +10,7 @@ use crate::ops;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
+use crate::tokio_util::create_basic_runtime;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
@@ -365,6 +366,59 @@ impl Drop for WebWorker {
     // currently not enforced by the type system.
     self.inspector.take();
   }
+}
+
+/// This function should be called from a thread dedicated to this worker.
+// TODO(bartlomieju): check if order of actions is aligned to Worker spec
+pub fn run_web_worker(
+  mut worker: WebWorker,
+  specifier: ModuleSpecifier,
+  maybe_source_code: Option<String>,
+) -> Result<(), AnyError> {
+  let name = worker.name.to_string();
+
+  let mut rt = create_basic_runtime();
+
+  // TODO(bartlomieju): run following block using "select!"
+  // with terminate
+
+  // Execute provided source code immediately
+  let result = if let Some(source_code) = maybe_source_code {
+    worker.execute(&source_code)
+  } else {
+    // TODO(bartlomieju): add "type": "classic", ie. ability to load
+    // script instead of module
+    let load_future = worker.execute_module(&specifier).boxed_local();
+
+    rt.block_on(load_future)
+  };
+
+  let mut sender = worker.internal_channels.sender.clone();
+
+  // If sender is closed it means that worker has already been closed from
+  // within using "globalThis.close()"
+  if sender.is_closed() {
+    return Ok(());
+  }
+
+  if let Err(e) = result {
+    eprintln!(
+      "{}: Uncaught (in worker \"{}\") {}",
+      colors::red_bold("error"),
+      name,
+      e.to_string().trim_start_matches("Uncaught "),
+    );
+    sender
+      .try_send(WorkerEvent::TerminalError(e))
+      .expect("Failed to post message to host");
+
+    // Failure to execute script is a terminal error, bye, bye.
+    return Ok(());
+  }
+
+  let result = rt.block_on(worker.run_event_loop());
+  debug!("Worker thread shuts down {}", &name);
+  result
 }
 
 #[cfg(test)]
