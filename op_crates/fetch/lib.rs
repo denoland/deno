@@ -29,7 +29,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::str::from_utf8;
 
 pub use reqwest; // Re-export reqwest
 
@@ -157,10 +156,20 @@ where
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    res_headers.push((
-      key.to_string(),
-      from_utf8(val.as_bytes()).unwrap().to_owned(),
-    ));
+    let key_string = key.to_string();
+
+    if key_string == "location" {
+      res_headers.push((
+        key_string,
+        val
+          .as_bytes()
+          .iter()
+          .map(|&c| c as char)
+          .collect::<String>(),
+      ));
+    } else {
+      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
+    }
   }
 
   let rid = state

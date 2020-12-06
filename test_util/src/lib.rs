@@ -294,9 +294,10 @@ pub async fn run_all_servers() {
     warp::path("non_ascii_redirect").map(|| -> Box<dyn Reply> {
       let mut res = Response::new(Body::empty());
       *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
-      res
-        .headers_mut()
-        .insert("location", HeaderValue::from_bytes(b"/\xc2\xae").unwrap());
+      res.headers_mut().insert(
+        "location",
+        HeaderValue::from_bytes(b"/redirect\xae").unwrap(),
+      );
       Box::new(res)
     });
 
