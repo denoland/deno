@@ -22,7 +22,6 @@ pub struct CliModuleLoader {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub lib: TypeLib,
-  pub is_main: bool,
 }
 
 impl CliModuleLoader {
@@ -35,7 +34,6 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: maybe_import_map,
       lib,
-      is_main: true,
     })
   }
 
@@ -49,7 +47,6 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: None,
       lib,
-      is_main: false,
     })
   }
 }
