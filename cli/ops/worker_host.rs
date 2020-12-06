@@ -356,8 +356,10 @@ fn op_host_post_message(
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let workers = state.borrow::<WorkersTable>();
-  let worker_handle = workers[&id].worker_handle.clone();
-  worker_handle.post_message(msg)?;
+  let worker_thread = state
+    .borrow::<WorkersTable>()
+    .get(&id)
+    .expect("No worker handle found");
+  worker_thread.worker_handle.post_message(msg)?;
   Ok(json!({}))
 }
