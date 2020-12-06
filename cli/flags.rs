@@ -11,11 +11,6 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-/// Creates vector of strings, Vec<String>
-macro_rules! svec {
-    ($($x:expr),*) => (vec![$($x.to_string()),*]);
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
   Bundle {
@@ -130,7 +125,7 @@ pub struct Flags {
   pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
-  pub v8_flags: Option<Vec<String>>,
+  pub v8_flags: Vec<String>,
   pub version: bool,
   pub watch: bool,
   pub write_allowlist: Vec<PathBuf>,
@@ -1485,8 +1480,7 @@ fn v8_flags_arg<'a, 'b>() -> Arg<'a, 'b> {
 
 fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(v8_flags) = matches.values_of("v8-flags") {
-    let s: Vec<String> = v8_flags.map(String::from).collect();
-    flags.v8_flags = Some(s);
+    flags.v8_flags = v8_flags.map(String::from).collect();
   }
 }
 
@@ -1521,16 +1515,7 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
     let seed = seed_string.parse::<u64>().unwrap();
     flags.seed = Some(seed);
 
-    let v8_seed_flag = format!("--random-seed={}", seed);
-
-    match flags.v8_flags {
-      Some(ref mut v8_flags) => {
-        v8_flags.push(v8_seed_flag);
-      }
-      None => {
-        flags.v8_flags = Some(svec![v8_seed_flag]);
-      }
-    }
+    flags.v8_flags.push(format!("--random-seed={}", seed));
   }
 }
 
@@ -1650,6 +1635,11 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// Creates vector of strings, Vec<String>
+  macro_rules! svec {
+    ($($x:expr),*) => (vec![$($x.to_string()),*]);
+}
 
   #[test]
   fn global_flags() {
@@ -1772,7 +1762,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "_".to_string(),
         },
-        v8_flags: Some(svec!["--help"]),
+        v8_flags: svec!["--help"],
         ..Flags::default()
       }
     );
@@ -1789,7 +1779,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        v8_flags: Some(svec!["--expose-gc", "--gc-stats=1"]),
+        v8_flags: svec!["--expose-gc", "--gc-stats=1"],
         ..Flags::default()
       }
     );
@@ -2288,7 +2278,7 @@ mod tests {
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
-        v8_flags: Some(svec!["--help", "--random-seed=1"]),
+        v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: true,
@@ -2372,7 +2362,7 @@ mod tests {
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
-        v8_flags: Some(svec!["--help", "--random-seed=1"]),
+        v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: true,
@@ -2713,7 +2703,7 @@ mod tests {
           script: "script.ts".to_string(),
         },
         seed: Some(250_u64),
-        v8_flags: Some(svec!["--random-seed=250"]),
+        v8_flags: svec!["--random-seed=250"],
         ..Flags::default()
       }
     );
@@ -2736,7 +2726,7 @@ mod tests {
           script: "script.ts".to_string(),
         },
         seed: Some(250_u64),
-        v8_flags: Some(svec!["--expose-gc", "--random-seed=250"]),
+        v8_flags: svec!["--expose-gc", "--random-seed=250"],
         ..Flags::default()
       }
     );
@@ -2788,7 +2778,7 @@ mod tests {
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
-        v8_flags: Some(svec!["--help", "--random-seed=1"]),
+        v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: true,

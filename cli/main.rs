@@ -1057,8 +1057,8 @@ pub fn main() {
   }
 
   let flags = flags::flags_from_vec(args);
-  if let Some(ref v8_flags) = flags.v8_flags {
-    init_v8_flags(v8_flags);
+  if !flags.v8_flags.is_empty() {
+    init_v8_flags(&*flags.v8_flags);
   }
   init_logger(flags.log_level);
 

@@ -51,7 +51,7 @@
       "file_server": "File server",
       "tcp_echo": "TCP echo server",
       "subprocess": "Creating a subprocess",
-      "os_signals": "OS Signals",
+      "os_signals": "OS signals",
       "file_system_events": "File system events",
       "module_metadata": "Module metadata"
     }
@@ -69,6 +69,7 @@
       "formatter": "Formatter",
       "repl": "Read-eval-print-loop",
       "bundler": "Bundler",
+      "compiler": "Compiling executables",
       "documentation_generator": "Documentation generator",
       "dependency_inspector": "Dependency inspector",
       "linter": "Linter"
