@@ -93,8 +93,8 @@ pub async fn op_ws_create(
   }
 
   let ca_file = {
-    let cli_state = super::global_state2(&state);
-    cli_state.flags.ca_file.clone()
+    let program_state = super::global_state2(&state);
+    program_state.flags.ca_file.clone()
   };
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
