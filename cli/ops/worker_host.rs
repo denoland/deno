@@ -68,7 +68,8 @@ pub fn init(
   );
 }
 
-pub type WorkersTable = HashMap<u32, (JoinHandle<()>, WebWorkerHandle)>;
+pub type WorkersTable =
+  HashMap<u32, (JoinHandle<Result<(), AnyError>>, WebWorkerHandle)>;
 pub type WorkerId = u32;
 
 fn create_web_worker(
@@ -122,7 +123,7 @@ fn run_worker_thread(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
-) -> Result<(JoinHandle<()>, WebWorkerHandle), AnyError> {
+) -> Result<(JoinHandle<Result<(), AnyError>>, WebWorkerHandle), AnyError> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
 
@@ -144,7 +145,7 @@ fn run_worker_thread(
 
     if let Err(err) = result {
       handle_sender.send(Err(err)).unwrap();
-      return;
+      return Ok(());
     }
 
     let mut worker = result.unwrap();
@@ -165,7 +166,8 @@ fn run_worker_thread(
 
     let mut rt = create_basic_runtime();
 
-    // TODO: run with using select with terminate
+    // TODO(bartlomieju): run following block using "select!"
+    // with terminate
 
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code {
@@ -183,7 +185,7 @@ fn run_worker_thread(
     // If sender is closed it means that worker has already been closed from
     // within using "globalThis.close()"
     if sender.is_closed() {
-      return;
+      return Ok(());
     }
 
     if let Err(e) = result {
@@ -198,15 +200,12 @@ fn run_worker_thread(
         .expect("Failed to post message to host");
 
       // Failure to execute script is a terminal error, bye, bye.
-      return;
+      return Ok(());
     }
 
-    // TODO(bartlomieju): this thread should return result of event loop
-    // that means that we should store JoinHandle to thread to ensure
-    // that it actually terminates.
-    rt.block_on(worker.run_event_loop())
-      .expect("Panic in event loop");
+    let result = rt.block_on(worker.run_event_loop());
     debug!("Worker thread shuts down {}", &name);
+    result
   })?;
 
   let worker_handle = handle_receiver.recv().unwrap()?;
@@ -285,7 +284,10 @@ fn op_host_terminate_worker(
     .remove(&id)
     .expect("No worker handle found");
   worker_handle.terminate();
-  join_handle.join().expect("Panic in worker thread");
+  join_handle
+    .join()
+    .expect("Panic in worker thread")
+    .expect("Panic in worker event loop");
   Ok(json!({}))
 }
 
@@ -359,7 +361,10 @@ async fn op_host_get_message(
           s.borrow_mut::<WorkersTable>().remove(&id)
         {
           worker_handle.sender.close_channel();
-          join_handle.join().expect("Worker thread panicked");
+          join_handle
+            .join()
+            .expect("Worker thread panicked")
+            .expect("Panic in worker event loop");
         };
       }
       serialize_worker_event(event)
@@ -372,7 +377,10 @@ async fn op_host_get_message(
       // already meaning that we won't find worker in table - in that case ignore.
       if let Some((join_handle, mut worker_handle)) = workers.remove(&id) {
         worker_handle.sender.close_channel();
-        join_handle.join().expect("Worker thread panicked");
+        join_handle
+          .join()
+          .expect("Worker thread panicked")
+          .expect("Panic in worker event loop");
       }
       json!({ "type": "close" })
     }
