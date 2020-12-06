@@ -275,13 +275,15 @@ impl WebWorker {
     self.handle.clone()
   }
 
+  pub fn has_been_terminated(&self) -> bool {
+    self.handle.terminated.load(Ordering::Relaxed)
+  }
+
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let terminated = self.handle.terminated.load(Ordering::Relaxed);
-
-    if terminated {
+    if self.has_been_terminated() {
       return Poll::Ready(Ok(()));
     }
 
@@ -292,23 +294,20 @@ impl WebWorker {
         self.waker.register(cx.waker());
         self.js_runtime.poll_event_loop(cx)
       };
-      match poll_result {
-        Poll::Ready(r) => {
-          let terminated = self.handle.terminated.load(Ordering::Relaxed);
-          if terminated {
-            return Poll::Ready(Ok(()));
-          }
 
-          if let Err(e) = r {
-            print_worker_error(e.to_string(), &self.name);
-            let mut sender = self.internal_channels.sender.clone();
-            sender
-              .try_send(WorkerEvent::Error(e))
-              .expect("Failed to post message to host");
-          }
-          self.event_loop_idle = true;
+      if let Poll::Ready(r) = poll_result {
+        if self.has_been_terminated() {
+          return Poll::Ready(Ok(()));
         }
-        Poll::Pending => {}
+
+        if let Err(e) = r {
+          print_worker_error(e.to_string(), &self.name);
+          let mut sender = self.internal_channels.sender.clone();
+          sender
+            .try_send(WorkerEvent::Error(e))
+            .expect("Failed to post message to host");
+        }
+        self.event_loop_idle = true;
       }
     }
 
@@ -318,33 +317,32 @@ impl WebWorker {
       return Poll::Ready(Ok(()));
     }
 
-    if let Poll::Ready(r) = self.internal_channels.receiver.poll_next_unpin(cx)
-    {
-      match r {
-        Some(msg) => {
-          let msg = String::from_utf8(msg.to_vec()).unwrap();
-          let script = format!("workerMessageRecvCallback({})", msg);
+    let maybe_msg_poll_result =
+      self.internal_channels.receiver.poll_next_unpin(cx);
 
-          if let Err(e) = self.execute(&script) {
-            // If execution was terminated during message callback then
-            // just ignore it
-            if self.handle.terminated.load(Ordering::Relaxed) {
-              return Poll::Ready(Ok(()));
-            }
+    if let Poll::Ready(maybe_msg) = maybe_msg_poll_result {
+      let msg =
+        maybe_msg.expect("Received `None` instead of message in worker");
+      let msg = String::from_utf8(msg.to_vec()).unwrap();
+      let script = format!("workerMessageRecvCallback({})", msg);
 
-            // Otherwise forward error to host
-            let mut sender = self.internal_channels.sender.clone();
-            sender
-              .try_send(WorkerEvent::Error(e))
-              .expect("Failed to post message to host");
-          }
-
-          // Let event loop be polled again
-          self.event_loop_idle = false;
-          self.waker.wake();
+      if let Err(e) = self.execute(&script) {
+        // If execution was terminated during message callback then
+        // just ignore it
+        if self.has_been_terminated() {
+          return Poll::Ready(Ok(()));
         }
-        None => unreachable!(),
+
+        // Otherwise forward error to host
+        let mut sender = self.internal_channels.sender.clone();
+        sender
+          .try_send(WorkerEvent::Error(e))
+          .expect("Failed to post message to host");
       }
+
+      // Let event loop be polled again
+      self.event_loop_idle = false;
+      self.waker.wake();
     }
 
     Poll::Pending
