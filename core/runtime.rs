@@ -326,7 +326,9 @@ impl JsRuntime {
   fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
-      self.execute("deno:core.js", include_str!("core.js")).unwrap();
+      self
+        .execute("deno:core.js", include_str!("core.js"))
+        .unwrap();
     }
   }
 
