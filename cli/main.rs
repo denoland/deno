@@ -854,7 +854,13 @@ async fn test_command(
   let mut worker =
     MainWorker::new(&program_state, main_module.clone(), permissions);
 
-  let mut maybe_coverage_collector = if let Some(ref coverage_dir) = flags.coverage_dir {
+  // If the actual coverage flag is set, we set the environment variable so that subprocesses will
+  // forward it.
+  if let Some(ref coverage_dir) = flags.coverage_dir {
+      env::set_var("DENO_COVERAGE_DIR", coverage_dir);
+  }
+
+  let mut maybe_coverage_collector = if let Some(ref coverage_dir) = program_state.coverage_dir {
     let session = worker.create_inspector_session();
     let mut coverage_collector =
       tools::coverage::CoverageCollector::new(PathBuf::from(coverage_dir), session);
