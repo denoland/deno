@@ -2586,4 +2586,19 @@ main();
       };
     })
   }
+
+  #[test]
+  fn test_core_js_stack_frame() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    // Call non-existent op so we get error from `core.js`
+    let error = runtime
+      .execute(
+        "core_js_stack_frame.js",
+        "Deno.core.dispatchByName('non_existent');",
+      )
+      .unwrap_err();
+    let error_string = error.to_string();
+    // Test that the script specifier is a URL: `deno:<repo-relative path>`.
+    assert!(error_string.contains("deno:core/core.js"));
+  }
 }
