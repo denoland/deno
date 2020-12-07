@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::fmt_errors::PrettyJsError;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorSession;
@@ -10,9 +11,12 @@ use crate::ops;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
+use crate::version;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
@@ -74,6 +78,7 @@ impl MainWorker {
     // TODO(bartlomieju): this is hacky way to not apply source
     // maps in JS
     let apply_source_maps = js_error_create_fn.is_some();
+    let flags = &program_state.flags;
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
@@ -115,7 +120,7 @@ impl MainWorker {
         op_state.put::<Permissions>(permissions);
       }
 
-      ops::runtime::init(js_runtime, main_module, apply_source_maps);
+      ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime, None);
@@ -157,8 +162,27 @@ impl MainWorker {
         t.add("stderr", Box::new(stream));
       }
     }
+
+    let runtime_options = json!({
+      "args": flags.argv.clone(),
+      "applySourceMaps": apply_source_maps,
+      "debugFlag": flags.log_level.map_or(false, |l| l == log::Level::Debug),
+      "denoVersion": version::deno(),
+      "noColor": !colors::use_color(),
+      "pid": std::process::id(),
+      "ppid": ops::runtime::ppid(),
+      "target": env!("TARGET"),
+      "tsVersion": version::TYPESCRIPT,
+      "unstableFlag": flags.unstable,
+      "v8Version": version::v8(),
+    });
+
+    let script = format!(
+      "bootstrap.mainRuntime({})",
+      serde_json::to_string_pretty(&runtime_options).unwrap()
+    );
     worker
-      .execute("bootstrap.mainRuntime()")
+      .execute(&script)
       .expect("Failed to execute bootstrap script");
     worker
   }

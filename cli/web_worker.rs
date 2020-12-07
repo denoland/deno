@@ -11,12 +11,15 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::tokio_util::create_basic_runtime;
+use crate::version;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
@@ -139,6 +142,7 @@ impl WebWorker {
   ) -> Self {
     let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
     let global_state_ = program_state.clone();
+    let flags = &program_state.flags;
 
     let js_error_create_fn = Box::new(move |core_js_error| {
       let source_mapped_error =
@@ -197,7 +201,7 @@ impl WebWorker {
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module, true);
+      ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
       ops::worker_host::init(js_runtime, Some(sender));
@@ -241,11 +245,28 @@ impl WebWorker {
       }
     }
 
+    let runtime_options = json!({
+      "args": flags.argv.clone(),
+      "applySourceMaps": true,
+      "debugFlag": flags.log_level.map_or(false, |l| l == log::Level::Debug),
+      "denoVersion": version::deno(),
+      "noColor": !colors::use_color(),
+      "pid": std::process::id(),
+      "ppid": ops::runtime::ppid(),
+      "target": env!("TARGET"),
+      "tsVersion": version::TYPESCRIPT,
+      "unstableFlag": flags.unstable,
+      "v8Version": version::v8(),
+    });
+
+    let runtime_options_str =
+      serde_json::to_string_pretty(&runtime_options).unwrap();
+
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
-      "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
-      name, worker.has_deno_namespace, worker_id
+      "bootstrap.workerRuntime({}, \"{}\", {}, \"worker-{}\")",
+      runtime_options_str, name, worker.has_deno_namespace, worker_id
     );
     worker
       .execute(&script)
