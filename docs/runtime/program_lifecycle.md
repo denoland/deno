@@ -75,5 +75,5 @@ defined in `imported.ts`.
 
 In other words, you can register multiple `window.addEventListener` `"load"` or
 `"unload"` events, but only the last loaded `window.onload` or `window.onunload`
-event handlers will be executed. It is preferable to use `addEventListener`
-when possible for this reason.
+event handlers will be executed. It is preferable to use `addEventListener` when
+possible for this reason.
