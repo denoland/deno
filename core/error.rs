@@ -186,11 +186,11 @@ impl JsError {
         .and_then(|m| m.to_string(scope))
         .map(|s| s.to_rust_string_lossy(scope))
         .unwrap_or_else(|| "".to_string());
-      let message = if name != "" && message_prop != "" {
+      let message = if !name.is_empty() && !message_prop.is_empty() {
         format!("Uncaught {}: {}", name, message_prop)
-      } else if name != "" {
+      } else if !name.is_empty() {
         format!("Uncaught {}", name)
-      } else if message_prop != "" {
+      } else if !message_prop.is_empty() {
         format!("Uncaught {}", message_prop)
       } else {
         "Uncaught".to_string()

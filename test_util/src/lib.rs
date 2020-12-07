@@ -931,7 +931,7 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   // needs to be pre-pended so it can safely match anything or nothing and
   // continue matching.
   if pattern.lines().next() == Some(wildcard) {
-    s.insert_str(0, "\n");
+    s.insert(0, '\n');
   }
 
   let mut t = s.split_at(parts[0].len());
@@ -941,7 +941,7 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
       continue;
     }
     dbg!(part, i);
-    if i == parts.len() - 1 && (*part == "" || *part == "\n") {
+    if i == parts.len() - 1 && (part.is_empty() || *part == "\n") {
       dbg!("exit 1 true", i);
       return true;
     }
@@ -1071,7 +1071,7 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let len = syscall_fields.len();
     let syscall_name = syscall_fields.last().unwrap();
 
-    if 5 <= len && len <= 6 {
+    if (5..=6).contains(&len) {
       summary.insert(
         syscall_name.to_string(),
         StraceOutput {

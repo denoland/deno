@@ -35,6 +35,7 @@ impl dyn Resource {
   }
 
   #[inline(always)]
+  #[allow(clippy::needless_lifetimes)]
   fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;

@@ -8,11 +8,13 @@ use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
 use std::fmt;
+use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
 use swc_common::chain;
 use swc_common::comments::Comment;
+use swc_common::comments::CommentKind;
 use swc_common::comments::SingleThreadedComments;
 use swc_common::errors::Diagnostic;
 use swc_common::errors::DiagnosticBuilder;
@@ -32,6 +34,7 @@ use swc_ecmascript::codegen::Node;
 use swc_ecmascript::dep_graph::analyze_dependencies;
 use swc_ecmascript::dep_graph::DependencyDescriptor;
 use swc_ecmascript::parser::lexer::Lexer;
+use swc_ecmascript::parser::token::Token;
 use swc_ecmascript::parser::EsConfig;
 use swc_ecmascript::parser::JscTarget;
 use swc_ecmascript::parser::StringInput;
@@ -39,6 +42,7 @@ use swc_ecmascript::parser::Syntax;
 use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::helpers;
+use swc_ecmascript::transforms::hygiene;
 use swc_ecmascript::transforms::pass::Optional;
 use swc_ecmascript::transforms::proposals;
 use swc_ecmascript::transforms::react;
@@ -241,6 +245,7 @@ pub struct ParsedModule {
   leading_comments: Vec<Comment>,
   module: Module,
   source_map: Rc<SourceMap>,
+  source_file: Rc<SourceFile>,
 }
 
 impl fmt::Debug for ParsedModule {
@@ -301,6 +306,7 @@ impl ParsedModule {
       helpers::inject_helpers(),
       typescript::strip(),
       fixer(Some(&self.comments)),
+      hygiene(),
     );
 
     let program = swc_common::GLOBALS.set(&Globals::new(), || {
@@ -348,24 +354,12 @@ impl ParsedModule {
   }
 }
 
-/// For a given specifier, source, and media type, parse the source of the
-/// module and return a representation which can be further processed.
-///
-/// # Arguments
-///
-/// - `specifier` - The module specifier for the module.
-/// - `source` - The source code for the module.
-/// - `media_type` - The media type for the module.
-///
-// NOTE(bartlomieju): `specifier` has `&str` type instead of
-// `&ModuleSpecifier` because runtime compiler APIs don't
-// require valid module specifiers
-pub fn parse(
+pub fn parse_with_source_map(
   specifier: &str,
   source: &str,
   media_type: &MediaType,
+  source_map: Rc<SourceMap>,
 ) -> Result<ParsedModule, AnyError> {
-  let source_map = SourceMap::default();
   let source_file = source_map.new_source_file(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
@@ -402,9 +396,94 @@ pub fn parse(
   Ok(ParsedModule {
     leading_comments,
     module,
-    source_map: Rc::new(source_map),
+    source_map,
     comments,
+    source_file,
   })
+}
+
+/// For a given specifier, source, and media type, parse the source of the
+/// module and return a representation which can be further processed.
+///
+/// # Arguments
+///
+/// - `specifier` - The module specifier for the module.
+/// - `source` - The source code for the module.
+/// - `media_type` - The media type for the module.
+///
+// NOTE(bartlomieju): `specifier` has `&str` type instead of
+// `&ModuleSpecifier` because runtime compiler APIs don't
+// require valid module specifiers
+pub fn parse(
+  specifier: &str,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<ParsedModule, AnyError> {
+  let source_map = Rc::new(SourceMap::default());
+  parse_with_source_map(specifier, source, media_type, source_map)
+}
+
+pub enum TokenOrComment {
+  Token(Token),
+  Comment { kind: CommentKind, text: String },
+}
+
+pub struct LexedItem {
+  pub span: Span,
+  pub inner: TokenOrComment,
+}
+
+impl LexedItem {
+  pub fn span_as_range(&self) -> Range<usize> {
+    self.span.lo.0 as usize..self.span.hi.0 as usize
+  }
+}
+
+fn flatten_comments(
+  comments: SingleThreadedComments,
+) -> impl Iterator<Item = Comment> {
+  let (leading, trailing) = comments.take_all();
+  let mut comments = (*leading).clone().into_inner();
+  comments.extend((*trailing).clone().into_inner());
+  comments.into_iter().flat_map(|el| el.1)
+}
+
+pub fn lex(
+  specifier: &str,
+  source: &str,
+  media_type: &MediaType,
+) -> Vec<LexedItem> {
+  let source_map = SourceMap::default();
+  let source_file = source_map.new_source_file(
+    FileName::Custom(specifier.to_string()),
+    source.to_string(),
+  );
+  let comments = SingleThreadedComments::default();
+  let lexer = Lexer::new(
+    get_syntax(media_type),
+    TARGET,
+    StringInput::from(source_file.as_ref()),
+    Some(&comments),
+  );
+
+  let mut tokens: Vec<LexedItem> = lexer
+    .map(|token| LexedItem {
+      span: token.span,
+      inner: TokenOrComment::Token(token.token),
+    })
+    .collect();
+
+  tokens.extend(flatten_comments(comments).map(|comment| LexedItem {
+    span: comment.span,
+    inner: TokenOrComment::Comment {
+      kind: comment.kind,
+      text: comment.text,
+    },
+  }));
+
+  tokens.sort_by_key(|item| item.span.lo.0);
+
+  tokens
 }
 
 /// A low level function which transpiles a source module into an swc
@@ -417,40 +496,12 @@ pub fn transpile_module(
   globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
-  // TODO(@kitsonk) DRY-up with ::parse()
-  let error_buffer = ErrorBuffer::new();
-  let handler = Handler::with_emitter_and_flags(
-    Box::new(error_buffer.clone()),
-    HandlerFlags {
-      can_emit_warnings: true,
-      dont_buffer_diagnostics: true,
-      ..HandlerFlags::default()
-    },
-  );
-  let comments = SingleThreadedComments::default();
-  let syntax = get_syntax(media_type);
-  let source_file =
-    cm.new_source_file(FileName::Custom(filename.to_string()), src.to_string());
-  let lexer = Lexer::new(
-    syntax,
-    TARGET,
-    StringInput::from(&*source_file),
-    Some(&comments),
-  );
-  let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-  let sm = cm.clone();
-  let module = parser.parse_module().map_err(move |err| {
-    let mut diagnostic = err.into_diagnostic(&handler);
-    diagnostic.emit();
+  let parsed_module =
+    parse_with_source_map(filename, src, media_type, cm.clone())?;
 
-    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
-      sm.lookup_char_pos(span.lo)
-    })
-  })?;
-  // TODO(@kitsonk) DRY-up with ::transpile()
   let jsx_pass = react::react(
     cm,
-    Some(&comments),
+    Some(&parsed_module.comments),
     react::Options {
       pragma: emit_options.jsx_factory.clone(),
       pragma_frag: emit_options.jsx_fragment_factory.clone(),
@@ -468,8 +519,12 @@ pub fn transpile_module(
     }),
     helpers::inject_helpers(),
     typescript::strip(),
-    fixer(Some(&comments)),
+    fixer(Some(&parsed_module.comments)),
   );
+
+  let source_file = parsed_module.source_file.clone();
+  let module = parsed_module.module;
+
   let module = swc_common::GLOBALS.set(globals, || {
     helpers::HELPERS.set(&helpers::Helpers::new(false), || {
       module.fold_with(&mut passes)
