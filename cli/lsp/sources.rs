@@ -53,36 +53,27 @@ impl Sources {
   }
 
   pub fn get_length(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
-    if let Some(specifier) = self.resolve_specifier(specifier) {
-      if let Some(metadata) = self.get_metadata(&specifier) {
-        return Some(metadata.source.chars().count());
-      }
-    }
-    None
+    let specifier = self.resolve_specifier(specifier)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(metadata.source.chars().count())
   }
 
   pub fn get_line_index(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<Vec<u32>> {
-    if let Some(specifier) = self.resolve_specifier(specifier) {
-      if let Some(metadata) = self.get_metadata(&specifier) {
-        return Some(text::index_lines(&metadata.source));
-      }
-    }
-    None
+    let specifier = self.resolve_specifier(specifier)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(text::index_lines(&metadata.source))
   }
 
   pub fn get_media_type(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
-    if let Some(specifier) = self.resolve_specifier(specifier) {
-      if let Some(metadata) = self.get_metadata(&specifier) {
-        return Some(metadata.media_type);
-      }
-    }
-    None
+    let specifier = self.resolve_specifier(specifier)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(metadata.media_type)
   }
 
   fn get_metadata(&mut self, specifier: &ModuleSpecifier) -> Option<Metadata> {
@@ -93,95 +84,101 @@ impl Sources {
         }
       }
     }
-    if let Some(version) = self.get_script_version(specifier) {
-      if let Some(path) = self.get_path(specifier) {
-        if let Ok(bytes) = fs::read(path) {
-          if specifier.as_url().scheme() == "file" {
-            let charset = text_encoding::detect_charset(&bytes).to_string();
-            if let Ok(source) = get_source_from_bytes(bytes, Some(charset)) {
-              let media_type = MediaType::from(specifier);
-              let mut maybe_types = None;
-              let dependencies = if let Some((dependencies, mt)) =
-                analysis::analyze_dependencies(
-                  &specifier,
-                  &source,
-                  &media_type,
-                  None,
-                ) {
-                maybe_types = mt;
-                Some(dependencies)
-              } else {
-                None
-              };
-              let metadata = Metadata {
-                dependencies,
-                maybe_types,
-                media_type,
-                source,
-                version,
-              };
-              self.metadata.insert(specifier.clone(), metadata.clone());
-              return Some(metadata);
+    let version = self.get_script_version(specifier)?;
+    let path = self.get_path(specifier)?;
+    if let Ok(bytes) = fs::read(path) {
+      if specifier.as_url().scheme() == "file" {
+        let charset = text_encoding::detect_charset(&bytes).to_string();
+        if let Ok(source) = get_source_from_bytes(bytes, Some(charset)) {
+          let media_type = MediaType::from(specifier);
+          let mut maybe_types = None;
+          let dependencies = if let Some((dependencies, mt)) =
+            analysis::analyze_dependencies(
+              &specifier,
+              &source,
+              &media_type,
+              None,
+            ) {
+            maybe_types = mt;
+            Some(dependencies)
+          } else {
+            None
+          };
+          let metadata = Metadata {
+            dependencies,
+            maybe_types,
+            media_type,
+            source,
+            version,
+          };
+          self.metadata.insert(specifier.clone(), metadata.clone());
+          Some(metadata)
+        } else {
+          None
+        }
+      } else {
+        let headers = self.get_remote_headers(specifier)?;
+        let maybe_content_type = headers.get("content-type").cloned();
+        let (media_type, maybe_charset) =
+          map_content_type(specifier, maybe_content_type);
+        if let Ok(source) = get_source_from_bytes(bytes, maybe_charset) {
+          let mut maybe_types =
+            if let Some(types) = headers.get("x-typescript-types") {
+              Some(analysis::resolve_import(types, &specifier, None))
+            } else {
+              None
+            };
+          let dependencies = if let Some((dependencies, mt)) =
+            analysis::analyze_dependencies(
+              &specifier,
+              &source,
+              &media_type,
+              None,
+            ) {
+            if maybe_types.is_none() {
+              maybe_types = mt;
             }
-          } else if let Some(headers) = self.get_remote_headers(specifier) {
-            let maybe_content_type = headers.get("content-type").cloned();
-            let (media_type, maybe_charset) =
-              map_content_type(specifier, maybe_content_type);
-            if let Ok(source) = get_source_from_bytes(bytes, maybe_charset) {
-              let mut maybe_types =
-                if let Some(types) = headers.get("x-typescript-types") {
-                  Some(analysis::resolve_import(types, &specifier, None))
-                } else {
-                  None
-                };
-              let dependencies = if let Some((dependencies, mt)) =
-                analysis::analyze_dependencies(
-                  &specifier,
-                  &source,
-                  &media_type,
-                  None,
-                ) {
-                if maybe_types.is_none() {
-                  maybe_types = mt;
-                }
-                Some(dependencies)
-              } else {
-                None
-              };
-              let metadata = Metadata {
-                dependencies,
-                maybe_types,
-                media_type,
-                source,
-                version,
-              };
-              self.metadata.insert(specifier.clone(), metadata.clone());
-              return Some(metadata);
-            }
-          }
+            Some(dependencies)
+          } else {
+            None
+          };
+          let metadata = Metadata {
+            dependencies,
+            maybe_types,
+            media_type,
+            source,
+            version,
+          };
+          self.metadata.insert(specifier.clone(), metadata.clone());
+          Some(metadata)
+        } else {
+          None
         }
       }
+    } else {
+      None
     }
-    None
   }
 
   fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    if let Some(specifier) = self.resolve_specifier(specifier) {
-      if specifier.as_url().scheme() == "file" {
-        if let Ok(path) = specifier.as_url().to_file_path() {
-          return Some(path);
-        }
-      } else if let Some(path) = self.remotes.get(&specifier) {
-        return Some(path.clone());
+    let specifier = self.resolve_specifier(specifier)?;
+    if specifier.as_url().scheme() == "file" {
+      if let Ok(path) = specifier.as_url().to_file_path() {
+        Some(path)
       } else {
-        let path = self.http_cache.get_cache_filename(&specifier.as_url());
-        if path.is_file() {
-          self.remotes.insert(specifier.clone(), path.clone());
-          return Some(path);
-        }
+        None
+      }
+    } else if let Some(path) = self.remotes.get(&specifier) {
+      Some(path.clone())
+    } else {
+      let path = self.http_cache.get_cache_filename(&specifier.as_url());
+      if path.is_file() {
+        self.remotes.insert(specifier.clone(), path.clone());
+        Some(path)
+      } else {
+        None
       }
     }
-    None
   }
 
   fn get_remote_headers(
@@ -222,30 +219,23 @@ impl Sources {
   }
 
   pub fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
-    if let Some(specifier) = self.resolve_specifier(specifier) {
-      if let Some(metadata) = self.get_metadata(&specifier) {
-        return Some(metadata.source);
-      }
-    }
-    None
+    let specifier = self.resolve_specifier(specifier)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(metadata.source)
   }
 
   fn resolution_result(
     &mut self,
     resolved_specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    if let Some(resolved_specifier) = self.resolve_specifier(resolved_specifier)
-    {
-      let media_type =
-        if let Some(metadata) = self.metadata.get(&resolved_specifier) {
-          metadata.media_type
-        } else {
-          MediaType::from(&resolved_specifier)
-        };
-      Some((resolved_specifier, media_type))
-    } else {
-      None
-    }
+    let resolved_specifier = self.resolve_specifier(resolved_specifier)?;
+    let media_type =
+      if let Some(metadata) = self.metadata.get(&resolved_specifier) {
+        metadata.media_type
+      } else {
+        MediaType::from(&resolved_specifier)
+      };
+    Some((resolved_specifier, media_type))
   }
 
   pub fn resolve_import(
@@ -253,28 +243,28 @@ impl Sources {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    if let Some(referrer) = self.resolve_specifier(referrer) {
-      if let Some(metadata) = self.get_metadata(&referrer) {
-        if let Some(dependencies) = &metadata.dependencies {
-          if let Some(dependency) = dependencies.get(specifier) {
-            if let Some(type_dependency) = &dependency.maybe_type {
-              if let analysis::ResolvedImport::Resolved(resolved_specifier) =
-                type_dependency
-              {
-                return self.resolution_result(resolved_specifier);
-              }
-            } else if let Some(code_dependency) = &dependency.maybe_code {
-              if let analysis::ResolvedImport::Resolved(resolved_specifier) =
-                code_dependency
-              {
-                return self.resolution_result(resolved_specifier);
-              }
-            }
-          }
-        }
+    let referrer = self.resolve_specifier(referrer)?;
+    let metadata = self.get_metadata(&referrer)?;
+    let dependencies = &metadata.dependencies?;
+    let dependency = dependencies.get(specifier)?;
+    if let Some(type_dependency) = &dependency.maybe_type {
+      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+        type_dependency
+      {
+        self.resolution_result(resolved_specifier)
+      } else {
+        None
+      }
+    } else {
+      let code_dependency = &dependency.maybe_code.clone()?;
+      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+        code_dependency
+      {
+        self.resolution_result(resolved_specifier)
+      } else {
+        None
       }
     }
-    None
   }
 
   fn resolve_specifier(

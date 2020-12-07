@@ -20,9 +20,12 @@ use std::rc::Rc;
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
 pub enum Category {
-  /// A lint diagnostic, where the first element is the message, the second
-  /// element is the lint code (rule) and the third is an optional hint.
-  Lint(String, String, Option<String>),
+  /// A lint diagnostic, where the first element is the message.
+  Lint {
+    message: String,
+    code: String,
+    hint: Option<String>,
+  },
 }
 
 /// A structure to hold a reference to a diagnostic message.
@@ -61,7 +64,11 @@ pub fn get_lint_references(
     lint_diagnostics
       .into_iter()
       .map(|d| Reference {
-        category: Category::Lint(d.message, d.code, d.hint),
+        category: Category::Lint {
+          message: d.message,
+          code: d.code,
+          hint: d.hint,
+        },
         range: as_lsp_range(&d.range),
       })
       .collect(),
@@ -74,7 +81,7 @@ pub fn references_to_diagnostics(
   references
     .into_iter()
     .map(|r| match r.category {
-      Category::Lint(message, code, _) => lsp_types::Diagnostic {
+      Category::Lint { message, code, .. } => lsp_types::Diagnostic {
         range: r.range,
         severity: Some(lsp_types::DiagnosticSeverity::Warning),
         code: Some(lsp_types::NumberOrString::String(code)),
