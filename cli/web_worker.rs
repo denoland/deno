@@ -137,7 +137,7 @@ impl WebWorker {
     has_deno_namespace: bool,
     worker_id: u32,
   ) -> Self {
-    let module_loader = CliModuleLoader::new_for_worker();
+    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
     let global_state_ = program_state.clone();
 
     let js_error_create_fn = Box::new(move |core_js_error| {
