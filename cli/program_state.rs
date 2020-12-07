@@ -104,7 +104,10 @@ impl ProgramState {
       None => None,
     };
 
-    let coverage_dir = flags.coverage_dir.clone().or_else(|| env::var("DENO_COVERAGE_DIR").ok());
+    let coverage_dir = flags
+      .coverage_dir
+      .clone()
+      .or_else(|| env::var("DENO_COVERAGE_DIR").ok());
     let program_state = ProgramState {
       dir,
       coverage_dir,

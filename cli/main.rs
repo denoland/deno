@@ -857,19 +857,22 @@ async fn test_command(
   // If the actual coverage flag is set, we set the environment variable so that subprocesses will
   // forward it.
   if let Some(ref coverage_dir) = flags.coverage_dir {
-      env::set_var("DENO_COVERAGE_DIR", coverage_dir);
+    env::set_var("DENO_COVERAGE_DIR", coverage_dir);
   }
 
-  let mut maybe_coverage_collector = if let Some(ref coverage_dir) = program_state.coverage_dir {
-    let session = worker.create_inspector_session();
-    let mut coverage_collector =
-      tools::coverage::CoverageCollector::new(PathBuf::from(coverage_dir), session);
-    coverage_collector.start_collecting().await?;
+  let mut maybe_coverage_collector =
+    if let Some(ref coverage_dir) = program_state.coverage_dir {
+      let session = worker.create_inspector_session();
+      let mut coverage_collector = tools::coverage::CoverageCollector::new(
+        PathBuf::from(coverage_dir),
+        session,
+      );
+      coverage_collector.start_collecting().await?;
 
-    Some(coverage_collector)
-  } else {
-    None
-  };
+      Some(coverage_collector)
+    } else {
+      None
+    };
 
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
@@ -884,10 +887,14 @@ async fn test_command(
     // TODO(caspervonb) extract reporting into it's own subcommand.
     // For now, we'll only report for the command that passed --coverage as a flag.
     if flags.coverage_dir.is_some() {
-        let mut exclude = test_modules.clone();
-        let main_module_url = main_module.as_url().to_owned();
-        exclude.push(main_module_url.clone());
-        tools::coverage::report_coverages(&coverage_collector.dir, quiet, exclude)?;
+      let mut exclude = test_modules.clone();
+      let main_module_url = main_module.as_url().to_owned();
+      exclude.push(main_module_url.clone());
+      tools::coverage::report_coverages(
+        &coverage_collector.dir,
+        quiet,
+        exclude,
+      )?;
     }
   }
 
