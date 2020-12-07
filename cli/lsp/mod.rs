@@ -10,7 +10,6 @@ mod lsp_extensions;
 mod memory_cache;
 mod sources;
 mod state;
-mod task_pool;
 mod text;
 mod tsc;
 mod utils;
@@ -46,33 +45,7 @@ use lsp_types::InitializeParams;
 use lsp_types::InitializeResult;
 use lsp_types::ServerInfo;
 use std::env;
-use std::fmt;
 use std::time::Instant;
-
-#[derive(Debug)]
-struct ServerError {
-  code: i32,
-  message: String,
-}
-
-impl ServerError {
-  #[allow(unused)]
-  fn new(code: i32, message: String) -> Self {
-    ServerError { code, message }
-  }
-}
-
-impl fmt::Display for ServerError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    writeln!(
-      f,
-      "Language server request failed with {}. ({})",
-      self.code, self.message
-    )
-  }
-}
-
-impl std::error::Error for ServerError {}
 
 pub fn start() -> Result<(), AnyError> {
   info!("Starting Deno language server...");
@@ -175,7 +148,7 @@ impl ServerState {
           }
         }
 
-        task = match self.tasks.receiver.try_recv() {
+        task = match self.task_receiver.try_recv() {
           Ok(task) => task,
           Err(_) => break,
         };
@@ -189,7 +162,7 @@ impl ServerState {
     if self.process_changes() {
       debug!("process changes");
       let state = self.snapshot();
-      self.tasks.handle.spawn(move || {
+      self.spawn(move || {
         let diagnostics = diagnostics::generate_linting_diagnostics(&state);
         Task::Diagnostics((DiagnosticSource::Lint, diagnostics))
       });
@@ -199,7 +172,7 @@ impl ServerState {
       let state = self.snapshot();
       let diagnostics =
         diagnostics::generate_ts_diagnostics(&state, &mut self.ts_runtime)?;
-      self.tasks.handle.spawn(move || {
+      self.spawn(move || {
         Task::Diagnostics((DiagnosticSource::TypeScript, diagnostics))
       });
     }

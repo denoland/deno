@@ -17,7 +17,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Category of self-generated diagnostic messages (those not coming from)
+/// TypeScript.
 pub enum Category {
+  /// A lint diagnostic, where the first element is the message, the second
+  /// element is the lint code (rule) and the third is an optional hint.
   Lint(String, String, Option<String>),
 }
 

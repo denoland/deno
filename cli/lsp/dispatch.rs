@@ -5,7 +5,6 @@ use super::state::ServerStateSnapshot;
 use super::state::Task;
 use super::utils::from_json;
 use super::utils::is_canceled;
-use super::ServerError;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -68,26 +67,17 @@ where
 {
   match result {
     Ok(response) => Response::new_ok(id, &response),
-    Err(err) => match err.downcast::<ServerError>() {
-      Ok(server_error) => {
-        Response::new_err(id, server_error.code, server_error.message)
+    Err(err) => {
+      if is_canceled(&*err) {
+        Response::new_err(
+          id,
+          ErrorCode::ContentModified as i32,
+          "content modified".to_string(),
+        )
+      } else {
+        Response::new_err(id, ErrorCode::InternalError as i32, err.to_string())
       }
-      Err(err) => {
-        if is_canceled(&*err) {
-          Response::new_err(
-            id,
-            ErrorCode::ContentModified as i32,
-            "content modified".to_string(),
-          )
-        } else {
-          Response::new_err(
-            id,
-            ErrorCode::InternalError as i32,
-            err.to_string(),
-          )
-        }
-      }
-    },
+    }
   }
 }
 
@@ -124,7 +114,7 @@ impl<'a> RequestDispatcher<'a> {
       Some(it) => it,
       None => return self,
     };
-    self.server_state.tasks.handle.spawn({
+    self.server_state.spawn({
       let state = self.server_state.snapshot();
       move || {
         let result = f(state, params);

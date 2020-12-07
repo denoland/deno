@@ -5,6 +5,7 @@ use super::state::ServerStateSnapshot;
 use super::text;
 use super::utils;
 
+use crate::js;
 use crate::media_type::MediaType;
 use crate::tsc::ResolveArgs;
 use crate::tsc_config::TsConfig;
@@ -20,7 +21,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
-use deno_core::Snapshot;
 use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
@@ -122,52 +122,39 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
 fn display_parts_to_string(
   maybe_parts: Option<Vec<SymbolDisplayPart>>,
 ) -> Option<String> {
-  if let Some(parts) = maybe_parts {
-    Some(
-      parts
-        .into_iter()
-        .map(|p| p.text)
-        .collect::<Vec<String>>()
-        .join(""),
-    )
-  } else {
-    None
-  }
+  maybe_parts.map(|parts| {
+    parts
+      .into_iter()
+      .map(|p| p.text)
+      .collect::<Vec<String>>()
+      .join("")
+  })
 }
 
 fn get_tag_body_text(tag: &JSDocTagInfo) -> Option<String> {
-  if let Some(text) = &tag.text {
-    match tag.name.as_str() {
-      "example" => {
-        let caption_regex =
-          Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
-        if caption_regex.is_match(text) {
-          Some(
-            caption_regex
-              .replace(text, |c: &Captures| {
-                format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
-              })
-              .to_string(),
-          )
-        } else {
-          Some(make_codeblock(text))
-        }
+  tag.text.as_ref().map(|text| match tag.name.as_str() {
+    "example" => {
+      let caption_regex =
+        Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
+      if caption_regex.is_match(&text) {
+        caption_regex
+          .replace(text, |c: &Captures| {
+            format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
+          })
+          .to_string()
+      } else {
+        make_codeblock(text)
       }
-      "author" => {
-        let email_match_regex =
-          Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
-        Some(
-          email_match_regex
-            .replace(text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-            .to_string(),
-        )
-      }
-      "default" => Some(make_codeblock(text)),
-      _ => Some(replace_links(text)),
     }
-  } else {
-    None
-  }
+    "author" => {
+      let email_match_regex = Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
+      email_match_regex
+        .replace(text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
+        .to_string()
+    }
+    "default" => make_codeblock(text),
+    _ => replace_links(text),
+  })
 }
 
 fn get_tag_documentation(tag: &JSDocTagInfo) -> String {
@@ -800,9 +787,9 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-pub fn start(snapshot: Snapshot, debug: bool) -> Result<JsRuntime, AnyError> {
+pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(snapshot),
+    startup_snapshot: Some(js::compiler_isolate_init()),
     ..Default::default()
   });
 
@@ -942,7 +929,6 @@ mod tests {
   use super::super::memory_cache::MemoryCache;
   use super::super::state::DocumentData;
   use super::*;
-  use crate::js;
   use std::collections::HashMap;
   use std::sync::Arc;
   use std::sync::RwLock;
@@ -975,8 +961,7 @@ mod tests {
     sources: Vec<(&str, &str, i32)>,
   ) -> (JsRuntime, ServerStateSnapshot) {
     let server_state = mock_server_state(sources.clone());
-    let mut runtime = start(js::compiler_isolate_init(), debug)
-      .expect("could not start server");
+    let mut runtime = start(debug).expect("could not start server");
     let ts_config = TsConfig::new(config);
     assert_eq!(
       request(

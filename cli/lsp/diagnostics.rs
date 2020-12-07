@@ -18,6 +18,46 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
 
+impl<'a> From<&'a diagnostics::DiagnosticCategory>
+  for lsp_types::DiagnosticSeverity
+{
+  fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
+    match category {
+      diagnostics::DiagnosticCategory::Error => {
+        lsp_types::DiagnosticSeverity::Error
+      }
+      diagnostics::DiagnosticCategory::Warning => {
+        lsp_types::DiagnosticSeverity::Warning
+      }
+      diagnostics::DiagnosticCategory::Suggestion => {
+        lsp_types::DiagnosticSeverity::Hint
+      }
+      diagnostics::DiagnosticCategory::Message => {
+        lsp_types::DiagnosticSeverity::Information
+      }
+    }
+  }
+}
+
+impl<'a> From<&'a diagnostics::Position> for lsp_types::Position {
+  fn from(pos: &'a diagnostics::Position) -> Self {
+    Self {
+      line: pos.line as u32,
+      character: pos.character as u32,
+    }
+  }
+}
+
+fn to_lsp_range(
+  start: &diagnostics::Position,
+  end: &diagnostics::Position,
+) -> lsp_types::Range {
+  lsp_types::Range {
+    start: start.into(),
+    end: end.into(),
+  }
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum DiagnosticSource {
   Lint,
@@ -107,22 +147,6 @@ pub fn generate_linting_diagnostics(
 
 type TsDiagnostics = Vec<diagnostics::Diagnostic>;
 
-fn to_lsp_range(
-  start: &diagnostics::Position,
-  end: &diagnostics::Position,
-) -> lsp_types::Range {
-  lsp_types::Range {
-    start: lsp_types::Position {
-      line: start.line as u32,
-      character: start.character as u32,
-    },
-    end: lsp_types::Position {
-      line: end.line as u32,
-      character: end.character as u32,
-    },
-  }
-}
-
 fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
@@ -174,20 +198,7 @@ fn ts_json_to_diagnostics(
         if let (Some(start), Some(end)) = (&d.start, &d.end) {
           Some(lsp_types::Diagnostic {
             range: to_lsp_range(start, end),
-            severity: Some(match d.category {
-              diagnostics::DiagnosticCategory::Error => {
-                lsp_types::DiagnosticSeverity::Error
-              }
-              diagnostics::DiagnosticCategory::Warning => {
-                lsp_types::DiagnosticSeverity::Warning
-              }
-              diagnostics::DiagnosticCategory::Suggestion => {
-                lsp_types::DiagnosticSeverity::Hint
-              }
-              diagnostics::DiagnosticCategory::Message => {
-                lsp_types::DiagnosticSeverity::Information
-              }
-            }),
+            severity: Some((&d.category).into()),
             code: Some(lsp_types::NumberOrString::Number(d.code as i32)),
             code_description: None,
             source: Some("deno-ts".to_string()),
@@ -249,11 +260,7 @@ pub fn generate_ts_diagnostics(
         state,
         request_syntactic_diagnostics,
       )?)?);
-      if !ts_diagnostics.is_empty() {
-        diagnostics.push((file_id, version, ts_diagnostics));
-      } else {
-        diagnostics.push((file_id, version, Vec::new()));
-      }
+      diagnostics.push((file_id, version, ts_diagnostics));
     }
   }
 

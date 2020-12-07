@@ -7,13 +7,11 @@ use super::diagnostics::DiagnosticSource;
 use super::diagnostics::DiagnosticVec;
 use super::memory_cache::MemoryCache;
 use super::sources::Sources;
-use super::task_pool::TaskPool;
 use super::tsc;
 use super::utils::notification_is;
 
 use crate::deno_dir;
 use crate::import_map::ImportMap;
-use crate::js;
 use crate::media_type::MediaType;
 
 use crossbeam_channel::select;
@@ -79,18 +77,10 @@ impl fmt::Debug for Event {
   }
 }
 
-pub struct Handle<H, C> {
-  pub handle: H,
-  pub receiver: C,
-}
-
-#[allow(unused)]
 #[derive(Eq, PartialEq, Copy, Clone)]
 pub enum Status {
   Loading,
   Ready,
-  Invalid,
-  NeedsReload,
 }
 
 impl Default for Status {
@@ -178,24 +168,23 @@ pub struct ServerState {
   pub sources: Arc<RwLock<Sources>>,
   pub shutdown_requested: bool,
   pub status: Status,
-  pub tasks: Handle<TaskPool<Task>, Receiver<Task>>,
+  task_sender: Sender<Task>,
+  pub task_receiver: Receiver<Task>,
   pub ts_runtime: JsRuntime,
 }
 
 impl ServerState {
   pub fn new(sender: Sender<Message>, config: Config) -> Self {
-    let tasks = {
-      let (sender, receiver) = unbounded();
-      let handle = TaskPool::new(sender);
-      Handle { handle, receiver }
-    };
+    let (task_sender, task_receiver) = unbounded();
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir =
       deno_dir::DenoDir::new(custom_root).expect("could not access DENO_DIR");
     let location = dir.root.join("deps");
     let sources = Sources::new(&location);
-    let ts_runtime = tsc::start(js::compiler_isolate_init(), false)
-      .expect("could not start tsc");
+    // TODO(@kitsonk) we need to allow displaying diagnostics here, but the
+    // current compiler snapshot sends them to stdio which would totally break
+    // the language server...
+    let ts_runtime = tsc::start(false).expect("could not start tsc");
 
     Self {
       config,
@@ -207,7 +196,8 @@ impl ServerState {
       sources: Arc::new(RwLock::new(sources)),
       shutdown_requested: false,
       status: Default::default(),
-      tasks,
+      task_receiver,
+      task_sender,
       ts_runtime,
     }
   }
@@ -226,7 +216,7 @@ impl ServerState {
   pub fn next_event(&self, inbox: &Receiver<Message>) -> Option<Event> {
     select! {
       recv(inbox) -> msg => msg.ok().map(Event::Message),
-      recv(self.tasks.receiver) -> task => Some(Event::Task(task.unwrap())),
+      recv(self.task_receiver) -> task => Some(Event::Task(task.unwrap())),
     }
   }
 
@@ -286,6 +276,14 @@ impl ServerState {
       file_cache: Arc::clone(&self.file_cache),
       sources: Arc::clone(&self.sources),
     }
+  }
+
+  pub fn spawn<F>(&mut self, task: F)
+  where
+    F: FnOnce() -> Task + Send + 'static,
+  {
+    let sender = self.task_sender.clone();
+    tokio::task::spawn_blocking(move || sender.send(task()).unwrap());
   }
 
   pub fn transition(&mut self, new_status: Status) {

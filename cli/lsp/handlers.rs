@@ -76,6 +76,8 @@ pub fn handle_formatting(
     .deno()
     .build();
 
+  // TODO(@kitsonk) this could be handled better in `cli/tools/fmt.rs` in the
+  // future.
   let new_text = dprint::format_text(&file_path, &file_text, &config)
     .map_err(|e| custom_error("FormatError", e))?;
 

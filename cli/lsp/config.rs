@@ -12,7 +12,7 @@ pub struct ClientCapabilities {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Settings {
+pub struct WorkspaceSettings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
@@ -23,12 +23,12 @@ pub struct Settings {
 #[derive(Debug, Clone, Default)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
-  pub settings: Settings,
+  pub settings: WorkspaceSettings,
 }
 
 impl Config {
   pub fn update(&mut self, value: Value) -> Result<(), AnyError> {
-    let settings: Settings = serde_json::from_value(value)?;
+    let settings: WorkspaceSettings = serde_json::from_value(value)?;
     self.settings = settings;
     Ok(())
   }
