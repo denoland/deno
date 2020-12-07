@@ -7,7 +7,6 @@ use crate::js;
 use crate::metrics::Metrics;
 use crate::module_loader::CliModuleLoader;
 use crate::ops;
-use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
@@ -148,7 +147,7 @@ impl MainWorker {
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       let t = &mut op_state.resource_table;
-      let (stdin, stdout, stderr) = get_stdio();
+      let (stdin, stdout, stderr) = ops::io::get_stdio();
       if let Some(stream) = stdin {
         t.add("stdin", Box::new(stream));
       }
