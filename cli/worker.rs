@@ -91,7 +91,7 @@ impl MainWorker {
           &mut js_runtime,
           Some(inspector_server.clone()),
         ))
-      } else if program_state.flags.coverage || program_state.flags.repl {
+      } else if program_state.flags.coverage_dir.is_some() || program_state.flags.repl {
         Some(DenoInspector::new(&mut js_runtime, None))
       } else {
         None

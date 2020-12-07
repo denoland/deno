@@ -48,6 +48,7 @@ pub struct ProgramState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   pub dir: deno_dir::DenoDir,
+  pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<ImportMap>,
@@ -103,8 +104,10 @@ impl ProgramState {
       None => None,
     };
 
+    let coverage_dir = flags.coverage_dir.clone().or_else(|| env::var("DENO_COVERAGE_DIR").ok());
     let program_state = ProgramState {
       dir,
+      coverage_dir,
       flags,
       file_fetcher,
       lockfile,
