@@ -33,7 +33,6 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::ModuleSpecifier;
 use lsp_server::Connection;
 use lsp_server::ErrorCode;
 use lsp_server::Message;
@@ -272,7 +271,7 @@ impl ServerState {
       Ok(())
     })?
     .on::<lsp_types::notification::DidOpenTextDocument>(|state, params| {
-      let specifier = ModuleSpecifier::from(params.text_document.uri);
+      let specifier = utils::normalize_url(params.text_document.uri);
       if state
         .doc_data
         .insert(
@@ -297,7 +296,7 @@ impl ServerState {
       Ok(())
     })?
     .on::<lsp_types::notification::DidChangeTextDocument>(|state, params| {
-      let specifier = ModuleSpecifier::from(params.text_document.uri);
+      let specifier = utils::normalize_url(params.text_document.uri);
       let mut file_cache = state.file_cache.write().unwrap();
       let file_id = file_cache.lookup(&specifier).unwrap();
       let mut content = file_cache.get_contents(file_id)?;
@@ -309,7 +308,7 @@ impl ServerState {
       Ok(())
     })?
     .on::<lsp_types::notification::DidCloseTextDocument>(|state, params| {
-      let specifier = ModuleSpecifier::from(params.text_document.uri);
+      let specifier = utils::normalize_url(params.text_document.uri);
       if state.doc_data.remove(&specifier).is_none() {
         error!("orphaned document: {}", specifier);
       }

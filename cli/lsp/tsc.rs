@@ -53,6 +53,14 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
       inc!("lib.webworker.importscripts.d.ts")
     }
     "/lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
+    // These come from op crates
+    // TODO(@kitsonk) these is even hackier than the rest of this...
+    "/lib.deno.web.d.ts" => {
+      Some(include_str!("../../op_crates/web/lib.deno_web.d.ts"))
+    }
+    "/lib.deno.fetch.d.ts" => {
+      Some(include_str!("../../op_crates/fetch/lib.deno_fetch.d.ts"))
+    }
     // These are included in the snapshot for TypeScript, and could be retrieved
     // from there?
     "/lib.d.ts" => inc!("lib.d.ts"),
