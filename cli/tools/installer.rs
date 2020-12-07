@@ -227,8 +227,8 @@ pub fn install(
     executable_args.push("--cached_only".to_string());
   }
 
-  if let Some(v8_flags) = flags.v8_flags {
-    executable_args.push(format!("--v8-flags={}", v8_flags.join(",")));
+  if !flags.v8_flags.is_empty() {
+    executable_args.push(format!("--v8-flags={}", flags.v8_flags.join(",")));
   }
 
   if let Some(seed) = flags.seed {

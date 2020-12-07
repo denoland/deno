@@ -17,7 +17,7 @@ import {
 import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
-import { copyBytes } from "../bytes/mod.ts";
+import { copy } from "../bytes/mod.ts";
 
 const encoder = new TextEncoder();
 
@@ -201,7 +201,7 @@ class TestReader implements Deno.Reader {
     if (nread === 0) {
       return Promise.resolve(null);
     }
-    copyBytes(this.data, buf as Uint8Array);
+    copy(this.data, buf as Uint8Array);
     this.data = this.data.subarray(nread);
     return Promise.resolve(nread);
   }
