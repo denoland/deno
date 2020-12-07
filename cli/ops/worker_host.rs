@@ -222,9 +222,9 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
   }
 }
 
-// Try to remove worker from workers table - NOTE: `Worker.terminate()`
-// might have been called already meaning that we won't find worker in
-// table - in that case ignore.
+/// Try to remove worker from workers table - NOTE: `Worker.terminate()`
+/// might have been called already meaning that we won't find worker in
+/// table - in that case ignore.
 fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
   let mut s = state.borrow_mut();
   let workers = s.borrow_mut::<WorkersTable>();
