@@ -24,6 +24,39 @@ use lsp_types::ReferenceParams;
 use lsp_types::TextEdit;
 use std::path::PathBuf;
 
+fn get_line_index(
+  state: &mut ServerState,
+  specifier: &ModuleSpecifier,
+) -> Result<Vec<u32>, AnyError> {
+  let line_index = if specifier.as_url().scheme() == "asset" {
+    if let Some(source) = tsc::get_asset(specifier.as_url().path()) {
+      text::index_lines(source)
+    } else {
+      return Err(custom_error(
+        "NotFound",
+        format!("asset source missing: {}", specifier),
+      ));
+    }
+  } else {
+    let file_cache = state.file_cache.read().unwrap();
+    if let Some(file_id) = file_cache.lookup(specifier) {
+      let file_text = file_cache.get_contents(file_id)?;
+      text::index_lines(&file_text)
+    } else {
+      let mut sources = state.sources.write().unwrap();
+      if let Some(line_index) = sources.get_line_index(specifier) {
+        line_index
+      } else {
+        return Err(custom_error(
+          "NotFound",
+          format!("source for specifier not found: {}", specifier),
+        ));
+      }
+    }
+  };
+  Ok(line_index)
+}
+
 pub fn handle_formatting(
   state: ServerStateSnapshot,
   params: DocumentFormattingParams,
@@ -61,10 +94,7 @@ pub fn handle_document_highlight(
   let specifier = utils::normalize_url(
     params.text_document_position_params.text_document.uri,
   );
-  let file_cache = state.file_cache.read().unwrap();
-  let file_id = file_cache.lookup(&specifier).unwrap();
-  let file_text = file_cache.get_contents(file_id)?;
-  let line_index = text::index_lines(&file_text);
+  let line_index = get_line_index(state, &specifier)?;
   let server_state = state.snapshot();
   let files_to_search = vec![specifier.clone()];
   let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> =
@@ -101,17 +131,14 @@ pub fn handle_goto_definition(
   let specifier = utils::normalize_url(
     params.text_document_position_params.text_document.uri,
   );
-  let file_cache = state.file_cache.read().unwrap();
-  let file_id = file_cache.lookup(&specifier).unwrap();
-  let file_text = file_cache.get_contents(file_id)?;
-  let line_index = text::index_lines(&file_text);
+  let line_index = get_line_index(state, &specifier)?;
   let server_state = state.snapshot();
   let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> =
     serde_json::from_value(tsc::request(
       &mut state.ts_runtime,
       &server_state,
       tsc::RequestMethod::GetDefinition((
-        specifier.clone(),
+        specifier,
         text::to_char_pos(
           &line_index,
           params.text_document_position_params.position,
@@ -120,27 +147,10 @@ pub fn handle_goto_definition(
     )?)?;
 
   if let Some(definition) = maybe_definition {
-    let mut sources = state.sources.write().unwrap();
-    let goto_definition = definition.to_definition(&line_index, |s| {
-      if s == specifier {
-        line_index.clone()
-      } else if let Some(file_id) = file_cache.lookup(&s) {
-        let file_text = file_cache.get_contents(file_id).unwrap();
-        text::index_lines(&file_text)
-      } else if s.as_url().scheme() == "asset" {
-        if let Some(text) = tsc::get_asset(s.as_url().path()) {
-          text::index_lines(text)
-        } else {
-          error!("Missing asset: {}", s);
-          line_index.clone()
-        }
-      } else if let Some(line_index) = sources.get_line_index(&s) {
-        line_index
-      } else {
-        line_index.clone()
-      }
-    });
-    Ok(goto_definition)
+    Ok(
+      definition
+        .to_definition(&line_index, |s| get_line_index(state, &s).unwrap()),
+    )
   } else {
     Ok(None)
   }
@@ -153,10 +163,7 @@ pub fn handle_hover(
   let specifier = utils::normalize_url(
     params.text_document_position_params.text_document.uri,
   );
-  let file_cache = state.file_cache.read().unwrap();
-  let file_id = file_cache.lookup(&specifier).unwrap();
-  let file_text = file_cache.get_contents(file_id)?;
-  let line_index = text::index_lines(&file_text);
+  let line_index = get_line_index(state, &specifier)?;
   let server_state = state.snapshot();
   let maybe_quick_info: Option<tsc::QuickInfo> =
     serde_json::from_value(tsc::request(
@@ -184,17 +191,14 @@ pub fn handle_references(
 ) -> Result<Option<Vec<Location>>, AnyError> {
   let specifier =
     utils::normalize_url(params.text_document_position.text_document.uri);
-  let file_cache = state.file_cache.read().unwrap();
-  let file_id = file_cache.lookup(&specifier).unwrap();
-  let file_text = file_cache.get_contents(file_id)?;
-  let line_index = text::index_lines(&file_text);
+  let line_index = get_line_index(state, &specifier)?;
   let server_state = state.snapshot();
   let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
     serde_json::from_value(tsc::request(
       &mut state.ts_runtime,
       &server_state,
       tsc::RequestMethod::GetReferences((
-        specifier.clone(),
+        specifier,
         text::to_char_pos(&line_index, params.text_document_position.position),
       )),
     )?)?;
@@ -205,27 +209,9 @@ pub fn handle_references(
       if !params.context.include_declaration && reference.is_definition {
         continue;
       }
-      let mut sources = state.sources.write().unwrap();
       let reference_specifier =
         ModuleSpecifier::resolve_url(&reference.file_name).unwrap();
-      let line_index = if reference_specifier == specifier {
-        line_index.clone()
-      } else if let Some(file_id) = file_cache.lookup(&reference_specifier) {
-        let file_text = file_cache.get_contents(file_id)?;
-        text::index_lines(&file_text)
-      } else if let Some(line_index) =
-        sources.get_line_index(&reference_specifier)
-      {
-        line_index
-      } else {
-        return Err(custom_error(
-          "NotFound",
-          format!(
-            "A reference source was not found.  Reference: {}",
-            reference_specifier
-          ),
-        ));
-      };
+      let line_index = get_line_index(state, &reference_specifier)?;
       results.push(reference.to_location(&line_index));
     }
 

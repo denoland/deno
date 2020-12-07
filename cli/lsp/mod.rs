@@ -271,6 +271,12 @@ impl ServerState {
       Ok(())
     })?
     .on::<lsp_types::notification::DidOpenTextDocument>(|state, params| {
+      if params.text_document.uri.scheme() == "deno" {
+        // we can ignore virtual text documents opening, as they don't need to
+        // be tracked in memory, as they are static assets that won't change
+        // already managed by the language service
+        return Ok(());
+      }
       let specifier = utils::normalize_url(params.text_document.uri);
       if state
         .doc_data
@@ -308,6 +314,12 @@ impl ServerState {
       Ok(())
     })?
     .on::<lsp_types::notification::DidCloseTextDocument>(|state, params| {
+      if params.text_document.uri.scheme() == "deno" {
+        // we can ignore virtual text documents opening, as they don't need to
+        // be tracked in memory, as they are static assets that won't change
+        // already managed by the language service
+        return Ok(());
+      }
       let specifier = utils::normalize_url(params.text_document.uri);
       if state.doc_data.remove(&specifier).is_none() {
         error!("orphaned document: {}", specifier);
