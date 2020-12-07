@@ -1,5 +1,5 @@
-import { returnsHi } from "./subdir/mod1.ts";
+import { returnsFoo2 } from "./subdir/mod1.ts";
 
-Deno.test("returnsHiSuccess", function () {
-  returnsHi();
+Deno.test("returnsFooSuccess", function () {
+  returnsFoo2();
 });

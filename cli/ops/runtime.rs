@@ -13,11 +13,18 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::env;
 
-pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
+type ApplySourceMaps = bool;
+
+pub fn init(
+  rt: &mut deno_core::JsRuntime,
+  main_module: ModuleSpecifier,
+  apply_source_maps: bool,
+) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
     state.put::<ModuleSpecifier>(main_module);
+    state.put::<ApplySourceMaps>(apply_source_maps);
   }
   super::reg_json_sync(rt, "op_start", op_start);
   super::reg_json_sync(rt, "op_main_module", op_main_module);
@@ -29,12 +36,14 @@ fn op_start(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
+  let apply_source_maps = *state.borrow::<ApplySourceMaps>();
   let gs = &super::program_state(state);
 
   Ok(json!({
     "args": gs.flags.argv.clone(),
+    "applySourceMaps": apply_source_maps,
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    "denoVersion": version::DENO,
+    "denoVersion": version::deno(),
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "ppid": ppid(),

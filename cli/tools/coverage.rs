@@ -185,14 +185,28 @@ impl PrettyCoverageReporter {
         println!("{}", colors::red(&line_coverage));
       }
 
+      let mut last_line = None;
       for line_index in uncovered_lines {
+        const WIDTH: usize = 4;
+        const SEPERATOR: &str = "|";
+
+        // Put a horizontal separator between disjoint runs of lines
+        if let Some(last_line) = last_line {
+          if last_line + 1 != line_index {
+            let dash = colors::gray(&"-".repeat(WIDTH + 1));
+            println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
+          }
+        }
+
         println!(
-          "{:width$}{} {}",
+          "{:width$} {} {}",
           line_index + 1,
-          colors::gray(" |"),
+          colors::gray(SEPERATOR),
           colors::red(&lines[line_index]),
-          width = 4
+          width = WIDTH
         );
+
+        last_line = Some(line_index);
       }
     }
   }

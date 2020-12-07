@@ -6,7 +6,7 @@ import {
   assertThrows,
 } from "../../testing/asserts.ts";
 import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
-import type { TextEncodings } from "./_fs_common.ts";
+import type { TextEncodings } from "../_utils.ts";
 import * as path from "../../path/mod.ts";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
@@ -101,7 +101,7 @@ Deno.test(
       read: true,
     });
 
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       writeFile(file.rid, "hello world", (err) => {
         if (err) return reject(err);
         resolve();
@@ -207,7 +207,7 @@ Deno.test(
       read: true,
     });
 
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       writeFile(file.rid, "hello world", { mode: 0o777 }, (err) => {
         if (err) return reject(err);
         resolve();

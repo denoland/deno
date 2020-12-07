@@ -161,7 +161,12 @@ delete Object.prototype.__proto__;
     version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
     build.setBuildInfo(s.target);
     util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
+    // TODO(bartlomieju): a very crude way to disable
+    // source mapping of errors. This condition is true
+    // only for compiled standalone binaries.
+    if (s.applySourceMaps) {
+      errorStack.setPrepareStackTrace(Error);
+    }
     return s;
   }
 
@@ -298,20 +303,47 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
     Object.setPrototypeOf(globalThis, Window.prototype);
     eventTarget.setEventTargetData(globalThis);
-    // Registers the handler for window.onload function.
-    globalThis.addEventListener("load", (e) => {
-      const { onload } = globalThis;
-      if (typeof onload === "function") {
-        onload(e);
+
+    const handlerSymbol = Symbol("eventHandlers");
+
+    function makeWrappedHandler(handler) {
+      function wrappedHandler(...args) {
+        if (typeof wrappedHandler.handler !== "function") {
+          return;
+        }
+        return wrappedHandler.handler.call(this, ...args);
       }
-    });
-    // Registers the handler for window.onunload function.
-    globalThis.addEventListener("unload", (e) => {
-      const { onunload } = globalThis;
-      if (typeof onunload === "function") {
-        onunload(e);
-      }
-    });
+      wrappedHandler.handler = handler;
+      return wrappedHandler;
+    }
+    // TODO(benjamingr) reuse when we can reuse code between web crates
+    // This function is very similar to `defineEventHandler` in `01_web_util.js`
+    // but it returns `null` instead of `undefined` is handler is not defined.
+    function defineEventHandler(emitter, name) {
+      // HTML specification section 8.1.5.1
+      Object.defineProperty(emitter, `on${name}`, {
+        get() {
+          return this[handlerSymbol]?.get(name)?.handler ?? null;
+        },
+        set(value) {
+          if (!this[handlerSymbol]) {
+            this[handlerSymbol] = new Map();
+          }
+          let handlerWrapper = this[handlerSymbol]?.get(name);
+          if (handlerWrapper) {
+            handlerWrapper.handler = value;
+          } else {
+            handlerWrapper = makeWrappedHandler(value);
+            this.addEventListener(name, handlerWrapper);
+          }
+          this[handlerSymbol].set(name, handlerWrapper);
+        },
+        configurable: true,
+        enumerable: true,
+      });
+    }
+    defineEventHandler(window, "load");
+    defineEventHandler(window, "unload");
 
     const { args, noColor, pid, ppid, unstableFlag } = runtimeStart();
 

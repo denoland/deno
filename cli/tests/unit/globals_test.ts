@@ -131,13 +131,13 @@ unitTest(async function windowQueueMicrotask(): Promise<void> {
   let resolve1: () => void | undefined;
   let resolve2: () => void | undefined;
   let microtaskDone = false;
-  const p1 = new Promise((res): void => {
+  const p1 = new Promise<void>((res): void => {
     resolve1 = (): void => {
       microtaskDone = true;
       res();
     };
   });
-  const p2 = new Promise((res): void => {
+  const p2 = new Promise<void>((res): void => {
     resolve2 = (): void => {
       assert(microtaskDone);
       res();
