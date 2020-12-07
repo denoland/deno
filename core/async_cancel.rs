@@ -95,12 +95,12 @@ where
 pub trait CancelFuture: Future + Sized {
   fn or_cancel<H: RcLike<CancelHandle>>(
     self,
-    cancel_handle: &H,
+    cancel_handle: H,
   ) -> Cancelable<Self> {
-    Cancelable::new(self, cancel_handle.clone().into())
+    Cancelable::new(self, cancel_handle.into())
   }
 }
-impl<F: Future + Sized> CancelFuture for F {}
+impl<F> CancelFuture for F where F: Future + Sized {}
 
 pub trait CancelTryFuture: TryFuture + CancelFuture
 where
@@ -108,15 +108,16 @@ where
 {
   fn try_or_cancel<H: RcLike<CancelHandle>>(
     self,
-    cancel_handle: &H,
+    cancel_handle: H,
   ) -> TryCancelable<Self> {
-    TryCancelable::new(self, cancel_handle.clone().into())
+    TryCancelable::new(self, cancel_handle.into())
   }
 }
+
 impl<F> CancelTryFuture for F
 where
   F: TryFuture + CancelFuture,
-  Canceled: Into<Self::Error>,
+  Canceled: Into<F::Error>,
 {
 }
 
@@ -160,6 +161,13 @@ mod internal {
       Self {
         future: Some(future),
         registration: Registration::new(cancel_handle),
+      }
+    }
+
+    fn fused() -> Self {
+      Self {
+        future: None,
+        registration: Registration::default(),
       }
     }
 
@@ -227,10 +235,7 @@ mod internal {
       // Fuse: if this Future is completed or canceled, drop the inner future
       // and drop any references/links to the cancel handle.
       if matches!(poll_result, Poll::Ready(_)) {
-        self.set(Self {
-          future: None,
-          registration: Default::default(),
-        })
+        self.set(Self::fused())
       }
       poll_result
     }
@@ -476,4 +481,9 @@ mod internal {
       self as *const _ == other as *const _
     }
   }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
 }
