@@ -52,7 +52,7 @@ impl fmt::Display for IgnoredCompilerOptions {
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: &[&str] = &[
+pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
   "baseUrl",
@@ -83,7 +83,7 @@ const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "useDefineForClassFields",
 ];
 
-const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
+pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "assumeChangesOnlyAffectDirectDependencies",
   "build",
   "charset",

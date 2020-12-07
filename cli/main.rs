@@ -28,6 +28,7 @@ mod info;
 mod inspector;
 mod js;
 mod lockfile;
+mod lsp;
 mod media_type;
 mod metrics;
 mod module_graph;
@@ -256,6 +257,10 @@ async fn install_command(
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
+}
+
+async fn language_server_command() -> Result<(), AnyError> {
+  lsp::start()
 }
 
 async fn lint_command(
@@ -992,6 +997,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
+    DenoSubcommand::LanguageServer => language_server_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,

@@ -72,7 +72,7 @@ pub fn url_to_filename(url: &Url) -> PathBuf {
   cache_filename
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HttpCache {
   pub location: PathBuf,
 }
