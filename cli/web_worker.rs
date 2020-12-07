@@ -214,7 +214,7 @@ impl WebWorker {
       );
       ops::errors::init(js_runtime);
       ops::io::init(js_runtime);
-      ops::websocket::init(js_runtime);
+      ops::websocket::init(js_runtime, program_state.flags.ca_file.as_deref());
 
       if has_deno_namespace {
         ops::fs_events::init(js_runtime);

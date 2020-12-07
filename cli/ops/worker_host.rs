@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
@@ -21,6 +22,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
 
 #[derive(Deserialize)]
@@ -106,7 +108,7 @@ fn op_create_worker(
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
-  let program_state = super::program_state(state);
+  let program_state = state.borrow::<Arc<ProgramState>>().clone();
 
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);

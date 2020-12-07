@@ -145,7 +145,7 @@ impl MainWorker {
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
-      ops::websocket::init(js_runtime);
+      ops::websocket::init(js_runtime, program_state.flags.ca_file.as_deref());
     }
     {
       let op_state = js_runtime.op_state();

@@ -67,14 +67,3 @@ pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
   let state = state.borrow();
   state.borrow::<Arc<ProgramState>>().check_unstable(api_name)
 }
-
-/// Helper for extracting the commonly used state. Used for sync ops.
-pub fn program_state(state: &OpState) -> Arc<ProgramState> {
-  state.borrow::<Arc<ProgramState>>().clone()
-}
-
-/// Helper for extracting the commonly used state. Used for async ops.
-pub fn global_state2(state: &Rc<RefCell<OpState>>) -> Arc<ProgramState> {
-  let state = state.borrow();
-  state.borrow::<Arc<ProgramState>>().clone()
-}
