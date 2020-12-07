@@ -7,10 +7,12 @@ use futures::future::TryFuture;
 use futures::task::Context;
 use futures::task::Poll;
 use pin_project::pin_project;
+use std::any::type_name;
 use std::error::Error;
 use std::fmt;
 use std::io;
 use std::pin::Pin;
+use std::rc::Rc;
 
 use self::internal as i;
 
@@ -22,6 +24,10 @@ pub struct CancelHandle {
 impl CancelHandle {
   pub fn new() -> Self {
     Default::default()
+  }
+
+  pub fn new_rc() -> Rc<Self> {
+    Rc::new(Self::new())
   }
 
   // Cancel all cancellable futures that are linked to this cancel handle.
@@ -37,24 +43,42 @@ impl CancelHandle {
 
 #[pin_project(project = CancelableProjection)]
 #[derive(Debug)]
-pub struct Cancelable<F> {
-  #[pin]
-  future: Option<F>,
-  #[pin]
-  registration: i::Registration,
+pub enum Cancelable<F> {
+  Pending {
+    #[pin]
+    future: F,
+    #[pin]
+    registration: i::Registration,
+  },
+  Terminated,
 }
 
 impl<F: Future> Future for Cancelable<F> {
   type Output = Result<F::Output, Canceled>;
 
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    self.poll_fused(cx)
+  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let poll_result = match self.as_mut().project() {
+      CancelableProjection::Pending {
+        future,
+        registration,
+      } => Self::poll_pending(future, registration, cx),
+      CancelableProjection::Terminated => {
+        panic!("{}::poll() called after completion", type_name::<Self>())
+      }
+    };
+    // Fuse: if this Future is completed or canceled, make sure the inner
+    // `future` and `registration` fields are dropped in order to unlink it
+    // from its cancellation handle.
+    if matches!(poll_result, Poll::Ready(_)) {
+      self.set(Cancelable::Terminated)
+    }
+    poll_result
   }
 }
 
 impl<F: Future> FusedFuture for Cancelable<F> {
   fn is_terminated(&self) -> bool {
-    self.future.is_none()
+    matches!(self, Self::Terminated)
   }
 }
 
@@ -92,7 +116,10 @@ where
   }
 }
 
-pub trait CancelFuture: Future + Sized {
+pub trait CancelFuture
+where
+  Self: Future + Sized,
+{
   fn or_cancel<H: RcLike<CancelHandle>>(
     self,
     cancel_handle: H,
@@ -100,10 +127,11 @@ pub trait CancelFuture: Future + Sized {
     Cancelable::new(self, cancel_handle.into())
   }
 }
-impl<F> CancelFuture for F where F: Future + Sized {}
+impl<F> CancelFuture for F where F: Future {}
 
-pub trait CancelTryFuture: TryFuture + CancelFuture
+pub trait CancelTryFuture
 where
+  Self: TryFuture + Sized,
   Canceled: Into<Self::Error>,
 {
   fn try_or_cancel<H: RcLike<CancelHandle>>(
@@ -113,10 +141,9 @@ where
     TryCancelable::new(self, cancel_handle.into())
   }
 }
-
 impl<F> CancelTryFuture for F
 where
-  F: TryFuture + CancelFuture,
+  F: TryFuture,
   Canceled: Into<F::Error>,
 {
 }
@@ -126,7 +153,7 @@ pub struct Canceled;
 
 impl fmt::Display for Canceled {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "canceled")
+    write!(f, "operation canceled")
   }
 }
 
@@ -158,30 +185,17 @@ mod internal {
 
   impl<F: Future> Cancelable<F> {
     pub(super) fn new(future: F, cancel_handle: RcRef<CancelHandle>) -> Self {
-      Self {
-        future: Some(future),
+      Self::Pending {
+        future,
         registration: Registration::new(cancel_handle),
       }
     }
 
-    fn fused() -> Self {
-      Self {
-        future: None,
-        registration: Registration::default(),
-      }
-    }
-
-    fn poll_unfused(
-      self: Pin<&mut Self>,
+    pub(super) fn poll_pending(
+      future: Pin<&mut F>,
+      mut registration: Pin<&mut Registration>,
       cx: &mut Context,
     ) -> Poll<Result<F::Output, Canceled>> {
-      let self_projection = self.project();
-      let future = self_projection
-        .future
-        .as_pin_mut()
-        .expect("polled Cancelable after completion");
-      let mut registration = self_projection.registration;
-
       // If this future is being polled for the first time, perform an extra
       // cancellation check _before_ polling the inner future. The reason to do
       // this is that polling the inner future for the first time might start
@@ -225,19 +239,6 @@ mod internal {
       }
 
       Poll::Pending
-    }
-
-    pub(super) fn poll_fused(
-      mut self: Pin<&mut Self>,
-      cx: &mut Context,
-    ) -> Poll<Result<F::Output, Canceled>> {
-      let poll_result = self.as_mut().poll_unfused(cx);
-      // Fuse: if this Future is completed or canceled, drop the inner future
-      // and drop any references/links to the cancel handle.
-      if matches!(poll_result, Poll::Ready(_)) {
-        self.set(Self::fused())
-      }
-      poll_result
     }
   }
 
@@ -400,12 +401,11 @@ mod internal {
     }
 
     fn unlink(&mut self) {
-      let inner = take(&mut self.inner).into_inner();
       if let NodeInner::Linked {
         prev: mut prev_nn,
         next: mut next_nn,
         ..
-      } = inner
+      } = take(&mut self.inner).into_inner()
       {
         if prev_nn == next_nn {
           take(unsafe { prev_nn.as_mut() });
@@ -486,4 +486,138 @@ mod internal {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::error::AnyError;
+  use futures::future::poll_fn;
+  use futures::future::ready;
+  use futures::future::FutureExt;
+  use futures::future::TryFutureExt;
+  use futures::select;
+  use futures::task::noop_waker_ref;
+  use futures::task::Context;
+  use futures::task::Poll;
+  use std::io;
+  use tokio::fs::metadata;
+  use tokio::spawn;
+
+  fn box_fused<'a, F: FusedFuture + 'a>(
+    future: F,
+  ) -> Pin<Box<dyn FusedFuture<Output = F::Output> + 'a>> {
+    Box::pin(future)
+  }
+
+  async fn ready_in_n(name: &str, count: usize) -> &str {
+    let mut remaining = count as isize;
+    poll_fn(|_| {
+      assert!(remaining >= 0);
+      if remaining == 0 {
+        Poll::Ready(name)
+      } else {
+        remaining -= 1;
+        Poll::Pending
+      }
+    })
+    .await
+  }
+
+  #[test]
+  fn cancel_future() {
+    let cancel_now = CancelHandle::new_rc();
+    let cancel_at_0 = CancelHandle::new_rc();
+    let cancel_at_1 = CancelHandle::new_rc();
+    let cancel_at_4 = CancelHandle::new_rc();
+    let cancel_never = CancelHandle::new_rc();
+
+    cancel_now.cancel();
+
+    let mut futures = vec![
+      box_fused(ready("A").or_cancel(&cancel_now)),
+      box_fused(ready("B").or_cancel(&cancel_at_0)),
+      box_fused(ready("C").or_cancel(&cancel_at_1)),
+      box_fused(
+        ready_in_n("D", 0)
+          .or_cancel(&cancel_never)
+          .try_or_cancel(&cancel_now),
+      ),
+      box_fused(
+        ready_in_n("E", 1)
+          .or_cancel(&cancel_at_1)
+          .try_or_cancel(&cancel_at_1),
+      ),
+      box_fused(ready_in_n("F", 2).or_cancel(&cancel_at_1)),
+      box_fused(ready_in_n("G", 3).or_cancel(&cancel_at_4)),
+      box_fused(ready_in_n("H", 4).or_cancel(&cancel_at_4)),
+      box_fused(ready_in_n("I", 5).or_cancel(&cancel_at_4)),
+      box_fused(ready_in_n("J", 5).map(Ok)),
+      box_fused(ready_in_n("K", 5).or_cancel(cancel_never)),
+    ];
+
+    let mut cx = Context::from_waker(noop_waker_ref());
+
+    for i in 0..=5 {
+      match i {
+        0 => cancel_at_0.cancel(),
+        1 => cancel_at_1.cancel(),
+        4 => cancel_at_4.cancel(),
+        2 | 3 | 5 => {}
+        _ => unreachable!(),
+      }
+
+      let results = futures
+        .iter_mut()
+        .filter(|fut| !fut.is_terminated())
+        .filter_map(|fut| match fut.poll_unpin(&mut cx) {
+          Poll::Pending => None,
+          Poll::Ready(res) => Some(res),
+        })
+        .collect::<Vec<_>>();
+
+      match i {
+        0 => assert_eq!(
+          results,
+          [Err(Canceled), Err(Canceled), Ok("C"), Err(Canceled)]
+        ),
+        1 => assert_eq!(results, [Ok("E"), Err(Canceled)]),
+        2 => assert_eq!(results, []),
+        3 => assert_eq!(results, [Ok("G")]),
+        4 => assert_eq!(results, [Ok("H"), Err(Canceled)]),
+        5 => assert_eq!(results, [Ok("J"), Ok("K")]),
+        _ => unreachable!(),
+      }
+    }
+
+    assert_eq!(futures.into_iter().any(|fut| !fut.is_terminated()), false);
+
+    let cancel_handles = [cancel_now, cancel_at_0, cancel_at_1, cancel_at_4];
+    assert_eq!(cancel_handles.iter().any(|c| !c.is_canceled()), false);
+  }
+
+  #[tokio::test]
+  async fn cancel_try_future() {
+    {
+      // Cancel a spawned task before it actually runs.
+      let cancel_handle = Rc::new(CancelHandle::new());
+      let future = spawn(async { panic!("the task should not be spawned") })
+        .map_err(AnyError::from)
+        .try_or_cancel(&cancel_handle);
+      cancel_handle.cancel();
+      let error = future.await.unwrap_err();
+      assert!(error.downcast_ref::<Canceled>().is_some());
+      assert_eq!(error.to_string().as_str(), "operation canceled");
+    }
+
+    {
+      // Cancel a file system future right after polling it.
+      let cancel_handle = Rc::new(CancelHandle::new());
+      let fake_path = "/🚫/...🤯.../🧻";
+      let result = loop {
+        select! {
+          r = metadata(fake_path).try_or_cancel(&cancel_handle) => break r,
+          default => cancel_handle.cancel(),
+        };
+      };
+      let error = result.unwrap_err();
+      assert_eq!(error.kind(), io::ErrorKind::Interrupted);
+      assert_eq!(error.to_string().as_str(), "operation canceled");
+    }
+  }
 }
