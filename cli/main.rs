@@ -889,7 +889,7 @@ async fn test_command(
     if flags.coverage_dir.is_some() {
       let mut exclude = test_modules.clone();
       let main_module_url = main_module.as_url().to_owned();
-      exclude.push(main_module_url.clone());
+      exclude.push(main_module_url);
       tools::coverage::report_coverages(
         &coverage_collector.dir,
         quiet,
