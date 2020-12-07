@@ -85,19 +85,18 @@ impl MainWorker {
       ..Default::default()
     });
 
-    let inspector =
-      if let Some(inspector_server) = &program_state.maybe_inspector_server {
-        Some(DenoInspector::new(
-          &mut js_runtime,
-          Some(inspector_server.clone()),
-        ))
-      } else if program_state.coverage_dir.is_some()
-        || program_state.flags.repl
-      {
-        Some(DenoInspector::new(&mut js_runtime, None))
-      } else {
-        None
-      };
+    let inspector = if let Some(inspector_server) =
+      &program_state.maybe_inspector_server
+    {
+      Some(DenoInspector::new(
+        &mut js_runtime,
+        Some(inspector_server.clone()),
+      ))
+    } else if program_state.coverage_dir.is_some() || program_state.flags.repl {
+      Some(DenoInspector::new(&mut js_runtime, None))
+    } else {
+      None
+    };
 
     let should_break_on_first_statement =
       inspector.is_some() && program_state.flags.inspect_brk.is_some();
