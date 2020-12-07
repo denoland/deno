@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::metrics::Metrics;
 use crate::permissions::Permissions;
-use crate::version;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -11,7 +9,6 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use std::env;
 
 pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
   {
