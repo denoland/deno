@@ -137,7 +137,7 @@ impl<T: 'static> RcRef<T> {
     Self::from(Rc::new(value))
   }
 
-  pub fn map<S: 'static, R: i::RcLike<S>, F: FnOnce(&S) -> &T>(
+  pub fn map<S: 'static, R: RcLike<S>, F: FnOnce(&S) -> &T>(
     source: R,
     map_fn: F,
   ) -> RcRef<T> {
@@ -190,8 +190,16 @@ impl<T> AsRef<T> for RcRef<T> {
   }
 }
 
+/// The `RcLike` trait provides an abstraction over `std::rc::Rc` and `RcRef`,
+/// so that applicable methods can operate on either type.
+pub trait RcLike<T>: Clone + Deref<Target = T> + Into<RcRef<T>> {}
+
+impl<T: 'static> RcLike<T> for Rc<T> {}
+impl<T: 'static> RcLike<T> for RcRef<T> {}
+
 mod internal {
   use super::AsyncRefCell;
+  use super::RcLike;
   use super::RcRef;
   use futures::future::Future;
   use futures::ready;
@@ -205,7 +213,6 @@ mod internal {
   use std::ops::Deref;
   use std::ops::DerefMut;
   use std::pin::Pin;
-  use std::rc::Rc;
 
   impl<T> AsyncRefCell<T> {
     /// Borrow the cell's contents synchronouslym without creating an
@@ -562,13 +569,6 @@ mod internal {
       self.waker.take()
     }
   }
-
-  /// The `RcLike` trait provides an abstraction over `std::rc::Rc` and `RcRef`,
-  /// so that applicable methods can operate on either type.
-  pub trait RcLike<T>: Clone + Deref<Target = T> + Into<RcRef<T>> {}
-
-  impl<T: 'static> RcLike<T> for Rc<T> {}
-  impl<T: 'static> RcLike<T> for RcRef<T> {}
 }
 
 #[cfg(test)]
@@ -711,217 +711,4 @@ mod tests {
     assert_eq!(ref3.touch(), 3);
     assert_eq!(ref1.touch(), 3);
   }
-}
-
-mod ll {
-  use super::internal as i;
-  use crate::RcRef;
-  use futures::future::FusedFuture;
-  use futures::future::Future;
-  use futures::future::FutureExt;
-  use futures::future::TryFuture;
-  use futures::future::TryFutureExt;
-  use futures::select;
-  use futures::task::Context;
-  use futures::task::Poll;
-  use futures::task::Waker;
-  use pin_project::pin_project;
-  use std::any::Any;
-  use std::cell::Cell;
-  use std::cell::UnsafeCell;
-  use std::error::Error;
-  use std::fmt;
-  use std::marker::PhantomData;
-  use std::marker::PhantomPinned;
-  use std::mem::take;
-  use std::pin::Pin;
-  use std::ptr::NonNull;
-  use std::rc::Rc;
-
-  #[derive(Debug)]
-  struct CancelHandle {
-    node: Node,
-  }
-
-  impl Default for CancelHandle {
-    fn default() -> Self {
-      Self {
-        node: Node::new_handle_node(),
-      }
-    }
-  }
-
-  #[derive(Debug)]
-  struct Cancelable<F: ?Sized> {
-    registration: Registration,
-    future: F,
-  }
-
-  #[derive(Debug)]
-  enum Registration {
-    WillRegister { cancel_handle: RcRef<CancelHandle> },
-    Registered { node: Node },
-  }
-
-  #[derive(Debug)]
-  struct Node {
-    link: UnsafeCell<Link>,
-  }
-
-  #[derive(Debug)]
-  enum Link {
-    Unlinked,
-    Linked {
-      prev: NonNull<Node>,
-      next: NonNull<Node>,
-      waker: Option<Waker>,
-    },
-    Canceled,
-  }
-
-  impl<F: Future + ?Sized> Cancelable<F> {
-    fn new(future: F, cancel_handle: CancelHandle) -> Self {
-      Self {
-        node: Node::new_future_node(cancel_handle),
-        future,
-      }
-    }
-  }
-
-  impl<F: Future + ?Sized> Future for Cancelable<F> {
-    type Output = F::Output;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {}
-  }
-
-  #[derive(Debug)]
-  struct Node(NodeInner<Self>);
-
-  impl Node {
-    fn new_handle_node() -> Self {
-      Self(NodeInner::Handle(Default::default()))
-    }
-
-    fn new_future_node(cancel_handle: RcRef<CancelHandle>) -> Self {
-      Self(NodeInner::Future(FutureNode::new(cancel_handle).into()))
-    }
-
-    fn handle_node(&self) -> NonNull<HandleNode<Self>> {
-      match &self.0 {
-        NodeInner::Handle(cell) => NonNull::from(cell).cast(),
-        _ => unreachable!(),
-      }
-    }
-
-    fn as_future_node(&self) -> NonNull<FutureNode<Self>> {
-      match &self.0 {
-        NodeInner::Future(cell) => NonNull::from(cell).cast(),
-        _ => unreachable!(),
-      }
-    }
-  }
-
-  #[derive(Debug)]
-  enum NodeInner<N> {
-    Handle(UnsafeCell<HandleNode<N>>),
-    Future(UnsafeCell<FutureNode<N>>),
-  }
-
-  #[derive(Debug)]
-  enum HandleNode<N> {
-    Empty,
-    Linked { link: Link<N> },
-    Canceled,
-  }
-
-  impl<N> Default for HandleNode<N> {
-    fn default() -> Self {
-      Self::Empty
-    }
-  }
-
-  #[derive(Debug)]
-  enum FutureNode<N> {
-    Unpolled { cancel_handle: RcRef<CancelHandle> },
-    Linked { link: Link<N>, waker: Waker },
-    Canceled,
-    Terminated,
-  }
-
-  impl<N> FutureNode<N> {
-    fn new(cancel_handle: RcRef<CancelHandle>) -> Self {
-      Self::Unpolled { cancel_handle }
-    }
-  }
-
-  #[derive(Debug)]
-  struct Link<N> {
-    prev: NonNull<N>,
-    next: NonNull<N>,
-    _pinned: PhantomPinned,
-  }
-
-  impl<N> Link<N> {
-    fn is_empty(&self) -> bool {
-      self.prev == self.next
-    }
-  }
-
-  #[derive(Copy, Clone, Default, Debug)]
-  struct Canceled;
-
-  impl fmt::Display for Canceled {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      write!(f, "canceled")
-    }
-  }
-
-  impl Error for Canceled {}
-
-  /*
-  pub trait CancelableFuture: Future + Any {}
-  impl<F> CancelableFuture for F where F: Future + Any {}
-
-  #[pin_project]
-  pub struct OrCancel<F: CancelableFuture> {
-    node: Cell<Node>,
-    fut: Option<F>,
-  }
-
-  impl<F: CancelableFuture> OrCancel<F> {
-    fn new<R: i::RcLike<CancelHandle>>(fut: F, handle: R) -> Self {
-      let handle = handle.into();
-      Self {
-        node: Cell::new(Node::Unpolled { handle }),
-        fut: Some(fut),
-      }
-    }
-  }
-
-
-  impl<F: CancelableFuture> Future for OrCancel<F> {
-    type Output = Result<F::Output, Canceled>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-      let fut: Pin<&mut F>;
-      let node: &mut Cell<Node>;
-      {
-        let projection = self.project();
-        fut = projection.fut.as_mut().unwrap();
-        node = projection.node;
-      }
-      match Cell::take(node) {
-        Node::Unpolled { handle } => {
-          match fut.unwrap().poll() {
-            Poll::Ready(value) => {
-              node.set(Node::Terminated);
-              Ok(value)
-            },
-            Poll::Pending()
-          }
-        }
-        Node::Cancel => Poll::Ready(Error(Canceled))
-      }
-    }
-  }
-  */
 }

@@ -5,6 +5,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+mod async_cancel;
 mod async_cell;
 mod bindings;
 pub mod error;
@@ -28,11 +29,18 @@ pub use serde;
 pub use serde_json;
 pub use url;
 
+pub use crate::async_cancel::CancelFuture;
+pub use crate::async_cancel::CancelHandle;
+pub use crate::async_cancel::CancelTryFuture;
+pub use crate::async_cancel::Cancelable;
+pub use crate::async_cancel::Canceled;
+pub use crate::async_cancel::TryCancelable;
 pub use crate::async_cell::AsyncMut;
 pub use crate::async_cell::AsyncMutFuture;
 pub use crate::async_cell::AsyncRef;
 pub use crate::async_cell::AsyncRefCell;
 pub use crate::async_cell::AsyncRefFuture;
+pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
