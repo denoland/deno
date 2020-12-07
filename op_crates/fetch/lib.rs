@@ -158,7 +158,9 @@ where
   for (key, val) in res.headers().iter() {
     let key_string = key.to_string();
 
-    if key_string == "location" {
+    if val.as_bytes().is_ascii() {
+      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
+    } else {
       res_headers.push((
         key_string,
         val
@@ -167,8 +169,6 @@ where
           .map(|&c| c as char)
           .collect::<String>(),
       ));
-    } else {
-      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
     }
   }
 
