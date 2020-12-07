@@ -130,8 +130,6 @@ declare namespace Deno {
    */
   export function osRelease(): string;
 
-  export function osType(): string;
-
   /** **Unstable** new API. yet to be vetted.
    *
    * Displays the total amount of free and used physical and swap memory in the

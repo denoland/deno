@@ -22,7 +22,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_hostname", op_hostname);
   super::reg_json_sync(rt, "op_loadavg", op_loadavg);
   super::reg_json_sync(rt, "op_os_release", op_os_release);
-  super::reg_json_sync(rt, "op_os_type", op_os_type);
   super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
   super::reg_json_sync(rt, "op_system_cpu_info", op_system_cpu_info);
 }
@@ -152,19 +151,6 @@ fn op_os_release(
   state.borrow::<Permissions>().check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(json!(release))
-}
-
-fn op_os_type(
-  state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.osType");
-  state.borrow::<Permissions>().check_env()?;
-
-  let os_type = sys_info::os_type().unwrap_or_else(|_| "".to_string());
-
-  Ok(json!(os_type))
 }
 
 fn op_system_memory_info(

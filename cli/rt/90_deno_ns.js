@@ -108,7 +108,6 @@
     loadavg: __bootstrap.os.loadavg,
     hostname: __bootstrap.os.hostname,
     osRelease: __bootstrap.os.osRelease,
-    osType: __bootstrap.os.osType,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     systemCpuInfo: __bootstrap.os.systemCpuInfo,
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
