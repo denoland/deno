@@ -533,6 +533,15 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getDefinition": {
+        return respond(
+          id,
+          languageService.getDefinitionAndBoundSpan(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never

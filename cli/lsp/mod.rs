@@ -394,6 +394,9 @@ impl ServerState {
     .on_sync::<lsp_types::request::DocumentHighlightRequest>(
       handlers::handle_document_highlight,
     )?
+    .on_sync::<lsp_types::request::GotoDefinition>(
+      handlers::handle_goto_definition,
+    )?
     .on_sync::<lsp_types::request::HoverRequest>(handlers::handle_hover)?
     .on_sync::<lsp_types::request::References>(handlers::handle_references)?
     .on::<lsp_types::request::Formatting>(handlers::handle_formatting)

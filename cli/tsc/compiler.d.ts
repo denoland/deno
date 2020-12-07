@@ -47,7 +47,8 @@ declare global {
     | GetSuggestionDiagnosticsRequest
     | GetQuickInfoRequest
     | GetDocumentHighlightsRequest
-    | GetReferencesRequest;
+    | GetReferencesRequest
+    | GetDefinitionRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -90,6 +91,12 @@ declare global {
 
   interface GetReferencesRequest extends BaseLanguageServerRequest {
     method: "getReferences";
+    specifier: string;
+    position: number;
+  }
+
+  interface GetDefinitionRequest extends BaseLanguageServerRequest {
+    method: "getDefinition";
     specifier: string;
     position: number;
   }

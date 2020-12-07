@@ -15,6 +15,8 @@ use dprint_plugin_typescript as dprint;
 use lsp_types::DocumentFormattingParams;
 use lsp_types::DocumentHighlight;
 use lsp_types::DocumentHighlightParams;
+use lsp_types::GotoDefinitionParams;
+use lsp_types::GotoDefinitionResponse;
 use lsp_types::Hover;
 use lsp_types::HoverParams;
 use lsp_types::Location;
@@ -87,6 +89,58 @@ pub fn handle_document_highlight(
         .flatten()
         .collect(),
     ))
+  } else {
+    Ok(None)
+  }
+}
+
+pub fn handle_goto_definition(
+  state: &mut ServerState,
+  params: GotoDefinitionParams,
+) -> Result<Option<GotoDefinitionResponse>, AnyError> {
+  let specifier = utils::normalize_url(
+    params.text_document_position_params.text_document.uri,
+  );
+  let file_cache = state.file_cache.read().unwrap();
+  let file_id = file_cache.lookup(&specifier).unwrap();
+  let file_text = file_cache.get_contents(file_id)?;
+  let line_index = text::index_lines(&file_text);
+  let server_state = state.snapshot();
+  let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> =
+    serde_json::from_value(tsc::request(
+      &mut state.ts_runtime,
+      &server_state,
+      tsc::RequestMethod::GetDefinition((
+        specifier.clone(),
+        text::to_char_pos(
+          &line_index,
+          params.text_document_position_params.position,
+        ),
+      )),
+    )?)?;
+
+  if let Some(definition) = maybe_definition {
+    let mut sources = state.sources.write().unwrap();
+    let goto_definition = definition.to_definition(&line_index, |s| {
+      if s == specifier {
+        line_index.clone()
+      } else if let Some(file_id) = file_cache.lookup(&s) {
+        let file_text = file_cache.get_contents(file_id).unwrap();
+        text::index_lines(&file_text)
+      } else if s.as_url().scheme() == "asset" {
+        if let Some(text) = tsc::get_asset(s.as_url().path()) {
+          text::index_lines(text)
+        } else {
+          error!("Missing asset: {}", s);
+          line_index.clone()
+        }
+      } else if let Some(line_index) = sources.get_line_index(&s) {
+        line_index
+      } else {
+        line_index.clone()
+      }
+    });
+    Ok(goto_definition)
   } else {
     Ok(None)
   }
@@ -187,27 +241,36 @@ pub fn handle_virtual_text_document(
 ) -> Result<String, AnyError> {
   let specifier = utils::normalize_url(params.text_document.uri);
   let url = specifier.as_url();
-  let contents = match url.as_str() {
-    "deno:///status.md" => {
-      let file_cache = state.file_cache.read().unwrap();
-      format!(
-        r#"# Deno Language Server Status
+  let contents = if url.as_str() == "deno:///status.md" {
+    let file_cache = state.file_cache.read().unwrap();
+    format!(
+      r#"# Deno Language Server Status
 
 - Documents in memory: {}
 
 "#,
-        file_cache.len()
-      )
-    }
-    _ => {
-      let mut sources = state.sources.write().unwrap();
-      if let Some(text) = sources.get_text(&specifier) {
-        text
-      } else {
-        return Err(custom_error(
-          "NotFound",
-          format!("The cached sources was not found: {}", specifier),
-        ));
+      file_cache.len()
+    )
+  } else {
+    match url.scheme() {
+      "asset" => {
+        if let Some(text) = tsc::get_asset(url.path()) {
+          text.to_string()
+        } else {
+          error!("Missing asset: {}", specifier);
+          "".to_string()
+        }
+      }
+      _ => {
+        let mut sources = state.sources.write().unwrap();
+        if let Some(text) = sources.get_text(&specifier) {
+          text
+        } else {
+          return Err(custom_error(
+            "NotFound",
+            format!("The cached sources was not found: {}", specifier),
+          ));
+        }
       }
     }
   };

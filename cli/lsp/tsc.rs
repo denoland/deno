@@ -3,6 +3,7 @@
 use super::analysis::ResolvedImport;
 use super::state::ServerStateSnapshot;
 use super::text;
+use super::utils;
 
 use crate::media_type::MediaType;
 use crate::tsc::ResolveArgs;
@@ -24,6 +25,91 @@ use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+
+/// Provide static assets for the language server.
+///
+/// TODO(@kitsonk) this should be DRY'ed up with `cli/tsc.rs` and the
+/// `cli/build.rs`
+pub fn get_asset(asset: &str) -> Option<&'static str> {
+  macro_rules! inc {
+    ($e:expr) => {
+      Some(include_str!(concat!("../dts/", $e)))
+    };
+  }
+  match asset {
+    // These are not included in the snapshot
+    "/lib.dom.d.ts" => inc!("lib.dom.d.ts"),
+    "/lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
+    "/lib.es6.d.ts" => inc!("lib.es6.d.ts"),
+    "/lib.es2016.full.d.ts" => inc!("lib.es2016.full.d.ts"),
+    "/lib.es2017.full.d.ts" => inc!("lib.es2017.full.d.ts"),
+    "/lib.es2018.full.d.ts" => inc!("lib.es2018.full.d.ts"),
+    "/lib.es2019.full.d.ts" => inc!("lib.es2019.full.d.ts"),
+    "/lib.es2020.full.d.ts" => inc!("lib.es2020.full.d.ts"),
+    "/lib.esnext.full.d.ts" => inc!("lib.esnext.full.d.ts"),
+    "/lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
+    "/lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
+    "/lib.webworker.importscripts.d.ts" => {
+      inc!("lib.webworker.importscripts.d.ts")
+    }
+    "/lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
+    // These are included in the snapshot for TypeScript, and could be retrieved
+    // from there?
+    "/lib.d.ts" => inc!("lib.d.ts"),
+    "/lib.deno.ns.d.ts" => inc!("lib.deno.ns.d.ts"),
+    "/lib.deno.shared_globals.d.ts" => inc!("lib.deno.shared_globals.d.ts"),
+    "/lib.deno.unstable.d.ts" => inc!("lib.deno.unstable.d.ts"),
+    "/lib.deno.window.d.ts" => inc!("lib.deno.window.d.ts"),
+    "/lib.deno.worker.d.ts" => inc!("lib.deno.worker.d.ts"),
+    "/lib.es5.d.ts" => inc!("lib.es5.d.ts"),
+    "/lib.es2015.collection.d.ts" => inc!("lib.es2015.collection.d.ts"),
+    "/lib.es2015.core.d.ts" => inc!("lib.es2015.core.d.ts"),
+    "/lib.es2015.d.ts" => inc!("lib.es2015.d.ts"),
+    "/lib.es2015.generator.d.ts" => inc!("lib.es2015.generator.d.ts"),
+    "/lib.es2015.iterable.d.ts" => inc!("lib.es2015.iterable.d.ts"),
+    "/lib.es2015.promise.d.ts" => inc!("lib.es2015.promise.d.ts"),
+    "/lib.es2015.proxy.d.ts" => inc!("lib.es2015.proxy.d.ts"),
+    "/lib.es2015.reflect.d.ts" => inc!("lib.es2015.reflect.d.ts"),
+    "/lib.es2015.symbol.d.ts" => inc!("lib.es2015.symbol.d.ts"),
+    "/lib.es2015.symbol.wellknown.d.ts" => {
+      inc!("lib.es2015.symbol.wellknown.d.ts")
+    }
+    "/lib.es2016.array.include.d.ts" => inc!("lib.es2016.array.include.d.ts"),
+    "/lib.es2016.d.ts" => inc!("lib.es2016.d.ts"),
+    "/lib.es2017.d.ts" => inc!("lib.es2017.d.ts"),
+    "/lib.es2017.intl.d.ts" => inc!("lib.es2017.intl.d.ts"),
+    "/lib.es2017.object.d.ts" => inc!("lib.es2017.object.d.ts"),
+    "/lib.es2017.sharedmemory.d.ts" => inc!("lib.es2017.sharedmemory.d.ts"),
+    "/lib.es2017.string.d.ts" => inc!("lib.es2017.string.d.ts"),
+    "/lib.es2017.typedarrays.d.ts" => inc!("lib.es2017.typedarrays.d.ts"),
+    "/lib.es2018.asyncgenerator.d.ts" => inc!("lib.es2018.asyncgenerator.d.ts"),
+    "/lib.es2018.asynciterable.d.ts" => inc!("lib.es2018.asynciterable.d.ts"),
+    "/lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),
+    "/lib.es2018.intl.d.ts" => inc!("lib.es2018.intl.d.ts"),
+    "/lib.es2018.promise.d.ts" => inc!("lib.es2018.promise.d.ts"),
+    "/lib.es2018.regexp.d.ts" => inc!("lib.es2018.regexp.d.ts"),
+    "/lib.es2019.array.d.ts" => inc!("lib.es2019.array.d.ts"),
+    "/lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
+    "/lib.es2019.object.d.ts" => inc!("lib.es2019.object.d.ts"),
+    "/lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
+    "/lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
+    "/lib.es2020.bigint.d.ts" => inc!("lib.es2020.bigint.d.ts"),
+    "/lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),
+    "/lib.es2020.intl.d.ts" => inc!("lib.es2020.intl.d.ts"),
+    "/lib.es2020.promise.d.ts" => inc!("lib.es2020.promise.d.ts"),
+    "/lib.es2020.sharedmemory.d.ts" => inc!("lib.es2020.sharedmemory.d.ts"),
+    "/lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
+    "/lib.es2020.symbol.wellknown.d.ts" => {
+      inc!("lib.es2020.symbol.wellknown.d.ts")
+    }
+    "/lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
+    "/lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
+    "/lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
+    "/lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
+    "/lib.esnext.weakref.d.ts" => inc!("lib.esnext.weakref.d.ts"),
+    _ => None,
+  }
+}
 
 fn display_parts_to_string(
   maybe_parts: Option<Vec<SymbolDisplayPart>>,
@@ -321,6 +407,73 @@ pub struct HighlightSpan {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DefinitionInfo {
+  kind: ScriptElementKind,
+  name: String,
+  container_kind: Option<ScriptElementKind>,
+  container_name: Option<String>,
+  text_span: TextSpan,
+  pub file_name: String,
+  original_text_span: Option<TextSpan>,
+  original_file_name: Option<String>,
+  context_span: Option<TextSpan>,
+  original_context_span: Option<TextSpan>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefinitionInfoAndBoundSpan {
+  pub definitions: Option<Vec<DefinitionInfo>>,
+  text_span: TextSpan,
+}
+
+impl DefinitionInfoAndBoundSpan {
+  pub fn to_definition<F>(
+    &self,
+    line_index: &[u32],
+    mut index_provider: F,
+  ) -> Option<lsp_types::GotoDefinitionResponse>
+  where
+    F: FnMut(ModuleSpecifier) -> Vec<u32>,
+  {
+    if let Some(definitions) = &self.definitions {
+      let location_links = definitions
+        .iter()
+        .map(|di| {
+          let target_specifier =
+            ModuleSpecifier::resolve_url(&di.file_name).unwrap();
+          let target_line_index = index_provider(target_specifier);
+          let target_uri = utils::normalize_file_name(&di.file_name).unwrap();
+          let (target_range, target_selection_range) =
+            if let Some(context_span) = &di.context_span {
+              (
+                context_span.to_range(&target_line_index),
+                di.text_span.to_range(&target_line_index),
+              )
+            } else {
+              (
+                di.text_span.to_range(&target_line_index),
+                di.text_span.to_range(&target_line_index),
+              )
+            };
+          lsp_types::LocationLink {
+            origin_selection_range: Some(self.text_span.to_range(line_index)),
+            target_uri,
+            target_range,
+            target_selection_range,
+          }
+        })
+        .collect();
+
+      Some(lsp_types::GotoDefinitionResponse::Link(location_links))
+    } else {
+      None
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentHighlights {
   file_name: String,
   highlight_spans: Vec<HighlightSpan>,
@@ -350,27 +503,22 @@ impl DocumentHighlights {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
+  is_write_access: bool,
+  pub is_definition: bool,
+  is_in_string: Option<bool>,
   text_span: TextSpan,
   pub file_name: String,
   original_text_span: Option<TextSpan>,
   original_file_name: Option<String>,
   context_span: Option<TextSpan>,
   original_context_span: Option<TextSpan>,
-  is_write_access: bool,
-  pub is_definition: bool,
-  is_in_string: Option<bool>,
 }
 
 impl ReferenceEntry {
   pub fn to_location(&self, line_index: &[u32]) -> lsp_types::Location {
-    let specifier_str = if self.file_name.starts_with("file://") {
-      self.file_name.clone()
-    } else {
-      format!("deno:///{}", self.file_name.replacen("://", "/", 1))
-    };
-    let specifier = ModuleSpecifier::resolve_url(&specifier_str).unwrap();
+    let uri = utils::normalize_file_name(&self.file_name).unwrap();
     lsp_types::Location {
-      uri: specifier.as_url().clone(),
+      uri,
       range: self.text_span.to_range(line_index),
     }
   }
@@ -688,6 +836,8 @@ pub enum RequestMethod {
   GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
   /// Get document references for a specific position.
   GetReferences((ModuleSpecifier, u32)),
+  /// Get declaration information for a specific position.
+  GetDefinition((ModuleSpecifier, u32)),
 }
 
 impl RequestMethod {
@@ -733,6 +883,12 @@ impl RequestMethod {
       RequestMethod::GetReferences((specifier, position)) => json!({
         "id": id,
         "method": "getReferences",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetDefinition((specifier, position)) => json!({
+        "id": id,
+        "method": "getDefinition",
         "specifier": specifier,
         "position": position,
       }),

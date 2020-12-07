@@ -31,7 +31,7 @@ pub fn server_capabilities(
     completion_provider: None,
     signature_help_provider: None,
     declaration_provider: None,
-    definition_provider: None,
+    definition_provider: Some(OneOf::Left(true)),
     type_definition_provider: None,
     implementation_provider: None,
     references_provider: Some(OneOf::Left(true)),

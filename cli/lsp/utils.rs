@@ -67,10 +67,23 @@ pub fn notification_is<N: lsp_types::notification::Notification>(
   notification.method == N::METHOD
 }
 
+/// Normalizes a file name returned from the TypeScript compiler into a URI that
+/// should be sent by the language server to the client.
+pub fn normalize_file_name(file_name: &str) -> Result<Url, AnyError> {
+  let specifier_str = if file_name.starts_with("file://") {
+    file_name.to_string()
+  } else {
+    format!("deno:///{}", file_name.replacen("://", "/", 1))
+  };
+  Url::parse(&specifier_str).map_err(|err| err.into())
+}
+
 /// Normalize URLs from the client, where "virtual" `deno:///` URLs are
 /// converted into proper module specifiers.
 pub fn normalize_url(url: Url) -> ModuleSpecifier {
-  if url.scheme() == "deno" && url.path().starts_with("/http") {
+  if url.scheme() == "deno"
+    && (url.path().starts_with("/http") || url.path().starts_with("/asset"))
+  {
     let specifier_str = url[Position::BeforePath..]
       .replacen("/", "", 1)
       .replacen("/", "://", 1);
