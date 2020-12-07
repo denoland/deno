@@ -327,7 +327,7 @@ impl JsRuntime {
     if self.needs_init {
       self.needs_init = false;
       self
-        .execute("deno:core.js", include_str!("core.js"))
+        .execute("deno:core/core.js", include_str!("core.js"))
         .unwrap();
     }
   }
