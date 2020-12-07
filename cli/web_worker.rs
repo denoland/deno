@@ -23,9 +23,8 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
@@ -55,7 +54,7 @@ pub struct WebWorkerHandle {
   pub sender: mpsc::Sender<Box<[u8]>>,
   pub receiver: Arc<AsyncMutex<mpsc::Receiver<WorkerEvent>>>,
   terminate_tx: mpsc::Sender<()>,
-  terminated: Arc<AtomicBool>,
+  terminated: Arc<Mutex<bool>>,
   isolate_handle: v8::IsolateHandle,
 }
 
@@ -78,9 +77,10 @@ impl WebWorkerHandle {
     // This function can be called multiple times by whomever holds
     // the handle. However only a single "termination" should occur so
     // we need a guard here.
-    let already_terminated = self.terminated.swap(true, Ordering::SeqCst);
+    let already_terminated = self.terminated.lock().unwrap();
 
     if !already_terminated {
+      *already_terminated = true;
       self.isolate_handle.terminate_execution();
       let mut sender = self.terminate_tx.clone();
       // This call should be infallible hence the `expect`.
@@ -103,7 +103,7 @@ fn create_channels(
   let external_channels = WebWorkerHandle {
     sender: in_tx,
     receiver: Arc::new(AsyncMutex::new(out_rx)),
-    terminated: Arc::new(AtomicBool::new(false)),
+    terminated: Arc::new(Mutex::new(false)),
     terminate_tx,
     isolate_handle,
   };
@@ -276,7 +276,7 @@ impl WebWorker {
   }
 
   pub fn has_been_terminated(&self) -> bool {
-    self.handle.terminated.load(Ordering::SeqCst)
+    *self.handle.terminated.lock().unwrap()
   }
 
   pub fn poll_event_loop(
