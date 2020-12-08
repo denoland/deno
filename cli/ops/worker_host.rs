@@ -12,6 +12,8 @@ use deno_core::futures::channel::mpsc;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ModuleLoader;
+// use crate::module_loader::CliModuleLoader;
 use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -21,7 +23,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
+
+pub type LoaderCb = dyn Fn() -> Rc<dyn ModuleLoader> + Sync + Send;
+
+#[derive(Clone)]
+pub struct CreateWorkerModuleLoaderFn {
+  pub cb: Arc<LoaderCb>,
+}
 
 #[derive(Deserialize)]
 struct HostUnhandledErrorArgs {
@@ -31,12 +41,18 @@ struct HostUnhandledErrorArgs {
 pub fn init(
   rt: &mut deno_core::JsRuntime,
   sender: Option<mpsc::Sender<WorkerEvent>>,
+  create_module_loader_cb: Arc<LoaderCb>,
 ) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
     state.put::<WorkersTable>(WorkersTable::default());
     state.put::<WorkerId>(WorkerId::default());
+
+    let create_module_loader = CreateWorkerModuleLoaderFn {
+      cb: create_module_loader_cb,
+    };
+    state.put::<CreateWorkerModuleLoaderFn>(create_module_loader);
   }
   super::reg_json_sync(rt, "op_create_worker", op_create_worker);
   super::reg_json_sync(
@@ -102,6 +118,8 @@ fn op_create_worker(
   }
   let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
+  let create_module_loader = state.take::<CreateWorkerModuleLoaderFn>();
+  state.put::<CreateWorkerModuleLoaderFn>(create_module_loader.clone());
   state.put::<WorkerId>(worker_id + 1);
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
@@ -121,13 +139,14 @@ fn op_create_worker(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let worker = WebWorker::new(
+    let mut worker = WebWorker::new(
       worker_name,
       permissions,
       module_specifier.clone(),
       program_state,
       use_deno_namespace,
       worker_id,
+      create_module_loader.cb.clone(),
     );
 
     // Send thread safe handle to newly created worker to host thread
