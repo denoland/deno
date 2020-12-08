@@ -15,7 +15,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::AsyncMut;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
+// use deno_core::AsyncMut;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -64,9 +66,14 @@ async fn accept_tcp(
     .get::<TcpListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
   eprintln!("accept before try borrow");
-  let mut listener = resource.try_borrow_mut().ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+  let mut listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+  // let mut listener = resource.try_borrow_mut().ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
   eprintln!("accept after try borrow");
-  let (tcp_stream, _socket_addr) = (&mut *listener).accept().await?;
+  let (tcp_stream, _socket_addr) =
+    (&mut *listener).accept().try_or_cancel(cancel).await?;
   eprintln!("accept after accept");
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -366,17 +373,16 @@ fn op_shutdown(
 
 struct TcpListenerResource {
   listener: AsyncRefCell<TcpListener>,
+  cancel: CancelHandle,
 }
 
 impl Resource for TcpListenerResource {
   fn name(&self) -> Cow<str> {
     "tcpListener".into()
   }
-}
 
-impl TcpListenerResource {
-  fn try_borrow_mut(self: Rc<Self>) -> Option<AsyncMut<TcpListener>> {
-    RcRef::map(self, |r| &r.listener).try_borrow_mut()
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
   }
 }
 
@@ -426,6 +432,7 @@ fn listen_tcp(
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
     listener: AsyncRefCell::new(listener),
+    cancel: Default::default(),
   };
   let rid = state.resource_table_2.add(listener_resource);
 

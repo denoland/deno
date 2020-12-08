@@ -15,9 +15,11 @@ use deno_core::serde_json;
 #[cfg(unix)]
 use deno_core::serde_json::json;
 #[cfg(unix)]
-use deno_core::AsyncMutFuture;
-#[cfg(unix)]
 use deno_core::AsyncRefCell;
+#[cfg(unix)]
+use deno_core::CancelFuture;
+#[cfg(unix)]
+use deno_core::CancelHandle;
 #[cfg(unix)]
 use deno_core::RcRef;
 #[cfg(unix)]
@@ -38,19 +40,19 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 #[cfg(unix)]
 /// The resource for signal stream.
 /// The second element is the waker of polling future.
-struct SignalStreamResource(AsyncRefCell<Signal>);
+struct SignalStreamResource {
+  signal: AsyncRefCell<Signal>,
+  cancel: CancelHandle,
+}
 
 #[cfg(unix)]
 impl Resource for SignalStreamResource {
   fn name(&self) -> Cow<str> {
     "signal".into()
   }
-}
 
-#[cfg(unix)]
-impl SignalStreamResource {
-  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<Signal> {
-    RcRef::map(self, |r| &r.0).borrow_mut()
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
   }
 }
 
@@ -74,9 +76,12 @@ fn op_signal_bind(
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let resource = SignalStreamResource(AsyncRefCell::new(
-    signal(SignalKind::from_raw(args.signo)).expect(""),
-  ));
+  let resource = SignalStreamResource {
+    signal: AsyncRefCell::new(
+      signal(SignalKind::from_raw(args.signo)).expect(""),
+    ),
+    cancel: Default::default(),
+  };
   let rid = state.resource_table_2.add(resource);
   Ok(json!({
     "rid": rid,
@@ -98,8 +103,13 @@ async fn op_signal_poll(
     .resource_table_2
     .get::<SignalStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let result = resource.borrow_mut().await.recv().await;
-  Ok(json!({ "done": result.is_none() }))
+  let cancel = RcRef::map(&resource, |r| &r.cancel);
+  let mut signal = RcRef::map(&resource, |r| &r.signal).borrow_mut().await;
+
+  match (&mut *signal).recv().or_cancel(cancel).await {
+    Ok(result) => Ok(json!({ "done": result.is_none() })),
+    Err(_) => Ok(json!({ "done": true })),
+  }
 }
 
 #[cfg(unix)]
