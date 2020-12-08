@@ -5,7 +5,6 @@ use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
@@ -231,7 +230,10 @@ impl PrettyCoverageReporter {
   }
 }
 
-fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
+fn collect_coverages(
+  dir: &PathBuf,
+  _ignore: Vec<PathBuf>,
+) -> Result<Vec<Coverage>, AnyError> {
   let mut coverages: Vec<Coverage> = Vec::new();
 
   let entries = fs::read_dir(dir)?;
@@ -241,6 +243,11 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
 
     coverages.push(coverage);
   }
+
+  coverages = coverages
+    .into_iter()
+    .filter(|e| !e.script_coverage.url.ends_with("__anonymous__"))
+    .collect::<Vec<Coverage>>();
 
   coverages.sort_by_key(|k| k.script_coverage.url.clone());
 
@@ -260,47 +267,12 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
   Ok(coverages)
 }
 
-fn _filter_coverages(
-  coverages: Vec<Coverage>,
-  exclude: Vec<Url>,
-) -> Vec<Coverage> {
-  coverages
-    .into_iter()
-    .filter(|e| {
-      if let Ok(url) = Url::parse(&e.script_coverage.url) {
-        if url.path().ends_with("__anonymous__") {
-          return false;
-        }
-
-        for module_url in &exclude {
-          if &url == module_url {
-            return false;
-          }
-        }
-
-        if let Ok(path) = url.to_file_path() {
-          for module_url in &exclude {
-            if let Ok(module_path) = module_url.to_file_path() {
-              if path.starts_with(module_path.parent().unwrap()) {
-                return true;
-              }
-            }
-          }
-        }
-      }
-
-      false
-    })
-    .collect::<Vec<Coverage>>()
-}
-
 pub fn report_coverages(
   dir: &PathBuf,
   quiet: bool,
-  _exclude: Vec<Url>,
+  ignore: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
-  let coverages = collect_coverages(dir)?;
-  // let coverages = filter_coverages(coverages, exclude);
+  let coverages = collect_coverages(dir, ignore)?;
 
   let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
   for coverage in coverages {

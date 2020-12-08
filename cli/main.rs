@@ -796,13 +796,10 @@ async fn cover_command(
   _flags: Flags,
   dir: String,
   quiet: bool,
-  _filter: Option<String>,
+  ignore: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
-  println!("COVERAGE DIR IS {}", dir);
-
   let dir = PathBuf::from(dir);
-  let exclude = Vec::new();
-  tools::coverage::report_coverages(&dir, quiet, exclude)?;
+  tools::coverage::report_coverages(&dir, quiet, ignore)?;
 
   Ok(())
 }
@@ -986,8 +983,8 @@ fn get_subcommand(
       source_file,
       output,
     } => compile_command(flags, source_file, output).boxed_local(),
-    DenoSubcommand::Cover { dir, quiet, filter } => {
-      cover_command(flags, dir, quiet, filter).boxed_local()
+    DenoSubcommand::Cover { dir, quiet, ignore } => {
+      cover_command(flags, dir, quiet, ignore ).boxed_local()
     }
     DenoSubcommand::Fmt {
       check,

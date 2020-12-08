@@ -27,7 +27,7 @@ pub enum DenoSubcommand {
   Cover {
     dir: String,
     quiet: bool,
-    filter: Option<String>,
+    ignore: Vec<PathBuf>,
   },
   Doc {
     private: bool,
@@ -530,9 +530,12 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dir = matches.value_of("dir").map(String::from).unwrap();
   let quiet = matches.is_present("quiet");
-  let filter = matches.value_of("filter").map(String::from);
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
 
-  flags.subcommand = DenoSubcommand::Cover { dir, quiet, filter };
+  flags.subcommand = DenoSubcommand::Cover { dir, quiet, ignore };
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
