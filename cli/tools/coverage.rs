@@ -260,7 +260,7 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
   Ok(coverages)
 }
 
-fn filter_coverages(
+fn _filter_coverages(
   coverages: Vec<Coverage>,
   exclude: Vec<Url>,
 ) -> Vec<Coverage> {
@@ -297,10 +297,10 @@ fn filter_coverages(
 pub fn report_coverages(
   dir: &PathBuf,
   quiet: bool,
-  exclude: Vec<Url>,
+  _exclude: Vec<Url>,
 ) -> Result<(), AnyError> {
   let coverages = collect_coverages(dir)?;
-  let coverages = filter_coverages(coverages, exclude);
+  // let coverages = filter_coverages(coverages, exclude);
 
   let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
   for coverage in coverages {

@@ -792,6 +792,21 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   Ok(())
 }
 
+async fn cover_command(
+  _flags: Flags,
+  dir: String,
+  quiet: bool,
+  _filter: Option<String>,
+) -> Result<(), AnyError> {
+  println!("COVERAGE DIR IS {}", dir);
+
+  let dir = PathBuf::from(dir);
+  let exclude = Vec::new();
+  tools::coverage::report_coverages(&dir, quiet, exclude)?;
+
+  Ok(())
+}
+
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
@@ -883,19 +898,6 @@ async fn test_command(
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     coverage_collector.stop_collecting().await?;
-
-    // TODO(caspervonb) extract reporting into it's own subcommand.
-    // For now, we'll only report for the command that passed --coverage as a flag.
-    if flags.coverage_dir.is_some() {
-      let mut exclude = test_modules.clone();
-      let main_module_url = main_module.as_url().to_owned();
-      exclude.push(main_module_url);
-      tools::coverage::report_coverages(
-        &coverage_collector.dir,
-        quiet,
-        exclude,
-      )?;
-    }
   }
 
   Ok(())
@@ -984,6 +986,9 @@ fn get_subcommand(
       source_file,
       output,
     } => compile_command(flags, source_file, output).boxed_local(),
+    DenoSubcommand::Cover { dir, quiet, filter } => {
+      cover_command(flags, dir, quiet, filter).boxed_local()
+    }
     DenoSubcommand::Fmt {
       check,
       files,
