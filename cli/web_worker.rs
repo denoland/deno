@@ -5,7 +5,6 @@ use crate::fmt_errors::PrettyJsError;
 use crate::inspector::DenoInspector;
 use crate::js;
 use crate::metrics::Metrics;
-use crate::module_loader::CliModuleLoader;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
@@ -139,8 +138,8 @@ impl WebWorker {
     program_state: Arc<ProgramState>,
     has_deno_namespace: bool,
     worker_id: u32,
+    create_module_loader_cb: Arc<ops::worker_host::LoaderCb>,
   ) -> Self {
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
     let global_state_ = program_state.clone();
     let flags = &program_state.flags;
 
@@ -149,6 +148,8 @@ impl WebWorker {
         apply_source_map(&core_js_error, global_state_.clone());
       PrettyJsError::create(source_mapped_error)
     });
+
+    let module_loader = (create_module_loader_cb)();
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(module_loader),
@@ -204,7 +205,7 @@ impl WebWorker {
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime, Some(sender));
+      ops::worker_host::init(js_runtime, Some(sender), create_module_loader_cb);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -442,6 +443,7 @@ pub fn run_web_worker(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::module_loader::CliModuleLoader;
   use crate::program_state::ProgramState;
   use crate::tokio_util;
   use deno_core::serde_json::json;
@@ -450,6 +452,7 @@ mod tests {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
     let program_state = ProgramState::mock(vec!["deno".to_string()], None);
+    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
     WebWorker::new(
       "TEST".to_string(),
       Permissions::allow_all(),
@@ -457,6 +460,7 @@ mod tests {
       program_state,
       false,
       1,
+      module_loader,
     )
   }
 

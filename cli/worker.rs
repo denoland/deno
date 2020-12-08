@@ -120,10 +120,19 @@ impl MainWorker {
         op_state.put::<Permissions>(permissions);
       }
 
+      let pstate = program_state.clone();
+      let create_module_loader_cb = move || -> Rc<dyn ModuleLoader> {
+        CliModuleLoader::new_for_worker(pstate.clone())
+      };
+
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime, None);
+      ops::worker_host::init(
+        js_runtime,
+        None,
+        Arc::new(create_module_loader_cb),
+      );
       ops::crypto::init(js_runtime, program_state.flags.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);

@@ -1,7 +1,7 @@
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "deno_core"
-version = "0.69.0"
+version = "0.70.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]
@@ -19,7 +19,7 @@ indexmap = "1.6.0"
 lazy_static = "1.4.0"
 libc = "0.2.77"
 log = "0.4.11"
-rusty_v8 = "0.13.0"
+rusty_v8 = "0.14.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
 smallvec = "1.4.2"
