@@ -48,7 +48,8 @@ declare global {
     | GetQuickInfoRequest
     | GetDocumentHighlightsRequest
     | GetReferencesRequest
-    | GetDefinitionRequest;
+    | GetDefinitionRequest
+    | GetCompletionsRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -99,5 +100,12 @@ declare global {
     method: "getDefinition";
     specifier: string;
     position: number;
+  }
+
+  interface GetCompletionsRequest extends BaseLanguageServerRequest {
+    method: "getCompletions";
+    specifier: string;
+    position: number;
+    preferences: ts.UserPreferences;
   }
 }

@@ -14,6 +14,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::json_op_sync;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -229,7 +230,7 @@ fn replace_links(text: &str) -> String {
     .to_string()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
   Unknown,
@@ -301,7 +302,47 @@ pub enum ScriptElementKind {
   String,
 }
 
-#[derive(Debug, Deserialize)]
+impl From<ScriptElementKind> for lsp_types::CompletionItemKind {
+  fn from(kind: ScriptElementKind) -> Self {
+    use lsp_types::CompletionItemKind;
+
+    match kind {
+      ScriptElementKind::PrimitiveType | ScriptElementKind::Keyword => {
+        CompletionItemKind::Keyword
+      }
+      ScriptElementKind::ConstElement => CompletionItemKind::Constant,
+      ScriptElementKind::LetElement
+      | ScriptElementKind::VariableElement
+      | ScriptElementKind::LocalVariableElement
+      | ScriptElementKind::Alias => CompletionItemKind::Variable,
+      ScriptElementKind::MemberVariableElement
+      | ScriptElementKind::MemberGetAccessorElement
+      | ScriptElementKind::MemberSetAccessorElement => {
+        CompletionItemKind::Field
+      }
+      ScriptElementKind::FunctionElement => CompletionItemKind::Function,
+      ScriptElementKind::MemberFunctionElement
+      | ScriptElementKind::ConstructSignatureElement
+      | ScriptElementKind::CallSignatureElement
+      | ScriptElementKind::IndexSignatureElement => CompletionItemKind::Method,
+      ScriptElementKind::EnumElement => CompletionItemKind::Enum,
+      ScriptElementKind::ModuleElement
+      | ScriptElementKind::ExternalModuleName => CompletionItemKind::Module,
+      ScriptElementKind::ClassElement | ScriptElementKind::TypeElement => {
+        CompletionItemKind::Class
+      }
+      ScriptElementKind::InterfaceElement => CompletionItemKind::Interface,
+      ScriptElementKind::Warning | ScriptElementKind::ScriptElement => {
+        CompletionItemKind::File
+      }
+      ScriptElementKind::Directory => CompletionItemKind::Folder,
+      ScriptElementKind::String => CompletionItemKind::Constant,
+      _ => CompletionItemKind::Property,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
   start: u32,
@@ -516,6 +557,104 @@ impl ReferenceEntry {
       uri,
       range: self.text_span.to_range(line_index),
     }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionInfo {
+  entries: Vec<CompletionEntry>,
+  is_member_completion: bool,
+}
+
+impl CompletionInfo {
+  pub fn into_completion_response(
+    self,
+    line_index: &[u32],
+  ) -> lsp_types::CompletionResponse {
+    let items = self
+      .entries
+      .into_iter()
+      .map(|entry| entry.into_completion_item(line_index))
+      .collect();
+    lsp_types::CompletionResponse::Array(items)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionEntry {
+  kind: ScriptElementKind,
+  kind_modifiers: Option<String>,
+  name: String,
+  sort_text: String,
+  insert_text: Option<String>,
+  replacement_span: Option<TextSpan>,
+  has_action: Option<bool>,
+  source: Option<String>,
+  is_recommended: Option<bool>,
+}
+
+impl CompletionEntry {
+  pub fn into_completion_item(
+    self,
+    line_index: &[u32],
+  ) -> lsp_types::CompletionItem {
+    let mut item = lsp_types::CompletionItem {
+      label: self.name,
+      kind: Some(self.kind.into()),
+      sort_text: Some(self.sort_text.clone()),
+      // TODO(lucacasonato): missing commit_characters
+      ..Default::default()
+    };
+
+    if let Some(true) = self.is_recommended {
+      // Make sure isRecommended property always comes first
+      // https://github.com/Microsoft/vscode/issues/40325
+      item.preselect = Some(true);
+    } else if self.source.is_some() {
+      // De-prioritze auto-imports
+      // https://github.com/Microsoft/vscode/issues/40311
+      item.sort_text = Some("\u{ffff}".to_string() + &self.sort_text)
+    }
+
+    match item.kind {
+      Some(lsp_types::CompletionItemKind::Function)
+      | Some(lsp_types::CompletionItemKind::Method) => {
+        item.insert_text_format = Some(lsp_types::InsertTextFormat::Snippet);
+      }
+      _ => {}
+    }
+
+    let mut insert_text = self.insert_text;
+    let replacement_range: Option<lsp_types::Range> =
+      self.replacement_span.map(|span| span.to_range(line_index));
+
+    // TODO(lucacasonato): port other special cases from https://github.com/theia-ide/typescript-language-server/blob/fdf28313833cd6216d00eb4e04dc7f00f4c04f09/server/src/completion.ts#L49-L55
+
+    if let Some(kind_modifiers) = self.kind_modifiers {
+      if kind_modifiers.contains("\\optional\\") {
+        if insert_text.is_none() {
+          insert_text = Some(item.label.clone());
+        }
+        if item.filter_text.is_none() {
+          item.filter_text = Some(item.label.clone());
+        }
+        item.label += "?";
+      }
+    }
+
+    if let Some(insert_text) = insert_text {
+      if let Some(replacement_range) = replacement_range {
+        item.text_edit = Some(lsp_types::CompletionTextEdit::Edit(
+          lsp_types::TextEdit::new(replacement_range, insert_text),
+        ));
+      } else {
+        item.insert_text = Some(insert_text);
+      }
+    }
+
+    item
   }
 }
 
@@ -815,6 +954,71 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   Ok(runtime)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum QuotePreference {
+  Auto,
+  Double,
+  Single,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum ImportModuleSpecifierPreference {
+  Auto,
+  Relative,
+  NonRelative,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum ImportModuleSpecifierEnding {
+  Auto,
+  Minimal,
+  Index,
+  Js,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum IncludePackageJsonAutoImports {
+  Auto,
+  On,
+  Off,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPreferences {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub disable_suggestions: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub quote_preference: Option<QuotePreference>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_for_module_exports: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_automatic_optional_chain_completions: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_insert_text: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub import_module_specifier_preference:
+    Option<ImportModuleSpecifierPreference>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub import_module_specifier_ending: Option<ImportModuleSpecifierEnding>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub allow_text_changes_in_new_files: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub provide_prefix_and_suffix_text_for_rename: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_package_json_auto_imports: Option<IncludePackageJsonAutoImports>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub provide_refactor_not_applicable_reason: Option<bool>,
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
@@ -833,6 +1037,8 @@ pub enum RequestMethod {
   GetReferences((ModuleSpecifier, u32)),
   /// Get declaration information for a specific position.
   GetDefinition((ModuleSpecifier, u32)),
+  /// Get completion information at a given position (IntelliSense).
+  GetCompletions((ModuleSpecifier, u32, UserPreferences)),
 }
 
 impl RequestMethod {
@@ -887,6 +1093,15 @@ impl RequestMethod {
         "specifier": specifier,
         "position": position,
       }),
+      RequestMethod::GetCompletions((specifier, position, preferences)) => {
+        json!({
+          "id": id,
+          "method": "getCompletions",
+          "specifier": specifier,
+          "position": position,
+          "preferences": preferences,
+        })
+      }
     }
   }
 }
