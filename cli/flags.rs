@@ -226,7 +226,11 @@ lazy_static! {
   static ref LONG_VERSION: String = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
     crate::version::deno(),
-    env!("PROFILE"),
+    if crate::version::is_canary() {
+      "canary"
+    } else {
+      env!("PROFILE")
+    },
     env!("TARGET"),
     crate::version::v8(),
     crate::version::TYPESCRIPT
