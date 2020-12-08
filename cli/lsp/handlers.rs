@@ -12,6 +12,8 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
+use lsp_types::CompletionParams;
+use lsp_types::CompletionResponse;
 use lsp_types::DocumentFormattingParams;
 use lsp_types::DocumentHighlight;
 use lsp_types::DocumentHighlightParams;
@@ -182,6 +184,36 @@ pub fn handle_hover(
 
   if let Some(quick_info) = maybe_quick_info {
     Ok(Some(quick_info.to_hover(&line_index)))
+  } else {
+    Ok(None)
+  }
+}
+
+pub fn handle_completion(
+  state: &mut ServerState,
+  params: CompletionParams,
+) -> Result<Option<CompletionResponse>, AnyError> {
+  let specifier =
+    utils::normalize_url(params.text_document_position.text_document.uri);
+  let line_index = get_line_index(state, &specifier)?;
+  let server_state = state.snapshot();
+  let maybe_completion_info: Option<tsc::CompletionInfo> =
+    serde_json::from_value(tsc::request(
+      &mut state.ts_runtime,
+      &server_state,
+      tsc::RequestMethod::GetCompletions((
+        specifier,
+        text::to_char_pos(&line_index, params.text_document_position.position),
+        tsc::UserPreferences {
+          // TODO(lucacasonato): enable this. see https://github.com/denoland/deno/pull/8651
+          include_completions_with_insert_text: Some(false),
+          ..Default::default()
+        },
+      )),
+    )?)?;
+
+  if let Some(completions) = maybe_completion_info {
+    Ok(Some(completions.to_completion_response(&line_index)))
   } else {
     Ok(None)
   }
