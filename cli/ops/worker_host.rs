@@ -139,7 +139,7 @@ fn op_create_worker(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let mut worker = WebWorker::new(
+    let worker = WebWorker::new(
       worker_name,
       permissions,
       module_specifier.clone(),
