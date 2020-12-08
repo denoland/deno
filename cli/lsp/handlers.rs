@@ -213,7 +213,7 @@ pub fn handle_completion(
     )?)?;
 
   if let Some(completions) = maybe_completion_info {
-    Ok(Some(completions.to_completion_response(&line_index)))
+    Ok(Some(completions.into_completion_response(&line_index)))
   } else {
     Ok(None)
   }

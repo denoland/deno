@@ -568,7 +568,7 @@ pub struct CompletionInfo {
 }
 
 impl CompletionInfo {
-  pub fn to_completion_response(
+  pub fn into_completion_response(
     self,
     line_index: &[u32],
   ) -> lsp_types::CompletionResponse {
@@ -647,7 +647,7 @@ impl CompletionEntry {
     if let Some(insert_text) = insert_text {
       if let Some(replacement_range) = replacement_range {
         item.text_edit = Some(lsp_types::CompletionTextEdit::Edit(
-          lsp_types::TextEdit::new(replacement_range, insert_text.clone()),
+          lsp_types::TextEdit::new(replacement_range, insert_text),
         ));
       } else {
         item.insert_text = Some(insert_text);
