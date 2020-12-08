@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { existsSync } from "./_fs_exists.ts";
+import {
+  ERR_INVALID_CALLBACK,
+  ERR_INVALID_OPT_VALUE_ENCODING,
+} from "../_errors.ts";
 
 export type mkdtempCallback = (
   err: Error | undefined,
@@ -20,7 +24,7 @@ export function mkdtemp(
 ): void {
   const callback: mkdtempCallback | undefined =
     optionsOrCallback instanceof Function ? optionsOrCallback : maybeCallback;
-  if (!callback) throw new Error("No callback function supplied");
+  if (!callback) throw new ERR_INVALID_CALLBACK(callback);
 
   const encoding: string | undefined = parseEncoding(optionsOrCallback);
   const path = tempDirPath(prefix);
@@ -55,9 +59,7 @@ function parseEncoding(
     try {
       new TextDecoder(encoding);
     } catch (error) {
-      throw new Error(
-        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${encoding}" is invalid for option "encoding"`,
-      );
+      throw new ERR_INVALID_OPT_VALUE_ENCODING(encoding);
     }
   }
 
@@ -73,10 +75,17 @@ function decode(str: string, encoding?: string): string {
   }
 }
 
+const CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+function randomString(length: number): string {
+  return [...Array(length)].map(() =>
+    CHARS[Math.floor(Math.random() * CHARS.length)]
+  ).join("");
+}
+
 function tempDirPath(prefix: string): string {
   let path: string;
   do {
-    path = prefix + Math.random().toString(36).substring(2, 8);
+    path = prefix + randomString(6);
   } while (existsSync(path));
 
   return path;
