@@ -1,6 +1,6 @@
 # Deno
 
-[![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
+[![deepcode](https://www.deepcode.ai/api/gh/badge?key=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF0Zm9ybTEiOiJnaCIsIm93bmVyMSI6ImRlbm9sYW5kIiwicmVwbzEiOiJkZW5vIiwiaW5jbHVkZUxpbnQiOmZhbHNlLCJhdXRob3JJZCI6MjExNzYsImlhdCI6MTYwNzQzMjMwN30.1B9IJPjOtfi5F3L3QsKcGry-UabzUcl77MQeEeV-xeg)](https://www.deepcode.ai/app/gh/denoland/deno/_/dashboard?utm_content=gh%2Fdenoland%2Fdeno) [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
 
 <img align="right" src=https://deno.land/logo.svg height="150px">
 
