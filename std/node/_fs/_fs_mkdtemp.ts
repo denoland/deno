@@ -76,8 +76,8 @@ function decode(str: string, encoding?: string): string {
 }
 
 const CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-function randomString(length: number): string {
-  return [...Array(length)].map(() =>
+function randomName(): string {
+  return [...Array(6)].map(() =>
     CHARS[Math.floor(Math.random() * CHARS.length)]
   ).join("");
 }
@@ -85,7 +85,7 @@ function randomString(length: number): string {
 function tempDirPath(prefix: string): string {
   let path: string;
   do {
-    path = prefix + randomString(6);
+    path = prefix + randomName();
   } while (existsSync(path));
 
   return path;
