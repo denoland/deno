@@ -2,11 +2,12 @@
 import {
   assert,
   assertEquals,
+  assertNotEquals,
   assertStringIncludes,
 } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { ServerRequest } from "./server.ts";
+import { Response, ServerRequest } from "./server.ts";
 import { FileServerArgs, serveFile } from "./file_server.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
@@ -76,6 +77,78 @@ async function killFileServer(): Promise<void> {
   // switch to calling `kill()` followed by `await fileServer.status()`.
   await Deno.readAll(fileServer.stdout!);
   fileServer.stdout!.close();
+}
+
+interface StringResponse extends Response {
+  body: string;
+}
+
+/* HTTP GET request allowing arbitrary paths */
+async function fetchExactPath(
+  hostname: string,
+  port: number,
+  path: string,
+): Promise<StringResponse> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const request = encoder.encode("GET " + path + " HTTP/1.1\r\n\r\n");
+  let conn: void | Deno.Conn;
+  try {
+    conn = await Deno.connect(
+      { hostname: hostname, port: port, transport: "tcp" },
+    );
+    await Deno.writeAll(conn, request);
+    let currentResult = "";
+    let contentLength = -1;
+    let startOfBody = -1;
+    for await (const chunk of Deno.iter(conn)) {
+      currentResult += decoder.decode(chunk);
+      if (contentLength === -1) {
+        const match = /^content-length: (.*)$/m.exec(currentResult);
+        if (match && match[1]) {
+          contentLength = Number(match[1]);
+        }
+      }
+      if (startOfBody === -1) {
+        const ind = currentResult.indexOf("\r\n\r\n");
+        if (ind !== -1) {
+          startOfBody = ind + 4;
+        }
+      }
+      if (startOfBody !== -1 && contentLength !== -1) {
+        const byteLen = encoder.encode(currentResult).length;
+        if (byteLen >= contentLength + startOfBody) {
+          break;
+        }
+      }
+    }
+    const status = /^HTTP\/1.1 (...)/.exec(currentResult);
+    let statusCode = 0;
+    if (status && status[1]) {
+      statusCode = Number(status[1]);
+    }
+
+    const body = currentResult.slice(startOfBody);
+    const headersStr = currentResult.slice(0, startOfBody);
+    const headersReg = /^(.*): (.*)$/mg;
+    const headersObj: { [i: string]: string } = {};
+    let match = headersReg.exec(headersStr);
+    while (match !== null) {
+      if (match[1] && match[2]) {
+        headersObj[match[1]] = match[2];
+      }
+      match = headersReg.exec(headersStr);
+    }
+    return {
+      status: statusCode,
+      headers: new Headers(headersObj),
+      body: body,
+    };
+  } finally {
+    if (conn) {
+      Deno.close(conn.rid);
+    }
+  }
 }
 
 Deno.test(
@@ -164,6 +237,32 @@ Deno.test("checkPathTraversal", async function (): Promise<void> {
     assertEquals(res.status, 200);
     const listing = await res.text();
     assertStringIncludes(listing, "README.md");
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("checkPathTraversalNoLeadingSlash", async function (): Promise<void> {
+  await startFileServer();
+  try {
+    const res = await fetchExactPath("127.0.0.1", 4507, "../../../..");
+    assertEquals(res.status, 400);
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("checkPathTraversalAbsoluteURI", async function (): Promise<void> {
+  await startFileServer();
+  try {
+    //allowed per https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
+    const res = await fetchExactPath(
+      "127.0.0.1",
+      4507,
+      "http://localhost/../../../..",
+    );
+    assertEquals(res.status, 200);
+    assertStringIncludes(res.body, "README.md");
   } finally {
     await killFileServer();
   }

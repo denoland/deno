@@ -103,21 +103,21 @@ fn op_run(
   }
 
   // TODO: make this work with other resources, eg. sockets
-  if run_args.stdin != "" {
+  if !run_args.stdin.is_empty() {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);
   } else {
     let file = clone_file(state, run_args.stdin_rid)?;
     c.stdin(file);
   }
 
-  if run_args.stdout != "" {
+  if !run_args.stdout.is_empty() {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref())?);
   } else {
     let file = clone_file(state, run_args.stdout_rid)?;
     c.stdout(file);
   }
 
-  if run_args.stderr != "" {
+  if !run_args.stderr.is_empty() {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref())?);
   } else {
     let file = clone_file(state, run_args.stderr_rid)?;

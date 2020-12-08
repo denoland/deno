@@ -187,10 +187,15 @@ async function serveDir(
 }
 
 function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (e instanceof Deno.errors.NotFound) {
+  if (e instanceof URIError) {
+    return Promise.resolve({
+      status: 400,
+      body: encoder.encode("Bad Request"),
+    });
+  } else if (e instanceof Deno.errors.NotFound) {
     return Promise.resolve({
       status: 404,
-      body: encoder.encode("Not found"),
+      body: encoder.encode("Not Found"),
     });
   } else {
     return Promise.resolve({
@@ -335,6 +340,21 @@ function normalizeURL(url: string): string {
       throw e;
     }
   }
+
+  try {
+    //allowed per https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
+    const absoluteURI = new URL(normalizedUrl);
+    normalizedUrl = absoluteURI.pathname;
+  } catch (e) { //wasn't an absoluteURI
+    if (!(e instanceof TypeError)) {
+      throw e;
+    }
+  }
+
+  if (normalizedUrl[0] !== "/") {
+    throw new URIError("The request URI is malformed.");
+  }
+
   normalizedUrl = posix.normalize(normalizedUrl);
   const startOfParams = normalizedUrl.indexOf("?");
   return startOfParams > -1
@@ -383,11 +403,13 @@ function main(): void {
   }
 
   const handler = async (req: ServerRequest): Promise<void> => {
-    const normalizedUrl = normalizeURL(req.url);
-    const fsPath = posix.join(target, normalizedUrl);
-
     let response: Response | undefined;
     try {
+      const normalizedUrl = normalizeURL(req.url);
+      let fsPath = posix.join(target, normalizedUrl);
+      if (fsPath.indexOf(target) !== 0) {
+        fsPath = target;
+      }
       const fileInfo = await Deno.stat(fsPath);
       if (fileInfo.isDirectory) {
         if (dirListingEnabled) {

@@ -131,7 +131,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
 /// string.
-fn get_source_from_bytes(
+pub fn get_source_from_bytes(
   bytes: Vec<u8>,
   maybe_charset: Option<String>,
 ) -> Result<String, AnyError> {
@@ -161,7 +161,7 @@ fn get_validated_scheme(
 
 /// Resolve a media type and optionally the charset from a module specifier and
 /// the value of a content type header.
-fn map_content_type(
+pub fn map_content_type(
   specifier: &ModuleSpecifier,
   maybe_content_type: Option<String>,
 ) -> (MediaType, Option<String>) {

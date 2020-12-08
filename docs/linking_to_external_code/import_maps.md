@@ -65,7 +65,7 @@ You may map a different directory: (eg. src)
 
 {
   "imports": {
-    "/": "./src"
+    "/": "./src/"
   }
 }
 ```

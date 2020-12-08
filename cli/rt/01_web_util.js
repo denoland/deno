@@ -128,11 +128,11 @@
     wrappedHandler.handler = handler;
     return wrappedHandler;
   }
-  function defineEventHandler(emitter, name) {
+  function defineEventHandler(emitter, name, defaultValue = undefined) {
     // HTML specification section 8.1.5.1
     Object.defineProperty(emitter, `on${name}`, {
       get() {
-        return this[handlerSymbol]?.get(name)?.handler;
+        return this[handlerSymbol]?.get(name)?.handler ?? defaultValue;
       },
       set(value) {
         if (!this[handlerSymbol]) {

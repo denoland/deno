@@ -28,6 +28,7 @@ mod info;
 mod inspector;
 mod js;
 mod lockfile;
+mod lsp;
 mod media_type;
 mod metrics;
 mod module_graph;
@@ -39,6 +40,7 @@ mod resolve_addr;
 mod signal;
 mod source_maps;
 mod specifier_handler;
+mod standalone;
 mod text_encoding;
 mod tokio_util;
 mod tools;
@@ -50,10 +52,17 @@ mod worker;
 
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
+use crate::file_watcher::ModuleResolutionResult;
+use crate::flags::DenoSubcommand;
+use crate::flags::Flags;
+use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
+use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
+use crate::standalone::create_standalone_binary;
+use crate::tools::installer::infer_name_from_url;
 use crate::worker::MainWorker;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -65,12 +74,8 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
-use flags::DenoSubcommand;
-use flags::Flags;
-use import_map::ImportMap;
 use log::Level;
 use log::LevelFilter;
-use program_state::exit_unstable;
 use std::cell::RefCell;
 use std::env;
 use std::io::Read;
@@ -148,6 +153,53 @@ fn get_types(unstable: bool) -> String {
   types
 }
 
+async fn compile_command(
+  flags: Flags,
+  source_file: String,
+  output: Option<PathBuf>,
+) -> Result<(), AnyError> {
+  if !flags.unstable {
+    exit_unstable("compile");
+  }
+
+  let debug = flags.log_level == Some(log::Level::Debug);
+
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let program_state = ProgramState::new(flags.clone())?;
+
+  let output = output.or_else(|| {
+    infer_name_from_url(module_specifier.as_url()).map(PathBuf::from)
+  }).ok_or_else(|| generic_error(
+    "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+  ))?;
+
+  let module_graph = create_module_graph_and_maybe_check(
+    module_specifier.clone(),
+    program_state.clone(),
+    debug,
+  )
+  .await?;
+
+  info!(
+    "{} {}",
+    colors::green("Bundle"),
+    module_specifier.to_string()
+  );
+  let bundle_str = bundle_module_graph(module_graph, flags, debug)?;
+
+  info!(
+    "{} {}",
+    colors::green("Compile"),
+    module_specifier.to_string()
+  );
+  create_standalone_binary(bundle_str.as_bytes().to_vec(), output.clone())
+    .await?;
+
+  info!("{} {}", colors::green("Emit"), output.display());
+
+  Ok(())
+}
+
 async fn info_command(
   flags: Flags,
   maybe_specifier: Option<String>,
@@ -205,6 +257,10 @@ async fn install_command(
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
+}
+
+async fn language_server_command() -> Result<(), AnyError> {
+  lsp::start()
 }
 
 async fn lint_command(
@@ -298,6 +354,73 @@ async fn eval_command(
   Ok(())
 }
 
+async fn create_module_graph_and_maybe_check(
+  module_specifier: ModuleSpecifier,
+  program_state: Arc<ProgramState>,
+  debug: bool,
+) -> Result<module_graph::Graph, AnyError> {
+  let handler = Rc::new(RefCell::new(FetchHandler::new(
+    &program_state,
+    // when bundling, dynamic imports are only access for their type safety,
+    // therefore we will allow the graph to access any module.
+    Permissions::allow_all(),
+  )?));
+  let mut builder = module_graph::GraphBuilder::new(
+    handler,
+    program_state.maybe_import_map.clone(),
+    program_state.lockfile.clone(),
+  );
+  builder.add(&module_specifier, false).await?;
+  let module_graph = builder.get_graph();
+
+  if !program_state.flags.no_check {
+    // TODO(@kitsonk) support bundling for workers
+    let lib = if program_state.flags.unstable {
+      module_graph::TypeLib::UnstableDenoWindow
+    } else {
+      module_graph::TypeLib::DenoWindow
+    };
+    let result_info =
+      module_graph.clone().check(module_graph::CheckOptions {
+        debug,
+        emit: false,
+        lib,
+        maybe_config_path: program_state.flags.config_path.clone(),
+        reload: program_state.flags.reload,
+      })?;
+
+    debug!("{}", result_info.stats);
+    if let Some(ignored_options) = result_info.maybe_ignored_options {
+      eprintln!("{}", ignored_options);
+    }
+    if !result_info.diagnostics.is_empty() {
+      return Err(generic_error(result_info.diagnostics.to_string()));
+    }
+  }
+
+  Ok(module_graph)
+}
+
+fn bundle_module_graph(
+  module_graph: module_graph::Graph,
+  flags: Flags,
+  debug: bool,
+) -> Result<String, AnyError> {
+  let (bundle, stats, maybe_ignored_options) =
+    module_graph.bundle(module_graph::BundleOptions {
+      debug,
+      maybe_config_path: flags.config_path,
+    })?;
+  match maybe_ignored_options {
+    Some(ignored_options) if flags.no_check => {
+      eprintln!("{}", ignored_options);
+    }
+    _ => {}
+  }
+  debug!("{}", stats);
+  Ok(bundle)
+}
+
 async fn bundle_command(
   flags: Flags,
   source_file: String,
@@ -307,10 +430,11 @@ async fn bundle_command(
 
   let module_resolver = || {
     let flags = flags.clone();
-    let source_file = source_file.clone();
+    let source_file1 = source_file.clone();
+    let source_file2 = source_file.clone();
     async move {
       let module_specifier =
-        ModuleSpecifier::resolve_url_or_path(&source_file)?;
+        ModuleSpecifier::resolve_url_or_path(&source_file1)?;
 
       debug!(">>>>> bundle START");
       let program_state = ProgramState::new(flags.clone())?;
@@ -321,44 +445,12 @@ async fn bundle_command(
         module_specifier.to_string()
       );
 
-      let handler = Rc::new(RefCell::new(FetchHandler::new(
-        &program_state,
-        // when bundling, dynamic imports are only access for their type safety,
-        // therefore we will allow the graph to access any module.
-        Permissions::allow_all(),
-      )?));
-      let mut builder = module_graph::GraphBuilder::new(
-        handler,
-        program_state.maybe_import_map.clone(),
-        program_state.lockfile.clone(),
-      );
-      builder.add(&module_specifier, false).await?;
-      let module_graph = builder.get_graph();
-
-      if !flags.no_check {
-        // TODO(@kitsonk) support bundling for workers
-        let lib = if flags.unstable {
-          module_graph::TypeLib::UnstableDenoWindow
-        } else {
-          module_graph::TypeLib::DenoWindow
-        };
-        let result_info =
-          module_graph.clone().check(module_graph::CheckOptions {
-            debug,
-            emit: false,
-            lib,
-            maybe_config_path: flags.config_path.clone(),
-            reload: flags.reload,
-          })?;
-
-        debug!("{}", result_info.stats);
-        if let Some(ignored_options) = result_info.maybe_ignored_options {
-          eprintln!("{}", ignored_options);
-        }
-        if !result_info.diagnostics.is_empty() {
-          return Err(generic_error(result_info.diagnostics.to_string()));
-        }
-      }
+      let module_graph = create_module_graph_and_maybe_check(
+        module_specifier,
+        program_state.clone(),
+        debug,
+      )
+      .await?;
 
       let mut paths_to_watch: Vec<PathBuf> = module_graph
         .get_modules()
@@ -373,6 +465,16 @@ async fn bundle_command(
 
       Ok((paths_to_watch, module_graph))
     }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_graph)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info: module_graph,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(source_file2),
+        error: e,
+      },
+    })
     .boxed_local()
   };
 
@@ -380,19 +482,7 @@ async fn bundle_command(
     let flags = flags.clone();
     let out_file = out_file.clone();
     async move {
-      let (output, stats, maybe_ignored_options) =
-        module_graph.bundle(module_graph::BundleOptions {
-          debug,
-          maybe_config_path: flags.config_path,
-        })?;
-
-      match maybe_ignored_options {
-        Some(ignored_options) if flags.no_check => {
-          eprintln!("{}", ignored_options);
-        }
-        _ => {}
-      }
-      debug!("{}", stats);
+      let output = bundle_module_graph(module_graph, flags, debug)?;
 
       debug!(">>>>> bundle END");
 
@@ -423,7 +513,10 @@ async fn bundle_command(
     )
     .await?;
   } else {
-    let (_, module_graph) = module_resolver().await?;
+    let module_graph = match module_resolver().await {
+      ModuleResolutionResult::Fail { error, .. } => return Err(error),
+      ModuleResolutionResult::Success { module_info, .. } => module_info,
+    };
     operation(module_graph).await?;
   }
 
@@ -610,10 +703,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   let module_resolver = || {
-    let script = script.clone();
+    let script1 = script.clone();
+    let script2 = script.clone();
     let flags = flags.clone();
     async move {
-      let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
+      let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
       let program_state = ProgramState::new(flags)?;
       let handler = Rc::new(RefCell::new(FetchHandler::new(
         &program_state,
@@ -641,6 +735,16 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
       Ok((paths_to_watch, main_module))
     }
+    .map(move |result| match result {
+      Ok((paths_to_watch, module_info)) => ModuleResolutionResult::Success {
+        paths_to_watch,
+        module_info,
+      },
+      Err(e) => ModuleResolutionResult::Fail {
+        source_path: PathBuf::from(script2),
+        error: e,
+      },
+    })
     .boxed_local()
   };
 
@@ -872,6 +976,10 @@ fn get_subcommand(
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
+    DenoSubcommand::Compile {
+      source_file,
+      output,
+    } => compile_command(flags, source_file, output).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,
@@ -889,6 +997,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
+    DenoSubcommand::LanguageServer => language_server_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,
@@ -926,13 +1035,14 @@ fn get_subcommand(
     DenoSubcommand::Upgrade {
       force,
       dry_run,
+      canary,
       version,
       output,
       ca_file,
-    } => {
-      tools::upgrade::upgrade_command(dry_run, force, version, output, ca_file)
-        .boxed_local()
-    }
+    } => tools::upgrade::upgrade_command(
+      dry_run, force, canary, version, output, ca_file,
+    )
+    .boxed_local(),
   }
 }
 
@@ -941,10 +1051,14 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  let flags = flags::flags_from_vec(args);
+  if let Err(err) = standalone::try_run_standalone_binary(args.clone()) {
+    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
+    std::process::exit(1);
+  }
 
-  if let Some(ref v8_flags) = flags.v8_flags {
-    init_v8_flags(v8_flags);
+  let flags = flags::flags_from_vec(args);
+  if !flags.v8_flags.is_empty() {
+    init_v8_flags(&*flags.v8_flags);
   }
   init_logger(flags.log_level);
 
