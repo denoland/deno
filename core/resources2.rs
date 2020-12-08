@@ -25,7 +25,10 @@ pub trait Resource: Any + 'static {
     type_name::<Self>().into()
   }
 
-  fn close(&mut self) {}
+  /// Resources may implement the `close()` trait method if they need to do
+  /// resource specific clean-ups, such as cancelling pending futures, after a
+  /// resource has been removed from the resource table.
+  fn close(self: Rc<Self>) {}
 }
 
 impl dyn Resource {
@@ -119,7 +122,7 @@ impl ResourceTable {
   /// cause the resource to be dropped. However, since resources are reference
   /// counted, therefore pending ops are not automatically cancelled.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.index.remove(&rid).map(|_| ())
+    self.index.remove(&rid).map(|resource| resource.close())
   }
 
   /// Returns an iterator that yields a `(id, name)` pair for every resource
