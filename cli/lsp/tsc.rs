@@ -56,8 +56,8 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
     "/lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
     // These come from op crates
     // TODO(@kitsonk) these is even hackier than the rest of this...
-    "/lib.deno.web.d.ts" => Some(include_str!(env!("DENO_WEB_LIB_PATH"))),
-    "/lib.deno.fetch.d.ts" => Some(include_str!(env!("DENO_FETCH_LIB_PATH"))),
+    "/lib.deno.web.d.ts" => Some(js::DENO_WEB_LIB),
+    "/lib.deno.fetch.d.ts" => Some(js::DENO_FETCH_LIB),
     // These are included in the snapshot for TypeScript, and could be retrieved
     // from there?
     "/lib.d.ts" => inc!("lib.d.ts"),
