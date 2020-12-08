@@ -630,13 +630,7 @@ impl CompletionEntry {
     let replacement_range: Option<lsp_types::Range> =
       self.replacement_span.map(|span| span.to_range(line_index));
 
-    // // Make sure we only replace a single line at most
-    // if (replacementRange && replacementRange.start.line !== replacementRange.end.line) {
-    //   replacementRange = lsp.Range.create(replacementRange.start, document.getLineEnd(replacementRange.start.line));
-    // }
-    // if (insertText && replacementRange && insertText[0] === '[') { // o.x -> o['x']
-    //     item.filterText = '.' + item.label;
-    // }
+    // TODO(lucacasonato): port other special cases from https://github.com/theia-ide/typescript-language-server/blob/fdf28313833cd6216d00eb4e04dc7f00f4c04f09/server/src/completion.ts#L49-L55
 
     if let Some(kind_modifiers) = self.kind_modifiers {
       if kind_modifiers.contains("\\optional\\") {
