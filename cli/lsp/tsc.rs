@@ -575,7 +575,7 @@ impl CompletionInfo {
     let items = self
       .entries
       .into_iter()
-      .map(|entry| entry.to_completion_item(line_index))
+      .map(|entry| entry.into_completion_item(line_index))
       .collect();
     lsp_types::CompletionResponse::Array(items)
   }
@@ -596,7 +596,7 @@ pub struct CompletionEntry {
 }
 
 impl CompletionEntry {
-  pub fn to_completion_item(
+  pub fn into_completion_item(
     self,
     line_index: &[u32],
   ) -> lsp_types::CompletionItem {
