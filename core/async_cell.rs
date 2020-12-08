@@ -126,6 +126,7 @@ impl<T> RcRef<AsyncRefCell<T>> {
 /// let foo_rc: RcRef<u32> = RcRef::map(stuff_rc.clone(), |v| &v.foo);
 /// let bar_rc: RcRef<String> = RcRef::map(stuff_rc, |v| &v.bar);
 /// ```
+#[derive(Debug)]
 pub struct RcRef<T> {
   rc: Rc<dyn Any>,
   value: *const T,
@@ -136,7 +137,7 @@ impl<T: 'static> RcRef<T> {
     Self::from(Rc::new(value))
   }
 
-  pub fn map<S: 'static, R: i::RcLike<S>, F: FnOnce(&S) -> &T>(
+  pub fn map<S: 'static, R: RcLike<S>, F: FnOnce(&S) -> &T>(
     source: R,
     map_fn: F,
   ) -> RcRef<T> {
@@ -152,6 +153,21 @@ impl<T: Default + 'static> Default for RcRef<T> {
   }
 }
 
+impl<T> Clone for RcRef<T> {
+  fn clone(&self) -> Self {
+    Self {
+      rc: self.rc.clone(),
+      value: self.value,
+    }
+  }
+}
+
+impl<T: 'static> From<&RcRef<T>> for RcRef<T> {
+  fn from(rc_ref: &RcRef<T>) -> Self {
+    rc_ref.clone()
+  }
+}
+
 impl<T: 'static> From<Rc<T>> for RcRef<T> {
   fn from(rc: Rc<T>) -> Self {
     Self {
@@ -161,12 +177,9 @@ impl<T: 'static> From<Rc<T>> for RcRef<T> {
   }
 }
 
-impl<T> Clone for RcRef<T> {
-  fn clone(&self) -> Self {
-    Self {
-      rc: self.rc.clone(),
-      value: self.value,
-    }
+impl<T: 'static> From<&Rc<T>> for RcRef<T> {
+  fn from(rc: &Rc<T>) -> Self {
+    rc.clone().into()
   }
 }
 
@@ -189,8 +202,18 @@ impl<T> AsRef<T> for RcRef<T> {
   }
 }
 
+/// The `RcLike` trait provides an abstraction over `std::rc::Rc` and `RcRef`,
+/// so that applicable methods can operate on either type.
+pub trait RcLike<T>: AsRef<T> + Into<RcRef<T>> {}
+
+impl<T: 'static> RcLike<T> for Rc<T> {}
+impl<T: 'static> RcLike<T> for RcRef<T> {}
+impl<T: 'static> RcLike<T> for &Rc<T> {}
+impl<T: 'static> RcLike<T> for &RcRef<T> {}
+
 mod internal {
   use super::AsyncRefCell;
+  use super::RcLike;
   use super::RcRef;
   use futures::future::Future;
   use futures::ready;
@@ -204,7 +227,6 @@ mod internal {
   use std::ops::Deref;
   use std::ops::DerefMut;
   use std::pin::Pin;
-  use std::rc::Rc;
 
   impl<T> AsyncRefCell<T> {
     /// Borrow the cell's contents synchronouslym without creating an
@@ -215,21 +237,22 @@ mod internal {
       M: BorrowModeTrait,
       R: RcLike<AsyncRefCell<T>>,
     >(
-      cell: &R,
+      cell: R,
     ) -> Option<AsyncBorrowImpl<T, M>> {
+      let cell_ref = cell.as_ref();
       // Don't allow synchronous borrows to cut in line; if there are any
       // enqueued waiters, return `None`, even if the current borrow is a shared
       // one and the requested borrow is too.
-      let waiters = unsafe { &mut *cell.waiters.as_ptr() };
+      let waiters = unsafe { &mut *cell_ref.waiters.as_ptr() };
       if waiters.is_empty() {
         // There are no enqueued waiters, but it is still possible that the cell
         // is currently borrowed. If there are no current borrows, or both the
         // existing and requested ones are shared, `try_add()` returns the
         // adjusted borrow count.
         let new_borrow_count =
-          cell.borrow_count.get().try_add(M::borrow_mode())?;
-        cell.borrow_count.set(new_borrow_count);
-        Some(AsyncBorrowImpl::<T, M>::new(cell.clone().into()))
+          cell_ref.borrow_count.get().try_add(M::borrow_mode())?;
+        cell_ref.borrow_count.set(new_borrow_count);
+        Some(AsyncBorrowImpl::<T, M>::new(cell.into()))
       } else {
         None
       }
@@ -359,10 +382,10 @@ mod internal {
   }
 
   impl<T, M: BorrowModeTrait> AsyncBorrowFutureImpl<T, M> {
-    pub fn new<R: RcLike<AsyncRefCell<T>>>(cell: &R) -> Self {
+    pub fn new<R: RcLike<AsyncRefCell<T>>>(cell: R) -> Self {
       Self {
-        cell: Some(cell.clone().into()),
-        id: cell.create_waiter::<M>(),
+        id: cell.as_ref().create_waiter::<M>(),
+        cell: Some(cell.into()),
         _phantom: PhantomData,
       }
     }
@@ -561,13 +584,6 @@ mod internal {
       self.waker.take()
     }
   }
-
-  /// The `RcLike` trait provides an abstraction over `std::rc::Rc` and `RcRef`,
-  /// so that applicable methods can operate on either type.
-  pub trait RcLike<T>: Clone + Deref<Target = T> + Into<RcRef<T>> {}
-
-  impl<T: 'static> RcLike<T> for Rc<T> {}
-  impl<T: 'static> RcLike<T> for RcRef<T> {}
 }
 
 #[cfg(test)]
