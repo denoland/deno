@@ -270,7 +270,7 @@ jobs:
 
       - name: Publish Dry Run
         if: matrix.kind == 'publish-dry-run'
-        run: cd cli && cargo publish --dry-run
+        run: cd cli && cargo package
 
       - name: Publish
         if: |
