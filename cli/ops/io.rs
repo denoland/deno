@@ -12,11 +12,11 @@ use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::ready;
 use deno_core::BufVec;
-use deno_core::Resource;
 use deno_core::CancelHandle;
-use std::borrow::Cow;
 use deno_core::JsRuntime;
 use deno_core::OpState;
+use deno_core::Resource;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -271,16 +271,16 @@ impl NewStreamResource {
       // ServerTlsStream(_) => todo!(),
       // ClientTlsStream(_) => todo!(),
       ChildStdin { .. } => todo!(),
-      ChildStdout{ stdin, cancel } => {
+      ChildStdout { stdin, cancel } => {
         let mut stdin = RcRef::map(&self, |r| &r.stdin)
           .try_borrow_mut()
-          .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+          .ok_or_else(|| {
+            custom_error("Busy", "Another accept task is ongoing")
+          })?;
         let cancel = RcRef::map(resource, |r| &r.cancel);
         Ok(0)
-      },
-      ChildStderr{ .. } => {
-        Ok(0)
-      },
+      }
+      ChildStderr { .. } => Ok(0),
       // _ => Err(bad_resource_id()).into()
     }
   }
@@ -336,15 +336,18 @@ pub fn op_new_read(
     })
   } else {
     let mut zero_copy = zero_copy[0].clone();
-    MinimalOp::Async(async move {
-      let resource = state
-        .borrow()
-        .resource_table_2
-        .get::<NewStreamResource>(rid as u32)
-        .ok_or_else(bad_resource_id)?;
-      let nread = resource.read(&mut zero_copy).await?;
-      Ok(nread as i32)
-    }.boxed_local())
+    MinimalOp::Async(
+      async move {
+        let resource = state
+          .borrow()
+          .resource_table_2
+          .get::<NewStreamResource>(rid as u32)
+          .ok_or_else(bad_resource_id)?;
+        let nread = resource.read(&mut zero_copy).await?;
+        Ok(nread as i32)
+      }
+      .boxed_local(),
+    )
   }
 }
 

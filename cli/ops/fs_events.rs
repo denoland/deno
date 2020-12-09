@@ -45,6 +45,10 @@ impl Resource for FsEventsResource {
   fn name(&self) -> Cow<str> {
     "fsEvents".into()
   }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
 }
 
 /// Represents a file system event.

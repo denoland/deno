@@ -188,6 +188,12 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
     })
     .or_else(|| e.downcast_ref::<io::Error>().map(get_io_error_class))
     .or_else(|| {
+      e.downcast_ref::<deno_core::Canceled>().map(|e| {
+        let io_err: io::Error = e.to_owned().into();
+        get_io_error_class(&io_err)
+      })
+    })
+    .or_else(|| {
       e.downcast_ref::<ModuleResolutionError>()
         .map(get_module_resolution_error_class)
     })
