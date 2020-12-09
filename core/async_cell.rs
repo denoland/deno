@@ -109,7 +109,7 @@ impl<T> RcRef<AsyncRefCell<T>> {
 ///
 /// ```rust
 /// # use std::rc::Rc;
-/// # use deno_core::async_cell::RcRef;
+/// # use deno_core::RcRef;
 ///
 /// struct Stuff {
 ///   foo: u32,

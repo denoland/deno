@@ -128,8 +128,8 @@ impl ResourceTable {
   /// # Example
   ///
   /// ```
-  /// # use deno_core::resources2::ResourceTable;
-  /// # let resource_table = ResourceTable::default();
+  /// # use deno_core::ResourceTable2;
+  /// # let resource_table = ResourceTable2::default();
   /// let resource_names = resource_table.names().collect::<Vec<_>>();
   /// ```
   pub fn names(&self) -> impl Iterator<Item = (ResourceId, Cow<str>)> {
