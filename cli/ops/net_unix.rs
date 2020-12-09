@@ -5,13 +5,20 @@ use crate::ops::io::StreamResourceHolder;
 use crate::ops::net::AcceptArgs;
 use crate::ops::net::ReceiveArgs;
 use deno_core::error::bad_resource;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::AsyncRefCell;
 use deno_core::BufVec;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
 use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::remove_file;
 use std::os::unix;
@@ -27,8 +34,19 @@ struct UnixListenerResource {
 }
 
 pub struct UnixDatagramResource {
-  pub socket: UnixDatagram,
+  pub socket: AsyncRefCell<UnixDatagram>,
+  pub cancel: CancelHandle,
   pub local_addr: unix::net::SocketAddr,
+}
+
+impl Resource for UnixDatagramResource {
+  fn name(&self) -> Cow<str> {
+    "unixDatagram".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
 }
 
 #[derive(Deserialize)]
@@ -98,12 +116,19 @@ pub(crate) async fn receive_unix_packet(
   let rid = args.rid as u32;
   let mut buf = bufs.into_iter().next().unwrap();
 
-  let mut state = state.borrow_mut();
   let resource = state
-    .resource_table
-    .get_mut::<UnixDatagramResource>(rid)
+    .borrow()
+    .resource_table_2
+    .get::<UnixDatagramResource>(rid)
     .ok_or_else(|| bad_resource("Socket has been closed"))?;
-  let (size, remote_addr) = resource.socket.recv_from(&mut buf).await?;
+  let mut socket = RcRef::map(&resource, |r| &r.socket)
+    .try_borrow_mut()
+    .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (size, remote_addr) = (&mut *socket)
+    .recv_from(&mut buf)
+    .try_or_cancel(cancel)
+    .await?;
   Ok(json!({
     "size": size,
     "remoteAddr": {
@@ -140,12 +165,11 @@ pub fn listen_unix_packet(
   let socket = UnixDatagram::bind(&addr)?;
   let local_addr = socket.local_addr()?;
   let datagram_resource = UnixDatagramResource {
-    socket,
+    socket: AsyncRefCell::new(socket),
+    cancel: Default::default(),
     local_addr: local_addr.clone(),
   };
-  let rid = state
-    .resource_table
-    .add("unixDatagram", Box::new(datagram_resource));
+  let rid = state.resource_table_2.add(datagram_resource);
 
   Ok((rid, local_addr))
 }

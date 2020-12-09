@@ -227,16 +227,21 @@ async fn op_datagram_send(
         let s = state.borrow();
         s.borrow::<Permissions>().check_write(&address_path)?;
       }
-      let mut state = state.borrow_mut();
       let resource = state
-        .resource_table
-        .get_mut::<net_unix::UnixDatagramResource>(rid as u32)
+        .borrow()
+        .resource_table_2
+        .get::<net_unix::UnixDatagramResource>(rid as u32)
         .ok_or_else(|| {
           custom_error("NotConnected", "Socket has been closed")
         })?;
-      let socket = &mut resource.socket;
+      let local_addr = &resource.local_addr.as_pathname().unwrap();
+      let mut socket = RcRef::map(&resource, |r| &r.socket)
+        .try_borrow_mut()
+        .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
+      let cancel = RcRef::map(&resource, |r| &r.cancel);
       let byte_length = socket
-        .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
+        .send_to(&zero_copy, local_addr)
+        .try_or_cancel(cancel)
         .await?;
 
       Ok(json!(byte_length))
