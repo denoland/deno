@@ -335,3 +335,57 @@ impl ServerState {
     self.status = new_status;
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_core::serde_json::json;
+  use deno_core::serde_json::Value;
+  use lsp_server::Connection;
+  use tempfile::TempDir;
+
+  #[test]
+  fn test_update_import_map() {
+    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let import_map_path = temp_dir.path().join("import_map.json");
+    let import_map_str = &import_map_path.to_string_lossy();
+    fs::write(
+      import_map_path.clone(),
+      r#"{
+      "imports": {
+        "denoland/": "https://deno.land/x/"
+      }
+    }"#,
+    )
+    .expect("could not write file");
+    let mut config = Config::default();
+    config
+      .update(json!({
+        "enable": false,
+        "config": Value::Null,
+        "lint": false,
+        "importMap": import_map_str,
+        "unstable": true,
+      }))
+      .expect("could not update config");
+    let (connection, _) = Connection::memory();
+    let mut state = ServerState::new(connection.sender, config);
+    let result = update_import_map(&mut state);
+    assert!(result.is_ok());
+    assert!(state.maybe_import_map.is_some());
+    let expected =
+      Url::from_file_path(import_map_path).expect("could not parse url");
+    assert_eq!(state.maybe_import_map_uri, Some(expected));
+    let import_map = state.maybe_import_map.unwrap();
+    let import_map = import_map.read().unwrap();
+    assert_eq!(
+      import_map
+        .resolve("denoland/mod.ts", "https://example.com/index.js")
+        .expect("bad response"),
+      Some(
+        ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts")
+          .expect("could not create URL")
+      )
+    );
+  }
+}
