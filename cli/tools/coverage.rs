@@ -251,7 +251,7 @@ fn collect_coverages(
   coverages = coverages
     .into_iter()
     .filter(|e| !e.script_coverage.url.ends_with("__anonymous__"))
-    .filter(|e| !e.script_coverage.url.starts_with("$deno$"))
+    .filter(|e| !e.script_coverage.url.ends_with("$deno$test.ts"))
     .filter(|e| {
       !patterned_ignore
         .iter()
