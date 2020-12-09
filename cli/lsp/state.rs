@@ -43,21 +43,19 @@ pub fn update_import_map(state: &mut ServerState) -> Result<(), AnyError> {
   if let Some(import_map_str) = &state.config.settings.import_map {
     let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str) {
       Ok(url)
+    } else if let Some(root_uri) = &state.config.root_uri {
+      let root_path = root_uri
+        .to_file_path()
+        .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+      let import_map_path = root_path.join(import_map_str);
+      Url::from_file_path(import_map_path).map_err(|_| {
+        anyhow!("Bad file path for import map: {:?}", import_map_str)
+      })
     } else {
-      if let Some(root_uri) = &state.config.root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
-        let import_map_path = root_path.join(import_map_str);
-        Url::from_file_path(import_map_path).map_err(|_| {
-          anyhow!("Bad file path for import map: {:?}", import_map_str)
-        })
-      } else {
-        Err(anyhow!(
-          "The path to the import map (\"{}\") is not resolvable.",
-          import_map_str
-        ))
-      }
+      Err(anyhow!(
+        "The path to the import map (\"{}\") is not resolvable.",
+        import_map_str
+      ))
     }?;
     let import_map_path = import_map_url
       .to_file_path()
