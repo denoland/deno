@@ -109,7 +109,7 @@ impl<T> RcRef<AsyncRefCell<T>> {
 ///
 /// ```rust
 /// # use std::rc::Rc;
-/// # use deno_core::async_cell::RcRef;
+/// # use deno_core::RcRef;
 ///
 /// struct Stuff {
 ///   foo: u32,
@@ -144,6 +144,11 @@ impl<T: 'static> RcRef<T> {
     let RcRef::<S> { rc, value } = source.into();
     let value = map_fn(unsafe { &*value });
     RcRef { rc, value }
+  }
+
+  pub(crate) fn split(rc_ref: &Self) -> (&T, &Rc<dyn Any>) {
+    let &Self { ref rc, value } = rc_ref;
+    (unsafe { &*value }, rc)
   }
 }
 
@@ -232,11 +237,8 @@ mod internal {
     /// Borrow the cell's contents synchronouslym without creating an
     /// intermediate future. If the cell has already been borrowed and either
     /// the existing or the requested borrow is exclusive, this function returns
-    /// `None`.   
-    pub(super) fn borrow_sync<
-      M: BorrowModeTrait,
-      R: RcLike<AsyncRefCell<T>>,
-    >(
+    /// `None`.
+    pub fn borrow_sync<M: BorrowModeTrait, R: RcLike<AsyncRefCell<T>>>(
       cell: R,
     ) -> Option<AsyncBorrowImpl<T, M>> {
       let cell_ref = cell.as_ref();

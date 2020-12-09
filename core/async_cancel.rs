@@ -10,6 +10,8 @@ use pin_project::pin_project;
 use std::any::type_name;
 use std::error::Error;
 use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -30,8 +32,8 @@ impl CancelHandle {
     Rc::new(Self::new())
   }
 
-  // Cancel all cancellable futures that are linked to this cancel handle.
-  // This method does not require a mutable reference to the `CancelHandle`.
+  /// Cancel all cancelable futures that are bound to this handle. Note that
+  /// this method does not require a mutable reference to the `CancelHandle`.
   pub fn cancel(&self) {
     self.node.cancel();
   }
@@ -67,8 +69,8 @@ impl<F: Future> Future for Cancelable<F> {
       }
     };
     // Fuse: if this Future is completed or canceled, make sure the inner
-    // `future` and `registration` fields are dropped in order to unlink it
-    // from its cancellation handle.
+    // `future` and `registration` fields are dropped in order to unlink it from
+    // its cancel handle.
     if matches!(poll_result, Poll::Ready(_)) {
       self.set(Cancelable::Terminated)
     }
@@ -151,8 +153,8 @@ where
 #[derive(Copy, Clone, Default, Debug, Eq, Hash, PartialEq)]
 pub struct Canceled;
 
-impl fmt::Display for Canceled {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Canceled {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     write!(f, "operation canceled")
   }
 }
@@ -176,18 +178,22 @@ mod internal {
   use futures::task::Poll;
   use futures::task::Waker;
   use pin_project::pin_project;
+  use std::any::Any;
   use std::cell::UnsafeCell;
   use std::marker::PhantomPinned;
   use std::mem::replace;
-  use std::mem::take;
   use std::pin::Pin;
   use std::ptr::NonNull;
+  use std::rc::Rc;
+  use std::rc::Weak;
 
   impl<F: Future> Cancelable<F> {
     pub(super) fn new(future: F, cancel_handle: RcRef<CancelHandle>) -> Self {
+      let head_node = RcRef::map(cancel_handle, |r| &r.node);
+      let registration = Registration::WillRegister { head_node };
       Self::Pending {
         future,
-        registration: Registration::new(cancel_handle),
+        registration,
       }
     }
 
@@ -202,9 +208,7 @@ mod internal {
       // some activity that cannot actually be canceled (e.g. running a compute
       // job in a thread pool), so we should try to never start it at all.
       match &*registration {
-        Registration::WillRegister { cancel_handle }
-          if cancel_handle.is_canceled() =>
-        {
+        Registration::WillRegister { head_node } if head_node.is_canceled() => {
           return Poll::Ready(Err(Canceled));
         }
         _ => {}
@@ -215,28 +219,25 @@ mod internal {
         Poll::Pending => {}
       }
 
-      let cancel_handle = match &*registration {
+      // Register this future with its `CancelHandle`, saving the `Waker` that
+      // can be used to make the runtime poll this future when it is canceled.
+      // When already registered, update the stored `Waker` if necessary.
+      let head_node = match &*registration {
         Registration::WillRegister { .. } => {
           match registration.as_mut().project_replace(Default::default()) {
-            RegistrationProjectionOwned::WillRegister { cancel_handle } => {
-              Some(cancel_handle)
+            RegistrationProjectionOwned::WillRegister { head_node } => {
+              Some(head_node)
             }
             _ => unreachable!(),
           }
         }
         _ => None,
       };
-
       let node = match registration.project() {
         RegistrationProjection::Registered { node } => node,
         _ => unreachable!(),
       };
-
-      let waker = cx.waker();
-      match cancel_handle {
-        Some(cancel_handle) => node.link(&cancel_handle.node, waker)?,
-        None => node.update(waker)?,
-      }
+      node.register(cx.waker(), head_node)?;
 
       Poll::Pending
     }
@@ -255,7 +256,7 @@ mod internal {
   #[derive(Debug)]
   pub enum Registration {
     WillRegister {
-      cancel_handle: RcRef<CancelHandle>,
+      head_node: RcRef<Node>,
     },
     Registered {
       #[pin]
@@ -271,22 +272,52 @@ mod internal {
     }
   }
 
-  impl Registration {
-    fn new(cancel_handle: RcRef<CancelHandle>) -> Self {
-      Self::WillRegister { cancel_handle }
-    }
-  }
-
   #[derive(Debug)]
   pub struct Node {
     inner: UnsafeCell<NodeInner>,
     _pin: PhantomPinned,
   }
 
+  impl Node {
+    /// If necessary, register a `Cancelable` node with a `CancelHandle`, and
+    /// save or update the `Waker` that can wake with this cancelable future.
+    pub fn register(
+      &self,
+      waker: &Waker,
+      head_rc: Option<RcRef<Node>>,
+    ) -> Result<(), Canceled> {
+      match head_rc.as_ref().map(RcRef::split) {
+        Some((head, rc)) => {
+          // Register this `Cancelable` node with a `CancelHandle` head node.
+          assert_ne!(self, head);
+          let self_inner = unsafe { &mut *self.inner.get() };
+          let head_inner = unsafe { &mut *head.inner.get() };
+          self_inner.link(waker, head_inner, rc)
+        }
+        None => {
+          // This `Cancelable` has already been linked to a `CancelHandle` head
+          // node; just update our stored `Waker` if necessary.
+          let inner = unsafe { &mut *self.inner.get() };
+          inner.update_waker(waker)
+        }
+      }
+    }
+
+    pub fn cancel(&self) {
+      let inner = unsafe { &mut *self.inner.get() };
+      inner.cancel();
+    }
+
+    pub fn is_canceled(&self) -> bool {
+      let inner = unsafe { &mut *self.inner.get() };
+      inner.is_canceled()
+    }
+  }
+
   impl Default for Node {
     fn default() -> Self {
       Self {
-        inner: Default::default(),
+        inner: UnsafeCell::new(NodeInner::Unlinked),
         _pin: PhantomPinned,
       }
     }
@@ -294,7 +325,14 @@ mod internal {
 
   impl Drop for Node {
     fn drop(&mut self) {
-      let _ = self.unlink();
+      let inner = unsafe { &mut *self.inner.get() };
+      inner.unlink();
+    }
+  }
+
+  impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+      self as *const _ == other as *const _
     }
   }
 
@@ -302,77 +340,57 @@ mod internal {
   enum NodeInner {
     Unlinked,
     Linked {
+      kind: NodeKind,
       prev: NonNull<NodeInner>,
       next: NonNull<NodeInner>,
-      waker: Option<Waker>,
     },
     Canceled,
   }
 
-  impl Default for NodeInner {
-    fn default() -> Self {
-      Self::Unlinked
-    }
-  }
-
-  impl Node {
-    fn inner_pin_mut(self: Pin<&mut Self>) -> Pin<&mut NodeInner> {
-      unsafe { self.map_unchecked_mut(|self_mut| &mut *self_mut.inner.get()) }
-    }
-
-    fn inner_non_null(&self) -> NonNull<NodeInner> {
-      unsafe { NonNull::new_unchecked(self.inner.get()) }
+  impl NodeInner {
+    fn as_non_null(&mut self) -> NonNull<Self> {
+      NonNull::from(self)
     }
 
     fn link(
-      self: Pin<&mut Self>,
-      head: &Node,
+      &mut self,
       waker: &Waker,
+      head: &mut Self,
+      rc_pin: &Rc<dyn Any>,
     ) -> Result<(), Canceled> {
-      let mut self_nn = self.inner_non_null();
-      let mut head_nn = head.inner_non_null();
+      // The future should not have been linked to a cancel handle before.
+      assert!(matches!(self, NodeInner::Unlinked));
 
-      // `self` and `head` must be different nodes, otherwise we'd violate
-      // borrowing rules below.
-      assert_ne!(&*self, head);
-      let self_inner_mut = unsafe { self_nn.as_mut() };
-      let head_inner_mut = unsafe { head_nn.as_mut() };
-
-      // The linked node must be unlinked prior to calling `link()`.
-      assert!(matches!(self_inner_mut, NodeInner::Unlinked));
-
-      let waker = waker.clone();
-
-      match head_inner_mut {
+      match head {
         NodeInner::Unlinked => {
-          *head_inner_mut = NodeInner::Linked {
-            prev: self.inner_non_null(),
-            next: self.inner_non_null(),
-            waker: None,
+          *head = NodeInner::Linked {
+            kind: NodeKind::head(rc_pin),
+            prev: self.as_non_null(),
+            next: self.as_non_null(),
           };
-          *self_inner_mut = NodeInner::Linked {
-            prev: head.inner_non_null(),
-            next: head.inner_non_null(),
-            waker: Some(waker),
+          *self = NodeInner::Linked {
+            kind: NodeKind::item(waker),
+            prev: head.as_non_null(),
+            next: head.as_non_null(),
           };
           Ok(())
         }
         NodeInner::Linked {
-          prev: next_prev_nn_mut,
-          waker: None,
+          kind: NodeKind::Head { .. },
+          prev: next_prev_nn,
           ..
         } => {
-          let prev_inner_mut = unsafe { &mut *next_prev_nn_mut.as_ptr() };
-          match prev_inner_mut {
+          let prev = unsafe { &mut *next_prev_nn.as_ptr() };
+          match prev {
             NodeInner::Linked {
-              next: prev_next_nn_mut,
-              waker: Some(_),
+              kind: NodeKind::Item { .. },
+              next: prev_next_nn,
               ..
             } => {
-              *self_inner_mut = NodeInner::Linked {
-                prev: replace(next_prev_nn_mut, self.inner_non_null()),
-                next: replace(prev_next_nn_mut, self.inner_non_null()),
-                waker: Some(waker),
+              *self = NodeInner::Linked {
+                kind: NodeKind::item(waker),
+                prev: replace(next_prev_nn, self.as_non_null()),
+                next: replace(prev_next_nn, self.as_non_null()),
               };
               Ok(())
             }
@@ -384,11 +402,12 @@ mod internal {
       }
     }
 
-    fn update(self: Pin<&mut Self>, new_waker: &Waker) -> Result<(), Canceled> {
-      match &mut *self.inner_pin_mut() {
+    fn update_waker(&mut self, new_waker: &Waker) -> Result<(), Canceled> {
+      match self {
         NodeInner::Unlinked => Ok(()),
         NodeInner::Linked {
-          waker: Some(waker), ..
+          kind: NodeKind::Item { waker },
+          ..
         } => {
           if !waker.will_wake(new_waker) {
             *waker = new_waker.clone();
@@ -400,31 +419,36 @@ mod internal {
       }
     }
 
+    /// If this node is linked to other nodes, remove it from the chain. This
+    /// method is called (only) by the drop handler for `Node`. It is suitable
+    /// for both 'head' and 'item' nodes.
     fn unlink(&mut self) {
       if let NodeInner::Linked {
         prev: mut prev_nn,
         next: mut next_nn,
         ..
-      } = take(&mut self.inner).into_inner()
+      } = replace(self, NodeInner::Unlinked)
       {
         if prev_nn == next_nn {
-          take(unsafe { prev_nn.as_mut() });
+          // There were only two nodes in this chain; after unlinking ourselves
+          // the other node is no longer linked.
+          let other = unsafe { prev_nn.as_mut() };
+          *other = NodeInner::Unlinked;
         } else {
+          // The chain had more than two nodes.
           match unsafe { prev_nn.as_mut() } {
             NodeInner::Linked {
-              next: prev_next_nn_mut,
-              ..
+              next: prev_next_nn, ..
             } => {
-              *prev_next_nn_mut = next_nn;
+              *prev_next_nn = next_nn;
             }
             _ => unreachable!(),
           }
           match unsafe { next_nn.as_mut() } {
             NodeInner::Linked {
-              prev: next_prev_nn_mut,
-              ..
+              prev: next_prev_nn, ..
             } => {
-              *next_prev_nn_mut = prev_nn;
+              *next_prev_nn = prev_nn;
             }
             _ => unreachable!(),
           }
@@ -433,29 +457,32 @@ mod internal {
     }
 
     /// Mark this node and all linked nodes for cancellation. Note that `self`
-    /// must be a head node (associated with a CancelHandle).
-    pub(super) fn cancel(&self) {
-      let mut head_nn = self.inner_non_null();
-      let mut cur_nn =
-        match replace(unsafe { head_nn.as_mut() }, NodeInner::Canceled) {
-          NodeInner::Unlinked | NodeInner::Canceled => return,
+    /// must refer to a head (`CancelHandle`) node.
+    fn cancel(&mut self) {
+      let mut head_nn = NonNull::from(self);
+      let mut item_nn;
+
+      // Mark the head node as canceled.
+      match replace(unsafe { head_nn.as_mut() }, NodeInner::Canceled) {
+        NodeInner::Linked {
+          kind: NodeKind::Head { .. },
+          next: next_nn,
+          ..
+        } => item_nn = next_nn,
+        NodeInner::Unlinked | NodeInner::Canceled => return,
+        _ => unreachable!(),
+      };
+
+      // Cancel all item nodes in the chain, waking each stored `Waker`.
+      while item_nn != head_nn {
+        match replace(unsafe { item_nn.as_mut() }, NodeInner::Canceled) {
           NodeInner::Linked {
+            kind: NodeKind::Item { waker },
             next: next_nn,
-            waker: None,
-            ..
-          } => next_nn,
-          _ => unreachable!(),
-        };
-      while cur_nn != head_nn {
-        cur_nn = match replace(unsafe { cur_nn.as_mut() }, NodeInner::Canceled)
-        {
-          NodeInner::Linked {
-            next: next_nn,
-            waker: Some(waker),
             ..
           } => {
             waker.wake();
-            next_nn
+            item_nn = next_nn;
           }
           _ => unreachable!(),
         }
@@ -463,22 +490,50 @@ mod internal {
     }
 
     /// Returns true if this node has been marked for cancellation. Note that
-    /// `self` must be a head node (associated with a CancelHandle).
-    pub(super) fn is_canceled(&self) -> bool {
-      let head_nn = self.inner_non_null();
-      match unsafe { head_nn.as_ref() } {
-        NodeInner::Unlinked | NodeInner::Linked { waker: None, .. } => false,
+    /// `self` must refer to a head (`CancelHandle`) node.
+    fn is_canceled(&self) -> bool {
+      match self {
+        NodeInner::Unlinked => false,
+        NodeInner::Linked {
+          kind: NodeKind::Head { .. },
+          ..
+        } => false,
         NodeInner::Canceled => true,
         _ => unreachable!(),
       }
     }
   }
 
-  impl Eq for Node {}
+  #[derive(Debug)]
+  enum NodeKind {
+    /// In a chain of linked nodes, the "head" node is owned by the
+    /// `CancelHandle`. A chain usually contains at most one head node; however
+    /// when a `CancelHandle` is dropped before the futures associated with it
+    /// are dropped, a chain may temporarily contain no head node at all.
+    Head {
+      /// The `weak_pin` field adds adds a weak reference to the `Rc` guarding
+      /// the heap allocation that contains the `CancelHandle`. Without this
+      /// extra weak reference, `Rc::get_mut()` might succeed and allow the
+      /// `CancelHandle` to be moved when it isn't safe to do so.
+      weak_pin: Weak<dyn Any>,
+    },
+    /// All item nodes in a chain are associated with a `Cancelable` head node.
+    Item {
+      /// If this future indeed does get canceled, the waker is needed to make
+      /// sure that the canceled future gets polled as soon as possible.
+      waker: Waker,
+    },
+  }
 
-  impl PartialEq for Node {
-    fn eq(&self, other: &Self) -> bool {
-      self as *const _ == other as *const _
+  impl NodeKind {
+    fn head(rc_pin: &Rc<dyn Any>) -> Self {
+      let weak_pin = Rc::downgrade(rc_pin);
+      Self::Head { weak_pin }
+    }
+
+    fn item(waker: &Waker) -> Self {
+      let waker = waker.clone();
+      Self::Item { waker }
     }
   }
 }
@@ -487,6 +542,7 @@ mod internal {
 mod tests {
   use super::*;
   use crate::error::AnyError;
+  use futures::future::pending;
   use futures::future::poll_fn;
   use futures::future::ready;
   use futures::future::FutureExt;
@@ -495,8 +551,9 @@ mod tests {
   use futures::task::noop_waker_ref;
   use futures::task::Context;
   use futures::task::Poll;
+  use std::convert::Infallible as Never;
   use std::io;
-  use tokio::fs::metadata;
+  use tokio::net::TcpStream;
   use tokio::spawn;
 
   fn box_fused<'a, F: FusedFuture + 'a>(
@@ -606,12 +663,12 @@ mod tests {
     }
 
     {
-      // Cancel a file system future right after polling it.
+      // Cancel a network I/O future right after polling it.
       let cancel_handle = Rc::new(CancelHandle::new());
-      let fake_path = "/🚫/...🤯.../🧻";
       let result = loop {
         select! {
-          r = metadata(fake_path).try_or_cancel(&cancel_handle) => break r,
+          r = TcpStream::connect("1.2.3.4:12345")
+            .try_or_cancel(&cancel_handle) => break r,
           default => cancel_handle.cancel(),
         };
       };
@@ -619,5 +676,33 @@ mod tests {
       assert_eq!(error.kind(), io::ErrorKind::Interrupted);
       assert_eq!(error.to_string().as_str(), "operation canceled");
     }
+  }
+
+  #[test]
+  fn cancel_handle_pinning() {
+    let mut cancel_handle = CancelHandle::new_rc();
+
+    // There is only one reference to `cancel_handle`, so `Rc::get_mut()` should
+    // succeed.
+    assert!(Rc::get_mut(&mut cancel_handle).is_some());
+
+    let mut future = pending::<Never>().or_cancel(&cancel_handle);
+    let future = unsafe { Pin::new_unchecked(&mut future) };
+
+    // There are two `Rc<CancelHandle>` references now, so this fails.
+    assert!(Rc::get_mut(&mut cancel_handle).is_none());
+
+    let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(future.poll(&mut cx).is_pending());
+
+    // Polling `future` has established a link between the future and
+    // `cancel_handle`, so both values should be pinned at this point.
+    assert!(Rc::get_mut(&mut cancel_handle).is_none());
+
+    cancel_handle.cancel();
+
+    // Canceling or dropping the associated future(s) unlinks them from the
+    // cancel handle, therefore `cancel_handle` can now safely be moved again.
+    assert!(Rc::get_mut(&mut cancel_handle).is_some());
   }
 }

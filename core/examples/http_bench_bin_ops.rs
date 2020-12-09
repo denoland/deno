@@ -83,9 +83,9 @@ impl TryFrom<std::net::TcpListener> for TcpListener {
 struct TcpStream {
   rd: AsyncRefCell<tokio::net::tcp::OwnedReadHalf>,
   wr: AsyncRefCell<tokio::net::tcp::OwnedWriteHalf>,
-  // When a `TcpStream` resource is closed, all pending 'read' ops are canceled,
-  // while 'write' ops are allowed to complete. Therefore only 'read' futures
-  // are attached to this cancel handle.
+  // When a `TcpStream` resource is closed, all pending 'read' ops are
+  // canceled, while 'write' ops are allowed to complete. Therefore only
+  // 'read' futures are attached to this cancel handle.
   cancel: CancelHandle,
 }
 
