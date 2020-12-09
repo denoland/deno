@@ -7,7 +7,6 @@ use crate::ops::net::ReceiveArgs;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
@@ -24,13 +23,23 @@ use std::fs::remove_file;
 use std::os::unix;
 use std::path::Path;
 use std::rc::Rc;
-use std::task::Poll;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
 
 struct UnixListenerResource {
-  listener: UnixListener,
+  listener: AsyncRefCell<UnixListener>,
+  cancel: CancelHandle,
+}
+
+impl Resource for UnixListenerResource {
+  fn name(&self) -> Cow<str> {
+    "unixListener".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
 }
 
 pub struct UnixDatagramResource {
@@ -61,28 +70,17 @@ pub(crate) async fn accept_unix(
 ) -> Result<Value, AnyError> {
   let rid = args.rid as u32;
 
-  let accept_fut = poll_fn(|cx| {
-    let mut state = state.borrow_mut();
-    let listener_resource = state
-      .resource_table
-      .get_mut::<UnixListenerResource>(rid)
-      .ok_or_else(|| bad_resource("Listener has been closed"))?;
-    let listener = &mut listener_resource.listener;
-    use deno_core::futures::StreamExt;
-    match listener.poll_next_unpin(cx) {
-      Poll::Ready(Some(stream)) => {
-        //listener_resource.untrack_task();
-        Poll::Ready(stream)
-      }
-      Poll::Ready(None) => todo!(),
-      Poll::Pending => {
-        //listener_resource.track_task(cx)?;
-        Poll::Pending
-      }
-    }
-    .map_err(AnyError::from)
-  });
-  let unix_stream = accept_fut.await?;
+  let resource = state
+    .borrow()
+    .resource_table_2
+    .get::<UnixListenerResource>(rid)
+    .ok_or_else(|| bad_resource("Listener has been closed"))?;
+  let mut listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (unix_stream, _socket_addr) =
+    (&mut *listener).accept().try_or_cancel(cancel).await?;
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
@@ -147,10 +145,11 @@ pub fn listen_unix(
   }
   let listener = UnixListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
-  let listener_resource = UnixListenerResource { listener };
-  let rid = state
-    .resource_table
-    .add("unixListener", Box::new(listener_resource));
+  let listener_resource = UnixListenerResource {
+    listener: AsyncRefCell::new(listener),
+    cancel: Default::default(),
+  };
+  let rid = state.resource_table_2.add(listener_resource);
 
   Ok((rid, local_addr))
 }
