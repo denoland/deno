@@ -10,6 +10,7 @@ extern crate log;
 mod ast;
 mod checksum;
 mod colors;
+mod config;
 mod deno_dir;
 mod diagnostics;
 mod diff;

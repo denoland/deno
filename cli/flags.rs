@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::config::Config;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -7,7 +8,6 @@ use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
 use log::Level;
-use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -234,29 +234,6 @@ lazy_static! {
   );
 }
 
-#[derive(Deserialize, Debug)]
-struct Config {
-  runtime: Option<Runtime>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Runtime {
-  permissions: Option<Permissions>,
-  unstable: Option<bool>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Permissions {
-  read: Option<Vec<String>>,
-  write: Option<Vec<String>>,
-  net: Option<Vec<String>>,
-  plugin: Option<bool>,
-  run: Option<bool>,
-  env: Option<bool>,
-  hrtime: Option<bool>,
-  all: Option<bool>,
-}
-
 /// Main entry point for parsing deno's command line flags.
 /// Exits the process on error.
 pub fn flags_from_vec(args: Vec<String>) -> Flags {
@@ -274,64 +251,15 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
 
   let mut flags = Flags::default();
 
-  if matches.is_present("meta") {
+  let config = if matches.is_present("meta") {
     let file = std::fs::read(matches.value_of("meta").unwrap())?;
     let config: Config = deno_core::serde_json::from_slice(&*file).unwrap();
+    flags = config.to_flags().unwrap();
+    Some(config)
+  } else {
+    None
+  };
 
-    if let Some(runtime) = config.runtime {
-      flags.unstable = runtime.unstable.unwrap_or(false);
-
-      if let Some(permissions) = runtime.permissions {
-        if permissions.all.unwrap_or(false) {
-          flags.allow_read = true;
-          flags.allow_env = true;
-          flags.allow_net = true;
-          flags.allow_run = true;
-          flags.allow_read = true;
-          flags.allow_write = true;
-          flags.allow_plugin = true;
-          flags.allow_hrtime = true;
-        } else {
-          if let Some(read_wl) = permissions.read {
-            let read_allowlist: Vec<PathBuf> =
-              read_wl.iter().map(PathBuf::from).collect();
-
-            if read_allowlist.is_empty() {
-              flags.allow_read = true;
-            } else {
-              flags.read_allowlist = read_allowlist;
-            }
-          }
-
-          if let Some(write_wl) = permissions.write {
-            let write_allowlist: Vec<PathBuf> =
-              write_wl.iter().map(PathBuf::from).collect();
-
-            if write_allowlist.is_empty() {
-              flags.allow_write = true;
-            } else {
-              flags.write_allowlist = write_allowlist;
-            }
-          }
-
-          if let Some(net_wl) = permissions.net {
-            if net_wl.is_empty() {
-              flags.allow_net = true;
-            } else {
-              flags.net_allowlist =
-                crate::flags_allow_net::parse(net_wl).unwrap();
-              debug!("net allowlist: {:#?}", &flags.net_allowlist);
-            }
-          }
-
-          flags.allow_plugin = permissions.plugin.unwrap_or(false);
-          flags.allow_run = permissions.run.unwrap_or(false);
-          flags.allow_env = permissions.env.unwrap_or(false);
-          flags.allow_hrtime = permissions.hrtime.unwrap_or(false);
-        }
-      }
-    }
-  }
   if matches.is_present("unstable") {
     flags.unstable = true;
   }
@@ -349,7 +277,7 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   if let Some(m) = matches.subcommand_matches("run") {
     run_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("fmt") {
-    fmt_parse(&mut flags, m);
+    fmt_parse(&mut flags, m, config);
   } else if let Some(m) = matches.subcommand_matches("types") {
     types_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("cache") {
@@ -367,13 +295,13 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   } else if let Some(m) = matches.subcommand_matches("completions") {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
-    test_parse(&mut flags, m);
+    test_parse(&mut flags, m, config);
   } else if let Some(m) = matches.subcommand_matches("upgrade") {
     upgrade_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("doc") {
     doc_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("lint") {
-    lint_parse(&mut flags, m);
+    lint_parse(&mut flags, m, config);
   } else if let Some(m) = matches.subcommand_matches("compile") {
     compile_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("lsp") {
@@ -457,18 +385,55 @@ fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Types;
 }
 
-fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.watch = matches.is_present("watch");
-  let files = match matches.values_of("files") {
-    Some(f) => f.map(PathBuf::from).collect(),
-    None => vec![],
-  };
-  let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
-    None => vec![],
-  };
+fn fmt_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+  config: Option<Config>,
+) {
+  let mut check = false;
+  let mut files: Vec<PathBuf> = vec![];
+  let mut ignore: Vec<PathBuf> = vec![];
+
+  if let Some(config) = config {
+    if let Some(fmt) = config.fmt {
+      flags.watch = fmt.watch.unwrap_or_default();
+      check = fmt.check.unwrap_or_default();
+
+      if let Some(cfg_files) = fmt.files {
+        files = cfg_files.iter().map(PathBuf::from).collect();
+      }
+
+      if let Some(cfg_ignore) = fmt.ignore {
+        ignore = cfg_ignore.iter().map(PathBuf::from).collect();
+      }
+    }
+  }
+
+  if matches.is_present("check") {
+    check = true;
+  }
+
+  if matches.is_present("watch") {
+    flags.watch = true;
+  }
+
+  if matches.is_present("files") {
+    files = matches
+      .values_of("files")
+      .unwrap()
+      .map(PathBuf::from)
+      .collect();
+  }
+  if matches.is_present("ignore") {
+    ignore = matches
+      .values_of("ignore")
+      .unwrap()
+      .map(PathBuf::from)
+      .collect();
+  }
+
   flags.subcommand = DenoSubcommand::Fmt {
-    check: matches.is_present("check"),
+    check,
     files,
     ignore,
   }
@@ -692,14 +657,49 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Run { script };
 }
 
-fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn test_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+  config: Option<Config>,
+) {
   runtime_args_parse(flags, matches, true);
 
-  let no_run = matches.is_present("no-run");
-  let fail_fast = matches.is_present("fail-fast");
-  let allow_none = matches.is_present("allow-none");
-  let quiet = matches.is_present("quiet");
-  let filter = matches.value_of("filter").map(String::from);
+  let mut no_run = false;
+  let mut fail_fast = false;
+  let mut allow_none = false;
+  let mut quiet = false;
+  let mut filter: Option<String> = None;
+  let mut include: Option<Vec<String>> = None;
+
+  if let Some(config) = config {
+    if let Some(test) = config.test {
+      no_run = test.no_run.unwrap_or_default();
+      fail_fast = test.fail_fast.unwrap_or_default();
+      allow_none = test.allow_none.unwrap_or_default();
+      quiet = config.quiet.unwrap_or_default();
+      filter = test.filter;
+      include = test.files;
+
+      flags.coverage = test.coverage.unwrap_or_default();
+    }
+  }
+
+  if matches.is_present("no-run") {
+    no_run = true;
+  }
+  if matches.is_present("fail-fast") {
+    fail_fast = true;
+  }
+  if matches.is_present("allow-none") {
+    allow_none = true;
+  }
+  if matches.is_present("quiet") {
+    quiet = true;
+  }
+  if matches.is_present("filter") {
+    filter = matches.value_of("filter").map(String::from);
+  }
+
   let coverage = matches.is_present("coverage");
 
   if coverage {
@@ -718,15 +718,13 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     }
   }
 
-  let include = if matches.is_present("files") {
+  if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
       .unwrap()
       .map(String::from)
       .collect();
-    Some(files)
-  } else {
-    None
+    include = Some(files);
   };
 
   flags.subcommand = DenoSubcommand::Test {
@@ -783,17 +781,50 @@ fn language_server_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::LanguageServer;
 }
 
-fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let files = match matches.values_of("files") {
-    Some(f) => f.map(PathBuf::from).collect(),
-    None => vec![],
-  };
-  let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
-    None => vec![],
-  };
+fn lint_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+  config: Option<Config>,
+) {
+  let mut json = false;
+  let mut files: Vec<PathBuf> = vec![];
+  let mut ignore: Vec<PathBuf> = vec![];
+
+  if let Some(config) = config {
+    if let Some(lint) = config.lint {
+      json = lint.json.unwrap_or_default();
+
+      if let Some(cfg_files) = lint.files {
+        files = cfg_files.iter().map(PathBuf::from).collect();
+      }
+
+      if let Some(cfg_ignore) = lint.ignore {
+        ignore = cfg_ignore.iter().map(PathBuf::from).collect();
+      }
+    }
+  }
+
+  if matches.is_present("files") {
+    files = matches
+      .values_of("files")
+      .unwrap()
+      .map(PathBuf::from)
+      .collect();
+  }
+  if matches.is_present("ignore") {
+    ignore = matches
+      .values_of("ignore")
+      .unwrap()
+      .map(PathBuf::from)
+      .collect();
+  }
+
   let rules = matches.is_present("rules");
-  let json = matches.is_present("json");
+
+  if matches.is_present("json") {
+    json = true;
+  }
+
   flags.subcommand = DenoSubcommand::Lint {
     files,
     rules,
