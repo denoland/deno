@@ -1004,6 +1004,7 @@ fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
+        .requires("unstable")
         .help("Ignore covering particular source files."),
     )
     .arg(
