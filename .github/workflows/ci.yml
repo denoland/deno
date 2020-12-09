@@ -25,6 +25,8 @@ jobs:
             kind: bench
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
             kind: lint
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+            kind: publish-dry-run
 
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
@@ -217,7 +219,9 @@ jobs:
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: cargo test --locked --all-targets
+        run: |
+          cargo test --locked --doc
+          cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
@@ -263,6 +267,10 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
+
+      - name: Publish Dry Run
+        if: matrix.kind == 'publish-dry-run'
+        run: cd cli && cargo publish --dry-run
 
       - name: Publish
         if: |
