@@ -942,7 +942,7 @@ function readBlockScalar(state: LoaderState, nodeIndent: number): boolean {
         }
       }
 
-      // Break this `while` cycle and go to the funciton's epilogue.
+      // Break this `while` cycle and go to the function's epilogue.
       break;
     }
 

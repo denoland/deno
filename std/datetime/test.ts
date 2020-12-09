@@ -357,8 +357,8 @@ Deno.test({
   name: "[std/datetime] difference",
   fn(): void {
     const denoInit = new Date("2018/5/14");
-    const denoRelaseV1 = new Date("2020/5/13");
-    let difference = datetime.difference(denoRelaseV1, denoInit, {
+    const denoReleaseV1 = new Date("2020/5/13");
+    let difference = datetime.difference(denoReleaseV1, denoInit, {
       units: ["days", "months", "years"],
     });
     assertEquals(difference.days, 730);
