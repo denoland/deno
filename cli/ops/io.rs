@@ -11,10 +11,13 @@ use deno_core::futures;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::ready;
+use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
 use deno_core::OpState;
+use deno_core::RcRef;
 use deno_core::Resource;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -24,6 +27,8 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
@@ -185,6 +190,7 @@ impl StreamResourceHolder {
   }
 }
 
+#[allow(dead_code)]
 pub enum StreamResource {
   FsFile(Option<(tokio::fs::File, FileMetadata)>),
   TcpStream(Option<tokio::net::TcpStream>),
@@ -237,119 +243,153 @@ impl DenoAsyncRead for StreamResource {
   }
 }
 
-pub enum NewStreamResource {
-  // FsFile(Option<(tokio::fs::File, FileMetadata)>),
-  // TcpStream(Option<tokio::net::TcpStream>),
-  // #[cfg(not(windows))]
-  // UnixStream(tokio::net::UnixStream),
-  // ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
-  // ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-  ChildStdin {
-    stdin: tokio::process::ChildStdin,
-    cancel: CancelHandle,
-  },
-  ChildStdout {
-    stdout: tokio::process::ChildStdout,
-    cancel: CancelHandle,
-  },
-  ChildStderr {
-    stderr: tokio::process::ChildStderr,
-    cancel: CancelHandle,
-  },
+// pub enum NewStreamResource {
+//   // FsFile(Option<(tokio::fs::File, FileMetadata)>),
+//   // TcpStream(Option<tokio::net::TcpStream>),
+//   // #[cfg(not(windows))]
+//   // UnixStream(tokio::net::UnixStream),
+//   // ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
+//   // ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
+//   ChildStdin {
+//     stdin: tokio::process::ChildStdin,
+//     cancel: CancelHandle,
+//   },
+//   ChildStdout {
+//     stdout: tokio::process::ChildStdout,
+//     cancel: CancelHandle,
+//   },
+//   ChildStderr {
+//     stderr: tokio::process::ChildStderr,
+//     cancel: CancelHandle,
+//   },
+// }
+
+#[derive(Default)]
+pub struct NewStreamResource {
+  child_stdin: Option<AsyncRefCell<tokio::process::ChildStdin>>,
+  child_stdout: Option<AsyncRefCell<tokio::process::ChildStdout>>,
+  child_stderr: Option<AsyncRefCell<tokio::process::ChildStderr>>,
+  cancel: CancelHandle,
 }
 
 impl NewStreamResource {
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
-    use NewStreamResource::*;
-    match *self {
-      // FsFile(_) => todo!(),
-      // TcpStream(Some(stream)) => {
-      //   stream.read(buf).try_or_cancel(cancel).await
-      // },
-      // #[cfg(not(windows))]
-      // UnixStream(_) => todo!(),
-      // ServerTlsStream(_) => todo!(),
-      // ClientTlsStream(_) => todo!(),
-      ChildStdin { .. } => todo!(),
-      ChildStdout { stdin, cancel } => {
-        let mut stdin = RcRef::map(&self, |r| &r.stdin)
-          .try_borrow_mut()
-          .ok_or_else(|| {
-            custom_error("Busy", "Another accept task is ongoing")
-          })?;
-        let cancel = RcRef::map(resource, |r| &r.cancel);
-        Ok(0)
-      }
-      ChildStderr { .. } => Ok(0),
-      // _ => Err(bad_resource_id()).into()
+  pub fn child_stdout(child: tokio::process::ChildStdout) -> Self {
+    Self {
+      child_stdout: Some(AsyncRefCell::new(child)),
+      ..Default::default()
     }
+  }
+
+  pub fn child_stderr(child: tokio::process::ChildStderr) -> Self {
+    Self {
+      child_stderr: Some(AsyncRefCell::new(child)),
+      ..Default::default()
+    }
+  }
+
+  pub fn child_stdin(child: tokio::process::ChildStdin) -> Self {
+    Self {
+      child_stdin: Some(AsyncRefCell::new(child)),
+      ..Default::default()
+    }
+  }
+
+  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    if self.child_stdout.is_some() {
+      let mut child_stdout =
+        RcRef::map(&self, |r| r.child_stdout.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *child_stdout).read(buf).try_or_cancel(cancel).await?;
+      return Ok(nread);
+    }
+
+    if self.child_stderr.is_some() {
+      let mut child_stderr =
+        RcRef::map(&self, |r| r.child_stderr.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *child_stderr).read(buf).try_or_cancel(cancel).await?;
+      return Ok(nread);
+    }
+
+    todo!()
+  }
+
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+    if self.child_stdin.is_some() {
+      let mut child_stdin =
+        RcRef::map(&self, |r| r.child_stdin.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *child_stdin).write(buf).try_or_cancel(cancel).await?;
+      return Ok(nread);
+    }
+
+    todo!()
   }
 }
 
 impl Resource for NewStreamResource {
   fn name(&self) -> Cow<str> {
-    use NewStreamResource::*;
-    match self {
-      // FsFile(_) => "fsFile".into(),
-      // TcpStream(_) => "tcpStream".into(),
-      // #[cfg(not(windows))]
-      // UnixStream(_) => "unixStream".into(),
-      // ServerTlsStream(_) => "serverTlsStream".into(),
-      // ClientTlsStream(_) => "clientTlsStream".into(),
-      ChildStdin { .. } => "childStind".into(),
-      ChildStdout { .. } => "childStdout".into(),
-      ChildStderr { .. } => "childStderr".into(),
+    if self.child_stdout.is_some() {
+      "childStdout".into()
+    } else {
+      "<todo>".into()
     }
   }
 
   fn close(self: Rc<Self>) {
-    // self.cancel.cancel()
+    self.cancel.cancel()
   }
 }
 
-pub fn op_new_read(
-  state: Rc<RefCell<OpState>>,
-  is_sync: bool,
-  rid: i32,
-  mut zero_copy: BufVec,
-) -> MinimalOp {
-  debug!("read rid={}", rid);
-  match zero_copy.len() {
-    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
-    1 => {}
-    _ => panic!("Invalid number of arguments"),
-  }
+// pub fn op_new_read(
+//   state: Rc<RefCell<OpState>>,
+//   is_sync: bool,
+//   rid: i32,
+//   mut zero_copy: BufVec,
+// ) -> MinimalOp {
+//   debug!("read rid={}", rid);
+//   match zero_copy.len() {
+//     0 => return MinimalOp::Sync(Err(no_buffer_specified())),
+//     1 => {}
+//     _ => panic!("Invalid number of arguments"),
+//   }
 
-  if is_sync {
-    MinimalOp::Sync({
-      // First we look up the rid in the resource table.
-      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
-        Ok(std_file) => {
-          use std::io::Read;
-          std_file
-            .read(&mut zero_copy[0])
-            .map(|n: usize| n as i32)
-            .map_err(AnyError::from)
-        }
-        Err(_) => Err(type_error("sync read not allowed on this resource")),
-      })
-    })
-  } else {
-    let mut zero_copy = zero_copy[0].clone();
-    MinimalOp::Async(
-      async move {
-        let resource = state
-          .borrow()
-          .resource_table_2
-          .get::<NewStreamResource>(rid as u32)
-          .ok_or_else(bad_resource_id)?;
-        let nread = resource.read(&mut zero_copy).await?;
-        Ok(nread as i32)
-      }
-      .boxed_local(),
-    )
-  }
-}
+//   if is_sync {
+//     MinimalOp::Sync({
+//       // First we look up the rid in the resource table.
+//       std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
+//         Ok(std_file) => {
+//           use std::io::Read;
+//           std_file
+//             .read(&mut zero_copy[0])
+//             .map(|n: usize| n as i32)
+//             .map_err(AnyError::from)
+//         }
+//         Err(_) => Err(type_error("sync read not allowed on this resource")),
+//       })
+//     })
+//   } else {
+//     let mut zero_copy = zero_copy[0].clone();
+//     MinimalOp::Async(
+//       async move {
+//         let resource = state
+//           .borrow()
+//           .resource_table_2
+//           .get::<NewStreamResource>(rid as u32)
+//           .ok_or_else(bad_resource_id)?;
+//         let nread = resource.read(&mut zero_copy).await?;
+//         Ok(nread as i32)
+//       }
+//       .boxed_local(),
+//     )
+//   }
+// }
 
 pub fn op_read(
   state: Rc<RefCell<OpState>>,
@@ -380,32 +420,45 @@ pub fn op_read(
     })
   } else {
     let mut zero_copy = zero_copy[0].clone();
-    MinimalOp::Async(
-      poll_fn(move |cx| {
-        let mut state = state.borrow_mut();
-        let resource_holder = state
-          .resource_table
-          .get_mut::<StreamResourceHolder>(rid as u32)
-          .ok_or_else(bad_resource_id)?;
+    MinimalOp::Async({
+      if rid >= 1_000_000 {
+        async move {
+          let resource = state
+            .borrow()
+            .resource_table_2
+            .get::<NewStreamResource>(rid as u32)
+            .ok_or_else(bad_resource_id)?;
+          let nread = resource.read(&mut zero_copy).await?;
+          Ok(nread as i32)
+        }
+        .boxed_local()
+      } else {
+        poll_fn(move |cx| {
+          let mut state = state.borrow_mut();
+          let resource_holder = state
+            .resource_table
+            .get_mut::<StreamResourceHolder>(rid as u32)
+            .ok_or_else(bad_resource_id)?;
 
-        let mut task_tracker_id: Option<usize> = None;
-        let nread = match resource_holder.resource.poll_read(cx, &mut zero_copy)
-        {
-          Poll::Ready(t) => {
-            if let Some(id) = task_tracker_id {
-              resource_holder.untrack_task(id);
-            }
-            t
-          }
-          Poll::Pending => {
-            task_tracker_id.replace(resource_holder.track_task(cx)?);
-            return Poll::Pending;
-          }
-        }?;
-        Poll::Ready(Ok(nread as i32))
-      })
-      .boxed_local(),
-    )
+          let mut task_tracker_id: Option<usize> = None;
+          let nread =
+            match resource_holder.resource.poll_read(cx, &mut zero_copy) {
+              Poll::Ready(t) => {
+                if let Some(id) = task_tracker_id {
+                  resource_holder.untrack_task(id);
+                }
+                t
+              }
+              Poll::Pending => {
+                task_tracker_id.replace(resource_holder.track_task(cx)?);
+                return Poll::Pending;
+              }
+            }?;
+          Poll::Ready(Ok(nread as i32))
+        })
+        .boxed_local()
+      }
+    })
   }
 }
 
@@ -498,36 +551,49 @@ pub fn op_write(
     })
   } else {
     let zero_copy = zero_copy[0].clone();
-    MinimalOp::Async(
-      async move {
-        let nwritten = poll_fn(|cx| {
-          let mut state = state.borrow_mut();
-          let resource_holder = state
-            .resource_table
-            .get_mut::<StreamResourceHolder>(rid as u32)
+    MinimalOp::Async({
+      if rid >= 1_000_000 {
+        async move {
+          let resource = state
+            .borrow()
+            .resource_table_2
+            .get::<NewStreamResource>(rid as u32)
             .ok_or_else(bad_resource_id)?;
-          resource_holder.resource.poll_write(cx, &zero_copy)
-        })
-        .await?;
+          let nread = resource.write(&zero_copy).await?;
+          Ok(nread as i32)
+        }
+        .boxed_local()
+      } else {
+        async move {
+          let nwritten = poll_fn(|cx| {
+            let mut state = state.borrow_mut();
+            let resource_holder = state
+              .resource_table
+              .get_mut::<StreamResourceHolder>(rid as u32)
+              .ok_or_else(bad_resource_id)?;
+            resource_holder.resource.poll_write(cx, &zero_copy)
+          })
+          .await?;
 
-        // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
-        // and the reasons for the need to explicitly flush are not fully known.
-        // Figure out why it's needed and preferably remove it.
-        // https://github.com/denoland/deno/issues/3565
-        poll_fn(|cx| {
-          let mut state = state.borrow_mut();
-          let resource_holder = state
-            .resource_table
-            .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(bad_resource_id)?;
-          resource_holder.resource.poll_flush(cx)
-        })
-        .await?;
+          // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
+          // and the reasons for the need to explicitly flush are not fully known.
+          // Figure out why it's needed and preferably remove it.
+          // https://github.com/denoland/deno/issues/3565
+          poll_fn(|cx| {
+            let mut state = state.borrow_mut();
+            let resource_holder = state
+              .resource_table
+              .get_mut::<StreamResourceHolder>(rid as u32)
+              .ok_or_else(bad_resource_id)?;
+            resource_holder.resource.poll_flush(cx)
+          })
+          .await?;
 
-        Ok(nwritten as i32)
+          Ok(nwritten as i32)
+        }
+        .boxed_local()
       }
-      .boxed_local(),
-    )
+    })
   }
 }
 

@@ -133,10 +133,9 @@ fn op_run(
 
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
-      let rid = state.resource_table_2.add(NewStreamResource::ChildStdin {
-        stdin: child_stdin,
-        cancel: Default::default(),
-      });
+      let rid = state
+        .resource_table_2
+        .add(NewStreamResource::child_stdin(child_stdin));
       Some(rid)
     }
     None => None,
@@ -144,10 +143,9 @@ fn op_run(
 
   let stdout_rid = match child.stdout.take() {
     Some(child_stdout) => {
-      let rid = state.resource_table_2.add(NewStreamResource::ChildStdout {
-        stdout: child_stdout,
-        cancel: Default::default(),
-      });
+      let rid = state
+        .resource_table_2
+        .add(NewStreamResource::child_stdout(child_stdout));
       Some(rid)
     }
     None => None,
@@ -155,10 +153,9 @@ fn op_run(
 
   let stderr_rid = match child.stderr.take() {
     Some(child_stderr) => {
-      let rid = state.resource_table_2.add(NewStreamResource::ChildStderr {
-        stderr: child_stderr,
-        cancel: Default::default(),
-      });
+      let rid = state
+        .resource_table_2
+        .add(NewStreamResource::child_stderr(child_stderr));
       Some(rid)
     }
     None => None,
