@@ -268,9 +268,9 @@ jobs:
             target/release/lib.deno.d.ts
           draft: true
 
-      - name: Publish Dry Run
-        if: matrix.kind == 'publish-dry-run'
-        run: cd cli && cargo package
+      # - name: Publish Dry Run
+      #   if: matrix.kind == 'publish-dry-run'
+      #   run: cd cli && cargo package
 
       - name: Publish
         if: |

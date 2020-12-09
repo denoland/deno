@@ -15,10 +15,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-// use deno_core::AsyncMut;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -65,16 +64,22 @@ async fn accept_tcp(
     .resource_table_2
     .get::<TcpListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
-  eprintln!("accept before try borrow");
   let mut listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
-  // let mut listener = resource.try_borrow_mut().ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  eprintln!("accept after try borrow");
-  let (tcp_stream, _socket_addr) =
-    (&mut *listener).accept().try_or_cancel(cancel).await?;
-  eprintln!("accept after accept");
+  let (tcp_stream, _socket_addr) = (&mut *listener)
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(|e| {
+      // FIXME(bartlomieju): compatibility with current JS implementation
+      if let std::io::ErrorKind::Interrupted = e.kind() {
+        bad_resource("Listener has been closed")
+      } else {
+        e.into()
+      }
+    })?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 

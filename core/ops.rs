@@ -282,7 +282,13 @@ pub fn op_resources(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let serialized_resources = state.resource_table.entries();
+  let mut serialized_resources = state.resource_table.entries();
+  let serialized_resources2: HashMap<u32, String> = state
+    .resource_table_2
+    .names()
+    .map(|(rid, name)| (rid, name.to_string()))
+    .collect();
+  serialized_resources.extend(serialized_resources2);
   Ok(json!(serialized_resources))
 }
 
