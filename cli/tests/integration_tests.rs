@@ -4698,7 +4698,7 @@ fn compile_with_directory_exists_error() {
   let expected_stderr =
     format!("Could not compile: {:?} is a directory.\n", &exe);
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(stderr.contains(&expected_stderr), true);
+  assert!(stderr.contains(&expected_stderr));
 }
 
 #[test]
@@ -4727,11 +4727,46 @@ fn compile_with_conflict_file_exists_error() {
   let expected_stderr =
     format!("Could not compile: cannot overwrite {:?}.\n", &exe);
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(stderr.contains(&expected_stderr), true);
-  assert_eq!(
-    std::fs::read(&exe)
-      .expect("cannot read file")
-      .eq(b"SHOULD NOT BE OVERWRITTEN"),
-    true
-  );
+  assert!(stderr.contains(&expected_stderr));
+  assert!(std::fs::read(&exe)
+    .expect("cannot read file")
+    .eq(b"SHOULD NOT BE OVERWRITTEN"));
+}
+
+#[test]
+fn compile_and_overwrite_file() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(&exe.exists());
+
+  let recompile_output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(recompile_output.status.success());
 }
