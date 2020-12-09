@@ -6,6 +6,7 @@
 ///! client.
 ///!
 use lsp_types::ClientCapabilities;
+use lsp_types::CompletionOptions;
 use lsp_types::HoverProviderCapability;
 use lsp_types::OneOf;
 use lsp_types::SaveOptions;
@@ -13,6 +14,7 @@ use lsp_types::ServerCapabilities;
 use lsp_types::TextDocumentSyncCapability;
 use lsp_types::TextDocumentSyncKind;
 use lsp_types::TextDocumentSyncOptions;
+use lsp_types::WorkDoneProgressOptions;
 
 pub fn server_capabilities(
   _client_capabilities: &ClientCapabilities,
@@ -28,7 +30,22 @@ pub fn server_capabilities(
       },
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
-    completion_provider: None,
+    completion_provider: Some(CompletionOptions {
+      trigger_characters: Some(vec![
+        ".".to_string(),
+        "\"".to_string(),
+        "'".to_string(),
+        "`".to_string(),
+        "/".to_string(),
+        "@".to_string(),
+        "<".to_string(),
+        "#".to_string(),
+      ]),
+      resolve_provider: None,
+      work_done_progress_options: WorkDoneProgressOptions {
+        work_done_progress: None,
+      },
+    }),
     signature_help_provider: None,
     declaration_provider: None,
     definition_provider: Some(OneOf::Left(true)),
