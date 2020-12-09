@@ -4,14 +4,17 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::stream::SplitSink;
+use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
-use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::BufVec;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -47,7 +50,14 @@ type MaybeTlsStream =
   StreamSwitcher<TcpStream, tokio_rustls::client::TlsStream<TcpStream>>;
 
 type WsStream = WebSocketStream<MaybeTlsStream>;
-struct WsStreamResource(AsyncRefCell<WsStream>);
+struct WsStreamResource {
+  tx: AsyncRefCell<SplitSink<WsStream, Message>>,
+  rx: AsyncRefCell<SplitStream<WsStream>>,
+  // When a `WsStreamResource` resource is closed, all pending 'read' ops are
+  // canceled, while 'write' ops are allowed to complete. Therefore only
+  // 'read' futures are attached to this cancel handle.
+  cancel: CancelHandle,
+}
 
 impl Resource for WsStreamResource {
   fn name(&self) -> Cow<str> {
@@ -55,11 +65,7 @@ impl Resource for WsStreamResource {
   }
 }
 
-impl WsStreamResource {
-  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<WsStream> {
-    RcRef::map(self, |r| &r.0).borrow_mut()
-  }
-}
+impl WsStreamResource {}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -166,7 +172,12 @@ pub async fn op_ws_create(
       ))
     })?;
 
-  let resource = WsStreamResource(AsyncRefCell::new(stream));
+  let (ws_tx, ws_rx) = stream.split();
+  let resource = WsStreamResource {
+    rx: AsyncRefCell::new(ws_rx),
+    tx: AsyncRefCell::new(ws_tx),
+    cancel: Default::default(),
+  };
   let mut state = state.borrow_mut();
   let rid = state.resource_table_2.add(resource);
 
@@ -213,8 +224,9 @@ pub async fn op_ws_send(
     .resource_table_2
     .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let mut ws_stream = resource.borrow_mut().await;
-  ws_stream.send(msg).await?;
+  let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
+  tx.send(msg).await?;
+  eprintln!("sent!");
   Ok(json!({}))
 }
 
@@ -246,8 +258,8 @@ pub async fn op_ws_close(
     .resource_table_2
     .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let mut ws_stream = resource.borrow_mut().await;
-  ws_stream.send(msg).await?;
+  let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
+  tx.send(msg).await?;
   Ok(json!({}))
 }
 
@@ -269,8 +281,10 @@ pub async fn op_ws_next_event(
     .resource_table_2
     .get::<WsStreamResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
-  let mut ws_stream = resource.borrow_mut().await;
-  let val = ws_stream.next().await;
+
+  let mut rx = RcRef::map(&resource, |r| &r.rx).borrow_mut().await;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let val = (&mut *rx).next().or_cancel(cancel).await?;
   let res = match val {
     Some(Ok(Message::Text(text))) => json!({
       "type": "string",
