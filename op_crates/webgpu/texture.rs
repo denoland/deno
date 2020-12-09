@@ -9,19 +9,6 @@ use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_create_texture",
-    op_webgpu_create_texture,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_create_texture_view",
-    op_webgpu_create_texture_view,
-  );
-}
-
 pub fn serialize_texture_format(
   format: String,
 ) -> Result<wgt::TextureFormat, AnyError> {

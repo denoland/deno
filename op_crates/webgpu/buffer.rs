@@ -13,29 +13,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_create_buffer",
-    op_webgpu_create_buffer,
-  );
-  super::super::reg_json_async(
-    rt,
-    "op_webgpu_buffer_get_map_async",
-    op_webgpu_buffer_get_map_async,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_buffer_get_mapped_range",
-    op_webgpu_buffer_get_mapped_range,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_buffer_unmap",
-    op_webgpu_buffer_unmap,
-  );
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateBufferArgs {

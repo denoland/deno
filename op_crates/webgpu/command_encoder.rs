@@ -9,64 +9,6 @@ use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_create_command_encoder",
-    op_webgpu_create_command_encoder,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_begin_render_pass",
-    op_webgpu_command_encoder_begin_render_pass,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_begin_compute_pass",
-    op_webgpu_command_encoder_begin_compute_pass,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_copy_buffer_to_buffer",
-    op_webgpu_command_encoder_copy_buffer_to_buffer,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_copy_buffer_to_texture",
-    op_webgpu_command_encoder_copy_buffer_to_texture,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_copy_texture_to_buffer",
-    op_webgpu_command_encoder_copy_texture_to_buffer,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_copy_texture_to_texture",
-    op_webgpu_command_encoder_copy_texture_to_texture,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_push_debug_group",
-    op_webgpu_command_encoder_push_debug_group,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_pop_debug_group",
-    op_webgpu_command_encoder_pop_debug_group,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_insert_debug_marker",
-    op_webgpu_command_encoder_insert_debug_marker,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_command_encoder_finish",
-    op_webgpu_command_encoder_finish,
-  );
-}
-
 fn serialize_store_op(store_op: String) -> wgc::command::StoreOp {
   match store_op.as_str() {
     "store" => wgc::command::StoreOp::Store,

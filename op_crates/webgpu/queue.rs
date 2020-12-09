@@ -8,24 +8,6 @@ use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_queue_submit",
-    op_webgpu_queue_submit,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_write_buffer",
-    op_webgpu_write_buffer,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_write_texture",
-    op_webgpu_write_texture,
-  );
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QueueSubmitArgs {

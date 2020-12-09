@@ -1,16 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-mod binding;
-mod buffer;
-mod bundle;
-mod command_encoder;
-mod compute_pass;
-mod pipeline;
-mod queue;
-mod render_pass;
-mod sampler;
-mod shader;
-mod texture;
+#![deny(warnings)]
+
+pub mod binding;
+pub mod buffer;
+pub mod bundle;
+pub mod command_encoder;
+pub mod compute_pass;
+pub mod pipeline;
+pub mod queue;
+pub mod render_pass;
+pub mod sampler;
+pub mod shader;
+pub mod texture;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -23,34 +25,15 @@ use serde::Deserialize;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(
-    rt,
-    "op_webgpu_create_instance",
-    op_webgpu_create_instance,
-  );
-  super::reg_json_async(
-    rt,
-    "op_webgpu_request_adapter",
-    op_webgpu_request_adapter,
-  );
-  super::reg_json_async(
-    rt,
-    "op_webgpu_request_device",
-    op_webgpu_request_device,
-  );
-
-  buffer::init(rt);
-  texture::init(rt);
-  sampler::init(rt);
-  binding::init(rt);
-  pipeline::init(rt);
-  command_encoder::init(rt);
-  render_pass::init(rt);
-  compute_pass::init(rt);
-  bundle::init(rt);
-  queue::init(rt);
-  shader::init(rt);
+/// Execute this crates' JS source files.
+pub fn init(isolate: &mut deno_core::JsRuntime) {
+  let files = vec![(
+    "deno:op_crates/webgpu/14_webgpu.js",
+    include_str!("14_webgpu.js"),
+  )];
+  for (url, source_code) in files {
+    isolate.execute(url, source_code).unwrap();
+  }
 }
 
 fn deserialize_features(features: &wgt::Features) -> Vec<&str> {
@@ -66,7 +49,7 @@ fn deserialize_features(features: &wgt::Features) -> Vec<&str> {
   return_features
 }
 
-pub type WgcInstance = wgc::hub::Global<wgc::hub::IdentityManagerFactory>;
+type WgcInstance = wgc::hub::Global<wgc::hub::IdentityManagerFactory>;
 
 pub fn op_webgpu_create_instance(
   state: &mut OpState,

@@ -569,6 +569,7 @@ dependencies = [
  "deno_fetch",
  "deno_lint",
  "deno_web",
+ "deno_webgpu",
  "dissimilar",
  "dlopen",
  "dprint-plugin-typescript",
@@ -612,8 +613,6 @@ dependencies = [
  "warp",
  "webpki",
  "webpki-roots 0.19.0",
- "wgpu-core",
- "wgpu-types",
  "winapi 0.3.9",
  "winres",
 ]
@@ -695,6 +694,16 @@ dependencies = [
  "futures",
  "idna",
  "serde",
+]
+
+[[package]]
+name = "deno_webgpu"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "serde",
+ "wgpu-core",
+ "wgpu-types",
 ]
 
 [[package]]

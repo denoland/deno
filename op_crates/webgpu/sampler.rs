@@ -9,14 +9,6 @@ use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_create_sampler",
-    op_webgpu_create_sampler,
-  );
-}
-
 fn serialize_address_mode(address_mode: Option<String>) -> wgt::AddressMode {
   match address_mode {
     Some(address_mode) => match address_mode.as_str() {

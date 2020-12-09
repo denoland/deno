@@ -8,49 +8,6 @@ use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_set_pipeline",
-    op_webgpu_compute_pass_set_pipeline,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_dispatch",
-    op_webgpu_compute_pass_dispatch,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_dispatch_indirect",
-    op_webgpu_compute_pass_dispatch_indirect,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_end_pass",
-    op_webgpu_compute_pass_end_pass,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_set_bind_group",
-    op_webgpu_compute_pass_set_bind_group,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_push_debug_group",
-    op_webgpu_compute_pass_push_debug_group,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_pop_debug_group",
-    op_webgpu_compute_pass_pop_debug_group,
-  );
-  super::super::reg_json_sync(
-    rt,
-    "op_webgpu_compute_pass_insert_debug_marker",
-    op_webgpu_compute_pass_insert_debug_marker,
-  );
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ComputePassSetPipelineArgs {

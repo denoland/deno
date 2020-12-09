@@ -24,6 +24,7 @@ deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
 deno_core = { path = "../core", version = "0.69.0" }
 deno_web = { path = "../op_crates/web", version = "0.20.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 regex = "1.3.9"
 serde = { version = "1.0.116", features = ["derive"] }
 
@@ -38,6 +39,7 @@ deno_doc = "0.1.17"
 deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
 deno_lint = "0.2.12"
 deno_web = { path = "../op_crates/web", version = "0.20.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
@@ -84,8 +86,6 @@ walkdir = "2.3.1"
 warp = { version = "0.2.5", features = ["tls"] }
 webpki = "0.21.3"
 webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'.
-wgc = { package = "wgpu-core", version = "0.6.5" }
-wgt = { package = "wgpu-types", version = "0.6.1" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
