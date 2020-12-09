@@ -5,12 +5,12 @@ use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
+use glob::Pattern;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
@@ -245,15 +245,15 @@ fn collect_coverages(
     coverages.push(coverage);
   }
 
-  let canonicalized_ignore: Vec<String> = ignore
+  let patterned_ignore: Vec<Pattern> = ignore
     .iter()
-    .map(|i| ModuleSpecifier::resolve_url_or_path(i).unwrap().to_string())
+    .map(|i| Pattern::new(i).unwrap())
     .collect();
 
   coverages = coverages
     .into_iter()
     .filter(|e| !e.script_coverage.url.ends_with("__anonymous__"))
-    .filter(|e| !canonicalized_ignore.iter().any(|i| e.script_coverage.url.starts_with(i)))
+    .filter(|e| !patterned_ignore.iter().any(|p| p.matches(&e.script_coverage.url)))
     .collect::<Vec<Coverage>>();
 
   coverages.sort_by_key(|k| k.script_coverage.url.clone());
