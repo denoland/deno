@@ -253,6 +253,7 @@ fn collect_coverages(
   coverages = coverages
     .into_iter()
     .filter(|e| !e.script_coverage.url.ends_with("__anonymous__"))
+    .filter(|e| !e.script_coverage.url.starts_with("$deno$"))
     .filter(|e| !patterned_ignore.iter().any(|p| p.matches(&e.script_coverage.url)))
     .collect::<Vec<Coverage>>();
 
