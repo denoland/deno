@@ -6,9 +6,10 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::BufVec;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -37,19 +38,12 @@ struct FsEventsResource {
   #[allow(unused)]
   watcher: RecommendedWatcher,
   receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, AnyError>>>,
+  cancel: CancelHandle,
 }
 
 impl Resource for FsEventsResource {
   fn name(&self) -> Cow<str> {
     "fsEvents".into()
-  }
-}
-
-impl FsEventsResource {
-  fn recv_borrow_mut(
-    self: Rc<Self>,
-  ) -> AsyncMutFuture<mpsc::Receiver<Result<FsEvent, AnyError>>> {
-    RcRef::map(self, |r| &r.receiver).borrow_mut()
   }
 }
 
@@ -120,6 +114,7 @@ fn op_fs_events_open(
   let resource = FsEventsResource {
     watcher,
     receiver: AsyncRefCell::new(receiver),
+    cancel: Default::default(),
   };
   let rid = state.resource_table_2.add(resource);
   Ok(json!(rid))
@@ -141,8 +136,9 @@ async fn op_fs_events_poll(
     .resource_table_2
     .get::<FsEventsResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let mut receiver = resource.recv_borrow_mut().await;
-  let maybe_result = receiver.recv().await;
+  let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let maybe_result = receiver.recv().or_cancel(cancel).await?;
   match maybe_result {
     Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
     Some(Err(err)) => Err(err),

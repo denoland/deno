@@ -24,6 +24,8 @@
       } catch (error) {
         if (error instanceof errors.BadResource) {
           return { value: undefined, done: true };
+        } else if (error instanceof errors.Interrupted) {
+          return { value: undefined, done: true };
         }
         throw error;
       }
