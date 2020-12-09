@@ -4,8 +4,9 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::worker::MainWorker;
+use deno_core::error::generic_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::error::{generic_error, type_error};
 use deno_core::futures::FutureExt;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -150,9 +151,27 @@ pub async fn create_standalone_binary(
     } else {
       output
     };
+
   if output.exists() {
-    let error_msg = format!("File / Directory {:?} already exists. Please specify another output name.", &output);
-    return Err(generic_error(error_msg));
+    // If the output is a directory, throw error
+    if output.is_dir() {
+      let error_msg =
+        format!("Could not compile: {:?} is a directory.", &output);
+      return Err(generic_error(error_msg));
+    }
+
+    // Make sure we don't overwrite any file not created by Deno compiler.
+    // Check for magic trailer in last 16 bytes
+    let mut output_file = File::open(&output)?;
+    output_file.seek(SeekFrom::End(-16))?;
+    let mut trailer = [0; 16];
+    output_file.read_exact(&mut trailer)?;
+    let (magic_trailer, _) = trailer.split_at(8);
+    if magic_trailer != MAGIC_TRAILER {
+      let error_msg =
+        format!("Could not compile: cannot overwrite {:?}.", &output);
+      return Err(generic_error(error_msg));
+    }
   }
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
