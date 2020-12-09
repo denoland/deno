@@ -984,7 +984,7 @@ fn get_subcommand(
       output,
     } => compile_command(flags, source_file, output).boxed_local(),
     DenoSubcommand::Cover { dir, quiet, ignore } => {
-      cover_command(flags, dir, quiet, ignore ).boxed_local()
+      cover_command(flags, dir, quiet, ignore).boxed_local()
     }
     DenoSubcommand::Fmt {
       check,

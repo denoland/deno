@@ -5,12 +5,12 @@ use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use glob::Pattern;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
-use glob::Pattern;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
@@ -245,29 +245,33 @@ fn collect_coverages(
     coverages.push(coverage);
   }
 
-  let patterned_ignore: Vec<Pattern> = ignore
-    .iter()
-    .map(|i| Pattern::new(i).unwrap())
-    .collect();
+  let patterned_ignore: Vec<Pattern> =
+    ignore.iter().map(|i| Pattern::new(i).unwrap()).collect();
 
   coverages = coverages
     .into_iter()
     .filter(|e| !e.script_coverage.url.ends_with("__anonymous__"))
     .filter(|e| !e.script_coverage.url.starts_with("$deno$"))
-    .filter(|e| !patterned_ignore.iter().any(|p| p.matches(&e.script_coverage.url)))
+    .filter(|e| {
+      !patterned_ignore
+        .iter()
+        .any(|p| p.matches(&e.script_coverage.url))
+    })
     .collect::<Vec<Coverage>>();
 
-  coverages.sort_by_key(|k| k.script_coverage.url.clone());
-
   // TODO(caspervonb) drain_filter would make this cleaner, its nightly at the moment.
-  for i in (1..coverages.len() - 1).rev() {
-    if coverages[i].script_coverage.url == coverages[i - 1].script_coverage.url
-    {
-      let current = coverages.remove(i);
-      let previous = &mut coverages[i - 1];
+  if coverages.len() > 1 {
+    coverages.sort_by_key(|k| k.script_coverage.url.clone());
+    for i in (1..coverages.len() - 1).rev() {
+      if coverages[i].script_coverage.url
+        == coverages[i - 1].script_coverage.url
+      {
+        let current = coverages.remove(i);
+        let previous = &mut coverages[i - 1];
 
-      for function in current.script_coverage.functions {
-        previous.script_coverage.functions.push(function);
+        for function in current.script_coverage.functions {
+          previous.script_coverage.functions.push(function);
+        }
       }
     }
   }
