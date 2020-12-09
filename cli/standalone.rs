@@ -4,7 +4,8 @@ use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::worker::MainWorker;
-use deno_core::error::type_error;
+use crate::fs_util;
+use deno_core::error::{type_error, generic_error};
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleLoader;
@@ -150,6 +151,10 @@ pub async fn create_standalone_binary(
     } else {
       output
     };
+  if fs_util::exists(&output.to_str().unwrap()) {
+    let error_msg = format!("File / Directory {:?} already exists. Please specify another output name.", &output);
+    return Err(generic_error(error_msg));
+  }
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
   {

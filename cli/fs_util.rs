@@ -126,6 +126,12 @@ where
   Ok(target_files)
 }
 
+/// Check if path is exists in the system
+pub fn exists(file: &str) -> bool {
+  let path = Path::new(file);
+  return path.exists();
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
