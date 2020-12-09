@@ -12,6 +12,9 @@ use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::ready;
 use deno_core::BufVec;
+use deno_core::Resource;
+use deno_core::CancelHandle;
+use std::borrow::Cow;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use std::cell::RefCell;
@@ -231,6 +234,117 @@ impl DenoAsyncRead for StreamResource {
     };
     let v = ready!(Pin::new(f).poll_read(cx, buf))?;
     Ok(v).into()
+  }
+}
+
+pub enum NewStreamResource {
+  // FsFile(Option<(tokio::fs::File, FileMetadata)>),
+  // TcpStream(Option<tokio::net::TcpStream>),
+  // #[cfg(not(windows))]
+  // UnixStream(tokio::net::UnixStream),
+  // ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
+  // ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
+  ChildStdin {
+    stdin: tokio::process::ChildStdin,
+    cancel: CancelHandle,
+  },
+  ChildStdout {
+    stdout: tokio::process::ChildStdout,
+    cancel: CancelHandle,
+  },
+  ChildStderr {
+    stderr: tokio::process::ChildStderr,
+    cancel: CancelHandle,
+  },
+}
+
+impl NewStreamResource {
+  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    use NewStreamResource::*;
+    match *self {
+      // FsFile(_) => todo!(),
+      // TcpStream(Some(stream)) => {
+      //   stream.read(buf).try_or_cancel(cancel).await
+      // },
+      // #[cfg(not(windows))]
+      // UnixStream(_) => todo!(),
+      // ServerTlsStream(_) => todo!(),
+      // ClientTlsStream(_) => todo!(),
+      ChildStdin { .. } => todo!(),
+      ChildStdout{ stdin, cancel } => {
+        let mut stdin = RcRef::map(&self, |r| &r.stdin)
+          .try_borrow_mut()
+          .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
+        let cancel = RcRef::map(resource, |r| &r.cancel);
+        Ok(0)
+      },
+      ChildStderr{ .. } => {
+        Ok(0)
+      },
+      // _ => Err(bad_resource_id()).into()
+    }
+  }
+}
+
+impl Resource for NewStreamResource {
+  fn name(&self) -> Cow<str> {
+    use NewStreamResource::*;
+    match self {
+      // FsFile(_) => "fsFile".into(),
+      // TcpStream(_) => "tcpStream".into(),
+      // #[cfg(not(windows))]
+      // UnixStream(_) => "unixStream".into(),
+      // ServerTlsStream(_) => "serverTlsStream".into(),
+      // ClientTlsStream(_) => "clientTlsStream".into(),
+      ChildStdin { .. } => "childStind".into(),
+      ChildStdout { .. } => "childStdout".into(),
+      ChildStderr { .. } => "childStderr".into(),
+    }
+  }
+
+  fn close(self: Rc<Self>) {
+    // self.cancel.cancel()
+  }
+}
+
+pub fn op_new_read(
+  state: Rc<RefCell<OpState>>,
+  is_sync: bool,
+  rid: i32,
+  mut zero_copy: BufVec,
+) -> MinimalOp {
+  debug!("read rid={}", rid);
+  match zero_copy.len() {
+    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
+    1 => {}
+    _ => panic!("Invalid number of arguments"),
+  }
+
+  if is_sync {
+    MinimalOp::Sync({
+      // First we look up the rid in the resource table.
+      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
+        Ok(std_file) => {
+          use std::io::Read;
+          std_file
+            .read(&mut zero_copy[0])
+            .map(|n: usize| n as i32)
+            .map_err(AnyError::from)
+        }
+        Err(_) => Err(type_error("sync read not allowed on this resource")),
+      })
+    })
+  } else {
+    let mut zero_copy = zero_copy[0].clone();
+    MinimalOp::Async(async move {
+      let resource = state
+        .borrow()
+        .resource_table_2
+        .get::<NewStreamResource>(rid as u32)
+        .ok_or_else(bad_resource_id)?;
+      let nread = resource.read(&mut zero_copy).await?;
+      Ok(nread as i32)
+    }.boxed_local())
   }
 }
 

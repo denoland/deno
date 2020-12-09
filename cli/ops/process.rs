@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
+use super::io::{std_file_resource, NewStreamResource};
 use crate::permissions::Permissions;
 use crate::signal::kill;
 use deno_core::error::bad_resource_id;
@@ -133,12 +133,12 @@ fn op_run(
 
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
-      let rid = state.resource_table.add(
-        "childStdin",
-        Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(
-          child_stdin,
-        ))),
-      );
+      let rid = state
+        .resource_table_2
+        .add(NewStreamResource::ChildStdin {
+          stdin: child_stdin,
+          cancel: Default::default(),
+        });
       Some(rid)
     }
     None => None,
@@ -146,12 +146,12 @@ fn op_run(
 
   let stdout_rid = match child.stdout.take() {
     Some(child_stdout) => {
-      let rid = state.resource_table.add(
-        "childStdout",
-        Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(
-          child_stdout,
-        ))),
-      );
+      let rid = state
+        .resource_table_2
+        .add(NewStreamResource::ChildStdout {
+          stdout: child_stdout,
+          cancel: Default::default(),
+        });
       Some(rid)
     }
     None => None,
@@ -159,12 +159,12 @@ fn op_run(
 
   let stderr_rid = match child.stderr.take() {
     Some(child_stderr) => {
-      let rid = state.resource_table.add(
-        "childStderr",
-        Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(
-          child_stderr,
-        ))),
-      );
+      let rid = state
+        .resource_table_2
+        .add(NewStreamResource::ChildStderr {
+          stderr: child_stderr,
+          cancel: Default::default(),
+        });
       Some(rid)
     }
     None => None,
