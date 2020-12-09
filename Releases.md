@@ -6,6 +6,56 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.6.0 / 2020.12.08
+
+- BREAKING: Make "isolatedModules" setting non-configurable (#8482)
+- feat: Add mvp language server (#8515, #8651)
+- feat: deno compile (#8539, #8563, #8581)
+- feat: Update to TypeScript 4.1 (#7573)
+- feat: EventTarget signal support (#8616)
+- feat: Add canary support to upgrade subcommand (#8476)
+- feat(unstable): Add cbreak option to Deno.setRaw (#8383)
+- fix: "onload" event order (#8376)
+- fix: Add file URL support for Deno.readLink (#8423)
+- fix: Add hygiene pass to transpile pipeline (#8586)
+- fix: Require allow-write permissions for unixpackets datagrams & unix socket
+  (#8511)
+- fix: Highlight `async` and `of` in REPL (#8569)
+- fix: Make output of deno info --json deterministic (#8483)
+- fix: Panic in worker when closing at top level (#8510)
+- fix: Support passing cli arguments under `deno eval` (#8547)
+- fix: `redirect: "manual"` fetch should return `type: "default"` response
+  (#8353)
+- fix: close() calls sometimes prints results in REPL (#8558)
+- fix: watcher doesn't exit when module resolution fails (#8521)
+- fix: Fix PermissionDenied error being caught in Websocket constructor (#8402)
+- fix: Set User-Agent header in Websocket (#8502, #8470)
+- perf: Use minimal op with performance.now() (#8619)
+- core: Implement new ResourceTable (#8273)
+- core: Add FsModuleLoader that supports loading from filesystem (#8523)
+- upgrade rusty_v8 to 0.14.0 (#8663)
+- upgrade: deno_doc, deno_lint, dprint, swc (#8552, #8575, #8588)
+
+Changes in std version 0.80.0:
+
+- BREAKING(std/bytes): Adjust APIs based on std-wg discussion (#8612)
+- feat(std/encoding/csv): Add stringify functionality (#8408)
+- feat(std/fs): Re-enable `followSymlinks` on `walk()` (#8479)
+- feat(std/http): Add Cookie value validation (#8471)
+- feat(std/node): Add "setImmediate" and "clearImmediate" to global scope
+  (#8566)
+- feat(std/node): Port most of node errors (#7934)
+- feat(std/node/stream): Add Duplex, Transform, Passthrough, pipeline, finished
+  and promises (#7940)
+- feat(std/wasi): Add return on exit option (#8605)
+- feat(std/wasi): Add support for initializing reactors (#8603)
+- feat(std/ws): protocol & version support (#8505)
+- fix(std/bufio): Remove '\r' at the end of Windows lines (#8447)
+- fix(std/encoding): Rewrite toml parser not to use eval() (#8624)
+- fix(std/encoding/csv): Correct readme formatting due to dprint issues (#8503)
+- fix(std/http): Prevent path traversal (#8474)
+- fix(std/node): Inline default objects to ensure correct prototype (#8513)
+
 ### 1.5.4 / 2020.11.23
 
 - feat(unstable): Add deno test --no-run (#8093)

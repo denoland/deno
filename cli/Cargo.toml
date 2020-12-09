@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.5.4"
+version = "1.6.0"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,10 +20,10 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
-deno_core = { path = "../core", version = "0.69.0" }
-deno_web = { path = "../op_crates/web", version = "0.20.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.4.0" }
+deno_core = { path = "../core", version = "0.70.0" }
+deno_web = { path = "../op_crates/web", version = "0.21.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.13.0" }
 regex = "1.3.9"
 serde = { version = "1.0.116", features = ["derive"] }
 
@@ -32,22 +32,24 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_crypto = { path = "../op_crates/crypto", version = "0.3.0" }
-deno_core = { path = "../core", version = "0.69.0" }
+deno_core = { path = "../core", version = "0.70.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.4.0" }
 deno_doc = "0.1.17"
+deno_fetch = { path = "../op_crates/fetch", version = "0.13.0" }
 deno_lint = "0.2.12"
-deno_web = { path = "../op_crates/web", version = "0.20.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.12.0" }
+deno_web = { path = "../op_crates/web", version = "0.21.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
 bytes = "0.5.6"
 byteorder = "1.3.4"
 clap = "2.33.3"
+crossbeam-channel = "0.5.0"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
-encoding_rs = "0.8.24"
 dprint-plugin-typescript = "0.35.0"
+encoding_rs = "0.8.24"
+env_logger = "0.7.1"
 filetime = "0.2.12"
 http = "0.2.1"
 indexmap = "1.6.0"
@@ -55,31 +57,33 @@ jsonc-parser = "0.14.0"
 lazy_static = "1.4.0"
 libc = "0.2.77"
 log = "0.4.11"
-env_logger = "0.7.1"
+lsp-server = "0.5.0"
+lsp-types = { version = "0.84.0", features = ["proposed"] }
 notify = "5.0.0-pre.3"
+percent-encoding = "2.1.0"
 regex = "1.3.9"
-ring = "0.16.15"
+ring = "0.16.19"
 rustyline = { version = "7.0.0", default-features = false }
 rustyline-derive = "0.4.0"
+semver-parser = "0.9.0"
 serde = { version = "1.0.116", features = ["derive"] }
 shell-escape = "0.1.5"
-sys-info = "0.7.0"
 sourcemap = "6.0.1"
 swc_bundler = "0.17.5"
 swc_common = { version = "0.10.6", features = ["sourcemap"] }
 swc_ecmascript = { version = "0.14.4", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
+sys-info = "0.7.0"
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
 tokio-rustls = "0.14.1"
 # Keep in-sync with warp.
 tokio-tungstenite = "0.11.0"
-webpki = "0.21.3"
-webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'.
+uuid = { version = "0.8.1", features = ["v4"] }
 walkdir = "2.3.1"
 warp = { version = "0.2.5", features = ["tls"] }
-semver-parser = "0.9.0"
-uuid = { version = "0.8.1", features = ["v4"] }
+webpki = "0.21.3"
+webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'.
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
