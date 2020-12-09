@@ -9,6 +9,7 @@ function wait(time: number) {
 
 Deno.test({
   name: "watching a file",
+  sanitizeOps: false,
   async fn() {
     const file = Deno.makeTempFileSync();
     const result: Array<[string, string]> = [];
