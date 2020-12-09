@@ -4,6 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
@@ -23,6 +24,7 @@ pub struct WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
+  pub root_uri: Option<Url>,
   pub settings: WorkspaceSettings,
 }
 
