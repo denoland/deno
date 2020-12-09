@@ -206,10 +206,9 @@
       });
       const formattedCallSites = [];
       for (const callSite of mappedCallSites) {
-        error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
+        error.__callSiteEvals.push(evaluateCallSite(callSite));
         formattedCallSites.push(formatCallSite(callSite));
       }
-      Object.freeze(error.__callSiteEvals);
       const message = error.message !== undefined ? error.message : "";
       const name = error.name !== undefined ? error.name : "Error";
       let messageLine;
