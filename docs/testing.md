@@ -229,6 +229,7 @@ test decompress ... ok (13ms)
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out (40ms)
 
+$ deno cover --unstable coverage_dir
 test coverage:
 file:///home/deno/deno_brotli/mod.ts 100.000%
 file:///home/deno/deno_brotli/wasm.js 100.000%
