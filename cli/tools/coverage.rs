@@ -242,17 +242,20 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
     coverages.push(coverage);
   }
 
-  coverages.sort_by_key(|k| k.script_coverage.url.clone());
-
   // TODO(caspervonb) drain_filter would make this cleaner, its nightly at the moment.
-  for i in (1..coverages.len() - 1).rev() {
-    if coverages[i].script_coverage.url == coverages[i - 1].script_coverage.url
-    {
-      let current = coverages.remove(i);
-      let previous = &mut coverages[i - 1];
+  if coverages.len() > 1 {
+    coverages.sort_by_key(|k| k.script_coverage.url.clone());
 
-      for function in current.script_coverage.functions {
-        previous.script_coverage.functions.push(function);
+    for i in (1..coverages.len() - 1).rev() {
+      if coverages[i].script_coverage.url
+        == coverages[i - 1].script_coverage.url
+      {
+        let current = coverages.remove(i);
+        let previous = &mut coverages[i - 1];
+
+        for function in current.script_coverage.functions {
+          previous.script_coverage.functions.push(function);
+        }
       }
     }
   }
