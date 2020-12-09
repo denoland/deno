@@ -27,7 +27,7 @@ pub enum DenoSubcommand {
   Cover {
     dir: String,
     quiet: bool,
-    ignore: Vec<PathBuf>,
+    ignore: Vec<String>,
   },
   Doc {
     private: bool,
@@ -531,7 +531,7 @@ fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dir = matches.value_of("dir").map(String::from).unwrap();
   let quiet = matches.is_present("quiet");
   let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
+    Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
 
@@ -998,6 +998,14 @@ Future runs of this module will trigger no downloads or compilation unless
 
 fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("cover")
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore covering particular source files."),
+    )
     .arg(
       Arg::with_name("dir")
         .takes_value(true)

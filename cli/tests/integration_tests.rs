@@ -3295,7 +3295,7 @@ itest!(redirect_cache {
 });
 
 itest!(deno_test_coverage {
-  args: "test --coverage=.test_coverage --unstable test_coverage.ts",
+  args: "run --unstable test_coverage.ts",
   output: "test_coverage.out",
   exit_code: 0,
 });

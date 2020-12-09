@@ -796,7 +796,7 @@ async fn cover_command(
   _flags: Flags,
   dir: String,
   quiet: bool,
-  ignore: Vec<PathBuf>,
+  ignore: Vec<String>,
 ) -> Result<(), AnyError> {
   let dir = PathBuf::from(dir);
   tools::coverage::report_coverages(&dir, quiet, ignore)?;

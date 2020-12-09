@@ -5,6 +5,7 @@ use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::ModuleSpecifier;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
@@ -232,7 +233,7 @@ impl PrettyCoverageReporter {
 
 fn collect_coverages(
   dir: &PathBuf,
-  _ignore: Vec<PathBuf>,
+  ignore: Vec<String>,
 ) -> Result<Vec<Coverage>, AnyError> {
   let mut coverages: Vec<Coverage> = Vec::new();
 
@@ -244,9 +245,15 @@ fn collect_coverages(
     coverages.push(coverage);
   }
 
+  let canonicalized_ignore: Vec<String> = ignore
+    .iter()
+    .map(|i| ModuleSpecifier::resolve_url_or_path(i).unwrap().to_string())
+    .collect();
+
   coverages = coverages
     .into_iter()
     .filter(|e| !e.script_coverage.url.ends_with("__anonymous__"))
+    .filter(|e| !canonicalized_ignore.iter().any(|i| e.script_coverage.url.starts_with(i)))
     .collect::<Vec<Coverage>>();
 
   coverages.sort_by_key(|k| k.script_coverage.url.clone());
@@ -270,7 +277,7 @@ fn collect_coverages(
 pub fn report_coverages(
   dir: &PathBuf,
   quiet: bool,
-  ignore: Vec<PathBuf>,
+  ignore: Vec<String>,
 ) -> Result<(), AnyError> {
   let coverages = collect_coverages(dir, ignore)?;
 
