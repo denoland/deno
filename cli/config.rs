@@ -1,11 +1,14 @@
-use crate::flags::Flags;
+use crate::flags::{Flags, resolve_urls};
 use deno_core::serde_json::Value;
 use log::Level;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::net::SocketAddr;
+use deno_core::error::AnyError;
 
-enum _StringBool {
+#[derive(Deserialize, Debug)]
+enum StringBool {
   String(String),
   Bool(bool),
 }
@@ -14,7 +17,7 @@ enum _StringBool {
 pub struct Config {
   unstable: Option<bool>,
   log_level: Option<String>,
-  pub(crate) quiet: Option<bool>,
+  pub quiet: Option<bool>,
 
   runtime: Option<Runtime>,
   pub test: Option<Test>,
@@ -30,18 +33,19 @@ struct Runtime {
   permissions: Option<Permissions>,
   v8_flags: Option<Vec<String>>,
   seed: Option<u64>,
-  // inspect: Option<String>,
-  // inspect_brk: Option<String>,
+  inspect: Option<StringBool>,
+  inspect_brk: Option<StringBool>,
 
-  /*cached_only: Option<bool>,
+  cached_only: Option<bool>,
   import_map: Option<String>,
   no_remote: Option<bool>,
-  config: Option<String>,*/
+  config: Option<String>,
   no_check: Option<bool>,
-  /*reload: Option<Vec<String>>,
-  lock: Option<bool>,
-  lock_write: Option<bool>,
-  cert: Option<String>,*/
+  reload: Option<Vec<String>>,
+  /*lock: Option<bool>,
+  lock_write: Option<bool>,*/
+  cert: Option<String>,
+
   #[serde(flatten)]
   extra: HashMap<String, Value>,
 }
@@ -96,7 +100,7 @@ pub struct Lint {
 }
 
 impl Config {
-  pub fn to_flags(&self) -> Result<Flags, ()> {
+  pub fn to_flags(&self) -> Result<Flags, AnyError> {
     let mut flags = Flags::default();
 
     if !self.extra.is_empty() {
@@ -132,8 +136,39 @@ impl Config {
         flags.v8_flags.push(format!("--random-seed={}", seed));
       }
 
-      // TODO: inspect
+      let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
+      if let Some(ref inspect) = runtime.inspect {
+        flags.inspect = match inspect {
+          StringBool::String(host) => Some(host.parse().unwrap()),
+          StringBool::Bool(true) => Some(default()),
+          StringBool::Bool(false) => None,
+        }
+      }
+      if let Some(ref inspect) = runtime.inspect_brk {
+        flags.inspect_brk = match inspect {
+          StringBool::String(host) => Some(host.parse().unwrap()),
+          StringBool::Bool(true) => Some(default()),
+          StringBool::Bool(false) => None,
+        }
+      }
+
+      flags.cached_only = runtime.cached_only.unwrap_or_default();
+      flags.import_map_path = runtime.import_map.clone();
+      flags.no_remote = runtime.no_remote.unwrap_or_default();
+      flags.config_path = runtime.config.clone();
       flags.no_check = runtime.no_check.unwrap_or_default();
+
+      if let Some(ref cache_bl) = runtime.reload {
+        if cache_bl.is_empty() {
+          flags.reload = true;
+        } else {
+          flags.cache_blocklist = resolve_urls(cache_bl.clone());
+          debug!("cache blocklist: {:#?}", &flags.cache_blocklist);
+          flags.reload = false;
+        }
+      }
+
+      flags.ca_file = runtime.cert.clone();
 
       if let Some(ref permissions) = runtime.permissions {
         if !runtime.extra.is_empty() {
@@ -194,6 +229,13 @@ impl Config {
       if !test.extra.is_empty() {
         return Err(());
       }
+
+      if !flags.unstable && test.no_run.unwrap_or_default() {
+        return Err(());
+      }
+      if !flags.unstable && test.coverage.unwrap_or_default() {
+        return Err(());
+      }
     }
     if let Some(ref fmt) = self.fmt {
       if !fmt.extra.is_empty() {
@@ -202,6 +244,10 @@ impl Config {
     }
     if let Some(ref lint) = self.lint {
       if !lint.extra.is_empty() {
+        return Err(());
+      }
+
+      if !flags.unstable && lint.ignore.is_some() {
         return Err(());
       }
     }

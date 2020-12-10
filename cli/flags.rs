@@ -11,6 +11,7 @@ use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
+use deno_core::error::AnyError;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
@@ -239,12 +240,16 @@ lazy_static! {
 pub fn flags_from_vec(args: Vec<String>) -> Flags {
   match flags_from_vec_safe(args) {
     Ok(flags) => flags,
-    Err(err) => err.exit(),
+    Err(err) => {
+      use std::io::{Write, stderr};
+      writeln!(&mut stderr(), err).ok();
+      std::process::exit(1);
+    },
   }
 }
 
 /// Same as flags_from_vec but does not exit on error.
-pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
+pub fn flags_from_vec_safe(args: Vec<String>) -> Result<Flags, AnyError> {
   let version = crate::version::deno();
   let app = clap_root(&*version);
   let matches = app.get_matches_from_safe(args)?;
@@ -253,8 +258,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
 
   let config = if matches.is_present("meta") {
     let file = std::fs::read(matches.value_of("meta").unwrap())?;
-    let config: Config = deno_core::serde_json::from_slice(&*file).unwrap();
-    flags = config.to_flags().unwrap();
+    let config: Config = deno_core::serde_json::from_slice(&*file)?;
+    flags = config.to_flags()?;
     Some(config)
   } else {
     None
