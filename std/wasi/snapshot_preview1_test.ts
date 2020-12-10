@@ -90,6 +90,7 @@ for (const pathname of tests) {
             "--quiet",
             "--unstable",
             "--allow-all",
+            "--no-check",
             path.resolve(rootdir, "snapshot_preview1_test_runner.ts"),
             prelude,
             path.resolve(rootdir, pathname),
