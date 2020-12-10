@@ -164,9 +164,16 @@ delete Object.prototype.__proto__;
     // TODO(bartlomieju): a very crude way to disable
     // source mapping of errors. This condition is true
     // only for compiled standalone binaries.
+    let prepareStackTrace;
     if (s.applySourceMaps) {
-      errorStack.setPrepareStackTrace(Error);
+      prepareStackTrace = core.createPrepareStackTrace(
+        errorStack.opApplySourceMap,
+      );
+    } else {
+      prepareStackTrace = core.createPrepareStackTrace();
     }
+    Error.prepareStackTrace = prepareStackTrace;
+
     return s;
   }
 

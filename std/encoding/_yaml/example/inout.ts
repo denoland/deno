@@ -23,5 +23,5 @@ const string = stringify(test);
 if (Deno.inspect(test) === Deno.inspect(parse(string))) {
   console.log("In-Out as expected.");
 } else {
-  console.log("Someting went wrong.");
+  console.log("Something went wrong.");
 }
