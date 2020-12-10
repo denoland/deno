@@ -36,6 +36,17 @@
       "import_maps": "Import maps"
     }
   },
+  "typescript": {
+    "name": "Using TypeScript",
+    "children": {
+      "overview": "Overview",
+      "configuration": "Configuration",
+      "types": "Types and type declarations",
+      "migration": "Migrating to/from JavaScript",
+      "runtime": "Runtime compiler APIs",
+      "faqs": "Frequently asked questions"
+    }
+  },
   "standard_library": {
     "name": "Standard library"
   },
