@@ -24,6 +24,11 @@ pub trait Resource: Any + 'static {
   fn name(&self) -> Cow<str> {
     type_name::<Self>().into()
   }
+
+  /// Resources may implement the `close()` trait method if they need to do
+  /// resource specific clean-ups, such as cancelling pending futures, after a
+  /// resource has been removed from the resource table.
+  fn close(self: Rc<Self>) {}
 }
 
 impl dyn Resource {
@@ -117,7 +122,7 @@ impl ResourceTable {
   /// cause the resource to be dropped. However, since resources are reference
   /// counted, therefore pending ops are not automatically cancelled.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.index.remove(&rid).map(|_| ())
+    self.index.remove(&rid).map(|resource| resource.close())
   }
 
   /// Returns an iterator that yields a `(id, name)` pair for every resource
@@ -128,8 +133,8 @@ impl ResourceTable {
   /// # Example
   ///
   /// ```
-  /// # use deno_core::resources2::ResourceTable;
-  /// # let resource_table = ResourceTable::default();
+  /// # use deno_core::ResourceTable2;
+  /// # let resource_table = ResourceTable2::default();
   /// let resource_names = resource_table.names().collect::<Vec<_>>();
   /// ```
   pub fn names(&self) -> impl Iterator<Item = (ResourceId, Cow<str>)> {

@@ -26,7 +26,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-const SUPPORTED_SCHEMES: [&str; 3] = ["http", "https", "file"];
+pub const SUPPORTED_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]

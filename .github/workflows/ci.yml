@@ -217,7 +217,9 @@ jobs:
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: cargo test --locked --all-targets
+        run: |
+          cargo test --locked --doc
+          cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'

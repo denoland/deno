@@ -18,6 +18,9 @@ use crossbeam_channel::select;
 use crossbeam_channel::unbounded;
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
+use deno_core::error::anyhow;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use lsp_server::Message;
@@ -25,17 +28,55 @@ use lsp_server::Notification;
 use lsp_server::Request;
 use lsp_server::RequestId;
 use lsp_server::Response;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
-use std::rc::Rc;
+use std::fs;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Instant;
 
 type ReqHandler = fn(&mut ServerState, Response);
 type ReqQueue = lsp_server::ReqQueue<(String, Instant), ReqHandler>;
+
+pub fn update_import_map(state: &mut ServerState) -> Result<(), AnyError> {
+  if let Some(import_map_str) = &state.config.settings.import_map {
+    let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str) {
+      Ok(url)
+    } else if let Some(root_uri) = &state.config.root_uri {
+      let root_path = root_uri
+        .to_file_path()
+        .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+      let import_map_path = root_path.join(import_map_str);
+      Url::from_file_path(import_map_path).map_err(|_| {
+        anyhow!("Bad file path for import map: {:?}", import_map_str)
+      })
+    } else {
+      Err(anyhow!(
+        "The path to the import map (\"{}\") is not resolvable.",
+        import_map_str
+      ))
+    }?;
+    let import_map_path = import_map_url
+      .to_file_path()
+      .map_err(|_| anyhow!("Bad file path."))?;
+    let import_map_json =
+      fs::read_to_string(import_map_path).map_err(|err| {
+        anyhow!(
+          "Failed to load the import map at: {}. [{}]",
+          import_map_url,
+          err
+        )
+      })?;
+    let import_map =
+      ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
+    state.maybe_import_map_uri = Some(import_map_url);
+    state.maybe_import_map = Some(Arc::new(RwLock::new(import_map)));
+  } else {
+    state.maybe_import_map = None;
+  }
+  Ok(())
+}
 
 pub enum Event {
   Message(Message),
@@ -107,7 +148,7 @@ impl DocumentData {
     specifier: ModuleSpecifier,
     version: i32,
     source: &str,
-    maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
+    maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
   ) -> Self {
     let dependencies = if let Some((dependencies, _)) =
       analysis::analyze_dependencies(
@@ -131,7 +172,7 @@ impl DocumentData {
     &mut self,
     version: i32,
     source: &str,
-    maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
+    maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
   ) {
     self.dependencies = if let Some((dependencies, _)) =
       analysis::analyze_dependencies(
@@ -163,6 +204,8 @@ pub struct ServerState {
   pub diagnostics: DiagnosticCollection,
   pub doc_data: HashMap<ModuleSpecifier, DocumentData>,
   pub file_cache: Arc<RwLock<MemoryCache>>,
+  pub maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
+  pub maybe_import_map_uri: Option<Url>,
   req_queue: ReqQueue,
   sender: Sender<Message>,
   pub sources: Arc<RwLock<Sources>>,
@@ -189,8 +232,10 @@ impl ServerState {
     Self {
       config,
       diagnostics: Default::default(),
-      doc_data: HashMap::new(),
+      doc_data: Default::default(),
       file_cache: Arc::new(RwLock::new(Default::default())),
+      maybe_import_map: None,
+      maybe_import_map_uri: None,
       req_queue: Default::default(),
       sender,
       sources: Arc::new(RwLock::new(sources)),
@@ -288,5 +333,59 @@ impl ServerState {
 
   pub fn transition(&mut self, new_status: Status) {
     self.status = new_status;
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_core::serde_json::json;
+  use deno_core::serde_json::Value;
+  use lsp_server::Connection;
+  use tempfile::TempDir;
+
+  #[test]
+  fn test_update_import_map() {
+    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let import_map_path = temp_dir.path().join("import_map.json");
+    let import_map_str = &import_map_path.to_string_lossy();
+    fs::write(
+      import_map_path.clone(),
+      r#"{
+      "imports": {
+        "denoland/": "https://deno.land/x/"
+      }
+    }"#,
+    )
+    .expect("could not write file");
+    let mut config = Config::default();
+    config
+      .update(json!({
+        "enable": false,
+        "config": Value::Null,
+        "lint": false,
+        "importMap": import_map_str,
+        "unstable": true,
+      }))
+      .expect("could not update config");
+    let (connection, _) = Connection::memory();
+    let mut state = ServerState::new(connection.sender, config);
+    let result = update_import_map(&mut state);
+    assert!(result.is_ok());
+    assert!(state.maybe_import_map.is_some());
+    let expected =
+      Url::from_file_path(import_map_path).expect("could not parse url");
+    assert_eq!(state.maybe_import_map_uri, Some(expected));
+    let import_map = state.maybe_import_map.unwrap();
+    let import_map = import_map.read().unwrap();
+    assert_eq!(
+      import_map
+        .resolve("denoland/mod.ts", "https://example.com/index.js")
+        .expect("bad response"),
+      Some(
+        ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts")
+          .expect("could not create URL")
+      )
+    );
   }
 }

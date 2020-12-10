@@ -13,9 +13,10 @@ use deno_core::ModuleSpecifier;
 use deno_lint::rules;
 use lsp_types::Position;
 use lsp_types::Range;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
@@ -113,11 +114,13 @@ pub enum ResolvedImport {
 pub fn resolve_import(
   specifier: &str,
   referrer: &ModuleSpecifier,
-  maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
+  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
 ) -> ResolvedImport {
   let maybe_mapped = if let Some(import_map) = maybe_import_map {
-    if let Ok(maybe_specifier) =
-      import_map.borrow().resolve(specifier, referrer.as_str())
+    if let Ok(maybe_specifier) = import_map
+      .read()
+      .unwrap()
+      .resolve(specifier, referrer.as_str())
     {
       maybe_specifier
     } else {
@@ -159,7 +162,7 @@ pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: &MediaType,
-  maybe_import_map: Option<Rc<RefCell<ImportMap>>>,
+  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
 ) -> Option<(HashMap<String, Dependency>, Option<ResolvedImport>)> {
   let specifier_str = specifier.to_string();
   let source_map = Rc::new(swc_common::SourceMap::default());
