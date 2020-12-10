@@ -118,6 +118,7 @@ fn create_channels(
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.
 pub struct WebWorker {
+  id: u32,
   inspector: Option<Box<DenoInspector>>,
   // Following fields are pub because they are accessed
   // when creating a new WebWorker instance.
@@ -143,6 +144,7 @@ pub struct WebWorkerOptions {
   pub has_deno_namespace: bool,
   pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub apply_source_maps: bool,
 }
 
 impl WebWorker {
@@ -151,16 +153,12 @@ impl WebWorker {
     permissions: Permissions,
     main_module: ModuleSpecifier,
     worker_id: u32,
-    options: WebWorkerOptions,
+    options: &WebWorkerOptions,
   ) -> Self {
-    // TODO(bartlomieju): this is hacky way to not apply source
-    // maps in JS
-    let apply_source_maps = options.js_error_create_fn.is_some();
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(options.module_loader),
+      module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn: options.js_error_create_fn,
+      js_error_create_fn: options.js_error_create_fn.as_ref(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       ..Default::default()
     });
@@ -168,7 +166,7 @@ impl WebWorker {
     let inspector = if options.attach_inspector {
       Some(DenoInspector::new(
         &mut js_runtime,
-        options.maybe_inspector_server,
+        options.maybe_inspector_server.clone(),
       ))
     } else {
       None
@@ -180,6 +178,7 @@ impl WebWorker {
       create_channels(isolate_handle, terminate_tx);
 
     let mut worker = Self {
+      id: worker_id,
       inspector,
       internal_channels,
       js_runtime,
@@ -213,7 +212,7 @@ impl WebWorker {
       ops::worker_host::init(
         js_runtime,
         Some(sender),
-        options.create_web_worker_cb,
+        options.create_web_worker_cb.clone(),
       );
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
@@ -251,11 +250,44 @@ impl WebWorker {
           op_state.resource_table.add("stderr", Box::new(stream));
         }
       }
+
+      worker
     }
 
+    // let runtime_options = json!({
+    //   "args": options.args,
+    //   "applySourceMaps": options.apply_source_maps,
+    //   "debugFlag": options.debug_flag,
+    //   "denoVersion": version::deno(),
+    //   "noColor": !colors::use_color(),
+    //   "pid": std::process::id(),
+    //   "ppid": ops::runtime::ppid(),
+    //   "target": env!("TARGET"),
+    //   "tsVersion": version::TYPESCRIPT,
+    //   "unstableFlag": options.unstable,
+    //   "v8Version": version::v8(),
+    // });
+
+    // let runtime_options_str =
+    //   serde_json::to_string_pretty(&runtime_options).unwrap();
+
+    // // Instead of using name for log we use `worker-${id}` because
+    // // WebWorkers can have empty string as name.
+    // let script = format!(
+    //   "bootstrap.workerRuntime({}, \"{}\", {}, \"worker-{}\")",
+    //   runtime_options_str, name, worker.has_deno_namespace, worker_id
+    // );
+    // worker
+    //   .execute(&script)
+    //   .expect("Failed to execute worker bootstrap script");
+
+    // worker
+  }
+
+  pub fn bootstrap(&mut self, options: &WebWorkerOptions) {
     let runtime_options = json!({
       "args": options.args,
-      "applySourceMaps": apply_source_maps,
+      "applySourceMaps": options.apply_source_maps,
       "debugFlag": options.debug_flag,
       "denoVersion": version::deno(),
       "noColor": !colors::use_color(),
@@ -274,13 +306,11 @@ impl WebWorker {
     // WebWorkers can have empty string as name.
     let script = format!(
       "bootstrap.workerRuntime({}, \"{}\", {}, \"worker-{}\")",
-      runtime_options_str, name, worker.has_deno_namespace, worker_id
+      runtime_options_str, self.name, options.has_deno_namespace, self.id
     );
-    worker
+    self
       .execute(&script)
       .expect("Failed to execute worker bootstrap script");
-
-    worker
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
@@ -465,6 +495,7 @@ mod tests {
 
     let options = WebWorkerOptions {
       args: program_state.flags.argv.clone(),
+      apply_source_maps: false,
       debug_flag: false,
       unstable: program_state.flags.unstable,
       ca_filepath: program_state.flags.ca_file.clone(),
@@ -477,13 +508,15 @@ mod tests {
       maybe_inspector_server: None,
     };
 
-    WebWorker::from_options(
+    let mut worker = WebWorker::from_options(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
       1,
-      options,
-    )
+      &options,
+    );
+    worker.bootstrap(&options);
+    worker
   }
 
   #[tokio::test]

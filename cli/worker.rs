@@ -57,6 +57,7 @@ pub fn create_web_worker_callback(
 
       let options = WebWorkerOptions {
         args: program_state.flags.argv.clone(),
+        apply_source_maps: true,
         debug_flag: program_state
           .flags
           .log_level
@@ -77,13 +78,13 @@ pub fn create_web_worker_callback(
         permissions,
         main_module,
         worker_id,
-        options,
+        &options,
       );
 
       // NOTE(bartlomieju): ProgramState is CLI only construct,
       // hence we're not using it in `Self::from_options`.
-      let js_runtime = &mut worker.js_runtime;
       {
+        let js_runtime = &mut worker.js_runtime;
         js_runtime.op_state().borrow_mut().put::<Arc<ProgramState>>(program_state.clone());
         // Applies source maps - works in conjuction with `js_error_create_fn`
         // above
@@ -92,6 +93,7 @@ pub fn create_web_worker_callback(
           ops::runtime_compiler::init(js_runtime);
         }
       }
+      worker.bootstrap(&options);
 
       worker
     },
@@ -173,15 +175,16 @@ impl MainWorker {
 
     let mut worker = Self::from_options(main_module, permissions, options);
 
-    let js_runtime = &mut worker.js_runtime;
     // NOTE(bartlomieju): ProgramState is CLI only construct,
     // hence we're not using it in `Self::from_options`.
     {
+      let js_runtime = &mut worker.js_runtime;
       js_runtime.op_state().borrow_mut().put::<Arc<ProgramState>>(program_state.clone());
       // Applies source maps - works in conjuction with `js_error_create_fn`
       // above
       ops::errors::init(js_runtime);
       ops::runtime_compiler::init(js_runtime);
+      worker.execute("Deno.core.ops();").unwrap();
     }
 
     worker
