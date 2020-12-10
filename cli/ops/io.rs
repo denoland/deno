@@ -250,18 +250,6 @@ impl DenoAsyncRead for StreamResource {
 //   // UnixStream(tokio::net::UnixStream),
 //   // ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
 //   // ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-//   ChildStdin {
-//     stdin: tokio::process::ChildStdin,
-//     cancel: CancelHandle,
-//   },
-//   ChildStdout {
-//     stdout: tokio::process::ChildStdout,
-//     cancel: CancelHandle,
-//   },
-//   ChildStderr {
-//     stderr: tokio::process::ChildStderr,
-//     cancel: CancelHandle,
-//   },
 // }
 
 #[derive(Default)]
@@ -346,50 +334,6 @@ impl Resource for NewStreamResource {
     self.cancel.cancel()
   }
 }
-
-// pub fn op_new_read(
-//   state: Rc<RefCell<OpState>>,
-//   is_sync: bool,
-//   rid: i32,
-//   mut zero_copy: BufVec,
-// ) -> MinimalOp {
-//   debug!("read rid={}", rid);
-//   match zero_copy.len() {
-//     0 => return MinimalOp::Sync(Err(no_buffer_specified())),
-//     1 => {}
-//     _ => panic!("Invalid number of arguments"),
-//   }
-
-//   if is_sync {
-//     MinimalOp::Sync({
-//       // First we look up the rid in the resource table.
-//       std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
-//         Ok(std_file) => {
-//           use std::io::Read;
-//           std_file
-//             .read(&mut zero_copy[0])
-//             .map(|n: usize| n as i32)
-//             .map_err(AnyError::from)
-//         }
-//         Err(_) => Err(type_error("sync read not allowed on this resource")),
-//       })
-//     })
-//   } else {
-//     let mut zero_copy = zero_copy[0].clone();
-//     MinimalOp::Async(
-//       async move {
-//         let resource = state
-//           .borrow()
-//           .resource_table_2
-//           .get::<NewStreamResource>(rid as u32)
-//           .ok_or_else(bad_resource_id)?;
-//         let nread = resource.read(&mut zero_copy).await?;
-//         Ok(nread as i32)
-//       }
-//       .boxed_local(),
-//     )
-//   }
-// }
 
 pub fn op_read(
   state: Rc<RefCell<OpState>>,
