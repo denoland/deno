@@ -175,6 +175,23 @@
     };
   }
 
+  /**
+   * Returns a function that can be used as `Error.prepareStackTrace`.
+   * 
+   * This function accepts an optional argument, a function that performs
+   * source mapping. It is not required to pass this argument, but
+   * in such case only JavaScript sources will have proper position in
+   * stack frames.
+   * @param {(
+   *  fileName: string,
+   *  lineNumber: number,
+   *  columnNumber: number
+   * ) => {
+   *  fileName: string,
+   *  lineNumber: number,
+   *  columnNumber: number
+   * }} sourceMappingFn 
+   */
   function createPrepareStackTrace(sourceMappingFn) {
     return function prepareStackTrace(
       error,
