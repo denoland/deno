@@ -329,6 +329,9 @@ impl JsRuntime {
       self
         .execute("deno:core/core.js", include_str!("core.js"))
         .unwrap();
+      self
+        .execute("deno:core/error.js", include_str!("error.js"))
+        .unwrap();
     }
   }
 
