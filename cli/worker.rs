@@ -40,7 +40,7 @@ pub fn create_web_worker_callback(
   Arc::new(
     move |name, worker_id, permissions, main_module, has_deno_namespace| {
       let global_state_ = program_state.clone();
-      let js_error_create_fn = Box::new(move |core_js_error| {
+      let js_error_create_fn = Rc::new(move |core_js_error| {
         let source_mapped_error =
           apply_source_map(&core_js_error, global_state_.clone());
         PrettyJsError::create(source_mapped_error)
@@ -85,7 +85,10 @@ pub fn create_web_worker_callback(
       // hence we're not using it in `Self::from_options`.
       {
         let js_runtime = &mut worker.js_runtime;
-        js_runtime.op_state().borrow_mut().put::<Arc<ProgramState>>(program_state.clone());
+        js_runtime
+          .op_state()
+          .borrow_mut()
+          .put::<Arc<ProgramState>>(program_state.clone());
         // Applies source maps - works in conjuction with `js_error_create_fn`
         // above
         ops::errors::init(js_runtime);
@@ -114,6 +117,7 @@ pub struct MainWorker {
 }
 
 pub struct WorkerOptions {
+  pub apply_source_maps: bool,
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
@@ -124,7 +128,7 @@ pub struct WorkerOptions {
   // of WebWorker
   // pub create_module_loader_cb: Arc<ops::worker_host::LoaderCb>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
@@ -140,7 +144,7 @@ impl MainWorker {
 
     let global_state_ = program_state.clone();
 
-    let js_error_create_fn = Box::new(move |core_js_error| {
+    let js_error_create_fn = Rc::new(move |core_js_error| {
       let source_mapped_error =
         apply_source_map(&core_js_error, global_state_.clone());
       PrettyJsError::create(source_mapped_error)
@@ -157,6 +161,7 @@ impl MainWorker {
       create_web_worker_callback(program_state.clone());
 
     let options = WorkerOptions {
+      apply_source_maps: true,
       args: program_state.flags.argv.clone(),
       debug_flag: program_state
         .flags
@@ -173,18 +178,21 @@ impl MainWorker {
       module_loader,
     };
 
-    let mut worker = Self::from_options(main_module, permissions, options);
+    let mut worker = Self::from_options(main_module, permissions, &options);
 
     // NOTE(bartlomieju): ProgramState is CLI only construct,
     // hence we're not using it in `Self::from_options`.
     {
       let js_runtime = &mut worker.js_runtime;
-      js_runtime.op_state().borrow_mut().put::<Arc<ProgramState>>(program_state.clone());
+      js_runtime
+        .op_state()
+        .borrow_mut()
+        .put::<Arc<ProgramState>>(program_state.clone());
       // Applies source maps - works in conjuction with `js_error_create_fn`
       // above
       ops::errors::init(js_runtime);
       ops::runtime_compiler::init(js_runtime);
-      worker.execute("Deno.core.ops();").unwrap();
+      worker.bootstrap(&options);
     }
 
     worker
@@ -193,16 +201,12 @@ impl MainWorker {
   pub fn from_options(
     main_module: ModuleSpecifier,
     permissions: Permissions,
-    options: WorkerOptions,
+    options: &WorkerOptions,
   ) -> Self {
-    // TODO(bartlomieju): this is hacky way to not apply source
-    // maps in JS
-    let apply_source_maps = options.js_error_create_fn.is_some();
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(options.module_loader),
+      module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn: options.js_error_create_fn,
+      js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       ..Default::default()
     });
@@ -210,7 +214,7 @@ impl MainWorker {
     let inspector = if options.attach_inspector {
       Some(DenoInspector::new(
         &mut js_runtime,
-        options.maybe_inspector_server,
+        options.maybe_inspector_server.clone(),
       ))
     } else {
       None
@@ -240,7 +244,11 @@ impl MainWorker {
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, options.ca_filepath.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime, None, options.create_web_worker_cb);
+      ops::worker_host::init(
+        js_runtime,
+        None,
+        options.create_web_worker_cb.clone(),
+      );
       ops::crypto::init(js_runtime, options.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
@@ -278,9 +286,13 @@ impl MainWorker {
       }
     }
 
+    worker
+  }
+
+  pub fn bootstrap(&mut self, options: &WorkerOptions) {
     let runtime_options = json!({
       "args": options.args,
-      "applySourceMaps": apply_source_maps,
+      "applySourceMaps": options.apply_source_maps,
       "debugFlag": options.debug_flag,
       "denoVersion": version::deno(),
       "noColor": !colors::use_color(),
@@ -296,10 +308,9 @@ impl MainWorker {
       "bootstrap.mainRuntime({})",
       serde_json::to_string_pretty(&runtime_options).unwrap()
     );
-    worker
+    self
       .execute(&script)
       .expect("Failed to execute bootstrap script");
-    worker
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".

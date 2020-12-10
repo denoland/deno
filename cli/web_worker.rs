@@ -140,7 +140,7 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub has_deno_namespace: bool,
   pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -158,7 +158,7 @@ impl WebWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn: options.js_error_create_fn.as_ref(),
+      js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       ..Default::default()
     });
@@ -182,7 +182,7 @@ impl WebWorker {
       inspector,
       internal_channels,
       js_runtime,
-      name: name.clone(),
+      name,
       waker: AtomicWaker::new(),
       event_loop_idle: false,
       terminate_rx,
@@ -253,35 +253,6 @@ impl WebWorker {
 
       worker
     }
-
-    // let runtime_options = json!({
-    //   "args": options.args,
-    //   "applySourceMaps": options.apply_source_maps,
-    //   "debugFlag": options.debug_flag,
-    //   "denoVersion": version::deno(),
-    //   "noColor": !colors::use_color(),
-    //   "pid": std::process::id(),
-    //   "ppid": ops::runtime::ppid(),
-    //   "target": env!("TARGET"),
-    //   "tsVersion": version::TYPESCRIPT,
-    //   "unstableFlag": options.unstable,
-    //   "v8Version": version::v8(),
-    // });
-
-    // let runtime_options_str =
-    //   serde_json::to_string_pretty(&runtime_options).unwrap();
-
-    // // Instead of using name for log we use `worker-${id}` because
-    // // WebWorkers can have empty string as name.
-    // let script = format!(
-    //   "bootstrap.workerRuntime({}, \"{}\", {}, \"worker-{}\")",
-    //   runtime_options_str, name, worker.has_deno_namespace, worker_id
-    // );
-    // worker
-    //   .execute(&script)
-    //   .expect("Failed to execute worker bootstrap script");
-
-    // worker
   }
 
   pub fn bootstrap(&mut self, options: &WebWorkerOptions) {

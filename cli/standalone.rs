@@ -117,6 +117,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
   });
 
   let options = WorkerOptions {
+    apply_source_maps: false,
     args: flags.argv.clone(),
     debug_flag: false,
     unstable: true,
@@ -130,7 +131,8 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     module_loader,
   };
   let mut worker =
-    MainWorker::from_options(main_module.clone(), permissions, options);
+    MainWorker::from_options(main_module.clone(), permissions, &options);
+  worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;
