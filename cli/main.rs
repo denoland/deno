@@ -260,7 +260,7 @@ async fn install_command(
 }
 
 async fn language_server_command() -> Result<(), AnyError> {
-  lsp::start()
+  lsp::start().await
 }
 
 async fn lint_command(

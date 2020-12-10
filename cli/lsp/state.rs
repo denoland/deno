@@ -14,14 +14,10 @@ use crate::deno_dir;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 
-use crossbeam_channel::select;
-use crossbeam_channel::unbounded;
-use crossbeam_channel::Receiver;
-use crossbeam_channel::Sender;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::futures::Future;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use lsp_server::Message;
 use lsp_server::Notification;
@@ -35,6 +31,10 @@ use std::fs;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Instant;
+use tokio::select;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 
 type ReqHandler = fn(&mut ServerState, Response);
 type ReqQueue = lsp_server::ReqQueue<(String, Instant), ReqHandler>;
@@ -207,27 +207,25 @@ pub struct ServerState {
   pub maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
   pub maybe_import_map_uri: Option<Url>,
   req_queue: ReqQueue,
-  sender: Sender<Message>,
+  sender: UnboundedSender<Message>,
   pub sources: Arc<RwLock<Sources>>,
   pub shutdown_requested: bool,
   pub status: Status,
-  task_sender: Sender<Task>,
-  pub task_receiver: Receiver<Task>,
-  pub ts_runtime: JsRuntime,
+  task_sender: UnboundedSender<Task>,
+  pub task_receiver: UnboundedReceiver<Task>,
+  pub tsc: tsc::TSC,
 }
 
 impl ServerState {
-  pub fn new(sender: Sender<Message>, config: Config) -> Self {
-    let (task_sender, task_receiver) = unbounded();
+  pub fn new(sender: UnboundedSender<Message>, config: Config) -> Self {
+    let (task_sender, task_receiver) = unbounded_channel();
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir =
       deno_dir::DenoDir::new(custom_root).expect("could not access DENO_DIR");
     let location = dir.root.join("deps");
     let sources = Sources::new(&location);
-    // TODO(@kitsonk) we need to allow displaying diagnostics here, but the
-    // current compiler snapshot sends them to stdio which would totally break
-    // the language server...
-    let ts_runtime = tsc::start(false).expect("could not start tsc");
+
+    let tsc = tsc::TSC::new();
 
     Self {
       config,
@@ -243,7 +241,7 @@ impl ServerState {
       status: Default::default(),
       task_receiver,
       task_sender,
-      ts_runtime,
+      tsc,
     }
   }
 
@@ -258,10 +256,13 @@ impl ServerState {
     handler(self, response)
   }
 
-  pub fn next_event(&self, inbox: &Receiver<Message>) -> Option<Event> {
+  pub async fn next_event(
+    &mut self,
+    inbox: &mut UnboundedReceiver<Message>,
+  ) -> Option<Event> {
     select! {
-      recv(inbox) -> msg => msg.ok().map(Event::Message),
-      recv(self.task_receiver) -> task => Some(Event::Task(task.unwrap())),
+      msg = inbox.recv() => msg.map(Event::Message),
+      task = self.task_receiver.recv() => Some(Event::Task(task.unwrap())),
     }
   }
 
@@ -325,6 +326,16 @@ impl ServerState {
 
   pub fn spawn<F>(&mut self, task: F)
   where
+    F: Future<Output = Task> + Send + 'static,
+  {
+    let sender = self.task_sender.clone();
+    tokio::spawn(async move {
+      sender.send(task.await).unwrap();
+    });
+  }
+
+  pub fn spawn_blocking<F>(&mut self, task: F)
+  where
     F: FnOnce() -> Task + Send + 'static,
   {
     let sender = self.task_sender.clone();
@@ -338,13 +349,16 @@ impl ServerState {
 
 #[cfg(test)]
 mod tests {
+
+  use crate::lsp::utils::asyncify_connection;
+
   use super::*;
   use deno_core::serde_json::json;
   use deno_core::serde_json::Value;
   use lsp_server::Connection;
   use tempfile::TempDir;
 
-  #[test]
+  #[tokio::test]
   fn test_update_import_map() {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let import_map_path = temp_dir.path().join("import_map.json");
@@ -369,7 +383,8 @@ mod tests {
       }))
       .expect("could not update config");
     let (connection, _) = Connection::memory();
-    let mut state = ServerState::new(connection.sender, config);
+    let (sender, _) = asyncify_connection(connection);
+    let mut state = ServerState::new(sender, config);
     let result = update_import_map(&mut state);
     assert!(result.is_ok());
     assert!(state.maybe_import_map.is_some());

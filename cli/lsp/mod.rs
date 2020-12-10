@@ -28,7 +28,6 @@ use text::apply_content_changes;
 
 use crate::tsc_config::TsConfig;
 
-use crossbeam_channel::Receiver;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -47,8 +46,11 @@ use lsp_types::InitializeResult;
 use lsp_types::ServerInfo;
 use std::env;
 use std::time::Instant;
+use tokio::sync::mpsc::UnboundedReceiver;
 
-pub fn start() -> Result<(), AnyError> {
+use self::utils::asyncify_connection;
+
+pub async fn start() -> Result<(), AnyError> {
   info!("Starting Deno language server...");
 
   let (connection, io_threads) = Connection::stdio();
@@ -94,7 +96,9 @@ pub fn start() -> Result<(), AnyError> {
   }
   config.update_capabilities(&initialize_params.capabilities);
 
-  let mut server_state = state::ServerState::new(connection.sender, config);
+  let (sender, receiver) = asyncify_connection(connection);
+
+  let mut server_state = state::ServerState::new(sender, config);
 
   // TODO(@kitsonk) need to make this configurable, respect unstable
   let ts_config = TsConfig::new(json!({
@@ -107,15 +111,14 @@ pub fn start() -> Result<(), AnyError> {
     "strict": true,
     "target": "esnext",
   }));
-  let state = server_state.snapshot();
-  tsc::request(
-    &mut server_state.ts_runtime,
-    &state,
-    tsc::RequestMethod::Configure(ts_config),
-  )?;
+  let snapshot = server_state.snapshot();
+  server_state
+    .tsc
+    .request(&snapshot, tsc::RequestMethod::Configure(ts_config))
+    .await?;
 
   // listen for events and run the main loop
-  server_state.run(connection.receiver)?;
+  server_state.run(receiver).await?;
 
   io_threads.join()?;
   info!("Stop language server");
@@ -163,18 +166,22 @@ impl ServerState {
     // themselves that have changed
     if self.process_changes() {
       debug!("process changes");
-      let state = self.snapshot();
-      self.spawn(move || {
-        let diagnostics = diagnostics::generate_linting_diagnostics(&state);
+      let snapshot = self.snapshot();
+      self.spawn_blocking(move || {
+        let diagnostics = diagnostics::generate_linting_diagnostics(&snapshot);
         Task::Diagnostics((DiagnosticSource::Lint, diagnostics))
       });
       // TODO(@kitsonk) isolates do not have Send to be safely sent between
       // threads, so I am not sure this is the best way to handle queuing up of
       // getting the diagnostics from the isolate.
-      let state = self.snapshot();
-      let diagnostics =
-        diagnostics::generate_ts_diagnostics(&state, &mut self.ts_runtime)?;
-      self.spawn(move || {
+      let snapshot = self.snapshot();
+      let mut tsc = self.tsc.clone();
+      self.spawn(async move {
+        // TODO(lucacasonato): handle this error correctly
+        let diagnostics =
+          diagnostics::generate_ts_diagnostics(&snapshot, &mut tsc)
+            .await
+            .unwrap();
         Task::Diagnostics((DiagnosticSource::TypeScript, diagnostics))
       });
     }
@@ -399,26 +406,29 @@ impl ServerState {
       s.shutdown_requested = true;
       Ok(())
     })?
-    .on_sync::<lsp_types::request::DocumentHighlightRequest>(
+    .on::<lsp_types::request::DocumentHighlightRequest, _>(
       handlers::handle_document_highlight,
-    )?
-    .on_sync::<lsp_types::request::GotoDefinition>(
-      handlers::handle_goto_definition,
-    )?
-    .on_sync::<lsp_types::request::HoverRequest>(handlers::handle_hover)?
-    .on_sync::<lsp_types::request::Completion>(handlers::handle_completion)?
-    .on_sync::<lsp_types::request::References>(handlers::handle_references)?
-    .on::<lsp_types::request::Formatting>(handlers::handle_formatting)
-    .on::<lsp_extensions::VirtualTextDocument>(
-      handlers::handle_virtual_text_document,
     )
+    .on::<lsp_types::request::GotoDefinition, _>(
+      handlers::handle_goto_definition,
+    )
+    .on::<lsp_types::request::HoverRequest, _>(handlers::handle_hover)
+    .on::<lsp_types::request::Completion, _>(handlers::handle_completion)
+    .on::<lsp_types::request::References, _>(handlers::handle_references)
+    .on::<lsp_types::request::Formatting, _>(handlers::handle_formatting)
+    .on_sync::<lsp_extensions::VirtualTextDocument>(
+      handlers::handle_virtual_text_document,
+    )?
     .finish();
 
     Ok(())
   }
 
   /// Start consuming events from the provided receiver channel.
-  pub fn run(mut self, inbox: Receiver<Message>) -> Result<(), AnyError> {
+  pub async fn run(
+    mut self,
+    mut inbox: UnboundedReceiver<Message>,
+  ) -> Result<(), AnyError> {
     // Check to see if we need to setup the import map
     if let Err(err) = update_import_map(&mut self) {
       self.send_notification::<lsp_types::notification::ShowMessage>(
@@ -455,7 +465,7 @@ impl ServerState {
 
     self.transition(Status::Ready);
 
-    while let Some(event) = self.next_event(&inbox) {
+    while let Some(event) = self.next_event(&mut inbox).await {
       if let Event::Message(Message::Notification(notification)) = &event {
         if notification.method == lsp_types::notification::Exit::METHOD {
           return Ok(());

@@ -7,9 +7,11 @@ use super::utils;
 
 use crate::js;
 use crate::media_type::MediaType;
+use crate::tokio_util::create_basic_runtime;
 use crate::tsc::ResolveArgs;
 use crate::tsc_config::TsConfig;
 
+use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::json_op_sync;
@@ -26,6 +28,9 @@ use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::thread;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 /// Provide static assets for the language server.
 ///
@@ -1114,14 +1119,14 @@ impl RequestMethod {
 /// Send a request into a runtime and return the JSON value of the response.
 pub fn request(
   runtime: &mut JsRuntime,
-  server_state: &ServerStateSnapshot,
+  snapshot: ServerStateSnapshot,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
   let id = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
-    state.server_state = server_state.clone();
+    state.server_state = snapshot.clone();
     state.last_id += 1;
     state.last_id
   };
@@ -1141,6 +1146,50 @@ pub fn request(
       "RequestError",
       "The response was not received for the request.",
     ))
+  }
+}
+
+type Request = (
+  RequestMethod,
+  ServerStateSnapshot,
+  oneshot::Sender<Result<Value, AnyError>>,
+);
+
+#[derive(Clone)]
+pub struct TSC(mpsc::Sender<Request>);
+
+impl TSC {
+  pub fn new() -> Self {
+    let (tx, mut rx) = mpsc::channel::<Request>(5);
+    let _join_handle = thread::spawn(move || {
+      // TODO(@kitsonk) we need to allow displaying diagnostics here, but the
+      // current compiler snapshot sends them to stdio which would totally break
+      // the language server...
+      let mut ts_runtime = start(false).expect("could not start tsc");
+
+      let mut runtime = create_basic_runtime();
+      runtime.block_on(async {
+        loop {
+          let (req, server_state, tx) = rx.recv().await.unwrap();
+          let value = request(&mut ts_runtime, server_state, req);
+          tx.send(value).unwrap()
+        }
+      })
+    });
+
+    Self(tx)
+  }
+
+  pub async fn request(
+    &mut self,
+    snapshot: &ServerStateSnapshot,
+    req: RequestMethod,
+  ) -> Result<Value, AnyError> {
+    let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
+    if self.0.send((req, snapshot.clone(), tx)).await.is_err() {
+      return Err(anyhow!("failed to send request to tsc thread"));
+    }
+    rx.await?
   }
 }
 
@@ -1179,20 +1228,17 @@ mod tests {
     debug: bool,
     config: Value,
     sources: Vec<(&str, &str, i32)>,
-  ) -> (JsRuntime, ServerStateSnapshot) {
-    let server_state = mock_server_state(sources.clone());
-    let mut runtime = start(debug).expect("could not start server");
+  ) -> (TSC, ServerStateSnapshot) {
+    let snapshot = mock_server_state(sources.clone());
+    let mut tsc = TSC::new();
     let ts_config = TsConfig::new(config);
     assert_eq!(
-      request(
-        &mut runtime,
-        &server_state,
-        RequestMethod::Configure(ts_config)
-      )
-      .expect("failed request"),
+      tsc
+        .request(&snapshot, RequestMethod::Configure(ts_config))
+        .expect("failed request"),
       json!(true)
     );
-    (runtime, server_state)
+    (tsc, snapshot)
   }
 
   #[test]
@@ -1223,9 +1269,9 @@ mod tests {
     );
   }
 
-  #[test]
+  #[tokio::test]
   fn test_project_reconfigure() {
-    let (mut runtime, server_state) = setup(
+    let (mut tsc, snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1240,19 +1286,17 @@ mod tests {
       "noEmit": true,
       "lib": ["deno.ns", "deno.worker"]
     }));
-    let result = request(
-      &mut runtime,
-      &server_state,
-      RequestMethod::Configure(ts_config),
-    );
+    let result = tsc
+      .request(&snapshot, RequestMethod::Configure(ts_config))
+      .await;
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response, json!(true));
   }
 
-  #[test]
+  #[tokio::test]
   fn test_get_semantic_diagnostics() {
-    let (mut runtime, server_state) = setup(
+    let (mut tsc, snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1263,11 +1307,9 @@ mod tests {
     );
     let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
       .expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      &server_state,
-      RequestMethod::GetSemanticDiagnostics(specifier),
-    );
+    let result = tsc
+      .request(&snapshot, RequestMethod::GetSemanticDiagnostics(specifier))
+      .await;
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(
@@ -1292,9 +1334,9 @@ mod tests {
     );
   }
 
-  #[test]
+  #[tokio::test]
   fn test_module_resolution() {
-    let (mut runtime, server_state) = setup(
+    let (mut tsc, snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1316,19 +1358,17 @@ mod tests {
     );
     let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
       .expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      &server_state,
-      RequestMethod::GetSemanticDiagnostics(specifier),
-    );
+    let result = tsc
+      .request(&snapshot, RequestMethod::GetSemanticDiagnostics(specifier))
+      .await;
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response, json!([]));
   }
 
-  #[test]
+  #[tokio::test]
   fn test_bad_module_specifiers() {
-    let (mut runtime, server_state) = setup(
+    let (mut tsc, snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1346,19 +1386,17 @@ mod tests {
     );
     let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
       .expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      &server_state,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
-    );
+    let result = tsc
+      .request(&snapshot, RequestMethod::GetSyntacticDiagnostics(specifier))
+      .await;
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response, json!([]));
   }
 
-  #[test]
+  #[tokio::test]
   fn test_remote_modules() {
-    let (mut runtime, server_state) = setup(
+    let (mut tsc, snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1380,19 +1418,17 @@ mod tests {
     );
     let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
       .expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      &server_state,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
-    );
+    let result = tsc
+      .request(&snapshot, RequestMethod::GetSyntacticDiagnostics(specifier))
+      .await;
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response, json!([]));
   }
 
-  #[test]
+  #[tokio::test]
   fn test_partial_modules() {
-    let (mut runtime, server_state) = setup(
+    let (mut tsc, snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1417,11 +1453,9 @@ mod tests {
     );
     let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
       .expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      &server_state,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
-    );
+    let result = tsc
+      .request(&snapshot, RequestMethod::GetSyntacticDiagnostics(specifier))
+      .await;
     println!("{:?}", result);
     // assert!(result.is_ok());
     // let response = result.unwrap();

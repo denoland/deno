@@ -13,7 +13,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
@@ -223,43 +222,41 @@ fn ts_json_to_diagnostics(
   )
 }
 
-pub fn generate_ts_diagnostics(
-  state: &ServerStateSnapshot,
-  runtime: &mut JsRuntime,
+pub async fn generate_ts_diagnostics(
+  snapshot: &ServerStateSnapshot,
+  tsc: &mut tsc::TSC,
 ) -> Result<DiagnosticVec, AnyError> {
-  if !state.config.settings.enable {
+  if !snapshot.config.settings.enable {
     return Ok(Vec::new());
   }
   let mut diagnostics = Vec::new();
-  let file_cache = state.file_cache.read().unwrap();
-  for (specifier, doc_data) in state.doc_data.iter() {
-    let file_id = file_cache.lookup(specifier).unwrap();
+  for (specifier, doc_data) in snapshot.doc_data.iter() {
+    let file_id = {
+      let file_cache = snapshot.file_cache.read().unwrap();
+      file_cache.lookup(specifier).unwrap()
+    };
     let version = doc_data.version;
-    let current_version = state.diagnostics.get_version(&file_id);
+    let current_version = snapshot.diagnostics.get_version(&file_id);
     if version != current_version {
       // TODO(@kitsonk): consider refactoring to get all diagnostics in one shot
       // for a file.
       let request_semantic_diagnostics =
         tsc::RequestMethod::GetSemanticDiagnostics(specifier.clone());
-      let mut ts_diagnostics = ts_json_to_diagnostics(tsc::request(
-        runtime,
-        state,
-        request_semantic_diagnostics,
-      )?)?;
+      let mut ts_diagnostics = ts_json_to_diagnostics(
+        tsc.request(snapshot, request_semantic_diagnostics).await?,
+      )?;
       let request_suggestion_diagnostics =
         tsc::RequestMethod::GetSuggestionDiagnostics(specifier.clone());
-      ts_diagnostics.append(&mut ts_json_to_diagnostics(tsc::request(
-        runtime,
-        state,
-        request_suggestion_diagnostics,
-      )?)?);
+      ts_diagnostics.append(&mut ts_json_to_diagnostics(
+        tsc
+          .request(snapshot, request_suggestion_diagnostics)
+          .await?,
+      )?);
       let request_syntactic_diagnostics =
         tsc::RequestMethod::GetSyntacticDiagnostics(specifier.clone());
-      ts_diagnostics.append(&mut ts_json_to_diagnostics(tsc::request(
-        runtime,
-        state,
-        request_syntactic_diagnostics,
-      )?)?);
+      ts_diagnostics.append(&mut ts_json_to_diagnostics(
+        tsc.request(snapshot, request_syntactic_diagnostics).await?,
+      )?);
       diagnostics.push((file_id, version, ts_diagnostics));
     }
   }

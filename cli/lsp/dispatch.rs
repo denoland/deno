@@ -3,11 +3,13 @@
 use super::state::ServerState;
 use super::state::ServerStateSnapshot;
 use super::state::Task;
+use super::tsc;
 use super::utils::from_json;
 use super::utils::is_canceled;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::Future;
 use lsp_server::ErrorCode;
 use lsp_server::Notification;
 use lsp_server::Request;
@@ -101,25 +103,27 @@ impl<'a> RequestDispatcher<'a> {
 
   /// Handle a request which will respond to the LSP client asynchronously via
   /// a spawned thread.
-  pub fn on<R>(
+  pub fn on<R, F>(
     &mut self,
-    f: fn(ServerStateSnapshot, R::Params) -> Result<R::Result, AnyError>,
+    f: fn(ServerStateSnapshot, tsc::TSC, R::Params) -> F,
   ) -> &mut Self
   where
     R: lsp_types::request::Request + 'static,
     R::Params: DeserializeOwned + Send + fmt::Debug + 'static,
     R::Result: Serialize + 'static,
+    F: Future<Output = Result<R::Result, AnyError>> + Send + 'static,
   {
     let (id, params) = match self.parse::<R>() {
       Some(it) => it,
       None => return self,
     };
-    self.server_state.spawn({
-      let state = self.server_state.snapshot();
-      move || {
-        let result = f(state, params);
-        Task::Response(result_to_response::<R>(id, result))
-      }
+
+    let snapshot = self.server_state.snapshot();
+    let tsc = self.server_state.tsc.clone();
+    let fut = f(snapshot, tsc, params);
+    self.server_state.spawn(async move {
+      let result = fut.await;
+      Task::Response(result_to_response::<R>(id, result))
     });
 
     self
