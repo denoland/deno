@@ -5,8 +5,10 @@ use super::text;
 
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
+use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
+use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::text_encoding;
 
@@ -16,6 +18,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::RwLock;
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, Default)]
@@ -30,6 +34,7 @@ struct Metadata {
 #[derive(Debug, Clone, Default)]
 pub struct Sources {
   http_cache: HttpCache,
+  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
   metadata: HashMap<ModuleSpecifier, Metadata>,
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
   remotes: HashMap<ModuleSpecifier, PathBuf>,
@@ -124,7 +129,11 @@ impl Sources {
         if let Ok(source) = get_source_from_bytes(bytes, maybe_charset) {
           let mut maybe_types =
             if let Some(types) = headers.get("x-typescript-types") {
-              Some(analysis::resolve_import(types, &specifier, None))
+              Some(analysis::resolve_import(
+                types,
+                &specifier,
+                self.maybe_import_map.clone(),
+              ))
             } else {
               None
             };
@@ -271,7 +280,12 @@ impl Sources {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if specifier.as_url().scheme() == "file" {
+    let scheme = specifier.as_url().scheme();
+    if !SUPPORTED_SCHEMES.contains(&scheme) {
+      return None;
+    }
+
+    if scheme == "file" {
       if let Ok(path) = specifier.as_url().to_file_path() {
         if path.is_file() {
           return Some(specifier.clone());
@@ -368,5 +382,14 @@ mod tests {
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual, 28);
+  }
+
+  #[test]
+  fn test_sources_resolve_specifier_non_supported_schema() {
+    let (mut sources, _) = setup();
+    let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
+      .expect("could not create specifier");
+    let actual = sources.resolve_specifier(&specifier);
+    assert!(actual.is_none());
   }
 }

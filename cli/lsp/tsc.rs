@@ -844,17 +844,26 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
             };
           if let ResolvedImport::Resolved(resolved_specifier) = resolved_import
           {
-            let media_type = if let Some(media_type) =
-              sources.get_media_type(&resolved_specifier)
+            if state
+              .server_state
+              .doc_data
+              .contains_key(&resolved_specifier)
+              || sources.contains(&resolved_specifier)
             {
-              media_type
+              let media_type = if let Some(media_type) =
+                sources.get_media_type(&resolved_specifier)
+              {
+                media_type
+              } else {
+                MediaType::from(&resolved_specifier)
+              };
+              resolved.push(Some((
+                resolved_specifier.to_string(),
+                media_type.as_ts_extension(),
+              )));
             } else {
-              MediaType::from(&resolved_specifier)
-            };
-            resolved.push(Some((
-              resolved_specifier.to_string(),
-              media_type.as_ts_extension(),
-            )));
+              resolved.push(None);
+            }
           } else {
             resolved.push(None);
           }
