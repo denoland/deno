@@ -184,10 +184,10 @@ impl WebWorker {
     };
 
     let mut worker =
-      Self::from_opts(name, permissions, main_module, worker_id, options);
+      Self::from_options(name, permissions, main_module, worker_id, options);
 
     // NOTE(bartlomieju): ProgramState is CLI only construct,
-    // hence we're not using it in `Self::from_opts`.
+    // hence we're not using it in `Self::from_options`.
     let js_runtime = &mut worker.js_runtime;
     {
       let op_state = js_runtime.op_state();
@@ -207,7 +207,7 @@ impl WebWorker {
     worker
   }
 
-  pub fn from_opts(
+  pub fn from_options(
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,

@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::fmt_errors::PrettyJsError;
 use crate::inspector::DenoInspector;
+use crate::inspector::InspectorServer;
 use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics::Metrics;
@@ -43,6 +44,22 @@ pub struct MainWorker {
   should_break_on_first_statement: bool,
 }
 
+pub struct WorkerOptions {
+  pub args: Vec<String>,
+  pub debug_flag: bool,
+  pub unstable: bool,
+  pub ca_filepath: Option<String>,
+  pub seed: Option<u64>,
+  pub module_loader: Rc<dyn ModuleLoader>,
+  // Callback that will be invoked when creating new instance
+  // of WebWorker
+  pub create_module_loader_cb: Arc<ops::worker_host::LoaderCb>,
+  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+  pub attach_inspector: bool,
+  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub should_break_on_first_statement: bool,
+}
+
 impl MainWorker {
   pub fn new(
     program_state: &Arc<ProgramState>,
@@ -59,49 +76,83 @@ impl MainWorker {
       PrettyJsError::create(source_mapped_error)
     });
 
-    Self::from_options(
-      program_state,
-      main_module,
-      permissions,
+    let attach_inspector = program_state.maybe_inspector_server.is_some()
+      || program_state.flags.repl
+      || program_state.flags.coverage;
+    let maybe_inspector_server = program_state.maybe_inspector_server.clone();
+    let should_break_on_first_statement =
+      program_state.flags.inspect_brk.is_some();
+
+    let pstate = program_state.clone();
+    let create_module_loader_cb = Arc::new(move || -> Rc<dyn ModuleLoader> {
+      CliModuleLoader::new_for_worker(pstate.clone())
+    });
+
+    let options = WorkerOptions {
+      args: program_state.flags.argv.clone(),
+      debug_flag: program_state
+        .flags
+        .log_level
+        .map_or(false, |l| l == log::Level::Debug),
+      unstable: program_state.flags.unstable,
+      ca_filepath: program_state.flags.ca_file.clone(),
+      seed: program_state.flags.seed,
+      js_error_create_fn: Some(js_error_create_fn),
+      create_module_loader_cb,
+      attach_inspector,
+      maybe_inspector_server,
+      should_break_on_first_statement,
       module_loader,
-      Some(js_error_create_fn),
-    )
+    };
+
+    let mut worker = Self::from_options(main_module, permissions, options);
+
+    let js_runtime = &mut worker.js_runtime;
+    // NOTE(bartlomieju): ProgramState is CLI only construct,
+    // hence we're not using it in `Self::from_options`.
+    {
+      let op_state = js_runtime.op_state();
+      let mut op_state = op_state.borrow_mut();
+      op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+        unstable: program_state.flags.unstable,
+      });
+      op_state.put::<Arc<ProgramState>>(program_state.clone());
+      // Applies source maps - works in conjuction with `js_error_create_fn`
+      // above
+      ops::errors::init(js_runtime);
+      ops::runtime_compiler::init(js_runtime);
+    }
+
+    worker
   }
 
   pub fn from_options(
-    program_state: &Arc<ProgramState>,
     main_module: ModuleSpecifier,
     permissions: Permissions,
-    module_loader: Rc<dyn ModuleLoader>,
-    js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+    options: WorkerOptions,
   ) -> Self {
     // TODO(bartlomieju): this is hacky way to not apply source
     // maps in JS
-    let apply_source_maps = js_error_create_fn.is_some();
-    let flags = &program_state.flags;
+    let apply_source_maps = options.js_error_create_fn.is_some();
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(module_loader),
+      module_loader: Some(options.module_loader),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn,
+      js_error_create_fn: options.js_error_create_fn,
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       ..Default::default()
     });
 
-    let inspector =
-      if let Some(inspector_server) = &program_state.maybe_inspector_server {
-        Some(DenoInspector::new(
-          &mut js_runtime,
-          Some(inspector_server.clone()),
-        ))
-      } else if program_state.flags.coverage || program_state.flags.repl {
-        Some(DenoInspector::new(&mut js_runtime, None))
-      } else {
-        None
-      };
-
+    let inspector = if options.attach_inspector {
+      Some(DenoInspector::new(
+        &mut js_runtime,
+        options.maybe_inspector_server,
+      ))
+    } else {
+      None
+    };
     let should_break_on_first_statement =
-      inspector.is_some() && program_state.flags.inspect_brk.is_some();
+      inspector.is_some() && options.should_break_on_first_statement;
 
     let mut worker = Self {
       inspector,
@@ -116,24 +167,14 @@ impl MainWorker {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<ProgramState>>(program_state.clone());
         op_state.put::<Permissions>(permissions);
       }
 
-      let pstate = program_state.clone();
-      let create_module_loader_cb = move || -> Rc<dyn ModuleLoader> {
-        CliModuleLoader::new_for_worker(pstate.clone())
-      };
-
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
+      ops::fetch::init(js_runtime, options.ca_filepath.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(
-        js_runtime,
-        None,
-        Arc::new(create_module_loader_cb),
-      );
-      ops::crypto::init(js_runtime, program_state.flags.seed);
+      ops::worker_host::init(js_runtime, None, options.create_module_loader_cb);
+      ops::crypto::init(js_runtime, options.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -141,7 +182,6 @@ impl MainWorker {
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
-      ops::errors::init(js_runtime);
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
       ops::io::init(js_runtime);
@@ -150,11 +190,10 @@ impl MainWorker {
       ops::permissions::init(js_runtime);
       ops::plugin::init(js_runtime);
       ops::process::init(js_runtime);
-      ops::runtime_compiler::init(js_runtime);
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
-      ops::websocket::init(js_runtime, program_state.flags.ca_file.as_deref());
+      ops::websocket::init(js_runtime, options.ca_filepath.as_deref());
     }
     {
       let op_state = js_runtime.op_state();
@@ -173,16 +212,16 @@ impl MainWorker {
     }
 
     let runtime_options = json!({
-      "args": flags.argv.clone(),
+      "args": options.args,
       "applySourceMaps": apply_source_maps,
-      "debugFlag": flags.log_level.map_or(false, |l| l == log::Level::Debug),
+      "debugFlag": options.debug_flag,
       "denoVersion": version::deno(),
       "noColor": !colors::use_color(),
       "pid": std::process::id(),
       "ppid": ops::runtime::ppid(),
       "target": env!("TARGET"),
       "tsVersion": version::TYPESCRIPT,
-      "unstableFlag": flags.unstable,
+      "unstableFlag": options.unstable,
       "v8Version": version::v8(),
     });
 
