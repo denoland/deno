@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
-use crate::program_state::ProgramState;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
@@ -13,8 +12,6 @@ use deno_core::futures::channel::mpsc;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::ModuleLoader;
-// use crate::module_loader::CliModuleLoader;
 use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -27,11 +24,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-pub type LoaderCb = dyn Fn() -> Rc<dyn ModuleLoader> + Sync + Send;
+pub type CreateWebWorkerCb = dyn Fn(String, u32, Permissions, ModuleSpecifier, bool) -> WebWorker
+  + Sync
+  + Send;
 
 #[derive(Clone)]
 pub struct CreateWorkerModuleLoaderFn {
-  pub cb: Arc<LoaderCb>,
+  pub cb: Arc<CreateWebWorkerCb>,
 }
 
 #[derive(Deserialize)]
@@ -42,7 +41,7 @@ struct HostUnhandledErrorArgs {
 pub fn init(
   rt: &mut deno_core::JsRuntime,
   sender: Option<mpsc::Sender<WorkerEvent>>,
-  create_module_loader_cb: Arc<LoaderCb>,
+  create_web_worker_callback: Arc<CreateWebWorkerCb>,
 ) {
   {
     let op_state = rt.op_state();
@@ -51,7 +50,7 @@ pub fn init(
     state.put::<WorkerId>(WorkerId::default());
 
     let create_module_loader = CreateWorkerModuleLoaderFn {
-      cb: create_module_loader_cb,
+      cb: create_web_worker_callback,
     };
     state.put::<CreateWorkerModuleLoaderFn>(create_module_loader);
   }
@@ -125,7 +124,6 @@ fn op_create_worker(
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
-  let program_state = state.borrow::<Arc<ProgramState>>().clone();
 
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
@@ -140,14 +138,13 @@ fn op_create_worker(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let worker = WebWorker::new(
+
+    let worker = (create_module_loader.cb)(
       worker_name,
+      worker_id,
       permissions,
       module_specifier.clone(),
-      program_state,
       use_deno_namespace,
-      worker_id,
-      create_module_loader.cb.clone(),
     );
 
     // Send thread safe handle to newly created worker to host thread

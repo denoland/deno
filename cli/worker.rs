@@ -9,10 +9,13 @@ use crate::js;
 use crate::metrics::Metrics;
 use crate::module_loader::CliModuleLoader;
 use crate::ops;
+use crate::ops::worker_host::CreateWebWorkerCb;
 use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::version;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerOptions;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -30,6 +33,70 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+pub fn create_web_worker_callback(
+  program_state: Arc<ProgramState>,
+) -> Arc<CreateWebWorkerCb> {
+  Arc::new(
+    move |name, worker_id, permissions, main_module, has_deno_namespace| {
+      let global_state_ = program_state.clone();
+      let js_error_create_fn = Box::new(move |core_js_error| {
+        let source_mapped_error =
+          apply_source_map(&core_js_error, global_state_.clone());
+        PrettyJsError::create(source_mapped_error)
+      });
+
+      let attach_inspector = program_state.maybe_inspector_server.is_some()
+        || program_state.flags.coverage;
+      let maybe_inspector_server = program_state.maybe_inspector_server.clone();
+
+      let module_loader =
+        CliModuleLoader::new_for_worker(program_state.clone());
+      let create_web_worker_cb =
+        create_web_worker_callback(program_state.clone());
+
+      let options = WebWorkerOptions {
+        args: program_state.flags.argv.clone(),
+        debug_flag: program_state
+          .flags
+          .log_level
+          .map_or(false, |l| l == log::Level::Debug),
+        unstable: program_state.flags.unstable,
+        ca_filepath: program_state.flags.ca_file.clone(),
+        seed: program_state.flags.seed,
+        module_loader,
+        create_web_worker_cb,
+        js_error_create_fn: Some(js_error_create_fn),
+        has_deno_namespace,
+        attach_inspector,
+        maybe_inspector_server,
+      };
+
+      let mut worker = WebWorker::from_options(
+        name,
+        permissions,
+        main_module,
+        worker_id,
+        options,
+      );
+
+      // NOTE(bartlomieju): ProgramState is CLI only construct,
+      // hence we're not using it in `Self::from_options`.
+      let js_runtime = &mut worker.js_runtime;
+      {
+        js_runtime.op_state().borrow_mut().put::<Arc<ProgramState>>(program_state.clone());
+        // Applies source maps - works in conjuction with `js_error_create_fn`
+        // above
+        ops::errors::init(js_runtime);
+        if has_deno_namespace {
+          ops::runtime_compiler::init(js_runtime);
+        }
+      }
+
+      worker
+    },
+  )
+}
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -53,7 +120,8 @@ pub struct WorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   // Callback that will be invoked when creating new instance
   // of WebWorker
-  pub create_module_loader_cb: Arc<ops::worker_host::LoaderCb>,
+  // pub create_module_loader_cb: Arc<ops::worker_host::LoaderCb>,
+  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
   pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -83,10 +151,8 @@ impl MainWorker {
     let should_break_on_first_statement =
       program_state.flags.inspect_brk.is_some();
 
-    let pstate = program_state.clone();
-    let create_module_loader_cb = Arc::new(move || -> Rc<dyn ModuleLoader> {
-      CliModuleLoader::new_for_worker(pstate.clone())
-    });
+    let create_web_worker_cb =
+      create_web_worker_callback(program_state.clone());
 
     let options = WorkerOptions {
       args: program_state.flags.argv.clone(),
@@ -98,7 +164,7 @@ impl MainWorker {
       ca_filepath: program_state.flags.ca_file.clone(),
       seed: program_state.flags.seed,
       js_error_create_fn: Some(js_error_create_fn),
-      create_module_loader_cb,
+      create_web_worker_cb,
       attach_inspector,
       maybe_inspector_server,
       should_break_on_first_statement,
@@ -111,12 +177,7 @@ impl MainWorker {
     // NOTE(bartlomieju): ProgramState is CLI only construct,
     // hence we're not using it in `Self::from_options`.
     {
-      let op_state = js_runtime.op_state();
-      let mut op_state = op_state.borrow_mut();
-      op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
-        unstable: program_state.flags.unstable,
-      });
-      op_state.put::<Arc<ProgramState>>(program_state.clone());
+      js_runtime.op_state().borrow_mut().put::<Arc<ProgramState>>(program_state.clone());
       // Applies source maps - works in conjuction with `js_error_create_fn`
       // above
       ops::errors::init(js_runtime);
@@ -168,12 +229,15 @@ impl MainWorker {
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
         op_state.put::<Permissions>(permissions);
+        op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+          unstable: options.unstable,
+        });
       }
 
       ops::runtime::init(js_runtime, main_module);
       ops::fetch::init(js_runtime, options.ca_filepath.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime, None, options.create_module_loader_cb);
+      ops::worker_host::init(js_runtime, None, options.create_web_worker_cb);
       ops::crypto::init(js_runtime, options.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);

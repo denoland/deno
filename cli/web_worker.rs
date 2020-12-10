@@ -1,15 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::fmt_errors::PrettyJsError;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::js;
 use crate::metrics::Metrics;
 use crate::ops;
 use crate::permissions::Permissions;
-use crate::program_state::ProgramState;
-use crate::source_maps::apply_source_map;
 use crate::tokio_util::create_basic_runtime;
 use crate::version;
 use deno_core::error::AnyError;
@@ -24,9 +21,11 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -138,7 +137,8 @@ pub struct WebWorkerOptions {
   pub unstable: bool,
   pub ca_filepath: Option<String>,
   pub seed: Option<u64>,
-  pub create_module_loader_cb: Arc<ops::worker_host::LoaderCb>,
+  pub module_loader: Rc<dyn ModuleLoader>,
+  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
   pub has_deno_namespace: bool,
   pub attach_inspector: bool,
@@ -146,67 +146,6 @@ pub struct WebWorkerOptions {
 }
 
 impl WebWorker {
-  pub fn new(
-    name: String,
-    permissions: Permissions,
-    main_module: ModuleSpecifier,
-    program_state: Arc<ProgramState>,
-    has_deno_namespace: bool,
-    worker_id: u32,
-    create_module_loader_cb: Arc<ops::worker_host::LoaderCb>,
-  ) -> Self {
-    let global_state_ = program_state.clone();
-
-    let js_error_create_fn = Box::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, global_state_.clone());
-      PrettyJsError::create(source_mapped_error)
-    });
-
-    let attach_inspector = program_state.maybe_inspector_server.is_some()
-      || program_state.flags.coverage;
-    let maybe_inspector_server = program_state.maybe_inspector_server.clone();
-
-    let options = WebWorkerOptions {
-      args: program_state.flags.argv.clone(),
-      debug_flag: program_state
-        .flags
-        .log_level
-        .map_or(false, |l| l == log::Level::Debug),
-      unstable: program_state.flags.unstable,
-      ca_filepath: program_state.flags.ca_file.clone(),
-      seed: program_state.flags.seed,
-      create_module_loader_cb,
-      js_error_create_fn: Some(js_error_create_fn),
-      has_deno_namespace,
-      attach_inspector,
-      maybe_inspector_server,
-    };
-
-    let mut worker =
-      Self::from_options(name, permissions, main_module, worker_id, options);
-
-    // NOTE(bartlomieju): ProgramState is CLI only construct,
-    // hence we're not using it in `Self::from_options`.
-    let js_runtime = &mut worker.js_runtime;
-    {
-      let op_state = js_runtime.op_state();
-      let mut op_state = op_state.borrow_mut();
-      op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
-        unstable: program_state.flags.unstable,
-      });
-      op_state.put::<Arc<ProgramState>>(program_state);
-      // Applies source maps - works in conjuction with `js_error_create_fn`
-      // above
-      ops::errors::init(js_runtime);
-      if has_deno_namespace {
-        ops::runtime_compiler::init(js_runtime);
-      }
-    }
-
-    worker
-  }
-
   pub fn from_options(
     name: String,
     permissions: Permissions,
@@ -214,10 +153,12 @@ impl WebWorker {
     worker_id: u32,
     options: WebWorkerOptions,
   ) -> Self {
-    let module_loader = (options.create_module_loader_cb)();
+    // TODO(bartlomieju): this is hacky way to not apply source
+    // maps in JS
+    let apply_source_maps = options.js_error_create_fn.is_some();
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(module_loader),
+      module_loader: Some(options.module_loader),
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn,
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
@@ -260,6 +201,9 @@ impl WebWorker {
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
         op_state.put::<Permissions>(permissions);
+        op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+          unstable: options.unstable,
+        });
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
@@ -269,7 +213,7 @@ impl WebWorker {
       ops::worker_host::init(
         js_runtime,
         Some(sender),
-        options.create_module_loader_cb,
+        options.create_web_worker_cb,
       );
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
@@ -311,7 +255,7 @@ impl WebWorker {
 
     let runtime_options = json!({
       "args": options.args,
-      "applySourceMaps": true,
+      "applySourceMaps": apply_source_maps,
       "debugFlag": options.debug_flag,
       "denoVersion": version::deno(),
       "noColor": !colors::use_color(),
@@ -510,26 +454,35 @@ mod tests {
   use crate::program_state::ProgramState;
   use crate::tokio_util;
   use deno_core::serde_json::json;
-  use deno_core::ModuleLoader;
-  use std::rc::Rc;
 
   fn create_test_web_worker() -> WebWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
     let program_state = ProgramState::mock(vec!["deno".to_string()], None);
     let pstate = program_state.clone();
-    let create_module_loader_cb = move || -> Rc<dyn ModuleLoader> {
-      CliModuleLoader::new_for_worker(pstate.clone())
+    let module_loader = CliModuleLoader::new_for_worker(pstate);
+    let create_web_worker_cb = Arc::new(|_, _, _, _, _| unreachable!());
+
+    let options = WebWorkerOptions {
+      args: program_state.flags.argv.clone(),
+      debug_flag: false,
+      unstable: program_state.flags.unstable,
+      ca_filepath: program_state.flags.ca_file.clone(),
+      seed: program_state.flags.seed,
+      module_loader,
+      create_web_worker_cb,
+      js_error_create_fn: None,
+      has_deno_namespace: false,
+      attach_inspector: false,
+      maybe_inspector_server: None,
     };
 
-    WebWorker::new(
+    WebWorker::from_options(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
-      program_state,
-      false,
       1,
-      Arc::new(create_module_loader_cb),
+      options,
     )
   }
 
