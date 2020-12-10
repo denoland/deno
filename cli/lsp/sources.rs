@@ -5,6 +5,7 @@ use super::text;
 
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
+use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
@@ -279,7 +280,12 @@ impl Sources {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if specifier.as_url().scheme() == "file" {
+    let scheme = specifier.as_url().scheme();
+    if !SUPPORTED_SCHEMES.contains(&scheme) {
+      return None;
+    }
+
+    if scheme == "file" {
       if let Ok(path) = specifier.as_url().to_file_path() {
         if path.is_file() {
           return Some(specifier.clone());
@@ -376,5 +382,14 @@ mod tests {
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual, 28);
+  }
+
+  #[test]
+  fn test_sources_resolve_specifier_non_supported_schema() {
+    let (mut sources, _) = setup();
+    let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
+      .expect("could not create specifier");
+    let actual = sources.resolve_specifier(&specifier);
+    assert!(actual.is_none());
   }
 }
