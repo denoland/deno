@@ -1,7 +1,7 @@
 ((window) => {
   const { EventTarget } = window;
 
-  const illegalConstructorKey = Symbol("illegalConstuctorKey");
+  const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class Window extends EventTarget {
     constructor(key = null) {
