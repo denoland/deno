@@ -294,6 +294,7 @@ export default class Context {
   fds: FileDescriptor[];
 
   exports: Record<string, WebAssembly.ImportValue>;
+  #started: boolean;
 
   constructor(options: ContextOptions) {
     this.args = options.args ?? [];
@@ -1571,6 +1572,8 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
     };
+
+    this.#started = false;
   }
 
   /**
@@ -1585,6 +1588,12 @@ export default class Context {
    * thrown.
    */
   start(instance: WebAssembly.Instance) {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {
@@ -1618,6 +1627,12 @@ export default class Context {
    * thrown.
    */
   initialize(instance: WebAssembly.Instance) {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {
