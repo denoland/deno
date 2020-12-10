@@ -285,6 +285,14 @@ export interface ContextOptions {
   exitOnReturn?: boolean;
 }
 
+/**
+ * The Context class provides the environment required to run WebAssembly
+ * modules compiled to run with the WebAssembly System Interface.
+ *
+ * Each context represents a distinct sandboxed environment and must have its
+ * command-line arguments, environment variables, and pre-opened directory
+ * structure configured explicitly.
+ */
 export default class Context {
   args: string[];
   env: { [key: string]: string | undefined };
