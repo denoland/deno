@@ -183,21 +183,36 @@ impl WebWorker {
       maybe_inspector_server,
     };
 
-    Self::from_opts(
+    let mut worker = Self::from_opts(
       name,
       permissions,
       main_module,
-      program_state,
       worker_id,
       options,
-    )
+    );
+
+    // NOTE(bartlomieju): ProgramState is CLI only construct,
+    // hence we're not using it in `Self::from_opts`.
+    let js_runtime = &mut worker.js_runtime;
+    {
+      let op_state = js_runtime.op_state();
+      let mut op_state = op_state.borrow_mut();
+      op_state.put::<Arc<ProgramState>>(program_state);
+      // Applies source maps - works in conjuction with `js_error_create_fn`
+      // above
+      ops::errors::init(js_runtime);
+      if has_deno_namespace {
+        ops::runtime_compiler::init(js_runtime);
+      }
+    }
+
+    worker
   }
 
   pub fn from_opts(
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
-    program_state: Arc<ProgramState>,
     worker_id: u32,
     options: WebWorkerOptions,
   ) -> Self {
@@ -246,7 +261,6 @@ impl WebWorker {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<ProgramState>>(program_state);
         op_state.put::<Permissions>(permissions);
       }
 
@@ -266,7 +280,6 @@ impl WebWorker {
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
-      ops::errors::init(js_runtime);
       ops::io::init(js_runtime);
       ops::websocket::init(js_runtime, options.ca_filepath.as_deref());
 
@@ -279,7 +292,6 @@ impl WebWorker {
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
         ops::crypto::init(js_runtime, options.seed);
-        ops::runtime_compiler::init(js_runtime);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
