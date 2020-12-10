@@ -183,13 +183,8 @@ impl WebWorker {
       maybe_inspector_server,
     };
 
-    let mut worker = Self::from_opts(
-      name,
-      permissions,
-      main_module,
-      worker_id,
-      options,
-    );
+    let mut worker =
+      Self::from_opts(name, permissions, main_module, worker_id, options);
 
     // NOTE(bartlomieju): ProgramState is CLI only construct,
     // hence we're not using it in `Self::from_opts`.
@@ -197,6 +192,9 @@ impl WebWorker {
     {
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
+      op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+        unstable: program_state.flags.unstable,
+      });
       op_state.put::<Arc<ProgramState>>(program_state);
       // Applies source maps - works in conjuction with `js_error_create_fn`
       // above
