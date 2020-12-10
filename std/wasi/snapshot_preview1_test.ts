@@ -198,6 +198,23 @@ Deno.test("context_start", function () {
     assert(err instanceof ExitStatus);
     assertEquals(err.code, 0);
   }
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.start({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+          _start() {},
+        },
+      });
+      context.start({
+        exports: {},
+      });
+    },
+    Error,
+    "WebAssembly.Instance has already started",
+  );
 });
 
 Deno.test("context_initialize", function () {
@@ -239,5 +256,21 @@ Deno.test("context_initialize", function () {
     },
     TypeError,
     "export _initialize must be a function",
+  );
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+          _initialize() {},
+        },
+      });
+      context.initialize({
+        exports: {},
+      });
+    },
+    Error,
+    "WebAssembly.Instance has already started",
   );
 });
