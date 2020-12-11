@@ -5,6 +5,7 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
+use crate::http_util;
 use crate::import_map::ImportMap;
 use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
@@ -99,7 +100,10 @@ impl ProgramState {
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = match maybe_inspect_host {
-      Some(host) => Some(Arc::new(InspectorServer::new(host))),
+      Some(host) => Some(Arc::new(InspectorServer::new(
+        host,
+        http_util::get_user_agent(),
+      ))),
       None => None,
     };
 

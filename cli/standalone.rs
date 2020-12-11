@@ -121,6 +121,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     apply_source_maps: false,
     args: flags.argv.clone(),
     debug_flag: false,
+    user_agent: crate::http_util::get_user_agent(),
     unstable: true,
     ca_filepath: None,
     seed: None,
