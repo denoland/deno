@@ -267,7 +267,7 @@ impl WebWorker {
       "target": env!("TARGET"),
       "tsVersion": version::TYPESCRIPT,
       "unstableFlag": options.unstable,
-      "v8Version": version::v8(),
+      "v8Version": deno_core::v8_version(),
     });
 
     let runtime_options_str =

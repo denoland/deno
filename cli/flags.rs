@@ -228,7 +228,7 @@ lazy_static! {
     crate::version::deno(),
     env!("PROFILE"),
     env!("TARGET"),
-    crate::version::v8(),
+    deno_core::v8_version(),
     crate::version::TYPESCRIPT
   );
 }
