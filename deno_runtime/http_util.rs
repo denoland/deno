@@ -384,16 +384,14 @@ mod tests {
     let url =
       Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
-    let client = create_http_client(
-      get_user_agent(),
+    let client = create_test_client(
       Some(
         test_util::root_path()
           .join("std/http/testdata/tls/RootCA.pem")
           .to_str()
           .unwrap(),
       ),
-    )
-    .unwrap();
+    );
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
@@ -413,16 +411,14 @@ mod tests {
       "https://localhost:5545/cli/tests/053_import_compression/gziped",
     )
     .unwrap();
-    let client = create_http_client(
-      get_user_agent(),
+    let client = create_test_client(
       Some(
         test_util::root_path()
           .join("std/http/testdata/tls/RootCA.pem")
           .to_str()
           .unwrap(),
       ),
-    )
-    .unwrap();
+    );
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
@@ -441,16 +437,14 @@ mod tests {
   async fn test_fetch_with_cafile_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
-    let client = create_http_client(
-      get_user_agent(),
+    let client = create_test_client(
       Some(
         test_util::root_path()
           .join("std/http/testdata/tls/RootCA.pem")
           .to_str()
           .unwrap(),
       ),
-    )
-    .unwrap();
+    );
     let result = fetch_once(client.clone(), &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
@@ -478,16 +472,14 @@ mod tests {
       "https://localhost:5545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
-    let client = create_http_client(
-      get_user_agent(),
+    let client = create_test_client(
       Some(
         test_util::root_path()
           .join("std/http/testdata/tls/RootCA.pem")
           .to_str()
           .unwrap(),
       ),
-    )
-    .unwrap();
+    );
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
