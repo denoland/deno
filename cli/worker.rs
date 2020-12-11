@@ -380,24 +380,28 @@ impl Drop for MainWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::flags::DenoSubcommand;
-  use crate::flags::Flags;
-  use crate::program_state::ProgramState;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let flags = Flags {
-      subcommand: DenoSubcommand::Run {
-        script: main_module.to_string(),
-      },
-      ..Default::default()
+    let permissions = Permissions::default();
+
+    let options = WorkerOptions {
+      apply_source_maps: false,
+      args: vec![],
+      debug_flag: false,
+      unstable: false,
+      ca_filepath: None,
+      seed: None,
+      js_error_create_fn: None,
+      create_web_worker_cb: Arc::new(|_, _, _, _, _| unreachable!()),
+      attach_inspector: false,
+      maybe_inspector_server: None,
+      should_break_on_first_statement: false,
+      module_loader: Rc::new(deno_core::FsModuleLoader),
     };
-    let permissions = Permissions::from_flags(&flags);
-    let program_state =
-      ProgramState::mock(vec!["deno".to_string()], Some(flags));
-    // TODO(bartlomieju): decouple from CLI
-    create_main_worker(&program_state, main_module, permissions)
+
+    MainWorker::from_options(main_module, permissions, &options)
   }
 
   #[tokio::test]
@@ -423,26 +427,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/circular1.ts");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let mut worker = create_test_worker();
-    let result = worker.execute_module(&module_specifier).await;
-    if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
-    }
-    if let Err(e) = worker.run_event_loop().await {
-      panic!("Future got unexpected error: {:?}", e);
-    }
-  }
-
-  #[tokio::test]
-  async fn execute_006_url_imports() {
-    let _http_server_guard = test_util::http_server();
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/006_url_imports.ts");
+      .join("tests/circular1.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
@@ -473,7 +458,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("cli/tests/002_hello.ts");
+      .join("cli/tests/001_hello.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_module(&module_specifier).await;
