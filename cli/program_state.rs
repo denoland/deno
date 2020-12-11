@@ -258,16 +258,6 @@ impl ProgramState {
     }
   }
 
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.flags.unstable {
-      exit_unstable(api_name);
-    }
-  }
-
   #[cfg(test)]
   pub fn mock(
     argv: Vec<String>,

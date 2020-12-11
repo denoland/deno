@@ -1,28 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::fmt_errors::PrettyJsError;
 use crate::inspector::DenoInspector;
+use crate::inspector::InspectorServer;
 use crate::js;
 use crate::metrics::Metrics;
-use crate::module_loader::CliModuleLoader;
 use crate::ops;
 use crate::permissions::Permissions;
-use crate::program_state::ProgramState;
-use crate::source_maps::apply_source_map;
 use crate::tokio_util::create_basic_runtime;
+use crate::version;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
+use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -115,6 +118,7 @@ fn create_channels(
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.
 pub struct WebWorker {
+  id: u32,
   inspector: Option<Box<DenoInspector>>,
   // Following fields are pub because they are accessed
   // when creating a new WebWorker instance.
@@ -125,46 +129,48 @@ pub struct WebWorker {
   event_loop_idle: bool,
   terminate_rx: mpsc::Receiver<()>,
   handle: WebWorkerHandle,
-  pub has_deno_namespace: bool,
+  pub use_deno_namespace: bool,
+}
+
+pub struct WebWorkerOptions {
+  pub args: Vec<String>,
+  pub debug_flag: bool,
+  pub unstable: bool,
+  pub ca_filepath: Option<String>,
+  pub seed: Option<u64>,
+  pub module_loader: Rc<dyn ModuleLoader>,
+  pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
+  pub use_deno_namespace: bool,
+  pub attach_inspector: bool,
+  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub apply_source_maps: bool,
 }
 
 impl WebWorker {
-  pub fn new(
+  pub fn from_options(
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
-    program_state: Arc<ProgramState>,
-    has_deno_namespace: bool,
     worker_id: u32,
+    options: &WebWorkerOptions,
   ) -> Self {
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
-    let global_state_ = program_state.clone();
-
-    let js_error_create_fn = Box::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, global_state_.clone());
-      PrettyJsError::create(source_mapped_error)
-    });
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(module_loader),
+      module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn: Some(js_error_create_fn),
+      js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       ..Default::default()
     });
 
-    let inspector =
-      if let Some(inspector_server) = &program_state.maybe_inspector_server {
-        Some(DenoInspector::new(
-          &mut js_runtime,
-          Some(inspector_server.clone()),
-        ))
-      } else if program_state.flags.coverage || program_state.flags.repl {
-        Some(DenoInspector::new(&mut js_runtime, None))
-      } else {
-        None
-      };
+    let inspector = if options.attach_inspector {
+      Some(DenoInspector::new(
+        &mut js_runtime,
+        options.maybe_inspector_server.clone(),
+      ))
+    } else {
+      None
+    };
 
     let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
     let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
@@ -172,15 +178,16 @@ impl WebWorker {
       create_channels(isolate_handle, terminate_tx);
 
     let mut worker = Self {
+      id: worker_id,
       inspector,
       internal_channels,
       js_runtime,
-      name: name.clone(),
+      name,
       waker: AtomicWaker::new(),
       event_loop_idle: false,
       terminate_rx,
       handle,
-      has_deno_namespace,
+      use_deno_namespace: options.use_deno_namespace,
     };
 
     {
@@ -192,15 +199,21 @@ impl WebWorker {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.put::<Metrics>(Default::default());
-        op_state.put::<Arc<ProgramState>>(program_state.clone());
         op_state.put::<Permissions>(permissions);
+        op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+          unstable: options.unstable,
+        });
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module, true);
-      ops::fetch::init(js_runtime, program_state.flags.ca_file.as_deref());
+      ops::runtime::init(js_runtime, main_module);
+      ops::fetch::init(js_runtime, options.ca_filepath.as_deref());
       ops::timers::init(js_runtime);
-      ops::worker_host::init(js_runtime, Some(sender));
+      ops::worker_host::init(
+        js_runtime,
+        Some(sender),
+        options.create_web_worker_cb.clone(),
+      );
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::reg_json_sync(
@@ -208,11 +221,10 @@ impl WebWorker {
         "op_domain_to_ascii",
         deno_web::op_domain_to_ascii,
       );
-      ops::errors::init(js_runtime);
       ops::io::init(js_runtime);
-      ops::websocket::init(js_runtime);
+      ops::websocket::init(js_runtime, options.ca_filepath.as_deref());
 
-      if has_deno_namespace {
+      if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
         ops::fs::init(js_runtime);
         ops::net::init(js_runtime);
@@ -220,8 +232,7 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::crypto::init(js_runtime, program_state.flags.seed);
-        ops::runtime_compiler::init(js_runtime);
+        ops::crypto::init(js_runtime, options.seed);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
@@ -239,19 +250,38 @@ impl WebWorker {
           op_state.resource_table.add("stderr", Box::new(stream));
         }
       }
+
+      worker
     }
+  }
+
+  pub fn bootstrap(&mut self, options: &WebWorkerOptions) {
+    let runtime_options = json!({
+      "args": options.args,
+      "applySourceMaps": options.apply_source_maps,
+      "debugFlag": options.debug_flag,
+      "denoVersion": version::deno(),
+      "noColor": !colors::use_color(),
+      "pid": std::process::id(),
+      "ppid": ops::runtime::ppid(),
+      "target": env!("TARGET"),
+      "tsVersion": version::TYPESCRIPT,
+      "unstableFlag": options.unstable,
+      "v8Version": deno_core::v8_version(),
+    });
+
+    let runtime_options_str =
+      serde_json::to_string_pretty(&runtime_options).unwrap();
 
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
-      "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
-      name, worker.has_deno_namespace, worker_id
+      "bootstrap.workerRuntime({}, \"{}\", {}, \"worker-{}\")",
+      runtime_options_str, self.name, options.use_deno_namespace, self.id
     );
-    worker
+    self
       .execute(&script)
       .expect("Failed to execute worker bootstrap script");
-
-    worker
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
@@ -421,22 +451,39 @@ pub fn run_web_worker(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::program_state::ProgramState;
   use crate::tokio_util;
   use deno_core::serde_json::json;
 
   fn create_test_web_worker() -> WebWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let program_state = ProgramState::mock(vec!["deno".to_string()], None);
-    WebWorker::new(
+    let module_loader = Rc::new(deno_core::NoopModuleLoader);
+    let create_web_worker_cb = Arc::new(|_| unreachable!());
+
+    let options = WebWorkerOptions {
+      args: vec![],
+      apply_source_maps: false,
+      debug_flag: false,
+      unstable: false,
+      ca_filepath: None,
+      seed: None,
+      module_loader,
+      create_web_worker_cb,
+      js_error_create_fn: None,
+      use_deno_namespace: false,
+      attach_inspector: false,
+      maybe_inspector_server: None,
+    };
+
+    let mut worker = WebWorker::from_options(
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
-      program_state,
-      false,
       1,
-    )
+      &options,
+    );
+    worker.bootstrap(&options);
+    worker
   }
 
   #[tokio::test]

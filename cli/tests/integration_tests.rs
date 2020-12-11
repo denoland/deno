@@ -2646,11 +2646,6 @@ itest!(fmt_stdin_check_not_formatted {
   output_str: Some("Not formatted stdin\n"),
 });
 
-itest!(circular1 {
-  args: "run --reload circular1.js",
-  output: "circular1.js.out",
-});
-
 itest!(config {
   args: "run --reload --config config.tsconfig.json config.ts",
   exit_code: 1,

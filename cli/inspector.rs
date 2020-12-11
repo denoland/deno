@@ -203,7 +203,7 @@ async fn server(
     warp::reply::json(&json!({
       "Browser": format!("Deno/{}", crate::version::deno()),
       "Protocol-Version": "1.3",
-      "V8-Version": crate::version::v8(),
+      "V8-Version": deno_core::v8_version(),
     }))
   });
 
