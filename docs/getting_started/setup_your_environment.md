@@ -144,6 +144,50 @@ project (`npm init -y` as necessary), then add the following block to your
 }
 ```
 
+#### LSP clients
+
+Deno has builtin support for the
+[Language server protocol](https://langserver.org).
+
+If your editor supports the LSP, you can use Deno as a language server for
+TypeScript and JavaScript.
+
+The editor can start the server with `deno lsp`.
+
+##### Example for Kakoune
+
+After installing the [`kak-lsp`](https://github.com/kak-lsp/kak-lsp) LSP client
+you can add the Deno language server by adding the following to your
+`kak-lsp.toml`
+
+```toml
+[language.deno]
+filetypes = ["typescript", "javascript"]
+roots = [".git"]
+command = "deno"
+args = ["lsp"]
+```
+
 If you don't see your favorite IDE on this list, maybe you can develop an
 extension. Our [community Discord group](https://discord.gg/deno) can give you
 some pointers on where to get started.
+
+##### Example for Vim/Neovim
+
+After installing the [`vim-lsp`](https://github.com/prabirshrestha/vim-lsp) LSP
+client you can add the Deno language server by adding the following to your
+`vimrc`/`init.vim`:
+
+```vim
+if executable("deno")
+  augroup LspTypeScript
+    autocmd!
+    autocmd User lsp_setup call lsp#register_server({
+    \ "name": "deno lsp",
+    \ "cmd": {server_info -> ["deno", "lsp"]},
+    \ "root_uri": {server_info->lsp#utils#path_to_uri(lsp#utils#find_nearest_parent_file_directory(lsp#utils#get_buffer_path(), "tsconfig.json"))},
+    \ "whitelist": ["typescript", "typescript.tsx"],
+    \ })
+  augroup END
+endif
+```
