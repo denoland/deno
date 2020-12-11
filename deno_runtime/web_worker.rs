@@ -137,6 +137,7 @@ pub struct WebWorkerOptions {
   pub debug_flag: bool,
   pub unstable: bool,
   pub ca_filepath: Option<String>,
+  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
@@ -213,7 +214,11 @@ impl WebWorker {
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(js_runtime, options.ca_filepath.as_deref());
+      ops::fetch::init(
+        js_runtime,
+        options.user_agent.clone(),
+        options.ca_filepath.as_deref(),
+      );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
@@ -228,7 +233,11 @@ impl WebWorker {
         deno_web::op_domain_to_ascii,
       );
       ops::io::init(js_runtime);
-      ops::websocket::init(js_runtime, options.ca_filepath.as_deref());
+      ops::websocket::init(
+        js_runtime,
+        options.ca_filepath.as_deref(),
+        options.user_agent.clone(),
+      );
 
       if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
@@ -472,6 +481,7 @@ mod tests {
       debug_flag: false,
       unstable: false,
       ca_filepath: None,
+      user_agent: "x".to_string(),
       seed: None,
       module_loader,
       create_web_worker_cb,

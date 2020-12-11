@@ -35,14 +35,21 @@ use webpki::DNSNameRef;
 
 #[derive(Clone)]
 struct WsCaFile(String);
+#[derive(Clone)]
+struct WsUserAgent(String);
 
-pub fn init(rt: &mut deno_core::JsRuntime, maybe_ca_file: Option<&str>) {
+pub fn init(
+  rt: &mut deno_core::JsRuntime,
+  maybe_ca_file: Option<&str>,
+  user_agent: String,
+) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
     if let Some(ca_file) = maybe_ca_file {
       state.put::<WsCaFile>(WsCaFile(ca_file.to_string()));
     }
+    state.put::<WsUserAgent>(WsUserAgent(user_agent));
   }
   super::reg_json_sync(rt, "op_ws_check_permission", op_ws_check_permission);
   super::reg_json_async(rt, "op_ws_create", op_ws_create);
@@ -103,11 +110,11 @@ pub async fn op_ws_create(
   }
 
   let maybe_ca_file = state.borrow().try_borrow::<WsCaFile>().cloned();
+  let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
-  // FIXME(bartlomieju): make it configurable
-  request = request.header("User-Agent", "deno_runtime/0.1.0");
+  request = request.header("User-Agent", user_agent);
 
   if !args.protocols.is_empty() {
     request = request.header("Sec-WebSocket-Protocol", args.protocols);

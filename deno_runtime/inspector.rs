@@ -52,7 +52,7 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new(host: SocketAddr) -> Self {
+  pub fn new(host: SocketAddr, name: String) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
@@ -63,6 +63,7 @@ impl InspectorServer {
         host,
         register_inspector_rx,
         shutdown_server_rx,
+        name,
       ))
     });
 
@@ -145,6 +146,7 @@ async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   shutdown_server_rx: oneshot::Receiver<()>,
+  name: String,
 ) {
   // TODO: put the `inspector_map` in an `Rc<RefCell<_>>` instead. This is
   // currently not possible because warp requires all filters to implement
@@ -199,14 +201,13 @@ async fn server(
       )
     });
 
-  let json_version_route = warp::path!("json" / "version").map(|| {
-    warp::reply::json(&json!({
-      // FIXME(bartlomieju): make it configurable
-      "Browser": "deno_runtime/0.1.0",
-      "Protocol-Version": "1.3",
-      "V8-Version": deno_core::v8_version(),
-    }))
+  let json_version_response = json!({
+    "Browser": name,
+    "Protocol-Version": "1.3",
+    "V8-Version": deno_core::v8_version(),
   });
+  let json_version_route = warp::path!("json" / "version")
+    .map(move || warp::reply::json(&json_version_response));
 
   let inspector_map_ = inspector_map.clone();
   let json_list_route = warp::path("json").map(move || {

@@ -45,6 +45,7 @@ pub struct WorkerOptions {
   pub debug_flag: bool,
   pub unstable: bool,
   pub ca_filepath: Option<String>,
+  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   // Callback that will be invoked when creating new instance
@@ -107,7 +108,11 @@ impl MainWorker {
       }
 
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(js_runtime, options.ca_filepath.as_deref());
+      ops::fetch::init(
+        js_runtime,
+        options.user_agent.clone(),
+        options.ca_filepath.as_deref(),
+      );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
@@ -133,7 +138,11 @@ impl MainWorker {
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
-      ops::websocket::init(js_runtime, options.ca_filepath.as_deref());
+      ops::websocket::init(
+        js_runtime,
+        options.ca_filepath.as_deref(),
+        options.user_agent.clone(),
+      );
     }
     {
       let op_state = js_runtime.op_state();
@@ -254,6 +263,7 @@ mod tests {
 
     let options = WorkerOptions {
       apply_source_maps: false,
+      user_agent: "x".to_string(),
       args: vec![],
       debug_flag: false,
       unstable: false,
