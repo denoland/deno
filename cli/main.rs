@@ -121,6 +121,7 @@ fn create_web_worker_callback(
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
       ca_filepath: program_state.flags.ca_file.clone(),
+      user_agent: http_util::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
       create_web_worker_cb,
@@ -128,6 +129,9 @@ fn create_web_worker_callback(
       use_deno_namespace: args.use_deno_namespace,
       attach_inspector,
       maybe_inspector_server,
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      no_color: !colors::use_color(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -192,6 +196,7 @@ pub fn create_main_worker(
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
     ca_filepath: program_state.flags.ca_file.clone(),
+    user_agent: http_util::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
@@ -199,6 +204,9 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
+    runtime_version: version::deno(),
+    ts_version: version::TYPESCRIPT.to_string(),
+    no_color: !colors::use_color(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);

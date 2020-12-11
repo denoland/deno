@@ -4,6 +4,7 @@ use crate::colors;
 use crate::http_cache::HttpCache;
 use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
+use crate::http_util::get_user_agent;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
 use crate::permissions::Permissions;
@@ -289,7 +290,7 @@ impl FileFetcher {
       cache: FileCache::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(maybe_ca_file)?,
+      http_client: create_http_client(get_user_agent(), maybe_ca_file)?,
     })
   }
 
