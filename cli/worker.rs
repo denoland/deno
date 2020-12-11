@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-pub fn create_web_worker_callback(
+fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(
@@ -103,6 +103,68 @@ pub fn create_web_worker_callback(
   )
 }
 
+pub fn create_main_worker(
+  program_state: &Arc<ProgramState>,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
+) -> MainWorker {
+  let module_loader = CliModuleLoader::new(program_state.clone());
+
+  let global_state_ = program_state.clone();
+
+  let js_error_create_fn = Rc::new(move |core_js_error| {
+    let source_mapped_error =
+      apply_source_map(&core_js_error, global_state_.clone());
+    PrettyJsError::create(source_mapped_error)
+  });
+
+  let attach_inspector = program_state.maybe_inspector_server.is_some()
+    || program_state.flags.repl
+    || program_state.flags.coverage;
+  let maybe_inspector_server = program_state.maybe_inspector_server.clone();
+  let should_break_on_first_statement =
+    program_state.flags.inspect_brk.is_some();
+
+  let create_web_worker_cb = create_web_worker_callback(program_state.clone());
+
+  let options = WorkerOptions {
+    apply_source_maps: true,
+    args: program_state.flags.argv.clone(),
+    debug_flag: program_state
+      .flags
+      .log_level
+      .map_or(false, |l| l == log::Level::Debug),
+    unstable: program_state.flags.unstable,
+    ca_filepath: program_state.flags.ca_file.clone(),
+    seed: program_state.flags.seed,
+    js_error_create_fn: Some(js_error_create_fn),
+    create_web_worker_cb,
+    attach_inspector,
+    maybe_inspector_server,
+    should_break_on_first_statement,
+    module_loader,
+  };
+
+  let mut worker = MainWorker::from_options(main_module, permissions, &options);
+
+  // NOTE(bartlomieju): ProgramState is CLI only construct,
+  // hence we're not using it in `Self::from_options`.
+  {
+    let js_runtime = &mut worker.js_runtime;
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<Arc<ProgramState>>(program_state.clone());
+    // Applies source maps - works in conjuction with `js_error_create_fn`
+    // above
+    ops::errors::init(js_runtime);
+    ops::runtime_compiler::init(js_runtime);
+    worker.bootstrap(&options);
+  }
+
+  worker
+}
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -135,69 +197,6 @@ pub struct WorkerOptions {
 }
 
 impl MainWorker {
-  pub fn new(
-    program_state: &Arc<ProgramState>,
-    main_module: ModuleSpecifier,
-    permissions: Permissions,
-  ) -> Self {
-    let module_loader = CliModuleLoader::new(program_state.clone());
-
-    let global_state_ = program_state.clone();
-
-    let js_error_create_fn = Rc::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, global_state_.clone());
-      PrettyJsError::create(source_mapped_error)
-    });
-
-    let attach_inspector = program_state.maybe_inspector_server.is_some()
-      || program_state.flags.repl
-      || program_state.flags.coverage;
-    let maybe_inspector_server = program_state.maybe_inspector_server.clone();
-    let should_break_on_first_statement =
-      program_state.flags.inspect_brk.is_some();
-
-    let create_web_worker_cb =
-      create_web_worker_callback(program_state.clone());
-
-    let options = WorkerOptions {
-      apply_source_maps: true,
-      args: program_state.flags.argv.clone(),
-      debug_flag: program_state
-        .flags
-        .log_level
-        .map_or(false, |l| l == log::Level::Debug),
-      unstable: program_state.flags.unstable,
-      ca_filepath: program_state.flags.ca_file.clone(),
-      seed: program_state.flags.seed,
-      js_error_create_fn: Some(js_error_create_fn),
-      create_web_worker_cb,
-      attach_inspector,
-      maybe_inspector_server,
-      should_break_on_first_statement,
-      module_loader,
-    };
-
-    let mut worker = Self::from_options(main_module, permissions, &options);
-
-    // NOTE(bartlomieju): ProgramState is CLI only construct,
-    // hence we're not using it in `Self::from_options`.
-    {
-      let js_runtime = &mut worker.js_runtime;
-      js_runtime
-        .op_state()
-        .borrow_mut()
-        .put::<Arc<ProgramState>>(program_state.clone());
-      // Applies source maps - works in conjuction with `js_error_create_fn`
-      // above
-      ops::errors::init(js_runtime);
-      ops::runtime_compiler::init(js_runtime);
-      worker.bootstrap(&options);
-    }
-
-    worker
-  }
-
   pub fn from_options(
     main_module: ModuleSpecifier,
     permissions: Permissions,
@@ -397,7 +396,8 @@ mod tests {
     let permissions = Permissions::from_flags(&flags);
     let program_state =
       ProgramState::mock(vec!["deno".to_string()], Some(flags));
-    MainWorker::new(&program_state, main_module, permissions)
+    // TODO(bartlomieju): decouple from CLI
+    create_main_worker(&program_state, main_module, permissions)
   }
 
   #[tokio::test]

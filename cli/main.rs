@@ -63,7 +63,7 @@ use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::standalone::create_standalone_binary;
 use crate::tools::installer::infer_name_from_url;
-use crate::worker::MainWorker;
+use crate::worker::create_main_worker;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -253,7 +253,7 @@ async fn install_command(
   let program_state = ProgramState::new(preload_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
@@ -321,7 +321,7 @@ async fn eval_command(
   let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -664,7 +664,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
 
   tools::repl::run(&program_state, worker).await
@@ -675,8 +675,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let permissions = Permissions::from_flags(&flags);
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
-  let mut worker =
-    MainWorker::new(&program_state.clone(), main_module.clone(), permissions);
+  let mut worker = create_main_worker(
+    &program_state.clone(),
+    main_module.clone(),
+    permissions,
+  );
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -755,7 +758,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       let main_module = main_module.clone();
       let program_state = ProgramState::new(flags)?;
       let mut worker =
-        MainWorker::new(&program_state, main_module.clone(), permissions);
+        create_main_worker(&program_state, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -788,7 +791,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
   let permissions = Permissions::from_flags(&flags);
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -857,7 +860,7 @@ async fn test_command(
   }
 
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
