@@ -42,7 +42,7 @@ struct HostUnhandledErrorArgs {
 pub fn init(
   rt: &mut deno_core::JsRuntime,
   sender: Option<mpsc::Sender<WorkerEvent>>,
-  create_web_worker_callback: Arc<CreateWebWorkerCb>,
+  create_web_worker_cb: Arc<CreateWebWorkerCb>,
 ) {
   {
     let op_state = rt.op_state();
@@ -51,7 +51,7 @@ pub fn init(
     state.put::<WorkerId>(WorkerId::default());
 
     let create_module_loader = CreateWebWorkerCbHolder {
-      cb: create_web_worker_callback,
+      cb: create_web_worker_cb,
     };
     state.put::<CreateWebWorkerCbHolder>(create_module_loader);
   }
