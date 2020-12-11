@@ -138,6 +138,8 @@ fn create_web_worker_callback(
       &options,
     );
 
+    // This block registers additional ops and state that
+    // are only available in the CLI
     {
       let js_runtime = &mut worker.js_runtime;
       js_runtime
@@ -201,6 +203,8 @@ pub fn create_main_worker(
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
 
+  // This block registers additional ops and state that
+  // are only available in the CLI
   {
     let js_runtime = &mut worker.js_runtime;
     js_runtime
@@ -211,8 +215,8 @@ pub fn create_main_worker(
     // above
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
-    worker.bootstrap(&options);
   }
+  worker.bootstrap(&options);
 
   worker
 }
