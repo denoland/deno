@@ -11,7 +11,7 @@ the `type: "module"` option when creating a new worker.
 
 Relative module specifiers are
 [not supported](https://github.com/denoland/deno/issues/5216) at the moment. You
-can instead use the `URL` contructor and `import.meta.url` to easily create a
+can instead use the `URL` constructor and `import.meta.url` to easily create a
 specifier for some nearby script.
 
 ```ts

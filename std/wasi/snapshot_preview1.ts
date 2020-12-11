@@ -279,9 +279,32 @@ export class ExitStatus {
 }
 
 export interface ContextOptions {
+  /**
+   * An array of strings that the WebAssembly instance will see as command-line
+   * arguments.
+   *
+   * The first argument is the virtual path to the command itself.
+   */
   args?: string[];
+
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as its environment.
+   */
   env?: { [key: string]: string | undefined };
+
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as it's filesystem.
+   *
+   * The string keys of are treated as directories within the sandboxed
+   * filesystem, the values are the real paths to those directories on the host
+   * machine.
+   *
+   */
   preopens?: { [key: string]: string };
+
+  /**
+   * Determines if calls to exit from within the WebAssembly module will terminate the proess or return.
+   */
   exitOnReturn?: boolean;
 }
 
