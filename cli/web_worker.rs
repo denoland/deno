@@ -451,26 +451,22 @@ pub fn run_web_worker(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::module_loader::CliModuleLoader;
-  use crate::program_state::ProgramState;
   use crate::tokio_util;
   use deno_core::serde_json::json;
 
   fn create_test_web_worker() -> WebWorker {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
-    let program_state = ProgramState::mock(vec!["deno".to_string()], None);
-    let pstate = program_state.clone();
-    let module_loader = CliModuleLoader::new_for_worker(pstate);
+    let module_loader = Rc::new(deno_core::NoopModuleLoader);
     let create_web_worker_cb = Arc::new(|_, _, _, _, _| unreachable!());
 
     let options = WebWorkerOptions {
-      args: program_state.flags.argv.clone(),
+      args: vec![],
       apply_source_maps: false,
       debug_flag: false,
-      unstable: program_state.flags.unstable,
-      ca_filepath: program_state.flags.ca_file.clone(),
-      seed: program_state.flags.seed,
+      unstable: false,
+      ca_filepath: None,
+      seed: None,
       module_loader,
       create_web_worker_cb,
       js_error_create_fn: None,
