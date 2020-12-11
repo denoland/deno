@@ -35,10 +35,12 @@ pub struct CreateWebWorkerArgs {
 pub type CreateWebWorkerCb =
   dyn Fn(CreateWebWorkerArgs) -> WebWorker + Sync + Send;
 
+/// A holder for callback that is used to create a new
+/// WebWorker. It's a struct instead of a type alias
+/// because `GothamState` used in `OpState` overrides
+/// value if type alises have the same underlying type
 #[derive(Clone)]
-pub struct CreateWebWorkerCbHolder {
-  pub cb: Arc<CreateWebWorkerCb>,
-}
+pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 #[derive(Deserialize)]
 struct HostUnhandledErrorArgs {
@@ -56,9 +58,7 @@ pub fn init(
     state.put::<WorkersTable>(WorkersTable::default());
     state.put::<WorkerId>(WorkerId::default());
 
-    let create_module_loader = CreateWebWorkerCbHolder {
-      cb: create_web_worker_cb,
-    };
+    let create_module_loader = CreateWebWorkerCbHolder(create_web_worker_cb);
     state.put::<CreateWebWorkerCbHolder>(create_module_loader);
   }
   super::reg_json_sync(rt, "op_create_worker", op_create_worker);
@@ -146,7 +146,7 @@ fn op_create_worker(
     //  all action done upon it should be noops
     // - newly spawned thread exits
 
-    let worker = (create_module_loader.cb)(CreateWebWorkerArgs {
+    let worker = (create_module_loader.0)(CreateWebWorkerArgs {
       name: worker_name,
       worker_id,
       permissions,
