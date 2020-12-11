@@ -458,7 +458,7 @@ mod tests {
     let main_module =
       ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
     let module_loader = Rc::new(deno_core::NoopModuleLoader);
-    let create_web_worker_cb = Arc::new(|_, _, _, _, _| unreachable!());
+    let create_web_worker_cb = Arc::new(|_| unreachable!());
 
     let options = WebWorkerOptions {
       args: vec![],

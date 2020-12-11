@@ -24,10 +24,16 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-// TODO(bartomieju): work on the signature; maybe better to use a struct?
-pub type CreateWebWorkerCb = dyn Fn(String, u32, Permissions, ModuleSpecifier, bool) -> WebWorker
-  + Sync
-  + Send;
+pub struct CreateWebWorkerArgs {
+  pub name: String,
+  pub worker_id: u32,
+  pub permissions: Permissions,
+  pub main_module: ModuleSpecifier,
+  pub has_deno_namespace: bool,
+}
+
+pub type CreateWebWorkerCb =
+  dyn Fn(CreateWebWorkerArgs) -> WebWorker + Sync + Send;
 
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder {
@@ -140,13 +146,13 @@ fn op_create_worker(
     //  all action done upon it should be noops
     // - newly spawned thread exits
 
-    let worker = (create_module_loader.cb)(
-      worker_name,
+    let worker = (create_module_loader.cb)(CreateWebWorkerArgs {
+      name: worker_name,
       worker_id,
       permissions,
-      module_specifier.clone(),
-      use_deno_namespace,
-    );
+      main_module: module_specifier.clone(),
+      has_deno_namespace: use_deno_namespace,
+    });
 
     // Send thread safe handle to newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();

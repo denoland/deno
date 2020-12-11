@@ -96,70 +96,65 @@ use std::sync::Arc;
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
 ) -> Arc<CreateWebWorkerCb> {
-  Arc::new(
-    move |name, worker_id, permissions, main_module, has_deno_namespace| {
-      let global_state_ = program_state.clone();
-      let js_error_create_fn = Rc::new(move |core_js_error| {
-        let source_mapped_error =
-          apply_source_map(&core_js_error, global_state_.clone());
-        PrettyJsError::create(source_mapped_error)
-      });
+  Arc::new(move |args| {
+    let global_state_ = program_state.clone();
+    let js_error_create_fn = Rc::new(move |core_js_error| {
+      let source_mapped_error =
+        apply_source_map(&core_js_error, global_state_.clone());
+      PrettyJsError::create(source_mapped_error)
+    });
 
-      let attach_inspector = program_state.maybe_inspector_server.is_some()
-        || program_state.flags.coverage;
-      let maybe_inspector_server = program_state.maybe_inspector_server.clone();
+    let attach_inspector = program_state.maybe_inspector_server.is_some()
+      || program_state.flags.coverage;
+    let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
-      let module_loader =
-        CliModuleLoader::new_for_worker(program_state.clone());
-      let create_web_worker_cb =
-        create_web_worker_callback(program_state.clone());
+    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
+    let create_web_worker_cb =
+      create_web_worker_callback(program_state.clone());
 
-      let options = WebWorkerOptions {
-        args: program_state.flags.argv.clone(),
-        apply_source_maps: true,
-        debug_flag: program_state
-          .flags
-          .log_level
-          .map_or(false, |l| l == log::Level::Debug),
-        unstable: program_state.flags.unstable,
-        ca_filepath: program_state.flags.ca_file.clone(),
-        seed: program_state.flags.seed,
-        module_loader,
-        create_web_worker_cb,
-        js_error_create_fn: Some(js_error_create_fn),
-        has_deno_namespace,
-        attach_inspector,
-        maybe_inspector_server,
-      };
+    let options = WebWorkerOptions {
+      args: program_state.flags.argv.clone(),
+      apply_source_maps: true,
+      debug_flag: program_state
+        .flags
+        .log_level
+        .map_or(false, |l| l == log::Level::Debug),
+      unstable: program_state.flags.unstable,
+      ca_filepath: program_state.flags.ca_file.clone(),
+      seed: program_state.flags.seed,
+      module_loader,
+      create_web_worker_cb,
+      js_error_create_fn: Some(js_error_create_fn),
+      has_deno_namespace: args.has_deno_namespace,
+      attach_inspector,
+      maybe_inspector_server,
+    };
 
-      let mut worker = WebWorker::from_options(
-        name,
-        permissions,
-        main_module,
-        worker_id,
-        &options,
-      );
+    let mut worker = WebWorker::from_options(
+      args.name,
+      args.permissions,
+      args.main_module,
+      args.worker_id,
+      &options,
+    );
 
-      // NOTE(bartlomieju): ProgramState is CLI only construct,
-      // hence we're not using it in `Self::from_options`.
-      {
-        let js_runtime = &mut worker.js_runtime;
-        js_runtime
-          .op_state()
-          .borrow_mut()
-          .put::<Arc<ProgramState>>(program_state.clone());
-        // Applies source maps - works in conjuction with `js_error_create_fn`
-        // above
-        ops::errors::init(js_runtime);
-        if has_deno_namespace {
-          ops::runtime_compiler::init(js_runtime);
-        }
+    {
+      let js_runtime = &mut worker.js_runtime;
+      js_runtime
+        .op_state()
+        .borrow_mut()
+        .put::<Arc<ProgramState>>(program_state.clone());
+      // Applies source maps - works in conjuction with `js_error_create_fn`
+      // above
+      ops::errors::init(js_runtime);
+      if args.has_deno_namespace {
+        ops::runtime_compiler::init(js_runtime);
       }
-      worker.bootstrap(&options);
+    }
+    worker.bootstrap(&options);
 
-      worker
-    },
-  )
+    worker
+  })
 }
 
 pub fn create_main_worker(
@@ -206,8 +201,6 @@ pub fn create_main_worker(
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
 
-  // NOTE(bartlomieju): ProgramState is CLI only construct,
-  // hence we're not using it in `Self::from_options`.
   {
     let js_runtime = &mut worker.js_runtime;
     js_runtime

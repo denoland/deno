@@ -112,7 +112,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
   let permissions = Permissions::allow_all();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
-  let create_web_worker_cb = Arc::new(|_, _, _, _, _| {
+  let create_web_worker_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
   });
 
