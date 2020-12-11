@@ -24,12 +24,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
+// TODO(bartomieju): work on the signature; maybe better to use a struct?
 pub type CreateWebWorkerCb = dyn Fn(String, u32, Permissions, ModuleSpecifier, bool) -> WebWorker
   + Sync
   + Send;
 
 #[derive(Clone)]
-pub struct CreateWorkerModuleLoaderFn {
+pub struct CreateWebWorkerCbHolder {
   pub cb: Arc<CreateWebWorkerCb>,
 }
 
@@ -49,10 +50,10 @@ pub fn init(
     state.put::<WorkersTable>(WorkersTable::default());
     state.put::<WorkerId>(WorkerId::default());
 
-    let create_module_loader = CreateWorkerModuleLoaderFn {
+    let create_module_loader = CreateWebWorkerCbHolder {
       cb: create_web_worker_callback,
     };
-    state.put::<CreateWorkerModuleLoaderFn>(create_module_loader);
+    state.put::<CreateWebWorkerCbHolder>(create_module_loader);
   }
   super::reg_json_sync(rt, "op_create_worker", op_create_worker);
   super::reg_json_sync(
@@ -118,8 +119,8 @@ fn op_create_worker(
   }
   let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
-  let create_module_loader = state.take::<CreateWorkerModuleLoaderFn>();
-  state.put::<CreateWorkerModuleLoaderFn>(create_module_loader.clone());
+  let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
+  state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
   state.put::<WorkerId>(worker_id + 1);
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
