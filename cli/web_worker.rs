@@ -129,7 +129,7 @@ pub struct WebWorker {
   event_loop_idle: bool,
   terminate_rx: mpsc::Receiver<()>,
   handle: WebWorkerHandle,
-  pub has_deno_namespace: bool,
+  pub use_deno_namespace: bool,
 }
 
 pub struct WebWorkerOptions {
@@ -141,7 +141,7 @@ pub struct WebWorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
-  pub has_deno_namespace: bool,
+  pub use_deno_namespace: bool,
   pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub apply_source_maps: bool,
@@ -187,7 +187,7 @@ impl WebWorker {
       event_loop_idle: false,
       terminate_rx,
       handle,
-      has_deno_namespace: options.has_deno_namespace,
+      use_deno_namespace: options.use_deno_namespace,
     };
 
     {
@@ -224,7 +224,7 @@ impl WebWorker {
       ops::io::init(js_runtime);
       ops::websocket::init(js_runtime, options.ca_filepath.as_deref());
 
-      if options.has_deno_namespace {
+      if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
         ops::fs::init(js_runtime);
         ops::net::init(js_runtime);
@@ -277,7 +277,7 @@ impl WebWorker {
     // WebWorkers can have empty string as name.
     let script = format!(
       "bootstrap.workerRuntime({}, \"{}\", {}, \"worker-{}\")",
-      runtime_options_str, self.name, options.has_deno_namespace, self.id
+      runtime_options_str, self.name, options.use_deno_namespace, self.id
     );
     self
       .execute(&script)
@@ -470,7 +470,7 @@ mod tests {
       module_loader,
       create_web_worker_cb,
       js_error_create_fn: None,
-      has_deno_namespace: false,
+      use_deno_namespace: false,
       attach_inspector: false,
       maybe_inspector_server: None,
     };

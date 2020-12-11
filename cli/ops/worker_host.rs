@@ -29,7 +29,7 @@ pub struct CreateWebWorkerArgs {
   pub worker_id: u32,
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
-  pub has_deno_namespace: bool,
+  pub use_deno_namespace: bool,
 }
 
 pub type CreateWebWorkerCb =
@@ -151,7 +151,7 @@ fn op_create_worker(
       worker_id,
       permissions,
       main_module: module_specifier.clone(),
-      has_deno_namespace: use_deno_namespace,
+      use_deno_namespace,
     });
 
     // Send thread safe handle to newly created worker to host thread

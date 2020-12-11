@@ -125,7 +125,7 @@ fn create_web_worker_callback(
       module_loader,
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
-      has_deno_namespace: args.has_deno_namespace,
+      use_deno_namespace: args.use_deno_namespace,
       attach_inspector,
       maybe_inspector_server,
     };
@@ -147,7 +147,7 @@ fn create_web_worker_callback(
       // Applies source maps - works in conjuction with `js_error_create_fn`
       // above
       ops::errors::init(js_runtime);
-      if args.has_deno_namespace {
+      if args.use_deno_namespace {
         ops::runtime_compiler::init(js_runtime);
       }
     }
