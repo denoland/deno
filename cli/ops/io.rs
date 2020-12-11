@@ -284,6 +284,8 @@ impl NewStreamResource {
 
   async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
     if self.child_stdout.is_some() {
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stderr.is_none());
       let mut child_stdout =
         RcRef::map(&self, |r| r.child_stdout.as_ref().unwrap())
           .borrow_mut()
@@ -294,6 +296,8 @@ impl NewStreamResource {
     }
 
     if self.child_stderr.is_some() {
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
       let mut child_stderr =
         RcRef::map(&self, |r| r.child_stderr.as_ref().unwrap())
           .borrow_mut()
@@ -303,21 +307,24 @@ impl NewStreamResource {
       return Ok(nread);
     }
 
-    todo!()
+    Err(bad_resource_id())
   }
 
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
     if self.child_stdin.is_some() {
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
       let mut child_stdin =
         RcRef::map(&self, |r| r.child_stdin.as_ref().unwrap())
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *child_stdin).write(buf).try_or_cancel(cancel).await?;
-      return Ok(nread);
+      let nwritten =
+        (&mut *child_stdin).write(buf).try_or_cancel(cancel).await?;
+      return Ok(nwritten);
     }
 
-    todo!()
+    Err(bad_resource_id())
   }
 }
 
@@ -325,6 +332,10 @@ impl Resource for NewStreamResource {
   fn name(&self) -> Cow<str> {
     if self.child_stdout.is_some() {
       "childStdout".into()
+    } else if self.child_stderr.is_some() {
+      "childStderr".into()
+    } else if self.child_stdin.is_some() {
+      "childStdin".into()
     } else {
       "<todo>".into()
     }
