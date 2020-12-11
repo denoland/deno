@@ -128,6 +128,9 @@ fn create_web_worker_callback(
       use_deno_namespace: args.use_deno_namespace,
       attach_inspector,
       maybe_inspector_server,
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      no_color: !colors::use_color(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -199,6 +202,9 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
+    runtime_version: version::deno(),
+    ts_version: version::TYPESCRIPT.to_string(),
+    no_color: !colors::use_color(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);

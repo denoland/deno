@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::inspector::InspectorSession;
@@ -8,7 +7,6 @@ use crate::js;
 use crate::metrics::Metrics;
 use crate::ops;
 use crate::permissions::Permissions;
-use crate::version;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -42,6 +40,7 @@ pub struct MainWorker {
 
 pub struct WorkerOptions {
   pub apply_source_maps: bool,
+  /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
@@ -55,6 +54,12 @@ pub struct WorkerOptions {
   pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
+  /// Sets `Deno.version.deno` in JS runtime.
+  pub runtime_version: String,
+  /// Sets `Deno.version.typescript` in JS runtime.
+  pub ts_version: String,
+  /// Sets `Deno.noColor` in JS runtime.
+  pub no_color: bool,
 }
 
 impl MainWorker {
@@ -154,12 +159,12 @@ impl MainWorker {
       "args": options.args,
       "applySourceMaps": options.apply_source_maps,
       "debugFlag": options.debug_flag,
-      "denoVersion": version::deno(),
-      "noColor": !colors::use_color(),
+      "denoVersion": options.runtime_version,
+      "noColor": options.no_color,
       "pid": std::process::id(),
       "ppid": ops::runtime::ppid(),
       "target": env!("TARGET"),
-      "tsVersion": version::TYPESCRIPT,
+      "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
     });
@@ -260,6 +265,9 @@ mod tests {
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
+      runtime_version: "x".to_string(),
+      ts_version: "x".to_string(),
+      no_color: true,
     };
 
     MainWorker::from_options(main_module, permissions, &options)

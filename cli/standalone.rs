@@ -2,6 +2,7 @@ use crate::colors;
 use crate::flags::Flags;
 use crate::permissions::Permissions;
 use crate::tokio_util;
+use crate::version;
 use crate::worker::MainWorker;
 use crate::worker::WorkerOptions;
 use deno_core::error::type_error;
@@ -129,6 +130,9 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
+    runtime_version: version::deno(),
+    ts_version: version::TYPESCRIPT.to_string(),
+    no_color: !colors::use_color(),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
