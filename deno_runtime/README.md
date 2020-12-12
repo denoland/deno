@@ -3,14 +3,36 @@
 [![crates](https://img.shields.io/crates/v/deno_runtime.svg)](https://crates.io/crates/deno_runtime)
 [![docs](https://docs.rs/deno_runtime/badge.svg)](https://docs.rs/deno_runtime)
 
-This crate provides an implementation of Deno runtime including:
+This crate provides Deno runtime, including:
 
-- APIs available on `Deno` namespace along with accompying ops
-- permission checks
-- inspector/debugger support
+- JS runtime implementation, with:
+  - `Deno` namespace and accompanying ops
+  - build script for creating a V8 snapshot of the runtime
+- permission checker implementation
+- V8 inspector and debugger support
 
-The main API of this crate is `MainWorker` - a top level runtime, which contains
-`window` and `Deno` globals.
+# Stability
+
+This crate is built using battle-tested modules that were originally in `deno`
+crate, however the API of this crate is subject to rapid and breaking changes.
+
+## Note
+
+This crate is agnostic of TypeScript.
+
+It is possible to provide TS support using `module_loader` property on
+`WorkerOptions`, for more details see the
+[CLI](https://github.com/denoland/deno/tree/master/cli) crate.
+
+## `MainWorker`
+
+The main API of this crate is `MainWorker`.
+
+`MainWorker` is a structure encapsulating `deno_core::JsRuntime` with a set of
+ops used to implement `Deno` namespace.
+
+When creating a `MainWorker` implementors must call `MainWorker::bootstrap` to
+prepare JS runtime for use.
 
 `MainWorker` is highly configurable and allows to customize many of the
 runtime's properties:
@@ -22,17 +44,15 @@ runtime's properties:
 - HTTP client user agent, CA certificate
 - random number generator seed
 
-`MainWorker` comes with a built-in support for `Worker` Web API. The `Worker`
-API is implemented using `WebWorker` structure, that creates a dedicated OS
-thread.
+## `Worker` Web API
+
+`deno_runtime` comes with a built-in support for `Worker` Web API.
+
+The `Worker` API is implemented using `WebWorker` structure.
 
 When creating a new instance of `MainWorker` implementors must provide a
-callback that is called when creating a new instance of `WebWorker`.
+callback function that is used when creating a new instance of `Worker`.
 
-## Note
-
-This crate is agnostic of TypeScript.
-
-It is possible to provide TS support using `module_loader` property on
-`WorkerOptions`. (for more details see the
-[CLI](https://github.com/denoland/deno/tree/master/cli))
+All `WebWorker` instances are decendents of `MainWorker` which is responsible
+for setting up communication with child worker. Each `WebWorker` spawns a new OS
+thread that is dedicated solely to that worker.
