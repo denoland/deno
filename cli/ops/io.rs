@@ -257,6 +257,9 @@ pub struct NewStreamResource {
   pub tcp_stream_read: Option<AsyncRefCell<tokio::net::tcp::OwnedReadHalf>>,
   pub tcp_stream_write: Option<AsyncRefCell<tokio::net::tcp::OwnedWriteHalf>>,
 
+  #[cfg(not(windows))]
+  pub unix_stream: Option<AsyncRefCell<tokio::net::UnixStream>>,
+
   child_stdin: Option<AsyncRefCell<tokio::process::ChildStdin>>,
 
   child_stdout: Option<AsyncRefCell<tokio::process::ChildStdout>>,
@@ -278,6 +281,14 @@ impl NewStreamResource {
     Self {
       tcp_stream_read: Some(AsyncRefCell::new(read_half)),
       tcp_stream_write: Some(AsyncRefCell::new(write_half)),
+      ..Default::default()
+    }
+  }
+
+  #[cfg(not(windows))]
+  pub fn unix_stream(unix_stream: tokio::net::UnixStream) -> Self {
+    Self {
+      unix_stream: Some(AsyncRefCell::new(unix_stream)),
       ..Default::default()
     }
   }
@@ -349,6 +360,22 @@ impl NewStreamResource {
       return Ok(nread);
     }
 
+    #[cfg(not(windows))]
+    if self.unix_stream.is_some() {
+      debug_assert!(self.tcp_stream_read.is_some());
+      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut unix_stream =
+        RcRef::map(&self, |r| r.unix_stream.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *unix_stream).read(buf).try_or_cancel(cancel).await?;
+      return Ok(nread);
+    }
+
     Err(bad_resource_id())
   }
 
@@ -385,12 +412,33 @@ impl NewStreamResource {
       return Ok(nwritten);
     }
 
+    #[cfg(not(windows))]
+    if self.unix_stream.is_some() {
+      debug_assert!(self.tcp_stream_read.is_some());
+      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut unix_stream =
+        RcRef::map(&self, |r| r.unix_stream.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *unix_stream).write(buf).try_or_cancel(cancel).await?;
+      return Ok(nread);
+    }
+
     Err(bad_resource_id())
   }
 }
 
 impl Resource for NewStreamResource {
   fn name(&self) -> Cow<str> {
+    #[cfg(not(windows))]
+    if self.unix_stream.is_some() {
+      return "unixStream".into();
+    }
+
     if self.child_stdout.is_some() {
       "childStdout".into()
     } else if self.child_stderr.is_some() {

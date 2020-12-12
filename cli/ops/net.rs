@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::io::NewStreamResource;
-use crate::ops::io::StreamResource;
-use crate::ops::io::StreamResourceHolder;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
@@ -312,12 +310,8 @@ async fn op_connect(
       let remote_addr = unix_stream.peer_addr()?;
 
       let mut state_ = state.borrow_mut();
-      let rid = state_.resource_table.add(
-        "unixStream",
-        Box::new(StreamResourceHolder::new(StreamResource::UnixStream(
-          unix_stream,
-        ))),
-      );
+      let resource = NewStreamResource::unix_stream(unix_stream);
+      let rid = state_.resource_table_2.add(resource);
       Ok(json!({
         "rid": rid,
         "localAddr": {
@@ -372,21 +366,16 @@ fn op_shutdown(
     return Ok(json!({}));
   }
 
-  // TODO:unix stream
+  #[cfg(unix)]
+  if resource.unix_stream.is_some() {
+    let write_half = RcRef::map(&resource, |r| r.unix_stream.as_ref().unwrap())
+      .try_borrow()
+      .expect("Resource is busy");
+    net_unix::UnixStream::shutdown(&*write_half, shutdown_mode)?;
+    return Ok(json!({}));
+  }
+
   return Err(bad_resource_id());
-
-  // match resource_holder.resource {
-  //   StreamResource::TcpStream(Some(ref mut stream)) => {
-  //     TcpStream::shutdown(stream, shutdown_mode)?;
-  //   }
-  //   #[cfg(unix)]
-  //   StreamResource::UnixStream(ref mut stream) => {
-  //     net_unix::UnixStream::shutdown(stream, shutdown_mode)?;
-  //   }
-  //   _ => return Err(bad_resource_id()),
-  // }
-
-  // Ok(json!({}))
 }
 
 struct TcpListenerResource {
