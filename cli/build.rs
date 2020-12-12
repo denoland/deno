@@ -43,14 +43,6 @@ fn create_snapshot(
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
-fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let js_runtime = JsRuntime::new(RuntimeOptions {
-    will_snapshot: true,
-    ..Default::default()
-  });
-  create_snapshot(js_runtime, snapshot_path, files);
-}
-
 #[derive(Debug, Deserialize)]
 struct LoadArgs {
   /// The fully qualified specifier that should be loaded.
@@ -265,11 +257,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-
-  let js_files = get_js_files("rt");
-  create_runtime_snapshot(&runtime_snapshot_path, js_files);
 
   let js_files = get_js_files("tsc");
   create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);

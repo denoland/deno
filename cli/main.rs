@@ -14,7 +14,6 @@ mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
-mod errors;
 mod file_fetcher;
 mod file_watcher;
 mod flags;
@@ -25,19 +24,14 @@ mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
-mod inspector;
 mod js;
 mod lockfile;
 mod lsp;
 mod media_type;
-mod metrics;
 mod module_graph;
 mod module_loader;
 mod ops;
-mod permissions;
 mod program_state;
-mod resolve_addr;
-mod signal;
 mod source_maps;
 mod specifier_handler;
 mod standalone;
@@ -47,8 +41,6 @@ mod tools;
 mod tsc;
 mod tsc_config;
 mod version;
-mod web_worker;
-mod worker;
 
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
@@ -59,18 +51,12 @@ use crate::fmt_errors::PrettyJsError;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
-use crate::ops::worker_host::CreateWebWorkerCb;
-use crate::permissions::Permissions;
 use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
 use crate::standalone::create_standalone_binary;
 use crate::tools::installer::infer_name_from_url;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerOptions;
-use crate::worker::MainWorker;
-use crate::worker::WorkerOptions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -81,6 +67,13 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
+use deno_runtime::ops::worker_host::CreateWebWorkerCb;
+use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsOptions;
+use deno_runtime::web_worker::WebWorker;
+use deno_runtime::web_worker::WebWorkerOptions;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::worker::WorkerOptions;
 use log::Level;
 use log::LevelFilter;
 use std::cell::RefCell;
@@ -92,6 +85,23 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+
+impl From<Flags> for PermissionsOptions {
+  fn from(flags: Flags) -> Self {
+    Self {
+      allow_env: flags.allow_env,
+      allow_hrtime: flags.allow_hrtime,
+      allow_net: flags.allow_net,
+      allow_plugin: flags.allow_plugin,
+      allow_read: flags.allow_read,
+      allow_run: flags.allow_run,
+      allow_write: flags.allow_write,
+      net_allowlist: flags.net_allowlist,
+      read_allowlist: flags.read_allowlist,
+      write_allowlist: flags.write_allowlist,
+    }
+  }
+}
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -392,7 +402,7 @@ async fn install_command(
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
-  let permissions = Permissions::from_flags(&preload_flags);
+  let permissions = Permissions::from_options(&preload_flags.clone().into());
   let program_state = ProgramState::new(preload_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker =
@@ -461,7 +471,7 @@ async fn eval_command(
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
-  let permissions = Permissions::from_flags(&flags);
+  let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::new(flags)?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
@@ -804,7 +814,7 @@ async fn format_command(
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
-  let permissions = Permissions::from_flags(&flags);
+  let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::new(flags)?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
@@ -815,7 +825,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
-  let permissions = Permissions::from_flags(&flags);
+  let permissions = Permissions::from_options(&flags.clone().into());
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker = create_main_worker(
@@ -896,7 +906,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let operation = |main_module: ModuleSpecifier| {
     let flags = flags.clone();
-    let permissions = Permissions::from_flags(&flags);
+    let permissions = Permissions::from_options(&flags.clone().into());
     async move {
       let main_module = main_module.clone();
       let program_state = ProgramState::new(flags)?;
@@ -932,7 +942,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
   let program_state = ProgramState::new(flags.clone())?;
-  let permissions = Permissions::from_flags(&flags);
+  let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
   debug!("main_module {}", main_module);
@@ -953,7 +963,7 @@ async fn test_command(
   filter: Option<String>,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
-  let permissions = Permissions::from_flags(&flags);
+  let permissions = Permissions::from_options(&flags.clone().into());
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let test_modules =

@@ -7,8 +7,8 @@ use crate::http_util::fetch_once;
 use crate::http_util::get_user_agent;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
-use crate::permissions::Permissions;
 use crate::text_encoding;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;

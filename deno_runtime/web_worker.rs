@@ -122,8 +122,8 @@ pub struct WebWorker {
   // Following fields are pub because they are accessed
   // when creating a new WebWorker instance.
   pub(crate) internal_channels: WorkerChannelsInternal,
-  pub(crate) js_runtime: JsRuntime,
-  pub(crate) name: String,
+  pub js_runtime: JsRuntime,
+  pub name: String,
   waker: AtomicWaker,
   event_loop_idle: bool,
   terminate_rx: mpsc::Receiver<()>,

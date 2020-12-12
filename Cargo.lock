@@ -464,6 +464,7 @@ dependencies = [
  "deno_doc",
  "deno_fetch",
  "deno_lint",
+ "deno_runtime",
  "deno_web",
  "dissimilar",
  "dlopen",

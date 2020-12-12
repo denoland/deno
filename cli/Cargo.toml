@@ -38,6 +38,7 @@ deno_doc = "0.1.18"
 deno_fetch = { path = "../op_crates/fetch", version = "0.13.0" }
 deno_lint = "0.2.13"
 deno_web = { path = "../op_crates/web", version = "0.21.0" }
+deno_runtime = { path = "../deno_runtime", version = "0.1.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
