@@ -374,7 +374,7 @@ impl NewStreamResource {
     }
 
     if self.client_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -391,7 +391,7 @@ impl NewStreamResource {
     }
 
     if self.server_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -409,8 +409,8 @@ impl NewStreamResource {
 
     #[cfg(not(windows))]
     if self.unix_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_some());
-      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -460,8 +460,8 @@ impl NewStreamResource {
     }
 
     if self.client_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_some());
-      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -478,8 +478,8 @@ impl NewStreamResource {
     }
 
     if self.server_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_some());
-      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -497,8 +497,8 @@ impl NewStreamResource {
 
     #[cfg(not(windows))]
     if self.unix_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_some());
-      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
