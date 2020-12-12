@@ -1,9 +1,11 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::permissions::Permissions;
-use crate::program_state::ProgramState;
 use crate::tokio_util;
+use crate::version;
 use crate::worker::MainWorker;
+use crate::worker::WorkerOptions;
+use deno_core::error::bail;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -21,6 +23,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 
 const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
@@ -109,16 +112,33 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
   // TODO(lucacasonato): remove once you can specify this correctly through embedded metadata
   flags.unstable = true;
   let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
-  let program_state = ProgramState::new(flags.clone())?;
   let permissions = Permissions::allow_all();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
-  let mut worker = MainWorker::from_options(
-    &program_state,
-    main_module.clone(),
-    permissions,
+  let create_web_worker_cb = Arc::new(|_| {
+    todo!("Worker are currently not supported in standalone binaries");
+  });
+
+  let options = WorkerOptions {
+    apply_source_maps: false,
+    args: flags.argv.clone(),
+    debug_flag: false,
+    user_agent: crate::http_util::get_user_agent(),
+    unstable: true,
+    ca_filepath: None,
+    seed: None,
+    js_error_create_fn: None,
+    create_web_worker_cb,
+    attach_inspector: false,
+    maybe_inspector_server: None,
+    should_break_on_first_statement: false,
     module_loader,
-    None,
-  );
+    runtime_version: version::deno(),
+    ts_version: version::TYPESCRIPT.to_string(),
+    no_color: !colors::use_color(),
+  };
+  let mut worker =
+    MainWorker::from_options(main_module.clone(), permissions, &options);
+  worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;
@@ -150,6 +170,24 @@ pub async fn create_standalone_binary(
     } else {
       output
     };
+
+  if output.exists() {
+    // If the output is a directory, throw error
+    if output.is_dir() {
+      bail!("Could not compile: {:?} is a directory.", &output);
+    }
+
+    // Make sure we don't overwrite any file not created by Deno compiler.
+    // Check for magic trailer in last 16 bytes
+    let mut output_file = File::open(&output)?;
+    output_file.seek(SeekFrom::End(-16))?;
+    let mut trailer = [0; 16];
+    output_file.read_exact(&mut trailer)?;
+    let (magic_trailer, _) = trailer.split_at(8);
+    if magic_trailer != MAGIC_TRAILER {
+      bail!("Could not compile: cannot overwrite {:?}.", &output);
+    }
+  }
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
   {

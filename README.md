@@ -83,7 +83,7 @@ More in-depth info can be found in the runtime
 
 We appreciate your help!
 
-To contribute, please read the our
+To contribute, please read our
 [guidelines](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md).
 
 [Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=master&event=push

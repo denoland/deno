@@ -514,6 +514,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getCompletions": {
+        return respond(
+          id,
+          languageService.getCompletionsAtPosition(
+            request.specifier,
+            request.position,
+            request.preferences,
+          ),
+        );
+      }
       case "getDocumentHighlights": {
         return respond(
           id,
