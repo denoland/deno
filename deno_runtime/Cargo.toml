@@ -30,7 +30,6 @@ deno_fetch = { path = "../op_crates/fetch", version = "0.13.0" }
 deno_web = { path = "../op_crates/web", version = "0.21.0" }
 
 atty = "0.2.14"
-bytes = "0.5.6"
 dlopen = "0.1.8"
 encoding_rs = "0.8.24"
 env_logger = "0.7.1"

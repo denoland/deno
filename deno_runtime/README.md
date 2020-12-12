@@ -3,7 +3,7 @@
 [![crates](https://img.shields.io/crates/v/deno_runtime.svg)](https://crates.io/crates/deno_runtime)
 [![docs](https://docs.rs/deno_runtime/badge.svg)](https://docs.rs/deno_runtime)
 
-This crate provides implementation of `Deno` runtime.
+This crate provides implementation of `Deno` runtime based on Tokio.
 
 It's comprised of few major parts:
 

@@ -588,7 +588,6 @@ name = "deno_runtime"
 version = "0.1.0"
 dependencies = [
  "atty",
- "bytes 0.5.6",
  "deno_core",
  "deno_crypto",
  "deno_fetch",
