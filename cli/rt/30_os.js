@@ -15,10 +15,6 @@
     return core.jsonOpSync("op_os_release");
   }
 
-  function osType() {
-    return core.jsonOpSync("op_os_type");
-  }
-
   function systemMemoryInfo() {
     return core.jsonOpSync("op_system_memory_info");
   }
@@ -62,7 +58,6 @@
     execPath,
     exit,
     osRelease,
-    osType,
     systemMemoryInfo,
     systemCpuInfo,
     hostname,
