@@ -55,15 +55,22 @@ use crate::file_fetcher::FileFetcher;
 use crate::file_watcher::ModuleResolutionResult;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
+use crate::fmt_errors::PrettyJsError;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
+use crate::module_loader::CliModuleLoader;
+use crate::ops::worker_host::CreateWebWorkerCb;
 use crate::permissions::Permissions;
 use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
+use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
 use crate::standalone::create_standalone_binary;
 use crate::tools::installer::infer_name_from_url;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerOptions;
 use crate::worker::MainWorker;
+use crate::worker::WorkerOptions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -85,6 +92,142 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+
+fn create_web_worker_callback(
+  program_state: Arc<ProgramState>,
+) -> Arc<CreateWebWorkerCb> {
+  Arc::new(move |args| {
+    let global_state_ = program_state.clone();
+    let js_error_create_fn = Rc::new(move |core_js_error| {
+      let source_mapped_error =
+        apply_source_map(&core_js_error, global_state_.clone());
+      PrettyJsError::create(source_mapped_error)
+    });
+
+    let attach_inspector = program_state.maybe_inspector_server.is_some()
+      || program_state.flags.coverage;
+    let maybe_inspector_server = program_state.maybe_inspector_server.clone();
+
+    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
+    let create_web_worker_cb =
+      create_web_worker_callback(program_state.clone());
+
+    let options = WebWorkerOptions {
+      args: program_state.flags.argv.clone(),
+      apply_source_maps: true,
+      debug_flag: program_state
+        .flags
+        .log_level
+        .map_or(false, |l| l == log::Level::Debug),
+      unstable: program_state.flags.unstable,
+      ca_filepath: program_state.flags.ca_file.clone(),
+      user_agent: http_util::get_user_agent(),
+      seed: program_state.flags.seed,
+      module_loader,
+      create_web_worker_cb,
+      js_error_create_fn: Some(js_error_create_fn),
+      use_deno_namespace: args.use_deno_namespace,
+      attach_inspector,
+      maybe_inspector_server,
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      no_color: !colors::use_color(),
+    };
+
+    let mut worker = WebWorker::from_options(
+      args.name,
+      args.permissions,
+      args.main_module,
+      args.worker_id,
+      &options,
+    );
+
+    // This block registers additional ops and state that
+    // are only available in the CLI
+    {
+      let js_runtime = &mut worker.js_runtime;
+      js_runtime
+        .op_state()
+        .borrow_mut()
+        .put::<Arc<ProgramState>>(program_state.clone());
+      // Applies source maps - works in conjuction with `js_error_create_fn`
+      // above
+      ops::errors::init(js_runtime);
+      if args.use_deno_namespace {
+        ops::runtime_compiler::init(js_runtime);
+      }
+    }
+    worker.bootstrap(&options);
+
+    worker
+  })
+}
+
+pub fn create_main_worker(
+  program_state: &Arc<ProgramState>,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
+) -> MainWorker {
+  let module_loader = CliModuleLoader::new(program_state.clone());
+
+  let global_state_ = program_state.clone();
+
+  let js_error_create_fn = Rc::new(move |core_js_error| {
+    let source_mapped_error =
+      apply_source_map(&core_js_error, global_state_.clone());
+    PrettyJsError::create(source_mapped_error)
+  });
+
+  let attach_inspector = program_state.maybe_inspector_server.is_some()
+    || program_state.flags.repl
+    || program_state.flags.coverage;
+  let maybe_inspector_server = program_state.maybe_inspector_server.clone();
+  let should_break_on_first_statement =
+    program_state.flags.inspect_brk.is_some();
+
+  let create_web_worker_cb = create_web_worker_callback(program_state.clone());
+
+  let options = WorkerOptions {
+    apply_source_maps: true,
+    args: program_state.flags.argv.clone(),
+    debug_flag: program_state
+      .flags
+      .log_level
+      .map_or(false, |l| l == log::Level::Debug),
+    unstable: program_state.flags.unstable,
+    ca_filepath: program_state.flags.ca_file.clone(),
+    user_agent: http_util::get_user_agent(),
+    seed: program_state.flags.seed,
+    js_error_create_fn: Some(js_error_create_fn),
+    create_web_worker_cb,
+    attach_inspector,
+    maybe_inspector_server,
+    should_break_on_first_statement,
+    module_loader,
+    runtime_version: version::deno(),
+    ts_version: version::TYPESCRIPT.to_string(),
+    no_color: !colors::use_color(),
+  };
+
+  let mut worker = MainWorker::from_options(main_module, permissions, &options);
+
+  // This block registers additional ops and state that
+  // are only available in the CLI
+  {
+    let js_runtime = &mut worker.js_runtime;
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<Arc<ProgramState>>(program_state.clone());
+    // Applies source maps - works in conjuction with `js_error_create_fn`
+    // above
+    ops::errors::init(js_runtime);
+    ops::runtime_compiler::init(js_runtime);
+  }
+  worker.bootstrap(&options);
+
+  worker
+}
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -253,7 +396,7 @@ async fn install_command(
   let program_state = ProgramState::new(preload_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
@@ -321,7 +464,7 @@ async fn eval_command(
   let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -664,7 +807,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let permissions = Permissions::from_flags(&flags);
   let program_state = ProgramState::new(flags)?;
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
 
   tools::repl::run(&program_state, worker).await
@@ -675,8 +818,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let permissions = Permissions::from_flags(&flags);
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
-  let mut worker =
-    MainWorker::new(&program_state.clone(), main_module.clone(), permissions);
+  let mut worker = create_main_worker(
+    &program_state.clone(),
+    main_module.clone(),
+    permissions,
+  );
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -755,7 +901,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       let main_module = main_module.clone();
       let program_state = ProgramState::new(flags)?;
       let mut worker =
-        MainWorker::new(&program_state, main_module.clone(), permissions);
+        create_main_worker(&program_state, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -788,7 +934,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags.clone())?;
   let permissions = Permissions::from_flags(&flags);
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -857,7 +1003,7 @@ async fn test_command(
   }
 
   let mut worker =
-    MainWorker::new(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions);
 
   let mut maybe_coverage_collector = if flags.coverage {
     let session = worker.create_inspector_session();
