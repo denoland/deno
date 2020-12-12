@@ -1143,7 +1143,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.dir("home"));
+     *   console.log("'env' permission is granted.");
      * } else {
      *   console.log("'env' permission is denied.");
      * }

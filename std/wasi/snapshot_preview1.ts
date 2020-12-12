@@ -279,12 +279,43 @@ export class ExitStatus {
 }
 
 export interface ContextOptions {
+  /**
+   * An array of strings that the WebAssembly instance will see as command-line
+   * arguments.
+   *
+   * The first argument is the virtual path to the command itself.
+   */
   args?: string[];
+
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as its environment.
+   */
   env?: { [key: string]: string | undefined };
+
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as it's filesystem.
+   *
+   * The string keys of are treated as directories within the sandboxed
+   * filesystem, the values are the real paths to those directories on the host
+   * machine.
+   *
+   */
   preopens?: { [key: string]: string };
+
+  /**
+   * Determines if calls to exit from within the WebAssembly module will terminate the proess or return.
+   */
   exitOnReturn?: boolean;
 }
 
+/**
+ * The Context class provides the environment required to run WebAssembly
+ * modules compiled to run with the WebAssembly System Interface.
+ *
+ * Each context represents a distinct sandboxed environment and must have its
+ * command-line arguments, environment variables, and pre-opened directory
+ * structure configured explicitly.
+ */
 export default class Context {
   args: string[];
   env: { [key: string]: string | undefined };
@@ -294,6 +325,7 @@ export default class Context {
   fds: FileDescriptor[];
 
   exports: Record<string, WebAssembly.ImportValue>;
+  #started: boolean;
 
   constructor(options: ContextOptions) {
     this.args = options.args ?? [];
@@ -341,7 +373,7 @@ export default class Context {
         argvBufferOffset: number,
       ): number => {
         const args = this.args;
-        const text = new TextEncoder();
+        const textEncoder = new TextEncoder();
         const memoryData = new Uint8Array(this.memory.buffer);
         const memoryView = new DataView(this.memory.buffer);
 
@@ -349,7 +381,7 @@ export default class Context {
           memoryView.setUint32(argvOffset, argvBufferOffset, true);
           argvOffset += 4;
 
-          const data = text.encode(`${arg}\0`);
+          const data = textEncoder.encode(`${arg}\0`);
           memoryData.set(data, argvBufferOffset);
           argvBufferOffset += data.length;
         }
@@ -362,14 +394,14 @@ export default class Context {
         argvBufferSizeOffset: number,
       ): number => {
         const args = this.args;
-        const text = new TextEncoder();
+        const textEncoder = new TextEncoder();
         const memoryView = new DataView(this.memory.buffer);
 
         memoryView.setUint32(argcOffset, args.length, true);
         memoryView.setUint32(
           argvBufferSizeOffset,
           args.reduce(function (acc, arg) {
-            return acc + text.encode(`${arg}\0`).length;
+            return acc + textEncoder.encode(`${arg}\0`).length;
           }, 0),
           true,
         );
@@ -382,7 +414,7 @@ export default class Context {
         environBufferOffset: number,
       ): number => {
         const entries = Object.entries(this.env);
-        const text = new TextEncoder();
+        const textEncoder = new TextEncoder();
         const memoryData = new Uint8Array(this.memory.buffer);
         const memoryView = new DataView(this.memory.buffer);
 
@@ -390,7 +422,7 @@ export default class Context {
           memoryView.setUint32(environOffset, environBufferOffset, true);
           environOffset += 4;
 
-          const data = text.encode(`${key}=${value}\0`);
+          const data = textEncoder.encode(`${key}=${value}\0`);
           memoryData.set(data, environBufferOffset);
           environBufferOffset += data.length;
         }
@@ -403,14 +435,14 @@ export default class Context {
         environBufferSizeOffset: number,
       ): number => {
         const entries = Object.entries(this.env);
-        const text = new TextEncoder();
+        const textEncoder = new TextEncoder();
         const memoryView = new DataView(this.memory.buffer);
 
         memoryView.setUint32(environcOffset, entries.length, true);
         memoryView.setUint32(
           environBufferSizeOffset,
           entries.reduce(function (acc, [key, value]) {
-            return acc + text.encode(`${key}=${value}\0`).length;
+            return acc + textEncoder.encode(`${key}=${value}\0`).length;
           }, 0),
           true,
         );
@@ -1021,9 +1053,9 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         Deno.mkdirSync(path);
 
@@ -1046,9 +1078,9 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         const memoryView = new DataView(this.memory.buffer);
 
@@ -1140,9 +1172,9 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         if ((fstflags & FSTFLAGS_ATIM_NOW) == FSTFLAGS_ATIM_NOW) {
           atim = BigInt(Date.now()) * BigInt(1e6);
@@ -1176,19 +1208,19 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const oldData = new Uint8Array(
           this.memory.buffer,
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = resolve(oldEntry.path!, text.decode(oldData));
+        const oldPath = resolve(oldEntry.path!, textDecoder.decode(oldData));
         const newData = new Uint8Array(
           this.memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolve(newEntry.path!, text.decode(newData));
+        const newPath = resolve(newEntry.path!, textDecoder.decode(newData));
 
         Deno.linkSync(oldPath, newPath);
 
@@ -1392,9 +1424,9 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         if (!Deno.statSync(path).isDirectory) {
           return ERRNO_NOTDIR;
@@ -1423,19 +1455,19 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const oldData = new Uint8Array(
           this.memory.buffer,
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = resolve(oldEntry.path!, text.decode(oldData));
+        const oldPath = resolve(oldEntry.path!, textDecoder.decode(oldData));
         const newData = new Uint8Array(
           this.memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolve(newEntry.path!, text.decode(newData));
+        const newPath = resolve(newEntry.path!, textDecoder.decode(newData));
 
         Deno.renameSync(oldPath, newPath);
 
@@ -1458,19 +1490,19 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const oldData = new Uint8Array(
           this.memory.buffer,
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = text.decode(oldData);
+        const oldPath = textDecoder.decode(oldData);
         const newData = new Uint8Array(
           this.memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolve(entry.path!, text.decode(newData));
+        const newPath = resolve(entry.path!, textDecoder.decode(newData));
 
         Deno.symlinkSync(oldPath, newPath);
 
@@ -1491,9 +1523,9 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         Deno.removeSync(path);
 
@@ -1571,6 +1603,8 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
     };
+
+    this.#started = false;
   }
 
   /**
@@ -1585,6 +1619,12 @@ export default class Context {
    * thrown.
    */
   start(instance: WebAssembly.Instance) {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {
@@ -1618,6 +1658,12 @@ export default class Context {
    * thrown.
    */
   initialize(instance: WebAssembly.Instance) {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {

@@ -31,6 +31,8 @@ use crate::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
@@ -38,8 +40,6 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
-use serde::Deserialize;
-use serde::Deserializer;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::collections::{BTreeSet, HashMap};
@@ -182,14 +182,14 @@ impl swc_bundler::Load for BundleLoader<'_> {
 
 /// An enum which represents the parsed out values of references in source code.
 #[derive(Debug, Clone, Eq, PartialEq)]
-enum TypeScriptReference {
+pub enum TypeScriptReference {
   Path(String),
   Types(String),
 }
 
 /// Determine if a comment contains a triple slash reference and optionally
 /// return its kind and value.
-fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
+pub fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
   if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
     None
   } else if let Some(captures) = PATH_REFERENCE_RE.captures(comment) {
@@ -207,7 +207,7 @@ fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
 
 /// Determine if a comment contains a `@deno-types` pragma and optionally return
 /// its value.
-fn parse_deno_types(comment: &str) -> Option<String> {
+pub fn parse_deno_types(comment: &str) -> Option<String> {
   if let Some(captures) = DENO_TYPES_RE.captures(comment) {
     if let Some(m) = captures.get(1) {
       Some(m.as_str().to_string())
@@ -230,8 +230,8 @@ fn get_version(source: &str, version: &str, config: &[u8]) -> String {
 
 /// A logical representation of a module within a graph.
 #[derive(Debug, Clone)]
-struct Module {
-  dependencies: DependencyMap,
+pub struct Module {
+  pub dependencies: DependencyMap,
   is_dirty: bool,
   is_parsed: bool,
   maybe_emit: Option<Emit>,

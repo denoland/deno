@@ -156,7 +156,20 @@ where
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
+    let key_string = key.to_string();
+
+    if val.as_bytes().is_ascii() {
+      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
+    } else {
+      res_headers.push((
+        key_string,
+        val
+          .as_bytes()
+          .iter()
+          .map(|&c| c as char)
+          .collect::<String>(),
+      ));
+    }
   }
 
   let rid = state

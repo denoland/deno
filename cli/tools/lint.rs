@@ -122,7 +122,7 @@ pub fn print_rules_list(json: bool) {
   }
 }
 
-fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
+pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")

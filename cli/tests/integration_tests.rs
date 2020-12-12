@@ -7,10 +7,23 @@ use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
 
+macro_rules! itest(
+  ($name:ident {$( $key:ident: $value:expr,)*})  => {
+    #[test]
+    fn $name() {
+      (util::CheckOutputIntegrationTest {
+        $(
+          $key: $value,
+         )*
+        .. Default::default()
+      }).run()
+    }
+  }
+);
+
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let std_config = util::root_path().join("std/tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
     .current_dir(util::root_path())
@@ -18,8 +31,6 @@ fn std_tests() {
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
-    .arg("--config")
-    .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
     .arg("std/")
     .spawn()
@@ -517,8 +528,16 @@ fn skip_restarting_line(
 }
 
 #[test]
-#[ignore]
 fn fmt_watch_test() {
+  const TIMEOUT: std::time::Duration =
+    // Increase timeout duration to address flakiness on CI as much as possible
+    // See https://github.com/denoland/deno/issues/8571
+    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
+      5
+    } else {
+      1
+    });
+
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
@@ -542,7 +561,7 @@ fn fmt_watch_test() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
 
   assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
 
@@ -553,7 +572,7 @@ fn fmt_watch_test() {
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
@@ -914,7 +933,7 @@ fn ts_reload() {
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
-    .contains("\"host.writeFile(\\\"deno://002_hello.js\\\")\""));
+    .contains("host.writeFile(\"deno://002_hello.js\")"));
 }
 
 #[test]
@@ -1265,8 +1284,16 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
-#[ignore]
 fn bundle_js_watch() {
+  const TIMEOUT: std::time::Duration =
+    // Increase timeout duration to address flakiness on CI as much as possible
+    // See https://github.com/denoland/deno/issues/8571
+    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
+      5
+    } else {
+      1
+    });
+
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
   let t = TempDir::new().expect("tempdir fail");
@@ -1292,7 +1319,7 @@ fn bundle_js_watch() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
@@ -1301,7 +1328,7 @@ fn bundle_js_watch() {
 
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines
     .next()
     .unwrap()
@@ -1315,7 +1342,7 @@ fn bundle_js_watch() {
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
     .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines
     .next()
     .unwrap()
@@ -1335,8 +1362,16 @@ fn bundle_js_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-#[ignore]
 fn bundle_watch_not_exit() {
+  const TIMEOUT: std::time::Duration =
+    // Increase timeout duration to address flakiness on CI as much as possible
+    // See https://github.com/denoland/deno/issues/8571
+    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
+      5
+    } else {
+      1
+    });
+
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1360,7 +1395,7 @@ fn bundle_watch_not_exit() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
   assert!(stderr_lines.next().unwrap().contains("Bundle failed!"));
@@ -1370,7 +1405,7 @@ fn bundle_watch_not_exit() {
   // Make sure the watcher actually restarts and works fine with the proper syntax
   std::fs::write(&file_to_watch, "console.log(42);")
     .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines
     .next()
     .unwrap()
@@ -1435,8 +1470,16 @@ fn wait_for_process_finished(
 }
 
 #[test]
-#[ignore]
 fn run_watch() {
+  const TIMEOUT: std::time::Duration =
+    // Increase timeout duration to address flakiness on CI as much as possible
+    // See https://github.com/denoland/deno/issues/8571
+    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
+      5
+    } else {
+      1
+    });
+
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "console.log('Hello world');")
@@ -1465,13 +1508,13 @@ fn run_watch() {
   wait_for_process_finished("Process", &mut stderr_lines);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
 
   // Change content of the file
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
   // Events from the file watcher is "debounced", so we need to wait for the next execution to start
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
@@ -1486,7 +1529,7 @@ fn run_watch() {
     "import { foo } from './another_file.js'; console.log(foo);",
   )
   .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1494,7 +1537,7 @@ fn run_watch() {
   // Confirm that restarting occurs when a new file is updated
   std::fs::write(&another_file, "export const foo = 42;")
     .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1502,7 +1545,7 @@ fn run_watch() {
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
     .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1513,7 +1556,7 @@ fn run_watch() {
     "import { foo } from './another_file.js'; console.log(foo);",
   )
   .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1527,8 +1570,16 @@ fn run_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-#[ignore]
 fn run_watch_not_exit() {
+  const TIMEOUT: std::time::Duration =
+    // Increase timeout duration to address flakiness on CI as much as possible
+    // See https://github.com/denoland/deno/issues/8571
+    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
+      5
+    } else {
+      1
+    });
+
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1553,14 +1604,14 @@ fn run_watch_not_exit() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("error:"));
   assert!(stderr_lines.next().unwrap().contains("Process failed!"));
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   std::fs::write(&file_to_watch, "console.log(42);")
     .expect("error writing file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(TIMEOUT);
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1646,7 +1697,6 @@ fn repl_test_pty_unpaired_braces() {
 }
 
 #[test]
-#[ignore]
 fn run_watch_with_importmap_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -1662,6 +1712,16 @@ fn run_watch_with_importmap_and_relative_paths() {
     assert!(relative_path.is_relative());
     relative_path
   }
+
+  const TIMEOUT: std::time::Duration =
+    // Increase timeout duration to address flakiness on CI as much as possible
+    // See https://github.com/denoland/deno/issues/8571
+    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
+      5
+    } else {
+      1
+    });
+
   let temp_directory =
     TempDir::new_in(util::root_path()).expect("tempdir fail");
   let file_to_watch = create_relative_tmp_file(
@@ -1695,6 +1755,8 @@ fn run_watch_with_importmap_and_relative_paths() {
   let stderr = child.stderr.as_mut().unwrap();
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(TIMEOUT);
 
   assert!(stderr_lines.next().unwrap().contains("Process finished"));
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
@@ -2068,37 +2130,6 @@ fn deno_test_no_color() {
   assert!(out.contains("test ignored ... ignored"));
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
-
-macro_rules! itest(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
-
-// Unfortunately #[ignore] doesn't work with itest!
-#[allow(unused)]
-macro_rules! itest_ignore(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[ignore]
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
 
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
@@ -2664,11 +2695,6 @@ itest!(fmt_stdin_check_not_formatted {
   args: "fmt --check -",
   input: Some("const a = 1\n"),
   output_str: Some("Not formatted stdin\n"),
-});
-
-itest!(circular1 {
-  args: "run --reload circular1.js",
-  output: "circular1.js.out",
 });
 
 itest!(config {

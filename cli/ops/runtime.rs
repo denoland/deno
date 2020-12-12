@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::metrics::Metrics;
 use crate::permissions::Permissions;
-use crate::version;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -11,48 +9,15 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use std::env;
 
-type ApplySourceMaps = bool;
-
-pub fn init(
-  rt: &mut deno_core::JsRuntime,
-  main_module: ModuleSpecifier,
-  apply_source_maps: bool,
-) {
+pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
     state.put::<ModuleSpecifier>(main_module);
-    state.put::<ApplySourceMaps>(apply_source_maps);
   }
-  super::reg_json_sync(rt, "op_start", op_start);
   super::reg_json_sync(rt, "op_main_module", op_main_module);
   super::reg_json_sync(rt, "op_metrics", op_metrics);
-}
-
-fn op_start(
-  state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let apply_source_maps = *state.borrow::<ApplySourceMaps>();
-  let gs = &super::program_state(state);
-
-  Ok(json!({
-    "args": gs.flags.argv.clone(),
-    "applySourceMaps": apply_source_maps,
-    "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    "denoVersion": version::deno(),
-    "noColor": !colors::use_color(),
-    "pid": std::process::id(),
-    "ppid": ppid(),
-    "target": env!("TARGET"),
-    "tsVersion": version::TYPESCRIPT,
-    "unstableFlag": gs.flags.unstable,
-    "v8Version": version::v8(),
-    "versionFlag": gs.flags.version,
-  }))
 }
 
 fn op_main_module(
@@ -93,7 +58,7 @@ fn op_metrics(
   }))
 }
 
-fn ppid() -> Value {
+pub fn ppid() -> Value {
   #[cfg(windows)]
   {
     // Adopted from rustup:
