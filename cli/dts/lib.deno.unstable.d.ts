@@ -815,6 +815,10 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
+  export type SetRawOptions = {
+    cbreak: boolean;
+  };
+
   /** **UNSTABLE**: new API, yet to be vetted
    *
    * Set TTY to be under raw mode or not. In raw mode, characters are read and
@@ -823,11 +827,19 @@ declare namespace Deno {
    * Reading from a TTY device in raw mode is faster than reading from a TTY
    * device in canonical mode.
    *
+   * The `cbreak` option can be used to indicate that characters that correspond
+   * to a signal should still be generated. When disabling raw mode, this option
+   * is ignored. This functionality currently only works on Linux and Mac OS.
+   *
    * ```ts
-   * Deno.setRaw(myTTY.rid, true);
+   * Deno.setRaw(myTTY.rid, true, { cbreak: true });
    * ```
    */
-  export function setRaw(rid: number, mode: boolean): void;
+  export function setRaw(
+    rid: number,
+    mode: boolean,
+    options?: SetRawOptions,
+  ): void;
 
   /** **UNSTABLE**: needs investigation into high precision time.
    *
@@ -1131,7 +1143,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.dir("home"));
+     *   console.log("'env' permission is granted.");
      * } else {
      *   console.log("'env' permission is denied.");
      * }

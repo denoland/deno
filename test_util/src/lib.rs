@@ -290,6 +290,16 @@ pub async fn run_all_servers() {
     *res.status_mut() = StatusCode::FOUND;
     Box::new(res)
   });
+  let non_ascii_redirect =
+    warp::path("non_ascii_redirect").map(|| -> Box<dyn Reply> {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
+      res.headers_mut().insert(
+        "location",
+        HeaderValue::from_bytes(b"/redirect\xae").unwrap(),
+      );
+      Box::new(res)
+    });
 
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
@@ -444,7 +454,8 @@ pub async fn run_all_servers() {
     .or(echo_server)
     .or(echo_multipart_file)
     .or(multipart_form_data)
-    .or(bad_redirect);
+    .or(bad_redirect)
+    .or(non_ascii_redirect);
 
   let http_fut =
     warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));

@@ -238,6 +238,8 @@ impl Highlighter for LineHighlighter {
                   colors::gray(&line[span]).to_string()
                 } else if ident == *"Infinity" || ident == *"NaN" {
                   colors::yellow(&line[span]).to_string()
+                } else if ident == *"async" || ident == *"of" {
+                  colors::cyan(&line[span]).to_string()
                 } else {
                   line[span].to_string()
                 }
@@ -449,7 +451,7 @@ pub async fn run(
 
   inject_prelude(&mut worker, &mut session, context_id).await?;
 
-  while !is_closing(&mut worker, &mut session, context_id).await? {
+  loop {
     let line = read_line_and_poll(
       &mut worker,
       &mut session,
@@ -503,6 +505,12 @@ pub async fn run(
           } else {
             evaluate_response
           };
+
+        // We check for close and break here instead of making it a loop condition to get
+        // consistent behavior in when the user evaluates a call to close().
+        if is_closing(&mut worker, &mut session, context_id).await? {
+          break;
+        }
 
         let evaluate_result = evaluate_response.get("result").unwrap();
         let evaluate_exception_details =

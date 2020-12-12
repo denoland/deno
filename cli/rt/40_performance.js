@@ -43,8 +43,7 @@
   }
 
   function now() {
-    const res = opNow();
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
+    return opNow();
   }
 
   class PerformanceEntry {

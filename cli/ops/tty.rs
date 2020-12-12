@@ -5,6 +5,7 @@ use super::io::StreamResource;
 use super::io::StreamResourceHolder;
 use deno_core::error::bad_resource_id;
 use deno_core::error::last_os_error;
+use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -15,8 +16,6 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[cfg(unix)]
-use deno_core::error::not_supported;
 #[cfg(unix)]
 use nix::sys::termios;
 
@@ -54,9 +53,16 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetRawOptions {
+  cbreak: bool,
+}
+
+#[derive(Deserialize)]
 struct SetRawArgs {
   rid: u32,
   mode: bool,
+  options: SetRawOptions,
 }
 
 fn op_set_raw(
@@ -69,6 +75,7 @@ fn op_set_raw(
   let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let is_raw = args.mode;
+  let cbreak = args.options.cbreak;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -85,6 +92,9 @@ fn op_set_raw(
       state.resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(bad_resource_id());
+    }
+    if cbreak {
+      return Err(not_supported());
     }
     let resource_holder = resource_holder.unwrap();
 
@@ -164,15 +174,13 @@ fn op_set_raw(
           }
         };
 
-      if maybe_tty_mode.is_some() {
-        // Already raw. Skip.
-        return Ok(json!({}));
+      if maybe_tty_mode.is_none() {
+        // Save original mode.
+        let original_mode = termios::tcgetattr(raw_fd)?;
+        maybe_tty_mode.replace(original_mode);
       }
 
-      let original_mode = termios::tcgetattr(raw_fd)?;
-      let mut raw = original_mode.clone();
-      // Save original mode.
-      maybe_tty_mode.replace(original_mode);
+      let mut raw = maybe_tty_mode.clone().unwrap();
 
       raw.input_flags &= !(termios::InputFlags::BRKINT
         | termios::InputFlags::ICRNL
@@ -184,8 +192,10 @@ fn op_set_raw(
 
       raw.local_flags &= !(termios::LocalFlags::ECHO
         | termios::LocalFlags::ICANON
-        | termios::LocalFlags::IEXTEN
-        | termios::LocalFlags::ISIG);
+        | termios::LocalFlags::IEXTEN);
+      if !cbreak {
+        raw.local_flags &= !(termios::LocalFlags::ISIG);
+      }
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;

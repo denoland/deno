@@ -31,6 +31,7 @@ delete Object.prototype.__proto__;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
+  const { defineEventHandler } = window.__bootstrap.webUtil;
 
   let windowIsClosing = false;
 
@@ -131,37 +132,38 @@ delete Object.prototype.__proto__;
     core.jsonOpSync("op_worker_close");
   }
 
-  function opStart() {
-    return core.jsonOpSync("op_start");
-  }
-
   function opMainModule() {
     return core.jsonOpSync("op_main_module");
   }
 
-  // TODO(bartlomieju): temporary solution, must be fixed when moving
-  // dispatches to separate crates
-  function initOps() {
+  function runtimeStart(runtimeOptions, source) {
     const opsMap = core.ops();
     for (const [name, opId] of Object.entries(opsMap)) {
       if (name === "op_write" || name === "op_read") {
         core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
       }
     }
-    core.setMacrotaskCallback(timers.handleTimerMacrotask);
-  }
 
-  function runtimeStart(source) {
-    initOps();
-    // First we send an empty `Start` message to let the privileged side know we
-    // are ready. The response should be a `StartRes` message containing the CLI
-    // args and other info.
-    const s = opStart();
-    version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
-    build.setBuildInfo(s.target);
-    util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
-    return s;
+    core.setMacrotaskCallback(timers.handleTimerMacrotask);
+    version.setVersions(
+      runtimeOptions.denoVersion,
+      runtimeOptions.v8Version,
+      runtimeOptions.tsVersion,
+    );
+    build.setBuildInfo(runtimeOptions.target);
+    util.setLogDebug(runtimeOptions.debugFlag, source);
+    // TODO(bartlomieju): a very crude way to disable
+    // source mapping of errors. This condition is true
+    // only for compiled standalone binaries.
+    let prepareStackTrace;
+    if (runtimeOptions.applySourceMaps) {
+      prepareStackTrace = core.createPrepareStackTrace(
+        errorStack.opApplySourceMap,
+      );
+    } else {
+      prepareStackTrace = core.createPrepareStackTrace();
+    }
+    Error.prepareStackTrace = prepareStackTrace;
   }
 
   function registerErrors() {
@@ -270,7 +272,7 @@ delete Object.prototype.__proto__;
 
   let hasBootstrapped = false;
 
-  function bootstrapMainRuntime() {
+  function bootstrapMainRuntime(runtimeOptions) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
@@ -284,48 +286,11 @@ delete Object.prototype.__proto__;
     Object.setPrototypeOf(globalThis, Window.prototype);
     eventTarget.setEventTargetData(globalThis);
 
-    const handlerSymbol = Symbol("eventHandlers");
+    defineEventHandler(window, "load", null);
+    defineEventHandler(window, "unload", null);
 
-    function makeWrappedHandler(handler) {
-      function wrappedHandler(...args) {
-        if (typeof wrappedHandler.handler !== "function") {
-          return;
-        }
-        return wrappedHandler.handler.call(this, ...args);
-      }
-      wrappedHandler.handler = handler;
-      return wrappedHandler;
-    }
-    // TODO(benjamingr) reuse when we can reuse code between web crates
-    // This function is very similar to `defineEventHandler` in `01_web_util.js`
-    // but it returns `null` instead of `undefined` is handler is not defined.
-    function defineEventHandler(emitter, name) {
-      // HTML specification section 8.1.5.1
-      Object.defineProperty(emitter, `on${name}`, {
-        get() {
-          return this[handlerSymbol]?.get(name)?.handler ?? null;
-        },
-        set(value) {
-          if (!this[handlerSymbol]) {
-            this[handlerSymbol] = new Map();
-          }
-          let handlerWrapper = this[handlerSymbol]?.get(name);
-          if (handlerWrapper) {
-            handlerWrapper.handler = value;
-          } else {
-            handlerWrapper = makeWrappedHandler(value);
-            this.addEventListener(name, handlerWrapper);
-          }
-          this[handlerSymbol].set(name, handlerWrapper);
-        },
-        configurable: true,
-        enumerable: true,
-      });
-    }
-    defineEventHandler(window, "load");
-    defineEventHandler(window, "unload");
-
-    const { args, noColor, pid, ppid, unstableFlag } = runtimeStart();
+    runtimeStart(runtimeOptions);
+    const { args, noColor, pid, ppid, unstableFlag } = runtimeOptions;
 
     registerErrors();
 
@@ -360,7 +325,12 @@ delete Object.prototype.__proto__;
     util.log("args", args);
   }
 
-  function bootstrapWorkerRuntime(name, useDenoNamespace, internalName) {
+  function bootstrapWorkerRuntime(
+    runtimeOptions,
+    name,
+    useDenoNamespace,
+    internalName,
+  ) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
@@ -374,9 +344,12 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
     Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
     eventTarget.setEventTargetData(globalThis);
-    const { unstableFlag, pid, noColor, args } = runtimeStart(
+
+    runtimeStart(
+      runtimeOptions,
       internalName ?? name,
     );
+    const { unstableFlag, pid, noColor, args } = runtimeOptions;
 
     registerErrors();
 

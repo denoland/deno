@@ -105,7 +105,7 @@ pub trait ModuleLoader {
 
 /// Placeholder structure used when creating
 /// a runtime that doesn't support module loading.
-pub(crate) struct NoopModuleLoader;
+pub struct NoopModuleLoader;
 
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(

@@ -103,7 +103,7 @@ function representYamlFloat(object: Any, style?: StyleVariant): Any {
   const res = object.toString(10);
 
   // JS stringifier can build scientific format without dots: 5e-100,
-  // while YAML requres dot: 5.e-100. Fix it with simple hack
+  // while YAML requires dot: 5.e-100. Fix it with simple hack
 
   return SCIENTIFIC_WITHOUT_DOT.test(res) ? res.replace("e", ".e") : res;
 }
