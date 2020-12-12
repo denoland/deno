@@ -10,6 +10,7 @@ It's comprised of few major parts:
 - runtime implementation consisting of:
   - JavaScript code, in `rt/` directory, that implements `Deno` APIs (eg.
     `Deno.listen()`)
+  - Web APIs from `deno_web`, `deno_crypto` and `deno_fetch` crates
   - Rust code, in `ops/` module, that implements ops for `Deno` APIs (eg.
     `op_listen`)
   - cargo build script (`build.rs`), that creates a V8 snapshot of the runtime

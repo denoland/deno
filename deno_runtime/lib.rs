@@ -7,7 +7,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-pub mod checksum;
 pub mod colors;
 pub mod errors;
 pub mod fs_util;
@@ -18,7 +17,6 @@ pub mod metrics;
 pub mod ops;
 pub mod permissions;
 pub mod resolve_addr;
-pub mod signal;
 pub mod tokio_util;
 pub mod web_worker;
 pub mod worker;
