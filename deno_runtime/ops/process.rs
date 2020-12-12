@@ -20,8 +20,6 @@ use tokio::process::Command;
 
 #[cfg(not(unix))]
 use deno_core::error::last_os_error;
-#[cfg(not(unix))]
-use deno_core::error::type_error;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
