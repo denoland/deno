@@ -7,10 +7,12 @@ use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
 use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc_config;
+use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -51,7 +53,7 @@ async fn op_compile(
   } else {
     super::check_unstable2(&state, "Deno.compile");
   }
-  let program_state = super::global_state2(&state);
+  let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
   let runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()

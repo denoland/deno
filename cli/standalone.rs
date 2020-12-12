@@ -1,9 +1,10 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::permissions::Permissions;
-use crate::program_state::ProgramState;
 use crate::tokio_util;
+use crate::version;
 use crate::worker::MainWorker;
+use crate::worker::WorkerOptions;
 use deno_core::error::bail;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -22,6 +23,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 
 const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
@@ -110,16 +112,33 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
   // TODO(lucacasonato): remove once you can specify this correctly through embedded metadata
   flags.unstable = true;
   let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
-  let program_state = ProgramState::new(flags.clone())?;
   let permissions = Permissions::allow_all();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
-  let mut worker = MainWorker::from_options(
-    &program_state,
-    main_module.clone(),
-    permissions,
+  let create_web_worker_cb = Arc::new(|_| {
+    todo!("Worker are currently not supported in standalone binaries");
+  });
+
+  let options = WorkerOptions {
+    apply_source_maps: false,
+    args: flags.argv.clone(),
+    debug_flag: false,
+    user_agent: crate::http_util::get_user_agent(),
+    unstable: true,
+    ca_filepath: None,
+    seed: None,
+    js_error_create_fn: None,
+    create_web_worker_cb,
+    attach_inspector: false,
+    maybe_inspector_server: None,
+    should_break_on_first_statement: false,
     module_loader,
-    None,
-  );
+    runtime_version: version::deno(),
+    ts_version: version::TYPESCRIPT.to_string(),
+    no_color: !colors::use_color(),
+  };
+  let mut worker =
+    MainWorker::from_options(main_module.clone(), permissions, &options);
+  worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;

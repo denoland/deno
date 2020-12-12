@@ -228,7 +228,7 @@ lazy_static! {
     crate::version::deno(),
     env!("PROFILE"),
     env!("TARGET"),
-    crate::version::v8(),
+    deno_core::v8_version(),
     crate::version::TYPESCRIPT
   );
 }
@@ -1213,7 +1213,11 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("run"), true)
-    .arg(watch_arg())
+    .arg(
+      watch_arg()
+        .conflicts_with("inspect")
+        .conflicts_with("inspect-brk")
+    )
     .setting(AppSettings::TrailingVarArg)
     .arg(
         script_arg()
@@ -1487,8 +1491,6 @@ fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
     .requires("unstable")
     .long("watch")
-    .conflicts_with("inspect")
-    .conflicts_with("inspect-brk")
     .help("Watch for file changes and restart process automatically")
     .long_help(
       "Watch for file changes and restart process automatically.
@@ -2824,7 +2826,7 @@ mod tests {
 
   #[test]
   fn completions() {
-    let r = flags_from_vec_safe(svec!["deno", "completions", "bash"]).unwrap();
+    let r = flags_from_vec_safe(svec!["deno", "completions", "zsh"]).unwrap();
 
     match r.subcommand {
       DenoSubcommand::Completions { buf } => assert!(!buf.is_empty()),

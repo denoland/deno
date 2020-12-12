@@ -107,7 +107,7 @@ pub(crate) struct JsRuntimeState {
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
-  pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
+  pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -168,7 +168,7 @@ pub struct RuntimeOptions {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
   /// the caller to wrap the JsError into an error. By default this callback
   /// is set to `JsError::create()`.
-  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
 
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
@@ -257,7 +257,7 @@ impl JsRuntime {
 
     let js_error_create_fn = options
       .js_error_create_fn
-      .unwrap_or_else(|| Box::new(JsError::create));
+      .unwrap_or_else(|| Rc::new(JsError::create));
     let mut op_state = OpState::default();
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -328,6 +328,9 @@ impl JsRuntime {
       self.needs_init = false;
       self
         .execute("deno:core/core.js", include_str!("core.js"))
+        .unwrap();
+      self
+        .execute("deno:core/error.js", include_str!("error.js"))
         .unwrap();
     }
   }
