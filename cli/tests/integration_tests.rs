@@ -4686,6 +4686,8 @@ fn standalone_args() {
     .arg("--output")
     .arg(&exe)
     .arg("./cli/tests/028_args.ts")
+    .arg("a")
+    .arg("b")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4702,7 +4704,7 @@ fn standalone_args() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"foo\n--bar\n--unstable\n");
+  assert_eq!(output.stdout, b"a\nb\nfoo\n--bar\n--unstable\n");
 }
 
 #[test]
@@ -4789,9 +4791,9 @@ fn compile_with_directory_exists_error() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4818,9 +4820,9 @@ fn compile_with_conflict_file_exists_error() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4830,6 +4832,7 @@ fn compile_with_conflict_file_exists_error() {
   let expected_stderr =
     format!("Could not compile: cannot overwrite {:?}.\n", &exe);
   let stderr = String::from_utf8(output.stderr).unwrap();
+  dbg!(&stderr);
   assert!(stderr.contains(&expected_stderr));
   assert!(std::fs::read(&exe)
     .expect("cannot read file")
@@ -4848,9 +4851,9 @@ fn compile_and_overwrite_file() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4863,13 +4866,52 @@ fn compile_and_overwrite_file() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(recompile_output.status.success());
+}
+
+#[test]
+fn standalone_runtime_flags() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("flags.exe")
+  } else {
+    dir.path().join("flags")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--seed")
+    .arg("1")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_runtime_flags.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("PermissionDenied: write access"));
 }
