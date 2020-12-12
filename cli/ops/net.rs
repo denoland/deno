@@ -375,7 +375,7 @@ fn op_shutdown(
     return Ok(json!({}));
   }
 
-  return Err(bad_resource_id());
+  Err(bad_resource_id())
 }
 
 struct TcpListenerResource {

@@ -245,11 +245,6 @@ impl DenoAsyncRead for StreamResource {
 
 // pub enum NewStreamResource {
 //   // FsFile(Option<(tokio::fs::File, FileMetadata)>),
-//   // TcpStream(Option<tokio::net::TcpStream>),
-//   // #[cfg(not(windows))]
-//   // UnixStream(tokio::net::UnixStream),
-//   // ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
-//   // ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
 // }
 
 #[derive(Default)]
@@ -265,6 +260,10 @@ pub struct NewStreamResource {
   child_stdout: Option<AsyncRefCell<tokio::process::ChildStdout>>,
 
   child_stderr: Option<AsyncRefCell<tokio::process::ChildStderr>>,
+
+  client_tls_stream: Option<AsyncRefCell<ClientTlsStream<TcpStream>>>,
+
+  server_tls_stream: Option<AsyncRefCell<ServerTlsStream<TcpStream>>>,
 
   cancel: CancelHandle,
 }
@@ -314,6 +313,20 @@ impl NewStreamResource {
     }
   }
 
+  pub fn client_tls_stream(stream: ClientTlsStream<TcpStream>) -> Self {
+    Self {
+      client_tls_stream: Some(AsyncRefCell::new(stream)),
+      ..Default::default()
+    }
+  }
+
+  pub fn server_tls_stream(stream: ServerTlsStream<TcpStream>) -> Self {
+    Self {
+      server_tls_stream: Some(AsyncRefCell::new(stream)),
+      ..Default::default()
+    }
+  }
+
   async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
     if self.child_stdout.is_some() {
       debug_assert!(self.child_stdin.is_none());
@@ -354,6 +367,40 @@ impl NewStreamResource {
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nread = (&mut *tcp_stream_read)
+        .read(buf)
+        .try_or_cancel(cancel)
+        .await?;
+      return Ok(nread);
+    }
+
+    if self.client_tls_stream.is_some() {
+      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut client_tls_stream =
+        RcRef::map(&self, |r| r.client_tls_stream.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *client_tls_stream)
+        .read(buf)
+        .try_or_cancel(cancel)
+        .await?;
+      return Ok(nread);
+    }
+
+    if self.server_tls_stream.is_some() {
+      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut server_tls_stream =
+        RcRef::map(&self, |r| r.server_tls_stream.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *server_tls_stream)
         .read(buf)
         .try_or_cancel(cancel)
         .await?;
@@ -412,6 +459,42 @@ impl NewStreamResource {
       return Ok(nwritten);
     }
 
+    if self.client_tls_stream.is_some() {
+      debug_assert!(self.tcp_stream_read.is_some());
+      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut client_tls_stream =
+        RcRef::map(&self, |r| r.client_tls_stream.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nwritten = (&mut *client_tls_stream)
+        .write(buf)
+        .try_or_cancel(cancel)
+        .await?;
+      return Ok(nwritten);
+    }
+
+    if self.server_tls_stream.is_some() {
+      debug_assert!(self.tcp_stream_read.is_some());
+      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut server_tls_stream =
+        RcRef::map(&self, |r| r.server_tls_stream.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nwritten = (&mut *server_tls_stream)
+        .write(buf)
+        .try_or_cancel(cancel)
+        .await?;
+      return Ok(nwritten);
+    }
+
     #[cfg(not(windows))]
     if self.unix_stream.is_some() {
       debug_assert!(self.tcp_stream_read.is_some());
@@ -447,6 +530,10 @@ impl Resource for NewStreamResource {
       "childStdin".into()
     } else if self.tcp_stream_read.is_some() {
       "tcpStream".into()
+    } else if self.client_tls_stream.is_some() {
+      "clientTlsStream".into()
+    } else if self.server_tls_stream.is_some() {
+      "serverTlsStream".into()
     } else {
       "<todo>".into()
     }

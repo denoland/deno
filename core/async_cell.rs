@@ -54,7 +54,7 @@ impl<T: 'static> AsyncRefCell<T> {
 
   pub fn try_unwrap(self) -> Result<T, AsyncRefCell<T>> {
     // FIXME(Bartlomieju)
-    return Ok(self.value.into_inner());
+    Ok(self.value.into_inner())
     // if self.borrow_count.get() == 0 && self.waiters.get().len() == 0 {
     // }
     // Err(self)

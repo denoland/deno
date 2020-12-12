@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{NewStreamResource, StreamResource, StreamResourceHolder};
+use super::io::NewStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
@@ -135,12 +135,9 @@ async fn op_start_tls(
 
   let rid = {
     let mut state_ = state.borrow_mut();
-    state_.resource_table.add(
-      "clientTlsStream",
-      Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
-        Box::new(tls_stream),
-      ))),
-    )
+    state_
+      .resource_table_2
+      .add(NewStreamResource::client_tls_stream(tls_stream))
   };
   Ok(json!({
       "rid": rid,
@@ -196,12 +193,9 @@ async fn op_connect_tls(
   let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
   let rid = {
     let mut state_ = state.borrow_mut();
-    state_.resource_table.add(
-      "clientTlsStream",
-      Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
-        Box::new(tls_stream),
-      ))),
-    )
+    state_
+      .resource_table_2
+      .add(NewStreamResource::client_tls_stream(tls_stream))
   };
   Ok(json!({
       "rid": rid,
@@ -391,12 +385,9 @@ async fn op_accept_tls(
 
   let rid = {
     let mut state_ = state.borrow_mut();
-    state_.resource_table.add(
-      "serverTlsStream",
-      Box::new(StreamResourceHolder::new(StreamResource::ServerTlsStream(
-        Box::new(tls_stream),
-      ))),
-    )
+    state_
+      .resource_table_2
+      .add(NewStreamResource::server_tls_stream(tls_stream))
   };
 
   Ok(json!({
