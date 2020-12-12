@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{StreamResource, StreamResourceHolder};
+use super::io::{NewStreamResource, StreamResource, StreamResourceHolder};
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
@@ -85,60 +85,76 @@ async fn op_start_tls(
       permissions.check_read(Path::new(&path))?;
     }
   }
-  let mut resource_holder = {
-    let mut state_ = state.borrow_mut();
-    match state_.resource_table.remove::<StreamResourceHolder>(rid) {
-      Some(resource) => *resource,
-      None => return Err(bad_resource_id()),
-    }
-  };
 
-  if let StreamResource::TcpStream(ref mut tcp_stream) =
-    resource_holder.resource
-  {
-    let tcp_stream = tcp_stream.take().unwrap();
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
-    let mut config = ClientConfig::new();
-    config
-      .root_store
-      .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-    if let Some(path) = cert_file {
-      let key_file = File::open(path)?;
-      let reader = &mut BufReader::new(key_file);
-      config.root_store.add_pem_file(reader).unwrap();
-    }
+  let resource_rc = state
+    .borrow()
+    .resource_table_2
+    .get::<NewStreamResource>(rid)
+    .ok_or_else(bad_resource_id)?
+    .clone();
 
-    let tls_connector = TlsConnector::from(Arc::new(config));
-    let dnsname =
-      DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
-    let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-
-    let rid = {
-      let mut state_ = state.borrow_mut();
-      state_.resource_table.add(
-        "clientTlsStream",
-        Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
-          Box::new(tls_stream),
-        ))),
-      )
-    };
-    Ok(json!({
-        "rid": rid,
-        "localAddr": {
-          "hostname": local_addr.ip().to_string(),
-          "port": local_addr.port(),
-          "transport": "tcp",
-        },
-        "remoteAddr": {
-          "hostname": remote_addr.ip().to_string(),
-          "port": remote_addr.port(),
-          "transport": "tcp",
-        }
-    }))
-  } else {
-    Err(bad_resource_id())
+  if resource_rc.tcp_stream_read.is_none() {
+    return Err(bad_resource_id());
   }
+
+  state.borrow_mut().resource_table_2.close(rid);
+
+  let mut resource = Rc::try_unwrap(resource_rc)
+    .expect("Only a single use of this resource should happen");
+
+  let read_half = resource
+    .tcp_stream_read
+    .take()
+    .unwrap()
+    .try_unwrap()
+    .unwrap();
+  let write_half = resource
+    .tcp_stream_write
+    .take()
+    .unwrap()
+    .try_unwrap()
+    .unwrap();
+  let tcp_stream = read_half.reunite(write_half).unwrap();
+
+  let local_addr = tcp_stream.local_addr()?;
+  let remote_addr = tcp_stream.peer_addr()?;
+  let mut config = ClientConfig::new();
+  config
+    .root_store
+    .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+  if let Some(path) = cert_file {
+    let key_file = File::open(path)?;
+    let reader = &mut BufReader::new(key_file);
+    config.root_store.add_pem_file(reader).unwrap();
+  }
+
+  let tls_connector = TlsConnector::from(Arc::new(config));
+  let dnsname =
+    DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+  let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+
+  let rid = {
+    let mut state_ = state.borrow_mut();
+    state_.resource_table.add(
+      "clientTlsStream",
+      Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
+        Box::new(tls_stream),
+      ))),
+    )
+  };
+  Ok(json!({
+      "rid": rid,
+      "localAddr": {
+        "hostname": local_addr.ip().to_string(),
+        "port": local_addr.port(),
+        "transport": "tcp",
+      },
+      "remoteAddr": {
+        "hostname": remote_addr.ip().to_string(),
+        "port": remote_addr.port(),
+        "transport": "tcp",
+      }
+  }))
 }
 
 async fn op_connect_tls(

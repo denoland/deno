@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::io::NewStreamResource;
 use crate::ops::io::StreamResource;
 use crate::ops::io::StreamResourceHolder;
 use crate::permissions::Permissions;
@@ -84,12 +85,9 @@ async fn accept_tcp(
   let remote_addr = tcp_stream.peer_addr()?;
 
   let mut state = state.borrow_mut();
-  let rid = state.resource_table.add(
-    "tcpStream",
-    Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
-      tcp_stream,
-    )))),
-  );
+  let rid = state
+    .resource_table_2
+    .add(NewStreamResource::tcp_stream(tcp_stream));
   Ok(json!({
     "rid": rid,
     "localAddr": {
@@ -279,12 +277,9 @@ async fn op_connect(
       let remote_addr = tcp_stream.peer_addr()?;
 
       let mut state_ = state.borrow_mut();
-      let rid = state_.resource_table.add(
-        "tcpStream",
-        Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
-          tcp_stream,
-        )))),
-      );
+      let rid = state_
+        .resource_table_2
+        .add(NewStreamResource::tcp_stream(tcp_stream));
       Ok(json!({
         "rid": rid,
         "localAddr": {
@@ -363,22 +358,35 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  let resource_holder = state
-    .resource_table
-    .get_mut::<StreamResourceHolder>(rid)
+  let resource = state
+    .resource_table_2
+    .get::<NewStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  match resource_holder.resource {
-    StreamResource::TcpStream(Some(ref mut stream)) => {
-      TcpStream::shutdown(stream, shutdown_mode)?;
-    }
-    #[cfg(unix)]
-    StreamResource::UnixStream(ref mut stream) => {
-      net_unix::UnixStream::shutdown(stream, shutdown_mode)?;
-    }
-    _ => return Err(bad_resource_id()),
+
+  if resource.tcp_stream_write.is_some() {
+    let write_half =
+      RcRef::map(&resource, |r| r.tcp_stream_write.as_ref().unwrap())
+        .try_borrow()
+        .expect("Resource is busy");
+    TcpStream::shutdown((*write_half).as_ref(), shutdown_mode)?;
+    return Ok(json!({}));
   }
 
-  Ok(json!({}))
+  // TODO:unix stream
+  return Err(bad_resource_id());
+
+  // match resource_holder.resource {
+  //   StreamResource::TcpStream(Some(ref mut stream)) => {
+  //     TcpStream::shutdown(stream, shutdown_mode)?;
+  //   }
+  //   #[cfg(unix)]
+  //   StreamResource::UnixStream(ref mut stream) => {
+  //     net_unix::UnixStream::shutdown(stream, shutdown_mode)?;
+  //   }
+  //   _ => return Err(bad_resource_id()),
+  // }
+
+  // Ok(json!({}))
 }
 
 struct TcpListenerResource {

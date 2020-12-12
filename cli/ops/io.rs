@@ -254,13 +254,34 @@ impl DenoAsyncRead for StreamResource {
 
 #[derive(Default)]
 pub struct NewStreamResource {
+  pub tcp_stream_read: Option<AsyncRefCell<tokio::net::tcp::OwnedReadHalf>>,
+  pub tcp_stream_write: Option<AsyncRefCell<tokio::net::tcp::OwnedWriteHalf>>,
+
   child_stdin: Option<AsyncRefCell<tokio::process::ChildStdin>>,
+
   child_stdout: Option<AsyncRefCell<tokio::process::ChildStdout>>,
+
   child_stderr: Option<AsyncRefCell<tokio::process::ChildStderr>>,
+
   cancel: CancelHandle,
 }
 
+impl std::fmt::Debug for NewStreamResource {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "NewStreamResource")
+  }
+}
+
 impl NewStreamResource {
+  pub fn tcp_stream(tcp_stream: tokio::net::TcpStream) -> Self {
+    let (read_half, write_half) = tcp_stream.into_split();
+    Self {
+      tcp_stream_read: Some(AsyncRefCell::new(read_half)),
+      tcp_stream_write: Some(AsyncRefCell::new(write_half)),
+      ..Default::default()
+    }
+  }
+
   pub fn child_stdout(child: tokio::process::ChildStdout) -> Self {
     Self {
       child_stdout: Some(AsyncRefCell::new(child)),
@@ -286,6 +307,8 @@ impl NewStreamResource {
     if self.child_stdout.is_some() {
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
       let mut child_stdout =
         RcRef::map(&self, |r| r.child_stdout.as_ref().unwrap())
           .borrow_mut()
@@ -298,12 +321,31 @@ impl NewStreamResource {
     if self.child_stderr.is_some() {
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
       let mut child_stderr =
         RcRef::map(&self, |r| r.child_stderr.as_ref().unwrap())
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nread = (&mut *child_stderr).read(buf).try_or_cancel(cancel).await?;
+      return Ok(nread);
+    }
+
+    if self.tcp_stream_read.is_some() {
+      debug_assert!(self.tcp_stream_write.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut tcp_stream_read =
+        RcRef::map(&self, |r| r.tcp_stream_read.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nread = (&mut *tcp_stream_read)
+        .read(buf)
+        .try_or_cancel(cancel)
+        .await?;
       return Ok(nread);
     }
 
@@ -314,6 +356,8 @@ impl NewStreamResource {
     if self.child_stdin.is_some() {
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
       let mut child_stdin =
         RcRef::map(&self, |r| r.child_stdin.as_ref().unwrap())
           .borrow_mut()
@@ -321,6 +365,23 @@ impl NewStreamResource {
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nwritten =
         (&mut *child_stdin).write(buf).try_or_cancel(cancel).await?;
+      return Ok(nwritten);
+    }
+
+    if self.tcp_stream_write.is_some() {
+      debug_assert!(self.tcp_stream_read.is_some());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      let mut tcp_stream_write =
+        RcRef::map(&self, |r| r.tcp_stream_write.as_ref().unwrap())
+          .borrow_mut()
+          .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nwritten = (&mut *tcp_stream_write)
+        .write(buf)
+        .try_or_cancel(cancel)
+        .await?;
       return Ok(nwritten);
     }
 
@@ -336,6 +397,8 @@ impl Resource for NewStreamResource {
       "childStderr".into()
     } else if self.child_stdin.is_some() {
       "childStdin".into()
+    } else if self.tcp_stream_read.is_some() {
+      "tcpStream".into()
     } else {
       "<todo>".into()
     }

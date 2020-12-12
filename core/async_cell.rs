@@ -23,6 +23,12 @@ pub struct AsyncRefCell<T> {
   turn: Cell<usize>,
 }
 
+impl<T> std::fmt::Debug for AsyncRefCell<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "AsyncRefCell")
+  }
+}
+
 impl<T: 'static> AsyncRefCell<T> {
   /// Create a new `AsyncRefCell` that encapsulates the specified value.
   /// Note that in order to borrow the inner value, the `AsyncRefCell`
@@ -44,6 +50,14 @@ impl<T: 'static> AsyncRefCell<T> {
 
   pub fn as_ptr(&self) -> *mut T {
     self.value.get()
+  }
+
+  pub fn try_unwrap(self) -> Result<T, AsyncRefCell<T>> {
+    // FIXME(Bartlomieju)
+    return Ok(self.value.into_inner());
+    // if self.borrow_count.get() == 0 && self.waiters.get().len() == 0 {
+    // }
+    // Err(self)
   }
 }
 
