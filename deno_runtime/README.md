@@ -3,26 +3,41 @@
 [![crates](https://img.shields.io/crates/v/deno_runtime.svg)](https://crates.io/crates/deno_runtime)
 [![docs](https://docs.rs/deno_runtime/badge.svg)](https://docs.rs/deno_runtime)
 
-This crate provides Deno runtime, including:
+This crate provides implementation of `Deno` runtime.
 
-- JS runtime implementation, with:
-  - `Deno` namespace and accompanying ops
-  - build script for creating a V8 snapshot of the runtime
+It's comprised of few major parts:
+
+- runtime implementation consisting of:
+  - JavaScript code, in `rt/` directory, that implements `Deno` APIs (eg.
+    `Deno.listen()`)
+  - Rust code, in `ops/` module, that implements ops for `Deno` APIs (eg.
+    `op_listen`)
+  - cargo build script (`build.rs`), that creates a V8 snapshot of the runtime
+    code for fast startup
 - permission checker implementation
 - V8 inspector and debugger support
 
-# Stability
-
-This crate is built using battle-tested modules that were originally in `deno`
-crate, however the API of this crate is subject to rapid and breaking changes.
-
-## Note
-
-This crate is agnostic of TypeScript.
+This crate doesn't support TypeScript out-of-the-box.
 
 It is possible to provide TS support using `module_loader` property on
 `WorkerOptions`, for more details see the
 [CLI](https://github.com/denoland/deno/tree/master/cli) crate.
+
+As a consequence following `Deno` JavaScript APIs have no corresponding op
+implementation in Rust:
+
+- `Deno.applySourceMaps`
+- `Deno.bundle`
+- `Deno.compile`
+- `Deno.formatDiagnostics`
+
+Op implementation for these APIs can be found in
+[CLI](https://github.com/denoland/deno/tree/master/cli).
+
+## Stability
+
+This crate is built using battle-tested modules that were originally in `deno`
+crate, however the API of this crate is subject to rapid and breaking changes.
 
 ## `MainWorker`
 
