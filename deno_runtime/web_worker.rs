@@ -18,6 +18,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleLoader;
@@ -152,6 +153,7 @@ pub struct WebWorkerOptions {
   pub ts_version: String,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
+  pub get_error_class_fn: Option<GetErrorClassFn>,
 }
 
 impl WebWorker {
@@ -166,7 +168,7 @@ impl WebWorker {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
-      get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      get_error_class_fn: options.get_error_class_fn,
       ..Default::default()
     });
 
@@ -492,6 +494,7 @@ mod tests {
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
       no_color: true,
+      get_error_class_fn: None,
     };
 
     let mut worker = WebWorker::from_options(

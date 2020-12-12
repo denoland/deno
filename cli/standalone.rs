@@ -134,6 +134,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     runtime_version: version::deno(),
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
+    get_error_class_fn: Some(&crate::errors::get_error_class_name),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

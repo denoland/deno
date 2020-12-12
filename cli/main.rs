@@ -14,6 +14,7 @@ mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
+mod errors;
 mod file_fetcher;
 mod file_watcher;
 mod flags;
@@ -142,6 +143,7 @@ fn create_web_worker_callback(
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
+      get_error_class_fn: Some(&crate::errors::get_error_class_name),
     };
 
     let mut worker = WebWorker::from_options(
@@ -217,6 +219,7 @@ pub fn create_main_worker(
     runtime_version: version::deno(),
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
+    get_error_class_fn: Some(&crate::errors::get_error_class_name),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);

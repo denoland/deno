@@ -162,7 +162,7 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
   }
 }
 
-pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
+pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
     .or_else(|| {
       e.downcast_ref::<dlopen::Error>()
@@ -205,8 +205,5 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
       #[cfg(not(unix))]
       let maybe_get_nix_error_class = || Option::<&'static str>::None;
       (maybe_get_nix_error_class)()
-    })
-    .unwrap_or_else(|| {
-      panic!("Error '{}' contains boxed error of unknown type", e);
     })
 }
