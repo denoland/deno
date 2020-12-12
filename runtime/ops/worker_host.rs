@@ -1,25 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
-use crate::web_worker::run_web_worker;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WorkerEvent;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use crate::permissions::{
+  resolve_fs_allowlist, PermissionState, Permissions, UnaryPermission,
+};
+use crate::web_worker::{
+  run_web_worker, WebWorker, WebWorkerHandle, WorkerEvent,
+};
+
+use deno_core::error::{custom_error, generic_error, AnyError, JsError};
 use deno_core::futures::channel::mpsc;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::BufVec;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
+use deno_core::serde::de::{self, SeqAccess};
+use deno_core::serde::{Deserialize, Deserializer};
+use deno_core::serde_json::{self, json, Value};
+use deno_core::{BufVec, ModuleSpecifier, OpState, ZeroCopyBuf};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::From;
+use std::fmt;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -46,6 +44,14 @@ pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 struct HostUnhandledErrorArgs {
   message: String,
 }
+
+pub struct WorkerThread {
+  join_handle: JoinHandle<Result<(), AnyError>>,
+  worker_handle: WebWorkerHandle,
+}
+
+pub type WorkersTable = HashMap<u32, WorkerThread>;
+pub type WorkerId = u32;
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,
@@ -86,21 +92,352 @@ pub fn init(
   );
 }
 
-pub struct WorkerThread {
-  join_handle: JoinHandle<Result<(), AnyError>>,
-  worker_handle: WebWorkerHandle,
+fn merge_permission_state(
+  target: &PermissionState,
+  incoming: Option<PermissionState>,
+) -> Result<PermissionState, AnyError> {
+  match target {
+    PermissionState::Granted => match incoming {
+      Some(x) => Ok(x),
+      None => Ok(*target),
+    },
+    _ => match incoming {
+      Some(x) => match x {
+        PermissionState::Denied => Ok(x),
+        _ => Err(custom_error(
+          "PermissionDenied",
+          "Can't extend current permissions",
+        )),
+      },
+      None => Ok(*target),
+    },
+  }
 }
 
-pub type WorkersTable = HashMap<u32, WorkerThread>;
-pub type WorkerId = u32;
+fn check_net_permission_contains(
+  a: &HashSet<String>,
+  b: &HashSet<String>,
+) -> bool {
+  b.iter().all(|x| a.contains(x))
+}
+
+fn merge_net_permissions(
+  target: &UnaryPermission<String>,
+  incoming: Option<UnaryPermission<String>>,
+) -> Result<UnaryPermission<String>, AnyError> {
+  // Default: use main thread permissions
+  if incoming.is_none() {
+    return Ok(target.clone());
+  };
+
+  let new_permissions = incoming.unwrap();
+  match &target.global_state {
+    PermissionState::Granted => Ok(UnaryPermission::<String> {
+      global_state: new_permissions.global_state,
+      granted_list: new_permissions.granted_list,
+      denied_list: new_permissions.denied_list,
+    }),
+    PermissionState::Prompt => match new_permissions.global_state {
+      //Throw
+      PermissionState::Granted => Err(custom_error(
+        "PermissionDenied",
+        "Can't extend current permissions",
+      )),
+      //Merge
+      PermissionState::Prompt => {
+        if check_net_permission_contains(
+          &target.granted_list,
+          &new_permissions.granted_list,
+        ) {
+          Ok(UnaryPermission::<String> {
+            global_state: new_permissions.global_state,
+            granted_list: new_permissions.granted_list,
+            denied_list: target.denied_list.clone(),
+          })
+        } else {
+          Err(custom_error(
+            "PermissionDenied",
+            "Can't extend current permissions",
+          ))
+        }
+      }
+      //Copy
+      PermissionState::Denied => Ok(UnaryPermission::<String> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+      }),
+    },
+    PermissionState::Denied => match new_permissions.global_state {
+      PermissionState::Denied => Ok(UnaryPermission::<String> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+      }),
+      _ => Err(custom_error(
+        "PermissionDenied",
+        "Can't extend current permissions",
+      )),
+    },
+  }
+}
+
+enum WorkerPermissionType {
+  READ,
+  WRITE,
+}
+
+fn check_read_permissions(
+  allow_list: &HashSet<PathBuf>,
+  current_permissions: &Permissions,
+) -> bool {
+  allow_list
+    .iter()
+    .all(|x| current_permissions.check_read(&x).is_ok())
+}
+
+fn check_write_permissions(
+  allow_list: &HashSet<PathBuf>,
+  current_permissions: &Permissions,
+) -> bool {
+  allow_list
+    .iter()
+    .all(|x| current_permissions.check_write(&x).is_ok())
+}
+
+fn merge_unary_permissions(
+  permission_type: WorkerPermissionType,
+  target: &UnaryPermission<PathBuf>,
+  incoming: Option<UnaryPermission<PathBuf>>,
+  current_permissions: &Permissions,
+) -> Result<UnaryPermission<PathBuf>, AnyError> {
+  // Default: use main thread permissions
+  if incoming.is_none() {
+    return Ok(target.clone());
+  };
+
+  let new_permissions = incoming.unwrap();
+  match &target.global_state {
+    PermissionState::Granted => Ok(UnaryPermission::<PathBuf> {
+      global_state: new_permissions.global_state,
+      granted_list: new_permissions.granted_list,
+      denied_list: new_permissions.denied_list,
+    }),
+    PermissionState::Prompt => match new_permissions.global_state {
+      //Throw
+      PermissionState::Granted => Err(custom_error(
+        "PermissionDenied",
+        "Can't extend current permissions",
+      )),
+      //Merge
+      PermissionState::Prompt => {
+        if match permission_type {
+          WorkerPermissionType::READ => check_read_permissions(
+            &new_permissions.granted_list,
+            current_permissions,
+          ),
+          WorkerPermissionType::WRITE => check_write_permissions(
+            &new_permissions.granted_list,
+            current_permissions,
+          ),
+        } {
+          Ok(UnaryPermission::<PathBuf> {
+            global_state: new_permissions.global_state,
+            granted_list: new_permissions.granted_list,
+            denied_list: target.denied_list.clone(),
+          })
+        } else {
+          Err(custom_error(
+            "PermissionDenied",
+            "Can't extend current permissions",
+          ))
+        }
+      }
+      //Copy
+      PermissionState::Denied => Ok(UnaryPermission::<PathBuf> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+      }),
+    },
+    PermissionState::Denied => match new_permissions.global_state {
+      PermissionState::Denied => Ok(UnaryPermission::<PathBuf> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+      }),
+      _ => Err(custom_error(
+        "PermissionDenied",
+        "Can't extend current permissions",
+      )),
+    },
+  }
+}
+
+fn create_worker_permissions(
+  state: &OpState,
+  permission_args: PermissionsArg,
+) -> Result<Permissions, AnyError> {
+  let main_thread_permissions = state.borrow::<Permissions>().clone();
+
+  Ok(Permissions {
+    env: merge_permission_state(
+      &main_thread_permissions.env,
+      permission_args.env,
+    )?,
+    hrtime: merge_permission_state(
+      &main_thread_permissions.hrtime,
+      permission_args.hrtime,
+    )?,
+    net: merge_net_permissions(
+      &main_thread_permissions.net,
+      permission_args.net,
+    )?,
+    plugin: merge_permission_state(
+      &main_thread_permissions.plugin,
+      permission_args.plugin,
+    )?,
+    read: merge_unary_permissions(
+      WorkerPermissionType::READ,
+      &main_thread_permissions.read,
+      permission_args.read,
+      &main_thread_permissions,
+    )?,
+    run: merge_permission_state(
+      &main_thread_permissions.run,
+      permission_args.run,
+    )?,
+    write: merge_unary_permissions(
+      WorkerPermissionType::WRITE,
+      &main_thread_permissions.write,
+      permission_args.write,
+      &main_thread_permissions,
+    )?,
+  })
+}
+
+#[derive(Debug, Deserialize)]
+struct PermissionsArg {
+  #[serde(default, deserialize_with = "as_permission_state")]
+  env: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_permission_state")]
+  hrtime: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_string_permission")]
+  net: Option<UnaryPermission<String>>,
+  #[serde(default, deserialize_with = "as_permission_state")]
+  plugin: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_path_permission")]
+  read: Option<UnaryPermission<PathBuf>>,
+  #[serde(default, deserialize_with = "as_permission_state")]
+  run: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_path_permission")]
+  write: Option<UnaryPermission<PathBuf>>,
+}
+
+fn as_permission_state<'de, D>(
+  deserializer: D,
+) -> Result<Option<PermissionState>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: bool = Deserialize::deserialize(deserializer)?;
+
+  match value {
+    true => Ok(Some(PermissionState::Granted)),
+    false => Ok(Some(PermissionState::Denied)),
+  }
+}
+
+struct UnaryPermissionBase {
+  global_state: PermissionState,
+  paths: Vec<String>,
+}
+
+struct ParseBooleanOrStringVec;
+
+impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
+  type Value = UnaryPermissionBase;
+
+  fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    formatter.write_str("a vector of strings or a boolean")
+  }
+
+  fn visit_bool<E>(self, v: bool) -> Result<UnaryPermissionBase, E>
+  where
+    E: de::Error,
+  {
+    Ok(UnaryPermissionBase {
+      global_state: match v {
+        true => PermissionState::Granted,
+        false => PermissionState::Denied,
+      },
+      paths: Vec::new(),
+    })
+  }
+
+  fn visit_seq<V>(self, mut visitor: V) -> Result<UnaryPermissionBase, V::Error>
+  where
+    V: SeqAccess<'de>,
+  {
+    let mut vec: Vec<String> = Vec::new();
+
+    let mut value = visitor.next_element::<String>()?;
+    while value.is_some() {
+      vec.push(value.unwrap());
+      value = visitor.next_element()?;
+    }
+    Ok(UnaryPermissionBase {
+      global_state: PermissionState::Prompt,
+      paths: vec,
+    })
+  }
+}
+
+fn as_unary_string_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<String>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  let allowed: HashSet<String> = value.paths.into_iter().collect();
+
+  Ok(Some(UnaryPermission::<String> {
+    global_state: value.global_state,
+    granted_list: allowed,
+    ..Default::default()
+  }))
+}
+
+fn as_unary_path_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<PathBuf>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  let paths: Vec<PathBuf> =
+    value.paths.into_iter().map(PathBuf::from).collect();
+
+  Ok(Some(UnaryPermission::<PathBuf> {
+    global_state: value.global_state,
+    granted_list: resolve_fs_allowlist(&paths),
+    ..Default::default()
+  }))
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
-  name: Option<String>,
-  specifier: String,
   has_source_code: bool,
+  name: Option<String>,
+  permissions: PermissionsArg,
   source_code: String,
+  specifier: String,
   use_deno_namespace: bool,
 }
 
@@ -123,7 +460,7 @@ fn op_create_worker(
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno");
   }
-  let permissions = state.borrow::<Permissions>().clone();
+  let worker_permissions = create_worker_permissions(&state, args.permissions)?;
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
@@ -149,7 +486,7 @@ fn op_create_worker(
     let worker = (create_module_loader.0)(CreateWebWorkerArgs {
       name: worker_name,
       worker_id,
-      permissions,
+      permissions: worker_permissions,
       main_module: module_specifier.clone(),
       use_deno_namespace,
     });

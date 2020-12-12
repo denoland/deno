@@ -78,7 +78,7 @@ pub struct Permissions {
   pub hrtime: PermissionState,
 }
 
-fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
+pub fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
   allowlist
     .iter()
     .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
