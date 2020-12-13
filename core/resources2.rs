@@ -71,8 +71,8 @@ pub type ResourceTable2 = ResourceTable;
 /// the key in the map.
 #[derive(Default)]
 pub struct ResourceTable {
-  pub(crate) index: HashMap<ResourceId, Rc<dyn Resource>>,
-  pub(crate) next_rid: ResourceId,
+  index: HashMap<ResourceId, Rc<dyn Resource>>,
+  next_rid: ResourceId,
 }
 
 impl ResourceTable {
@@ -125,9 +125,6 @@ impl ResourceTable {
     self.index.remove(&rid).map(|resource| resource.close())
   }
 
-  pub fn remove(&mut self, rid: ResourceId) -> Option<Rc<dyn Resource>> {
-    self.index.remove(&rid)
-  }
   /// Returns an iterator that yields a `(id, name)` pair for every resource
   /// that's currently in the resource table. This can be used for debugging
   /// purposes or to implement the `op_resources` op. Note that the order in
