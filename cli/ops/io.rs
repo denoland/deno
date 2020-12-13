@@ -386,6 +386,7 @@ impl NewStreamResource {
         .write(buf)
         .try_or_cancel(cancel)
         .await?;
+      (*fs_file).0.as_mut().unwrap().flush().await?;
       return Ok(nwritten);
     }
 
@@ -401,6 +402,7 @@ impl NewStreamResource {
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nwritten =
         (&mut *child_stdin).write(buf).try_or_cancel(cancel).await?;
+      (&mut *child_stdin).flush().await?;
       return Ok(nwritten);
     }
 
@@ -418,6 +420,7 @@ impl NewStreamResource {
         .write(buf)
         .try_or_cancel(cancel)
         .await?;
+      (&mut *tcp_stream_write).flush().await?;
       return Ok(nwritten);
     }
 
@@ -436,6 +439,7 @@ impl NewStreamResource {
         .write(buf)
         .try_or_cancel(cancel)
         .await?;
+      (&mut *client_tls_stream).flush().await?;
       return Ok(nwritten);
     }
 
@@ -454,6 +458,7 @@ impl NewStreamResource {
         .write(buf)
         .try_or_cancel(cancel)
         .await?;
+      (&mut *server_tls_stream).flush().await?;
       return Ok(nwritten);
     }
 
@@ -470,6 +475,7 @@ impl NewStreamResource {
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nread = (&mut *unix_stream).write(buf).try_or_cancel(cancel).await?;
+      (&mut *unix_stream).flush().await?;
       return Ok(nread);
     }
 
