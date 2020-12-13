@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{std_file_resource, NewStreamResource};
+use super::io::{new_std_file_resource, NewStreamResource};
 use crate::permissions::Permissions;
 use crate::signal::kill;
 use deno_core::error::bad_resource_id;
@@ -35,7 +35,7 @@ fn clone_file(
   state: &mut OpState,
   rid: u32,
 ) -> Result<std::fs::File, AnyError> {
-  std_file_resource(state, rid, move |r| match r {
+  new_std_file_resource(state, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
     Err(_) => Err(bad_resource_id()),
   })

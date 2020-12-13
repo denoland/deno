@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+#![allow(dead_code)]
+
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::metrics::metrics_op;
@@ -8,7 +10,6 @@ use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::ready;
 use deno_core::AsyncRefCell;
@@ -113,6 +114,18 @@ pub fn get_stdio() -> (
   (stdin, stdout, stderr)
 }
 
+pub fn new_get_stdio() -> (
+  Option<NewStreamResource>,
+  Option<NewStreamResource>,
+  Option<NewStreamResource>,
+) {
+  let stdin = new_get_stdio_stream(&STDIN_HANDLE);
+  let stdout = new_get_stdio_stream(&STDOUT_HANDLE);
+  let stderr = new_get_stdio_stream(&STDERR_HANDLE);
+
+  (stdin, stdout, stderr)
+}
+
 fn get_stdio_stream(
   handle: &Option<std::fs::File>,
 ) -> Option<StreamResourceHolder> {
@@ -122,6 +135,21 @@ fn get_stdio_stream(
       Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(
         Some((tokio::fs::File::from_std(clone), FileMetadata::default())),
       ))),
+      Err(_e) => None,
+    },
+  }
+}
+
+fn new_get_stdio_stream(
+  handle: &Option<std::fs::File>,
+) -> Option<NewStreamResource> {
+  match handle {
+    None => None,
+    Some(file_handle) => match file_handle.try_clone() {
+      Ok(clone) => {
+        let tokio_file = tokio::fs::File::from_std(clone);
+        Some(NewStreamResource::fs_file(tokio_file))
+      }
       Err(_e) => None,
     },
   }
@@ -249,6 +277,9 @@ impl DenoAsyncRead for StreamResource {
 
 #[derive(Default)]
 pub struct NewStreamResource {
+  pub fs_file:
+    Option<AsyncRefCell<(Option<tokio::fs::File>, Option<FileMetadata>)>>,
+
   pub tcp_stream_read: Option<AsyncRefCell<tokio::net::tcp::OwnedReadHalf>>,
   pub tcp_stream_write: Option<AsyncRefCell<tokio::net::tcp::OwnedWriteHalf>>,
 
@@ -275,6 +306,16 @@ impl std::fmt::Debug for NewStreamResource {
 }
 
 impl NewStreamResource {
+  pub fn fs_file(fs_file: tokio::fs::File) -> Self {
+    Self {
+      fs_file: Some(AsyncRefCell::new((
+        Some(fs_file),
+        Some(FileMetadata::default()),
+      ))),
+      ..Default::default()
+    }
+  }
+
   pub fn tcp_stream(tcp_stream: tokio::net::TcpStream) -> Self {
     let (read_half, write_half) = tcp_stream.into_split();
     Self {
@@ -328,6 +369,25 @@ impl NewStreamResource {
   }
 
   async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    if self.fs_file.is_some() {
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
+      let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
+        .borrow_mut()
+        .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nwritten = (*fs_file)
+        .0
+        .as_mut()
+        .unwrap()
+        .read(buf)
+        .try_or_cancel(cancel)
+        .await?;
+      return Ok(nwritten);
+    }
+
     if self.child_stdout.is_some() {
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -427,6 +487,25 @@ impl NewStreamResource {
   }
 
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+    if self.fs_file.is_some() {
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.tcp_stream_read.is_none());
+      debug_assert!(self.tcp_stream_write.is_none());
+      let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
+        .borrow_mut()
+        .await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let nwritten = (*fs_file)
+        .0
+        .as_mut()
+        .unwrap()
+        .write(buf)
+        .try_or_cancel(cancel)
+        .await?;
+      return Ok(nwritten);
+    }
+
     if self.child_stdin.is_some() {
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -522,7 +601,9 @@ impl Resource for NewStreamResource {
       return "unixStream".into();
     }
 
-    if self.child_stdout.is_some() {
+    if self.fs_file.is_some() {
+      "fsFile".into()
+    } else if self.child_stdout.is_some() {
       "childStdout".into()
     } else if self.child_stderr.is_some() {
       "childStderr".into()
@@ -560,57 +641,32 @@ pub fn op_read(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
-        Ok(std_file) => {
-          use std::io::Read;
-          std_file
-            .read(&mut zero_copy[0])
-            .map(|n: usize| n as i32)
-            .map_err(AnyError::from)
+      new_std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| {
+        match r {
+          Ok(std_file) => {
+            use std::io::Read;
+            std_file
+              .read(&mut zero_copy[0])
+              .map(|n: usize| n as i32)
+              .map_err(AnyError::from)
+          }
+          Err(_) => Err(type_error("sync read not allowed on this resource")),
         }
-        Err(_) => Err(type_error("sync read not allowed on this resource")),
       })
     })
   } else {
     let mut zero_copy = zero_copy[0].clone();
     MinimalOp::Async({
-      if rid >= 1_000_000 {
-        async move {
-          let resource = state
-            .borrow()
-            .resource_table_2
-            .get::<NewStreamResource>(rid as u32)
-            .ok_or_else(bad_resource_id)?;
-          let nread = resource.read(&mut zero_copy).await?;
-          Ok(nread as i32)
-        }
-        .boxed_local()
-      } else {
-        poll_fn(move |cx| {
-          let mut state = state.borrow_mut();
-          let resource_holder = state
-            .resource_table
-            .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(bad_resource_id)?;
-
-          let mut task_tracker_id: Option<usize> = None;
-          let nread =
-            match resource_holder.resource.poll_read(cx, &mut zero_copy) {
-              Poll::Ready(t) => {
-                if let Some(id) = task_tracker_id {
-                  resource_holder.untrack_task(id);
-                }
-                t
-              }
-              Poll::Pending => {
-                task_tracker_id.replace(resource_holder.track_task(cx)?);
-                return Poll::Pending;
-              }
-            }?;
-          Poll::Ready(Ok(nread as i32))
-        })
-        .boxed_local()
+      async move {
+        let resource = state
+          .borrow()
+          .resource_table_2
+          .get::<NewStreamResource>(rid as u32)
+          .ok_or_else(bad_resource_id)?;
+        let nread = resource.read(&mut zero_copy).await?;
+        Ok(nread as i32)
       }
+      .boxed_local()
     })
   }
 }
@@ -691,61 +747,32 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
-        Ok(std_file) => {
-          use std::io::Write;
-          std_file
-            .write(&zero_copy[0])
-            .map(|nwritten: usize| nwritten as i32)
-            .map_err(AnyError::from)
+      new_std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| {
+        match r {
+          Ok(std_file) => {
+            use std::io::Write;
+            std_file
+              .write(&zero_copy[0])
+              .map(|nwritten: usize| nwritten as i32)
+              .map_err(AnyError::from)
+          }
+          Err(_) => Err(type_error("sync read not allowed on this resource")),
         }
-        Err(_) => Err(type_error("sync read not allowed on this resource")),
       })
     })
   } else {
     let zero_copy = zero_copy[0].clone();
     MinimalOp::Async({
-      if rid >= 1_000_000 {
-        async move {
-          let resource = state
-            .borrow()
-            .resource_table_2
-            .get::<NewStreamResource>(rid as u32)
-            .ok_or_else(bad_resource_id)?;
-          let nread = resource.write(&zero_copy).await?;
-          Ok(nread as i32)
-        }
-        .boxed_local()
-      } else {
-        async move {
-          let nwritten = poll_fn(|cx| {
-            let mut state = state.borrow_mut();
-            let resource_holder = state
-              .resource_table
-              .get_mut::<StreamResourceHolder>(rid as u32)
-              .ok_or_else(bad_resource_id)?;
-            resource_holder.resource.poll_write(cx, &zero_copy)
-          })
-          .await?;
-
-          // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
-          // and the reasons for the need to explicitly flush are not fully known.
-          // Figure out why it's needed and preferably remove it.
-          // https://github.com/denoland/deno/issues/3565
-          poll_fn(|cx| {
-            let mut state = state.borrow_mut();
-            let resource_holder = state
-              .resource_table
-              .get_mut::<StreamResourceHolder>(rid as u32)
-              .ok_or_else(bad_resource_id)?;
-            resource_holder.resource.poll_flush(cx)
-          })
-          .await?;
-
-          Ok(nwritten as i32)
-        }
-        .boxed_local()
+      async move {
+        let resource = state
+          .borrow()
+          .resource_table_2
+          .get::<NewStreamResource>(rid as u32)
+          .ok_or_else(bad_resource_id)?;
+        let nread = resource.write(&zero_copy).await?;
+        Ok(nread as i32)
       }
+      .boxed_local()
     })
   }
 }
@@ -805,5 +832,56 @@ where
     }
   } else {
     Err(bad_resource_id())
+  }
+}
+
+pub fn new_std_file_resource<F, T>(
+  state: &mut OpState,
+  rid: u32,
+  mut f: F,
+) -> Result<T, AnyError>
+where
+  F: FnMut(Result<&mut std::fs::File, ()>) -> Result<T, AnyError>,
+{
+  // First we look up the rid in the resource table.
+  let resource = state
+    .resource_table_2
+    .get::<NewStreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  // Sync write only works for FsFile. It doesn't make sense to do this
+  // for non-blocking sockets. So we error out if not FsFile.
+  if resource.fs_file.is_none() {
+    return f(Err(()));
+  }
+
+  // The object in the resource table is a tokio::fs::File - but in
+  // order to do a blocking write on it, we must turn it into a
+  // std::fs::File. Hopefully this code compiles down to nothing.
+
+  let fs_file_resource =
+    RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
+
+  if let Some(mut fs_file) = fs_file_resource {
+    let tokio_file = fs_file.0.take().unwrap();
+    match tokio_file.try_into_std() {
+      Ok(mut std_file) => {
+        let result = f(Ok(&mut std_file));
+        // Turn the std_file handle back into a tokio file, put it back
+        // in the resource table.
+        let tokio_file = tokio::fs::File::from_std(std_file);
+        fs_file.0 = Some(tokio_file);
+        // return the result.
+        result
+      }
+      Err(tokio_file) => {
+        // This function will return an error containing the file if
+        // some operation is in-flight.
+        fs_file.0 = Some(tokio_file);
+        Err(resource_unavailable())
+      }
+    }
+  } else {
+    Err(resource_unavailable())
   }
 }
