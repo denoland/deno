@@ -510,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.70.0"
+version = "0.71.0"
 dependencies = [
  "anyhow",
  "futures",
