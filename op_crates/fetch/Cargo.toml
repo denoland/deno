@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2018"
 description = "provides fetch Web API to deno_core"
 authors = ["the Deno authors"]

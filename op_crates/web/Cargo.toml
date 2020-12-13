@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.21.0"
+version = "0.22.0"
 edition = "2018"
 description = "Collection of Web APIs"
 authors = ["the Deno authors"]
