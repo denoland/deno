@@ -38,7 +38,24 @@ use tokio_tungstenite::tungstenite::{
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+#[derive(Clone)]
+struct WsCaFile(String);
+#[derive(Clone)]
+struct WsUserAgent(String);
+
+pub fn init(
+  rt: &mut deno_core::JsRuntime,
+  maybe_ca_file: Option<&str>,
+  user_agent: String,
+) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    if let Some(ca_file) = maybe_ca_file {
+      state.put::<WsCaFile>(WsCaFile(ca_file.to_string()));
+    }
+    state.put::<WsUserAgent>(WsUserAgent(user_agent));
+  }
   super::reg_json_sync(rt, "op_ws_check_permission", op_ws_check_permission);
   super::reg_json_async(rt, "op_ws_create", op_ws_create);
   super::reg_json_async(rt, "op_ws_send", op_ws_send);
@@ -113,15 +130,12 @@ pub async fn op_ws_create(
       );
   }
 
-  let ca_file = {
-    let program_state = super::global_state2(&state);
-    program_state.flags.ca_file.clone()
-  };
+  let maybe_ca_file = state.borrow().try_borrow::<WsCaFile>().cloned();
+  let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
-  request =
-    request.header("User-Agent", format!("Deno/{}", crate::version::deno()));
+  request = request.header("User-Agent", user_agent);
 
   if !args.protocols.is_empty() {
     request = request.header("Sec-WebSocket-Protocol", args.protocols);
@@ -149,8 +163,8 @@ pub async fn op_ws_create(
         .root_store
         .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
-      if let Some(path) = ca_file {
-        let key_file = File::open(path)?;
+      if let Some(ws_ca_file) = maybe_ca_file {
+        let key_file = File::open(ws_ca_file.0)?;
         let reader = &mut BufReader::new(key_file);
         config.root_store.add_pem_file(reader).unwrap();
       }

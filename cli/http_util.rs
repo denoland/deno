@@ -6,16 +6,16 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::url::Url;
-use deno_fetch::reqwest;
-use deno_fetch::reqwest::header::HeaderMap;
-use deno_fetch::reqwest::header::HeaderValue;
-use deno_fetch::reqwest::header::IF_NONE_MATCH;
-use deno_fetch::reqwest::header::LOCATION;
-use deno_fetch::reqwest::header::USER_AGENT;
-use deno_fetch::reqwest::redirect::Policy;
-use deno_fetch::reqwest::Client;
-use deno_fetch::reqwest::Response;
-use deno_fetch::reqwest::StatusCode;
+use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest::header::HeaderMap;
+use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
+use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
+use deno_runtime::deno_fetch::reqwest::header::LOCATION;
+use deno_runtime::deno_fetch::reqwest::header::USER_AGENT;
+use deno_runtime::deno_fetch::reqwest::redirect::Policy;
+use deno_runtime::deno_fetch::reqwest::Client;
+use deno_runtime::deno_fetch::reqwest::Response;
+use deno_runtime::deno_fetch::reqwest::StatusCode;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::fs::File;
@@ -27,14 +27,18 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 
+pub fn get_user_agent() -> String {
+  format!("Deno/{}", version::deno())
+}
+
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
+pub fn create_http_client(
+  user_agent: String,
+  ca_file: Option<&str>,
+) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
-  headers.insert(
-    USER_AGENT,
-    format!("Deno/{}", version::deno()).parse().unwrap(),
-  );
+  headers.insert(USER_AGENT, user_agent.parse().unwrap());
   let mut builder = Client::builder()
     .redirect(Policy::none())
     .default_headers(headers)
@@ -230,13 +234,17 @@ impl AsyncRead for HttpBody {
 mod tests {
   use super::*;
 
+  fn create_test_client(ca_file: Option<&str>) -> Client {
+    create_http_client("test_client".to_string(), ca_file).unwrap()
+  }
+
   #[tokio::test]
   async fn test_fetch_string() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
-    let client = create_http_client(None).unwrap();
+    let client = create_test_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
@@ -256,7 +264,7 @@ mod tests {
       "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
     )
     .unwrap();
-    let client = create_http_client(None).unwrap();
+    let client = create_test_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
@@ -275,7 +283,7 @@ mod tests {
   async fn test_fetch_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
-    let client = create_http_client(None).unwrap();
+    let client = create_test_client(None);
     let result = fetch_once(client.clone(), &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
@@ -302,7 +310,7 @@ mod tests {
       "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
-    let client = create_http_client(None).unwrap();
+    let client = create_test_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
@@ -327,7 +335,7 @@ mod tests {
     // Dns resolver substitutes `127.0.0.1` with `localhost`
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
-    let client = create_http_client(None).unwrap();
+    let client = create_test_client(None);
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
       assert_eq!(url, target_url);
@@ -381,12 +389,15 @@ mod tests {
     let url =
       Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
+    let client = create_http_client(
+      get_user_agent(),
+      Some(
+        test_util::root_path()
+          .join("std/http/testdata/tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      ),
+    )
     .unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -407,12 +418,15 @@ mod tests {
       "https://localhost:5545/cli/tests/053_import_compression/gziped",
     )
     .unwrap();
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
+    let client = create_http_client(
+      get_user_agent(),
+      Some(
+        test_util::root_path()
+          .join("std/http/testdata/tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      ),
+    )
     .unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -432,12 +446,15 @@ mod tests {
   async fn test_fetch_with_cafile_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
+    let client = create_http_client(
+      get_user_agent(),
+      Some(
+        test_util::root_path()
+          .join("std/http/testdata/tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      ),
+    )
     .unwrap();
     let result = fetch_once(client.clone(), &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -466,12 +483,15 @@ mod tests {
       "https://localhost:5545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
-    let client = create_http_client(Some(
-      test_util::root_path()
-        .join("std/http/testdata/tls/RootCA.pem")
-        .to_str()
-        .unwrap(),
-    ))
+    let client = create_http_client(
+      get_user_agent(),
+      Some(
+        test_util::root_path()
+          .join("std/http/testdata/tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      ),
+    )
     .unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -493,7 +513,7 @@ mod tests {
     let _g = test_util::http_server();
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
-    let client = create_http_client(None).unwrap();
+    let client = create_test_client(None);
     let result = fetch_once(client, &url, None).await;
     assert!(result.is_err());
     let err = result.unwrap_err();

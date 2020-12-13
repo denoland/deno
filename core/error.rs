@@ -12,7 +12,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::io;
 
 /// A generic wrapper that can encapsulate any concrete error type.
 pub type AnyError = anyhow::Error;
@@ -39,10 +38,6 @@ pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
 
 pub fn uri_error(message: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("URIError", message)
-}
-
-pub fn last_os_error() -> AnyError {
-  io::Error::last_os_error().into()
 }
 
 pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> AnyError {

@@ -21,7 +21,26 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
+
+pub struct CreateWebWorkerArgs {
+  pub name: String,
+  pub worker_id: u32,
+  pub permissions: Permissions,
+  pub main_module: ModuleSpecifier,
+  pub use_deno_namespace: bool,
+}
+
+pub type CreateWebWorkerCb =
+  dyn Fn(CreateWebWorkerArgs) -> WebWorker + Sync + Send;
+
+/// A holder for callback that is used to create a new
+/// WebWorker. It's a struct instead of a type alias
+/// because `GothamState` used in `OpState` overrides
+/// value if type alises have the same underlying type
+#[derive(Clone)]
+pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 #[derive(Deserialize)]
 struct HostUnhandledErrorArgs {
@@ -31,12 +50,16 @@ struct HostUnhandledErrorArgs {
 pub fn init(
   rt: &mut deno_core::JsRuntime,
   sender: Option<mpsc::Sender<WorkerEvent>>,
+  create_web_worker_cb: Arc<CreateWebWorkerCb>,
 ) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
     state.put::<WorkersTable>(WorkersTable::default());
     state.put::<WorkerId>(WorkerId::default());
+
+    let create_module_loader = CreateWebWorkerCbHolder(create_web_worker_cb);
+    state.put::<CreateWebWorkerCbHolder>(create_module_loader);
   }
   super::reg_json_sync(rt, "op_create_worker", op_create_worker);
   super::reg_json_sync(
@@ -102,11 +125,12 @@ fn op_create_worker(
   }
   let permissions = state.borrow::<Permissions>().clone();
   let worker_id = state.take::<WorkerId>();
+  let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
+  state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
   state.put::<WorkerId>(worker_id + 1);
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
-  let program_state = super::program_state(state);
 
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, AnyError>>(1);
@@ -121,14 +145,14 @@ fn op_create_worker(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
-    let worker = WebWorker::new(
-      worker_name,
-      permissions,
-      module_specifier.clone(),
-      program_state,
-      use_deno_namespace,
+
+    let worker = (create_module_loader.0)(CreateWebWorkerArgs {
+      name: worker_name,
       worker_id,
-    );
+      permissions,
+      main_module: module_specifier.clone(),
+      use_deno_namespace,
+    });
 
     // Send thread safe handle to newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();

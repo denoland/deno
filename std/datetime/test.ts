@@ -54,6 +54,10 @@ Deno.test({
       new Date(2019, 0, 3),
     );
     assertEquals(
+      datetime.parse("31-10-2019", "dd-MM-yyyy"),
+      new Date(2019, 9, 31),
+    );
+    assertEquals(
       datetime.parse("2019-01-03", "yyyy-MM-dd"),
       new Date(2019, 0, 3),
     );

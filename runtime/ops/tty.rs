@@ -3,7 +3,6 @@
 use super::io::new_std_file_resource;
 use super::io::NewStreamResource;
 use deno_core::error::bad_resource_id;
-use deno_core::error::last_os_error;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -15,6 +14,7 @@ use deno_core::RcRef;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
+use std::io::Error;
 
 #[cfg(unix)]
 use nix::sys::termios;
@@ -39,7 +39,7 @@ fn get_windows_handle(
 
   let handle = f.as_raw_handle();
   if handle == handleapi::INVALID_HANDLE_VALUE {
-    return Err(last_os_error());
+    return Err(Error::last_os_error().into());
   } else if handle.is_null() {
     return Err(custom_error("ReferenceError", "null handle"));
   }
@@ -130,7 +130,7 @@ fn op_set_raw(
     let handle = handle_result?;
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(last_os_error());
+      return Err(Error::last_os_error().into());
     } else if handle.is_null() {
       return Err(custom_error("ReferenceError", "null handle"));
     }
@@ -138,7 +138,7 @@ fn op_set_raw(
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
       == FALSE
     {
-      return Err(last_os_error());
+      return Err(Error::last_os_error().into());
     }
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK
@@ -146,7 +146,7 @@ fn op_set_raw(
       original_mode | RAW_MODE_MASK
     };
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(last_os_error());
+      return Err(Error::last_os_error().into());
     }
 
     Ok(json!({}))
@@ -290,7 +290,7 @@ fn op_console_size(
             &mut bufinfo,
           ) == 0
           {
-            return Err(last_os_error());
+            return Err(Error::last_os_error().into());
           }
 
           Ok(ConsoleSize {
@@ -308,7 +308,7 @@ fn op_console_size(
         unsafe {
           let mut size: libc::winsize = std::mem::zeroed();
           if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-            return Err(last_os_error());
+            return Err(Error::last_os_error().into());
           }
 
           // TODO (caspervonb) return a tuple instead
