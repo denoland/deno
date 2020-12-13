@@ -53,6 +53,10 @@ where
   rt.register_op(name, metrics_op(json_op_sync(op_fn)));
 }
 
+/// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
+/// using type alias for a bool could work, but there's a high chance
+/// that there might be another type alias pointing to a bool, which
+/// would override previously used alias.
 pub struct UnstableChecker {
   pub unstable: bool,
 }

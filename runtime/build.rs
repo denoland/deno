@@ -6,6 +6,8 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
+// TODO(bartlomieju): this module contains a lot of duplicated
+// logic with `cli/build.rs`, factor out to `deno_core`.
 fn create_snapshot(
   mut js_runtime: JsRuntime,
   snapshot_path: &Path,
