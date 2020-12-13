@@ -119,7 +119,7 @@ fn create_web_worker_callback(
       || program_state.flags.coverage;
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
+    let module_loader = CliModuleLoader::new_for_worker(program_state.clone(), args.permissions.clone());
     let create_web_worker_cb =
       create_web_worker_callback(program_state.clone());
 

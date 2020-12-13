@@ -22,6 +22,7 @@ pub struct CliModuleLoader {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub lib: TypeLib,
+  pub permissions: Option<Permissions>,
   pub program_state: Arc<ProgramState>,
 }
 
@@ -38,11 +39,12 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map,
       lib,
+      permissions: None,
       program_state,
     })
   }
 
-  pub fn new_for_worker(program_state: Arc<ProgramState>) -> Rc<Self> {
+  pub fn new_for_worker(program_state: Arc<ProgramState>, permissions: Permissions) -> Rc<Self> {
     let lib = if program_state.flags.unstable {
       TypeLib::UnstableDenoWorker
     } else {
@@ -52,6 +54,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: None,
       lib,
+      permissions: Some(permissions),
       program_state,
     })
   }
@@ -118,7 +121,12 @@ impl ModuleLoader for CliModuleLoader {
     let state = op_state.borrow();
 
     // The permissions that should be applied to any dynamically imported module
-    let dynamic_permissions = state.borrow::<Permissions>().clone();
+    let dynamic_permissions = if self.permissions.is_some() {
+      self.permissions.clone().unwrap()
+    } else {
+      state.borrow::<Permissions>().clone()
+    };
+
     let lib = self.lib.clone();
     drop(state);
 
