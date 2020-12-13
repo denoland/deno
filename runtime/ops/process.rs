@@ -243,7 +243,7 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
 
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
-  use std::io::Error::last_os_error;
+  use std::io::Error;
   match signal {
     SIGINT | SIGKILL | SIGTERM => {
       if pid <= 0 {
@@ -252,14 +252,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
       unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
         if handle.is_null() {
-          return Err(last_os_error());
+          return Err(Error::last_os_error());
         }
         if TerminateProcess(handle, 1) == 0 {
           CloseHandle(handle);
-          return Err(last_os_error());
+          return Err(Error::last_os_error());
         }
         if CloseHandle(handle) == 0 {
-          return Err(last_os_error());
+          return Err(Error::last_os_error());
         }
       }
     }
