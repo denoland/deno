@@ -17,7 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
-use deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
