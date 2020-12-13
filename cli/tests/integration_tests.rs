@@ -2283,6 +2283,29 @@ fn workers() {
 }
 
 #[test]
+#[ignore]
+fn worker_post_undefined() {
+  let t = TempDir::new().expect("tempdir fail");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("run")
+    .arg("--reload")
+    .arg("--unstable")
+    .arg("./worker_port_undefined_host.ts")
+    .spawn()
+    .expect("Failed to spawn script");
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+#[test]
 fn compiler_api() {
   let status = util::deno_cmd()
     .current_dir(util::tests_path())
