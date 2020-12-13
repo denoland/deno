@@ -4,6 +4,7 @@ use crate::ops::io::StreamResource;
 use crate::ops::io::StreamResourceHolder;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
+use crate::resolve_addr::resolve_addr_sync;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -205,7 +206,7 @@ async fn op_datagram_send(
         s.borrow::<Permissions>()
           .check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr(&args.hostname, args.port)?;
+      let addr = resolve_addr(&args.hostname, args.port).await?;
       poll_fn(move |cx| {
         let mut state = state.borrow_mut();
         let resource = state
@@ -272,7 +273,7 @@ async fn op_connect(
           .borrow::<Permissions>()
           .check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr(&args.hostname, args.port)?;
+      let addr = resolve_addr(&args.hostname, args.port).await?;
       let tcp_stream = TcpStream::connect(&addr).await?;
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
@@ -505,7 +506,7 @@ fn op_listen(
         }
         permissions.check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr(&args.hostname, args.port)?;
+      let addr = resolve_addr_sync(&args.hostname, args.port)?;
       let (rid, local_addr) = if transport == "tcp" {
         listen_tcp(state, addr)?
       } else {
