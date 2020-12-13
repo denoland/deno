@@ -27,8 +27,8 @@ interface InternalCopyOptions extends CopyOptions {
 }
 
 async function ensureValidCopy(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: InternalCopyOptions,
 ): Promise<Deno.FileInfo | undefined> {
   let destStat: Deno.FileInfo;
@@ -55,8 +55,8 @@ async function ensureValidCopy(
 }
 
 function ensureValidCopySync(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: InternalCopyOptions,
 ): Deno.FileInfo | undefined {
   let destStat: Deno.FileInfo;
@@ -83,8 +83,8 @@ function ensureValidCopySync(
 
 /* copy file to dest */
 async function copyFile(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: InternalCopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
@@ -98,8 +98,8 @@ async function copyFile(
 }
 /* copy file to dest synchronously */
 function copyFileSync(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: InternalCopyOptions,
 ): void {
   ensureValidCopySync(src, dest, options);
@@ -114,8 +114,8 @@ function copyFileSync(
 
 /* copy symlink to dest */
 async function copySymLink(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: InternalCopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
@@ -138,8 +138,8 @@ async function copySymLink(
 
 /* copy symlink to dest synchronously */
 function copySymlinkSync(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: InternalCopyOptions,
 ): void {
   ensureValidCopySync(src, dest, options);
@@ -163,8 +163,8 @@ function copySymlinkSync(
 
 /* copy folder from src to dest. */
 async function copyDir(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: CopyOptions,
 ): Promise<void> {
   const destStat = await ensureValidCopy(src, dest, {
@@ -197,7 +197,11 @@ async function copyDir(
 }
 
 /* copy folder from src to dest synchronously */
-function copyDirSync(src: string, dest: string, options: CopyOptions): void {
+function copyDirSync(
+  src: string | URL,
+  dest: string | URL,
+  options: CopyOptions,
+): void {
   const destStat = ensureValidCopySync(src, dest, {
     ...options,
     isFolder: true,
@@ -239,8 +243,8 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
  * @param options
  */
 export async function copy(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: CopyOptions = {},
 ): Promise<void> {
   src = path.resolve(src);
@@ -278,8 +282,8 @@ export async function copy(
  * @param options
  */
 export function copySync(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   options: CopyOptions = {},
 ): void {
   src = path.resolve(src);

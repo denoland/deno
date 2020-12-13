@@ -11,7 +11,10 @@ import { getFileInfoType } from "./_util.ts";
  * @param src the source file path. Directory hard links are not allowed.
  * @param dest the destination link path
  */
-export async function ensureLink(src: string, dest: string): Promise<void> {
+export async function ensureLink(
+  src: string | URL,
+  dest: string | URL,
+): Promise<void> {
   if (await exists(dest)) {
     const destStatInfo = await Deno.lstat(dest);
     const destFilePathType = getFileInfoType(destStatInfo);
@@ -35,7 +38,10 @@ export async function ensureLink(src: string, dest: string): Promise<void> {
  * @param src the source file path. Directory hard links are not allowed.
  * @param dest the destination link path
  */
-export function ensureLinkSync(src: string, dest: string): void {
+export function ensureLinkSync(
+  src: string | URL,
+  dest: string | URL,
+): void {
   if (existsSync(dest)) {
     const destStatInfo = Deno.lstatSync(dest);
     const destFilePathType = getFileInfoType(destStatInfo);

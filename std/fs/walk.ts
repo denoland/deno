@@ -5,7 +5,7 @@ import { assert } from "../_util/assert.ts";
 import { basename, join, normalize } from "../path/mod.ts";
 
 /** Create WalkEntry for the `path` synchronously */
-export function _createWalkEntrySync(path: string): WalkEntry {
+export function _createWalkEntrySync(path: string | URL): WalkEntry {
   path = normalize(path);
   const name = basename(path);
   const info = Deno.statSync(path);
@@ -19,7 +19,7 @@ export function _createWalkEntrySync(path: string): WalkEntry {
 }
 
 /** Create WalkEntry for the `path` asynchronously */
-export async function _createWalkEntry(path: string): Promise<WalkEntry> {
+export async function _createWalkEntry(path: string | URL): Promise<WalkEntry> {
   path = normalize(path);
   const name = basename(path);
   const info = await Deno.stat(path);
@@ -43,7 +43,7 @@ export interface WalkOptions {
 }
 
 function include(
-  path: string,
+  path: string | URL,
   exts?: string[],
   match?: RegExp[],
   skip?: RegExp[],
@@ -61,7 +61,7 @@ function include(
 }
 
 export interface WalkEntry extends Deno.DirEntry {
-  path: string;
+  path: string | URL;
 }
 
 /** Walks the file tree rooted at root, yielding each file or directory in the
@@ -85,7 +85,7 @@ export interface WalkEntry extends Deno.DirEntry {
  *       }
  */
 export async function* walk(
-  root: string,
+  root: string | URL,
   {
     maxDepth = Infinity,
     includeFiles = true,
@@ -137,7 +137,7 @@ export async function* walk(
 
 /** Same as walk() but uses synchronous ops */
 export function* walkSync(
-  root: string,
+  root: string | URL,
   {
     maxDepth = Infinity,
     includeFiles = true,

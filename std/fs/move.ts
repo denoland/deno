@@ -8,8 +8,8 @@ interface MoveOptions {
 
 /** Moves a file or directory */
 export async function move(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   { overwrite = false }: MoveOptions = {},
 ): Promise<void> {
   const srcStat = await Deno.stat(src);
@@ -37,8 +37,8 @@ export async function move(
 
 /** Moves a file or directory synchronously */
 export function moveSync(
-  src: string,
-  dest: string,
+  src: string | URL,
+  dest: string | URL,
   { overwrite = false }: MoveOptions = {},
 ): void {
   const srcStat = Deno.statSync(src);

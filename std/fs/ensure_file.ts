@@ -11,7 +11,7 @@ import { getFileInfoType } from "./_util.ts";
  * it is NOTMODIFIED.
  * Requires the `--allow-read` and `--allow-write` flag.
  */
-export async function ensureFile(filePath: string): Promise<void> {
+export async function ensureFile(filePath: string | URL): Promise<void> {
   try {
     // if file exists
     const stat = await Deno.lstat(filePath);
@@ -42,7 +42,7 @@ export async function ensureFile(filePath: string): Promise<void> {
  * it is NOT MODIFIED.
  * Requires the `--allow-read` and `--allow-write` flag.
  */
-export function ensureFileSync(filePath: string): void {
+export function ensureFileSync(filePath: string | URL): void {
   try {
     // if file exists
     const stat = Deno.lstatSync(filePath);
