@@ -107,7 +107,7 @@ fn op_set_raw(
     let handle_result = if let Some(mut fs_file) = fs_file_resource {
       let tokio_file = fs_file.0.take().unwrap();
       match tokio_file.try_into_std() {
-        Ok(mut std_file) => {
+        Ok(std_file) => {
           let raw_handle = std_file.as_raw_handle();
           // Turn the std_file handle back into a tokio file, put it back
           // in the resource table.
