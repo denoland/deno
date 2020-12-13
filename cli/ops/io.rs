@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(dead_code)]
-
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::metrics::metrics_op;
@@ -9,9 +7,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::futures::future::FutureExt;
-use deno_core::futures::ready;
 use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::CancelHandle;
@@ -22,15 +18,9 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::task::Context;
-use std::task::Poll;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
 use tokio_rustls::server::TlsStream as ServerTlsStream;
@@ -102,18 +92,6 @@ pub fn init(rt: &mut JsRuntime) {
   rt.register_op("op_write", metrics_op(minimal_op(op_write)));
 }
 
-pub fn get_stdio() -> (
-  Option<StreamResourceHolder>,
-  Option<StreamResourceHolder>,
-  Option<StreamResourceHolder>,
-) {
-  let stdin = get_stdio_stream(&STDIN_HANDLE);
-  let stdout = get_stdio_stream(&STDOUT_HANDLE);
-  let stderr = get_stdio_stream(&STDERR_HANDLE);
-
-  (stdin, stdout, stderr)
-}
-
 pub fn new_get_stdio() -> (
   Option<NewStreamResource>,
   Option<NewStreamResource>,
@@ -124,20 +102,6 @@ pub fn new_get_stdio() -> (
   let stderr = new_get_stdio_stream(&STDERR_HANDLE);
 
   (stdin, stdout, stderr)
-}
-
-fn get_stdio_stream(
-  handle: &Option<std::fs::File>,
-) -> Option<StreamResourceHolder> {
-  match handle {
-    None => None,
-    Some(file_handle) => match file_handle.try_clone() {
-      Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(
-        Some((tokio::fs::File::from_std(clone), FileMetadata::default())),
-      ))),
-      Err(_e) => None,
-    },
-  }
 }
 
 fn new_get_stdio_stream(
@@ -172,108 +136,6 @@ pub struct TTYMetadata {
 pub struct FileMetadata {
   pub tty: TTYMetadata,
 }
-
-pub struct StreamResourceHolder {
-  pub resource: StreamResource,
-  waker: HashMap<usize, futures::task::AtomicWaker>,
-  waker_counter: AtomicUsize,
-}
-
-impl StreamResourceHolder {
-  pub fn new(resource: StreamResource) -> StreamResourceHolder {
-    StreamResourceHolder {
-      resource,
-      // Atleast one task is expecter for the resource
-      waker: HashMap::with_capacity(1),
-      // Tracks wakers Ids
-      waker_counter: AtomicUsize::new(0),
-    }
-  }
-}
-
-impl Drop for StreamResourceHolder {
-  fn drop(&mut self) {
-    self.wake_tasks();
-  }
-}
-
-impl StreamResourceHolder {
-  pub fn track_task(&mut self, cx: &Context) -> Result<usize, AnyError> {
-    let waker = futures::task::AtomicWaker::new();
-    waker.register(cx.waker());
-    // Its OK if it overflows
-    let task_waker_id = self.waker_counter.fetch_add(1, Ordering::Relaxed);
-    self.waker.insert(task_waker_id, waker);
-    Ok(task_waker_id)
-  }
-
-  pub fn wake_tasks(&mut self) {
-    for waker in self.waker.values() {
-      waker.wake();
-    }
-  }
-
-  pub fn untrack_task(&mut self, task_waker_id: usize) {
-    self.waker.remove(&task_waker_id);
-  }
-}
-
-#[allow(dead_code)]
-pub enum StreamResource {
-  FsFile(Option<(tokio::fs::File, FileMetadata)>),
-  TcpStream(Option<tokio::net::TcpStream>),
-  #[cfg(not(windows))]
-  UnixStream(tokio::net::UnixStream),
-  ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
-  ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-  ChildStdin(tokio::process::ChildStdin),
-  ChildStdout(tokio::process::ChildStdout),
-  ChildStderr(tokio::process::ChildStderr),
-}
-
-trait UnpinAsyncRead: AsyncRead + Unpin {}
-trait UnpinAsyncWrite: AsyncWrite + Unpin {}
-
-impl<T: AsyncRead + Unpin> UnpinAsyncRead for T {}
-impl<T: AsyncWrite + Unpin> UnpinAsyncWrite for T {}
-
-/// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
-/// but uses an `AnyError` error instead of `std::io:Error`
-pub trait DenoAsyncRead {
-  fn poll_read(
-    &mut self,
-    cx: &mut Context,
-    buf: &mut [u8],
-  ) -> Poll<Result<usize, AnyError>>;
-}
-
-impl DenoAsyncRead for StreamResource {
-  fn poll_read(
-    &mut self,
-    cx: &mut Context,
-    buf: &mut [u8],
-  ) -> Poll<Result<usize, AnyError>> {
-    use StreamResource::*;
-    let f: &mut dyn UnpinAsyncRead = match self {
-      FsFile(Some((f, _))) => f,
-      FsFile(None) => return Poll::Ready(Err(resource_unavailable())),
-      TcpStream(Some(f)) => f,
-      #[cfg(not(windows))]
-      UnixStream(f) => f,
-      ClientTlsStream(f) => f,
-      ServerTlsStream(f) => f,
-      ChildStdout(f) => f,
-      ChildStderr(f) => f,
-      _ => return Err(bad_resource_id()).into(),
-    };
-    let v = ready!(Pin::new(f).poll_read(cx, buf))?;
-    Ok(v).into()
-  }
-}
-
-// pub enum NewStreamResource {
-//   // FsFile(Option<(tokio::fs::File, FileMetadata)>),
-// }
 
 #[derive(Default)]
 pub struct NewStreamResource {
@@ -671,66 +533,6 @@ pub fn op_read(
   }
 }
 
-/// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
-/// but uses an `AnyError` error instead of `std::io:Error`
-pub trait DenoAsyncWrite {
-  fn poll_write(
-    &mut self,
-    cx: &mut Context,
-    buf: &[u8],
-  ) -> Poll<Result<usize, AnyError>>;
-
-  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), AnyError>>;
-
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), AnyError>>;
-}
-
-impl DenoAsyncWrite for StreamResource {
-  fn poll_write(
-    &mut self,
-    cx: &mut Context,
-    buf: &[u8],
-  ) -> Poll<Result<usize, AnyError>> {
-    use StreamResource::*;
-    let f: &mut dyn UnpinAsyncWrite = match self {
-      FsFile(Some((f, _))) => f,
-      FsFile(None) => return Poll::Pending,
-      TcpStream(Some(f)) => f,
-      #[cfg(not(windows))]
-      UnixStream(f) => f,
-      ClientTlsStream(f) => f,
-      ServerTlsStream(f) => f,
-      ChildStdin(f) => f,
-      _ => return Err(bad_resource_id()).into(),
-    };
-
-    let v = ready!(Pin::new(f).poll_write(cx, buf))?;
-    Ok(v).into()
-  }
-
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), AnyError>> {
-    use StreamResource::*;
-    let f: &mut dyn UnpinAsyncWrite = match self {
-      FsFile(Some((f, _))) => f,
-      FsFile(None) => return Poll::Pending,
-      TcpStream(Some(f)) => f,
-      #[cfg(not(windows))]
-      UnixStream(f) => f,
-      ClientTlsStream(f) => f,
-      ServerTlsStream(f) => f,
-      ChildStdin(f) => f,
-      _ => return Err(bad_resource_id()).into(),
-    };
-
-    ready!(Pin::new(f).poll_flush(cx))?;
-    Ok(()).into()
-  }
-
-  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), AnyError>> {
-    unimplemented!()
-  }
-}
-
 pub fn op_write(
   state: Rc<RefCell<OpState>>,
   is_sync: bool,
@@ -774,64 +576,6 @@ pub fn op_write(
       }
       .boxed_local()
     })
-  }
-}
-
-/// Helper function for operating on a std::fs::File stored in the resource table.
-///
-/// We store file system file resources as tokio::fs::File, so this is a little
-/// utility function that gets a std::fs:File when you need to do blocking
-/// operations.
-///
-/// Returns ErrorKind::Busy if the resource is being used by another op.
-pub fn std_file_resource<F, T>(
-  state: &mut OpState,
-  rid: u32,
-  mut f: F,
-) -> Result<T, AnyError>
-where
-  F: FnMut(
-    Result<&mut std::fs::File, &mut StreamResource>,
-  ) -> Result<T, AnyError>,
-{
-  // First we look up the rid in the resource table.
-  let mut r = state.resource_table.get_mut::<StreamResourceHolder>(rid);
-  if let Some(ref mut resource_holder) = r {
-    // Sync write only works for FsFile. It doesn't make sense to do this
-    // for non-blocking sockets. So we error out if not FsFile.
-    match &mut resource_holder.resource {
-      StreamResource::FsFile(option_file_metadata) => {
-        // The object in the resource table is a tokio::fs::File - but in
-        // order to do a blocking write on it, we must turn it into a
-        // std::fs::File. Hopefully this code compiles down to nothing.
-        if let Some((tokio_file, metadata)) = option_file_metadata.take() {
-          match tokio_file.try_into_std() {
-            Ok(mut std_file) => {
-              let result = f(Ok(&mut std_file));
-              // Turn the std_file handle back into a tokio file, put it back
-              // in the resource table.
-              let tokio_file = tokio::fs::File::from_std(std_file);
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
-              // return the result.
-              result
-            }
-            Err(tokio_file) => {
-              // This function will return an error containing the file if
-              // some operation is in-flight.
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
-              Err(resource_unavailable())
-            }
-          }
-        } else {
-          Err(resource_unavailable())
-        }
-      }
-      _ => f(Err(&mut resource_holder.resource)),
-    }
-  } else {
-    Err(bad_resource_id())
   }
 }
 

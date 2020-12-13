@@ -307,14 +307,5 @@ pub fn op_close(
     .close(rid as u32)
     .ok_or_else(bad_resource_id)?;
 
-  // if rid >= 1000000 {
-  //   state
-  //     .resource_table_2
-  //     .close(rid as u32)
-  //     .ok_or_else(bad_resource_id)?;
-  // } else {
-
-  // }
-
   Ok(json!({}))
 }
