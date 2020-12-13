@@ -97,22 +97,23 @@ pub fn new_get_stdio() -> (
   Option<NewStreamResource>,
   Option<NewStreamResource>,
 ) {
-  let stdin = new_get_stdio_stream(&STDIN_HANDLE);
-  let stdout = new_get_stdio_stream(&STDOUT_HANDLE);
-  let stderr = new_get_stdio_stream(&STDERR_HANDLE);
+  let stdin = new_get_stdio_stream(&STDIN_HANDLE, "stdin");
+  let stdout = new_get_stdio_stream(&STDOUT_HANDLE, "stdout");
+  let stderr = new_get_stdio_stream(&STDERR_HANDLE, "stderr");
 
   (stdin, stdout, stderr)
 }
 
 fn new_get_stdio_stream(
   handle: &Option<std::fs::File>,
+  name: &str,
 ) -> Option<NewStreamResource> {
   match handle {
     None => None,
     Some(file_handle) => match file_handle.try_clone() {
       Ok(clone) => {
         let tokio_file = tokio::fs::File::from_std(clone);
-        Some(NewStreamResource::fs_file(tokio_file))
+        Some(NewStreamResource::stdio(tokio_file, name))
       }
       Err(_e) => None,
     },
@@ -159,6 +160,7 @@ pub struct NewStreamResource {
   server_tls_stream: Option<AsyncRefCell<ServerTlsStream<TcpStream>>>,
 
   cancel: CancelHandle,
+  name: String,
 }
 
 impl std::fmt::Debug for NewStreamResource {
@@ -168,12 +170,24 @@ impl std::fmt::Debug for NewStreamResource {
 }
 
 impl NewStreamResource {
+  pub fn stdio(fs_file: tokio::fs::File, name: &str) -> Self {
+    Self {
+      fs_file: Some(AsyncRefCell::new((
+        Some(fs_file),
+        Some(FileMetadata::default()),
+      ))),
+      name: name.to_string(),
+      ..Default::default()
+    }
+  }
+
   pub fn fs_file(fs_file: tokio::fs::File) -> Self {
     Self {
       fs_file: Some(AsyncRefCell::new((
         Some(fs_file),
         Some(FileMetadata::default()),
       ))),
+      name: "fsFile".to_string(),
       ..Default::default()
     }
   }
@@ -183,6 +197,7 @@ impl NewStreamResource {
     Self {
       tcp_stream_read: Some(AsyncRefCell::new(read_half)),
       tcp_stream_write: Some(AsyncRefCell::new(write_half)),
+      name: "tcpStream".to_string(),
       ..Default::default()
     }
   }
@@ -191,6 +206,7 @@ impl NewStreamResource {
   pub fn unix_stream(unix_stream: tokio::net::UnixStream) -> Self {
     Self {
       unix_stream: Some(AsyncRefCell::new(unix_stream)),
+      name: "unixStream".to_string(),
       ..Default::default()
     }
   }
@@ -198,6 +214,7 @@ impl NewStreamResource {
   pub fn child_stdout(child: tokio::process::ChildStdout) -> Self {
     Self {
       child_stdout: Some(AsyncRefCell::new(child)),
+      name: "childStdout".to_string(),
       ..Default::default()
     }
   }
@@ -205,6 +222,7 @@ impl NewStreamResource {
   pub fn child_stderr(child: tokio::process::ChildStderr) -> Self {
     Self {
       child_stderr: Some(AsyncRefCell::new(child)),
+      name: "childStderr".to_string(),
       ..Default::default()
     }
   }
@@ -212,6 +230,7 @@ impl NewStreamResource {
   pub fn child_stdin(child: tokio::process::ChildStdin) -> Self {
     Self {
       child_stdin: Some(AsyncRefCell::new(child)),
+      name: "childStdin".to_string(),
       ..Default::default()
     }
   }
@@ -219,6 +238,7 @@ impl NewStreamResource {
   pub fn client_tls_stream(stream: ClientTlsStream<TcpStream>) -> Self {
     Self {
       client_tls_stream: Some(AsyncRefCell::new(stream)),
+      name: "clientTlsStream".to_string(),
       ..Default::default()
     }
   }
@@ -226,6 +246,7 @@ impl NewStreamResource {
   pub fn server_tls_stream(stream: ServerTlsStream<TcpStream>) -> Self {
     Self {
       server_tls_stream: Some(AsyncRefCell::new(stream)),
+      name: "serverTlsStream".to_string(),
       ..Default::default()
     }
   }
@@ -458,28 +479,7 @@ impl NewStreamResource {
 
 impl Resource for NewStreamResource {
   fn name(&self) -> Cow<str> {
-    #[cfg(not(windows))]
-    if self.unix_stream.is_some() {
-      return "unixStream".into();
-    }
-
-    if self.fs_file.is_some() {
-      "fsFile".into()
-    } else if self.child_stdout.is_some() {
-      "childStdout".into()
-    } else if self.child_stderr.is_some() {
-      "childStderr".into()
-    } else if self.child_stdin.is_some() {
-      "childStdin".into()
-    } else if self.tcp_stream_read.is_some() {
-      "tcpStream".into()
-    } else if self.client_tls_stream.is_some() {
-      "clientTlsStream".into()
-    } else if self.server_tls_stream.is_some() {
-      "serverTlsStream".into()
-    } else {
-      "<todo>".into()
-    }
+    self.name.clone().into()
   }
 
   fn close(self: Rc<Self>) {
