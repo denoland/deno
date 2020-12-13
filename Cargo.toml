@@ -4,7 +4,7 @@
 members = [
   "cli",
   "core",
-  "deno_runtime",
+  "runtime",
   "test_plugin",
   "test_util",
   "op_crates/fetch",
