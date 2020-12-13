@@ -18,8 +18,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::process::Command;
 
-#[cfg(not(unix))]
-use deno_core::error::last_os_error;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
@@ -245,6 +243,7 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
 
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
+  use std::io::Error::last_os_error;
   match signal {
     SIGINT | SIGKILL | SIGTERM => {
       if pid <= 0 {
