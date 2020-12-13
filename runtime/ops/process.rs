@@ -252,14 +252,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
       unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
         if handle.is_null() {
-          return Err(Error::last_os_error());
+          return Err(Error::last_os_error().into());
         }
         if TerminateProcess(handle, 1) == 0 {
           CloseHandle(handle);
-          return Err(Error::last_os_error());
+          return Err(Error::last_os_error().into());
         }
         if CloseHandle(handle) == 0 {
-          return Err(Error::last_os_error());
+          return Err(Error::last_os_error().into());
         }
       }
     }

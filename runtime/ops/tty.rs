@@ -131,7 +131,7 @@ fn op_set_raw(
     };
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(Error::last_os_error(), into());
+      return Err(Error::last_os_error().into());
     } else if handle.is_null() {
       return Err(custom_error("ReferenceError", "null handle"));
     }
