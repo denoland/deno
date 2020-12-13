@@ -44,7 +44,10 @@ impl CliModuleLoader {
     })
   }
 
-  pub fn new_for_worker(program_state: Arc<ProgramState>, permissions: Permissions) -> Rc<Self> {
+  pub fn new_for_worker(
+    program_state: Arc<ProgramState>,
+    permissions: Permissions,
+  ) -> Rc<Self> {
     let lib = if program_state.flags.unstable {
       TypeLib::UnstableDenoWorker
     } else {
@@ -121,12 +124,13 @@ impl ModuleLoader for CliModuleLoader {
     let state = op_state.borrow();
 
     // The permissions that should be applied to any dynamically imported module
-    let dynamic_permissions = if let Some(permissions) = self.permissions.as_ref().take() {
-      permissions.clone()
-    } else {
-      //Thread assigned permissions
-      state.borrow::<Permissions>().clone()
-    };
+    let dynamic_permissions =
+      if let Some(permissions) = self.permissions.as_ref().take() {
+        permissions.clone()
+      } else {
+        //Thread assigned permissions
+        state.borrow::<Permissions>().clone()
+      };
 
     let lib = self.lib.clone();
     drop(state);

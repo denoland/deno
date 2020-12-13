@@ -458,7 +458,10 @@ fn op_create_worker(
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno");
   }
-  let worker_permissions = create_worker_permissions(state.borrow::<Permissions>().clone(), args.permissions)?;
+  let worker_permissions = create_worker_permissions(
+    state.borrow::<Permissions>().clone(),
+    args.permissions,
+  )?;
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
