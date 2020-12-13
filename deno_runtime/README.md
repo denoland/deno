@@ -3,37 +3,9 @@
 [![crates](https://img.shields.io/crates/v/deno_runtime.svg)](https://crates.io/crates/deno_runtime)
 [![docs](https://docs.rs/deno_runtime/badge.svg)](https://docs.rs/deno_runtime)
 
-This crate provides implementation of `Deno` runtime based on Tokio.
-
-It's comprised of few major parts:
-
-- runtime implementation consisting of:
-  - JavaScript code, in `rt/` directory, that implements `Deno` APIs (eg.
-    `Deno.listen()`)
-  - Web APIs from `deno_web`, `deno_crypto` and `deno_fetch` crates
-  - Rust code, in `ops/` module, that implements ops for `Deno` APIs (eg.
-    `op_listen`)
-  - cargo build script (`build.rs`), that creates a V8 snapshot of the runtime
-    code for fast startup
-- permission checker implementation
-- V8 inspector and debugger support
-
-This crate doesn't support TypeScript out-of-the-box.
-
-It is possible to provide TS support using `module_loader` property on
-`WorkerOptions`, for more details see the
-[CLI](https://github.com/denoland/deno/tree/master/cli) crate.
-
-As a consequence following `Deno` JavaScript APIs have no corresponding op
-implementation in Rust:
-
-- `Deno.applySourceMaps`
-- `Deno.bundle`
-- `Deno.compile`
-- `Deno.formatDiagnostics`
-
-Op implementation for these APIs can be found in
-[CLI](https://github.com/denoland/deno/tree/master/cli).
+This is a slim version of the Deno CLI which removes typescript integration and
+various tooling (like lint and doc). Basically only JavaScript execution with
+Deno's operating system bindings (ops).
 
 ## Stability
 
@@ -42,10 +14,9 @@ crate, however the API of this crate is subject to rapid and breaking changes.
 
 ## `MainWorker`
 
-The main API of this crate is `MainWorker`.
-
-`MainWorker` is a structure encapsulating `deno_core::JsRuntime` with a set of
-ops used to implement `Deno` namespace.
+The main API of this crate is `MainWorker`. `MainWorker` is a structure
+encapsulating `deno_core::JsRuntime` with a set of ops used to implement `Deno`
+namespace.
 
 When creating a `MainWorker` implementors must call `MainWorker::bootstrap` to
 prepare JS runtime for use.
@@ -62,9 +33,8 @@ runtime's properties:
 
 ## `Worker` Web API
 
-`deno_runtime` comes with a built-in support for `Worker` Web API.
-
-The `Worker` API is implemented using `WebWorker` structure.
+`deno_runtime` comes with support for `Worker` Web API. The `Worker` API is
+implemented using `WebWorker` structure.
 
 When creating a new instance of `MainWorker` implementors must provide a
 callback function that is used when creating a new instance of `Worker`.
