@@ -1,10 +1,7 @@
 use crate::colors;
 use crate::flags::Flags;
-use crate::permissions::Permissions;
 use crate::tokio_util;
 use crate::version;
-use crate::worker::MainWorker;
-use crate::worker::WorkerOptions;
 use deno_core::error::bail;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -12,6 +9,9 @@ use deno_core::futures::FutureExt;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::permissions::Permissions;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::worker::WorkerOptions;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env::current_exe;
@@ -135,6 +135,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     runtime_version: version::deno(),
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
+    get_error_class_fn: Some(&crate::errors::get_error_class_name),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

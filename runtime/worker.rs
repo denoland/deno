@@ -13,6 +13,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
@@ -61,6 +62,7 @@ pub struct WorkerOptions {
   pub ts_version: String,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
+  pub get_error_class_fn: Option<GetErrorClassFn>,
 }
 
 impl MainWorker {
@@ -73,7 +75,7 @@ impl MainWorker {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
-      get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      get_error_class_fn: options.get_error_class_fn,
       ..Default::default()
     });
 
@@ -108,7 +110,11 @@ impl MainWorker {
       }
 
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(js_runtime, options.ca_filepath.as_deref());
+      ops::fetch::init(
+        js_runtime,
+        options.user_agent.clone(),
+        options.ca_filepath.as_deref(),
+      );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
@@ -274,6 +280,7 @@ mod tests {
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
       no_color: true,
+      get_error_class_fn: None,
     };
 
     MainWorker::from_options(main_module, permissions, &options)
