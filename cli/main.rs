@@ -106,6 +106,7 @@ impl From<Flags> for PermissionsOptions {
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
+  parent_thread_permissions: Permissions,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let global_state_ = program_state.clone();
@@ -119,9 +120,12 @@ fn create_web_worker_callback(
       || program_state.flags.coverage;
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone(), args.permissions.clone());
+    let module_loader = CliModuleLoader::new_for_worker(
+      program_state.clone(),
+      parent_thread_permissions.clone(),
+    );
     let create_web_worker_cb =
-      create_web_worker_callback(program_state.clone());
+      create_web_worker_callback(program_state.clone(), args.permissions.clone());
 
     let options = WebWorkerOptions {
       args: program_state.flags.argv.clone(),
@@ -197,7 +201,10 @@ pub fn create_main_worker(
   let should_break_on_first_statement =
     program_state.flags.inspect_brk.is_some();
 
-  let create_web_worker_cb = create_web_worker_callback(program_state.clone());
+  let create_web_worker_cb = create_web_worker_callback(
+    program_state.clone(), 
+    permissions.clone()
+  );
 
   let options = WorkerOptions {
     apply_source_maps: true,

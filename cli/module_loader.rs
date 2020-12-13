@@ -121,9 +121,10 @@ impl ModuleLoader for CliModuleLoader {
     let state = op_state.borrow();
 
     // The permissions that should be applied to any dynamically imported module
-    let dynamic_permissions = if self.permissions.is_some() {
-      self.permissions.clone().unwrap()
+    let dynamic_permissions = if let Some(permissions) = self.permissions.as_ref().take() {
+      permissions.clone()
     } else {
+      //Thread assigned permissions
       state.borrow::<Permissions>().clone()
     };
 
