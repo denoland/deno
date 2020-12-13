@@ -20,9 +20,9 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.70.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.13.0" }
-deno_web = { path = "../op_crates/web", version = "0.21.0" }
+deno_core = { path = "../core", version = "0.71.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.14.0" }
+deno_web = { path = "../op_crates/web", version = "0.22.0" }
 regex = "1.3.9"
 serde = { version = "1.0.116", features = ["derive"] }
 
@@ -31,7 +31,7 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.70.0" }
+deno_core = { path = "../core", version = "0.71.0" }
 deno_doc = "0.1.18"
 deno_lint = "0.2.13"
 deno_runtime = { path = "../runtime", version = "0.1.0" }
