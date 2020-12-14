@@ -252,11 +252,17 @@ impl StreamResource {
   }
 
   async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    // TODO(bartlomieju): in the future, it would be better for `StreamResource`
+    // to be an enum instead a struct with many `Option` fields, however I
+    // wasn't able to get it to work with `AsyncRefCell`s.
     if self.fs_file.is_some() {
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
       debug_assert!(self.tcp_stream_read.is_none());
       debug_assert!(self.tcp_stream_write.is_none());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.server_tls_stream.is_none());
+      debug_assert!(self.client_tls_stream.is_none());
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
@@ -269,13 +275,13 @@ impl StreamResource {
         .try_or_cancel(cancel)
         .await?;
       return Ok(nwritten);
-    }
-
-    if self.child_stdout.is_some() {
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.child_stdout.is_some() {
       debug_assert!(self.tcp_stream_read.is_none());
       debug_assert!(self.tcp_stream_write.is_none());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.server_tls_stream.is_none());
+      debug_assert!(self.client_tls_stream.is_none());
       let mut child_stdout =
         RcRef::map(&self, |r| r.child_stdout.as_ref().unwrap())
           .borrow_mut()
@@ -283,13 +289,12 @@ impl StreamResource {
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nread = (&mut *child_stdout).read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
-    }
-
-    if self.child_stderr.is_some() {
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
+    } else if self.child_stderr.is_some() {
       debug_assert!(self.tcp_stream_read.is_none());
       debug_assert!(self.tcp_stream_write.is_none());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.server_tls_stream.is_none());
+      debug_assert!(self.client_tls_stream.is_none());
       let mut child_stderr =
         RcRef::map(&self, |r| r.child_stderr.as_ref().unwrap())
           .borrow_mut()
@@ -297,13 +302,9 @@ impl StreamResource {
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nread = (&mut *child_stderr).read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
-    }
-
-    if self.tcp_stream_read.is_some() {
-      debug_assert!(self.tcp_stream_write.is_some());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.tcp_stream_read.is_some() {
+      debug_assert!(self.server_tls_stream.is_none());
+      debug_assert!(self.client_tls_stream.is_none());
       let mut tcp_stream_read =
         RcRef::map(&self, |r| r.tcp_stream_read.as_ref().unwrap())
           .borrow_mut()
@@ -314,13 +315,8 @@ impl StreamResource {
         .try_or_cancel(cancel)
         .await?;
       return Ok(nread);
-    }
-
-    if self.client_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_write.is_none());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.client_tls_stream.is_some() {
+      debug_assert!(self.server_tls_stream.is_none());
       let mut client_tls_stream =
         RcRef::map(&self, |r| r.client_tls_stream.as_ref().unwrap())
           .borrow_mut()
@@ -331,13 +327,7 @@ impl StreamResource {
         .try_or_cancel(cancel)
         .await?;
       return Ok(nread);
-    }
-
-    if self.server_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_write.is_none());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.server_tls_stream.is_some() {
       let mut server_tls_stream =
         RcRef::map(&self, |r| r.server_tls_stream.as_ref().unwrap())
           .borrow_mut()
@@ -352,11 +342,6 @@ impl StreamResource {
 
     #[cfg(not(windows))]
     if self.unix_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
       let mut unix_stream =
         RcRef::map(&self, |r| r.unix_stream.as_ref().unwrap())
           .borrow_mut()
@@ -370,11 +355,17 @@ impl StreamResource {
   }
 
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+    // TODO(bartlomieju): in the future, it would be better for `StreamResource`
+    // to be an enum instead a struct with many `Option` fields, however I
+    // wasn't able to get it to work with `AsyncRefCell`s.
     if self.fs_file.is_some() {
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
       debug_assert!(self.tcp_stream_read.is_none());
       debug_assert!(self.tcp_stream_write.is_none());
+      debug_assert!(self.child_stdin.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.server_tls_stream.is_none());
+      debug_assert!(self.client_tls_stream.is_none());
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
@@ -388,13 +379,13 @@ impl StreamResource {
         .await?;
       (*fs_file).0.as_mut().unwrap().flush().await?;
       return Ok(nwritten);
-    }
-
-    if self.child_stdin.is_some() {
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.child_stdin.is_some() {
       debug_assert!(self.tcp_stream_read.is_none());
       debug_assert!(self.tcp_stream_write.is_none());
+      debug_assert!(self.child_stdout.is_none());
+      debug_assert!(self.child_stderr.is_none());
+      debug_assert!(self.server_tls_stream.is_none());
+      debug_assert!(self.client_tls_stream.is_none());
       let mut child_stdin =
         RcRef::map(&self, |r| r.child_stdin.as_ref().unwrap())
           .borrow_mut()
@@ -404,13 +395,9 @@ impl StreamResource {
         (&mut *child_stdin).write(buf).try_or_cancel(cancel).await?;
       (&mut *child_stdin).flush().await?;
       return Ok(nwritten);
-    }
-
-    if self.tcp_stream_write.is_some() {
-      debug_assert!(self.tcp_stream_read.is_some());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.tcp_stream_write.is_some() {
+      debug_assert!(self.server_tls_stream.is_none());
+      debug_assert!(self.client_tls_stream.is_none());
       let mut tcp_stream_write =
         RcRef::map(&self, |r| r.tcp_stream_write.as_ref().unwrap())
           .borrow_mut()
@@ -422,14 +409,8 @@ impl StreamResource {
         .await?;
       (&mut *tcp_stream_write).flush().await?;
       return Ok(nwritten);
-    }
-
-    if self.client_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.client_tls_stream.is_some() {
+      debug_assert!(self.server_tls_stream.is_none());
       let mut client_tls_stream =
         RcRef::map(&self, |r| r.client_tls_stream.as_ref().unwrap())
           .borrow_mut()
@@ -441,14 +422,7 @@ impl StreamResource {
         .await?;
       (&mut *client_tls_stream).flush().await?;
       return Ok(nwritten);
-    }
-
-    if self.server_tls_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
+    } else if self.server_tls_stream.is_some() {
       let mut server_tls_stream =
         RcRef::map(&self, |r| r.server_tls_stream.as_ref().unwrap())
           .borrow_mut()
@@ -464,11 +438,6 @@ impl StreamResource {
 
     #[cfg(not(windows))]
     if self.unix_stream.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
-      debug_assert!(self.child_stdin.is_none());
-      debug_assert!(self.child_stdout.is_none());
-      debug_assert!(self.child_stderr.is_none());
       let mut unix_stream =
         RcRef::map(&self, |r| r.unix_stream.as_ref().unwrap())
           .borrow_mut()
