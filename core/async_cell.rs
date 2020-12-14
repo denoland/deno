@@ -52,12 +52,13 @@ impl<T: 'static> AsyncRefCell<T> {
     self.value.get()
   }
 
+  /// Returns value of this cell if there are no outstanding borrows.
   pub fn try_unwrap(self) -> Result<T, AsyncRefCell<T>> {
-    // FIXME(Bartlomieju)
-    Ok(self.value.into_inner())
-    // if self.borrow_count.get() == 0 && self.waiters.get().len() == 0 {
-    // }
-    // Err(self)
+    if self.borrow_count.get().is_empty() {
+      Ok(self.value.into_inner())
+    } else {
+      Err(self)
+    }
   }
 }
 
