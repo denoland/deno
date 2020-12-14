@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright Node.js contributors. All rights reserved. MIT License.
 import { existsSync } from "./_fs_exists.ts";
 import {
   ERR_INVALID_CALLBACK,
