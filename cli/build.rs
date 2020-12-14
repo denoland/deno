@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::build_util::create_snapshot;
-use deno_core::build_util::get_js_files;
 use deno_core::error::custom_error;
 use deno_core::json_op_sync;
 use deno_core::serde_json;
@@ -14,6 +12,35 @@ use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
+
+// TODO(bartlomieju): this module contains a lot of duplicated
+// logic with `runtime/build.rs`, factor out to `deno_core`.
+fn create_snapshot(
+  mut js_runtime: JsRuntime,
+  snapshot_path: &Path,
+  files: Vec<PathBuf>,
+) {
+  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
+  // workspace root.
+  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+  for file in files {
+    println!("cargo:rerun-if-changed={}", file.display());
+    let display_path = file.strip_prefix(display_root).unwrap();
+    let display_path_str = display_path.display().to_string();
+    js_runtime
+      .execute(
+        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+        &std::fs::read_to_string(&file).unwrap(),
+      )
+      .unwrap();
+  }
+
+  let snapshot = js_runtime.snapshot();
+  let snapshot_slice: &[u8] = &*snapshot;
+  println!("Snapshot size: {}", snapshot_slice.len());
+  std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+  println!("Snapshot written to: {} ", snapshot_path.display());
+}
 
 #[derive(Debug, Deserialize)]
 struct LoadArgs {
@@ -231,7 +258,7 @@ fn main() {
   // Main snapshot
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
-  let js_files = get_js_files(&c.join("tsc"));
+  let js_files = get_js_files("tsc");
   create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
 
   #[cfg(target_os = "windows")]
@@ -244,4 +271,18 @@ fn main() {
     ));
     res.compile().unwrap();
   }
+}
+
+fn get_js_files(d: &str) -> Vec<PathBuf> {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  let mut js_files = std::fs::read_dir(d)
+    .unwrap()
+    .map(|dir_entry| {
+      let file = dir_entry.unwrap();
+      manifest_dir.join(file.path())
+    })
+    .filter(|path| path.extension().unwrap_or_default() == "js")
+    .collect::<Vec<PathBuf>>();
+  js_files.sort();
+  js_files
 }
