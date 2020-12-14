@@ -113,6 +113,7 @@ impl CacheSetting {
 
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
+  debug!("FileFetcher::fetch_local() - specifier: {}", specifier);
   let local = specifier.as_url().to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {}", specifier))
   })?;

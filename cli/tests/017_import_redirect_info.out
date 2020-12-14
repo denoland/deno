@@ -1,6 +1,6 @@
 local: [WILDCARD]017_import_redirect.ts
 type: TypeScript
-deps: 1 unique (total [WILDCARD]B)
+deps: 2 unique (total [WILDCARD]B)
 
 file:///[WILDCARD]cli/tests/017_import_redirect.ts ([WILDCARD])
 └── http://gist.githubusercontent.com/ry/f12b2aa3409e6b52645bc346a9e22929/raw/79318f239f51d764384a8bded8d7c6a833610dde/print_hello.ts ([WILDCARD])
