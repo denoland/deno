@@ -1021,7 +1021,7 @@ async fn test_command(
   // If the actual coverage flag is set, we set the environment variable so that subprocesses will
   // forward it.
   if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_COVERAGE_DIR", coverage_dir);
+    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
   }
 
   let mut maybe_coverage_collector =
