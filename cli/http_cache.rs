@@ -4,7 +4,7 @@
 /// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
 /// Currently it's a very simplified version to fulfill Deno needs
 /// at hand.
-use crate::fs as deno_fs;
+use crate::fs_util;
 use crate::http_util::HeadersMap;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -72,7 +72,7 @@ pub fn url_to_filename(url: &Url) -> PathBuf {
   cache_filename
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HttpCache {
   pub location: PathBuf,
 }
@@ -87,7 +87,7 @@ impl Metadata {
   pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
     let metadata_filename = Self::filename(cache_filename);
     let json = serde_json::to_string_pretty(self)?;
-    deno_fs::write_file(&metadata_filename, json, CACHE_PERM)?;
+    fs_util::write_file(&metadata_filename, json, CACHE_PERM)?;
     Ok(())
   }
 
@@ -161,7 +161,7 @@ impl HttpCache {
       .expect("Cache filename should have a parent dir");
     self.ensure_dir_exists(parent_filename)?;
     // Cache content
-    deno_fs::write_file(&cache_filename, content, CACHE_PERM)?;
+    fs_util::write_file(&cache_filename, content, CACHE_PERM)?;
 
     let metadata = Metadata {
       url: url.to_string(),

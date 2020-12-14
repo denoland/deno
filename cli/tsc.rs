@@ -47,6 +47,7 @@ fn get_asset(asset: &str) -> Option<&'static str> {
     "lib.webworker.importscripts.d.ts" => {
       inc!("lib.webworker.importscripts.d.ts")
     }
+    "lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
     _ => None,
   }
 }
@@ -283,12 +284,12 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ResolveArgs {
+pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
-  base: String,
+  pub base: String,
   /// A list of specifiers that should be resolved.
-  specifiers: Vec<String>,
+  pub specifiers: Vec<String>,
 }
 
 fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {

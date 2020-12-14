@@ -44,8 +44,7 @@ const {
   keys: ObjectKeys,
 } = Object;
 
-import { codes } from "./_errors.ts";
-const { ERR_INVALID_ARG_TYPE } = codes;
+import { ERR_INVALID_ARG_TYPE } from "./_errors.ts";
 
 let blue = "";
 let green = "";

@@ -10,6 +10,7 @@ Deno.test("[examples/cat] print multiple files", async () => {
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-read",
       "cat.ts",
       "testdata/cat/hello.txt",

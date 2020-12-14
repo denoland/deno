@@ -8,7 +8,7 @@ Deno.test({
   name: "ASYNC: removing empty folder",
   async fn() {
     const dir = Deno.makeTempDirSync();
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       rmdir(dir, (err) => {
         if (err) reject(err);
         resolve();
@@ -52,7 +52,7 @@ Deno.test({
     Deno.createSync(join(dir, "file2.txt"));
     Deno.mkdirSync(join(dir, "some_dir"));
     Deno.createSync(join(dir, "some_dir", "file.txt"));
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       rmdir(dir, { recursive: true }, (err) => {
         if (err) reject(err);
         resolve();

@@ -66,7 +66,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.47.0
+          rust-version: 1.48.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -101,6 +101,41 @@ jobs:
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
 
+      - name: Setup gcloud (unix)
+        if: |
+          runner.os != 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Setup gcloud (windows)
+        if: |
+          runner.os == 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        uses: google-github-actions/setup-gcloud@master
+        env:
+          CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Configure canary build
+        if: |
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        shell: bash
+        run: |
+          echo "DENO_CANARY=true" >> $GITHUB_ENV
+
       - name: Log versions
         run: |
           node -v
@@ -127,13 +162,64 @@ jobs:
         if: matrix.kind == 'test_debug'
         run: cargo build --locked --all-targets
 
+      - name: Pre-release (linux)
+        if: |
+          startsWith(matrix.os, 'ubuntu') &&
+          matrix.kind == 'test_release'
+        run: |
+          cd target/release
+          zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          ./deno types > lib.deno.d.ts
+
+      - name: Pre-release (mac)
+        if: |
+          startsWith(matrix.os, 'macOS') &&
+          matrix.kind == 'test_release'
+        run: |
+          cd target/release
+          zip -r deno-x86_64-apple-darwin.zip deno
+
+      - name: Pre-release (windows)
+        if: |
+          startsWith(matrix.os, 'windows') &&
+          matrix.kind == 'test_release'
+        run: |
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
+
+      - name: Upload canary (unix)
+        if: |
+          runner.os != 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        run: |
+          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          echo $(git rev-parse HEAD) > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
+      - name: Upload canary (windows)
+        if: |
+          runner.os == 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        env:
+          CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
+        shell: bash
+        run: |
+          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          echo $(git rev-parse HEAD) > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
       - name: Test release
         if: matrix.kind == 'test_release'
         run: cargo test --release --locked --all-targets
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
-        run: cargo test --locked --all-targets
+        run: |
+          cargo test --locked --doc
+          cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
@@ -162,31 +248,7 @@ jobs:
           cat /proc/cpuinfo
           cat /proc/meminfo
 
-      - name: Pre-release (linux)
-        if: |
-          startsWith(matrix.os, 'ubuntu') &&
-          matrix.kind == 'test_release'
-        run: |
-          cd target/release
-          zip -r deno-x86_64-unknown-linux-gnu.zip deno
-          ./deno types > lib.deno.d.ts
-
-      - name: Pre-release (mac)
-        if: |
-          startsWith(matrix.os, 'macOS') &&
-          matrix.kind == 'test_release'
-        run: |
-          cd target/release
-          zip -r deno-x86_64-apple-darwin.zip deno
-
-      - name: Pre-release (windows)
-        if: |
-          startsWith(matrix.os, 'windows') &&
-          matrix.kind == 'test_release'
-        run: |
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
-
-      - name: Release
+      - name: Release stable
         uses: softprops/action-gh-release@v1
         if: |
           matrix.kind == 'test_release' &&
@@ -214,18 +276,5 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cd core
-          cargo publish
-          sleep 30
-          cd ../op_crates/web
-          cargo publish
-          sleep 30
-          cd ../fetch
-          cargo publish
-          sleep 30
-          cd ../crypto
-          cargo publish
-          sleep 30
-          cd ../../cli
-          sleep 30
+          cd cli
           cargo publish

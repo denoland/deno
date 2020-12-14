@@ -1,7 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { fromStreamReader, fromStreamWriter } from "./streams.ts";
+import {
+  readableStreamFromAsyncIterator,
+  readerFromStreamReader,
+  writableStreamFromWriter,
+  writerFromStreamWriter,
+} from "./streams.ts";
 
 function repeat(c: string, bytes: number): Uint8Array {
   assertEquals(c.length, 1);
@@ -21,7 +26,7 @@ Deno.test("toWriterCheck", async function (): Promise<void> {
   });
 
   const encoder = new TextEncoder();
-  const writer = fromStreamWriter(writableStream.getWriter());
+  const writer = writerFromStreamWriter(writableStream.getWriter());
 
   for (const chunk of chunks) {
     const n = await writer.write(encoder.encode(chunk));
@@ -46,7 +51,7 @@ Deno.test("toReaderCheck", async function (): Promise<void> {
   });
 
   const decoder = new TextDecoder();
-  const reader = fromStreamReader(readableStream.getReader());
+  const reader = readerFromStreamReader(readableStream.getReader());
 
   let i = 0;
 
@@ -91,7 +96,7 @@ Deno.test("toReaderBigChunksCheck", async function (): Promise<void> {
     },
   });
 
-  const reader = fromStreamReader(readableStream.getReader());
+  const reader = readerFromStreamReader(readableStream.getReader());
   const n = await Deno.copy(reader, writer, { bufSize });
 
   const expectedWritten = chunkSize * expected.length;
@@ -126,9 +131,59 @@ Deno.test("toReaderBigIrregularChunksCheck", async function (): Promise<void> {
     },
   });
 
-  const reader = fromStreamReader(readableStream.getReader());
+  const reader = readerFromStreamReader(readableStream.getReader());
 
   const n = await Deno.copy(reader, writer, { bufSize });
   assertEquals(n, expected.length);
   assertEquals(expected, writer.bytes());
+});
+
+Deno.test("toWritableCheck", async function (): Promise<void> {
+  const written: string[] = [];
+  const chunks: string[] = ["hello", "deno", "land"];
+  const decoder = new TextDecoder();
+
+  // deno-lint-ignore require-await
+  async function write(p: Uint8Array): Promise<number> {
+    written.push(decoder.decode(p));
+    return p.length;
+  }
+
+  const writableStream = writableStreamFromWriter({ write });
+
+  const encoder = new TextEncoder();
+  const streamWriter = writableStream.getWriter();
+  for (const chunk of chunks) {
+    await streamWriter.write(encoder.encode(chunk));
+  }
+
+  assertEquals(written, chunks);
+});
+
+Deno.test("toReadableCheck", async function (): Promise<void> {
+  const chunks: string[] = ["hello", "deno", "land"];
+  const expected = chunks.slice();
+  const readChunks: string[] = [];
+  const encoder = new TextEncoder();
+
+  // deno-lint-ignore require-await
+  async function read(p: Uint8Array): Promise<number | null> {
+    const chunk = chunks.shift();
+    if (chunk === undefined) {
+      return null;
+    } else {
+      const encoded = encoder.encode(chunk);
+      p.set(encoded);
+      return encoded.length;
+    }
+  }
+  const iter = Deno.iter({ read });
+  const writableStream = readableStreamFromAsyncIterator(iter);
+
+  const decoder = new TextDecoder();
+  for await (const chunk of writableStream.getIterator()) {
+    readChunks.push(decoder.decode(chunk));
+  }
+
+  assertEquals(expected, readChunks);
 });

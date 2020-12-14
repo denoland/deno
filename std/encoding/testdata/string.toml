@@ -32,3 +32,5 @@ trimmed in raw strings.
 withApostrophe = "What if it's not?"
 withSemicolon = "const message = 'hello world';"
 withHexNumberLiteral = "Prevent bug from stripping string here ->0xabcdef"
+withUnicodeChar1 = "\u3042"
+withUnicodeChar2 = "Deno\U01F995"

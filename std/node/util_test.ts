@@ -220,3 +220,28 @@ Deno.test({
     }
   },
 });
+
+Deno.test("[util] deprecate", () => {
+  const warn = console.warn.bind(null);
+
+  let output;
+  console.warn = function (str: string) {
+    output = str;
+    warn(output);
+  };
+
+  const message = "x is deprecated";
+
+  const expected = 12;
+  let result;
+  const x = util.deprecate(() => {
+    result = expected;
+  }, message);
+
+  x();
+
+  assertEquals(expected, result);
+  assertEquals(output, message);
+
+  console.warn = warn;
+});
