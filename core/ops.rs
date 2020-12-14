@@ -4,6 +4,8 @@ use crate::error::bad_resource_id;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
+use crate::resources::ResourceTable;
+use crate::runtime::GetErrorClassFn;
 use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
@@ -33,9 +35,9 @@ pub enum Op {
 
 /// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
-  pub resource_table_2: crate::resources2::ResourceTable,
+  pub resource_table_2: ResourceTable,
   pub op_table: OpTable,
-  pub get_error_class_fn: crate::runtime::GetErrorClassFn,
+  pub get_error_class_fn: GetErrorClassFn,
   gotham_state: GothamState,
 }
 

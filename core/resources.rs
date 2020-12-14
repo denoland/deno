@@ -56,10 +56,6 @@ impl dyn Resource {
 // TODO: use `u64` instead?
 pub type ResourceId = u32;
 
-/// Temporary alias for `crate::resources2::ResourceTable`.
-// TODO: remove this when the old `ResourceTable` is obsolete.
-pub type ResourceTable2 = ResourceTable;
-
 /// Map-like data structure storing Deno's resources (equivalent to file
 /// descriptors).
 ///
@@ -133,8 +129,8 @@ impl ResourceTable {
   /// # Example
   ///
   /// ```
-  /// # use deno_core::ResourceTable2;
-  /// # let resource_table = ResourceTable2::default();
+  /// # use deno_core::ResourceTable;
+  /// # let resource_table = ResourceTable::default();
   /// let resource_names = resource_table.names().collect::<Vec<_>>();
   /// ```
   pub fn names(&self) -> impl Iterator<Item = (ResourceId, Cow<str>)> {
