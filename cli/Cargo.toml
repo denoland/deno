@@ -34,7 +34,7 @@ winapi = "0.3.9"
 deno_core = { path = "../core", version = "0.71.0" }
 deno_doc = "0.1.18"
 deno_lint = "0.2.13"
-deno_runtime = { path = "../runtime", version = "0.1.0" }
+deno_runtime = { path = "../runtime", version = "0.2.0" }
 
 atty = "0.2.14"
 base64 = "0.12.3"
