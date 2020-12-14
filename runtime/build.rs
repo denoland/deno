@@ -8,8 +8,8 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-  // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
-  if env::var_os("RUSTDOCFLAGS").is_some() {
+  // Skip building from docs.rs.
+  if env::var_os("DOCS_RS").is_some() {
     return;
   }
 
