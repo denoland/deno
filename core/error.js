@@ -3,23 +3,6 @@
 ((window) => {
   // Some of the code here is adapted directly from V8 and licensed under a BSD
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
-  const core = window.Deno.core;
-  const assert = window.__bootstrap.util.assert;
-  const internals = window.__bootstrap.internals;
-
-  function opFormatDiagnostics(diagnostics) {
-    return core.jsonOpSync("op_format_diagnostic", diagnostics);
-  }
-
-  function opApplySourceMap(location) {
-    const res = core.jsonOpSync("op_apply_source_map", location);
-    return {
-      fileName: res.fileName,
-      lineNumber: res.lineNumber,
-      columnNumber: res.columnNumber,
-    };
-  }
-
   function patchCallSite(callSite, location) {
     return {
       getThis() {
@@ -88,7 +71,9 @@
     } else {
       if (callSite.isEval()) {
         const evalOrigin = callSite.getEvalOrigin();
-        assert(evalOrigin != null);
+        if (evalOrigin == null) {
+          throw new Error("assert evalOrigin");
+        }
         result += `${evalOrigin}, `;
       }
       result += "<anonymous>";
@@ -190,60 +175,73 @@
     };
   }
 
-  function prepareStackTrace(
-    error,
-    callSites,
-  ) {
-    const mappedCallSites = callSites.map(
-      (callSite) => {
-        const fileName = callSite.getFileName();
-        const lineNumber = callSite.getLineNumber();
-        const columnNumber = callSite.getColumnNumber();
-        if (fileName && lineNumber != null && columnNumber != null) {
-          return patchCallSite(
-            callSite,
-            opApplySourceMap({
-              fileName,
-              lineNumber,
-              columnNumber,
-            }),
-          );
-        }
-        return callSite;
-      },
-    );
-    Object.defineProperties(error, {
-      __callSiteEvals: { value: [], configurable: true },
-    });
-    const formattedCallSites = [];
-    for (const callSite of mappedCallSites) {
-      error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-      formattedCallSites.push(formatCallSite(callSite));
-    }
-    Object.freeze(error.__callSiteEvals);
-    const message = error.message !== undefined ? error.message : "";
-    const name = error.name !== undefined ? error.name : "Error";
-    let messageLine;
-    if (name != "" && message != "") {
-      messageLine = `${name}: ${message}`;
-    } else if ((name || message) != "") {
-      messageLine = name || message;
-    } else {
-      messageLine = "";
-    }
-    return messageLine +
-      formattedCallSites.map((s) => `\n    at ${s}`).join("");
+  /**
+   * Returns a function that can be used as `Error.prepareStackTrace`.
+   * 
+   * This function accepts an optional argument, a function that performs
+   * source mapping. It is not required to pass this argument, but
+   * in such case only JavaScript sources will have proper position in
+   * stack frames.
+   * @param {(
+   *  fileName: string,
+   *  lineNumber: number,
+   *  columnNumber: number
+   * ) => {
+   *  fileName: string,
+   *  lineNumber: number,
+   *  columnNumber: number
+   * }} sourceMappingFn 
+   */
+  function createPrepareStackTrace(sourceMappingFn) {
+    return function prepareStackTrace(
+      error,
+      callSites,
+    ) {
+      const mappedCallSites = callSites.map(
+        (callSite) => {
+          const fileName = callSite.getFileName();
+          const lineNumber = callSite.getLineNumber();
+          const columnNumber = callSite.getColumnNumber();
+          if (
+            sourceMappingFn && fileName && lineNumber != null &&
+            columnNumber != null
+          ) {
+            return patchCallSite(
+              callSite,
+              sourceMappingFn({
+                fileName,
+                lineNumber,
+                columnNumber,
+              }),
+            );
+          }
+          return callSite;
+        },
+      );
+      Object.defineProperties(error, {
+        __callSiteEvals: { value: [], configurable: true },
+      });
+      const formattedCallSites = [];
+      for (const callSite of mappedCallSites) {
+        error.__callSiteEvals.push(evaluateCallSite(callSite));
+        formattedCallSites.push(formatCallSite(callSite));
+      }
+      const message = error.message !== undefined ? error.message : "";
+      const name = error.name !== undefined ? error.name : "Error";
+      let messageLine;
+      if (name != "" && message != "") {
+        messageLine = `${name}: ${message}`;
+      } else if ((name || message) != "") {
+        messageLine = name || message;
+      } else {
+        messageLine = "";
+      }
+      return messageLine +
+        formattedCallSites.map((s) => `\n    at ${s}`).join("");
+    };
   }
 
-  function setPrepareStackTrace(ErrorConstructor) {
-    ErrorConstructor.prepareStackTrace = prepareStackTrace;
-  }
-
-  internals.exposeForTest("setPrepareStackTrace", setPrepareStackTrace);
-
-  window.__bootstrap.errorStack = {
-    setPrepareStackTrace,
-    opApplySourceMap,
-    opFormatDiagnostics,
-  };
+  Object.assign(window.Deno.core, {
+    createPrepareStackTrace,
+  });
 })(this);

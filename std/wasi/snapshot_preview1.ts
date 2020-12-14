@@ -279,12 +279,43 @@ export class ExitStatus {
 }
 
 export interface ContextOptions {
+  /**
+   * An array of strings that the WebAssembly instance will see as command-line
+   * arguments.
+   *
+   * The first argument is the virtual path to the command itself.
+   */
   args?: string[];
+
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as its environment.
+   */
   env?: { [key: string]: string | undefined };
+
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as it's filesystem.
+   *
+   * The string keys of are treated as directories within the sandboxed
+   * filesystem, the values are the real paths to those directories on the host
+   * machine.
+   *
+   */
   preopens?: { [key: string]: string };
+
+  /**
+   * Determines if calls to exit from within the WebAssembly module will terminate the proess or return.
+   */
   exitOnReturn?: boolean;
 }
 
+/**
+ * The Context class provides the environment required to run WebAssembly
+ * modules compiled to run with the WebAssembly System Interface.
+ *
+ * Each context represents a distinct sandboxed environment and must have its
+ * command-line arguments, environment variables, and pre-opened directory
+ * structure configured explicitly.
+ */
 export default class Context {
   args: string[];
   env: { [key: string]: string | undefined };
@@ -294,6 +325,7 @@ export default class Context {
   fds: FileDescriptor[];
 
   exports: Record<string, WebAssembly.ImportValue>;
+  #started: boolean;
 
   constructor(options: ContextOptions) {
     this.args = options.args ?? [];
@@ -1571,6 +1603,8 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
     };
+
+    this.#started = false;
   }
 
   /**
@@ -1585,6 +1619,12 @@ export default class Context {
    * thrown.
    */
   start(instance: WebAssembly.Instance) {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {
@@ -1618,6 +1658,12 @@ export default class Context {
    * thrown.
    */
   initialize(instance: WebAssembly.Instance) {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {

@@ -193,7 +193,7 @@ export function putVarbig(
   return sizeof(o.dataType);
 }
 
-/** Decodes a number from `r`, comsuming `sizeof(o.dataType)` bytes. If less than `sizeof(o.dataType)` bytes were read, throws `Deno.errors.unexpectedEof`.
+/** Decodes a number from `r`, consuming `sizeof(o.dataType)` bytes. If less than `sizeof(o.dataType)` bytes were read, throws `Deno.errors.unexpectedEof`.
  *
  * `o.dataType` defaults to `"int32"`. */
 export async function readVarnum(
@@ -205,7 +205,7 @@ export async function readVarnum(
   return varnum(scratch, o) as number;
 }
 
-/** Decodes a bigint from `r`, comsuming `sizeof(o.dataType)` bytes. If less than `sizeof(o.dataType)` bytes were read, throws `Deno.errors.unexpectedEof`.
+/** Decodes a bigint from `r`, consuming `sizeof(o.dataType)` bytes. If less than `sizeof(o.dataType)` bytes were read, throws `Deno.errors.unexpectedEof`.
  *
  * `o.dataType` defaults to `"int64"`. */
 export async function readVarbig(

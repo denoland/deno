@@ -133,42 +133,38 @@ delete Object.prototype.__proto__;
     core.jsonOpSync("op_worker_close");
   }
 
-  function opStart() {
-    return core.jsonOpSync("op_start");
-  }
-
   function opMainModule() {
     return core.jsonOpSync("op_main_module");
   }
 
-  // TODO(bartlomieju): temporary solution, must be fixed when moving
-  // dispatches to separate crates
-  function initOps() {
+  function runtimeStart(runtimeOptions, source) {
     const opsMap = core.ops();
     for (const [name, opId] of Object.entries(opsMap)) {
       if (name === "op_write" || name === "op_read") {
         core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
       }
     }
-    core.setMacrotaskCallback(timers.handleTimerMacrotask);
-  }
 
-  function runtimeStart(source) {
-    initOps();
-    // First we send an empty `Start` message to let the privileged side know we
-    // are ready. The response should be a `StartRes` message containing the CLI
-    // args and other info.
-    const s = opStart();
-    version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
-    build.setBuildInfo(s.target);
-    util.setLogDebug(s.debugFlag, source);
+    core.setMacrotaskCallback(timers.handleTimerMacrotask);
+    version.setVersions(
+      runtimeOptions.denoVersion,
+      runtimeOptions.v8Version,
+      runtimeOptions.tsVersion,
+    );
+    build.setBuildInfo(runtimeOptions.target);
+    util.setLogDebug(runtimeOptions.debugFlag, source);
     // TODO(bartlomieju): a very crude way to disable
     // source mapping of errors. This condition is true
     // only for compiled standalone binaries.
-    if (s.applySourceMaps) {
-      errorStack.setPrepareStackTrace(Error);
+    let prepareStackTrace;
+    if (runtimeOptions.applySourceMaps) {
+      prepareStackTrace = core.createPrepareStackTrace(
+        errorStack.opApplySourceMap,
+      );
+    } else {
+      prepareStackTrace = core.createPrepareStackTrace();
     }
-    return s;
+    Error.prepareStackTrace = prepareStackTrace;
   }
 
   function registerErrors() {
@@ -291,7 +287,7 @@ delete Object.prototype.__proto__;
 
   let hasBootstrapped = false;
 
-  function bootstrapMainRuntime() {
+  function bootstrapMainRuntime(runtimeOptions) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
@@ -308,7 +304,8 @@ delete Object.prototype.__proto__;
     defineEventHandler(window, "load", null);
     defineEventHandler(window, "unload", null);
 
-    const { args, noColor, pid, ppid, unstableFlag } = runtimeStart();
+    runtimeStart(runtimeOptions);
+    const { args, noColor, pid, ppid, unstableFlag } = runtimeOptions;
 
     registerErrors();
 
@@ -343,7 +340,12 @@ delete Object.prototype.__proto__;
     util.log("args", args);
   }
 
-  function bootstrapWorkerRuntime(name, useDenoNamespace, internalName) {
+  function bootstrapWorkerRuntime(
+    runtimeOptions,
+    name,
+    useDenoNamespace,
+    internalName,
+  ) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
@@ -357,9 +359,12 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
     Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
     eventTarget.setEventTargetData(globalThis);
-    const { unstableFlag, pid, noColor, args } = runtimeStart(
+
+    runtimeStart(
+      runtimeOptions,
       internalName ?? name,
     );
+    const { unstableFlag, pid, noColor, args } = runtimeOptions;
 
     registerErrors();
 

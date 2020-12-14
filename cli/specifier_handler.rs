@@ -5,8 +5,8 @@ use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
-use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;

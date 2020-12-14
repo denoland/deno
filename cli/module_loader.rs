@@ -2,7 +2,6 @@
 
 use crate::import_map::ImportMap;
 use crate::module_graph::TypeLib;
-use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -11,6 +10,7 @@ use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::permissions::Permissions;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;

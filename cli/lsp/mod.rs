@@ -18,6 +18,7 @@ use config::Config;
 use diagnostics::DiagnosticSource;
 use dispatch::NotificationDispatcher;
 use dispatch::RequestDispatcher;
+use state::update_import_map;
 use state::DocumentData;
 use state::Event;
 use state::ServerState;
@@ -87,13 +88,13 @@ pub fn start() -> Result<(), AnyError> {
   }
 
   let mut config = Config::default();
+  config.root_uri = initialize_params.root_uri.clone();
   if let Some(value) = initialize_params.initialization_options {
     config.update(value)?;
   }
   config.update_capabilities(&initialize_params.capabilities);
 
   let mut server_state = state::ServerState::new(connection.sender, config);
-  let state = server_state.snapshot();
 
   // TODO(@kitsonk) need to make this configurable, respect unstable
   let ts_config = TsConfig::new(json!({
@@ -106,6 +107,7 @@ pub fn start() -> Result<(), AnyError> {
     "strict": true,
     "target": "esnext",
   }));
+  let state = server_state.snapshot();
   tsc::request(
     &mut server_state.ts_runtime,
     &state,
@@ -259,7 +261,7 @@ impl ServerState {
             specifier.clone(),
             params.text_document.version,
             &params.text_document.text,
-            None,
+            state.maybe_import_map.clone(),
           ),
         )
         .is_some()
@@ -281,7 +283,11 @@ impl ServerState {
       let mut content = file_cache.get_contents(file_id)?;
       apply_content_changes(&mut content, params.content_changes);
       let doc_data = state.doc_data.get_mut(&specifier).unwrap();
-      doc_data.update(params.text_document.version, &content, None);
+      doc_data.update(
+        params.text_document.version,
+        &content,
+        state.maybe_import_map.clone(),
+      );
       file_cache.set_contents(specifier, Some(content.into_bytes()));
 
       Ok(())
@@ -326,6 +332,15 @@ impl ServerState {
                 if let Err(err) = state.config.update(config.clone()) {
                   error!("failed to update settings: {}", err);
                 }
+                if let Err(err) = update_import_map(state) {
+                  state
+                    .send_notification::<lsp_types::notification::ShowMessage>(
+                      lsp_types::ShowMessageParams {
+                        typ: lsp_types::MessageType::Warning,
+                        message: err.to_string(),
+                      },
+                    );
+                }
               }
             }
             (None, None) => {
@@ -335,6 +350,15 @@ impl ServerState {
         },
       );
 
+      Ok(())
+    })?
+    .on::<lsp_types::notification::DidChangeWatchedFiles>(|state, params| {
+      // if the current import map has changed, we need to reload it
+      if let Some(import_map_uri) = &state.maybe_import_map_uri {
+        if params.changes.iter().any(|fe| import_map_uri == &fe.uri) {
+          update_import_map(state)?;
+        }
+      }
       Ok(())
     })?
     .finish();
@@ -395,8 +419,40 @@ impl ServerState {
 
   /// Start consuming events from the provided receiver channel.
   pub fn run(mut self, inbox: Receiver<Message>) -> Result<(), AnyError> {
-    // currently we don't need to do any other loading or tasks, so as soon as
-    // we run we are "ready"
+    // Check to see if we need to setup the import map
+    if let Err(err) = update_import_map(&mut self) {
+      self.send_notification::<lsp_types::notification::ShowMessage>(
+        lsp_types::ShowMessageParams {
+          typ: lsp_types::MessageType::Warning,
+          message: err.to_string(),
+        },
+      );
+    }
+
+    // we are going to watch all the JSON files in the workspace, and the
+    // notification handler will pick up any of the changes of those files we
+    // are interested in.
+    let watch_registration_options =
+      lsp_types::DidChangeWatchedFilesRegistrationOptions {
+        watchers: vec![lsp_types::FileSystemWatcher {
+          glob_pattern: "**/*.json".to_string(),
+          kind: Some(lsp_types::WatchKind::Change),
+        }],
+      };
+    let registration = lsp_types::Registration {
+      id: "workspace/didChangeWatchedFiles".to_string(),
+      method: "workspace/didChangeWatchedFiles".to_string(),
+      register_options: Some(
+        serde_json::to_value(watch_registration_options).unwrap(),
+      ),
+    };
+    self.send_request::<lsp_types::request::RegisterCapability>(
+      lsp_types::RegistrationParams {
+        registrations: vec![registration],
+      },
+      |_, _| (),
+    );
+
     self.transition(Status::Ready);
 
     while let Some(event) = self.next_event(&inbox) {

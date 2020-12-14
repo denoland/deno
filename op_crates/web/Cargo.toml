@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.21.0"
+version = "0.23.0"
 edition = "2018"
 description = "Collection of Web APIs"
 authors = ["the Deno authors"]
@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.70.0", path = "../../core" }
+deno_core = { version = "0.72.0", path = "../../core" }
 idna = "0.2.0"
 serde = { version = "1.0.116", features = ["derive"] }
 

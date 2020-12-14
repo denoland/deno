@@ -106,7 +106,7 @@ function foo(): any {
 }
 ```
 
-Ignore directive must be placed before first stament or declaration:
+Ignore directive must be placed before first statement or declaration:
 
 ```ts
 // Copyright 2020 the Deno authors. All rights reserved. MIT license.

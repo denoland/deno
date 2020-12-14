@@ -52,7 +52,7 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new(host: SocketAddr) -> Self {
+  pub fn new(host: SocketAddr, name: String) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
@@ -63,6 +63,7 @@ impl InspectorServer {
         host,
         register_inspector_rx,
         shutdown_server_rx,
+        name,
       ))
     });
 
@@ -145,6 +146,7 @@ async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   shutdown_server_rx: oneshot::Receiver<()>,
+  name: String,
 ) {
   // TODO: put the `inspector_map` in an `Rc<RefCell<_>>` instead. This is
   // currently not possible because warp requires all filters to implement
@@ -199,13 +201,13 @@ async fn server(
       )
     });
 
-  let json_version_route = warp::path!("json" / "version").map(|| {
-    warp::reply::json(&json!({
-      "Browser": format!("Deno/{}", crate::version::deno()),
-      "Protocol-Version": "1.3",
-      "V8-Version": crate::version::v8(),
-    }))
+  let json_version_response = json!({
+    "Browser": name,
+    "Protocol-Version": "1.3",
+    "V8-Version": deno_core::v8_version(),
   });
+  let json_version_route = warp::path!("json" / "version")
+    .map(move || warp::reply::json(&json_version_response));
 
   let inspector_map_ = inspector_map.clone();
   let json_list_route = warp::path("json").map(move || {
@@ -857,7 +859,28 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let raw_message = message.unwrap().string().to_string();
-    let message = serde_json::from_str(&raw_message).unwrap();
+    let message: serde_json::Value = match serde_json::from_str(&raw_message) {
+      Ok(v) => v,
+      Err(error) => match error.classify() {
+        serde_json::error::Category::Syntax => json!({
+          "id": call_id,
+          "result": {
+            "result": {
+              "type": "error",
+              "description": "Unterminated string literal",
+              "value": "Unterminated string literal",
+            },
+            "exceptionDetails": {
+              "exceptionId": 0,
+              "text": "Unterminated string literal",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+          },
+        }),
+        _ => panic!("Could not parse inspector message"),
+      },
+    };
 
     self
       .response_tx_map

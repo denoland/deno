@@ -381,4 +381,3 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     );
   }
 }
-
