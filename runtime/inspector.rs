@@ -859,7 +859,28 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let raw_message = message.unwrap().string().to_string();
-    let message = serde_json::from_str(&raw_message).unwrap();
+    let message: serde_json::Value = match serde_json::from_str(&raw_message) {
+      Ok(v) => v,
+      Err(error) => match error.classify() {
+        serde_json::error::Category::Syntax => json!({
+          "id": call_id,
+          "result": {
+            "result": {
+              "type": "error",
+              "description": "Unterminated string literal",
+              "value": "Unterminated string literal",
+            },
+            "exceptionDetails": {
+              "exceptionId": 0,
+              "text": "Unterminated string literal",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+          },
+        }),
+        _ => panic!("Could not parse inspector message"),
+      },
+    };
 
     self
       .response_tx_map
