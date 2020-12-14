@@ -168,10 +168,6 @@ command = "deno"
 args = ["lsp"]
 ```
 
-If you don't see your favorite IDE on this list, maybe you can develop an
-extension. Our [community Discord group](https://discord.gg/deno) can give you
-some pointers on where to get started.
-
 ##### Example for Vim/Neovim
 
 After installing the [`vim-lsp`](https://github.com/prabirshrestha/vim-lsp) LSP
@@ -191,3 +187,7 @@ if executable("deno")
   augroup END
 endif
 ```
+
+If you don't see your favorite IDE on this list, maybe you can develop an
+extension. Our [community Discord group](https://discord.gg/deno) can give you
+some pointers on where to get started.
