@@ -3228,8 +3228,8 @@ itest!(tsx_imports {
 });
 
 itest!(fix_dynamic_import_errors {
-  args: "run --reload fix_dynamic_import_errors.mjs",
-  output: "fix_dynamic_import_errors.mjs.out",
+  args: "run --reload fix_dynamic_import_errors.js",
+  output: "fix_dynamic_import_errors.js.out",
 });
 
 itest!(fix_emittable_skipped {

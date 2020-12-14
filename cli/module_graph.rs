@@ -29,6 +29,7 @@ use crate::version;
 use crate::AnyError;
 
 use deno_core::error::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
@@ -712,7 +713,10 @@ fn to_module_result(
             module_url_found: module.specifier.to_string(),
             module_url_specified: specifier.to_string(),
           }),
-          _ => Err(anyhow!("Compiled module not found \"{}\"", specifier)),
+          _ => Err(custom_error(
+            "NotFound",
+            format!("Compiled module not found \"{}\"", specifier),
+          )),
         }
       },
     ),
@@ -1111,7 +1115,7 @@ impl Graph {
     {
       module
     } else {
-      panic!("missing module");
+      unreachable!();
     };
     let mut deps = Vec::new();
     let mut total_size = None;
@@ -1349,9 +1353,19 @@ impl Graph {
         (None, None)
       };
 
+    let dep_count = self
+      .modules
+      .iter()
+      .filter_map(|(_, m)| match m {
+        ModuleSlot::Module(_) => Some(1),
+        _ => None,
+      })
+      .count()
+      - 1;
+
     Ok(ModuleGraphInfo {
       compiled,
-      dep_count: self.modules.len() - 1,
+      dep_count,
       file_type: m.media_type,
       files,
       info,

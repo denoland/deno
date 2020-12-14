@@ -18,6 +18,7 @@ use deno_runtime::inspector::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::anyhow;
+use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
@@ -198,7 +199,7 @@ impl ProgramState {
         Err(err) => {
           // TODO(@kitsonk) this feels a bit hacky but it works, without
           // introducing another enum to have to try to deal with.
-          if err.to_string().starts_with("Compiled module not found ") {
+          if get_custom_error_class(err) == Some("NotFound") {
             let message = if let Some(referrer) = &maybe_referrer {
               format!("{}\n  From: {}\n    If the source module contains only types, use `import type` and `export type` to import it instead.", err, referrer)
             } else {
