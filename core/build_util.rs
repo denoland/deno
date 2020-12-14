@@ -6,11 +6,9 @@ use std::path::PathBuf;
 pub fn create_snapshot(
   mut js_runtime: JsRuntime,
   snapshot_path: &Path,
+  display_root: &Path,
   files: Vec<PathBuf>,
 ) {
-  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-  // workspace root.
-  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();

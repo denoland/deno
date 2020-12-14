@@ -160,7 +160,10 @@ fn create_compiler_snapshot(
       }
     }),
   );
-  create_snapshot(js_runtime, snapshot_path, files);
+  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
+  // workspace root.
+  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+  create_snapshot(js_runtime, snapshot_path, display_root, files);
 }
 
 fn ts_version() -> String {

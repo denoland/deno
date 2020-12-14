@@ -5,6 +5,7 @@ use deno_core::build_util::get_js_files;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use std::env;
+use std::path::Path;
 use std::path::PathBuf;
 
 fn main() {
@@ -25,6 +26,9 @@ fn main() {
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let js_files = get_js_files(&c.join("rt"));
+  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
+  // workspace root.
+  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
@@ -33,5 +37,5 @@ fn main() {
   deno_web::init(&mut js_runtime);
   deno_fetch::init(&mut js_runtime);
   deno_crypto::init(&mut js_runtime);
-  create_snapshot(js_runtime, &runtime_snapshot_path, js_files);
+  create_snapshot(js_runtime, &runtime_snapshot_path, display_root, js_files);
 }
