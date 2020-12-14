@@ -858,7 +858,6 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    
     let raw_message = message.unwrap().string().to_string();
     let message: serde_json::Value = match serde_json::from_str(&raw_message) {
       Ok(v) => v,
@@ -875,12 +874,12 @@ impl v8::inspector::ChannelImpl for InspectorSession {
               "exceptionId": 0,
               "text": "Unterminated string literal",
               "lineNumber": 0,
-              "columnNumber": 0 
+              "columnNumber": 0
             }
           }
         }),
-        _other_error => panic!("Could not parse inspector messagge")
-      }
+        _other_error => panic!("Could not parse inspector messagge"),
+      },
     };
 
     self
