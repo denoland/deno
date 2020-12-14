@@ -33,7 +33,6 @@ pub enum Op {
 
 /// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
-  pub resource_table: crate::ResourceTable,
   pub resource_table_2: crate::resources2::ResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: crate::runtime::GetErrorClassFn,
@@ -46,7 +45,6 @@ impl Default for OpState {
   //   pub(crate) fn new() -> OpState
   fn default() -> OpState {
     OpState {
-      resource_table: Default::default(),
       resource_table_2: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
@@ -279,13 +277,11 @@ pub fn op_resources(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let mut serialized_resources = state.resource_table.entries();
-  let serialized_resources2: HashMap<u32, String> = state
+  let serialized_resources: HashMap<u32, String> = state
     .resource_table_2
     .names()
     .map(|(rid, name)| (rid, name.to_string()))
     .collect();
-  serialized_resources.extend(serialized_resources2);
   Ok(json!(serialized_resources))
 }
 
