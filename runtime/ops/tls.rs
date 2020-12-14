@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::NewStreamResource;
+use super::io::StreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
@@ -89,7 +89,7 @@ async fn op_start_tls(
   let resource_rc = state
     .borrow()
     .resource_table_2
-    .get::<NewStreamResource>(rid)
+    .get::<StreamResource>(rid)
     .ok_or_else(bad_resource_id)?
     .clone();
 
@@ -137,7 +137,7 @@ async fn op_start_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table_2
-      .add(NewStreamResource::client_tls_stream(tls_stream))
+      .add(StreamResource::client_tls_stream(tls_stream))
   };
   Ok(json!({
       "rid": rid,
@@ -195,7 +195,7 @@ async fn op_connect_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table_2
-      .add(NewStreamResource::client_tls_stream(tls_stream))
+      .add(StreamResource::client_tls_stream(tls_stream))
   };
   Ok(json!({
       "rid": rid,
@@ -387,7 +387,7 @@ async fn op_accept_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table_2
-      .add(NewStreamResource::server_tls_stream(tls_stream))
+      .add(StreamResource::server_tls_stream(tls_stream))
   };
 
   Ok(json!({

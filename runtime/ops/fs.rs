@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::io::new_std_file_resource;
-use super::io::NewStreamResource;
+use super::io::std_file_resource;
+use super::io::StreamResource;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
@@ -185,7 +185,7 @@ fn op_open_sync(
   let (path, open_options) = open_helper(state, args)?;
   let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
-  let resource = NewStreamResource::fs_file(tokio_file);
+  let resource = StreamResource::fs_file(tokio_file);
   let rid = state.resource_table_2.add(resource);
   Ok(json!(rid))
 }
@@ -199,7 +199,7 @@ async fn op_open_async(
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(path)
     .await?;
-  let resource = NewStreamResource::fs_file(tokio_file);
+  let resource = StreamResource::fs_file(tokio_file);
   let rid = state.borrow_mut().resource_table_2.add(resource);
   Ok(json!(rid))
 }
@@ -236,7 +236,7 @@ fn op_seek_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
-  let pos = new_std_file_resource(state, rid, |r| match r {
+  let pos = std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.seek(seek_from).map_err(AnyError::from),
     Err(_) => Err(type_error(
       "cannot seek on this type of resource".to_string(),
@@ -253,7 +253,7 @@ async fn op_seek_async(
   let (rid, seek_from) = seek_helper(args)?;
   // TODO(ry) This is a fake async op. We need to use poll_fn,
   // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
-  let pos = new_std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
+  let pos = std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
     Ok(std_file) => std_file.seek(seek_from).map_err(AnyError::from),
     Err(_) => Err(type_error(
       "cannot seek on this type of resource".to_string(),
@@ -275,7 +275,7 @@ fn op_fdatasync_sync(
 ) -> Result<Value, AnyError> {
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  new_std_file_resource(state, rid, |r| match r {
+  std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
   })?;
@@ -289,7 +289,7 @@ async fn op_fdatasync_async(
 ) -> Result<Value, AnyError> {
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  new_std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
+  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
   })?;
@@ -309,7 +309,7 @@ fn op_fsync_sync(
 ) -> Result<Value, AnyError> {
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  new_std_file_resource(state, rid, |r| match r {
+  std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
   })?;
@@ -323,7 +323,7 @@ async fn op_fsync_async(
 ) -> Result<Value, AnyError> {
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  new_std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
+  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
   })?;
@@ -344,7 +344,7 @@ fn op_fstat_sync(
   super::check_unstable(state, "Deno.fstat");
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let metadata = new_std_file_resource(state, rid, |r| match r {
+  let metadata = std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
   })?;
@@ -361,7 +361,7 @@ async fn op_fstat_async(
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let metadata =
-    new_std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
+    std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
       Ok(std_file) => std_file.metadata().map_err(AnyError::from),
       Err(_) => {
         Err(type_error("cannot stat this type of resource".to_string()))
@@ -1321,7 +1321,7 @@ fn op_ftruncate_sync(
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
-  new_std_file_resource(state, rid, |r| match r {
+  std_file_resource(state, rid, |r| match r {
     Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
     Err(_) => Err(type_error("cannot truncate this type of resource")),
   })?;
@@ -1337,7 +1337,7 @@ async fn op_ftruncate_async(
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
-  new_std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
+  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
     Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
     Err(_) => Err(type_error("cannot truncate this type of resource")),
   })?;
@@ -1592,7 +1592,7 @@ fn op_futime_sync(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  new_std_file_resource(state, rid, |r| match r {
+  std_file_resource(state, rid, |r| match r {
     Ok(std_file) => {
       filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
         .map_err(AnyError::from)
@@ -1617,7 +1617,7 @@ async fn op_futime_async(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
   // TODO Not actually async! https://github.com/denoland/deno/issues/7400
-  new_std_file_resource(&mut state, rid, |r| match r {
+  std_file_resource(&mut state, rid, |r| match r {
     Ok(std_file) => {
       filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
         .map_err(AnyError::from)

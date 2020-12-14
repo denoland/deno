@@ -92,28 +92,28 @@ pub fn init(rt: &mut JsRuntime) {
   rt.register_op("op_write", metrics_op(minimal_op(op_write)));
 }
 
-pub fn new_get_stdio() -> (
-  Option<NewStreamResource>,
-  Option<NewStreamResource>,
-  Option<NewStreamResource>,
+pub fn get_stdio() -> (
+  Option<StreamResource>,
+  Option<StreamResource>,
+  Option<StreamResource>,
 ) {
-  let stdin = new_get_stdio_stream(&STDIN_HANDLE, "stdin");
-  let stdout = new_get_stdio_stream(&STDOUT_HANDLE, "stdout");
-  let stderr = new_get_stdio_stream(&STDERR_HANDLE, "stderr");
+  let stdin = get_stdio_stream(&STDIN_HANDLE, "stdin");
+  let stdout = get_stdio_stream(&STDOUT_HANDLE, "stdout");
+  let stderr = get_stdio_stream(&STDERR_HANDLE, "stderr");
 
   (stdin, stdout, stderr)
 }
 
-fn new_get_stdio_stream(
+fn get_stdio_stream(
   handle: &Option<std::fs::File>,
   name: &str,
-) -> Option<NewStreamResource> {
+) -> Option<StreamResource> {
   match handle {
     None => None,
     Some(file_handle) => match file_handle.try_clone() {
       Ok(clone) => {
         let tokio_file = tokio::fs::File::from_std(clone);
-        Some(NewStreamResource::stdio(tokio_file, name))
+        Some(StreamResource::stdio(tokio_file, name))
       }
       Err(_e) => None,
     },
@@ -139,7 +139,7 @@ pub struct FileMetadata {
 }
 
 #[derive(Default)]
-pub struct NewStreamResource {
+pub struct StreamResource {
   pub fs_file:
     Option<AsyncRefCell<(Option<tokio::fs::File>, Option<FileMetadata>)>>,
 
@@ -163,13 +163,13 @@ pub struct NewStreamResource {
   name: String,
 }
 
-impl std::fmt::Debug for NewStreamResource {
+impl std::fmt::Debug for StreamResource {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(f, "NewStreamResource")
+    write!(f, "StreamResource")
   }
 }
 
-impl NewStreamResource {
+impl StreamResource {
   pub fn stdio(fs_file: tokio::fs::File, name: &str) -> Self {
     Self {
       fs_file: Some(AsyncRefCell::new((
@@ -483,7 +483,7 @@ impl NewStreamResource {
   }
 }
 
-impl Resource for NewStreamResource {
+impl Resource for StreamResource {
   fn name(&self) -> Cow<str> {
     self.name.clone().into()
   }
@@ -509,17 +509,15 @@ pub fn op_read(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      new_std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| {
-        match r {
-          Ok(std_file) => {
-            use std::io::Read;
-            std_file
-              .read(&mut zero_copy[0])
-              .map(|n: usize| n as i32)
-              .map_err(AnyError::from)
-          }
-          Err(_) => Err(type_error("sync read not allowed on this resource")),
+      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
+        Ok(std_file) => {
+          use std::io::Read;
+          std_file
+            .read(&mut zero_copy[0])
+            .map(|n: usize| n as i32)
+            .map_err(AnyError::from)
         }
+        Err(_) => Err(type_error("sync read not allowed on this resource")),
       })
     })
   } else {
@@ -529,7 +527,7 @@ pub fn op_read(
         let resource = state
           .borrow()
           .resource_table_2
-          .get::<NewStreamResource>(rid as u32)
+          .get::<StreamResource>(rid as u32)
           .ok_or_else(bad_resource_id)?;
         let nread = resource.read(&mut zero_copy).await?;
         Ok(nread as i32)
@@ -555,17 +553,15 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      new_std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| {
-        match r {
-          Ok(std_file) => {
-            use std::io::Write;
-            std_file
-              .write(&zero_copy[0])
-              .map(|nwritten: usize| nwritten as i32)
-              .map_err(AnyError::from)
-          }
-          Err(_) => Err(type_error("sync read not allowed on this resource")),
+      std_file_resource(&mut state.borrow_mut(), rid as u32, move |r| match r {
+        Ok(std_file) => {
+          use std::io::Write;
+          std_file
+            .write(&zero_copy[0])
+            .map(|nwritten: usize| nwritten as i32)
+            .map_err(AnyError::from)
         }
+        Err(_) => Err(type_error("sync read not allowed on this resource")),
       })
     })
   } else {
@@ -575,7 +571,7 @@ pub fn op_write(
         let resource = state
           .borrow()
           .resource_table_2
-          .get::<NewStreamResource>(rid as u32)
+          .get::<StreamResource>(rid as u32)
           .ok_or_else(bad_resource_id)?;
         let nread = resource.write(&zero_copy).await?;
         Ok(nread as i32)
@@ -585,7 +581,7 @@ pub fn op_write(
   }
 }
 
-pub fn new_std_file_resource<F, T>(
+pub fn std_file_resource<F, T>(
   state: &mut OpState,
   rid: u32,
   mut f: F,
@@ -596,7 +592,7 @@ where
   // First we look up the rid in the resource table.
   let resource = state
     .resource_table_2
-    .get::<NewStreamResource>(rid)
+    .get::<StreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   // Sync write only works for FsFile. It doesn't make sense to do this

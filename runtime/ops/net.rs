@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::io::NewStreamResource;
+use crate::ops::io::StreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use deno_core::error::bad_resource;
@@ -85,7 +85,7 @@ async fn accept_tcp(
   let mut state = state.borrow_mut();
   let rid = state
     .resource_table_2
-    .add(NewStreamResource::tcp_stream(tcp_stream));
+    .add(StreamResource::tcp_stream(tcp_stream));
   Ok(json!({
     "rid": rid,
     "localAddr": {
@@ -277,7 +277,7 @@ async fn op_connect(
       let mut state_ = state.borrow_mut();
       let rid = state_
         .resource_table_2
-        .add(NewStreamResource::tcp_stream(tcp_stream));
+        .add(StreamResource::tcp_stream(tcp_stream));
       Ok(json!({
         "rid": rid,
         "localAddr": {
@@ -310,7 +310,7 @@ async fn op_connect(
       let remote_addr = unix_stream.peer_addr()?;
 
       let mut state_ = state.borrow_mut();
-      let resource = NewStreamResource::unix_stream(unix_stream);
+      let resource = StreamResource::unix_stream(unix_stream);
       let rid = state_.resource_table_2.add(resource);
       Ok(json!({
         "rid": rid,
@@ -354,7 +354,7 @@ fn op_shutdown(
 
   let resource = state
     .resource_table_2
-    .get::<NewStreamResource>(rid)
+    .get::<StreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   if resource.tcp_stream_write.is_some() {

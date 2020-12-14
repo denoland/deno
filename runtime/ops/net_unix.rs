@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::io::NewStreamResource;
+use crate::ops::io::StreamResource;
 use crate::ops::net::AcceptArgs;
 use crate::ops::net::ReceiveArgs;
 use deno_core::error::bad_resource;
@@ -83,7 +83,7 @@ pub(crate) async fn accept_unix(
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
-  let resource = NewStreamResource::unix_stream(unix_stream);
+  let resource = StreamResource::unix_stream(unix_stream);
   let mut state = state.borrow_mut();
   let rid = state.resource_table_2.add(resource);
   Ok(json!({
