@@ -8,7 +8,6 @@ extern crate log;
 mod async_cancel;
 mod async_cell;
 mod bindings;
-pub mod build_util;
 pub mod error;
 mod flags;
 mod gotham_state;
