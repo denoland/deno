@@ -529,6 +529,7 @@ pub struct ResultInfo {
   /// A structure which provides diagnostic information (usually from `tsc`)
   /// about the code in the module graph.
   pub diagnostics: Diagnostics,
+  /// A map of specifiers to the result of their resolution in the module graph.
   pub loadable_modules:
     HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>,
   /// Optionally ignored compiler options that represent any options that were
@@ -687,6 +688,8 @@ pub struct Graph {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
+/// Convert a specifier and a module slot in a result to the module source which
+/// is needed by Deno core for loading the module.
 fn to_module_result(
   (specifier, module_slot): (&ModuleSpecifier, &ModuleSlot),
 ) -> (ModuleSpecifier, Result<ModuleSource, AnyError>) {
