@@ -5,17 +5,18 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
+use crate::http_util;
 use crate::import_map::ImportMap;
-use crate::inspector::InspectorServer;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::module_graph::CheckOptions;
 use crate::module_graph::GraphBuilder;
 use crate::module_graph::TranspileOptions;
 use crate::module_graph::TypeLib;
-use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
+use deno_runtime::inspector::InspectorServer;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -100,7 +101,10 @@ impl ProgramState {
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = match maybe_inspect_host {
-      Some(host) => Some(Arc::new(InspectorServer::new(host))),
+      Some(host) => Some(Arc::new(InspectorServer::new(
+        host,
+        http_util::get_user_agent(),
+      ))),
       None => None,
     };
 
@@ -261,16 +265,6 @@ impl ProgramState {
       Some((code, maybe_map))
     } else {
       None
-    }
-  }
-
-  /// Quits the process if the --unstable flag was not provided.
-  ///
-  /// This is intentionally a non-recoverable check so that people cannot probe
-  /// for unstable APIs from stable programs.
-  pub fn check_unstable(&self, api_name: &str) {
-    if !self.flags.unstable {
-      exit_unstable(api_name);
     }
   }
 

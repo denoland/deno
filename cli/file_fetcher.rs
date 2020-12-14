@@ -4,10 +4,11 @@ use crate::colors;
 use crate::http_cache::HttpCache;
 use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
+use crate::http_util::get_user_agent;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
-use crate::permissions::Permissions;
 use crate::text_encoding;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -16,7 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
-use deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -26,7 +27,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-const SUPPORTED_SCHEMES: [&str; 3] = ["http", "https", "file"];
+pub const SUPPORTED_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -131,7 +132,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
 /// string.
-fn get_source_from_bytes(
+pub fn get_source_from_bytes(
   bytes: Vec<u8>,
   maybe_charset: Option<String>,
 ) -> Result<String, AnyError> {
@@ -161,7 +162,7 @@ fn get_validated_scheme(
 
 /// Resolve a media type and optionally the charset from a module specifier and
 /// the value of a content type header.
-fn map_content_type(
+pub fn map_content_type(
   specifier: &ModuleSpecifier,
   maybe_content_type: Option<String>,
 ) -> (MediaType, Option<String>) {
@@ -289,7 +290,7 @@ impl FileFetcher {
       cache: FileCache::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(maybe_ca_file)?,
+      http_client: create_http_client(get_user_agent(), maybe_ca_file)?,
     })
   }
 

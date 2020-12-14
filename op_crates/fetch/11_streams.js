@@ -2482,7 +2482,7 @@
       try {
         transformStreamDefaultControllerEnqueue(
           controller,
-          // it defaults to no tranformation, so I is assumed to be O
+          // it defaults to no transformation, so I is assumed to be O
           chunk,
         );
       } catch (e) {

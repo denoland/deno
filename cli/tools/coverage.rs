@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::inspector::InspectorSession;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_runtime::inspector::InspectorSession;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;

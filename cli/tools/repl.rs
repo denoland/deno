@@ -3,13 +3,13 @@
 use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;
-use crate::inspector::InspectorSession;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
-use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_runtime::inspector::InspectorSession;
+use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;

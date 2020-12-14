@@ -354,7 +354,7 @@ impl ParsedModule {
   }
 }
 
-fn parse_with_source_map(
+pub fn parse_with_source_map(
   specifier: &str,
   source: &str,
   media_type: &MediaType,
@@ -610,7 +610,9 @@ mod tests {
           leading_comments: Vec::new(),
           col: 0,
           line: 1,
-          specifier: "./test.ts".into()
+          specifier: "./test.ts".into(),
+          specifier_col: 21,
+          specifier_line: 1,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
@@ -618,7 +620,9 @@ mod tests {
           leading_comments: Vec::new(),
           col: 22,
           line: 2,
-          specifier: "./foo.ts".into()
+          specifier: "./foo.ts".into(),
+          specifier_col: 29,
+          specifier_line: 2,
         }
       ]
     );
