@@ -866,17 +866,17 @@ impl v8::inspector::ChannelImpl for InspectorSession {
           "id": call_id,
           "result": {
             "result": {
-              "type": "error"
+              "type": "error",
               "description": "Unterminated string literal",
-              "value": "undefined"
+              "value": "undefined",
             },
             "exceptionDetails": {
               "exceptionId": 0,
               "text": "Unterminated string literal",
               "lineNumber": 0,
               "columnNumber": 0
-            }
-          }
+            },
+          },
         }),
         _ => panic!("Could not parse inspector message"),
       },
