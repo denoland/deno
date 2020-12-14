@@ -192,10 +192,15 @@ export function totalmem(): number {
 
 /** Returns operating system type (i.e. 'Windows_NT', 'Linux', 'Darwin') */
 export function type(): string {
-  if (Deno.build.os == "windows") {
-    return "Windows_NT";
-  } else {
-    return Deno.build.os.charAt(0).toUpperCase() + Deno.build.os.slice(1);
+  switch (Deno.build.os) {
+    case "windows":
+      return "Windows_NT";
+    case "linux":
+      return "Linux";
+    case "darwin":
+      return "Darwin";
+    default:
+      throw Error("unreachable");
   }
 }
 
