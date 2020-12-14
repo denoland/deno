@@ -651,7 +651,7 @@ enum ModuleSlot {
   /// The module fetch resulted in a non-recoverable error.
   Err(Rc<AnyError>),
   /// The the fetch resulted in a module.
-  Module(Module),
+  Module(Box<Module>),
   /// Used to denote a module that isn't part of the graph.
   None,
   /// The fetch of the module is pending.
@@ -1779,7 +1779,7 @@ impl GraphBuilder {
     self
       .graph
       .modules
-      .insert(specifier, ModuleSlot::Module(module));
+      .insert(specifier, ModuleSlot::Module(Box::new(module)));
 
     Ok(())
   }
