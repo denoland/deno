@@ -528,16 +528,8 @@ fn skip_restarting_line(
 }
 
 #[test]
+#[ignore]
 fn fmt_watch_test() {
-  const TIMEOUT: std::time::Duration =
-    // Increase timeout duration to address flakiness on CI as much as possible
-    // See https://github.com/denoland/deno/issues/8571
-    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
-      5
-    } else {
-      1
-    });
-
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
@@ -561,7 +553,7 @@ fn fmt_watch_test() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
 
@@ -572,7 +564,7 @@ fn fmt_watch_test() {
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
@@ -1284,16 +1276,8 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
+#[ignore]
 fn bundle_js_watch() {
-  const TIMEOUT: std::time::Duration =
-    // Increase timeout duration to address flakiness on CI as much as possible
-    // See https://github.com/denoland/deno/issues/8571
-    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
-      5
-    } else {
-      1
-    });
-
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
   let t = TempDir::new().expect("tempdir fail");
@@ -1319,7 +1303,7 @@ fn bundle_js_watch() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
@@ -1328,7 +1312,7 @@ fn bundle_js_watch() {
 
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines
     .next()
     .unwrap()
@@ -1342,7 +1326,7 @@ fn bundle_js_watch() {
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
     .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines
     .next()
     .unwrap()
@@ -1362,16 +1346,8 @@ fn bundle_js_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
+#[ignore]
 fn bundle_watch_not_exit() {
-  const TIMEOUT: std::time::Duration =
-    // Increase timeout duration to address flakiness on CI as much as possible
-    // See https://github.com/denoland/deno/issues/8571
-    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
-      5
-    } else {
-      1
-    });
-
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1395,7 +1371,7 @@ fn bundle_watch_not_exit() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
   assert!(stderr_lines.next().unwrap().contains("Bundle failed!"));
@@ -1405,7 +1381,7 @@ fn bundle_watch_not_exit() {
   // Make sure the watcher actually restarts and works fine with the proper syntax
   std::fs::write(&file_to_watch, "console.log(42);")
     .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines
     .next()
     .unwrap()
@@ -1470,16 +1446,8 @@ fn wait_for_process_finished(
 }
 
 #[test]
+#[ignore]
 fn run_watch() {
-  const TIMEOUT: std::time::Duration =
-    // Increase timeout duration to address flakiness on CI as much as possible
-    // See https://github.com/denoland/deno/issues/8571
-    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
-      5
-    } else {
-      1
-    });
-
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "console.log('Hello world');")
@@ -1508,13 +1476,13 @@ fn run_watch() {
   wait_for_process_finished("Process", &mut stderr_lines);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   // Change content of the file
   std::fs::write(&file_to_watch, "console.log('Hello world2');")
     .expect("error writing file");
   // Events from the file watcher is "debounced", so we need to wait for the next execution to start
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
@@ -1529,7 +1497,7 @@ fn run_watch() {
     "import { foo } from './another_file.js'; console.log(foo);",
   )
   .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1537,7 +1505,7 @@ fn run_watch() {
   // Confirm that restarting occurs when a new file is updated
   std::fs::write(&another_file, "export const foo = 42;")
     .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1545,7 +1513,7 @@ fn run_watch() {
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   std::fs::write(&file_to_watch, "syntax error ^^")
     .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1556,7 +1524,7 @@ fn run_watch() {
     "import { foo } from './another_file.js'; console.log(foo);",
   )
   .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1570,16 +1538,8 @@ fn run_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
+#[ignore]
 fn run_watch_not_exit() {
-  const TIMEOUT: std::time::Duration =
-    // Increase timeout duration to address flakiness on CI as much as possible
-    // See https://github.com/denoland/deno/issues/8571
-    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
-      5
-    } else {
-      1
-    });
-
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
   std::fs::write(&file_to_watch, "syntax error ^^")
@@ -1604,14 +1564,14 @@ fn run_watch_not_exit() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("error:"));
   assert!(stderr_lines.next().unwrap().contains("Process failed!"));
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   std::fs::write(&file_to_watch, "console.log(42);")
     .expect("error writing file");
-  std::thread::sleep(TIMEOUT);
+  std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
@@ -1697,6 +1657,7 @@ fn repl_test_pty_unpaired_braces() {
 }
 
 #[test]
+#[ignore]
 fn run_watch_with_importmap_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -1712,16 +1673,6 @@ fn run_watch_with_importmap_and_relative_paths() {
     assert!(relative_path.is_relative());
     relative_path
   }
-
-  const TIMEOUT: std::time::Duration =
-    // Increase timeout duration to address flakiness on CI as much as possible
-    // See https://github.com/denoland/deno/issues/8571
-    std::time::Duration::from_secs(if cfg!(target_os = "macos") {
-      5
-    } else {
-      1
-    });
-
   let temp_directory =
     TempDir::new_in(util::root_path()).expect("tempdir fail");
   let file_to_watch = create_relative_tmp_file(
@@ -1755,8 +1706,6 @@ fn run_watch_with_importmap_and_relative_paths() {
   let stderr = child.stderr.as_mut().unwrap();
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-
-  std::thread::sleep(TIMEOUT);
 
   assert!(stderr_lines.next().unwrap().contains("Process finished"));
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
@@ -4700,4 +4649,102 @@ fn standalone_no_module_load() {
   let stderr_str = String::from_utf8(output.stderr).unwrap();
   assert!(util::strip_ansi_codes(&stderr_str)
     .contains("Self-contained binaries don't support module loading"));
+}
+
+#[test]
+fn compile_with_directory_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  std::fs::create_dir(&exe).expect("cannot create directory");
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: {:?} is a directory.\n", &exe);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(&expected_stderr));
+}
+
+#[test]
+fn compile_with_conflict_file_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  std::fs::write(&exe, b"SHOULD NOT BE OVERWRITTEN")
+    .expect("cannot create file");
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: cannot overwrite {:?}.\n", &exe);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(&expected_stderr));
+  assert!(std::fs::read(&exe)
+    .expect("cannot read file")
+    .eq(b"SHOULD NOT BE OVERWRITTEN"));
+}
+
+#[test]
+fn compile_and_overwrite_file() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(&exe.exists());
+
+  let recompile_output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(recompile_output.status.success());
 }

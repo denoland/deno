@@ -6,12 +6,12 @@ use crate::media_type::MediaType;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
-use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc_config;
+use deno_runtime::permissions::Permissions;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
@@ -49,9 +49,9 @@ async fn op_compile(
 ) -> Result<Value, AnyError> {
   let args: CompileArgs = serde_json::from_value(args)?;
   if args.bundle {
-    super::check_unstable2(&state, "Deno.bundle");
+    deno_runtime::ops::check_unstable2(&state, "Deno.bundle");
   } else {
-    super::check_unstable2(&state, "Deno.compile");
+    deno_runtime::ops::check_unstable2(&state, "Deno.compile");
   }
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
   let runtime_permissions = {
@@ -113,7 +113,7 @@ async fn op_transpile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.transpileOnly");
+  deno_runtime::ops::check_unstable2(&state, "Deno.transpileOnly");
   let args: TranspileArgs = serde_json::from_value(args)?;
 
   let mut compiler_options = tsc_config::TsConfig::new(json!({

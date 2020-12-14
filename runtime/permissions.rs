@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::flags::Flags;
 use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
@@ -86,8 +85,22 @@ fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
     .collect()
 }
 
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct PermissionsOptions {
+  pub allow_env: bool,
+  pub allow_hrtime: bool,
+  pub allow_net: bool,
+  pub allow_plugin: bool,
+  pub allow_read: bool,
+  pub allow_run: bool,
+  pub allow_write: bool,
+  pub net_allowlist: Vec<String>,
+  pub read_allowlist: Vec<PathBuf>,
+  pub write_allowlist: Vec<PathBuf>,
+}
+
 impl Permissions {
-  pub fn from_flags(flags: &Flags) -> Self {
+  pub fn from_options(opts: &PermissionsOptions) -> Self {
     fn state_from_flag_bool(flag: bool) -> PermissionState {
       if flag {
         PermissionState::Granted
@@ -97,24 +110,24 @@ impl Permissions {
     }
     Self {
       read: UnaryPermission::<PathBuf> {
-        global_state: state_from_flag_bool(flags.allow_read),
-        granted_list: resolve_fs_allowlist(&flags.read_allowlist),
+        global_state: state_from_flag_bool(opts.allow_read),
+        granted_list: resolve_fs_allowlist(&opts.read_allowlist),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        global_state: state_from_flag_bool(flags.allow_write),
-        granted_list: resolve_fs_allowlist(&flags.write_allowlist),
+        global_state: state_from_flag_bool(opts.allow_write),
+        granted_list: resolve_fs_allowlist(&opts.write_allowlist),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        global_state: state_from_flag_bool(flags.allow_net),
-        granted_list: flags.net_allowlist.iter().cloned().collect(),
+        global_state: state_from_flag_bool(opts.allow_net),
+        granted_list: opts.net_allowlist.iter().cloned().collect(),
         ..Default::default()
       },
-      env: state_from_flag_bool(flags.allow_env),
-      run: state_from_flag_bool(flags.allow_run),
-      plugin: state_from_flag_bool(flags.allow_plugin),
-      hrtime: state_from_flag_bool(flags.allow_hrtime),
+      env: state_from_flag_bool(opts.allow_env),
+      run: state_from_flag_bool(opts.allow_run),
+      plugin: state_from_flag_bool(opts.allow_plugin),
+      hrtime: state_from_flag_bool(opts.allow_hrtime),
     }
   }
 
@@ -693,7 +706,7 @@ mod tests {
       PathBuf::from("/b/c"),
     ];
 
-    let perms = Permissions::from_flags(&Flags {
+    let perms = Permissions::from_options(&PermissionsOptions {
       read_allowlist: allowlist.clone(),
       write_allowlist: allowlist,
       ..Default::default()
@@ -748,7 +761,7 @@ mod tests {
 
   #[test]
   fn test_check_net() {
-    let perms = Permissions::from_flags(&Flags {
+    let perms = Permissions::from_options(&PermissionsOptions {
       net_allowlist: svec![
         "localhost",
         "deno.land",
@@ -839,7 +852,7 @@ mod tests {
     } else {
       vec![PathBuf::from("/a")]
     };
-    let perms = Permissions::from_flags(&Flags {
+    let perms = Permissions::from_options(&PermissionsOptions {
       read_allowlist,
       net_allowlist: svec!["localhost"],
       ..Default::default()
