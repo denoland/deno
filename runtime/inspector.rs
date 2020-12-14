@@ -878,7 +878,7 @@ impl v8::inspector::ChannelImpl for InspectorSession {
             }
           }
         }),
-        _other_error => panic!("Could not parse inspector messagge"),
+        _other_error => panic!("Could not parse inspector message"),
       },
     };
 
