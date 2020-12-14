@@ -149,7 +149,7 @@ impl MainWorker {
     {
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
-      let t = &mut op_state.resource_table_2;
+      let t = &mut op_state.resource_table;
       let (stdin, stdout, stderr) = ops::io::get_stdio();
       if let Some(stream) = stdin {
         t.add(stream);

@@ -82,7 +82,7 @@ fn op_signal_bind(
     ),
     cancel: Default::default(),
   };
-  let rid = state.resource_table_2.add(resource);
+  let rid = state.resource_table.add(resource);
   Ok(json!({
     "rid": rid,
   }))
@@ -100,7 +100,7 @@ async fn op_signal_poll(
 
   let resource = state
     .borrow_mut()
-    .resource_table_2
+    .resource_table
     .get::<SignalStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let cancel = RcRef::map(&resource, |r| &r.cancel);
@@ -122,7 +122,7 @@ pub fn op_signal_unbind(
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   state
-    .resource_table_2
+    .resource_table
     .close(rid)
     .ok_or_else(bad_resource_id)?;
   Ok(json!({}))

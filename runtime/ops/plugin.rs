@@ -55,10 +55,10 @@ pub fn op_open_plugin(
   let rid;
   let deno_plugin_init;
   {
-    rid = state.resource_table_2.add(plugin_resource);
+    rid = state.resource_table.add(plugin_resource);
     deno_plugin_init = *unsafe {
       state
-        .resource_table_2
+        .resource_table
         .get::<PluginResource>(rid)
         .unwrap()
         .lib

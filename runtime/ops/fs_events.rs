@@ -120,7 +120,7 @@ fn op_fs_events_open(
     receiver: AsyncRefCell::new(receiver),
     cancel: Default::default(),
   };
-  let rid = state.resource_table_2.add(resource);
+  let rid = state.resource_table.add(resource);
   Ok(json!(rid))
 }
 
@@ -137,7 +137,7 @@ async fn op_fs_events_poll(
 
   let resource = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<FsEventsResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;

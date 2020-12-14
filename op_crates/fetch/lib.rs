@@ -111,7 +111,7 @@ where
   let client = if let Some(rid) = args.client_rid {
     let state_ = state.borrow();
     let r = state_
-      .resource_table_2
+      .resource_table
       .get::<HttpClientResource>(rid)
       .ok_or_else(bad_resource_id)?;
     r.client.clone()
@@ -177,7 +177,7 @@ where
     }
   }
 
-  let rid = state.borrow_mut().resource_table_2.add(HttpBodyResource {
+  let rid = state.borrow_mut().resource_table.add(HttpBodyResource {
     response: AsyncRefCell::new(res),
     cancel: Default::default(),
   });
@@ -206,7 +206,7 @@ pub async fn op_fetch_read(
 
   let resource = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<HttpBodyResource>(rid as u32)
     .ok_or_else(bad_resource_id)?;
   let mut response = RcRef::map(&resource, |r| &r.response).borrow_mut().await;
@@ -271,7 +271,7 @@ where
 
   let client = create_http_client(args.ca_file.as_deref()).unwrap();
 
-  let rid = state.resource_table_2.add(HttpClientResource::new(client));
+  let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(json!(rid))
 }
 

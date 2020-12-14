@@ -89,7 +89,7 @@ fn op_set_raw(
     use winapi::um::{consoleapi, handleapi};
 
     let resource = state
-      .resource_table_2
+      .resource_table
       .get::<StreamResource>(rid)
       .ok_or_else(bad_resource_id)?;
 
@@ -156,7 +156,7 @@ fn op_set_raw(
     use std::os::unix::io::AsRawFd;
 
     let resource = state
-      .resource_table_2
+      .resource_table
       .get::<StreamResource>(rid)
       .ok_or_else(bad_resource_id)?;
 

@@ -71,7 +71,7 @@ pub(crate) async fn accept_unix(
 
   let resource = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<UnixListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
   let mut listener = RcRef::map(&resource, |r| &r.listener)
@@ -85,7 +85,7 @@ pub(crate) async fn accept_unix(
   let remote_addr = unix_stream.peer_addr()?;
   let resource = StreamResource::unix_stream(unix_stream);
   let mut state = state.borrow_mut();
-  let rid = state.resource_table_2.add(resource);
+  let rid = state.resource_table.add(resource);
   Ok(json!({
     "rid": rid,
     "localAddr": {
@@ -111,7 +111,7 @@ pub(crate) async fn receive_unix_packet(
 
   let resource = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<UnixDatagramResource>(rid)
     .ok_or_else(|| bad_resource("Socket has been closed"))?;
   let mut socket = RcRef::map(&resource, |r| &r.socket)
@@ -144,7 +144,7 @@ pub fn listen_unix(
     listener: AsyncRefCell::new(listener),
     cancel: Default::default(),
   };
-  let rid = state.resource_table_2.add(listener_resource);
+  let rid = state.resource_table.add(listener_resource);
 
   Ok((rid, local_addr))
 }
@@ -163,7 +163,7 @@ pub fn listen_unix_packet(
     cancel: Default::default(),
     local_addr: local_addr.clone(),
   };
-  let rid = state.resource_table_2.add(datagram_resource);
+  let rid = state.resource_table.add(datagram_resource);
 
   Ok((rid, local_addr))
 }

@@ -88,7 +88,7 @@ async fn op_start_tls(
 
   let resource_rc = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<StreamResource>(rid)
     .ok_or_else(bad_resource_id)?
     .clone();
@@ -97,7 +97,7 @@ async fn op_start_tls(
     return Err(bad_resource_id());
   }
 
-  state.borrow_mut().resource_table_2.close(rid);
+  state.borrow_mut().resource_table.close(rid);
 
   let mut resource = Rc::try_unwrap(resource_rc)
     .expect("Only a single use of this resource should happen");
@@ -136,7 +136,7 @@ async fn op_start_tls(
   let rid = {
     let mut state_ = state.borrow_mut();
     state_
-      .resource_table_2
+      .resource_table
       .add(StreamResource::client_tls_stream(tls_stream))
   };
   Ok(json!({
@@ -194,7 +194,7 @@ async fn op_connect_tls(
   let rid = {
     let mut state_ = state.borrow_mut();
     state_
-      .resource_table_2
+      .resource_table
       .add(StreamResource::client_tls_stream(tls_stream))
   };
   Ok(json!({
@@ -323,7 +323,7 @@ fn op_listen_tls(
     cancel: Default::default(),
   };
 
-  let rid = state.resource_table_2.add(tls_listener_resource);
+  let rid = state.resource_table.add(tls_listener_resource);
 
   Ok(json!({
     "rid": rid,
@@ -350,7 +350,7 @@ async fn op_accept_tls(
 
   let resource = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TlsListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
   let mut listener = RcRef::map(&resource, |r| &r.listener)
@@ -373,7 +373,7 @@ async fn op_accept_tls(
   let remote_addr = tcp_stream.peer_addr()?;
   let resource = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TlsListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
   let cancel = RcRef::map(&resource, |r| &r.cancel);
@@ -386,7 +386,7 @@ async fn op_accept_tls(
   let rid = {
     let mut state_ = state.borrow_mut();
     state_
-      .resource_table_2
+      .resource_table
       .add(StreamResource::server_tls_stream(tls_stream))
   };
 

@@ -526,7 +526,7 @@ pub fn op_read(
       async move {
         let resource = state
           .borrow()
-          .resource_table_2
+          .resource_table
           .get::<StreamResource>(rid as u32)
           .ok_or_else(bad_resource_id)?;
         let nread = resource.read(&mut zero_copy).await?;
@@ -570,7 +570,7 @@ pub fn op_write(
       async move {
         let resource = state
           .borrow()
-          .resource_table_2
+          .resource_table
           .get::<StreamResource>(rid as u32)
           .ok_or_else(bad_resource_id)?;
         let nread = resource.write(&zero_copy).await?;
@@ -591,7 +591,7 @@ where
 {
   // First we look up the rid in the resource table.
   let resource = state
-    .resource_table_2
+    .resource_table
     .get::<StreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 

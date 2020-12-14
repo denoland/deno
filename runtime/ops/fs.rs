@@ -186,7 +186,7 @@ fn op_open_sync(
   let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let resource = StreamResource::fs_file(tokio_file);
-  let rid = state.resource_table_2.add(resource);
+  let rid = state.resource_table.add(resource);
   Ok(json!(rid))
 }
 
@@ -200,7 +200,7 @@ async fn op_open_async(
     .open(path)
     .await?;
   let resource = StreamResource::fs_file(tokio_file);
-  let rid = state.borrow_mut().resource_table_2.add(resource);
+  let rid = state.borrow_mut().resource_table.add(resource);
   Ok(json!(rid))
 }
 

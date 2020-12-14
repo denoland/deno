@@ -60,7 +60,7 @@ async fn accept_tcp(
 
   let resource = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TcpListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
   let mut listener = RcRef::map(&resource, |r| &r.listener)
@@ -84,7 +84,7 @@ async fn accept_tcp(
 
   let mut state = state.borrow_mut();
   let rid = state
-    .resource_table_2
+    .resource_table
     .add(StreamResource::tcp_stream(tcp_stream));
   Ok(json!({
     "rid": rid,
@@ -136,7 +136,7 @@ async fn receive_udp(
 
   let resource = state
     .borrow_mut()
-    .resource_table_2
+    .resource_table
     .get::<UdpSocketResource>(rid)
     .ok_or_else(|| bad_resource("Socket has been closed"))?;
   let mut socket = resource.borrow_mut().await;
@@ -202,7 +202,7 @@ async fn op_datagram_send(
 
       let resource = state
         .borrow_mut()
-        .resource_table_2
+        .resource_table
         .get::<UdpSocketResource>(rid as u32)
         .ok_or_else(|| bad_resource("Socket has been closed"))?;
       let mut socket = resource.borrow_mut().await;
@@ -225,7 +225,7 @@ async fn op_datagram_send(
       }
       let resource = state
         .borrow()
-        .resource_table_2
+        .resource_table
         .get::<net_unix::UnixDatagramResource>(rid as u32)
         .ok_or_else(|| {
           custom_error("NotConnected", "Socket has been closed")
@@ -276,7 +276,7 @@ async fn op_connect(
 
       let mut state_ = state.borrow_mut();
       let rid = state_
-        .resource_table_2
+        .resource_table
         .add(StreamResource::tcp_stream(tcp_stream));
       Ok(json!({
         "rid": rid,
@@ -311,7 +311,7 @@ async fn op_connect(
 
       let mut state_ = state.borrow_mut();
       let resource = StreamResource::unix_stream(unix_stream);
-      let rid = state_.resource_table_2.add(resource);
+      let rid = state_.resource_table.add(resource);
       Ok(json!({
         "rid": rid,
         "localAddr": {
@@ -353,7 +353,7 @@ fn op_shutdown(
   };
 
   let resource = state
-    .resource_table_2
+    .resource_table
     .get::<StreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
@@ -441,7 +441,7 @@ fn listen_tcp(
     listener: AsyncRefCell::new(listener),
     cancel: Default::default(),
   };
-  let rid = state.resource_table_2.add(listener_resource);
+  let rid = state.resource_table.add(listener_resource);
 
   Ok((rid, local_addr))
 }
@@ -456,7 +456,7 @@ fn listen_udp(
   let socket_resource = UdpSocketResource {
     socket: AsyncRefCell::new(socket),
   };
-  let rid = state.resource_table_2.add(socket_resource);
+  let rid = state.resource_table.add(socket_resource);
 
   Ok((rid, local_addr))
 }

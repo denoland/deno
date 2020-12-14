@@ -35,7 +35,7 @@ pub enum Op {
 
 /// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
-  pub resource_table_2: ResourceTable,
+  pub resource_table: ResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: GetErrorClassFn,
   gotham_state: GothamState,
@@ -47,7 +47,7 @@ impl Default for OpState {
   //   pub(crate) fn new() -> OpState
   fn default() -> OpState {
     OpState {
-      resource_table_2: Default::default(),
+      resource_table: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
@@ -280,7 +280,7 @@ pub fn op_resources(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let serialized_resources: HashMap<u32, String> = state
-    .resource_table_2
+    .resource_table
     .names()
     .map(|(rid, name)| (rid, name.to_string()))
     .collect();
@@ -301,7 +301,7 @@ pub fn op_close(
     .ok_or_else(|| type_error("missing or invalid `rid`"))?;
 
   state
-    .resource_table_2
+    .resource_table
     .close(rid as u32)
     .ok_or_else(bad_resource_id)?;
 

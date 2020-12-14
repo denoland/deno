@@ -193,7 +193,7 @@ pub async fn op_ws_create(
     cancel: Default::default(),
   };
   let mut state = state.borrow_mut();
-  let rid = state.resource_table_2.add(resource);
+  let rid = state.resource_table.add(resource);
 
   let protocol = match response.headers().get("Sec-WebSocket-Protocol") {
     Some(header) => header.to_str().unwrap(),
@@ -235,7 +235,7 @@ pub async fn op_ws_send(
 
   let resource = state
     .borrow_mut()
-    .resource_table_2
+    .resource_table
     .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
@@ -269,7 +269,7 @@ pub async fn op_ws_close(
 
   let resource = state
     .borrow_mut()
-    .resource_table_2
+    .resource_table
     .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
@@ -292,7 +292,7 @@ pub async fn op_ws_next_event(
 
   let resource = state
     .borrow_mut()
-    .resource_table_2
+    .resource_table
     .get::<WsStreamResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
@@ -321,7 +321,7 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Pong(_))) => json!({"type": "pong"}),
     Some(Err(_)) => json!({"type": "error"}),
     None => {
-      state.borrow_mut().resource_table_2.close(args.rid).unwrap();
+      state.borrow_mut().resource_table.close(args.rid).unwrap();
       json!({"type": "closed"})
     }
   };
