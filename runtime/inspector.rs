@@ -868,7 +868,7 @@ impl v8::inspector::ChannelImpl for InspectorSession {
             "result": {
               "type": "error",
               "description": "Unterminated string literal",
-              "value": "undefined",
+              "value": "Unterminated string literal",
             },
             "exceptionDetails": {
               "exceptionId": 0,
