@@ -23,7 +23,7 @@ export function mkdtemp(
   maybeCallback?: mkdtempCallback,
 ): void {
   const callback: mkdtempCallback | undefined =
-    optionsOrCallback instanceof Function ? optionsOrCallback : maybeCallback;
+  typeof(optionsOrCallback) == "function" ? optionsOrCallback : maybeCallback;
   if (!callback) throw new ERR_INVALID_CALLBACK(callback);
 
   const encoding: string | undefined = parseEncoding(optionsOrCallback);
@@ -31,7 +31,7 @@ export function mkdtemp(
 
   Deno.mkdir(path, { recursive: false, mode: 0o700 })
     .then(() => callback(undefined, decode(path, encoding)))
-    .catch((error) => callback(error));
+    .catch(callback);
 }
 
 // https://nodejs.org/dist/latest-v15.x/docs/api/fs.html#fs_fs_mkdtempsync_prefix_options
@@ -50,7 +50,7 @@ function parseEncoding(
   optionsOrCallback?: { encoding: string } | string | mkdtempCallback,
 ): string | undefined {
   let encoding: string | undefined;
-  if (optionsOrCallback instanceof Function) encoding = undefined;
+  if (typeof(optionsOrCallback) == "function") encoding = undefined;
   else if (optionsOrCallback instanceof Object) {
     encoding = optionsOrCallback?.encoding;
   } else encoding = optionsOrCallback;

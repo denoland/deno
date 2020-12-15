@@ -4,80 +4,71 @@ import { mkdtemp, mkdtempSync } from "./_fs_mkdtemp.ts";
 import { existsSync } from "./_fs_exists.ts";
 import { env } from "../process.ts";
 import { isWindows } from "../../_util/os.ts";
+import { promisify } from "../_util/_util_promisify.ts";
 
 const prefix = isWindows ? env.TEMP + "\\" : (env.TMPDIR || "/tmp") + "/";
 const doesNotExists = "/does/not/exists/";
 const options = { encoding: "ascii" };
 const badOptions = { encoding: "bogus" };
 
+const mkdtempP = promisify(mkdtemp)
+
 Deno.test({
   name: "[node/fs] mkdtemp",
   fn: async () => {
-    const result = await new Promise((resolve) => {
-      mkdtemp(prefix, (err, directory) => {
-        if (err) {
-          resolve(false);
-        } else if (directory) {
-          resolve(existsSync(directory));
-          Deno.removeSync(directory);
-        } else {
-          resolve(false);
-        }
-      });
-    });
-    assert(result);
+    try {
+      const directory = await mkdtempP(prefix);
+      assert(existsSync(directory));
+      Deno.removeSync(directory);
+    } catch (error) {
+      assert(false);
+    }
   },
 });
 
 Deno.test({
   name: "[node/fs] mkdtemp (does not exists)",
   fn: async () => {
-    const result = await new Promise((resolve) => {
-      mkdtemp(doesNotExists, (err, directory) => {
-        if (err) {
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      });
-    });
-    assert(result);
+    try {
+      const directory = await mkdtempP(doesNotExists);
+      
+      // should have thrown already...
+      assert(!existsSync(directory));
+      Deno.removeSync(directory);
+
+    } catch (error) {
+      assert(true);
+    }
   },
 });
 
 Deno.test({
   name: "[node/fs] mkdtemp (with options)",
   fn: async () => {
-    const result = await new Promise((resolve) => {
-      mkdtemp(prefix, options, (err, directory) => {
-        if (err) {
-          resolve(false);
-        } else if (directory) {
-          resolve(existsSync(directory));
-          Deno.removeSync(directory);
-        } else {
-          resolve(false);
-        }
-      });
-    });
-    assert(result);
+    try {
+      const directory = await mkdtempP(prefix, options);
+      assert(existsSync(directory));
+      Deno.removeSync(directory);
+
+    } catch (error) {
+      assert(false);
+    }
   },
 });
 
 Deno.test({
   name: "[node/fs] mkdtemp (with bad options)",
   fn: async () => {
-    const result = await new Promise((resolve) => {
-      try {
-        mkdtemp(prefix, badOptions, (err, directory) => {
-          // should have thrown already...
-          resolve(false);
-        });
-      } catch (error) {
-        resolve(true);
-      }
-    });
-    assert(result);
+    try {
+      const directory = await mkdtempP(prefix, badOptions);
+      
+      // should have thrown already...
+      assert(!existsSync(directory));
+      Deno.removeSync(directory);
+
+    } catch (error) {
+      assert(true);
+    }
   },
 });
 
