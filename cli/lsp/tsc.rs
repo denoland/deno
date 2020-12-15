@@ -1148,6 +1148,7 @@ mod tests {
     }
     let file_cache = Arc::new(RwLock::new(file_cache));
     ServerStateSnapshot {
+      assets: Default::default(),
       config: Default::default(),
       diagnostics: Default::default(),
       doc_data,
