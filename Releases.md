@@ -18,7 +18,7 @@ https://github.com/denoland/deno_install
 - refactor: deno_runtime crate (#8640)
 - upgrade: swc_ecmascript to 0.15.0 (#8688)
 
-Changes in std version 0.80.0:
+Changes in std version 0.81.0:
 
 - fix(std/datetime): partsToDate (#8553)
 - fix(std/wasi): disallow multiple starts (#8712)
