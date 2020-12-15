@@ -53,6 +53,7 @@ impl<T: 'static> AsyncRefCell<T> {
   }
 
   pub fn into_inner(self) -> T {
+    assert!(self.borrow_count.get().is_empty());
     self.value.into_inner()
   }
 }
