@@ -21,8 +21,6 @@ unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
 unitTest(
   {
     perms: { net: true },
-    // TODO:
-    ignore: Deno.build.os === "windows",
   },
   function netUdpListenClose(): void {
     const socket = Deno.listenDatagram({
@@ -257,7 +255,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { net: true } },
+  { perms: { net: true } },
   async function netUdpSendReceive(): Promise<void> {
     const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
     assert(alice.addr.transport === "udp");
@@ -287,7 +285,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { net: true } },
+  { perms: { net: true } },
   async function netUdpBorrowMutError(): Promise<void> {
     const socket = Deno.listenDatagram({
       port: 4501,
@@ -385,7 +383,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { net: true } },
+  { perms: { net: true } },
   async function netUdpListenCloseWhileIterating(): Promise<void> {
     const socket = Deno.listenDatagram({ port: 8000, transport: "udp" });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
