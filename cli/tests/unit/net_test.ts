@@ -286,6 +286,30 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function netUdpConcurrentSendReceive(): Promise<void> {
+    const socket = Deno.listenDatagram({ port: 3500, transport: "udp" });
+    assert(socket.addr.transport === "udp");
+    assertEquals(socket.addr.port, 3500);
+    assertEquals(socket.addr.hostname, "127.0.0.1");
+
+    const recvPromise = socket.receive();
+
+    const sendBuf = new Uint8Array([1, 2, 3]);
+    const sendLen = await socket.send(sendBuf, socket.addr);
+    assertEquals(sendLen, 3);
+
+    const [recvBuf, recvAddr] = await recvPromise;
+    assertEquals(recvBuf.length, 3);
+    assertEquals(1, recvBuf[0]);
+    assertEquals(2, recvBuf[1]);
+    assertEquals(3, recvBuf[2]);
+
+    socket.close();
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
   async function netUdpBorrowMutError(): Promise<void> {
     const socket = Deno.listenDatagram({
       port: 4501,
@@ -330,6 +354,33 @@ unitTest(
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
+  },
+);
+
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  async function netUnixPacketConcurrentSendReceive(): Promise<void> {
+    const filePath = await Deno.makeTempFile();
+    const socket = Deno.listenDatagram({
+      path: filePath,
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, filePath);
+
+    const recvPromise = socket.receive();
+
+    const sendBuf = new Uint8Array([1, 2, 3]);
+    const sendLen = await socket.send(sendBuf, socket.addr);
+    assertEquals(sendLen, 3);
+
+    const [recvBuf, recvAddr] = await recvPromise;
+    assertEquals(recvBuf.length, 3);
+    assertEquals(1, recvBuf[0]);
+    assertEquals(2, recvBuf[1]);
+    assertEquals(3, recvBuf[2]);
+
+    socket.close();
   },
 );
 
