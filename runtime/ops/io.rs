@@ -8,6 +8,7 @@ use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
+use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::CancelHandle;
@@ -136,6 +137,41 @@ pub struct TTYMetadata {
 #[derive(Default)]
 pub struct FileMetadata {
   pub tty: TTYMetadata,
+}
+
+pub struct FullDuplexResource<R, W> {
+  rd: AsyncRefCell<R>,
+  wr: AsyncRefCell<W>,
+  // When a full-duplex resource is closed, all pending 'read' ops are
+  // canceled, while 'write' ops are allowed to complete. Therefore only
+  // 'read' futures should be attached to this cancel handle.
+  cancel_handle: CancelHandle,
+}
+
+impl<R: 'static, W: 'static> FullDuplexResource<R, W> {
+  pub fn new((rd, wr): (R, W)) -> Self {
+    Self {
+      rd: rd.into(),
+      wr: wr.into(),
+      cancel_handle: Default::default(),
+    }
+  }
+
+  pub fn rd_borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<R> {
+    RcRef::map(self, |r| &r.rd).borrow_mut()
+  }
+
+  pub fn wr_borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<W> {
+    RcRef::map(self, |r| &r.wr).borrow_mut()
+  }
+
+  pub fn cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
+    RcRef::map(self, |r| &r.cancel_handle)
+  }
+
+  pub fn cancel_read_ops(&self) {
+    self.cancel_handle.cancel()
+  }
 }
 
 #[derive(Default)]

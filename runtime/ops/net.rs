@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::io::FullDuplexResource;
 use crate::ops::io::StreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
@@ -13,7 +14,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::CancelHandle;
@@ -28,6 +28,7 @@ use std::cell::RefCell;
 use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use tokio::net::udp;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -140,8 +141,11 @@ async fn receive_udp(
     .resource_table
     .get::<UdpSocketResource>(rid)
     .ok_or_else(|| bad_resource("Socket has been closed"))?;
-  let mut socket = resource.borrow_mut().await;
-  let (size, remote_addr) = socket.recv_from(&mut zero_copy).await?;
+  let mut socket = resource.rd_borrow_mut().await;
+  let (size, remote_addr) = socket
+    .recv_from(&mut zero_copy)
+    .try_or_cancel(resource.cancel_handle())
+    .await?;
 
   Ok(json!({
     "size": size,
@@ -206,7 +210,7 @@ async fn op_datagram_send(
         .resource_table
         .get::<UdpSocketResource>(rid as u32)
         .ok_or_else(|| bad_resource("Socket has been closed"))?;
-      let mut socket = resource.borrow_mut().await;
+      let mut socket = resource.wr_borrow_mut().await;
       socket
         .send_to(&zero_copy, &addr)
         .await
@@ -394,19 +398,15 @@ impl Resource for TcpListenerResource {
   }
 }
 
-struct UdpSocketResource {
-  socket: AsyncRefCell<UdpSocket>,
-}
+type UdpSocketResource = FullDuplexResource<udp::RecvHalf, udp::SendHalf>;
 
 impl Resource for UdpSocketResource {
   fn name(&self) -> Cow<str> {
     "udpSocket".into()
   }
-}
 
-impl UdpSocketResource {
-  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<UdpSocket> {
-    RcRef::map(self, |r| &r.socket).borrow_mut()
+  fn close(self: Rc<Self>) {
+    self.cancel_read_ops()
   }
 }
 
@@ -454,9 +454,7 @@ fn listen_udp(
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
-  let socket_resource = UdpSocketResource {
-    socket: AsyncRefCell::new(socket),
-  };
+  let socket_resource = UdpSocketResource::new(socket.split());
   let rid = state.resource_table.add(socket_resource);
 
   Ok((rid, local_addr))
