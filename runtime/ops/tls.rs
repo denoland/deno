@@ -103,18 +103,8 @@ async fn op_start_tls(
   let mut resource = Rc::try_unwrap(resource_rc)
     .expect("Only a single use of this resource should happen");
 
-  let read_half = resource
-    .tcp_stream_read
-    .take()
-    .unwrap()
-    .try_unwrap()
-    .unwrap();
-  let write_half = resource
-    .tcp_stream_write
-    .take()
-    .unwrap()
-    .try_unwrap()
-    .unwrap();
+  let read_half = resource.tcp_stream_read.take().unwrap().into_inner();
+  let write_half = resource.tcp_stream_write.take().unwrap().into_inner();
   let tcp_stream = read_half.reunite(write_half).unwrap();
 
   let local_addr = tcp_stream.local_addr()?;
