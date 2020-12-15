@@ -58,6 +58,9 @@ tokio-rustls = "0.14.1"
 # Keep in-sync with warp.
 tokio-tungstenite = "0.11.0"
 uuid = { version = "0.8.1", features = ["v4"] }
+# TODO(bartlomieju): remove dependency on warp, it's only used
+# for a WebSocket server in inspector.rs
+# Keep in-sync with tokio-tungestenite.
 warp = { version = "0.2.5", features = ["tls"] }
 webpki = "0.21.3"
 webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'.
