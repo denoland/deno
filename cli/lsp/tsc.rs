@@ -7,6 +7,7 @@ use super::utils;
 
 use crate::js;
 use crate::media_type::MediaType;
+use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::tsc_config::TsConfig;
 
@@ -27,92 +28,26 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-/// Provide static assets for the language server.
-///
-/// TODO(@kitsonk) this should be DRY'ed up with `cli/tsc.rs` and the
-/// `cli/build.rs`
-pub fn get_asset(asset: &str) -> Option<&'static str> {
-  macro_rules! inc {
-    ($e:expr) => {
-      Some(include_str!(concat!("../dts/", $e)))
-    };
-  }
-  match asset {
-    // These are not included in the snapshot
-    "/lib.dom.d.ts" => inc!("lib.dom.d.ts"),
-    "/lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
-    "/lib.es6.d.ts" => inc!("lib.es6.d.ts"),
-    "/lib.es2016.full.d.ts" => inc!("lib.es2016.full.d.ts"),
-    "/lib.es2017.full.d.ts" => inc!("lib.es2017.full.d.ts"),
-    "/lib.es2018.full.d.ts" => inc!("lib.es2018.full.d.ts"),
-    "/lib.es2019.full.d.ts" => inc!("lib.es2019.full.d.ts"),
-    "/lib.es2020.full.d.ts" => inc!("lib.es2020.full.d.ts"),
-    "/lib.esnext.full.d.ts" => inc!("lib.esnext.full.d.ts"),
-    "/lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
-    "/lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
-    "/lib.webworker.importscripts.d.ts" => {
-      inc!("lib.webworker.importscripts.d.ts")
+/// Optionally returns an internal asset, first checking for any static assets
+/// in Rust, then checking any previously retrieved static assets from the
+/// isolate, and then finally, the tsc isolate itself.
+pub fn get_asset(
+  specifier: &ModuleSpecifier,
+  runtime: &mut JsRuntime,
+  server_state: &ServerStateSnapshot,
+) -> Result<Option<String>, AnyError> {
+  let specifier_str = specifier.to_string().replace("asset:///", "");
+  if let Some(asset_text) = tsc::get_asset(&specifier_str) {
+    Ok(Some(asset_text.to_string()))
+  } else {
+    let mut assets = server_state.assets.write().unwrap();
+    if let Some(asset) = assets.get(specifier) {
+      Ok(asset.clone())
+    } else {
+      let asset = request_asset(specifier, runtime, server_state)?;
+      assets.insert(specifier.clone(), asset.clone());
+      Ok(asset)
     }
-    "/lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
-    // These come from op crates
-    // TODO(@kitsonk) these is even hackier than the rest of this...
-    "/lib.deno.web.d.ts" => Some(js::DENO_WEB_LIB),
-    "/lib.deno.fetch.d.ts" => Some(js::DENO_FETCH_LIB),
-    // These are included in the snapshot for TypeScript, and could be retrieved
-    // from there?
-    "/lib.d.ts" => inc!("lib.d.ts"),
-    "/lib.deno.ns.d.ts" => inc!("lib.deno.ns.d.ts"),
-    "/lib.deno.shared_globals.d.ts" => inc!("lib.deno.shared_globals.d.ts"),
-    "/lib.deno.unstable.d.ts" => inc!("lib.deno.unstable.d.ts"),
-    "/lib.deno.window.d.ts" => inc!("lib.deno.window.d.ts"),
-    "/lib.deno.worker.d.ts" => inc!("lib.deno.worker.d.ts"),
-    "/lib.es5.d.ts" => inc!("lib.es5.d.ts"),
-    "/lib.es2015.collection.d.ts" => inc!("lib.es2015.collection.d.ts"),
-    "/lib.es2015.core.d.ts" => inc!("lib.es2015.core.d.ts"),
-    "/lib.es2015.d.ts" => inc!("lib.es2015.d.ts"),
-    "/lib.es2015.generator.d.ts" => inc!("lib.es2015.generator.d.ts"),
-    "/lib.es2015.iterable.d.ts" => inc!("lib.es2015.iterable.d.ts"),
-    "/lib.es2015.promise.d.ts" => inc!("lib.es2015.promise.d.ts"),
-    "/lib.es2015.proxy.d.ts" => inc!("lib.es2015.proxy.d.ts"),
-    "/lib.es2015.reflect.d.ts" => inc!("lib.es2015.reflect.d.ts"),
-    "/lib.es2015.symbol.d.ts" => inc!("lib.es2015.symbol.d.ts"),
-    "/lib.es2015.symbol.wellknown.d.ts" => {
-      inc!("lib.es2015.symbol.wellknown.d.ts")
-    }
-    "/lib.es2016.array.include.d.ts" => inc!("lib.es2016.array.include.d.ts"),
-    "/lib.es2016.d.ts" => inc!("lib.es2016.d.ts"),
-    "/lib.es2017.d.ts" => inc!("lib.es2017.d.ts"),
-    "/lib.es2017.intl.d.ts" => inc!("lib.es2017.intl.d.ts"),
-    "/lib.es2017.object.d.ts" => inc!("lib.es2017.object.d.ts"),
-    "/lib.es2017.sharedmemory.d.ts" => inc!("lib.es2017.sharedmemory.d.ts"),
-    "/lib.es2017.string.d.ts" => inc!("lib.es2017.string.d.ts"),
-    "/lib.es2017.typedarrays.d.ts" => inc!("lib.es2017.typedarrays.d.ts"),
-    "/lib.es2018.asyncgenerator.d.ts" => inc!("lib.es2018.asyncgenerator.d.ts"),
-    "/lib.es2018.asynciterable.d.ts" => inc!("lib.es2018.asynciterable.d.ts"),
-    "/lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),
-    "/lib.es2018.intl.d.ts" => inc!("lib.es2018.intl.d.ts"),
-    "/lib.es2018.promise.d.ts" => inc!("lib.es2018.promise.d.ts"),
-    "/lib.es2018.regexp.d.ts" => inc!("lib.es2018.regexp.d.ts"),
-    "/lib.es2019.array.d.ts" => inc!("lib.es2019.array.d.ts"),
-    "/lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
-    "/lib.es2019.object.d.ts" => inc!("lib.es2019.object.d.ts"),
-    "/lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
-    "/lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
-    "/lib.es2020.bigint.d.ts" => inc!("lib.es2020.bigint.d.ts"),
-    "/lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),
-    "/lib.es2020.intl.d.ts" => inc!("lib.es2020.intl.d.ts"),
-    "/lib.es2020.promise.d.ts" => inc!("lib.es2020.promise.d.ts"),
-    "/lib.es2020.sharedmemory.d.ts" => inc!("lib.es2020.sharedmemory.d.ts"),
-    "/lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
-    "/lib.es2020.symbol.wellknown.d.ts" => {
-      inc!("lib.es2020.symbol.wellknown.d.ts")
-    }
-    "/lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
-    "/lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
-    "/lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
-    "/lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
-    "/lib.esnext.weakref.d.ts" => inc!("lib.esnext.weakref.d.ts"),
-    _ => None,
   }
 }
 
@@ -661,6 +596,7 @@ struct Response {
 }
 
 struct State<'a> {
+  asset: Option<String>,
   last_id: usize,
   response: Option<Response>,
   server_state: ServerStateSnapshot,
@@ -670,6 +606,7 @@ struct State<'a> {
 impl<'a> State<'a> {
   fn new(server_state: ServerStateSnapshot) -> Self {
     Self {
+      asset: None,
       last_id: 1,
       response: None,
       server_state,
@@ -928,6 +865,18 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!(None::<String>))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetAssetArgs {
+  text: Option<String>,
+}
+
+fn set_asset(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let v: SetAssetArgs = serde_json::from_value(args)?;
+  state.asset = v.text;
+  Ok(json!(true))
+}
+
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
@@ -951,6 +900,7 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   runtime.register_op("op_respond", op(respond));
   runtime.register_op("op_script_names", op(script_names));
   runtime.register_op("op_script_version", op(script_version));
+  runtime.register_op("op_set_asset", op(set_asset));
 
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);
@@ -1028,6 +978,8 @@ pub struct UserPreferences {
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),
+  /// Retrieve the text of an assets that exists in memory in the isolate.
+  GetAsset(ModuleSpecifier),
   /// Return semantic diagnostics for given file.
   GetSemanticDiagnostics(ModuleSpecifier),
   /// Returns suggestion diagnostics for given file.
@@ -1053,6 +1005,11 @@ impl RequestMethod {
         "id": id,
         "method": "configure",
         "compilerOptions": config,
+      }),
+      RequestMethod::GetAsset(specifier) => json!({
+        "id": id,
+        "method": "getAsset",
+        "specifier": specifier,
       }),
       RequestMethod::GetSemanticDiagnostics(specifier) => json!({
         "id": id,
@@ -1142,6 +1099,30 @@ pub fn request(
       "The response was not received for the request.",
     ))
   }
+}
+
+fn request_asset(
+  specifier: &ModuleSpecifier,
+  runtime: &mut JsRuntime,
+  server_state: &ServerStateSnapshot,
+) -> Result<Option<String>, AnyError> {
+  let id = {
+    let op_state = runtime.op_state();
+    let mut op_state = op_state.borrow_mut();
+    let state = op_state.borrow_mut::<State>();
+    state.server_state = server_state.clone();
+    state.last_id += 1;
+    state.last_id
+  };
+  let request_params = RequestMethod::GetAsset(specifier.clone()).to_value(id);
+  let request_src = format!("globalThis.serverRequest({});", request_params);
+  runtime.execute("[native_code]", &request_src)?;
+
+  let op_state = runtime.op_state();
+  let mut op_state = op_state.borrow_mut();
+  let state = op_state.borrow_mut::<State>();
+
+  Ok(state.asset.clone())
 }
 
 #[cfg(test)]
@@ -1422,9 +1403,45 @@ mod tests {
       &server_state,
       RequestMethod::GetSyntacticDiagnostics(specifier),
     );
-    println!("{:?}", result);
-    // assert!(result.is_ok());
-    // let response = result.unwrap();
-    // assert_eq!(response, json!([]));
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(
+      response,
+      json!([{
+        "start": {
+          "line": 8,
+          "character": 29
+        },
+        "end": {
+          "line": 8,
+          "character": 29
+        },
+        "fileName": "file:///a.ts",
+        "messageText": "Expression expected.",
+        "sourceLine": "        import * as test from",
+        "category": 1,
+        "code": 1109
+      }])
+    );
+  }
+
+  #[test]
+  fn test_request_asset() {
+    let (mut runtime, server_state) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      vec![],
+    );
+    let specifier = ModuleSpecifier::resolve_url("asset:///lib.esnext.d.ts")
+      .expect("could not resolve url");
+    let result = request_asset(&specifier, &mut runtime, &server_state);
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert!(response.is_some());
   }
 }
