@@ -190,9 +190,18 @@ export function totalmem(): number {
   return Deno.systemMemoryInfo().total;
 }
 
-/** Not yet implemented */
+/** Returns operating system type (i.e. 'Windows_NT', 'Linux', 'Darwin') */
 export function type(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  switch (Deno.build.os) {
+    case "windows":
+      return "Windows_NT";
+    case "linux":
+      return "Linux";
+    case "darwin":
+      return "Darwin";
+    default:
+      throw Error("unreachable");
+  }
 }
 
 /** Not yet implemented */

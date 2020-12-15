@@ -25,8 +25,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 pub type DependencyMap = HashMap<String, Dependency>;
-pub type FetchFuture =
-  Pin<Box<(dyn Future<Output = Result<CachedModule, AnyError>> + 'static)>>;
+pub type FetchFuture = Pin<
+  Box<
+    (dyn Future<Output = Result<CachedModule, (ModuleSpecifier, AnyError)>>
+       + 'static),
+  >,
+>;
 
 /// A group of errors that represent errors that can occur with an
 /// an implementation of `SpecifierHandler`.
@@ -287,23 +291,30 @@ impl SpecifierHandler for FetchHandler {
             // they cannot actually get to the source code that is quoted, as
             // it only exists in the runtime memory of Deno.
             if !location.filename.contains("$deno$") {
-              HandlerError::FetchErrorWithLocation(err.to_string(), location)
-                .into()
+              (
+                requested_specifier.clone(),
+                HandlerError::FetchErrorWithLocation(err.to_string(), location)
+                  .into(),
+              )
             } else {
-              err
+              (requested_specifier.clone(), err)
             }
           } else {
-            err
+            (requested_specifier.clone(), err)
           }
         })?;
       let url = source_file.specifier.as_url();
       let is_remote = url.scheme() != "file";
       let filename = disk_cache.get_cache_filename_with_extension(url, "meta");
-      let maybe_version = if let Ok(bytes) = disk_cache.get(&filename) {
-        if let Ok(compiled_file_metadata) =
-          CompiledFileMetadata::from_bytes(&bytes)
-        {
-          Some(compiled_file_metadata.version_hash)
+      let maybe_version = if let Some(filename) = filename {
+        if let Ok(bytes) = disk_cache.get(&filename) {
+          if let Ok(compiled_file_metadata) =
+            CompiledFileMetadata::from_bytes(&bytes)
+          {
+            Some(compiled_file_metadata.version_hash)
+          } else {
+            None
+          }
         } else {
           None
         }
@@ -314,19 +325,26 @@ impl SpecifierHandler for FetchHandler {
       let mut maybe_map_path = None;
       let map_path =
         disk_cache.get_cache_filename_with_extension(&url, "js.map");
-      let maybe_map = if let Ok(map) = disk_cache.get(&map_path) {
-        maybe_map_path = Some(disk_cache.location.join(map_path));
-        Some(String::from_utf8(map)?)
+      let maybe_map = if let Some(map_path) = map_path {
+        if let Ok(map) = disk_cache.get(&map_path) {
+          maybe_map_path = Some(disk_cache.location.join(map_path));
+          Some(String::from_utf8(map).unwrap())
+        } else {
+          None
+        }
       } else {
         None
       };
       let mut maybe_emit = None;
       let mut maybe_emit_path = None;
       let emit_path = disk_cache.get_cache_filename_with_extension(&url, "js");
-      if let Ok(code) = disk_cache.get(&emit_path) {
-        maybe_emit = Some(Emit::Cli((String::from_utf8(code)?, maybe_map)));
-        maybe_emit_path =
-          Some((disk_cache.location.join(emit_path), maybe_map_path));
+      if let Some(emit_path) = emit_path {
+        if let Ok(code) = disk_cache.get(&emit_path) {
+          maybe_emit =
+            Some(Emit::Cli((String::from_utf8(code).unwrap(), maybe_map)));
+          maybe_emit_path =
+            Some((disk_cache.location.join(emit_path), maybe_map_path));
+        }
       };
 
       Ok(CachedModule {
@@ -353,8 +371,12 @@ impl SpecifierHandler for FetchHandler {
     let filename = self
       .disk_cache
       .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
-    if let Ok(tsbuildinfo) = self.disk_cache.get(&filename) {
-      Ok(Some(String::from_utf8(tsbuildinfo)?))
+    if let Some(filename) = filename {
+      if let Ok(tsbuildinfo) = self.disk_cache.get(&filename) {
+        Ok(Some(String::from_utf8(tsbuildinfo)?))
+      } else {
+        Ok(None)
+      }
     } else {
       Ok(None)
     }
@@ -367,7 +389,8 @@ impl SpecifierHandler for FetchHandler {
   ) -> Result<(), AnyError> {
     let filename = self
       .disk_cache
-      .get_cache_filename_with_extension(specifier.as_url(), "buildinfo");
+      .get_cache_filename_with_extension(specifier.as_url(), "buildinfo")
+      .unwrap();
     debug!("set_tsbuildinfo - filename {:?}", filename);
     self
       .disk_cache
@@ -383,14 +406,17 @@ impl SpecifierHandler for FetchHandler {
     match emit {
       Emit::Cli((code, maybe_map)) => {
         let url = specifier.as_url();
-        let filename =
-          self.disk_cache.get_cache_filename_with_extension(url, "js");
+        let filename = self
+          .disk_cache
+          .get_cache_filename_with_extension(url, "js")
+          .unwrap();
         self.disk_cache.set(&filename, code.as_bytes())?;
 
         if let Some(map) = maybe_map {
           let filename = self
             .disk_cache
-            .get_cache_filename_with_extension(url, "js.map");
+            .get_cache_filename_with_extension(url, "js.map")
+            .unwrap();
           self.disk_cache.set(&filename, map.as_bytes())?;
         }
       }
@@ -425,7 +451,8 @@ impl SpecifierHandler for FetchHandler {
     let compiled_file_metadata = CompiledFileMetadata { version_hash };
     let filename = self
       .disk_cache
-      .get_cache_filename_with_extension(specifier.as_url(), "meta");
+      .get_cache_filename_with_extension(specifier.as_url(), "meta")
+      .unwrap();
 
     self
       .disk_cache
@@ -475,9 +502,12 @@ impl SpecifierHandler for MemoryHandler {
         ..Default::default()
       })
     } else {
-      Err(custom_error(
-        "NotFound",
-        format!("Unable to find specifier in sources: {}", specifier),
+      Err((
+        specifier.clone(),
+        custom_error(
+          "NotFound",
+          format!("Unable to find specifier in sources: {}", specifier),
+        ),
       ))
     };
 
