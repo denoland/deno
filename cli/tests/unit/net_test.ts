@@ -583,16 +583,20 @@ unitTest(
 
     async function iteratorReq(listener: Deno.Listener): Promise<void> {
       const p = new Uint8Array(10);
+      console.error("iterator accept");
       const conn = await listener.accept();
       acceptedConn = conn;
 
       try {
         while (true) {
+          console.error("iterator read");
           const nread = await conn.read(p);
+          console.error("iterator after read", nread);
           if (nread === null) {
             break;
           }
           await conn.write(new Uint8Array([1, 2, 3]));
+          console.error("iterator after write");
         }
       } catch (err) {
         assert(!!err);
@@ -603,15 +607,25 @@ unitTest(
     }
 
     const addr = { hostname: "127.0.0.1", port: 3500 };
+    console.error("listen!");
     const listener = Deno.listen(addr);
+    console.error("start iterator");
     iteratorReq(listener);
+    console.error("before connect");
     const conn = await Deno.connect(addr);
+    console.error("after connect");
     await conn.write(new Uint8Array([1, 2, 3, 4]));
-    const buf = new Uint8Array(10);
+    console.error("after write");
+    const buf = new Uint8Array(3);
+    console.error("before read");
     await conn.read(buf);
+    console.error("after read");
     conn!.close();
+    console.error("close conn");
     acceptedConn!.close();
+    console.error("close accepted conn");
     listener.close();
+    console.error("close listener");
     await resolvable;
   },
 );

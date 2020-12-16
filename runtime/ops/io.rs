@@ -196,6 +196,7 @@ where
   async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
     let mut wr = self.wr_borrow_mut().await;
     let nwritten = wr.write(buf).await?;
+    wr.flush().await?;
     Ok(nwritten)
   }
 }
