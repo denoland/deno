@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::version;
-use bytes::Bytes;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::HeaderMap;
@@ -14,18 +12,10 @@ use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::header::USER_AGENT;
 use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
-use deno_runtime::deno_fetch::reqwest::Response;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
-use std::cmp::min;
 use std::collections::HashMap;
 use std::fs::File;
-use std::future::Future;
-use std::io;
 use std::io::Read;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
-use tokio::io::AsyncRead;
 
 pub fn get_user_agent() -> String {
   format!("Deno/{}", version::deno())
@@ -164,70 +154,6 @@ pub async fn fetch_once(
   let body = response.bytes().await?.to_vec();
 
   Ok(FetchOnceResult::Code(body, headers_))
-}
-
-/// Wraps reqwest `Response` so that it can be exposed as an `AsyncRead` and integrated
-/// into resources more easily.
-pub struct HttpBody {
-  response: Response,
-  chunk: Option<Bytes>,
-  pos: usize,
-}
-
-impl AsyncRead for HttpBody {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &mut [u8],
-  ) -> Poll<Result<usize, io::Error>> {
-    let mut inner = self.get_mut();
-    if let Some(chunk) = inner.chunk.take() {
-      debug!(
-        "HttpBody Fake Read buf {} chunk {} pos {}",
-        buf.len(),
-        chunk.len(),
-        inner.pos
-      );
-      let n = min(buf.len(), chunk.len() - inner.pos);
-      {
-        let rest = &chunk[inner.pos..];
-        buf[..n].copy_from_slice(&rest[..n]);
-      }
-      inner.pos += n;
-      if inner.pos == chunk.len() {
-        inner.pos = 0;
-      } else {
-        inner.chunk = Some(chunk);
-      }
-      return Poll::Ready(Ok(n));
-    } else {
-      assert_eq!(inner.pos, 0);
-    }
-
-    let chunk_future = inner.response.chunk();
-    futures::pin_mut!(chunk_future);
-
-    let result = match futures::ready!(chunk_future.poll(cx)) {
-      Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
-      Ok(Some(chunk)) => {
-        debug!(
-          "HttpBody Real Read buf {} chunk {} pos {}",
-          buf.len(),
-          chunk.len(),
-          inner.pos
-        );
-        let n = min(buf.len(), chunk.len());
-        buf[..n].copy_from_slice(&chunk[..n]);
-        if buf.len() < chunk.len() {
-          inner.pos = n;
-          inner.chunk = Some(chunk);
-        }
-        Ok(n)
-      }
-      Ok(None) => Ok(0),
-    };
-    result.into()
-  }
 }
 
 #[cfg(test)]

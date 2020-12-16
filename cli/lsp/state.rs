@@ -192,6 +192,7 @@ impl DocumentData {
 /// An immutable snapshot of the server state at a point in time.
 #[derive(Debug, Clone, Default)]
 pub struct ServerStateSnapshot {
+  pub assets: Arc<RwLock<HashMap<ModuleSpecifier, Option<String>>>>,
   pub config: Config,
   pub diagnostics: DiagnosticCollection,
   pub doc_data: HashMap<ModuleSpecifier, DocumentData>,
@@ -200,6 +201,7 @@ pub struct ServerStateSnapshot {
 }
 
 pub struct ServerState {
+  pub assets: Arc<RwLock<HashMap<ModuleSpecifier, Option<String>>>>,
   pub config: Config,
   pub diagnostics: DiagnosticCollection,
   pub doc_data: HashMap<ModuleSpecifier, DocumentData>,
@@ -230,6 +232,7 @@ impl ServerState {
     let ts_runtime = tsc::start(false).expect("could not start tsc");
 
     Self {
+      assets: Default::default(),
       config,
       diagnostics: Default::default(),
       doc_data: Default::default(),
@@ -315,6 +318,7 @@ impl ServerState {
 
   pub fn snapshot(&self) -> ServerStateSnapshot {
     ServerStateSnapshot {
+      assets: Arc::clone(&self.assets),
       config: self.config.clone(),
       diagnostics: self.diagnostics.clone(),
       doc_data: self.doc_data.clone(),
