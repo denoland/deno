@@ -71,6 +71,7 @@ tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
 tokio-rustls = "0.14.1"
+toml = "0.5.6"
 uuid = { version = "0.8.1", features = ["v4"] }
 walkdir = "2.3.1"
 

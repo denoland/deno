@@ -10,6 +10,7 @@ extern crate log;
 mod ast;
 mod checksum;
 mod colors;
+mod config;
 mod deno_dir;
 mod diagnostics;
 mod diff;
@@ -423,7 +424,7 @@ async fn lint_command(
   flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
-  ignore: Vec<PathBuf>,
+  mut ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
@@ -433,6 +434,13 @@ async fn lint_command(
   if list_rules {
     tools::lint::print_rules_list(json);
     return Ok(());
+  }
+
+  if let Some(meta) = &flags.meta {
+    let config = config::load(meta)?;
+    if let Some(lint_config) = config.lint {
+      ignore.append(&mut config::relative_paths(meta, &lint_config.ignore));
+    }
   }
 
   tools::lint::lint_files(files, ignore, json).await
@@ -803,11 +811,18 @@ async fn doc_command(
 async fn format_command(
   flags: Flags,
   args: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  mut ignore: Vec<PathBuf>,
   check: bool,
 ) -> Result<(), AnyError> {
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return tools::fmt::format_stdin(check);
+  }
+
+  if let Some(meta) = &flags.meta {
+    let config = config::load(meta)?;
+    if let Some(format_config) = config.fmt {
+      ignore.append(&mut config::relative_paths(meta, &format_config.ignore));
+    }
   }
 
   tools::fmt::format(args, ignore, check, flags.watch).await?;

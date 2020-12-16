@@ -500,6 +500,7 @@ dependencies = [
  "tokio 0.2.22",
  "tokio-rustls",
  "tokio-tungstenite",
+ "toml",
  "uuid",
  "walkdir",
  "winapi 0.3.9",

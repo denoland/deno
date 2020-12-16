@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::program_state::exit_unstable;
+
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -116,6 +118,7 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub lock_write: bool,
   pub log_level: Option<Level>,
+  pub meta: Option<String>,
   pub net_allowlist: Vec<String>,
   pub no_check: bool,
   pub no_prompts: bool,
@@ -257,6 +260,12 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
   if matches.is_present("unstable") {
     flags.unstable = true;
   }
+  if matches.is_present("meta") {
+    if !flags.unstable {
+      exit_unstable("meta");
+    }
+    flags.meta = matches.value_of("meta").map(ToOwned::to_owned);
+  }
   if matches.is_present("log-level") {
     flags.log_level = match matches.value_of("log-level").unwrap() {
       "debug" => Some(Level::Debug),
@@ -324,6 +333,14 @@ fn clap_root<'a, 'b>(version: &'b str) -> App<'a, 'b> {
       Arg::with_name("unstable")
         .long("unstable")
         .help("Enable unstable features and APIs")
+        .global(true),
+    )
+    .arg(
+      Arg::with_name("meta")
+        .short("M")
+        .long("meta")
+        .help("Path of the Deno project configuration")
+        .takes_value(true)
         .global(true),
     )
     .arg(
