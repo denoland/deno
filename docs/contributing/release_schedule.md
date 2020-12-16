@@ -22,7 +22,7 @@ canary release by running:
 deno upgrade --canary
 ```
 
-To update to a specifc canary, pass the commit has in the `--version` option:
+To update to a specific canary, pass the commit has in the `--version` option:
 
 ```
 deno upgrade --canary --version=973af61d8bb03c1709f61e456581d58386ed4952

@@ -12,6 +12,8 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
+use lsp_types::CompletionParams;
+use lsp_types::CompletionResponse;
 use lsp_types::DocumentFormattingParams;
 use lsp_types::DocumentHighlight;
 use lsp_types::DocumentHighlightParams;
@@ -29,8 +31,11 @@ fn get_line_index(
   specifier: &ModuleSpecifier,
 ) -> Result<Vec<u32>, AnyError> {
   let line_index = if specifier.as_url().scheme() == "asset" {
-    if let Some(source) = tsc::get_asset(specifier.as_url().path()) {
-      text::index_lines(source)
+    let server_state = state.snapshot();
+    if let Some(source) =
+      tsc::get_asset(specifier, &mut state.ts_runtime, &server_state)?
+    {
+      text::index_lines(&source)
     } else {
       return Err(custom_error(
         "NotFound",
@@ -187,6 +192,36 @@ pub fn handle_hover(
   }
 }
 
+pub fn handle_completion(
+  state: &mut ServerState,
+  params: CompletionParams,
+) -> Result<Option<CompletionResponse>, AnyError> {
+  let specifier =
+    utils::normalize_url(params.text_document_position.text_document.uri);
+  let line_index = get_line_index(state, &specifier)?;
+  let server_state = state.snapshot();
+  let maybe_completion_info: Option<tsc::CompletionInfo> =
+    serde_json::from_value(tsc::request(
+      &mut state.ts_runtime,
+      &server_state,
+      tsc::RequestMethod::GetCompletions((
+        specifier,
+        text::to_char_pos(&line_index, params.text_document_position.position),
+        tsc::UserPreferences {
+          // TODO(lucacasonato): enable this. see https://github.com/denoland/deno/pull/8651
+          include_completions_with_insert_text: Some(false),
+          ..Default::default()
+        },
+      )),
+    )?)?;
+
+  if let Some(completions) = maybe_completion_info {
+    Ok(Some(completions.into_completion_response(&line_index)))
+  } else {
+    Ok(None)
+  }
+}
+
 pub fn handle_references(
   state: &mut ServerState,
   params: ReferenceParams,
@@ -224,7 +259,7 @@ pub fn handle_references(
 }
 
 pub fn handle_virtual_text_document(
-  state: ServerStateSnapshot,
+  state: &mut ServerState,
   params: lsp_extensions::VirtualTextDocumentParams,
 ) -> Result<String, AnyError> {
   let specifier = utils::normalize_url(params.text_document.uri);
@@ -242,8 +277,11 @@ pub fn handle_virtual_text_document(
   } else {
     match url.scheme() {
       "asset" => {
-        if let Some(text) = tsc::get_asset(url.path()) {
-          text.to_string()
+        let server_state = state.snapshot();
+        if let Some(text) =
+          tsc::get_asset(&specifier, &mut state.ts_runtime, &server_state)?
+        {
+          text
         } else {
           error!("Missing asset: {}", specifier);
           "".to_string()

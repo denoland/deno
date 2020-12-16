@@ -1,2 +1,1 @@
-error: network access to "http://localhost:4545/cli/tests/subdir/mod4.js", run again with the --allow-net flag
-    at file:///[WILDCARD]cli/tests/error_015_dynamic_import_permissions.js:[WILDCARD]
+error: Uncaught (in promise) TypeError: network access to "http://localhost:4545/cli/tests/subdir/mod4.js", run again with the --allow-net flag

@@ -42,13 +42,15 @@ declare global {
 
   type LanguageServerRequest =
     | ConfigureRequest
+    | GetAsset
     | GetSyntacticDiagnosticsRequest
     | GetSemanticDiagnosticsRequest
     | GetSuggestionDiagnosticsRequest
     | GetQuickInfoRequest
     | GetDocumentHighlightsRequest
     | GetReferencesRequest
-    | GetDefinitionRequest;
+    | GetDefinitionRequest
+    | GetCompletionsRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -59,6 +61,11 @@ declare global {
     method: "configure";
     // deno-lint-ignore no-explicit-any
     compilerOptions: Record<string, any>;
+  }
+
+  interface GetAsset extends BaseLanguageServerRequest {
+    method: "getAsset";
+    specifier: string;
   }
 
   interface GetSyntacticDiagnosticsRequest extends BaseLanguageServerRequest {
@@ -99,5 +106,12 @@ declare global {
     method: "getDefinition";
     specifier: string;
     position: number;
+  }
+
+  interface GetCompletionsRequest extends BaseLanguageServerRequest {
+    method: "getCompletions";
+    specifier: string;
+    position: number;
+    preferences: ts.UserPreferences;
   }
 }

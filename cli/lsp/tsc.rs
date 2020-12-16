@@ -7,6 +7,7 @@ use super::utils;
 
 use crate::js;
 use crate::media_type::MediaType;
+use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::tsc_config::TsConfig;
 
@@ -14,6 +15,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::json_op_sync;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -26,96 +28,26 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-/// Provide static assets for the language server.
-///
-/// TODO(@kitsonk) this should be DRY'ed up with `cli/tsc.rs` and the
-/// `cli/build.rs`
-pub fn get_asset(asset: &str) -> Option<&'static str> {
-  macro_rules! inc {
-    ($e:expr) => {
-      Some(include_str!(concat!("../dts/", $e)))
-    };
-  }
-  match asset {
-    // These are not included in the snapshot
-    "/lib.dom.d.ts" => inc!("lib.dom.d.ts"),
-    "/lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
-    "/lib.es6.d.ts" => inc!("lib.es6.d.ts"),
-    "/lib.es2016.full.d.ts" => inc!("lib.es2016.full.d.ts"),
-    "/lib.es2017.full.d.ts" => inc!("lib.es2017.full.d.ts"),
-    "/lib.es2018.full.d.ts" => inc!("lib.es2018.full.d.ts"),
-    "/lib.es2019.full.d.ts" => inc!("lib.es2019.full.d.ts"),
-    "/lib.es2020.full.d.ts" => inc!("lib.es2020.full.d.ts"),
-    "/lib.esnext.full.d.ts" => inc!("lib.esnext.full.d.ts"),
-    "/lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
-    "/lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
-    "/lib.webworker.importscripts.d.ts" => {
-      inc!("lib.webworker.importscripts.d.ts")
+/// Optionally returns an internal asset, first checking for any static assets
+/// in Rust, then checking any previously retrieved static assets from the
+/// isolate, and then finally, the tsc isolate itself.
+pub fn get_asset(
+  specifier: &ModuleSpecifier,
+  runtime: &mut JsRuntime,
+  server_state: &ServerStateSnapshot,
+) -> Result<Option<String>, AnyError> {
+  let specifier_str = specifier.to_string().replace("asset:///", "");
+  if let Some(asset_text) = tsc::get_asset(&specifier_str) {
+    Ok(Some(asset_text.to_string()))
+  } else {
+    let mut assets = server_state.assets.write().unwrap();
+    if let Some(asset) = assets.get(specifier) {
+      Ok(asset.clone())
+    } else {
+      let asset = request_asset(specifier, runtime, server_state)?;
+      assets.insert(specifier.clone(), asset.clone());
+      Ok(asset)
     }
-    "/lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
-    // These come from op crates
-    // TODO(@kitsonk) these is even hackier than the rest of this...
-    "/lib.deno.web.d.ts" => {
-      Some(include_str!("../../op_crates/web/lib.deno_web.d.ts"))
-    }
-    "/lib.deno.fetch.d.ts" => {
-      Some(include_str!("../../op_crates/fetch/lib.deno_fetch.d.ts"))
-    }
-    // These are included in the snapshot for TypeScript, and could be retrieved
-    // from there?
-    "/lib.d.ts" => inc!("lib.d.ts"),
-    "/lib.deno.ns.d.ts" => inc!("lib.deno.ns.d.ts"),
-    "/lib.deno.shared_globals.d.ts" => inc!("lib.deno.shared_globals.d.ts"),
-    "/lib.deno.unstable.d.ts" => inc!("lib.deno.unstable.d.ts"),
-    "/lib.deno.window.d.ts" => inc!("lib.deno.window.d.ts"),
-    "/lib.deno.worker.d.ts" => inc!("lib.deno.worker.d.ts"),
-    "/lib.es5.d.ts" => inc!("lib.es5.d.ts"),
-    "/lib.es2015.collection.d.ts" => inc!("lib.es2015.collection.d.ts"),
-    "/lib.es2015.core.d.ts" => inc!("lib.es2015.core.d.ts"),
-    "/lib.es2015.d.ts" => inc!("lib.es2015.d.ts"),
-    "/lib.es2015.generator.d.ts" => inc!("lib.es2015.generator.d.ts"),
-    "/lib.es2015.iterable.d.ts" => inc!("lib.es2015.iterable.d.ts"),
-    "/lib.es2015.promise.d.ts" => inc!("lib.es2015.promise.d.ts"),
-    "/lib.es2015.proxy.d.ts" => inc!("lib.es2015.proxy.d.ts"),
-    "/lib.es2015.reflect.d.ts" => inc!("lib.es2015.reflect.d.ts"),
-    "/lib.es2015.symbol.d.ts" => inc!("lib.es2015.symbol.d.ts"),
-    "/lib.es2015.symbol.wellknown.d.ts" => {
-      inc!("lib.es2015.symbol.wellknown.d.ts")
-    }
-    "/lib.es2016.array.include.d.ts" => inc!("lib.es2016.array.include.d.ts"),
-    "/lib.es2016.d.ts" => inc!("lib.es2016.d.ts"),
-    "/lib.es2017.d.ts" => inc!("lib.es2017.d.ts"),
-    "/lib.es2017.intl.d.ts" => inc!("lib.es2017.intl.d.ts"),
-    "/lib.es2017.object.d.ts" => inc!("lib.es2017.object.d.ts"),
-    "/lib.es2017.sharedmemory.d.ts" => inc!("lib.es2017.sharedmemory.d.ts"),
-    "/lib.es2017.string.d.ts" => inc!("lib.es2017.string.d.ts"),
-    "/lib.es2017.typedarrays.d.ts" => inc!("lib.es2017.typedarrays.d.ts"),
-    "/lib.es2018.asyncgenerator.d.ts" => inc!("lib.es2018.asyncgenerator.d.ts"),
-    "/lib.es2018.asynciterable.d.ts" => inc!("lib.es2018.asynciterable.d.ts"),
-    "/lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),
-    "/lib.es2018.intl.d.ts" => inc!("lib.es2018.intl.d.ts"),
-    "/lib.es2018.promise.d.ts" => inc!("lib.es2018.promise.d.ts"),
-    "/lib.es2018.regexp.d.ts" => inc!("lib.es2018.regexp.d.ts"),
-    "/lib.es2019.array.d.ts" => inc!("lib.es2019.array.d.ts"),
-    "/lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
-    "/lib.es2019.object.d.ts" => inc!("lib.es2019.object.d.ts"),
-    "/lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
-    "/lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
-    "/lib.es2020.bigint.d.ts" => inc!("lib.es2020.bigint.d.ts"),
-    "/lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),
-    "/lib.es2020.intl.d.ts" => inc!("lib.es2020.intl.d.ts"),
-    "/lib.es2020.promise.d.ts" => inc!("lib.es2020.promise.d.ts"),
-    "/lib.es2020.sharedmemory.d.ts" => inc!("lib.es2020.sharedmemory.d.ts"),
-    "/lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
-    "/lib.es2020.symbol.wellknown.d.ts" => {
-      inc!("lib.es2020.symbol.wellknown.d.ts")
-    }
-    "/lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
-    "/lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
-    "/lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
-    "/lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
-    "/lib.esnext.weakref.d.ts" => inc!("lib.esnext.weakref.d.ts"),
-    _ => None,
   }
 }
 
@@ -229,7 +161,7 @@ fn replace_links(text: &str) -> String {
     .to_string()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
   Unknown,
@@ -301,7 +233,47 @@ pub enum ScriptElementKind {
   String,
 }
 
-#[derive(Debug, Deserialize)]
+impl From<ScriptElementKind> for lsp_types::CompletionItemKind {
+  fn from(kind: ScriptElementKind) -> Self {
+    use lsp_types::CompletionItemKind;
+
+    match kind {
+      ScriptElementKind::PrimitiveType | ScriptElementKind::Keyword => {
+        CompletionItemKind::Keyword
+      }
+      ScriptElementKind::ConstElement => CompletionItemKind::Constant,
+      ScriptElementKind::LetElement
+      | ScriptElementKind::VariableElement
+      | ScriptElementKind::LocalVariableElement
+      | ScriptElementKind::Alias => CompletionItemKind::Variable,
+      ScriptElementKind::MemberVariableElement
+      | ScriptElementKind::MemberGetAccessorElement
+      | ScriptElementKind::MemberSetAccessorElement => {
+        CompletionItemKind::Field
+      }
+      ScriptElementKind::FunctionElement => CompletionItemKind::Function,
+      ScriptElementKind::MemberFunctionElement
+      | ScriptElementKind::ConstructSignatureElement
+      | ScriptElementKind::CallSignatureElement
+      | ScriptElementKind::IndexSignatureElement => CompletionItemKind::Method,
+      ScriptElementKind::EnumElement => CompletionItemKind::Enum,
+      ScriptElementKind::ModuleElement
+      | ScriptElementKind::ExternalModuleName => CompletionItemKind::Module,
+      ScriptElementKind::ClassElement | ScriptElementKind::TypeElement => {
+        CompletionItemKind::Class
+      }
+      ScriptElementKind::InterfaceElement => CompletionItemKind::Interface,
+      ScriptElementKind::Warning | ScriptElementKind::ScriptElement => {
+        CompletionItemKind::File
+      }
+      ScriptElementKind::Directory => CompletionItemKind::Folder,
+      ScriptElementKind::String => CompletionItemKind::Constant,
+      _ => CompletionItemKind::Property,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
   start: u32,
@@ -519,6 +491,104 @@ impl ReferenceEntry {
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionInfo {
+  entries: Vec<CompletionEntry>,
+  is_member_completion: bool,
+}
+
+impl CompletionInfo {
+  pub fn into_completion_response(
+    self,
+    line_index: &[u32],
+  ) -> lsp_types::CompletionResponse {
+    let items = self
+      .entries
+      .into_iter()
+      .map(|entry| entry.into_completion_item(line_index))
+      .collect();
+    lsp_types::CompletionResponse::Array(items)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionEntry {
+  kind: ScriptElementKind,
+  kind_modifiers: Option<String>,
+  name: String,
+  sort_text: String,
+  insert_text: Option<String>,
+  replacement_span: Option<TextSpan>,
+  has_action: Option<bool>,
+  source: Option<String>,
+  is_recommended: Option<bool>,
+}
+
+impl CompletionEntry {
+  pub fn into_completion_item(
+    self,
+    line_index: &[u32],
+  ) -> lsp_types::CompletionItem {
+    let mut item = lsp_types::CompletionItem {
+      label: self.name,
+      kind: Some(self.kind.into()),
+      sort_text: Some(self.sort_text.clone()),
+      // TODO(lucacasonato): missing commit_characters
+      ..Default::default()
+    };
+
+    if let Some(true) = self.is_recommended {
+      // Make sure isRecommended property always comes first
+      // https://github.com/Microsoft/vscode/issues/40325
+      item.preselect = Some(true);
+    } else if self.source.is_some() {
+      // De-prioritze auto-imports
+      // https://github.com/Microsoft/vscode/issues/40311
+      item.sort_text = Some("\u{ffff}".to_string() + &self.sort_text)
+    }
+
+    match item.kind {
+      Some(lsp_types::CompletionItemKind::Function)
+      | Some(lsp_types::CompletionItemKind::Method) => {
+        item.insert_text_format = Some(lsp_types::InsertTextFormat::Snippet);
+      }
+      _ => {}
+    }
+
+    let mut insert_text = self.insert_text;
+    let replacement_range: Option<lsp_types::Range> =
+      self.replacement_span.map(|span| span.to_range(line_index));
+
+    // TODO(lucacasonato): port other special cases from https://github.com/theia-ide/typescript-language-server/blob/fdf28313833cd6216d00eb4e04dc7f00f4c04f09/server/src/completion.ts#L49-L55
+
+    if let Some(kind_modifiers) = self.kind_modifiers {
+      if kind_modifiers.contains("\\optional\\") {
+        if insert_text.is_none() {
+          insert_text = Some(item.label.clone());
+        }
+        if item.filter_text.is_none() {
+          item.filter_text = Some(item.label.clone());
+        }
+        item.label += "?";
+      }
+    }
+
+    if let Some(insert_text) = insert_text {
+      if let Some(replacement_range) = replacement_range {
+        item.text_edit = Some(lsp_types::CompletionTextEdit::Edit(
+          lsp_types::TextEdit::new(replacement_range, insert_text),
+        ));
+      } else {
+        item.insert_text = Some(insert_text);
+      }
+    }
+
+    item
+  }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
   id: usize,
@@ -526,6 +596,7 @@ struct Response {
 }
 
 struct State<'a> {
+  asset: Option<String>,
   last_id: usize,
   response: Option<Response>,
   server_state: ServerStateSnapshot,
@@ -535,6 +606,7 @@ struct State<'a> {
 impl<'a> State<'a> {
   fn new(server_state: ServerStateSnapshot) -> Self {
     Self {
+      asset: None,
       last_id: 1,
       response: None,
       server_state,
@@ -709,17 +781,26 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
             };
           if let ResolvedImport::Resolved(resolved_specifier) = resolved_import
           {
-            let media_type = if let Some(media_type) =
-              sources.get_media_type(&resolved_specifier)
+            if state
+              .server_state
+              .doc_data
+              .contains_key(&resolved_specifier)
+              || sources.contains(&resolved_specifier)
             {
-              media_type
+              let media_type = if let Some(media_type) =
+                sources.get_media_type(&resolved_specifier)
+              {
+                media_type
+              } else {
+                MediaType::from(&resolved_specifier)
+              };
+              resolved.push(Some((
+                resolved_specifier.to_string(),
+                media_type.as_ts_extension(),
+              )));
             } else {
-              MediaType::from(&resolved_specifier)
-            };
-            resolved.push(Some((
-              resolved_specifier.to_string(),
-              media_type.as_ts_extension(),
-            )));
+              resolved.push(None);
+            }
           } else {
             resolved.push(None);
           }
@@ -784,6 +865,18 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!(None::<String>))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetAssetArgs {
+  text: Option<String>,
+}
+
+fn set_asset(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let v: SetAssetArgs = serde_json::from_value(args)?;
+  state.asset = v.text;
+  Ok(json!(true))
+}
+
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
@@ -807,6 +900,7 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   runtime.register_op("op_respond", op(respond));
   runtime.register_op("op_script_names", op(script_names));
   runtime.register_op("op_script_version", op(script_version));
+  runtime.register_op("op_set_asset", op(set_asset));
 
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);
@@ -815,10 +909,77 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   Ok(runtime)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum QuotePreference {
+  Auto,
+  Double,
+  Single,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum ImportModuleSpecifierPreference {
+  Auto,
+  Relative,
+  NonRelative,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum ImportModuleSpecifierEnding {
+  Auto,
+  Minimal,
+  Index,
+  Js,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum IncludePackageJsonAutoImports {
+  Auto,
+  On,
+  Off,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPreferences {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub disable_suggestions: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub quote_preference: Option<QuotePreference>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_for_module_exports: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_automatic_optional_chain_completions: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_insert_text: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub import_module_specifier_preference:
+    Option<ImportModuleSpecifierPreference>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub import_module_specifier_ending: Option<ImportModuleSpecifierEnding>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub allow_text_changes_in_new_files: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub provide_prefix_and_suffix_text_for_rename: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_package_json_auto_imports: Option<IncludePackageJsonAutoImports>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub provide_refactor_not_applicable_reason: Option<bool>,
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),
+  /// Retrieve the text of an assets that exists in memory in the isolate.
+  GetAsset(ModuleSpecifier),
   /// Return semantic diagnostics for given file.
   GetSemanticDiagnostics(ModuleSpecifier),
   /// Returns suggestion diagnostics for given file.
@@ -833,6 +994,8 @@ pub enum RequestMethod {
   GetReferences((ModuleSpecifier, u32)),
   /// Get declaration information for a specific position.
   GetDefinition((ModuleSpecifier, u32)),
+  /// Get completion information at a given position (IntelliSense).
+  GetCompletions((ModuleSpecifier, u32, UserPreferences)),
 }
 
 impl RequestMethod {
@@ -842,6 +1005,11 @@ impl RequestMethod {
         "id": id,
         "method": "configure",
         "compilerOptions": config,
+      }),
+      RequestMethod::GetAsset(specifier) => json!({
+        "id": id,
+        "method": "getAsset",
+        "specifier": specifier,
       }),
       RequestMethod::GetSemanticDiagnostics(specifier) => json!({
         "id": id,
@@ -887,6 +1055,15 @@ impl RequestMethod {
         "specifier": specifier,
         "position": position,
       }),
+      RequestMethod::GetCompletions((specifier, position, preferences)) => {
+        json!({
+          "id": id,
+          "method": "getCompletions",
+          "specifier": specifier,
+          "position": position,
+          "preferences": preferences,
+        })
+      }
     }
   }
 }
@@ -924,6 +1101,30 @@ pub fn request(
   }
 }
 
+fn request_asset(
+  specifier: &ModuleSpecifier,
+  runtime: &mut JsRuntime,
+  server_state: &ServerStateSnapshot,
+) -> Result<Option<String>, AnyError> {
+  let id = {
+    let op_state = runtime.op_state();
+    let mut op_state = op_state.borrow_mut();
+    let state = op_state.borrow_mut::<State>();
+    state.server_state = server_state.clone();
+    state.last_id += 1;
+    state.last_id
+  };
+  let request_params = RequestMethod::GetAsset(specifier.clone()).to_value(id);
+  let request_src = format!("globalThis.serverRequest({});", request_params);
+  runtime.execute("[native_code]", &request_src)?;
+
+  let op_state = runtime.op_state();
+  let mut op_state = op_state.borrow_mut();
+  let state = op_state.borrow_mut::<State>();
+
+  Ok(state.asset.clone())
+}
+
 #[cfg(test)]
 mod tests {
   use super::super::memory_cache::MemoryCache;
@@ -947,6 +1148,7 @@ mod tests {
     }
     let file_cache = Arc::new(RwLock::new(file_cache));
     ServerStateSnapshot {
+      assets: Default::default(),
       config: Default::default(),
       diagnostics: Default::default(),
       doc_data,
@@ -1202,9 +1404,45 @@ mod tests {
       &server_state,
       RequestMethod::GetSyntacticDiagnostics(specifier),
     );
-    println!("{:?}", result);
-    // assert!(result.is_ok());
-    // let response = result.unwrap();
-    // assert_eq!(response, json!([]));
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(
+      response,
+      json!([{
+        "start": {
+          "line": 8,
+          "character": 29
+        },
+        "end": {
+          "line": 8,
+          "character": 29
+        },
+        "fileName": "file:///a.ts",
+        "messageText": "Expression expected.",
+        "sourceLine": "        import * as test from",
+        "category": 1,
+        "code": 1109
+      }])
+    );
+  }
+
+  #[test]
+  fn test_request_asset() {
+    let (mut runtime, server_state) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      vec![],
+    );
+    let specifier = ModuleSpecifier::resolve_url("asset:///lib.esnext.d.ts")
+      .expect("could not resolve url");
+    let result = request_asset(&specifier, &mut runtime, &server_state);
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert!(response.is_some());
   }
 }

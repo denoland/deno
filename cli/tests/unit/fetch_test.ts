@@ -689,6 +689,20 @@ unitTest(
   {
     perms: { net: true },
   },
+  async function fetchWithNonAsciiRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4545/non_ascii_redirect", {
+      redirect: "manual",
+    });
+    assertEquals(response.status, 301);
+    assertEquals(response.headers.get("location"), "/redirect®");
+    await response.text();
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
   async function fetchWithManualRedirection(): Promise<void> {
     const response = await fetch("http://localhost:4546/", {
       redirect: "manual",

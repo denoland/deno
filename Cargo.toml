@@ -4,6 +4,7 @@
 members = [
   "cli",
   "core",
+  "runtime",
   "test_plugin",
   "test_util",
   "op_crates/fetch",
