@@ -29,7 +29,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
 use tokio_rustls::server::TlsStream as ServerTlsStream;
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
@@ -218,7 +218,7 @@ pub struct StreamResource {
   pub fs_file:
     Option<AsyncRefCell<(Option<tokio::fs::File>, Option<FileMetadata>)>>,
 
-  #[cfg(not(windows))]
+  #[cfg(unix)]
   pub unix_stream: Option<AsyncRefCell<tokio::net::UnixStream>>,
 
   child_stdin: Option<AsyncRefCell<tokio::process::ChildStdin>>,
@@ -264,7 +264,7 @@ impl StreamResource {
     }
   }
 
-  #[cfg(not(windows))]
+  #[cfg(unix)]
   pub fn unix_stream(unix_stream: tokio::net::UnixStream) -> Self {
     Self {
       unix_stream: Some(AsyncRefCell::new(unix_stream)),
@@ -370,7 +370,7 @@ impl StreamResource {
       return Ok(nread);
     }
 
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     if self.unix_stream.is_some() {
       let mut unix_stream =
         RcRef::map(&self, |r| r.unix_stream.as_ref().unwrap())
@@ -431,7 +431,7 @@ impl StreamResource {
       return Ok(nwritten);
     }
 
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     if self.unix_stream.is_some() {
       let mut unix_stream =
         RcRef::map(&self, |r| r.unix_stream.as_ref().unwrap())

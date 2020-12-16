@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::io::FullDuplexResource;
-use crate::ops::io::StreamResource;
 use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
@@ -36,6 +35,8 @@ use tokio::net::UdpSocket;
 
 #[cfg(unix)]
 use super::net_unix;
+#[cfg(unix)]
+use crate::ops::io::StreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
@@ -357,20 +358,21 @@ async fn op_shutdown(
   if let Some(stream) = resource.downcast_rc::<TcpStreamResource>() {
     let wr = stream.wr_borrow_mut().await;
     TcpStream::shutdown((*wr).as_ref(), shutdown_mode)?;
-    Ok(json!({}))
-  } else if let Some(stream) = resource.downcast_rc::<StreamResource>() {
-    if cfg!(unix) && stream.unix_stream.is_some() {
+    return Ok(json!({}));
+  }
+
+  #[cfg(unix)]
+  if let Some(stream) = resource.downcast_rc::<StreamResource>() {
+    if stream.unix_stream.is_some() {
       let wr = RcRef::map(stream, |r| r.unix_stream.as_ref().unwrap())
         .borrow_mut()
         .await;
       net_unix::UnixStream::shutdown(&*wr, shutdown_mode)?;
-      Ok(json!({}))
-    } else {
-      Err(bad_resource_id())
+      return Ok(json!({}));
     }
-  } else {
-    Err(bad_resource_id())
   }
+
+  Err(bad_resource_id())
 }
 
 struct TcpListenerResource {
