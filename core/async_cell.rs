@@ -1,10 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use std::any::type_name;
 use std::any::Any;
 use std::borrow::Borrow;
 use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::collections::VecDeque;
+use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -21,12 +25,6 @@ pub struct AsyncRefCell<T> {
   borrow_count: Cell<i::BorrowCount>,
   waiters: Cell<VecDeque<Option<i::Waiter>>>,
   turn: Cell<usize>,
-}
-
-impl<T> std::fmt::Debug for AsyncRefCell<T> {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(f, "AsyncRefCell")
-  }
 }
 
 impl<T: 'static> AsyncRefCell<T> {
@@ -55,6 +53,12 @@ impl<T: 'static> AsyncRefCell<T> {
   pub fn into_inner(self) -> T {
     assert!(self.borrow_count.get().is_empty());
     self.value.into_inner()
+  }
+}
+
+impl<T> Debug for AsyncRefCell<T> {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    write!(f, "AsyncRefCell<{}>", type_name::<T>())
   }
 }
 
