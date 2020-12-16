@@ -3,6 +3,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { build } = window.__bootstrap.build;
+  const { errors } = window.__bootstrap.errors;
 
   function bindSignal(signo) {
     return core.jsonOpSync("op_signal_bind", { signo });
@@ -212,7 +213,15 @@
     }
 
     #pollSignal = async () => {
-      const res = await pollSignal(this.#rid);
+      let res;
+      try {
+        res = await pollSignal(this.#rid);
+      } catch (error) {
+        if (error instanceof errors.BadResource) {
+          return true;
+        }
+        throw error;
+      }
       return res.done;
     };
 

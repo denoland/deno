@@ -169,6 +169,12 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_dlopen_error_class)
     })
     .or_else(|| {
+      e.downcast_ref::<deno_core::Canceled>().map(|e| {
+        let io_err: io::Error = e.to_owned().into();
+        get_io_error_class(&io_err)
+      })
+    })
+    .or_else(|| {
       e.downcast_ref::<env::VarError>()
         .map(get_env_var_error_class)
     })
