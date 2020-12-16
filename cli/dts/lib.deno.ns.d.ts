@@ -1783,6 +1783,34 @@ declare namespace Deno {
    * Requires `allow-net` permission for "tcp". */
   export function connect(options: ConnectOptions): Promise<Conn>;
 
+  /** 
+   * Performs DNS resolution against the given hostname and port, returning
+   * resolved IP addresses.
+   * Fails if the hostname is in invalid format or the port is outside the
+   * range of 16-bit unsigned integer.
+   *
+   * ```ts
+   * const addrs = await Deno.resolveAddr("example.com", 80);
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function resolveAddr(hostname: string, port: number): Promise<string[]>;
+
+  /** 
+   * Synchronously performs DNS resolution against the given hostname and port,
+   * returning resolved IP addresses.
+   * Fails if the hostname is in invalid format or the port is outside the
+   * range of 16-bit unsigned integer.
+   *
+   * ```ts
+   * const addrs = Deno.resolveAddrSync("example.com", 80);
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function resolveAddrSync(hostname: string, port: number): string[];
+
   export interface ConnectTlsOptions {
     /** The port to connect to. */
     port: number;

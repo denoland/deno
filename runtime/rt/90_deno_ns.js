@@ -80,6 +80,8 @@
     seekSync: __bootstrap.files.seekSync,
     connect: __bootstrap.net.connect,
     listen: __bootstrap.net.listen,
+    resolveAddr: __bootstrap.net.resolveAddr,
+    resolveAddrSync: __bootstrap.net.resolveAddrSync,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
     sleepSync: __bootstrap.timers.sleepSync,
