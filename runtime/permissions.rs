@@ -241,7 +241,7 @@ impl Permissions {
     if parsed.host().is_none() {
       return Err(custom_error(
         "URIError",
-        "invalid urlormat: <scheme>://<host>[:port][/subpath]",
+        "invalid url format: <scheme>://<host>[:port][/subpath]",
       ));
     }
     Ok(self.query_net(
