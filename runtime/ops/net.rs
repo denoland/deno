@@ -2,6 +2,7 @@
 
 use crate::ops::io::FullDuplexResource;
 use crate::ops::io::StreamResource;
+use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -41,7 +42,7 @@ use std::path::Path;
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_accept", op_accept);
   super::reg_json_async(rt, "op_connect", op_connect);
-  super::reg_json_sync(rt, "op_shutdown", op_shutdown);
+  super::reg_json_async(rt, "op_shutdown", op_shutdown);
   super::reg_json_sync(rt, "op_listen", op_listen);
   super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
   super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
@@ -84,7 +85,7 @@ async fn accept_tcp(
   let mut state = state.borrow_mut();
   let rid = state
     .resource_table
-    .add(StreamResource::tcp_stream(tcp_stream));
+    .add(TcpStreamResource::new(tcp_stream.into_split()));
   Ok(json!({
     "rid": rid,
     "localAddr": {
@@ -273,7 +274,7 @@ async fn op_connect(
       let mut state_ = state.borrow_mut();
       let rid = state_
         .resource_table
-        .add(StreamResource::tcp_stream(tcp_stream));
+        .add(TcpStreamResource::new(tcp_stream.into_split()));
       Ok(json!({
         "rid": rid,
         "localAddr": {
@@ -330,12 +331,12 @@ struct ShutdownArgs {
   how: i32,
 }
 
-fn op_shutdown(
-  state: &mut OpState,
+async fn op_shutdown(
+  state: Rc<RefCell<OpState>>,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.shutdown");
+  super::check_unstable2(&state, "Deno.shutdown");
 
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
@@ -343,35 +344,33 @@ fn op_shutdown(
   let how = args.how;
 
   let shutdown_mode = match how {
-    0 => Shutdown::Read,
+    0 => Shutdown::Read, // TODO: nonsense, remove me.
     1 => Shutdown::Write,
     _ => unimplemented!(),
   };
 
   let resource = state
+    .borrow()
     .resource_table
-    .get::<StreamResource>(rid)
+    .get_any(rid)
     .ok_or_else(bad_resource_id)?;
-
-  if resource.tcp_stream_write.is_some() {
-    let write_half =
-      RcRef::map(&resource, |r| r.tcp_stream_write.as_ref().unwrap())
-        .try_borrow()
-        .expect("Resource is busy");
-    TcpStream::shutdown((*write_half).as_ref(), shutdown_mode)?;
-    return Ok(json!({}));
+  if let Some(stream) = resource.downcast_rc::<TcpStreamResource>() {
+    let wr = stream.wr_borrow_mut().await;
+    TcpStream::shutdown((*wr).as_ref(), shutdown_mode)?;
+    Ok(json!({}))
+  } else if let Some(stream) = resource.downcast_rc::<StreamResource>() {
+    if cfg!(unix) && stream.unix_stream.is_some() {
+      let wr = RcRef::map(stream, |r| r.unix_stream.as_ref().unwrap())
+        .borrow_mut()
+        .await;
+      net_unix::UnixStream::shutdown(&*wr, shutdown_mode)?;
+      Ok(json!({}))
+    } else {
+      Err(bad_resource_id())
+    }
+  } else {
+    Err(bad_resource_id())
   }
-
-  #[cfg(unix)]
-  if resource.unix_stream.is_some() {
-    let write_half = RcRef::map(&resource, |r| r.unix_stream.as_ref().unwrap())
-      .try_borrow()
-      .expect("Resource is busy");
-    net_unix::UnixStream::shutdown(&*write_half, shutdown_mode)?;
-    return Ok(json!({}));
-  }
-
-  Err(bad_resource_id())
 }
 
 struct TcpListenerResource {

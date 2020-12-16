@@ -39,7 +39,7 @@ impl dyn Resource {
 
   #[inline(always)]
   #[allow(clippy::needless_lifetimes)]
-  fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
+  pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;
       Some(unsafe { &*ptr })
@@ -72,22 +72,6 @@ pub struct ResourceTable {
 }
 
 impl ResourceTable {
-  /// Returns true if any resource with the given `rid` is exists.
-  pub fn has(&self, rid: ResourceId) -> bool {
-    self.index.contains_key(&rid)
-  }
-
-  /// Returns a reference counted pointer to the resource of type `T` with the
-  /// given `rid`. If `rid` is not present or has a type different than `T`,
-  /// this function returns `None`.
-  pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<Rc<T>> {
-    self
-      .index
-      .get(&rid)
-      .and_then(|resource| resource.downcast_rc::<T>())
-      .map(Clone::clone)
-  }
-
   /// Inserts resource into the resource table, which takes ownership of it.
   ///
   /// The resource type is erased at runtime and must be statically known
@@ -113,10 +97,48 @@ impl ResourceTable {
     rid
   }
 
+  /// Returns true if any resource with the given `rid` exists.
+  pub fn has(&self, rid: ResourceId) -> bool {
+    self.index.contains_key(&rid)
+  }
+
+  /// Returns a reference counted pointer to the resource of type `T` with the
+  /// given `rid`. If `rid` is not present or has a type different than `T`,
+  /// this function returns `None`.
+  pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<Rc<T>> {
+    self
+      .index
+      .get(&rid)
+      .and_then(|rc| rc.downcast_rc::<T>())
+      .map(Clone::clone)
+  }
+
+  pub fn get_any(&self, rid: ResourceId) -> Option<Rc<dyn Resource>> {
+    self.index.get(&rid).map(Clone::clone)
+  }
+
+  /// Removes a resource of type `T` from the resource table and returns it.
+  /// If a resource with the given `rid` exists but its type does not match `T`,
+  /// it is not removed from the resource table. Note that the resource's
+  /// `close()` method is *not* called.
+  pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Option<Rc<T>> {
+    let resource = self.get::<T>(rid)?;
+    self.index.remove(&rid);
+    Some(resource)
+  }
+
+  /// Removes a resource from the resource table and returns it. Note that the
+  /// resource's `close()` method is *not* called.
+  pub fn take_any(&mut self, rid: ResourceId) -> Option<Rc<dyn Resource>> {
+    self.index.remove(&rid)
+  }
+
   /// Removes the resource with the given `rid` from the resource table. If the
   /// only reference to this resource existed in the resource table, this will
   /// cause the resource to be dropped. However, since resources are reference
-  /// counted, therefore pending ops are not automatically cancelled.
+  /// counted, therefore pending ops are not automatically cancelled. A resource
+  /// may implement the `close()` method to perform clean-ups such as canceling
+  /// ops.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
     self.index.remove(&rid).map(|resource| resource.close())
   }

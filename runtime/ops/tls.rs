@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::io::StreamResource;
+use super::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -88,24 +89,14 @@ async fn op_start_tls(
   }
 
   let resource_rc = state
-    .borrow()
+    .borrow_mut()
     .resource_table
-    .get::<StreamResource>(rid)
-    .ok_or_else(bad_resource_id)?
-    .clone();
-
-  if resource_rc.tcp_stream_read.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  state.borrow_mut().resource_table.close(rid);
-
-  let mut resource = Rc::try_unwrap(resource_rc)
+    .take::<TcpStreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+  let resource = Rc::try_unwrap(resource_rc)
     .expect("Only a single use of this resource should happen");
-
-  let read_half = resource.tcp_stream_read.take().unwrap().into_inner();
-  let write_half = resource.tcp_stream_write.take().unwrap().into_inner();
-  let tcp_stream = read_half.reunite(write_half).unwrap();
+  let (read_half, write_half) = resource.into_inner();
+  let tcp_stream = read_half.reunite(write_half)?;
 
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;

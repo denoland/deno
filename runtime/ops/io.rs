@@ -20,8 +20,11 @@ use deno_core::Resource;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::net::tcp;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
 use tokio_rustls::server::TlsStream as ServerTlsStream;
@@ -139,6 +142,7 @@ pub struct FileMetadata {
   pub tty: TTYMetadata,
 }
 
+#[derive(Debug)]
 pub struct FullDuplexResource<R, W> {
   rd: AsyncRefCell<R>,
   wr: AsyncRefCell<W>,
@@ -155,6 +159,10 @@ impl<R: 'static, W: 'static> FullDuplexResource<R, W> {
       wr: wr.into(),
       cancel_handle: Default::default(),
     }
+  }
+
+  pub fn into_inner(self) -> (R, W) {
+    (self.rd.into_inner(), self.wr.into_inner())
   }
 
   pub fn rd_borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<R> {
@@ -174,13 +182,41 @@ impl<R: 'static, W: 'static> FullDuplexResource<R, W> {
   }
 }
 
+impl<R, W> FullDuplexResource<R, W>
+where
+  R: AsyncRead + Unpin + 'static,
+  W: AsyncWrite + Unpin + 'static,
+{
+  async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    let mut rd = self.rd_borrow_mut().await;
+    let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
+    Ok(nread)
+  }
+
+  async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+    let mut wr = self.wr_borrow_mut().await;
+    let nwritten = wr.write(buf).await?;
+    Ok(nwritten)
+  }
+}
+
+pub type TcpStreamResource =
+  FullDuplexResource<tcp::OwnedReadHalf, tcp::OwnedWriteHalf>;
+
+impl Resource for TcpStreamResource {
+  fn name(&self) -> Cow<str> {
+    "tcpStream".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_read_ops();
+  }
+}
+
 #[derive(Default)]
 pub struct StreamResource {
   pub fs_file:
     Option<AsyncRefCell<(Option<tokio::fs::File>, Option<FileMetadata>)>>,
-
-  pub tcp_stream_read: Option<AsyncRefCell<tokio::net::tcp::OwnedReadHalf>>,
-  pub tcp_stream_write: Option<AsyncRefCell<tokio::net::tcp::OwnedWriteHalf>>,
 
   #[cfg(not(windows))]
   pub unix_stream: Option<AsyncRefCell<tokio::net::UnixStream>>,
@@ -224,16 +260,6 @@ impl StreamResource {
         Some(FileMetadata::default()),
       ))),
       name: "fsFile".to_string(),
-      ..Default::default()
-    }
-  }
-
-  pub fn tcp_stream(tcp_stream: tokio::net::TcpStream) -> Self {
-    let (read_half, write_half) = tcp_stream.into_split();
-    Self {
-      tcp_stream_read: Some(AsyncRefCell::new(read_half)),
-      tcp_stream_write: Some(AsyncRefCell::new(write_half)),
-      name: "tcpStream".to_string(),
       ..Default::default()
     }
   }
@@ -292,8 +318,6 @@ impl StreamResource {
     // to be an enum instead a struct with many `Option` fields, however I
     // wasn't able to get it to work with `AsyncRefCell`s.
     if self.fs_file.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -305,8 +329,6 @@ impl StreamResource {
       let nwritten = (*fs_file).0.as_mut().unwrap().read(buf).await?;
       return Ok(nwritten);
     } else if self.child_stdout.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stderr.is_none());
       debug_assert!(self.server_tls_stream.is_none());
@@ -319,8 +341,6 @@ impl StreamResource {
       let nread = child_stdout.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     } else if self.child_stderr.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.server_tls_stream.is_none());
       debug_assert!(self.client_tls_stream.is_none());
@@ -330,16 +350,6 @@ impl StreamResource {
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       let nread = child_stderr.read(buf).try_or_cancel(cancel).await?;
-      return Ok(nread);
-    } else if self.tcp_stream_read.is_some() {
-      debug_assert!(self.server_tls_stream.is_none());
-      debug_assert!(self.client_tls_stream.is_none());
-      let mut tcp_stream_read =
-        RcRef::map(&self, |r| r.tcp_stream_read.as_ref().unwrap())
-          .borrow_mut()
-          .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = tcp_stream_read.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     } else if self.client_tls_stream.is_some() {
       debug_assert!(self.server_tls_stream.is_none());
@@ -379,8 +389,6 @@ impl StreamResource {
     // to be an enum instead a struct with many `Option` fields, however I
     // wasn't able to get it to work with `AsyncRefCell`s.
     if self.fs_file.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -393,8 +401,6 @@ impl StreamResource {
       (*fs_file).0.as_mut().unwrap().flush().await?;
       return Ok(nwritten);
     } else if self.child_stdin.is_some() {
-      debug_assert!(self.tcp_stream_read.is_none());
-      debug_assert!(self.tcp_stream_write.is_none());
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());
       debug_assert!(self.server_tls_stream.is_none());
@@ -405,16 +411,6 @@ impl StreamResource {
           .await;
       let nwritten = child_stdin.write(buf).await?;
       child_stdin.flush().await?;
-      return Ok(nwritten);
-    } else if self.tcp_stream_write.is_some() {
-      debug_assert!(self.server_tls_stream.is_none());
-      debug_assert!(self.client_tls_stream.is_none());
-      let mut tcp_stream_write =
-        RcRef::map(&self, |r| r.tcp_stream_write.as_ref().unwrap())
-          .borrow_mut()
-          .await;
-      let nwritten = tcp_stream_write.write(buf).await?;
-      tcp_stream_write.flush().await?;
       return Ok(nwritten);
     } else if self.client_tls_stream.is_some() {
       debug_assert!(self.server_tls_stream.is_none());
@@ -494,9 +490,17 @@ pub fn op_read(
         let resource = state
           .borrow()
           .resource_table
-          .get::<StreamResource>(rid as u32)
+          .get_any(rid as u32)
           .ok_or_else(bad_resource_id)?;
-        let nread = resource.read(&mut zero_copy).await?;
+        let nread = if let Some(stream) =
+          resource.downcast_rc::<TcpStreamResource>()
+        {
+          stream.read(&mut zero_copy).await?
+        } else if let Some(stream) = resource.downcast_rc::<StreamResource>() {
+          stream.clone().read(&mut zero_copy).await?
+        } else {
+          return Err(bad_resource_id());
+        };
         Ok(nread as i32)
       }
       .boxed_local()
@@ -538,10 +542,18 @@ pub fn op_write(
         let resource = state
           .borrow()
           .resource_table
-          .get::<StreamResource>(rid as u32)
+          .get_any(rid as u32)
           .ok_or_else(bad_resource_id)?;
-        let nread = resource.write(&zero_copy).await?;
-        Ok(nread as i32)
+        let nwritten = if let Some(stream) =
+          resource.downcast_rc::<TcpStreamResource>()
+        {
+          stream.write(&zero_copy).await?
+        } else if let Some(stream) = resource.downcast_rc::<StreamResource>() {
+          stream.clone().write(&zero_copy).await?
+        } else {
+          return Err(bad_resource_id());
+        };
+        Ok(nwritten as i32)
       }
       .boxed_local()
     })
