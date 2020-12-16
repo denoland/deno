@@ -101,32 +101,6 @@ jobs:
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
 
-      - name: Setup gcloud (unix)
-        if: |
-          runner.os != 'Windows' &&
-          matrix.kind == 'test_release' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
-        uses: google-github-actions/setup-gcloud@master
-        with:
-          project_id: denoland
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
-
-      - name: Setup gcloud (windows)
-        if: |
-          runner.os == 'Windows' &&
-          matrix.kind == 'test_release' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
-        uses: google-github-actions/setup-gcloud@master
-        env:
-          CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
-        with:
-          project_id: denoland
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
-
       - name: Configure canary build
         if: |
           matrix.kind == 'test_release' &&
@@ -186,30 +160,23 @@ jobs:
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
 
-      - name: Upload canary (unix)
+      - name: Get Commit
         if: |
-          runner.os != 'Windows' &&
+          runner.os == 'ubuntu' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/master'
-        run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+        run: echo $(git rev-parse HEAD) > canary-latest.txt
 
-      - name: Upload canary (windows)
-        if: |
-          runner.os == 'Windows' &&
-          matrix.kind == 'test_release' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
-        env:
-          CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
-        shell: bash
-        run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: release
+          path: |
+            target/release/deno-nightly-x86_64-unknown-linux-gnu.zip
+            target/release/deno-nightly-x86_64-apple-darwin.zip
+            target/release/deno-nightly-x86_64-pc-windows-msvc.zip
+            canary-latest.txt
 
       - name: Test release
         if: matrix.kind == 'test_release'
@@ -278,3 +245,32 @@ jobs:
         run: |
           cd cli
           cargo publish
+
+  canary:
+    name: Upload Canary
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+
+      - name: Setup gcloud
+        if: |
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload Builds
+        if: |
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
+        run: |
+          gsutil cp ./artifacts/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil cp ./artifacts/canary-latest.txt gs://dl.deno.land/canary-latest.txt
