@@ -357,8 +357,9 @@ unitTest(
   },
 );
 
+// TODO(piscisaureus): Enable after Tokio v0.3/v1.0 upgrade.
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { ignore: true, perms: { read: true, write: true } },
   async function netUnixPacketConcurrentSendReceive(): Promise<void> {
     const filePath = await Deno.makeTempFile();
     const socket = Deno.listenDatagram({
