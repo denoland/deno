@@ -348,11 +348,8 @@ async fn op_accept_tls(
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (tcp_stream, _socket_addr) = (&mut *listener)
-    .accept()
-    .try_or_cancel(cancel)
-    .await
-    .map_err(|e| {
+  let (tcp_stream, _socket_addr) =
+    listener.accept().try_or_cancel(cancel).await.map_err(|e| {
       // FIXME(bartlomieju): compatibility with current JS implementation
       if let std::io::ErrorKind::Interrupted = e.kind() {
         bad_resource("Listener has been closed")

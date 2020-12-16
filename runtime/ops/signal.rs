@@ -106,7 +106,7 @@ async fn op_signal_poll(
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let mut signal = RcRef::map(&resource, |r| &r.signal).borrow_mut().await;
 
-  match (&mut *signal).recv().or_cancel(cancel).await {
+  match signal.recv().or_cancel(cancel).await {
     Ok(result) => Ok(json!({ "done": result.is_none() })),
     Err(_) => Ok(json!({ "done": true })),
   }

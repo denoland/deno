@@ -78,7 +78,7 @@ pub(crate) async fn accept_unix(
     .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (unix_stream, _socket_addr) =
-    (&mut *listener).accept().try_or_cancel(cancel).await?;
+    listener.accept().try_or_cancel(cancel).await?;
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
@@ -117,10 +117,8 @@ pub(crate) async fn receive_unix_packet(
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (size, remote_addr) = (&mut *socket)
-    .recv_from(&mut buf)
-    .try_or_cancel(cancel)
-    .await?;
+  let (size, remote_addr) =
+    socket.recv_from(&mut buf).try_or_cancel(cancel).await?;
   Ok(json!({
     "size": size,
     "remoteAddr": {

@@ -298,7 +298,7 @@ pub async fn op_ws_next_event(
 
   let mut rx = RcRef::map(&resource, |r| &r.rx).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let val = (&mut *rx).next().or_cancel(cancel).await?;
+  let val = rx.next().or_cancel(cancel).await?;
   let res = match val {
     Some(Ok(Message::Text(text))) => json!({
       "type": "string",

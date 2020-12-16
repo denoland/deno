@@ -302,14 +302,7 @@ impl StreamResource {
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nwritten = (*fs_file)
-        .0
-        .as_mut()
-        .unwrap()
-        .read(buf)
-        .try_or_cancel(cancel)
-        .await?;
+      let nwritten = (*fs_file).0.as_mut().unwrap().read(buf).await?;
       return Ok(nwritten);
     } else if self.child_stdout.is_some() {
       debug_assert!(self.tcp_stream_read.is_none());
@@ -323,7 +316,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *child_stdout).read(buf).try_or_cancel(cancel).await?;
+      let nread = child_stdout.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     } else if self.child_stderr.is_some() {
       debug_assert!(self.tcp_stream_read.is_none());
@@ -336,7 +329,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *child_stderr).read(buf).try_or_cancel(cancel).await?;
+      let nread = child_stderr.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     } else if self.tcp_stream_read.is_some() {
       debug_assert!(self.server_tls_stream.is_none());
@@ -346,10 +339,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *tcp_stream_read)
-        .read(buf)
-        .try_or_cancel(cancel)
-        .await?;
+      let nread = tcp_stream_read.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     } else if self.client_tls_stream.is_some() {
       debug_assert!(self.server_tls_stream.is_none());
@@ -358,10 +348,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *client_tls_stream)
-        .read(buf)
-        .try_or_cancel(cancel)
-        .await?;
+      let nread = client_tls_stream.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     } else if self.server_tls_stream.is_some() {
       let mut server_tls_stream =
@@ -369,10 +356,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *server_tls_stream)
-        .read(buf)
-        .try_or_cancel(cancel)
-        .await?;
+      let nread = server_tls_stream.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     }
 
@@ -383,7 +367,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *unix_stream).read(buf).try_or_cancel(cancel).await?;
+      let nread = unix_stream.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     }
 
@@ -405,14 +389,7 @@ impl StreamResource {
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nwritten = (*fs_file)
-        .0
-        .as_mut()
-        .unwrap()
-        .write(buf)
-        .try_or_cancel(cancel)
-        .await?;
+      let nwritten = (*fs_file).0.as_mut().unwrap().write(buf).await?;
       (*fs_file).0.as_mut().unwrap().flush().await?;
       return Ok(nwritten);
     } else if self.child_stdin.is_some() {
@@ -426,10 +403,8 @@ impl StreamResource {
         RcRef::map(&self, |r| r.child_stdin.as_ref().unwrap())
           .borrow_mut()
           .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nwritten =
-        (&mut *child_stdin).write(buf).try_or_cancel(cancel).await?;
-      (&mut *child_stdin).flush().await?;
+      let nwritten = child_stdin.write(buf).await?;
+      child_stdin.flush().await?;
       return Ok(nwritten);
     } else if self.tcp_stream_write.is_some() {
       debug_assert!(self.server_tls_stream.is_none());
@@ -438,12 +413,8 @@ impl StreamResource {
         RcRef::map(&self, |r| r.tcp_stream_write.as_ref().unwrap())
           .borrow_mut()
           .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nwritten = (&mut *tcp_stream_write)
-        .write(buf)
-        .try_or_cancel(cancel)
-        .await?;
-      (&mut *tcp_stream_write).flush().await?;
+      let nwritten = tcp_stream_write.write(buf).await?;
+      tcp_stream_write.flush().await?;
       return Ok(nwritten);
     } else if self.client_tls_stream.is_some() {
       debug_assert!(self.server_tls_stream.is_none());
@@ -451,24 +422,16 @@ impl StreamResource {
         RcRef::map(&self, |r| r.client_tls_stream.as_ref().unwrap())
           .borrow_mut()
           .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nwritten = (&mut *client_tls_stream)
-        .write(buf)
-        .try_or_cancel(cancel)
-        .await?;
-      (&mut *client_tls_stream).flush().await?;
+      let nwritten = client_tls_stream.write(buf).await?;
+      client_tls_stream.flush().await?;
       return Ok(nwritten);
     } else if self.server_tls_stream.is_some() {
       let mut server_tls_stream =
         RcRef::map(&self, |r| r.server_tls_stream.as_ref().unwrap())
           .borrow_mut()
           .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nwritten = (&mut *server_tls_stream)
-        .write(buf)
-        .try_or_cancel(cancel)
-        .await?;
-      (&mut *server_tls_stream).flush().await?;
+      let nwritten = server_tls_stream.write(buf).await?;
+      server_tls_stream.flush().await?;
       return Ok(nwritten);
     }
 
@@ -478,10 +441,9 @@ impl StreamResource {
         RcRef::map(&self, |r| r.unix_stream.as_ref().unwrap())
           .borrow_mut()
           .await;
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = (&mut *unix_stream).write(buf).try_or_cancel(cancel).await?;
-      (&mut *unix_stream).flush().await?;
-      return Ok(nread);
+      let nwritten = unix_stream.write(buf).await?;
+      unix_stream.flush().await?;
+      return Ok(nwritten);
     }
 
     Err(bad_resource_id())

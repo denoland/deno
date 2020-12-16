@@ -199,7 +199,7 @@ async fn op_run_status(
     .get::<ChildResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut child = resource.borrow_mut().await;
-  let run_status = (&mut *child).await.map_err(AnyError::from)?;
+  let run_status = (&mut *child).await?;
   let code = run_status.code();
 
   #[cfg(unix)]

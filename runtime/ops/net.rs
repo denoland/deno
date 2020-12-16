@@ -69,11 +69,8 @@ async fn accept_tcp(
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (tcp_stream, _socket_addr) = (&mut *listener)
-    .accept()
-    .try_or_cancel(cancel)
-    .await
-    .map_err(|e| {
+  let (tcp_stream, _socket_addr) =
+    listener.accept().try_or_cancel(cancel).await.map_err(|e| {
       // FIXME(bartlomieju): compatibility with current JS implementation
       if let std::io::ErrorKind::Interrupted = e.kind() {
         bad_resource("Listener has been closed")
@@ -238,11 +235,7 @@ async fn op_datagram_send(
       let mut socket = RcRef::map(&resource, |r| &r.socket)
         .try_borrow_mut()
         .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
-      let cancel = RcRef::map(&resource, |r| &r.cancel);
-      let byte_length = socket
-        .send_to(&zero_copy, address_path)
-        .try_or_cancel(cancel)
-        .await?;
+      let byte_length = socket.send_to(&zero_copy, address_path).await?;
       Ok(json!(byte_length))
     }
     _ => Err(type_error("Wrong argument format!")),
