@@ -7,6 +7,7 @@ use crate::resolve_addr::resolve_addr_sync;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::poll_fn;
@@ -161,7 +162,10 @@ async fn op_connect_tls(
     domain.push_str("localhost");
   }
 
-  let addr = resolve_addr(&args.hostname, args.port).await?;
+  let addr = resolve_addr(&args.hostname, args.port)
+    .await?
+    .next()
+    .ok_or_else(|| generic_error("No resolved address found"))?;
   let tcp_stream = TcpStream::connect(&addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -335,7 +339,9 @@ fn op_listen_tls(
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
-  let addr = resolve_addr_sync(&args.hostname, args.port)?;
+  let addr = resolve_addr_sync(&args.hostname, args.port)?
+    .next()
+    .ok_or_else(|| generic_error("No resolved address found"))?;
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;

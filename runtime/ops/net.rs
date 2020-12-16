@@ -42,6 +42,8 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_listen", op_listen);
   super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
   super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
+  super::reg_json_sync(rt, "op_resolve_addr_sync", op_resolve_addr_sync);
+  super::reg_json_async(rt, "op_resolve_addr_async", op_resolve_addr_async);
 }
 
 #[derive(Deserialize)]
@@ -206,7 +208,10 @@ async fn op_datagram_send(
         s.borrow::<Permissions>()
           .check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr(&args.hostname, args.port).await?;
+      let addr = resolve_addr(&args.hostname, args.port)
+        .await?
+        .next()
+        .ok_or_else(|| generic_error("No resolved address found"))?;
       poll_fn(move |cx| {
         let mut state = state.borrow_mut();
         let resource = state
@@ -273,7 +278,10 @@ async fn op_connect(
           .borrow::<Permissions>()
           .check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr(&args.hostname, args.port).await?;
+      let addr = resolve_addr(&args.hostname, args.port)
+        .await?
+        .next()
+        .ok_or_else(|| generic_error("No resolved address found"))?;
       let tcp_stream = TcpStream::connect(&addr).await?;
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
@@ -506,7 +514,9 @@ fn op_listen(
         }
         permissions.check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr_sync(&args.hostname, args.port)?;
+      let addr = resolve_addr_sync(&args.hostname, args.port)?
+        .next()
+        .ok_or_else(|| generic_error("No resolved address found"))?;
       let (rid, local_addr) = if transport == "tcp" {
         listen_tcp(state, addr)?
       } else {
@@ -564,4 +574,41 @@ fn op_listen(
     #[cfg(unix)]
     _ => Err(type_error("Wrong argument format!")),
   }
+}
+
+fn op_resolve_addr_sync(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let IpListenArgs { hostname, port } = serde_json::from_value(args)?;
+
+  {
+    let permissions = state.borrow::<Permissions>();
+    permissions.check_net(&hostname, port)?;
+  }
+
+  let addrs: Vec<String> = resolve_addr_sync(&hostname, port)?
+    .map(|a| a.to_string())
+    .collect();
+  Ok(json!(addrs))
+}
+
+async fn op_resolve_addr_async(
+  state: Rc<RefCell<OpState>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, AnyError> {
+  let IpListenArgs { hostname, port } = serde_json::from_value(args)?;
+
+  {
+    let s = state.borrow();
+    s.borrow::<Permissions>().check_net(&hostname, port)?;
+  }
+
+  let addrs: Vec<String> = resolve_addr(&hostname, port)
+    .await?
+    .map(|a| a.to_string())
+    .collect();
+  Ok(json!(addrs))
 }
