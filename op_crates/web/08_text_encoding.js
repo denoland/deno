@@ -1453,6 +1453,7 @@
 
   window.TextEncoder = TextEncoder;
   window.TextDecoder = TextDecoder;
+  window.TextEncoderStream = TextEncoderStream;
   window.atob = atob;
   window.btoa = btoa;
   window.__bootstrap = window.__bootstrap || {};
