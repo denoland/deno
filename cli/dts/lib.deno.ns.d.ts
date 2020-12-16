@@ -1795,7 +1795,10 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function resolveAddr(hostname: string, port: number): Promise<string[]>;
+  export function resolveAddr(
+    hostname: string,
+    port: number,
+  ): Promise<string[]>;
 
   /** 
    * Synchronously performs DNS resolution against the given hostname and port,
